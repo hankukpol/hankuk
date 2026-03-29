@@ -2,5 +2,5 @@ packages:
   - "apps/score-predict"
   - "apps/study-hall"
   - "apps/interview-pass"
-  - "interview-mate"
+  - "apps/interview-mate"
   - "packages/*"

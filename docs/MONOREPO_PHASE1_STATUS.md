@@ -6,7 +6,7 @@ Last updated: 2026-03-29
 
 - Root `.git` is active and linked to GitHub.
 - Root `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, and `turbo.json` are in place.
-- `score-predict`, `study-hall`, and `interview-pass` were moved into `apps/`.
+- `score-predict`, `study-hall`, `interview-pass`, and `interview-mate` now live under `apps/`.
 - Root workspace scripts now target `apps/*` paths and use `pnpm`.
 - Root `pnpm install` completed and `pnpm-lock.yaml` was generated.
 - Migrated apps now use the single root lockfile instead of per-app `package-lock.json`.
@@ -17,20 +17,12 @@ Last updated: 2026-03-29
 - The migrated apps now ship `ignoreCommand` rules so `packages/config`, `supabase`, and root workspace config changes are treated as deployment-relevant.
 - `study-hall`, `interview-pass`, and `score-predict` now declare `pnpm build` in `vercel.json` instead of app-local `npm run build`.
 
-## Temporary Exception
-
-- `interview-mate` is still at the repository root.
-- Reason: there is active local work in that folder, and moving it now would mix in-progress user changes into the migration commit.
-- It is still included in the root pnpm workspace so dependency installation and turbo discovery can work from the repository root.
-
 ## Deployment-Sensitive Follow-Up
 
-- `interview-mate` should keep its current root-level Vercel path until that folder is clean and ready to move.
 - Root Vercel archive deployments are currently large, so manual redeploys should use `vercel deploy --archive=tgz`.
 
 ## Still Not Done
 
-- `interview-mate` path migration into `apps/`
 - Version alignment for shared framework-dependent packages
 - Shared package extraction beyond dependency-light utilities
 

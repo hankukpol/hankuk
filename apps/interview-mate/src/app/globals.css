@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f6f7f9;
+  --background-pure: #ffffff;
+  --foreground: #1a1d24;
+  --muted: #6b7684;
+  --border: #e8eaed;
+  --card: #ffffff;
+  --card-hover: #fafbfc;
+  --division-color: #1b4fbb;
+  --division-color-rgb: 27 79 187;
+  --division-color-light: #ebf0fb;
+  --division-color-dark: #0d2d6b;
+  --division-color-soft: #eef4ff;
+  --division-color-muted: #f8faff;
+  --division-color-strong: #183f92;
+  --division-hero-end: #2858c9;
+  --division-on-accent: #ffffff;
+  --division-on-accent-muted: rgb(255 255 255 / 0.72);
+  --division-accent-surface: rgb(255 255 255 / 0.15);
+  --division-accent-surface-soft: rgb(255 255 255 / 0.08);
+  --division-accent-border: rgb(255 255 255 / 0.2);
+  --division-accent-outline: rgb(255 255 255 / 0.12);
+  --nav-height: 58px;
+}
+
+* {
+  box-sizing: border-box !important;
+  border-color: var(--border);
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100dvh;
+  font-family: var(--font-pretendard), 'Apple SD Gothic Neo', sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  transition:
+    transform 100ms ease-out,
+    opacity 150ms ease-out,
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+::selection {
+  background: var(--division-color-light);
+  color: var(--division-color-dark);
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+tr:hover {
+  background-color: #f8fafc;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* ───── Card Surfaces ───── */
+  .surface-card {
+    @apply rounded-[14px] border border-black/[0.06] bg-white;
+  }
+
+  /* ───── Student Page Container ───── */
+  .student-container {
+    @apply mx-auto w-full max-w-[480px] px-4 pb-24 pt-6 md:max-w-[640px] md:px-6 md:pt-8;
+  }
+
+  /* ───── Landing Container ───── */
+  .landing-container {
+    @apply mx-auto w-full max-w-[480px] px-4 pb-24 pt-6 md:max-w-[1200px] md:px-8 md:pt-10;
+  }
+
+  /* ───── Admin Container ───── */
+  .admin-container {
+    @apply min-h-screen w-full px-4 py-5 md:px-8 md:py-8;
+  }
+
+  /* ───── Bottom Navigation (Glassmorphism) ───── */
+  .student-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    height: var(--nav-height);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  /* ───── Modern input styling ───── */
+  .input-modern {
+    @apply w-full rounded-[12px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm
+           placeholder:text-slate-400
+           focus:border-[var(--division-color)] focus:bg-white focus:outline-none;
+    transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  }
+
+  .input-modern:focus {
+    box-shadow: 0 0 0 3px rgb(var(--division-color-rgb) / 0.1) !important;
+  }
+
+  /* ───── Primary button styling ───── */
+  .btn-primary {
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-[12px]
+           bg-[var(--division-color)] px-5 py-3 text-sm font-semibold text-white
+           disabled:cursor-not-allowed disabled:opacity-40;
+    transition: background-color 200ms ease, transform 100ms ease-out;
+  }
+
+  .btn-primary:not(:disabled):hover {
+    filter: brightness(1.08);
+  }
+
+  .btn-primary:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  /* ───── Secondary / outline button ───── */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px]
+           border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700
+           disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-secondary:not(:disabled):hover {
+    background: var(--card-hover);
+  }
+}

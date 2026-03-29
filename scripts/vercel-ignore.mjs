@@ -6,6 +6,7 @@ const APP_PATHS = {
   "score-predict": ["apps/score-predict", "packages/config"],
   "study-hall": ["apps/study-hall"],
   "interview-pass": ["apps/interview-pass", "packages/config"],
+  "interview-mate": ["apps/interview-mate"],
 };
 
 const COMMON_PATHS = [

@@ -15,10 +15,11 @@ Read this section first to understand where things actually are.
 ```
 d:\hankuk/
   apps/
+    academy-ops/        # migrated app path
     score-predict/       # migrated app path
     study-hall/          # migrated app path
     interview-pass/      # migrated app path
-  interview-mate/        # temporary root-level exception while local work is in progress
+    interview-mate/      # migrated app path
   docs/
   supabase/
   .git/
@@ -31,8 +32,7 @@ d:\hankuk/
 
 - Root Git is initialized and linked to GitHub.
 - Root `package.json`, `turbo.json`, `.nvmrc`, and `pnpm-workspace.yaml` exist.
-- `score-predict`, `study-hall`, and `interview-pass` now live under `apps/`.
-- `interview-mate` is still at the repository root because there is active local work in that folder.
+- `academy-ops`, `score-predict`, `study-hall`, `interview-pass`, and `interview-mate` now live under `apps/`.
 - Use root-level pnpm workspace commands. Do NOT add or restore per-app lockfiles.
 
 ### Target structure (after migration)
@@ -40,6 +40,7 @@ d:\hankuk/
 ```
 d:\hankuk/
   apps/
+    academy-ops/
     score-predict/
     study-hall/
     interview-pass/
@@ -57,7 +58,6 @@ d:\hankuk/
 ### Which rules apply when
 
 - Migrated apps: work in `apps/<app-name>/`.
-- `interview-mate`: work in `interview-mate/` until it is explicitly moved.
 - All other rules (isolation, shared code, naming, safety) apply regardless of migration status.
 - When creating a brand new app, place it under `apps/`.
 
@@ -99,6 +99,7 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 - Extend an EXISTING APP when the difference is police/fire/branch/campus variation of the same service.
 - Do NOT create a separate app, Vercel project, or Supabase project just to represent police/fire variants of the same service unless it is explicitly treated as a new product boundary.
 - `study-hall` style runtime division routing is the reference pattern for multi-tenant service behavior in this repository.
+- `academy-ops` style runtime academy/hostname lookup is also acceptable when one deployed app instance serves multiple academies or tracks without separate builds.
 
 ### 3. Shared Code
 - Code used by 2+ apps --> move to `packages/`.
@@ -147,6 +148,7 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 - No .nvmrc or engines exist in any app today. This must be resolved during migration.
 
 ### Framework and Library Versions (Current State)
+- academy-ops: Next.js 14, React 18, Prisma 6, @supabase/supabase-js ^2.98, @supabase/ssr ^0.9
 - score-predict: Next.js 16, React 19, Prisma 5, no Supabase client
 - study-hall: Next.js 14, React 18, Prisma 6, @supabase/supabase-js ^2.99, @supabase/ssr ^0.9
 - interview-pass: Next.js 15, React 19, no Prisma, @supabase/supabase-js ^2.49, @supabase/ssr ^0.6
@@ -193,13 +195,14 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 ## Tenant and Routing Strategy
 
 - App-level domain/subdomain decides the SERVICE.
-  - Example: `study.hankukpol.co.kr`, `score.hankukpol.co.kr`, `interview.hankukpol.co.kr`
+  - Example: `academy.hankukpol.co.kr`, `study.hankukpol.co.kr`, `score.hankukpol.co.kr`, `interview.hankukpol.co.kr`
 - Tenant/division/workspace inside the app decides the OPERATIONAL UNIT.
   - Example: `/police/...`, `/fire/...`, `/gangnam/...`
 - Default preference for tenant-aware apps:
   1. path slug
   2. runtime hostname lookup
   3. other request-scoped lookup
+- `academy-ops` may use academy/track lookup by hostname and `academyId` as long as one deployed app instance serves multiple academies or tracks at runtime.
 - Every tenant-aware DB query must include the relevant tenant/division/workspace boundary.
 - Auth/session for tenant-aware apps should carry enough context to enforce tenant access rules.
 - One running app instance should be able to serve multiple tenants at runtime.
@@ -237,7 +240,7 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 ## Workflow
 
 ### Modifying an Existing App
-1. Work inside the app folder (`apps/<name>/` for migrated apps, `interview-mate/` for the temporary root-level exception).
+1. Work inside the app folder (`apps/<name>/` for migrated apps).
 2. If the change touches more than one app, verify each affected app independently.
 3. Run build/lint/tests inside every affected app and use `turbo run build` for cross-app verification when needed.
 4. Push to GitHub from the repository root. Vercel deploys affected projects.
@@ -298,9 +301,11 @@ These decisions are prerequisites for the monorepo migration. They are final.
   - Uses subdomain custom domain (e.g., `score.hankukpol.co.kr`).
   - Configures Ignored Build Step to only build when its own app folder changes.
 - Domain mapping (target):
+  - Recommended target rows:
 
   | App folder | Subdomain alias | Custom domain |
   |------------|----------------|---------------|
+  | academy-ops | academy | `academy.hankukpol.co.kr` |
   | score-predict | score | `score.hankukpol.co.kr` |
   | study-hall | studyhall | `studyhall.hankukpol.co.kr` |
   | interview-pass | interview | `interview.hankukpol.co.kr` |
@@ -318,6 +323,7 @@ These decisions are prerequisites for the monorepo migration. They are final.
 - Reason: users are the same people across all apps; shared authentication and user data is required.
 - Schema separation is used to isolate app-specific data within the single project:
   - `public` schema: shared tables (users, profiles, roles, authentication).
+  - `academy_ops` schema: academy-ops app tables.
   - `score_predict` schema: score-predict app tables.
   - `study_hall` schema: study-hall app tables.
   - `interview` schema: interview-pass app tables.
@@ -333,6 +339,7 @@ These decisions are prerequisites for the monorepo migration. They are final.
 - Default preference is path/slug-based tenant routing inside the app.
 - Hostname-based tenant routing is allowed if the SAME app instance handles multiple hostnames at runtime.
 - `study-hall` is the reference pattern for runtime tenant-aware architecture.
+- `academy-ops` is also a single service boundary. Police/fire/branch/campus differences inside it should stay as runtime academies/divisions, not sibling apps.
 - Current build-time tenant env patterns in `score-predict` and `interview-pass` are transitional and should be migrated toward request-scoped runtime tenant resolution.
 - New tenant/division inside an existing app = new config/data/routes within that app, not a new app, not a new Vercel project, and not a new Supabase schema by default.
 - New app = new service boundary. New app implies a new app folder, a new Vercel project, and usually a new app schema in the unified Supabase project.
@@ -346,12 +353,12 @@ These decisions are prerequisites for the monorepo migration. They are final.
 2. Initialize root Git, link to GitHub.
 3. Create monorepo config files at root (package.json, turbo.json, pnpm-workspace.yaml).
 4. Pin Node.js version (.nvmrc + engines.node in root package.json).
-5. Move existing 3 apps into apps/.
+5. Move service apps into `apps/` and flatten nested `web/` roots when migrating independent projects such as `academy-ops`.
 6. Remove per-app package-lock.json files, switch to pnpm.
 
 ### Phase 2: Supabase Consolidation
 7. Create a single new Supabase project (hankuk-main, region: ap-northeast-2).
-8. Design unified schema: `public` (shared auth/users) + per-app schemas (`score_predict`, `study_hall`, `interview`).
+8. Design unified schema: `public` (shared auth/users) + per-app schemas (`academy_ops`, `score_predict`, `study_hall`, `interview`).
    - For tenant-aware apps, also design runtime tenant/division/workspace boundaries inside each app schema.
 9. Set up Supabase Auth on the new project (shared authentication).
 10. Migrate data from existing 5 Supabase projects to the new unified project.
@@ -359,8 +366,8 @@ These decisions are prerequisites for the monorepo migration. They are final.
 12. Verify all apps work correctly with the new unified Supabase.
 
 ### Phase 3: Vercel & Domain Setup
-13. Create new Vercel projects (score-predict, study-hall, interview-pass) linked to the monorepo GitHub repo.
-14. Configure subdomain custom domains (`score.hankukpol.co.kr`, `studyhall.hankukpol.co.kr`, `interview.hankukpol.co.kr`).
+13. Create new Vercel projects (academy-ops, score-predict, study-hall, interview-pass) linked to the monorepo GitHub repo.
+14. Configure subdomain custom domains (`academy.hankukpol.co.kr`, `score.hankukpol.co.kr`, `studyhall.hankukpol.co.kr`, `interview.hankukpol.co.kr`).
 15. Configure cookie-based session sharing across subdomains (`.hankukpol.co.kr`).
 16. Set up Ignored Build Step on each Vercel project for selective builds.
 17. Verify preview and production deployments for all apps.
@@ -368,6 +375,7 @@ These decisions are prerequisites for the monorepo migration. They are final.
 ### Phase 4: Framework Alignment & Shared Code
 18. Decide and align version policy across all apps for: Next.js/React, Prisma, and @supabase/supabase-js/@supabase/ssr.
    - For `score-predict` and `interview-pass`, plan migration away from build-time fixed tenant env toward request-scoped runtime tenant resolution.
+   - For `academy-ops`, keep police/fire/branch differences as runtime academy or division scope, not separate builds.
 19. Extract shared code into packages/ (framework-independent packages first; framework-dependent packages like @hankuk/db, @hankuk/auth, @hankuk/ui are allowed ONLY after step 18 aligns the relevant library versions).
 
 ### Phase 5: Cleanup (after 30 days of stable operation)

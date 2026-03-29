@@ -17,6 +17,9 @@ Last updated: 2026-03-29
   - Claimed admin IDs are now read at login time and attached to the local admin session.
   - Claimed admin IDs can now use shared auth email/password login in addition to legacy PIN login.
   - Division staff can now use named operator accounts in `interview.staff_accounts`.
+  - Staff operator login IDs are now preserved in:
+    - `public.identity_claim_reservations`
+  - Named operator accounts can now be claimed into real shared auth users from the admin config screen.
   - Staff operator sessions now carry person-level display names into 배부 로그.
 - `score-predict`
   - Legacy users are preserved in:
@@ -34,6 +37,8 @@ Last updated: 2026-03-29
   - `app_config` changes for `*::admin_id` should sync reservation rows.
   - Claimed admin logins now read shared linkage during session issuance.
   - Staff operator sessions update `interview.staff_accounts.last_login_at`.
+  - `interview.staff_accounts` insert, update, and delete now sync `staff_id` reservation rows automatically.
+  - Claimed operator logins now read shared linkage during session issuance.
 - `score-predict`
   - Successful login refreshes shared profile, app membership, division membership, and alias rows.
   - Role changes from the admin user screen refresh shared memberships immediately.
@@ -41,8 +46,8 @@ Last updated: 2026-03-29
 
 ## Current Limitation
 
-- `interview-pass` staff now supports person-level operator accounts, but they are still app-local and not claimed into shared auth yet.
 - Legacy shared staff PIN still exists as a fallback path and is not backfilled into shared auth tables.
+- `interview-pass` staff still uses PIN-first login even after a named operator account is linked to shared auth.
 - `score-predict` users still authenticate against local tenant tables.
 - Reservation rows only prepare later claim and cutover steps; they do not enable SSO by themselves.
 - `study-hall` student auth is still separate from shared auth.
@@ -50,7 +55,7 @@ Last updated: 2026-03-29
 ## Next Recommended Step
 
 1. `interview-pass`
-   - Add shared-auth claim/link flow for named staff operator accounts.
+   - Add shared-auth-first operator login after claim while retaining PIN as fallback and recovery.
    - Keep moving admin auth toward shared-auth-first while retaining PIN as fallback and recovery.
 2. `score-predict`
    - Replace NextAuth credential ownership with shared-auth-first login once the adapter layer is stable.

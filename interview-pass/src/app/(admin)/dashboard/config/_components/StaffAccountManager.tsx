@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import {
+  claimStaffAccountSharedAuth,
   createStaffAccount,
   loadStaffAccounts,
   updateStaffAccount,
@@ -17,6 +18,19 @@ function formatDateTime(value: string | null) {
   return new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
 }
 
+function getClaimSummary(account: StaffAccountSummary) {
+  switch (account.reservationStatus) {
+    case 'claimed':
+      return account.claimedEmailMasked
+        ? `${account.claimedEmailMasked} 계정에 연결됨`
+        : '공통 인증 계정에 연결됨'
+    case 'reserved':
+      return '공통 인증 연결 가능'
+    default:
+      return '예약 정보가 아직 없음'
+  }
+}
+
 function StaffAccountRow(props: {
   account: StaffAccountSummary
   onUpdated: (account: StaffAccountSummary) => void
@@ -27,8 +41,11 @@ function StaffAccountRow(props: {
   const [note, setNote] = useState(account.note)
   const [status, setStatus] = useState(account.status)
   const [nextPin, setNextPin] = useState('')
+  const [claimEmail, setClaimEmail] = useState('')
+  const [claimPassword, setClaimPassword] = useState('')
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isClaiming, setIsClaiming] = useState(false)
 
   async function handleSave() {
     setIsSaving(true)
@@ -55,13 +72,46 @@ function StaffAccountRow(props: {
     }
   }
 
+  async function handleClaim() {
+    if (!claimEmail.trim()) {
+      setMessage({ tone: 'error', text: '공통 인증 이메일을 입력해 주세요.' })
+      return
+    }
+
+    if (claimPassword.length < 6) {
+      setMessage({ tone: 'error', text: '비밀번호는 6자 이상이어야 합니다.' })
+      return
+    }
+
+    setIsClaiming(true)
+    setMessage(null)
+
+    try {
+      const updated = await claimStaffAccountSharedAuth(account.id, {
+        email: claimEmail,
+        password: claimPassword,
+      })
+      onUpdated(updated)
+      setClaimEmail('')
+      setClaimPassword('')
+      setMessage({ tone: 'success', text: '직원 계정을 공통 인증에 연결했습니다.' })
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : '직원 공통 인증 연결에 실패했습니다.',
+      })
+    } finally {
+      setIsClaiming(false)
+    }
+  }
+
   return (
-    <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
+    <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4">
       {message ? <ConfigStatusMessage text={message.text} tone={message.tone} /> : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">로그인 ID</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">Login ID</p>
           <input
             type="text"
             value={loginId}
@@ -111,10 +161,50 @@ function StaffAccountRow(props: {
         />
       </div>
 
-      <div className="grid gap-3 text-sm text-gray-500 md:grid-cols-3">
-        <p>최근 로그인: {formatDateTime(account.lastLoginAt)}</p>
-        <p>Shared Auth: {account.sharedUserId ? '연결됨' : '미연결'}</p>
-        <p>생성 시각: {formatDateTime(account.createdAt)}</p>
+      <div className="grid gap-3 rounded-2xl border border-[#d8defd] bg-[#f6f8ff] p-4 text-sm text-gray-700 md:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">Claim Status</p>
+          <p className="mt-2 font-semibold text-gray-900">{getClaimSummary(account)}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">Shared Membership</p>
+          <p className="mt-2 font-semibold text-gray-900">{account.sharedLinked ? '활성' : '미연결 또는 비활성'}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">최근 로그인</p>
+          <p className="mt-2 font-semibold text-gray-900">{formatDateTime(account.lastLoginAt)}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">생성 시각</p>
+          <p className="mt-2 font-semibold text-gray-900">{formatDateTime(account.createdAt)}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 md:grid-cols-2 xl:grid-cols-3">
+        <input
+          type="email"
+          value={claimEmail}
+          onChange={(event) => setClaimEmail(event.target.value)}
+          placeholder="공통 인증 이메일"
+          autoComplete="email"
+          className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1a237e] focus:outline-none"
+        />
+        <input
+          type="password"
+          value={claimPassword}
+          onChange={(event) => setClaimPassword(event.target.value)}
+          placeholder="공통 인증 비밀번호"
+          autoComplete="new-password"
+          className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1a237e] focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleClaim}
+          disabled={isClaiming || !account.claimable}
+          className="rounded-xl bg-[#1a237e] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {isClaiming ? '연결 중...' : account.claimable ? '공통 인증 연결' : '이미 연결됨'}
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -222,7 +312,7 @@ export default function StaffAccountManager() {
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-gray-900">직원 Operator 계정</h3>
         <p className="text-sm leading-6 text-gray-500">
-          공용 직원 PIN 외에 사람 단위 계정을 발급할 수 있습니다. 스캔/빠른 배부 로그에는 이 이름이 그대로 남습니다.
+          공용 직원 PIN과 별개로 사람 단위 계정을 발급하고, 필요하면 공통 인증 계정과 연결할 수 있습니다.
         </p>
       </div>
 

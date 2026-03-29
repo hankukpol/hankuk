@@ -44,6 +44,7 @@ export type AdminSessionStatus = {
 }
 
 export type StaffAccountStatus = 'active' | 'inactive'
+export type StaffClaimReservationStatus = 'missing_reservation' | 'reserved' | 'claimed'
 
 export type StaffAccountSummary = {
   id: string
@@ -53,6 +54,10 @@ export type StaffAccountSummary = {
   status: StaffAccountStatus
   note: string
   sharedUserId: string | null
+  sharedLinked: boolean
+  reservationStatus: StaffClaimReservationStatus
+  claimable: boolean
+  claimedEmailMasked: string | null
   lastLoginAt: string | null
   createdAt: string
   updatedAt: string
@@ -71,6 +76,11 @@ export type StaffAccountUpdatePayload = {
   pin?: string
   note?: string
   status?: StaffAccountStatus
+}
+
+export type StaffAccountClaimPayload = {
+  email: string
+  password: string
 }
 
 export type StaffSessionStatus = {
@@ -211,6 +221,23 @@ export async function updateStaffAccount(
   const data = await readJson<{ account: StaffAccountSummary }>(
     response,
     '직원 계정을 수정하지 못했습니다.',
+  )
+  return data.account
+}
+
+export async function claimStaffAccountSharedAuth(
+  accountId: string,
+  payload: StaffAccountClaimPayload,
+): Promise<StaffAccountSummary> {
+  const response = await fetch(`/api/auth/staff/accounts/${accountId}/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await readJson<{ account: StaffAccountSummary }>(
+    response,
+    '직원 공통 인증 계정을 연결하지 못했습니다.',
   )
   return data.account
 }

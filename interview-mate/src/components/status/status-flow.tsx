@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -17,7 +17,6 @@ import { PushSubscribeCard } from "@/components/pwa/push-subscribe-card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/ui/section-card";
-import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import type { StudentSummary } from "@/lib/students";
 
 type StatusFlowProps = {
@@ -105,13 +104,6 @@ export function StatusFlow({ token }: StatusFlowProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const assignedRoomToastRef = useRef<string | null>(null);
-  const supabase = useMemo(() => {
-    try {
-      return createBrowserSupabaseClient();
-    } catch {
-      return null;
-    }
-  }, []);
 
   const currentRoom = waiting?.assignedRoom ?? joinedRoom;
 
@@ -161,75 +153,18 @@ export function StatusFlow({ token }: StatusFlowProps) {
   }, [loadStatus, token]);
 
   useEffect(() => {
-    if (!supabase || !student?.id) {
+    if (!token) {
       return;
     }
 
-    const waitingChannel = supabase
-      .channel(`waiting-status:${student.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "waiting_pool",
-          filter: `student_id=eq.${student.id}`,
-        },
-        () => {
-          void loadStatus().catch(() => undefined);
-        },
-      )
-      .subscribe();
-
-    const membershipChannel = supabase
-      .channel(`room-membership:${student.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "room_members",
-          filter: `student_id=eq.${student.id}`,
-        },
-        () => {
-          void loadStatus().catch(() => undefined);
-        },
-      )
-      .subscribe();
+    const intervalId = window.setInterval(() => {
+      void loadStatus().catch(() => undefined);
+    }, 10000);
 
     return () => {
-      void Promise.all([
-        supabase.removeChannel(waitingChannel),
-        supabase.removeChannel(membershipChannel),
-      ]);
+      window.clearInterval(intervalId);
     };
-  }, [loadStatus, student?.id, supabase]);
-
-  useEffect(() => {
-    if (!supabase || !currentRoom?.id) {
-      return;
-    }
-
-    const roomChannel = supabase
-      .channel(`waiting-room:${currentRoom.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "group_rooms",
-          filter: `id=eq.${currentRoom.id}`,
-        },
-        () => {
-          void loadStatus().catch(() => undefined);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(roomChannel);
-    };
-  }, [currentRoom?.id, loadStatus, supabase]);
+  }, [loadStatus, token]);
 
   useEffect(() => {
     if (!currentRoom?.id) {

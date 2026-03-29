@@ -17,6 +17,9 @@ export function createServerSupabaseClient() {
   const { url, serviceRoleKey } = getServerSupabaseConfig();
 
   return createClient(url, serviceRoleKey, {
+    db: {
+      schema: "interview_mate",
+    },
     auth: {
       persistSession: false,
       autoRefreshToken: false,

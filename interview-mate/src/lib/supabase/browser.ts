@@ -17,6 +17,9 @@ export function createBrowserSupabaseClient() {
   const { url, anonKey } = getPublicSupabaseConfig();
 
   return createClient(url, anonKey, {
+    db: {
+      schema: "interview_mate",
+    },
     auth: {
       persistSession: false,
       autoRefreshToken: false,

@@ -15,6 +15,7 @@ Last updated: 2026-03-29
     - `public.identity_claim_reservations`
   - Division admin IDs can now be claimed into real shared auth users from the admin config screen.
   - Claimed admin IDs are now read at login time and attached to the local admin session.
+  - Claimed admin IDs can now use shared auth email/password login in addition to legacy PIN login.
 - `score-predict`
   - Legacy users are preserved in:
     - `public.identity_claim_reservations`
@@ -46,7 +47,8 @@ Last updated: 2026-03-29
 ## Next Recommended Step
 
 1. `interview-pass`
-   - Introduce named operator accounts for staff, or replace admin PIN-first login with shared-auth-first login while keeping PIN as fallback.
+   - Introduce named operator accounts for staff.
+   - Keep moving admin auth toward shared-auth-first while retaining PIN as fallback and recovery.
 2. `score-predict`
    - Replace NextAuth credential ownership with shared-auth-first login once the adapter layer is stable.
 3. `study-hall`

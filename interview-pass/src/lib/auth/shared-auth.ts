@@ -448,6 +448,49 @@ export async function getInterviewAdminSessionContext(
   }
 }
 
+export async function authenticateInterviewAdminWithSharedAuth(params: {
+  division: TenantType
+  email: string
+  password: string
+}) {
+  const adminId = (await getAdminId()).trim()
+  if (!adminId) {
+    throw new Error('관리자 아이디를 먼저 설정해야 공통 인증 로그인을 사용할 수 있습니다.')
+  }
+
+  const reservation = await loadReservation(params.division, adminId)
+  if (!reservation || reservation.status !== 'claimed' || !reservation.claimed_user_id) {
+    throw new Error('현재 관리자 아이디는 아직 공통 인증 계정에 연결되지 않았습니다.')
+  }
+
+  const anonDb = getSharedAnonClient()
+  const loginResult = await anonDb.auth.signInWithPassword({
+    email: normalizeEmail(params.email),
+    password: params.password,
+  })
+
+  if (!loginResult.data.user) {
+    throw new Error(loginResult.error?.message ?? '공통 인증 로그인에 실패했습니다.')
+  }
+
+  if (loginResult.data.user.id !== reservation.claimed_user_id) {
+    throw new Error('이 이메일은 현재 관리자 아이디에 연결된 공통 인증 계정이 아닙니다.')
+  }
+
+  const sharedLinked = await hasActiveSharedMembership(loginResult.data.user.id, params.division)
+  if (!sharedLinked) {
+    throw new Error('공통 인증 계정에 현재 division 관리자 권한이 없습니다.')
+  }
+
+  return {
+    division: params.division,
+    adminId,
+    sharedUserId: loginResult.data.user.id,
+    sharedLinked: true,
+    claimedEmailMasked: maskEmail(loginResult.data.user.email),
+  } satisfies InterviewAdminSessionContext
+}
+
 export async function claimInterviewAdminSharedAuth(params: {
   division: TenantType
   email: string

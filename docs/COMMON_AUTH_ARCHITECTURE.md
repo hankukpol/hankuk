@@ -16,6 +16,7 @@ Last updated: 2026-03-29
   - Division context is resolved at runtime by path and cookie.
   - Division admin IDs can now be claimed into shared auth from the admin config screen.
   - Admin login now reads the claimed shared identity and carries that link into the app session.
+  - Claimed admins can now also log in with shared auth email and password while PIN login remains as fallback.
 - `interview-mate`
   - Uses `ADMIN_KEY` request validation for admin APIs.
   - Participant access is phone and reservation based, not account based.
@@ -92,6 +93,7 @@ The shared identity source should be:
 - `interview-pass`
   - A live admin claim API and config UI for linking division admin IDs to shared auth users.
   - Admin login/bootstrap now resolve and carry shared identity linkage into the app JWT session.
+  - A shared-auth-first admin login endpoint and login-screen entry point now exist for claimed admin identities.
 
 ## What Is Not Live Yet
 

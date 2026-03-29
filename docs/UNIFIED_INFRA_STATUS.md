@@ -1,6 +1,6 @@
 # Unified Infra Status
 
-Last updated: 2026-03-29
+Last updated: 2026-03-30
 
 ## Shared Supabase
 
@@ -8,6 +8,7 @@ Last updated: 2026-03-29
 - Region: `ap-northeast-2`
 - Project ref: `pbonwjwbtqyrfrxqdwlu`
 - Shared schemas:
+  - `academy_ops`
   - `public`
   - `score_predict`
   - `study_hall`
@@ -18,6 +19,7 @@ Last updated: 2026-03-29
 
 ## Current Production URLs
 
+- `academy-ops`: `https://academy-ops.vercel.app`
 - `score-predict`: `https://score-predict.vercel.app`
 - `study-hall`: `https://study-hall-six.vercel.app`
 - `interview-pass`: `https://interview-pass.vercel.app`
@@ -25,6 +27,10 @@ Last updated: 2026-03-29
 
 ## Migration Status
 
+- `academy-ops`
+  - Legacy source database was deleted before migration.
+  - Unified project was initialized from scratch in `academy_ops`.
+  - Shared auth super-admin bootstrap now reuses the unified `ikma@hanmail.net` auth account.
 - `score-predict`
   - Legacy police/fire data copied into unified project.
   - Runtime reads are routed through tenant-specific bridge schemas.

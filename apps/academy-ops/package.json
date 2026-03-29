@@ -16,6 +16,7 @@
     "db:push": "node scripts/db-push.cjs",
     "db:push:force": "node scripts/db-push.cjs --accept-data-loss",
     "db:deploy": "prisma migrate deploy",
+    "bootstrap:hankuk-main": "tsx scripts/bootstrap-hankuk-main.ts",
     "import:legacy:students": "tsx scripts/import-legacy-students.ts",
     "inspect:legacy": "tsx scripts/inspect-legacy-workbook.ts",
     "recalculate:status": "tsx scripts/recalculate-status-cache.ts",

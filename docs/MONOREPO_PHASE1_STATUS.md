@@ -1,6 +1,6 @@
 # Monorepo Migration Status
 
-Last updated: 2026-03-29
+Last updated: 2026-03-30
 
 ## What Is Done
 
@@ -21,7 +21,8 @@ Last updated: 2026-03-29
 ## Deployment-Sensitive Follow-Up
 
 - Root Vercel archive deployments are currently large, so manual redeploys should use `vercel deploy --archive=tgz`.
-- `academy-ops` now has a new monorepo-linked Vercel project, but its current legacy Supabase connection values point at an unavailable project ref (`psfsprodoedjjngldyzr`), so runtime verification is blocked until valid DB credentials are provided.
+- `academy-ops` now uses `hankuk-main` with schema-qualified Prisma URLs (`academy_ops`) and has a committed bootstrap path for fresh-start initialization.
+- Manual CLI deploys should be run from the repo root against the linked project settings so Vercel does not double-apply `apps/<name>` root directories.
 
 ## Still Not Done
 

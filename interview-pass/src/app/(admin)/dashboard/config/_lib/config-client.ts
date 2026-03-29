@@ -36,6 +36,14 @@ export type AdminClaimPayload = {
   password: string
 }
 
+export type AdminSessionStatus = {
+  role: 'admin'
+  division: 'police' | 'fire' | null
+  adminId: string
+  sharedLinked: boolean
+  sharedUserId: string | null
+}
+
 type ApiErrorPayload = {
   error?: string
   message?: string
@@ -119,6 +127,11 @@ export async function claimAdminSharedAuth(payload: AdminClaimPayload): Promise<
   })
 
   return readJson<AdminClaimStatus>(response, '공통 인증 계정을 연결하지 못했습니다.')
+}
+
+export async function loadAdminSessionStatus(): Promise<AdminSessionStatus> {
+  const response = await fetch('/api/auth/admin/session', { method: 'GET', cache: 'no-store' })
+  return readJson<AdminSessionStatus>(response, '현재 관리자 세션 상태를 불러오지 못했습니다.')
 }
 
 export async function invalidateConfigCache(): Promise<{ message?: string }> {

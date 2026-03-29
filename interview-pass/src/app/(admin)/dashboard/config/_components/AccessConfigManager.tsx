@@ -5,9 +5,11 @@ import {
   claimAdminSharedAuth,
   loadAdminClaimStatus,
   loadAdminId,
+  loadAdminSessionStatus,
   saveAdminId,
   savePin,
   type AdminClaimStatus,
+  type AdminSessionStatus,
 } from '../_lib/config-client'
 import ConfigPanel from './ConfigPanel'
 import ConfigStatusMessage from './ConfigStatusMessage'
@@ -38,6 +40,7 @@ function getClaimSummary(claimInfo: AdminClaimStatus | null) {
 export default function AccessConfigManager() {
   const [adminId, setAdminId] = useState('')
   const [claimInfo, setClaimInfo] = useState<AdminClaimStatus | null>(null)
+  const [sessionInfo, setSessionInfo] = useState<AdminSessionStatus | null>(null)
   const [claimEmail, setClaimEmail] = useState('')
   const [claimPassword, setClaimPassword] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -61,14 +64,16 @@ export default function AccessConfigManager() {
       setClaimStatus(null)
 
       try {
-        const [nextAdminId, nextClaimInfo] = await Promise.all([
+        const [nextAdminId, nextClaimInfo, nextSessionInfo] = await Promise.all([
           loadAdminId(),
           loadAdminClaimStatus(),
+          loadAdminSessionStatus(),
         ])
 
         if (!cancelled) {
           setAdminId(nextAdminId.id ?? '')
           setClaimInfo(nextClaimInfo)
+          setSessionInfo(nextSessionInfo)
         }
       } catch (error) {
         if (!cancelled) {
@@ -89,9 +94,13 @@ export default function AccessConfigManager() {
     }
   }, [])
 
-  async function refreshClaimStatus() {
-    const nextClaimInfo = await loadAdminClaimStatus()
+    async function refreshClaimStatus() {
+    const [nextClaimInfo, nextSessionInfo] = await Promise.all([
+      loadAdminClaimStatus(),
+      loadAdminSessionStatus(),
+    ])
     setClaimInfo(nextClaimInfo)
+    setSessionInfo(nextSessionInfo)
   }
 
   async function handleSaveAdminId() {
@@ -255,6 +264,20 @@ export default function AccessConfigManager() {
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">Status</p>
                 <p className="mt-1 font-semibold text-gray-900">{getClaimSummary(claimInfo)}</p>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/70 bg-white p-4 text-sm text-gray-700">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">Current Session</p>
+              <p className="mt-2 font-semibold text-gray-900">
+                {sessionInfo?.sharedLinked
+                  ? '현재 관리자 세션이 공통 인증 사용자와 연결되어 있습니다.'
+                  : '현재 관리자 세션은 아직 공통 인증 사용자 정보를 싣고 있지 않습니다.'}
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                {sessionInfo?.sharedLinked
+                  ? `division=${sessionInfo.division ?? '-'} / adminId=${sessionInfo.adminId || '(미설정)'}`
+                  : '공통 인증 연결 직후에는 로그아웃 후 다시 로그인해야 세션에 반영됩니다.'}
+              </p>
             </div>
 
             {claimInfo?.claimable ? (

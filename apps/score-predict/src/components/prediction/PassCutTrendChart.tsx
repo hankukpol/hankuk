@@ -114,9 +114,9 @@ export default function PassCutTrendChart({ releases, current, myScore }: PassCu
             />
             <Tooltip
               contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
-              formatter={(value: unknown, name: string | undefined) => {
+              formatter={(value: unknown, name: string | number | undefined) => {
                 const num = typeof value === "number" ? value : Number(value ?? 0);
-                const safeName = name ?? "";
+                const safeName = typeof name === "string" ? name : String(name ?? "");
                 if (safeName === "참여자 수") {
                   return [`${Math.round(num).toLocaleString("ko-KR")}명`, safeName];
                 }

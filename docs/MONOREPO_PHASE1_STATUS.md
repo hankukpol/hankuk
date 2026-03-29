@@ -1,48 +1,41 @@
-# Monorepo Phase 1 Status
+# Monorepo Migration Status
 
 Last updated: 2026-03-29
 
-## What Was Added
+## What Is Done
 
-- Root `.nvmrc`
-- Root `package.json`
-- Root `pnpm-workspace.yaml`
-- Root `turbo.json`
+- Root `.git` is active and linked to GitHub.
+- Root `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, and `turbo.json` are in place.
+- `score-predict`, `study-hall`, and `interview-pass` were moved into `apps/`.
+- Root workspace scripts now target `apps/*` paths and use `pnpm`.
+- `score-predict` and `study-hall` app scripts were updated to stop calling `npm run`.
 
-## Why The Apps Were Not Moved Yet
+## Temporary Exception
 
-The current Vercel projects still point at root-level app directories:
+- `interview-mate` is still at the repository root.
+- Reason: there is active local work in that folder, and moving it now would mix in-progress user changes into the migration commit.
+- It is still included in the root pnpm workspace so dependency installation and turbo discovery can work from the repository root.
 
-- `score-predict`
-- `study-hall`
-- `interview-pass`
-- `interview-mate`
+## Deployment-Sensitive Follow-Up
 
-If the folders are moved to `apps/` before those Vercel root directories are updated, production deployments will break.
+- `score-predict`, `study-hall`, and `interview-pass` Vercel projects must use `apps/<app-name>` as Root Directory.
+- `interview-mate` should keep its current root-level Vercel path until that folder is clean and ready to move.
 
-## Safe Current State
+## Still Not Done
 
-- Root-level apps remain where they are.
-- The repository now has the initial root monorepo scaffold.
-- Existing app-local npm workflows still work.
-- Future root-level Turbo and pnpm workflows now have a place to start from.
+- Root `pnpm install` and `pnpm-lock.yaml` generation
+- Per-app `package-lock.json` removal
+- Full workspace build verification from the root
+- `interview-mate` path migration into `apps/`
+- Version alignment for shared framework-dependent packages
 
-## Next Migration Step
+## Current Shared-Package Constraint
 
-1. Install pnpm through Corepack.
-2. Update each new Vercel project to the future app path.
-3. Move the app folders into `apps/`.
-4. Remove per-app `package-lock.json` files.
-5. Run root `pnpm install`.
-6. Verify root `turbo` workflows.
-
-## Important Constraint
-
-This repository still has mixed framework majors:
+These app versions are still intentionally unaligned:
 
 - `score-predict`: Next 16 / React 19 / Prisma 5
 - `study-hall`: Next 14 / React 18 / Prisma 6
 - `interview-pass`: Next 15 / React 19 / Supabase SSR 0.6
 - `interview-mate`: Next 14 / React 18
 
-Because of that, shared packages should remain dependency-light until version alignment is decided.
+Because of that, only dependency-light shared packages should be extracted for now.

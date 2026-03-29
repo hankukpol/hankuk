@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, BookOpenCheck, CalendarDays, Clock3, Users } from "lucide-react";
 
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
-import { getCurrentPeriod, getPeriods } from "@/lib/services/period.service";
+import { getCurrentPeriod, getPeriods, type PeriodRecord } from "@/lib/services/period.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 
 type AssistantPageProps = {
@@ -53,7 +53,7 @@ export default async function AssistantPage({ params }: AssistantPageProps) {
     getPeriods(params.division),
   ]);
 
-  const activePeriods = periods.filter((period) => period.isActive);
+  const activePeriods = periods.filter((period: PeriodRecord) => period.isActive);
   const snapshot = currentPeriod
     ? await getAttendanceSnapshot(params.division, today, currentPeriod.id)
     : null;

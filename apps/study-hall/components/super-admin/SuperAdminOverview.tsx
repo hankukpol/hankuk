@@ -12,8 +12,10 @@ import {
   Siren,
   UserCheck,
   Users,
+  type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ElementType } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { AnchorHTMLAttributes, CSSProperties, ReactNode } from "react";
 import { toast } from "sonner";
 
 import type { DivisionOverviewSummary } from "@/lib/services/super-admin-overview.service";
@@ -55,8 +57,15 @@ const LazyTuitionCard = dynamic(
   },
 );
 
-function Link(props: ComponentProps<typeof NextLink>) {
-  return <NextLink {...props} prefetch={props.prefetch ?? false} />;
+type LinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
+  href: string;
+  children: ReactNode;
+  prefetch?: boolean;
+  style?: CSSProperties;
+};
+
+function Link({ prefetch = false, ...rest }: LinkProps) {
+  return <NextLink {...rest} prefetch={prefetch} />;
 }
 
 function CircularGauge({ rate }: { rate: number }) {
@@ -370,7 +379,7 @@ function AggCard({
   value: number;
   unit: string;
   sub: string;
-  icon: ElementType;
+  icon: LucideIcon;
   isAlert?: boolean;
 }) {
   const alert = isAlert && value > 0;

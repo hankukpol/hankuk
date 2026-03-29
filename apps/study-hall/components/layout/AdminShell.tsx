@@ -32,10 +32,11 @@ export function AdminShell({
   const closeSidebar = () => setIsSidebarOpen(false);
 
   const handleLogout = () => {
-    startTransition(async () => {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-      router.refresh();
+    void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+      startTransition(() => {
+        router.push("/login");
+        router.refresh();
+      });
     });
   };
 

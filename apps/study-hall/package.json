@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run prisma:generate && next dev",
-    "build": "npm run prisma:generate && node scripts/clean-build-artifacts.cjs && next build",
-    "start": "npm run prisma:generate && next start",
+    "dev": "prisma generate && node scripts/fix-prisma-default.cjs && next dev",
+    "build": "prisma generate && node scripts/fix-prisma-default.cjs && node scripts/clean-build-artifacts.cjs && next build",
+    "start": "prisma generate && node scripts/fix-prisma-default.cjs && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate && node scripts/fix-prisma-default.cjs",

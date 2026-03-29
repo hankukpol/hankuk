@@ -7,26 +7,33 @@
 
 ## Current Status
 
-IMPORTANT: The monorepo structure is NOT yet set up.
+IMPORTANT: The monorepo migration is IN PROGRESS.
 Read this section first to understand where things actually are.
 
-### Current structure (as of 2026-03-25)
+### Current structure (as of 2026-03-29)
 
 ```
 d:\hankuk/
-  score-predict/         # at root, npm-managed (package-lock.json)
-  study-hall/            # at root, npm-managed (package-lock.json)
-  interview-pass/        # at root, npm-managed (package-lock.json)
+  apps/
+    score-predict/       # migrated app path
+    study-hall/          # migrated app path
+    interview-pass/      # migrated app path
+  interview-mate/        # temporary root-level exception while local work is in progress
+  docs/
+  supabase/
+  .git/
+  package.json
+  pnpm-workspace.yaml
+  turbo.json
   AGENTS.md              # This file
   CLAUDE.md              # Claude-specific rules (Korean)
 ```
 
-- No root package.json, turbo.json, or pnpm-workspace.yaml exists yet.
-- No apps/ or packages/ directories exist yet.
-- Each app has its own independent package.json, node_modules, and package-lock.json.
-- Git is NOT initialized at the repository root. Only interview-pass/ has a .git directory.
-- Do NOT run root-level git commands (commit, push, status) until root Git is initialized.
-- Do NOT assume root-level Vercel or GitHub linkage works until root Git is set up.
+- Root Git is initialized and linked to GitHub.
+- Root `package.json`, `turbo.json`, `.nvmrc`, and `pnpm-workspace.yaml` exist.
+- `score-predict`, `study-hall`, and `interview-pass` now live under `apps/`.
+- `interview-mate` is still at the repository root because there is active local work in that folder.
+- Use root-level pnpm workspace commands. Do NOT add or restore per-app lockfiles.
 
 ### Target structure (after migration)
 
@@ -49,10 +56,10 @@ d:\hankuk/
 
 ### Which rules apply when
 
-- BEFORE migration: work in root-level app folders (e.g., `score-predict/`, NOT `apps/score-predict/`).
-- AFTER migration: work in `apps/<app-name>/` folders.
+- Migrated apps: work in `apps/<app-name>/`.
+- `interview-mate`: work in `interview-mate/` until it is explicitly moved.
 - All other rules (isolation, shared code, naming, safety) apply regardless of migration status.
-- When creating a brand new app, place it at the root level until migration is complete.
+- When creating a brand new app, place it under `apps/`.
 
 ---
 
@@ -75,8 +82,8 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 ## Core Rules
 
 ### 1. One Repo, Multiple Apps
-- All code will live in this single GitHub repository once root Git is initialized.
-- Until then, each app may have its own .git or no git at all.
+- All code lives in this single GitHub repository.
+- App-level `.git` directories must not be reintroduced.
 - Each app is deployed as a separate Vercel project.
 - NEVER create a separate repository for a new feature.
 
@@ -84,8 +91,8 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 - Create a new folder (under `apps/` after migration, or at root before migration) ONLY when the work is a new service/app boundary.
 - Initialize it as a Next.js App Router project with TypeScript.
 - Import shared code from `packages/` via `@hankuk/*` imports (after migration).
-- Before migration: do NOT deploy brand-new apps to Vercel until root Git is initialized and linked to GitHub. Develop and test locally only.
-- After migration: connect the same repo on Vercel, set Root Directory to the app folder.
+- New apps should be created under `apps/`.
+- Connect the same repo on Vercel and set Root Directory to the app folder.
 
 ### 2A. Service Boundary vs Tenant Boundary
 - Create a NEW APP when the feature is a different service with meaningfully different workflow, deployment lifecycle, ownership, or product direction.
@@ -97,7 +104,7 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 - Code used by 2+ apps --> move to `packages/`.
 - Code used by 1 app only --> keep inside that app.
 - Package naming: `@hankuk/<package-name>` (e.g., `@hankuk/ui`, `@hankuk/db`).
-- Before migration: `packages/` does not exist. Shared code is temporarily duplicated across apps. Do NOT create `packages/` early -- it will be set up as part of the monorepo migration.
+- `packages/` may remain empty until version alignment allows safe extraction.
 
 ### 4. Package Dependencies
 - One-way (layered) dependencies between packages ARE allowed.
@@ -122,19 +129,13 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 
 ## Package Manager Rules
 
-### Before migration (current state)
-- Each app currently uses npm with its own package-lock.json.
-- Preserve each app's existing package manager and lockfile as-is.
-- Do NOT convert individual apps to pnpm before the monorepo migration.
-- When working on an app, use the same package manager that app already uses.
-
-### After migration
+### Current state
 - Use pnpm ONLY across the entire repo. npm and yarn are forbidden.
 - Do NOT run `npm install` or `yarn install` anywhere.
 - Install dependencies from the repository root only (`pnpm install` at root).
 - There must be exactly ONE `pnpm-lock.yaml` at the repository root.
 - Do NOT create or allow nested lockfiles inside apps/ or packages/.
-- Remove all per-app package-lock.json files as part of the migration.
+- Remove all per-app package-lock.json files as part of the migration and do not reintroduce them.
 
 ---
 
@@ -210,7 +211,7 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 | Framework | Next.js (App Router) |
 | Language | TypeScript |
 | Monorepo | Turborepo + pnpm workspaces |
-| Package Manager | pnpm after migration (npm during transition) |
+| Package Manager | pnpm |
 | Database | Supabase (PostgreSQL) |
 | ORM | Prisma (where needed) |
 | Styling | Tailwind CSS |
@@ -236,19 +237,17 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 ## Workflow
 
 ### Modifying an Existing App
-1. Work inside the app folder (root-level before migration, `apps/<name>/` after).
+1. Work inside the app folder (`apps/<name>/` for migrated apps, `interview-mate/` for the temporary root-level exception).
 2. If the change touches more than one app, verify each affected app independently.
-3. Before migration: run build/lint/tests inside every affected root-level app.
-4. After migration: run `turbo run build` to check full build.
-5. Before migration: deploy via each app's own method (per-app git push, manual deploy, etc.). Root-level git push does not exist yet.
-6. After migration: push to GitHub. Vercel deploys affected projects. Shared package changes may trigger multiple app builds; verify all affected apps.
+3. Run build/lint/tests inside every affected app and use `turbo run build` for cross-app verification when needed.
+4. Push to GitHub from the repository root. Vercel deploys affected projects.
+5. If an app path changed, verify that its Vercel Root Directory still matches the new folder.
 
 ### Adding a New App
-1. Create the app folder with Next.js.
-2. Before migration: develop and test locally only. Do NOT connect to Vercel until root Git is initialized and linked to GitHub.
-3. After migration: add `"@hankuk/*": "workspace:*"` dependencies as needed.
-4. After migration: add to Vercel using the same repo on Vercel dashboard, set Root Directory to the app folder.
-5. Set environment variables on Vercel dashboard.
+1. Create the app folder under `apps/` with Next.js.
+2. Add `"@hankuk/*": "workspace:*"` dependencies as needed once the relevant shared package exists.
+3. Add it to Vercel using the same repo and set Root Directory to the app folder.
+4. Set environment variables on the Vercel dashboard.
 
 ### Adding a New Tenant / Division to an Existing App
 1. Do NOT create a new app if the work is still the same service boundary.

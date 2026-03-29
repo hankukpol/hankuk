@@ -7,17 +7,21 @@
   },
   "scripts": {
     "prepare:pnpm": "corepack prepare pnpm@10.0.0 --activate",
-    "dev:score-predict": "npm --prefix score-predict run dev",
-    "dev:study-hall": "npm --prefix study-hall run dev",
-    "dev:interview-pass": "npm --prefix interview-pass run dev",
-    "dev:interview-mate": "npm --prefix interview-mate run dev",
-    "build:score-predict": "npm --prefix score-predict run build",
-    "build:study-hall": "npm --prefix study-hall run build",
-    "build:interview-pass": "npm --prefix interview-pass run build",
-    "build:interview-mate": "npm --prefix interview-mate run build",
-    "turbo:build": "npx turbo run build",
-    "turbo:lint": "npx turbo run lint",
-    "turbo:typecheck": "npx turbo run typecheck",
-    "turbo:dev": "npx turbo run dev --parallel"
+    "dev:score-predict": "pnpm --dir ./apps/score-predict dev",
+    "dev:study-hall": "pnpm --dir ./apps/study-hall dev",
+    "dev:interview-pass": "pnpm --dir ./apps/interview-pass dev",
+    "dev:interview-mate": "pnpm --dir ./interview-mate dev",
+    "build:score-predict": "pnpm --dir ./apps/score-predict build",
+    "build:study-hall": "pnpm --dir ./apps/study-hall build",
+    "build:interview-pass": "pnpm --dir ./apps/interview-pass build",
+    "build:interview-mate": "pnpm --dir ./interview-mate build",
+    "turbo:build": "pnpm exec turbo run build",
+    "turbo:lint": "pnpm exec turbo run lint",
+    "turbo:typecheck": "pnpm exec turbo run typecheck",
+    "turbo:dev": "pnpm exec turbo run dev --parallel"
+  },
+  "devDependencies": {
+    "pnpm": "10.0.0",
+    "turbo": "^2.5.8"
   }
 }

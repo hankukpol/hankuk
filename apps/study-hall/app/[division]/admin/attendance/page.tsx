@@ -2,7 +2,11 @@ import { headers } from "next/headers";
 
 import { ResponsiveAttendanceBoard } from "@/components/attendance/ResponsiveAttendanceBoard";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
-import { getAttendanceSnapshot, getAttendanceStats } from "@/lib/services/attendance.service";
+import {
+  getAttendanceSnapshot,
+  getAttendanceStats,
+  type AttendanceSnapshot,
+} from "@/lib/services/attendance.service";
 import { getCurrentPeriod } from "@/lib/services/period.service";
 import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
 
@@ -30,6 +34,8 @@ type AdminAttendancePageProps = {
     division: string;
   };
 };
+
+type AttendanceRecord = AttendanceSnapshot["records"][number];
 
 export default async function AdminAttendancePage({ params }: AdminAttendancePageProps) {
   await redirectIfDivisionFeatureDisabled(params.division, "attendanceManagement");
@@ -76,7 +82,7 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
           initialPeriodId: mobilePeriodId,
           initialStudents: snapshot.students,
           initialRecords: mobilePeriodId
-            ? snapshot.records.filter((record) => record.periodId === mobilePeriodId)
+            ? snapshot.records.filter((record: AttendanceRecord) => record.periodId === mobilePeriodId)
             : [],
         }}
       />

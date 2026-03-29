@@ -1,7 +1,16 @@
 "use client";
 
 import NextLink from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type AnchorHTMLAttributes,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -59,8 +68,15 @@ type ActionCard = {
   featureKey?: DivisionFeatureKey;
 };
 
-function Link(props: ComponentProps<typeof NextLink>) {
-  return <NextLink {...props} prefetch={props.prefetch ?? false} />;
+type LinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
+  href: string;
+  children: ReactNode;
+  prefetch?: boolean;
+  style?: CSSProperties;
+};
+
+function Link({ prefetch = false, ...rest }: LinkProps) {
+  return <NextLink {...rest} prefetch={prefetch} />;
 }
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────

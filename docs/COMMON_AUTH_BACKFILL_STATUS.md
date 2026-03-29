@@ -13,14 +13,14 @@ Last updated: 2026-03-29
 - `interview-pass`
   - Division admin IDs are preserved in:
     - `public.identity_claim_reservations`
-  - Changes to division admin IDs can be mirrored automatically through DB sync triggers
+  - Division admin IDs can now be claimed into real shared auth users from the admin config screen.
+  - Claimed admin IDs are now read at login time and attached to the local admin session.
 - `score-predict`
   - Legacy users are preserved in:
     - `public.identity_claim_reservations`
   - Fire login identifier is stored as `phone`
   - Police login identifier is stored as `username`
-  - Changes to legacy users can be mirrored automatically through DB sync triggers
-  - Successful login and registration now claim those reservations into shared memberships on demand
+  - Successful login, registration, password reset, admin password reset, and admin account deletion now sync the shared identity layer.
 
 ## Auto Sync
 
@@ -29,24 +29,25 @@ Last updated: 2026-03-29
   - Deactivation should archive the matching shared memberships.
 - `interview-pass`
   - `app_config` changes for `*::admin_id` should sync reservation rows.
+  - Claimed admin logins now read shared linkage during session issuance.
 - `score-predict`
   - Successful login refreshes shared profile, app membership, division membership, and alias rows.
   - Role changes from the admin user screen refresh shared memberships immediately.
+  - Password reset and admin-triggered deletion now keep shared shadow identity state aligned.
 
 ## Current Limitation
 
 - `interview-pass` staff access still uses shared division PINs, not person-level operator accounts.
 - Because there is no stable user identity per staff member yet, those staff PINs were not backfilled into shared auth tables.
 - `score-predict` users still authenticate against local tenant tables.
-- `score-predict` password resets do not yet update any shared-auth shadow credential.
-- Reservation rows only prepare the later claim and cutover step; they do not enable SSO by themselves.
+- Reservation rows only prepare later claim and cutover steps; they do not enable SSO by themselves.
+- `study-hall` student auth is still separate from shared auth.
 
 ## Next Recommended Step
 
-1. `study-hall`
-   - Whenever new division admins are created, insert matching shared memberships at the same time.
-2. `interview-pass`
-   - Introduce named operator accounts for staff or link admin setup to a real shared auth user.
-3. `score-predict`
-   - Extend the adapter to password-reset and account-deletion paths.
-   - Then replace app-local NextAuth ownership with shared memberships.
+1. `interview-pass`
+   - Introduce named operator accounts for staff, or replace admin PIN-first login with shared-auth-first login while keeping PIN as fallback.
+2. `score-predict`
+   - Replace NextAuth credential ownership with shared-auth-first login once the adapter layer is stable.
+3. `study-hall`
+   - Extend shared auth from admin identities into student-facing flows only if there is a real cross-app need.

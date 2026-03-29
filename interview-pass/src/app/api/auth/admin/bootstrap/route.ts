@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { ADMIN_COOKIE, ADMIN_TTL_SEC, cookieOptions, signJwt } from '@/lib/auth/jwt'
 import { getPinHash, hashPin, setAdminId, setPinHash } from '@/lib/auth/pin'
+import { getInterviewAdminSessionContext } from '@/lib/auth/shared-auth'
+import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
   id: z.string().max(50).optional().default(''),
@@ -40,9 +42,23 @@ export async function POST(req: NextRequest) {
     await setAdminId(adminId)
   }
 
+  const division = await getServerTenantType()
+  const sharedSession = await getInterviewAdminSessionContext(division)
   const sessionId = randomUUID()
-  const token = await signJwt('admin', sessionId)
-  const res = NextResponse.json({ ok: true })
+  const token = await signJwt('admin', sessionId, {
+    division,
+    adminId,
+    sharedUserId: sharedSession.sharedUserId,
+    sharedLinked: sharedSession.sharedLinked,
+  })
+
+  const res = NextResponse.json({
+    ok: true,
+    division,
+    adminId,
+    sharedLinked: sharedSession.sharedLinked,
+    sharedUserId: sharedSession.sharedUserId,
+  })
   res.cookies.set(ADMIN_COOKIE, token, cookieOptions(ADMIN_TTL_SEC))
   return res
 }

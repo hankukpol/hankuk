@@ -21,6 +21,14 @@ export type InterviewAdminClaimStatus = {
   claimedEmailMasked: string | null
 }
 
+export type InterviewAdminSessionContext = {
+  division: TenantType
+  adminId: string
+  sharedUserId: string | null
+  sharedLinked: boolean
+  claimedEmailMasked: string | null
+}
+
 type ReservationRow = {
   id: string
   alias_value: string
@@ -148,6 +156,47 @@ async function loadClaimedEmailMasked(claimedUserId: string | null) {
   return maskEmail(data.user?.email)
 }
 
+async function hasActiveSharedMembership(userId: string, division: TenantType) {
+  const db = getSharedServiceClient()
+
+  const appMembership = await db
+    .schema('public')
+    .from('user_app_memberships')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('app_key', APP_KEY)
+    .eq('role_key', 'admin')
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle()
+
+  if (appMembership.error) {
+    throw new Error(appMembership.error.message)
+  }
+
+  if (!appMembership.data) {
+    return false
+  }
+
+  const divisionMembership = await db
+    .schema('public')
+    .from('user_division_memberships')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('app_key', APP_KEY)
+    .eq('division_slug', division)
+    .eq('role_key', 'admin')
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle()
+
+  if (divisionMembership.error) {
+    throw new Error(divisionMembership.error.message)
+  }
+
+  return Boolean(divisionMembership.data)
+}
+
 async function resolveClaimUser(email: string, password: string) {
   const normalizedEmail = normalizeEmail(email)
   const anonDb = getSharedAnonClient()
@@ -208,7 +257,6 @@ async function upsertSharedProfile(userId: string, division: TenantType, adminId
   if (error) {
     throw new Error(error.message)
   }
-
 }
 
 async function upsertSharedMemberships(userId: string, division: TenantType) {
@@ -331,7 +379,7 @@ export async function getInterviewAdminClaimStatus(
   }
 
   const reservation = await loadReservation(division, adminId)
-  if (!reservation) {
+  if (!reservation || reservation.status === 'revoked') {
     return {
       division,
       adminId,
@@ -351,22 +399,52 @@ export async function getInterviewAdminClaimStatus(
     }
   }
 
-  if (reservation.status === 'revoked') {
-    return {
-      division,
-      adminId,
-      reservationStatus: 'missing_reservation',
-      claimable: false,
-      claimedEmailMasked: null,
-    }
-  }
-
   return {
     division,
     adminId,
     reservationStatus: 'reserved',
     claimable: true,
     claimedEmailMasked: null,
+  }
+}
+
+export async function getInterviewAdminSessionContext(
+  division: TenantType,
+): Promise<InterviewAdminSessionContext> {
+  const claimStatus = await getInterviewAdminClaimStatus(division)
+
+  if (
+    claimStatus.reservationStatus !== 'claimed'
+    || !claimStatus.adminId
+  ) {
+    return {
+      division,
+      adminId: claimStatus.adminId,
+      sharedUserId: null,
+      sharedLinked: false,
+      claimedEmailMasked: claimStatus.claimedEmailMasked,
+    }
+  }
+
+  const reservation = await loadReservation(division, claimStatus.adminId)
+  const sharedUserId = reservation?.claimed_user_id ?? null
+
+  if (!sharedUserId) {
+    return {
+      division,
+      adminId: claimStatus.adminId,
+      sharedUserId: null,
+      sharedLinked: false,
+      claimedEmailMasked: claimStatus.claimedEmailMasked,
+    }
+  }
+
+  return {
+    division,
+    adminId: claimStatus.adminId,
+    sharedUserId,
+    sharedLinked: await hasActiveSharedMembership(sharedUserId, division),
+    claimedEmailMasked: claimStatus.claimedEmailMasked,
   }
 }
 

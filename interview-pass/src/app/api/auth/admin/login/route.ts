@@ -1,9 +1,11 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { verifyPin, getPinHash, getAdminId } from '@/lib/auth/pin'
 import { signJwt, ADMIN_COOKIE, ADMIN_TTL_SEC, cookieOptions } from '@/lib/auth/jwt'
-import { randomUUID } from 'crypto'
-import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
+import { getAdminId, getPinHash, verifyPin } from '@/lib/auth/pin'
+import { getInterviewAdminSessionContext } from '@/lib/auth/shared-auth'
+import { checkRateLimit, getClientIp, resetRateLimit } from '@/lib/auth/rateLimiter'
+import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
   id: z.string().optional().default(''),
@@ -13,6 +15,7 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req)
   const rl = checkRateLimit(`admin:${ip}`)
+
   if (!rl.allowed) {
     const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000)
     return NextResponse.json(
@@ -23,6 +26,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
+
   if (!parsed.success) {
     return NextResponse.json({ error: '입력값을 확인해 주세요.' }, { status: 400 })
   }
@@ -38,9 +42,25 @@ export async function POST(req: NextRequest) {
   }
 
   resetRateLimit(`admin:${ip}`)
+
+  const division = await getServerTenantType()
+  const sharedSession = await getInterviewAdminSessionContext(division)
   const sessionId = randomUUID()
-  const token = await signJwt('admin', sessionId)
-  const res = NextResponse.json({ success: true, role: 'admin' })
+  const token = await signJwt('admin', sessionId, {
+    division,
+    adminId,
+    sharedUserId: sharedSession.sharedUserId,
+    sharedLinked: sharedSession.sharedLinked,
+  })
+
+  const res = NextResponse.json({
+    success: true,
+    role: 'admin',
+    division,
+    adminId,
+    sharedLinked: sharedSession.sharedLinked,
+    sharedUserId: sharedSession.sharedUserId,
+  })
   res.cookies.set(ADMIN_COOKIE, token, cookieOptions(ADMIN_TTL_SEC))
   return res
 }

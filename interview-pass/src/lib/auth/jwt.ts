@@ -6,15 +6,19 @@ const secret = () => new TextEncoder().encode(process.env.JWT_SECRET!)
 
 export const STAFF_COOKIE = 'staff_token'
 export const ADMIN_COOKIE = 'admin_token'
-export const STAFF_TTL_SEC = 8 * 60 * 60 // 8시간
-export const ADMIN_TTL_SEC = 8 * 60 * 60 // 8시간
+export const STAFF_TTL_SEC = 8 * 60 * 60
+export const ADMIN_TTL_SEC = 8 * 60 * 60
+
+type JwtClaims = Omit<StaffJwtPayload, 'role' | 'sub' | 'iat' | 'exp'>
 
 export async function signJwt(
   role: 'staff' | 'admin',
   sessionId: string,
+  claims: JwtClaims = {},
 ): Promise<string> {
   const ttl = role === 'admin' ? ADMIN_TTL_SEC : STAFF_TTL_SEC
-  return new SignJWT({ role, sub: sessionId })
+
+  return new SignJWT({ role, sub: sessionId, ...claims })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${ttl}s`)

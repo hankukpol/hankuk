@@ -55,6 +55,10 @@ export interface QrTokenPayload {
 export interface StaffJwtPayload {
   sub: string    // session id
   role: 'staff' | 'admin'
+  division?: 'police' | 'fire'
+  adminId?: string
+  sharedUserId?: string | null
+  sharedLinked?: boolean
   iat: number
   exp: number
 }

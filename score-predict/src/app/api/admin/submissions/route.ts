@@ -72,56 +72,58 @@ export async function GET(request: NextRequest) {
     };
 
     const skip = (page - 1) * limit;
-    const [totalCount, submissions] = await prisma.$transaction([
-      prisma.submission.count({ where }),
-      prisma.submission.findMany({
-        where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          examId: true,
-          userId: true,
-          regionId: true,
-          examType: true,
-          gender: true,
-          examNumber: true,
-          totalScore: true,
-          finalScore: true,
-          bonusType: true,
-          bonusRate: true,
-          isSuspicious: true,
-          suspiciousReason: true,
-          createdAt: true,
-          user: {
-            select: {
-              name: true,
-              phone: true,
+    const [totalCount, submissions] = await prisma.$transaction(async (tx) =>
+      Promise.all([
+        tx.submission.count({ where }),
+        tx.submission.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip,
+          take: limit,
+          select: {
+            id: true,
+            examId: true,
+            userId: true,
+            regionId: true,
+            examType: true,
+            gender: true,
+            examNumber: true,
+            totalScore: true,
+            finalScore: true,
+            bonusType: true,
+            bonusRate: true,
+            isSuspicious: true,
+            suspiciousReason: true,
+            createdAt: true,
+            user: {
+              select: {
+                name: true,
+                phone: true,
+              },
+            },
+            region: {
+              select: {
+                name: true,
+              },
+            },
+            exam: {
+              select: {
+                name: true,
+              },
+            },
+            subjectScores: {
+              where: {
+                isFailed: true,
+              },
+              take: 1,
+              select: {
+                id: true,
+              },
             },
           },
-          region: {
-            select: {
-              name: true,
-            },
-          },
-          exam: {
-            select: {
-              name: true,
-            },
-          },
-          subjectScores: {
-            where: {
-              isFailed: true,
-            },
-            take: 1,
-            select: {
-              id: true,
-            },
-          },
-        },
-      }),
-    ]);
+        }),
+      ])
+    );
 
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
     const safePage = Math.min(page, totalPages);

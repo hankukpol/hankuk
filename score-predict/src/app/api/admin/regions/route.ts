@@ -719,65 +719,58 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "존재하지 않는 지역 ID가 포함되어 있습니다." }, { status: 404 });
     }
 
-    const operations = normalized.flatMap((row) => {
-      const regionId = row.regionId as number;
-      const ops = [];
+    await prisma.$transaction(async (tx) => {
+      for (const row of normalized) {
+        const regionId = row.regionId as number;
 
-      if (row.isActive !== undefined) {
-        ops.push(
-          prisma.region.update({
+        if (row.isActive !== undefined) {
+          await tx.region.update({
             where: { id: regionId },
             data: { isActive: row.isActive as boolean },
-          })
-        );
+          });
+        }
+
+        const legacyRange = selectLegacyRange(row);
+        const quotaData: QuotaUpsertData = {
+          recruitPublicMale: row.recruitPublicMale as number,
+          recruitPublicFemale: row.recruitPublicFemale as number,
+          recruitRescue: row.recruitRescue as number,
+          recruitAcademicMale: row.recruitAcademicMale as number,
+          recruitAcademicFemale: row.recruitAcademicFemale as number,
+          recruitAcademicCombined: row.recruitAcademicCombined as number,
+          recruitEmtMale: row.recruitEmtMale as number,
+          recruitEmtFemale: row.recruitEmtFemale as number,
+          applicantPublicMale: row.applicantPublicMale,
+          applicantPublicFemale: row.applicantPublicFemale,
+          applicantRescue: row.applicantRescue,
+          applicantAcademicMale: row.applicantAcademicMale,
+          applicantAcademicFemale: row.applicantAcademicFemale,
+          applicantAcademicCombined: row.applicantAcademicCombined,
+          applicantEmtMale: row.applicantEmtMale,
+          applicantEmtFemale: row.applicantEmtFemale,
+          examNumberStartPublicMale: row.examNumberStartPublicMale,
+          examNumberEndPublicMale: row.examNumberEndPublicMale,
+          examNumberStartPublicFemale: row.examNumberStartPublicFemale,
+          examNumberEndPublicFemale: row.examNumberEndPublicFemale,
+          examNumberStartCareerRescue: row.examNumberStartCareerRescue,
+          examNumberEndCareerRescue: row.examNumberEndCareerRescue,
+          examNumberStartCareerAcademicMale: row.examNumberStartCareerAcademicMale,
+          examNumberEndCareerAcademicMale: row.examNumberEndCareerAcademicMale,
+          examNumberStartCareerAcademicFemale: row.examNumberStartCareerAcademicFemale,
+          examNumberEndCareerAcademicFemale: row.examNumberEndCareerAcademicFemale,
+          examNumberStartCareerAcademicCombined: row.examNumberStartCareerAcademicCombined,
+          examNumberEndCareerAcademicCombined: row.examNumberEndCareerAcademicCombined,
+          examNumberStartCareerEmtMale: row.examNumberStartCareerEmtMale,
+          examNumberEndCareerEmtMale: row.examNumberEndCareerEmtMale,
+          examNumberStartCareerEmtFemale: row.examNumberStartCareerEmtFemale,
+          examNumberEndCareerEmtFemale: row.examNumberEndCareerEmtFemale,
+          examNumberStart: legacyRange.start,
+          examNumberEnd: legacyRange.end,
+        };
+
+        await tx.$executeRaw(buildQuotaUpsertQuery({ examId, regionId, quotaData }));
       }
-
-      const legacyRange = selectLegacyRange(row);
-      const quotaData: QuotaUpsertData = {
-        recruitPublicMale: row.recruitPublicMale as number,
-        recruitPublicFemale: row.recruitPublicFemale as number,
-        recruitRescue: row.recruitRescue as number,
-        recruitAcademicMale: row.recruitAcademicMale as number,
-        recruitAcademicFemale: row.recruitAcademicFemale as number,
-        recruitAcademicCombined: row.recruitAcademicCombined as number,
-        recruitEmtMale: row.recruitEmtMale as number,
-        recruitEmtFemale: row.recruitEmtFemale as number,
-        applicantPublicMale: row.applicantPublicMale,
-        applicantPublicFemale: row.applicantPublicFemale,
-        applicantRescue: row.applicantRescue,
-        applicantAcademicMale: row.applicantAcademicMale,
-        applicantAcademicFemale: row.applicantAcademicFemale,
-        applicantAcademicCombined: row.applicantAcademicCombined,
-        applicantEmtMale: row.applicantEmtMale,
-        applicantEmtFemale: row.applicantEmtFemale,
-        examNumberStartPublicMale: row.examNumberStartPublicMale,
-        examNumberEndPublicMale: row.examNumberEndPublicMale,
-        examNumberStartPublicFemale: row.examNumberStartPublicFemale,
-        examNumberEndPublicFemale: row.examNumberEndPublicFemale,
-        examNumberStartCareerRescue: row.examNumberStartCareerRescue,
-        examNumberEndCareerRescue: row.examNumberEndCareerRescue,
-        examNumberStartCareerAcademicMale: row.examNumberStartCareerAcademicMale,
-        examNumberEndCareerAcademicMale: row.examNumberEndCareerAcademicMale,
-        examNumberStartCareerAcademicFemale: row.examNumberStartCareerAcademicFemale,
-        examNumberEndCareerAcademicFemale: row.examNumberEndCareerAcademicFemale,
-        examNumberStartCareerAcademicCombined: row.examNumberStartCareerAcademicCombined,
-        examNumberEndCareerAcademicCombined: row.examNumberEndCareerAcademicCombined,
-        examNumberStartCareerEmtMale: row.examNumberStartCareerEmtMale,
-        examNumberEndCareerEmtMale: row.examNumberEndCareerEmtMale,
-        examNumberStartCareerEmtFemale: row.examNumberStartCareerEmtFemale,
-        examNumberEndCareerEmtFemale: row.examNumberEndCareerEmtFemale,
-        examNumberStart: legacyRange.start,
-        examNumberEnd: legacyRange.end,
-      };
-
-      ops.push(
-        prisma.$executeRaw(buildQuotaUpsertQuery({ examId, regionId, quotaData }))
-      );
-
-      return ops;
     });
-
-    await prisma.$transaction(operations);
 
     return NextResponse.json({
       success: true,
@@ -852,54 +845,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "원본 시험에 모집인원 데이터가 없습니다." }, { status: 404 });
     }
 
-    const operations = sourceQuotas.map((sq) => {
-      const quotaData: QuotaUpsertData = {
-        recruitPublicMale: sq.recruitPublicMale,
-        recruitPublicFemale: sq.recruitPublicFemale,
-        recruitRescue: sq.recruitRescue,
-        recruitAcademicMale: sq.recruitAcademicMale,
-        recruitAcademicFemale: sq.recruitAcademicFemale,
-        recruitAcademicCombined: sq.recruitAcademicCombined,
-        recruitEmtMale: sq.recruitEmtMale,
-        recruitEmtFemale: sq.recruitEmtFemale,
-        applicantPublicMale: sq.applicantPublicMale,
-        applicantPublicFemale: sq.applicantPublicFemale,
-        applicantRescue: sq.applicantRescue,
-        applicantAcademicMale: sq.applicantAcademicMale,
-        applicantAcademicFemale: sq.applicantAcademicFemale,
-        applicantAcademicCombined: sq.applicantAcademicCombined,
-        applicantEmtMale: sq.applicantEmtMale,
-        applicantEmtFemale: sq.applicantEmtFemale,
-        examNumberStartPublicMale: sq.examNumberStartPublicMale,
-        examNumberEndPublicMale: sq.examNumberEndPublicMale,
-        examNumberStartPublicFemale: sq.examNumberStartPublicFemale,
-        examNumberEndPublicFemale: sq.examNumberEndPublicFemale,
-        examNumberStartCareerRescue: sq.examNumberStartCareerRescue,
-        examNumberEndCareerRescue: sq.examNumberEndCareerRescue,
-        examNumberStartCareerAcademicMale: sq.examNumberStartCareerAcademicMale,
-        examNumberEndCareerAcademicMale: sq.examNumberEndCareerAcademicMale,
-        examNumberStartCareerAcademicFemale: sq.examNumberStartCareerAcademicFemale,
-        examNumberEndCareerAcademicFemale: sq.examNumberEndCareerAcademicFemale,
-        examNumberStartCareerAcademicCombined: sq.examNumberStartCareerAcademicCombined,
-        examNumberEndCareerAcademicCombined: sq.examNumberEndCareerAcademicCombined,
-        examNumberStartCareerEmtMale: sq.examNumberStartCareerEmtMale,
-        examNumberEndCareerEmtMale: sq.examNumberEndCareerEmtMale,
-        examNumberStartCareerEmtFemale: sq.examNumberStartCareerEmtFemale,
-        examNumberEndCareerEmtFemale: sq.examNumberEndCareerEmtFemale,
-        examNumberStart: sq.examNumberStart,
-        examNumberEnd: sq.examNumberEnd,
-      };
+    await prisma.$transaction(async (tx) => {
+      for (const sq of sourceQuotas) {
+        const quotaData: QuotaUpsertData = {
+          recruitPublicMale: sq.recruitPublicMale,
+          recruitPublicFemale: sq.recruitPublicFemale,
+          recruitRescue: sq.recruitRescue,
+          recruitAcademicMale: sq.recruitAcademicMale,
+          recruitAcademicFemale: sq.recruitAcademicFemale,
+          recruitAcademicCombined: sq.recruitAcademicCombined,
+          recruitEmtMale: sq.recruitEmtMale,
+          recruitEmtFemale: sq.recruitEmtFemale,
+          applicantPublicMale: sq.applicantPublicMale,
+          applicantPublicFemale: sq.applicantPublicFemale,
+          applicantRescue: sq.applicantRescue,
+          applicantAcademicMale: sq.applicantAcademicMale,
+          applicantAcademicFemale: sq.applicantAcademicFemale,
+          applicantAcademicCombined: sq.applicantAcademicCombined,
+          applicantEmtMale: sq.applicantEmtMale,
+          applicantEmtFemale: sq.applicantEmtFemale,
+          examNumberStartPublicMale: sq.examNumberStartPublicMale,
+          examNumberEndPublicMale: sq.examNumberEndPublicMale,
+          examNumberStartPublicFemale: sq.examNumberStartPublicFemale,
+          examNumberEndPublicFemale: sq.examNumberEndPublicFemale,
+          examNumberStartCareerRescue: sq.examNumberStartCareerRescue,
+          examNumberEndCareerRescue: sq.examNumberEndCareerRescue,
+          examNumberStartCareerAcademicMale: sq.examNumberStartCareerAcademicMale,
+          examNumberEndCareerAcademicMale: sq.examNumberEndCareerAcademicMale,
+          examNumberStartCareerAcademicFemale: sq.examNumberStartCareerAcademicFemale,
+          examNumberEndCareerAcademicFemale: sq.examNumberEndCareerAcademicFemale,
+          examNumberStartCareerAcademicCombined: sq.examNumberStartCareerAcademicCombined,
+          examNumberEndCareerAcademicCombined: sq.examNumberEndCareerAcademicCombined,
+          examNumberStartCareerEmtMale: sq.examNumberStartCareerEmtMale,
+          examNumberEndCareerEmtMale: sq.examNumberEndCareerEmtMale,
+          examNumberStartCareerEmtFemale: sq.examNumberStartCareerEmtFemale,
+          examNumberEndCareerEmtFemale: sq.examNumberEndCareerEmtFemale,
+          examNumberStart: sq.examNumberStart,
+          examNumberEnd: sq.examNumberEnd,
+        };
 
-      return prisma.$executeRaw(
-        buildQuotaUpsertQuery({
-          examId: targetExamId,
-          regionId: sq.regionId,
-          quotaData,
-        })
-      );
+        await tx.$executeRaw(
+          buildQuotaUpsertQuery({
+            examId: targetExamId,
+            regionId: sq.regionId,
+            quotaData,
+          })
+        );
+      }
     });
-
-    await prisma.$transaction(operations);
 
     return NextResponse.json({
       success: true,

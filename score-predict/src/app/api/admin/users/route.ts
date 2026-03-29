@@ -83,28 +83,30 @@ export async function GET(request: NextRequest) {
         : {}),
     };
 
-    const [totalCount, users] = await prisma.$transaction([
-      prisma.user.count({ where }),
-      prisma.user.findMany({
-        where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          name: true,
-          phone: true,
-          role: true,
-          createdAt: true,
-          _count: {
-            select: {
-              submissions: true,
-              comments: true,
+    const [totalCount, users] = await prisma.$transaction(async (tx) =>
+      Promise.all([
+        tx.user.count({ where }),
+        tx.user.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip,
+          take: limit,
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            role: true,
+            createdAt: true,
+            _count: {
+              select: {
+                submissions: true,
+                comments: true,
+              },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ])
+    );
 
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
     const safePage = Math.min(page, totalPages);

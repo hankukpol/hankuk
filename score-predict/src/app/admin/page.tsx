@@ -170,15 +170,17 @@ export default async function AdminDashboardPage() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [dbActiveExam, dbTotalExams, dbTotalUsers] = await prisma.$transaction([
-      prisma.exam.findFirst({
-        where: { isActive: true },
-        orderBy: [{ examDate: "desc" }, { id: "desc" }],
-        select: { id: true, year: true, round: true, name: true },
-      }),
-      prisma.exam.count(),
-      prisma.user.count(),
-    ]);
+    const [dbActiveExam, dbTotalExams, dbTotalUsers] = await prisma.$transaction(async (tx) =>
+      Promise.all([
+        tx.exam.findFirst({
+          where: { isActive: true },
+          orderBy: [{ examDate: "desc" }, { id: "desc" }],
+          select: { id: true, year: true, round: true, name: true },
+        }),
+        tx.exam.count(),
+        tx.user.count(),
+      ])
+    );
 
     activeExam = dbActiveExam;
     totalExams = dbTotalExams;

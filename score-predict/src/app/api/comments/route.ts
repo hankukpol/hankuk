@@ -159,24 +159,26 @@ export async function GET(request: NextRequest) {
     const limit = parseLimit(searchParams.get("limit"));
     const skip = (page - 1) * limit;
 
-    const [totalCount, comments] = await prisma.$transaction([
-      prisma.comment.count({
-        where: { examId },
-      }),
-      prisma.comment.findMany({
-        where: { examId },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take: limit,
-        include: {
-          user: {
-            select: {
-              name: true,
+    const [totalCount, comments] = await prisma.$transaction(async (tx) =>
+      Promise.all([
+        tx.comment.count({
+          where: { examId },
+        }),
+        tx.comment.findMany({
+          where: { examId },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip,
+          take: limit,
+          include: {
+            user: {
+              select: {
+                name: true,
+              },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ])
+    );
 
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
     const safePage = Math.min(page, totalPages);

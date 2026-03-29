@@ -208,13 +208,15 @@ export async function confirmPasswordReset(
 
   const hashedPassword = await bcrypt.hash(password, 12);
 
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword } }),
-    prisma.passwordResetToken.update({ where: { id: token.id }, data: { usedAt: now } }),
-    prisma.passwordResetToken.deleteMany({
-      where: { userId: user.id, usedAt: null, id: { not: token.id } },
-    }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await Promise.all([
+      tx.user.update({ where: { id: user.id }, data: { password: hashedPassword } }),
+      tx.passwordResetToken.update({ where: { id: token.id }, data: { usedAt: now } }),
+      tx.passwordResetToken.deleteMany({
+        where: { userId: user.id, usedAt: null, id: { not: token.id } },
+      }),
+    ]);
+  });
 
   await resetPersistentFixedWindowRateLimit({
     namespace: "password-reset-confirm-account",

@@ -144,17 +144,19 @@ export async function GET(request: NextRequest) {
       search,
     });
 
-    const [totalCount, groupedByExamType] = await prisma.$transaction([
-      prisma.preRegistration.count({ where }),
-      prisma.preRegistration.groupBy({
-        by: ["examType"],
-        orderBy: {
-          examType: "asc",
-        },
-        where,
-        _count: { id: true },
-      }),
-    ]);
+    const [totalCount, groupedByExamType] = await prisma.$transaction(async (tx) =>
+      Promise.all([
+        tx.preRegistration.count({ where }),
+        tx.preRegistration.groupBy({
+          by: ["examType"],
+          orderBy: {
+            examType: "asc",
+          },
+          where,
+          _count: { id: true },
+        }),
+      ])
+    );
 
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
     const page = Math.min(requestedPage, totalPages);

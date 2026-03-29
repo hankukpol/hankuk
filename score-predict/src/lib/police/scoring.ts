@@ -564,128 +564,116 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
       contextByExamType.set(examType, context);
     }
 
-    const batchWrites: Prisma.PrismaPromise<unknown>[] = [];
+    if (submissions.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const submission of submissions) {
+          const context = contextByExamType.get(submission.examType);
+          if (!context) {
+            throw new Error(`${submission.examType} 채점 컨텍스트를 찾을 수 없습니다.`);
+          }
 
-    for (const submission of submissions) {
-      const context = contextByExamType.get(submission.examType);
-        if (!context) {
-          throw new Error(`${submission.examType} 채점 컨텍스트를 찾을 수 없습니다.`);
-        }
+          const selectedAnswers = new Map<string, number>();
+          for (const userAnswer of submission.userAnswers) {
+            selectedAnswers.set(
+              toAnswerKey(userAnswer.subjectId, userAnswer.questionNumber),
+              userAnswer.selectedAnswer
+            );
+          }
 
-      const selectedAnswers = new Map<string, number>();
-      for (const userAnswer of submission.userAnswers) {
-        selectedAnswers.set(
-          toAnswerKey(userAnswer.subjectId, userAnswer.questionNumber),
-          userAnswer.selectedAnswer
-        );
-      }
-
-      const normalizedBonusRate = normalizeBonusRate(submission.bonusType, submission.bonusRate);
-      const oldTotalScore = roundScore(submission.totalScore);
-      const oldFinalScore = roundScore(submission.finalScore);
-      const result = scoreByAnswerMap({
-        examType: submission.examType,
-        subjects: context.subjects,
-        answerKeyMap: context.answerKeyMap,
-        selectedAnswers,
-        bonusRate: normalizedBonusRate,
-      });
-
-      batchWrites.push(
-        prisma.submission.update({
-          where: { id: submission.id },
-          data: {
-            totalScore: result.totalScore,
-            finalScore: result.finalScore,
+          const normalizedBonusRate = normalizeBonusRate(submission.bonusType, submission.bonusRate);
+          const oldTotalScore = roundScore(submission.totalScore);
+          const oldFinalScore = roundScore(submission.finalScore);
+          const result = scoreByAnswerMap({
+            examType: submission.examType,
+            subjects: context.subjects,
+            answerKeyMap: context.answerKeyMap,
+            selectedAnswers,
             bonusRate: normalizedBonusRate,
-          },
-        })
-      );
-
-        const scoreDelta = roundScore(result.finalScore - oldFinalScore);
-        if (isSameScore(scoreDelta, 0)) {
-          unchanged += 1;
-        } else if (scoreDelta > 0) {
-          increased += 1;
-        } else {
-          decreased += 1;
-        }
-
-        if (detailedMode) {
-          detailRows.push({
-            submissionId: submission.id,
-            userId: submission.userId,
-            oldTotalScore,
-            newTotalScore: result.totalScore,
-            oldFinalScore,
-            newFinalScore: result.finalScore,
-            scoreDelta,
           });
-        }
 
-      const correctnessByKey = new Map(
-        result.userAnswers.map((answer) => [
-          toAnswerKey(answer.subjectId, answer.questionNo),
-          answer.isCorrect,
-        ] as const)
-      );
-      const correctAnswerIds: number[] = [];
-      const incorrectAnswerIds: number[] = [];
+          await tx.submission.update({
+            where: { id: submission.id },
+            data: {
+              totalScore: result.totalScore,
+              finalScore: result.finalScore,
+              bonusRate: normalizedBonusRate,
+            },
+          });
 
-      for (const userAnswer of submission.userAnswers) {
-        const key = toAnswerKey(userAnswer.subjectId, userAnswer.questionNumber);
-        const nextIsCorrect = correctnessByKey.get(key) ?? false;
-        if (userAnswer.isCorrect === nextIsCorrect) {
-          continue;
-        }
+          const scoreDelta = roundScore(result.finalScore - oldFinalScore);
+          if (isSameScore(scoreDelta, 0)) {
+            unchanged += 1;
+          } else if (scoreDelta > 0) {
+            increased += 1;
+          } else {
+            decreased += 1;
+          }
 
-        if (nextIsCorrect) {
-          correctAnswerIds.push(userAnswer.id);
-        } else {
-          incorrectAnswerIds.push(userAnswer.id);
-        }
-      }
-
-      if (correctAnswerIds.length > 0) {
-        batchWrites.push(
-          prisma.userAnswer.updateMany({
-            where: { id: { in: correctAnswerIds } },
-            data: { isCorrect: true },
-          })
-        );
-      }
-
-      if (incorrectAnswerIds.length > 0) {
-        batchWrites.push(
-          prisma.userAnswer.updateMany({
-            where: { id: { in: incorrectAnswerIds } },
-            data: { isCorrect: false },
-          })
-        );
-      }
-
-      batchWrites.push(
-        prisma.subjectScore.deleteMany({
-          where: { submissionId: submission.id },
-        })
-      );
-
-      if (result.scores.length > 0) {
-        batchWrites.push(
-          prisma.subjectScore.createMany({
-            data: result.scores.map((score) => ({
+          if (detailedMode) {
+            detailRows.push({
               submissionId: submission.id,
-              subjectId: score.subjectId,
-              rawScore: score.rawScore,
-              isFailed: score.isCutoff,
-            })),
-          })
-        );
-      }
-    }
+              userId: submission.userId,
+              oldTotalScore,
+              newTotalScore: result.totalScore,
+              oldFinalScore,
+              newFinalScore: result.finalScore,
+              scoreDelta,
+            });
+          }
 
-    if (batchWrites.length > 0) {
-      await prisma.$transaction(batchWrites);
+          const correctnessByKey = new Map(
+            result.userAnswers.map((answer) => [
+              toAnswerKey(answer.subjectId, answer.questionNo),
+              answer.isCorrect,
+            ] as const)
+          );
+          const correctAnswerIds: number[] = [];
+          const incorrectAnswerIds: number[] = [];
+
+          for (const userAnswer of submission.userAnswers) {
+            const key = toAnswerKey(userAnswer.subjectId, userAnswer.questionNumber);
+            const nextIsCorrect = correctnessByKey.get(key) ?? false;
+            if (userAnswer.isCorrect === nextIsCorrect) {
+              continue;
+            }
+
+            if (nextIsCorrect) {
+              correctAnswerIds.push(userAnswer.id);
+            } else {
+              incorrectAnswerIds.push(userAnswer.id);
+            }
+          }
+
+          if (correctAnswerIds.length > 0) {
+            await tx.userAnswer.updateMany({
+              where: { id: { in: correctAnswerIds } },
+              data: { isCorrect: true },
+            });
+          }
+
+          if (incorrectAnswerIds.length > 0) {
+            await tx.userAnswer.updateMany({
+              where: { id: { in: incorrectAnswerIds } },
+              data: { isCorrect: false },
+            });
+          }
+
+          await tx.subjectScore.deleteMany({
+            where: { submissionId: submission.id },
+          });
+
+          if (result.scores.length > 0) {
+            await tx.subjectScore.createMany({
+              data: result.scores.map((score) => ({
+                submissionId: submission.id,
+                subjectId: score.subjectId,
+                rawScore: score.rawScore,
+                isFailed: score.isCutoff,
+              })),
+            });
+          }
+        }
+      });
     }
   }
 

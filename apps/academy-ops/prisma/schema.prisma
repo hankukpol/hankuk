@@ -1,0 +1,2058 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Student {
+  examNumber          String        @id
+  academyId           Int?
+  name                String
+  phone               String?
+  email               String?
+  birthDate           DateTime?
+  generation          Int?
+  className           String?
+  examType            ExamType
+  studentType         StudentType   @default(EXISTING)
+  onlineId            String?       @unique
+  registeredAt        DateTime?
+  note                String?
+  isActive            Boolean       @default(true)
+  notificationConsent Boolean       @default(false)
+  consentedAt         DateTime?
+  targetScores        Json?
+  currentStatus       StudentStatus @default(NORMAL)
+  statusUpdatedAt     DateTime?
+
+  parentName     String?
+  parentRelation String?
+  parentMobile   String?
+
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  emergencyContactRelation String?
+  address                  String?
+  zipCode                  String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  absenceNotes               AbsenceNote[]
+  counselingAppointments     CounselingAppointment[]
+  counselingRecords          CounselingRecord[]
+  enrollments                PeriodEnrollment[]
+  notifications              NotificationLog[]
+  pointLogs                  PointLog[]
+  pushSubscriptions          PushSubscription[]
+  scores                     Score[]
+  studentAnswers             StudentAnswer[]
+  weeklyStatusSnapshots      WeeklyStatusSnapshot[]
+  wrongNoteBookmarks         WrongNoteBookmark[]
+  courseEnrollments          CourseEnrollment[]
+  payments                   Payment[]
+  classroomStudents          ClassroomStudent[]
+  classroomAttendanceResults ClassroomAttendanceResult[] @relation("ClassroomAttendanceResultStudent")
+  classroomAttendanceLogs    ClassroomAttendanceLog[]    @relation("ClassroomAttendanceLogStudent")
+  lockerRentals              LockerRental[]
+  studyRoomBookings          StudyRoomBooking[]
+  graduateRecords            GraduateRecord[]
+  discountCodeUsages         DiscountCodeUsage[]
+  examRegistrations          ExamRegistration[]
+  lectureAttendances         LectureAttendance[]
+  paymentLinks               PaymentLink[]
+  documentIssuances          DocumentIssuance[]
+  pointBalance               PointBalance?
+  memberProfile              MemberProfile?
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  @@index([academyId])
+  @@index([academyId, examType, isActive])
+  @@index([academyId, examType, isActive, currentStatus])
+  @@index([academyId, examType, generation, isActive, examNumber])
+  @@index([examType, isActive])
+  @@index([examType, isActive, currentStatus])
+  @@index([examType, generation, isActive, examNumber])
+  @@index([studentType])
+  @@map("students")
+}
+
+model MemberProfile {
+  examNumber     String        @id
+  photoUrl       String?
+  enrollSource   EnrollSource?
+  status         MemberStatus  @default(ACTIVE)
+  suspendedAt    DateTime?
+  withdrawnAt    DateTime?
+  withdrawReason String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([status])
+  @@index([enrollSource])
+  @@map("member_profiles")
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  examNumber String
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, updatedAt])
+  @@map("push_subscriptions")
+}
+
+model ExamPeriod {
+  id                  Int      @id @default(autoincrement())
+  academyId           Int?
+  name                String
+  startDate           DateTime
+  endDate             DateTime
+  totalWeeks          Int      @default(8)
+  isActive            Boolean  @default(false)
+  isGongchaeEnabled   Boolean  @default(true)
+  isGyeongchaeEnabled Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  enrollments           PeriodEnrollment[]
+  monthlyResults        MonthlyResult[]
+  pointLogs             PointLog[]
+  sessions              ExamSession[]
+  weeklyStatusSnapshots WeeklyStatusSnapshot[]
+
+  @@index([academyId, isActive])
+  @@map("exam_periods")
+}
+
+model MonthlyResult {
+  id          Int       @id @default(autoincrement())
+  periodId    Int
+  month       Int
+  year        Int
+  publishedAt DateTime?
+  isPublished Boolean   @default(false)
+
+  period ExamPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, year, month])
+  @@map("monthly_results")
+}
+
+model ExamSession {
+  id                 Int       @id @default(autoincrement())
+  periodId           Int
+  examType           ExamType
+  week               Int
+  subject            Subject
+  displaySubjectName String?
+  examDate           DateTime
+  isCancelled        Boolean   @default(false)
+  cancelReason       String?
+  isLocked           Boolean   @default(false)
+  lockedAt           DateTime?
+  lockedBy           String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  absenceNotes        AbsenceNote[]
+  relatedAdminMemos   AdminMemo[]             @relation("AdminMemoRelatedExamSession")
+  period              ExamPeriod              @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  questions           ExamQuestion[]
+  scoreDeadlineAlerts ScoreDeadlineAlertLog[]
+  scores              Score[]
+
+  @@unique([periodId, examType, examDate, subject])
+  @@index([periodId, examType, week])
+  @@index([periodId, examType, examDate])
+  @@map("exam_sessions")
+}
+
+model ExamSubject {
+  id           Int      @id @default(autoincrement())
+  academyId    Int
+  examType     ExamType
+  code         Subject
+  displayName  String
+  shortLabel   String
+  displayOrder Int
+  maxScore     Int      @default(100)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  academy Academy @relation(fields: [academyId], references: [id], onDelete: Cascade)
+
+  @@unique([academyId, examType, code])
+  @@index([academyId, examType, isActive, displayOrder])
+  @@map("exam_subjects")
+}
+
+model Score {
+  id         Int         @id @default(autoincrement())
+  academyId  Int?
+  examNumber String
+  sessionId  Int
+  rawScore   Float?
+  oxScore    Float?
+  finalScore Float?
+  attendType AttendType
+  sourceType ScoreSource
+  note       String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, sessionId])
+  @@index([academyId, sessionId])
+  @@index([academyId, examNumber])
+  @@index([sessionId])
+  @@index([examNumber])
+  @@map("scores")
+}
+
+model AbsenceNote {
+  id                            Int              @id @default(autoincrement())
+  academyId                     Int?
+  examNumber                    String
+  sessionId                     Int
+  reason                        String
+  absenceCategory               AbsenceCategory?
+  submittedAt                   DateTime?
+  approvedAt                    DateTime?
+  status                        AbsenceStatus    @default(PENDING)
+  attendCountsAsAttendance      Boolean          @default(false)
+  attendGrantsPerfectAttendance Boolean          @default(false)
+  adminNote                     String?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  attachments AbsenceNoteAttachment[]
+  session     ExamSession             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student     Student                 @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, sessionId])
+  @@index([academyId, status, submittedAt])
+  @@index([academyId, sessionId, status])
+  @@index([status, submittedAt])
+  @@index([sessionId, status])
+  @@map("absence_notes")
+}
+
+model AbsenceNoteAttachment {
+  id                Int      @id @default(autoincrement())
+  noteId            Int
+  bucket            String
+  storagePath       String
+  originalFileName  String
+  contentType       String
+  byteSize          Int
+  uploadedByAdminId String?  @db.Uuid
+  createdAt         DateTime @default(now())
+
+  note            AbsenceNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  uploadedByAdmin AdminUser?  @relation("AbsenceNoteAttachmentUploader", fields: [uploadedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([bucket, storagePath])
+  @@index([noteId, createdAt])
+  @@map("absence_note_attachments")
+}
+
+model AbsencePolicy {
+  id                            Int             @id @default(autoincrement())
+  name                          String
+  absenceCategory               AbsenceCategory
+  attendCountsAsAttendance      Boolean         @default(false)
+  attendGrantsPerfectAttendance Boolean         @default(false)
+  isActive                      Boolean         @default(true)
+  sortOrder                     Int             @default(0)
+  createdAt                     DateTime        @default(now())
+  updatedAt                     DateTime        @updatedAt
+
+  @@unique([name, absenceCategory])
+  @@index([isActive, sortOrder])
+  @@map("absence_policies")
+}
+
+model NotificationLog {
+  id                Int                 @id @default(autoincrement())
+  examNumber        String
+  type              NotificationType
+  channel           NotificationChannel
+  message           String
+  status            String              @default("sent")
+  isRead            Boolean             @default(false)
+  readAt            DateTime?
+  sentAt            DateTime            @default(now())
+  failReason        String?
+  templateVariables Json?
+  dedupeKey         String?             @unique
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, type])
+  @@index([examNumber, isRead])
+  @@index([status, sentAt])
+  @@map("notification_logs")
+}
+
+model NotificationTemplate {
+  id               String              @id @default(cuid())
+  type             NotificationType
+  channel          NotificationChannel @default(ALIMTALK)
+  solapiTemplateId String?
+  content          String
+  variables        String[]            @default([])
+  description      String              @default("")
+  updatedAt        DateTime            @updatedAt
+  updatedBy        String              @db.Uuid
+
+  @@unique([type, channel])
+  @@index([type])
+  @@map("notification_templates")
+}
+
+model WeeklyStatusSnapshot {
+  id                Int            @id @default(autoincrement())
+  periodId          Int
+  examNumber        String
+  examType          ExamType
+  weekKey           String
+  weekStartDate     DateTime
+  weekEndDate       DateTime
+  weekAbsenceCount  Int            @default(0)
+  monthAbsenceCount Int            @default(0)
+  status            StudentStatus
+  recoveryDate      DateTime?
+  dropoutReason     DropoutReason?
+  calculatedAt      DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  period  ExamPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  student Student    @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([periodId, examNumber, weekKey])
+  @@index([periodId, examType, weekKey, status])
+  @@index([examNumber, weekStartDate])
+  @@map("weekly_status_snapshots")
+}
+
+model CounselingRecord {
+  id             Int       @id @default(autoincrement())
+  examNumber     String
+  counselorName  String
+  content        String
+  recommendation String?
+  nextSchedule   DateTime?
+  counseledAt    DateTime
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, counseledAt])
+  @@map("counseling_records")
+}
+
+model CounselingAppointment {
+  id            Int               @id @default(autoincrement())
+  examNumber    String
+  scheduledAt   DateTime
+  counselorName String
+  agenda        String?
+  status        AppointmentStatus @default(SCHEDULED)
+  cancelReason  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("counseling_appointments")
+}
+
+model ExamQuestion {
+  id                 Int      @id @default(autoincrement())
+  sessionId          Int
+  questionNo         Int
+  correctAnswer      String
+  correctRate        Float?
+  difficulty         String?
+  answerDistribution Json?
+  createdAt          DateTime @default(now())
+
+  questionSession    ExamSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentAnswers     StudentAnswer[]
+  wrongNoteBookmarks WrongNoteBookmark[]
+
+  @@unique([sessionId, questionNo])
+  @@map("exam_questions")
+}
+
+model StudentAnswer {
+  id         Int      @id @default(autoincrement())
+  examNumber String
+  questionId Int
+  answer     String
+  isCorrect  Boolean
+  createdAt  DateTime @default(now())
+
+  question ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student  Student      @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, questionId])
+  @@map("student_answers")
+}
+
+model PointLog {
+  id         Int       @id @default(autoincrement())
+  examNumber String
+  type       PointType
+  amount     Int
+  reason     String
+  periodId   Int?
+  month      Int?
+  year       Int?
+  grantedAt  DateTime  @default(now())
+  grantedBy  String?
+
+  period  ExamPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  student Student     @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, grantedAt])
+  @@index([periodId, grantedAt])
+  @@index([periodId, year, month, type])
+  @@map("point_logs")
+}
+
+model PointBalance {
+  id         String   @id @default(cuid())
+  examNumber String   @unique
+  balance    Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber])
+
+  @@map("point_balances")
+}
+
+model AdminUser {
+  id        String    @id @db.Uuid
+  email     String    @unique
+  name      String
+  phone     String?
+  role      AdminRole @default(TEACHER)
+  academyId Int?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  academy                        Academy?                @relation(fields: [academyId], references: [id], onDelete: SetNull)
+  auditLogs                      AuditLog[]
+  assignedMemos                  AdminMemo[]             @relation("AdminMemoAssignee")
+  ownedMemos                     AdminMemo[]             @relation("AdminMemoOwner")
+  scoreDeadlineAlerts            ScoreDeadlineAlertLog[]
+  uploadedAbsenceNoteAttachments AbsenceNoteAttachment[] @relation("AbsenceNoteAttachmentUploader")
+  staff                          Staff?
+  managedEnrollments             CourseEnrollment[]
+  processedPayments              Payment[]
+  classroomsAsTeacher            Classroom[]             @relation("ClassroomTeacher")
+  lockerRentalsCreated           LockerRental[]
+  studyRoomBookingsAssigned      StudyRoomBooking[]
+  graduateRecordsCreated         GraduateRecord[]        @relation("GraduateRecordStaff")
+  issuedDiscountCodes            DiscountCode[]
+  paymentLinks                   PaymentLink[]
+  textbookSales                  TextbookSale[]
+  courseContracts                CourseContract[]
+  consultationProspects          ConsultationProspect[]
+  enrollmentHistories            EnrollmentHistory[]
+  documentIssuances              DocumentIssuance[]      @relation("DocumentIssuances")
+
+  @@index([academyId, role])
+  @@map("admin_users")
+}
+
+model ScoreDeadlineAlertLog {
+  id                Int                 @id @default(autoincrement())
+  sessionId         Int
+  adminId           String              @db.Uuid
+  type              NotificationType    @default(SCORE_DEADLINE)
+  channel           NotificationChannel @default(SMS)
+  message           String
+  status            String              @default("sent")
+  sentAt            DateTime            @default(now())
+  failReason        String?
+  templateVariables Json?
+  dedupeKey         String?             @unique
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  admin   AdminUser   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, sentAt])
+  @@index([adminId, sentAt])
+  @@index([status, sentAt])
+  @@map("score_deadline_alert_logs")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  adminId    String   @db.Uuid
+  action     String
+  targetType String
+  targetId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  admin AdminUser @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([action, createdAt])
+  @@index([adminId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notice {
+  id          Int              @id @default(autoincrement())
+  title       String
+  content     String
+  targetType  NoticeTargetType @default(ALL)
+  isPinned    Boolean          @default(false)
+  isPublished Boolean          @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([targetType, isPublished, isPinned])
+  @@map("notices")
+}
+
+model AdminMemo {
+  id                       Int             @id @default(autoincrement())
+  title                    String
+  content                  String?
+  color                    AdminMemoColor  @default(SAND)
+  scope                    AdminMemoScope  @default(PRIVATE)
+  status                   AdminMemoStatus @default(OPEN)
+  isPinned                 Boolean         @default(false)
+  dueAt                    DateTime?
+  relatedStudentExamNumber String?
+  relatedExamSessionId     Int?
+  ownerId                  String          @db.Uuid
+  assigneeId               String?         @db.Uuid
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  assignee           AdminUser?   @relation("AdminMemoAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  owner              AdminUser    @relation("AdminMemoOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  relatedExamSession ExamSession? @relation("AdminMemoRelatedExamSession", fields: [relatedExamSessionId], references: [id], onDelete: SetNull)
+
+  @@index([scope, status, isPinned])
+  @@index([ownerId, status])
+  @@index([assigneeId, status])
+  @@index([relatedStudentExamNumber])
+  @@index([relatedExamSessionId])
+  @@map("admin_memos")
+}
+
+model PeriodEnrollment {
+  id         Int      @id @default(autoincrement())
+  periodId   Int
+  examNumber String
+  enrolledAt DateTime @default(now())
+
+  period  ExamPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  student Student    @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([periodId, examNumber])
+  @@index([periodId])
+  @@map("period_enrollments")
+}
+
+model WrongNoteBookmark {
+  id         Int      @id @default(autoincrement())
+  examNumber String
+  questionId Int
+  memo       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  question ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student  Student      @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, questionId])
+  @@map("wrong_note_bookmarks")
+}
+
+enum ExamType {
+  GONGCHAE
+  GYEONGCHAE
+}
+
+enum StudentType {
+  NEW
+  EXISTING
+}
+
+enum Subject {
+  CONSTITUTIONAL_LAW
+  CRIMINOLOGY
+  CRIMINAL_PROCEDURE
+  CRIMINAL_LAW
+  POLICE_SCIENCE
+  CUMULATIVE
+}
+
+enum AttendType {
+  NORMAL
+  LIVE
+  EXCUSED
+  ABSENT
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AbsenceCategory {
+  MILITARY
+  MEDICAL
+  FAMILY
+  OTHER
+}
+
+enum NotificationType {
+  WARNING_1
+  WARNING_2
+  DROPOUT
+  ABSENCE_NOTE
+  POINT
+  NOTICE
+  SCORE_DEADLINE
+  ENROLLMENT_COMPLETE
+  PAYMENT_COMPLETE
+  REFUND_COMPLETE
+  PAYMENT_OVERDUE
+}
+
+enum NotificationChannel {
+  ALIMTALK
+  SMS
+  WEB_PUSH
+}
+
+enum PointType {
+  PERFECT_ATTENDANCE
+  SCORE_EXCELLENCE
+  ESSAY_EXCELLENCE
+  MANUAL
+  USE_PAYMENT
+  USE_RENTAL
+  ADJUST
+  EXPIRE
+  REFUND_CANCEL
+}
+
+enum ScoreSource {
+  OFFLINE_UPLOAD
+  ONLINE_UPLOAD
+  MANUAL_INPUT
+  PASTE_INPUT
+  MIGRATION
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  DIRECTOR
+  DEPUTY_DIRECTOR
+  MANAGER
+  ACADEMIC_ADMIN
+  COUNSELOR
+  TEACHER
+  VIEWER
+}
+
+enum AcademyType {
+  POLICE
+  FIRE
+  CIVIL_SERVICE
+  OTHER
+}
+
+enum StudentStatus {
+  NORMAL
+  WARNING_1
+  WARNING_2
+  DROPOUT
+}
+
+enum DropoutReason {
+  WEEKLY_3
+  MONTHLY_8
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum NoticeTargetType {
+  ALL
+  GONGCHAE
+  GYEONGCHAE
+}
+
+enum AdminMemoColor {
+  SAND
+  MINT
+  SKY
+  ROSE
+  SLATE
+}
+
+enum AdminMemoScope {
+  PRIVATE
+  TEAM
+}
+
+enum AdminMemoStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+}
+
+enum CourseCategory {
+  COMPREHENSIVE
+  SINGLE
+  SPECIAL
+}
+
+enum CourseStatus {
+  ACTIVE
+  CLOSED
+  FINISHED
+  CANCELLED
+}
+
+model Course {
+  id              Int            @id @default(autoincrement())
+  name            String
+  category        CourseCategory
+  examType        ExamType?
+  tuitionFee      Int
+  description     String?
+  status          CourseStatus   @default(ACTIVE)
+  isActive        Boolean        @default(true)
+  maxCapacity     Int?
+  cohortStartDate DateTime?
+  cohortEndDate   DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  paymentLinks PaymentLink[]
+
+  @@index([category, status, isActive])
+  @@index([examType, isActive])
+  @@map("courses")
+}
+
+model Textbook {
+  id        Int            @id @default(autoincrement())
+  title     String
+  author    String?
+  publisher String?
+  price     Int
+  stock     Int            @default(0)
+  subject   Subject?
+  isActive  Boolean        @default(true)
+  sales     TextbookSale[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([isActive])
+  @@map("textbooks")
+}
+
+model TextbookSale {
+  id         Int       @id @default(autoincrement())
+  textbookId Int
+  textbook   Textbook  @relation(fields: [textbookId], references: [id])
+  examNumber String?
+  staffId    String    @db.Uuid
+  staff      AdminUser @relation(fields: [staffId], references: [id])
+  quantity   Int       @default(1)
+  unitPrice  Int
+  totalPrice Int
+  note       String?
+  soldAt     DateTime  @default(now())
+
+  @@index([textbookId])
+  @@index([soldAt])
+  @@index([examNumber])
+  @@map("textbook_sales")
+}
+
+enum StaffRole {
+  OWNER
+  DIRECTOR
+  DEPUTY_DIRECTOR
+  MANAGER
+  ACADEMIC_ADMIN
+  COUNSELOR
+  TEACHER
+}
+
+model Staff {
+  id          String    @id @default(cuid())
+  authUid     String    @unique
+  email       String    @unique
+  name        String
+  role        StaffRole
+  mobile      String?
+  isActive    Boolean   @default(true)
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+  adminUserId String?   @unique @db.Uuid
+
+  adminUser AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([role, isActive])
+  @@map("staffs")
+}
+
+enum ExamCategory {
+  GONGCHAE
+  GYEONGCHAE
+  SOGANG
+  CUSTOM
+}
+
+enum CourseType {
+  COMPREHENSIVE
+  SPECIAL_LECTURE
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  WAITING
+  SUSPENDED
+  COMPLETED
+  WITHDRAWN
+  CANCELLED
+}
+
+enum EnrollSource {
+  VISIT
+  PHONE
+  ONLINE
+  REFERRAL
+  SNS
+  OTHER
+}
+
+enum MemberStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+  GRADUATED
+}
+
+enum SpecialLectureType {
+  THEMED
+  SINGLE
+  INTERVIEW_COACHING
+}
+
+enum SettlementStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum FieldType {
+  TEXT
+  SELECT
+  CHECKBOX
+  DATE
+  NUMBER
+  MULTI_SELECT
+}
+
+enum DiscountType {
+  RATE
+  FIXED
+}
+
+model Instructor {
+  id          String   @id @default(cuid())
+  name        String
+  subject     String
+  phone       String?
+  email       String?
+  bankName    String?
+  bankAccount String?
+  bankHolder  String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lectureSubjects SpecialLectureSubject[]
+  settlements     InstructorSettlement[]
+
+  @@index([isActive])
+  @@map("instructors")
+}
+
+model InstructorSettlement {
+  id            String    @id @default(cuid())
+  instructorId  String
+  month         String // YYYY-MM format
+  totalSessions Int       @default(0)
+  totalAmount   Int       @default(0)
+  isPaid        Boolean   @default(false)
+  paidAt        DateTime?
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  instructor Instructor @relation(fields: [instructorId], references: [id])
+
+  @@unique([instructorId, month])
+  @@map("instructor_settlements")
+}
+
+model ComprehensiveCourseProduct {
+  id             String       @id @default(cuid())
+  name           String
+  examCategory   ExamCategory
+  durationMonths Int
+  regularPrice   Int
+  salePrice      Int
+  features       String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  enrollments  CourseEnrollment[]
+  paymentLinks PaymentLink[]
+
+  @@index([examCategory, isActive])
+  @@map("comprehensive_course_products")
+}
+
+model Cohort {
+  id             String       @id @default(cuid())
+  name           String
+  examCategory   ExamCategory
+  targetExamYear Int?
+  startDate      DateTime
+  endDate        DateTime
+  maxCapacity    Int?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  enrollments      CourseEnrollment[]
+  lectureSchedules LectureSchedule[]
+  paymentLinks     PaymentLink[]
+
+  @@index([examCategory, isActive])
+  @@map("cohorts")
+}
+
+model SpecialLecture {
+  id                 String             @id @default(cuid())
+  name               String
+  lectureType        SpecialLectureType
+  examCategory       ExamCategory?
+  startDate          DateTime
+  endDate            DateTime
+  isMultiSubject     Boolean            @default(false)
+  fullPackagePrice   Int?
+  hasSeatAssignment  Boolean            @default(false)
+  hasLive            Boolean            @default(false)
+  hasOffline         Boolean            @default(true)
+  maxCapacityLive    Int?
+  maxCapacityOffline Int?
+  waitlistAllowed    Boolean            @default(true)
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  subjects         SpecialLectureSubject[]
+  enrollments      CourseEnrollment[]
+  discountPolicies SpecialLectureDiscount[]
+  fieldConfigs     SpecialLectureFieldConfig[]
+  paymentLinks     PaymentLink[]
+
+  @@index([isActive])
+  @@map("special_lectures")
+}
+
+model SpecialLectureSubject {
+  id             String @id @default(cuid())
+  lectureId      String
+  subjectName    String
+  instructorId   String
+  price          Int
+  instructorRate Int
+  sortOrder      Int    @default(0)
+
+  lecture         SpecialLecture   @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  instructor      Instructor       @relation(fields: [instructorId], references: [id])
+  seatAssignments SeatAssignment[]
+
+  @@index([lectureId])
+  @@map("special_lecture_subjects")
+}
+
+model SeatAssignment {
+  id           String   @id @default(cuid())
+  subjectId    String
+  enrollmentId String
+  seatNumber   String
+  assignedAt   DateTime @default(now())
+
+  subject    SpecialLectureSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  enrollment CourseEnrollment      @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, seatNumber])
+  @@index([enrollmentId])
+  @@map("seat_assignments")
+}
+
+model SpecialLectureDiscount {
+  id            String       @id @default(cuid())
+  lectureId     String
+  name          String
+  discountType  DiscountType
+  discountValue Int
+  condition     String?
+  isExclusive   Boolean      @default(false)
+  isActive      Boolean      @default(true)
+
+  lecture SpecialLecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@index([lectureId, isActive])
+  @@map("special_lecture_discounts")
+}
+
+model SpecialLectureFieldConfig {
+  id         String    @id @default(cuid())
+  lectureId  String
+  fieldKey   String
+  fieldLabel String
+  fieldType  FieldType
+  options    String?
+  isRequired Boolean   @default(false)
+  sortOrder  Int       @default(0)
+  isActive   Boolean   @default(true)
+
+  lecture SpecialLecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@unique([lectureId, fieldKey])
+  @@map("special_lecture_field_configs")
+}
+
+model SpecialLectureSettlement {
+  id               String           @id @default(cuid())
+  specialLectureId String
+  instructorId     String
+  settlementMonth  String
+  totalRevenue     Int
+  instructorRate   Int
+  instructorAmount Int
+  academyAmount    Int
+  status           SettlementStatus @default(PENDING)
+  paidAt           DateTime?
+  note             String?
+  createdAt        DateTime         @default(now())
+
+  @@unique([specialLectureId, instructorId, settlementMonth])
+  @@map("special_lecture_settlements")
+}
+
+model CourseEnrollment {
+  id               String           @id @default(cuid())
+  academyId        Int?
+  examNumber       String
+  courseType       CourseType
+  productId        String?
+  cohortId         String?
+  specialLectureId String?
+  startDate        DateTime
+  endDate          DateTime?
+  regularFee       Int
+  discountAmount   Int              @default(0)
+  finalFee         Int
+  status           EnrollmentStatus @default(PENDING)
+  enrollSource     EnrollSource?
+  staffId          String           @db.Uuid
+  isRe             Boolean          @default(false)
+  prevEnrollmentId String?
+  waitlistOrder    Int?
+  extraData        Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  student             Student                     @relation(fields: [examNumber], references: [examNumber], onDelete: Restrict)
+  product             ComprehensiveCourseProduct? @relation(fields: [productId], references: [id])
+  cohort              Cohort?                     @relation(fields: [cohortId], references: [id])
+  specialLecture      SpecialLecture?             @relation(fields: [specialLectureId], references: [id])
+  staff               AdminUser                   @relation(fields: [staffId], references: [id])
+  seatAssignments     SeatAssignment[]
+  leaveRecords        LeaveRecord[]
+  contract            CourseContract?
+  enrollmentHistories EnrollmentHistory[]
+
+  @@index([academyId, examNumber, status])
+  @@index([academyId, cohortId, status])
+  @@index([academyId, specialLectureId, status])
+  @@index([academyId, courseType, status])
+  @@index([examNumber, status])
+  @@index([cohortId, status])
+  @@index([specialLectureId, status])
+  @@index([staffId])
+  @@index([courseType, status])
+  @@map("course_enrollments")
+}
+
+model LeaveRecord {
+  id           String    @id @default(cuid())
+  enrollmentId String
+  leaveDate    DateTime
+  returnDate   DateTime?
+  reason       String?
+  approvedBy   String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  enrollment CourseEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([enrollmentId])
+  @@map("leave_records")
+}
+
+enum EnrollmentChangeType {
+  STATUS_CHANGE
+  CLASS_CHANGE
+  INSTRUCTOR_CHANGE
+  FEE_ADJUSTMENT
+  NOTE_UPDATE
+
+  @@map("EnrollmentChangeType")
+}
+
+model EnrollmentHistory {
+  id           String               @id @default(cuid())
+  enrollmentId String
+  changeType   EnrollmentChangeType
+  prevValue    Json?
+  newValue     Json?
+  reason       String?
+  changedAt    DateTime             @default(now())
+  changedBy    String               @db.Uuid
+
+  enrollment CourseEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  admin      AdminUser        @relation(fields: [changedBy], references: [id])
+
+  @@index([enrollmentId])
+  @@map("enrollment_histories")
+}
+
+enum PaymentCategory {
+  TUITION
+  FACILITY
+  TEXTBOOK
+  MATERIAL
+  SINGLE_COURSE
+  PENALTY
+  ETC
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  POINT
+  MIXED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  PARTIAL_REFUNDED
+  FULLY_REFUNDED
+  CANCELLED
+}
+
+enum RefundType {
+  CARD_CANCEL
+  CASH
+  TRANSFER
+  PARTIAL
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+model Payment {
+  id                  String          @id @default(cuid())
+  idempotencyKey      String?         @unique
+  academyId           Int?
+  examNumber          String?
+  enrollmentId        String?
+  paymentLinkId       Int?
+  category            PaymentCategory
+  method              PaymentMethod
+  status              PaymentStatus   @default(APPROVED)
+  grossAmount         Int
+  discountAmount      Int             @default(0)
+  couponAmount        Int             @default(0)
+  pointAmount         Int             @default(0)
+  netAmount           Int
+  note                String?
+  cashReceiptNo       String?
+  cashReceiptType     String?
+  cashReceiptIssuedAt DateTime?
+  processedBy         String          @db.Uuid
+  processedAt         DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  student            Student?            @relation(fields: [examNumber], references: [examNumber], onDelete: SetNull)
+  processor          AdminUser           @relation(fields: [processedBy], references: [id])
+  paymentLink        PaymentLink?        @relation(fields: [paymentLinkId], references: [id], onDelete: SetNull)
+  items              PaymentItem[]
+  refunds            Refund[]
+  installments       Installment[]
+  discountCodeUsages DiscountCodeUsage[]
+
+  @@index([academyId, examNumber, processedAt])
+  @@index([academyId, processedAt])
+  @@index([academyId, category, processedAt])
+  @@index([academyId, status, processedAt])
+  @@index([examNumber, processedAt])
+  @@index([processedAt])
+  @@index([processedBy])
+  @@index([category, processedAt])
+  @@index([status, processedAt])
+  @@map("payments")
+}
+
+model PaymentItem {
+  id        String          @id @default(cuid())
+  paymentId String
+  itemType  PaymentCategory
+  itemId    String?
+  itemName  String
+  unitPrice Int
+  quantity  Int             @default(1)
+  amount    Int
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("payment_items")
+}
+
+model Refund {
+  id              String       @id @default(cuid())
+  paymentId       String
+  refundType      RefundType
+  status          RefundStatus @default(PENDING)
+  amount          Int
+  reason          String
+  rejectionReason String?
+  approvedBy      String?      @db.Uuid
+  approvedAt      DateTime?
+  rejectedBy      String?      @db.Uuid
+  rejectedAt      DateTime?
+  processedBy     String       @db.Uuid
+  processedAt     DateTime     @default(now())
+  bankName        String?
+  accountNo       String?
+  accountHolder   String?
+  cardCancelNo    String?
+  createdAt       DateTime     @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([status])
+  @@map("refunds")
+}
+
+model Installment {
+  id            String    @id @default(cuid())
+  paymentId     String
+  seq           Int
+  amount        Int
+  dueDate       DateTime
+  paidAt        DateTime?
+  paidPaymentId String?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, seq])
+  @@index([paymentId])
+  @@map("installments")
+}
+
+model DailySettlement {
+  id             String    @id @default(cuid())
+  date           DateTime  @unique @db.Date
+  tuitionTotal   Int       @default(0)
+  facilityTotal  Int       @default(0)
+  textbookTotal  Int       @default(0)
+  posTotal       Int       @default(0)
+  etcTotal       Int       @default(0)
+  grossTotal     Int       @default(0)
+  refundTotal    Int       @default(0)
+  netTotal       Int       @default(0)
+  cashAmount     Int       @default(0)
+  cardAmount     Int       @default(0)
+  transferAmount Int       @default(0)
+  cashActual     Int?
+  cashDiff       Int?
+  closedAt       DateTime?
+  closedBy       String?   @db.Uuid
+  reopenedAt     DateTime?
+  reopenedBy     String?   @db.Uuid
+  reopenReason   String?
+
+  @@map("daily_settlements")
+}
+
+enum ParseMatchStatus {
+  MATCHED
+  UNMATCHED
+  AMBIGUOUS
+}
+
+enum AttendSource {
+  KAKAO_PARSE
+  MANUAL
+  IMPORT
+}
+
+model Classroom {
+  id         String   @id @default(cuid())
+  name       String
+  teacherId  String   @db.Uuid
+  generation Int?
+  note       String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  teacher          AdminUser                  @relation("ClassroomTeacher", fields: [teacherId], references: [id])
+  students         ClassroomStudent[]
+  attendanceParses ClassroomAttendanceParse[]
+  attendanceLogs   ClassroomAttendanceLog[]
+
+  @@index([teacherId, isActive])
+  @@map("classrooms")
+}
+
+model ClassroomStudent {
+  id          String    @id @default(cuid())
+  classroomId String
+  examNumber  String
+  joinedAt    DateTime  @default(now())
+  leftAt      DateTime?
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([classroomId, examNumber])
+  @@index([classroomId])
+  @@index([examNumber])
+  @@map("classroom_students")
+}
+
+model ClassroomAttendanceParse {
+  id          String    @id @default(cuid())
+  classroomId String
+  rawText     String
+  parsedDate  DateTime? @db.Date
+  parsedCount Int       @default(0)
+  confirmedAt DateTime?
+  confirmedBy String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  classroom Classroom                   @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  results   ClassroomAttendanceResult[]
+
+  @@index([classroomId, parsedDate])
+  @@map("classroom_attendance_parses")
+}
+
+model ClassroomAttendanceResult {
+  id          String           @id @default(cuid())
+  parseId     String
+  examNumber  String?
+  rawName     String
+  matchStatus ParseMatchStatus
+  attendType  AttendType?
+  checkInTime String?
+  isConfirmed Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  parse   ClassroomAttendanceParse @relation(fields: [parseId], references: [id], onDelete: Cascade)
+  student Student?                 @relation("ClassroomAttendanceResultStudent", fields: [examNumber], references: [examNumber], onDelete: SetNull)
+
+  @@index([parseId])
+  @@index([examNumber])
+  @@map("classroom_attendance_results")
+}
+
+model ClassroomAttendanceLog {
+  id          String       @id @default(cuid())
+  academyId   Int?
+  classroomId String
+  examNumber  String
+  attendDate  DateTime     @db.Date
+  attendType  AttendType
+  source      AttendSource
+  parseId     String?
+  updatedBy   String?      @db.Uuid
+  createdAt   DateTime     @default(now())
+
+  academy Academy? @relation(fields: [academyId], references: [id], onDelete: SetNull)
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  student   Student   @relation("ClassroomAttendanceLogStudent", fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([classroomId, examNumber, attendDate])
+  @@index([academyId, classroomId, attendDate])
+  @@index([academyId, examNumber, attendDate])
+  @@index([classroomId, attendDate])
+  @@index([examNumber, attendDate])
+  @@map("classroom_attendance_logs")
+}
+
+enum LockerZone {
+  CLASS_ROOM
+  JIDEOK_LEFT
+  JIDEOK_RIGHT
+}
+
+enum LockerStatus {
+  AVAILABLE
+  IN_USE
+  RESERVED
+  BROKEN
+  BLOCKED
+}
+
+enum RentalFeeUnit {
+  MONTHLY
+  PER_COHORT
+}
+
+enum RentalStatus {
+  ACTIVE
+  RETURNED
+  EXPIRED
+  CANCELLED
+}
+
+model Locker {
+  id           String       @id @default(cuid())
+  zone         LockerZone
+  lockerNumber String
+  row          Int?
+  col          Int?
+  status       LockerStatus @default(AVAILABLE)
+  note         String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  rentals LockerRental[]
+
+  @@unique([zone, lockerNumber])
+  @@index([zone, status])
+  @@map("lockers")
+}
+
+model LockerRental {
+  id         String        @id @default(cuid())
+  lockerId   String
+  examNumber String
+  startDate  DateTime      @db.Date
+  endDate    DateTime?     @db.Date
+  feeUnit    RentalFeeUnit @default(MONTHLY)
+  feeAmount  Int           @default(0)
+  status     RentalStatus  @default(ACTIVE)
+  paidAt     DateTime?
+  paymentId  String?
+  createdBy  String        @db.Uuid
+  note       String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  locker  Locker    @relation(fields: [lockerId], references: [id])
+  student Student   @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+  creator AdminUser @relation(fields: [createdBy], references: [id])
+
+  @@index([lockerId, status])
+  @@index([examNumber, status])
+  @@index([createdBy])
+  @@map("locker_rentals")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  NOSHOW
+}
+
+model StudyRoom {
+  id          String   @id @default(cuid())
+  name        String
+  capacity    Int      @default(1)
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings StudyRoomBooking[]
+
+  @@index([isActive, sortOrder])
+  @@map("study_rooms")
+}
+
+model StudyRoomBooking {
+  id          String        @id @default(cuid())
+  roomId      String
+  examNumber  String
+  bookingDate DateTime      @db.Date
+  startTime   String
+  endTime     String
+  status      BookingStatus @default(CONFIRMED)
+  assignedBy  String        @db.Uuid
+  note        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  room     StudyRoom @relation(fields: [roomId], references: [id])
+  student  Student   @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+  assigner AdminUser @relation(fields: [assignedBy], references: [id])
+
+  @@index([roomId, bookingDate])
+  @@index([examNumber, bookingDate])
+  @@index([assignedBy])
+  @@map("study_room_bookings")
+}
+
+enum PassType {
+  WRITTEN_PASS
+  FINAL_PASS
+  APPOINTED
+  WRITTEN_FAIL
+  FINAL_FAIL
+}
+
+model GraduateRecord {
+  id              String    @id @default(cuid())
+  examNumber      String
+  examName        String
+  passType        PassType
+  writtenPassDate DateTime? @db.Date
+  finalPassDate   DateTime? @db.Date
+  appointedDate   DateTime? @db.Date
+  enrolledMonths  Int?
+  testimony       String?
+  isPublic        Boolean   @default(false)
+  staffId         String    @db.Uuid
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  student        Student                 @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+  staff          AdminUser               @relation("GraduateRecordStaff", fields: [staffId], references: [id])
+  scoreSnapshots GraduateScoreSnapshot[]
+
+  @@index([examNumber])
+  @@index([passType])
+  @@index([staffId])
+  @@map("graduate_records")
+}
+
+model GraduateScoreSnapshot {
+  id                  String   @id @default(cuid())
+  graduateId          String
+  snapshotType        PassType
+  examNumber          String
+  totalEnrolledMonths Int
+  overallAverage      Float?
+  finalMonthAverage   Float?
+  attendanceRate      Float?
+  subjectAverages     Json // Record<Subject, number>
+  monthlyAverages     Json // Array<{ year, month, avg }>
+  first3MonthsAvg     Float?
+  last3MonthsAvg      Float?
+  createdAt           DateTime @default(now())
+
+  graduate GraduateRecord @relation(fields: [graduateId], references: [id], onDelete: Cascade)
+
+  @@unique([graduateId, snapshotType])
+  @@index([graduateId])
+  @@index([examNumber])
+  @@map("graduate_score_snapshots")
+}
+
+model Academy {
+  id        Int         @id @default(autoincrement())
+  code      String      @unique
+  name      String
+  type      AcademyType @default(POLICE)
+  hostname  String?     @unique
+  themeColor String?
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  absenceNotes            AbsenceNote[]
+  adminUsers              AdminUser[]
+  settings                AcademySettings?
+  classroomAttendanceLogs ClassroomAttendanceLog[]
+  courseEnrollments       CourseEnrollment[]
+  examSubjects            ExamSubject[]
+  examPeriods             ExamPeriod[]
+  payments                Payment[]
+  discountCodes           DiscountCode[]
+  scores                  Score[]
+  students                Student[]
+
+  @@map("academies")
+}
+
+model SystemConfig {
+  id        String   @id @default("singleton")
+  data      Json     @default("{}")
+  updatedAt DateTime @updatedAt
+  updatedBy String?  @db.Uuid
+
+  @@map("system_config")
+}
+
+model AcademySettings {
+  id                        Int      @id @default(autoincrement())
+  academyId                 Int      @unique
+  name                      String   @default("")
+  directorName              String   @default("")
+  businessRegNo             String   @default("")
+  academyRegNo              String   @default("")
+  address                   String   @default("")
+  phone                     String   @default("")
+  faxNumber                 String   @default("")
+  bankName                  String   @default("")
+  bankAccount               String   @default("")
+  bankHolder                String   @default("")
+  websiteUrl                String   @default("")
+  documentIssuer            String   @default("")
+  sealImagePath             String   @default("")
+  logoImagePath             String   @default("")
+  refundApprovalThreshold   Int      @default(200000)
+  discountApprovalThreshold Int      @default(50000)
+  cashApprovalThreshold     Int      @default(100000)
+  updatedAt                 DateTime @updatedAt
+
+  academy Academy @relation(fields: [academyId], references: [id], onDelete: Cascade)
+
+  @@map("academy_settings")
+}
+
+enum DocumentType {
+  ENROLLMENT_CERT
+  TAX_CERT
+  SCORE_REPORT
+  ATTENDANCE_CERT
+  CUSTOM
+
+  @@map("document_types")
+}
+
+model DocumentIssuance {
+  id         String       @id @default(cuid())
+  examNumber String
+  docType    DocumentType
+  note       String?
+  issuedBy   String       @db.Uuid
+  issuedAt   DateTime     @default(now())
+
+  student      Student   @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+  issuedByUser AdminUser @relation("DocumentIssuances", fields: [issuedBy], references: [id])
+
+  @@index([examNumber])
+  @@index([issuedAt])
+  @@map("document_issuances")
+}
+
+model CivilServiceExam {
+  id            Int       @id @default(autoincrement())
+  name          String
+  examType      ExamType
+  year          Int
+  writtenDate   DateTime? @db.Date
+  interviewDate DateTime? @db.Date
+  resultDate    DateTime? @db.Date
+  description   String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([examType, year])
+  @@index([isActive])
+  @@map("civil_service_exams")
+}
+
+model DiscountCode {
+  id            Int          @id @default(autoincrement())
+  academyId     Int?
+  code          String
+  type          CodeType
+  discountType  DiscountType
+  discountValue Int
+  maxUsage      Int?
+  usageCount    Int          @default(0)
+  validFrom     DateTime     @db.Date
+  validUntil    DateTime?    @db.Date
+  isActive      Boolean      @default(true)
+  staffId       String       @db.Uuid
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  academy Academy?            @relation(fields: [academyId], references: [id], onDelete: SetNull)
+  staff   AdminUser           @relation(fields: [staffId], references: [id])
+  usages  DiscountCodeUsage[]
+
+  @@unique([academyId, code])
+  @@index([code])
+  @@index([isActive])
+  @@index([academyId, code])
+  @@index([academyId, isActive])
+  @@map("discount_codes")
+}
+
+model DiscountCodeUsage {
+  id         Int      @id @default(autoincrement())
+  codeId     Int
+  paymentId  String
+  examNumber String
+  usedAt     DateTime @default(now())
+
+  code    DiscountCode @relation(fields: [codeId], references: [id])
+  payment Payment      @relation(fields: [paymentId], references: [id])
+  student Student      @relation(fields: [examNumber], references: [examNumber])
+
+  @@index([codeId])
+  @@index([paymentId])
+  @@index([examNumber])
+  @@map("discount_code_usages")
+}
+
+enum CodeType {
+  REFERRAL
+  ENROLLMENT
+  CAMPAIGN
+}
+
+model PointPolicy {
+  id            Int      @id @default(autoincrement())
+  name          String
+  description   String?
+  defaultAmount Int
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("point_policies")
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+
+enum LinkStatus {
+  ACTIVE
+  EXPIRED
+  DISABLED
+  USED_UP
+}
+
+model PaymentLink {
+  id       Int    @id @default(autoincrement())
+  token    String @unique @default(cuid())
+  title    String
+  courseId Int?
+
+  examNumber       String?
+  cohortId         String?
+  productId        String?
+  courseType       CourseType?
+  specialLectureId String?
+  amount           Int
+  discountAmount   Int         @default(0)
+  finalAmount      Int
+  allowPoint       Boolean     @default(true)
+  expiresAt        DateTime
+  maxUsage         Int?
+  usageCount       Int         @default(0)
+  status           LinkStatus  @default(ACTIVE)
+  note             String?
+  createdBy        String      @db.Uuid
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  course         Course?                     @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  student        Student?                    @relation(fields: [examNumber], references: [examNumber], onDelete: SetNull)
+  cohort         Cohort?                     @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  product        ComprehensiveCourseProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  specialLecture SpecialLecture?             @relation(fields: [specialLectureId], references: [id], onDelete: SetNull)
+  staff          AdminUser                   @relation(fields: [createdBy], references: [id])
+  payments       Payment[]
+
+  @@index([token])
+  @@index([status])
+  @@index([createdBy])
+  @@index([examNumber])
+  @@map("payment_links")
+}
+
+model CourseContract {
+  id                 String    @id @default(cuid())
+  enrollmentId       String    @unique
+  items              Json      @default("[]")
+  note               String?
+  issuedAt           DateTime  @default(now())
+  printedAt          DateTime?
+  privacyConsentedAt DateTime?
+  staffId            String    @db.Uuid
+
+  enrollment CourseEnrollment @relation(fields: [enrollmentId], references: [id])
+  staff      AdminUser        @relation(fields: [staffId], references: [id])
+
+  @@index([staffId])
+  @@index([privacyConsentedAt])
+  @@map("course_contracts")
+}
+
+enum ProspectSource {
+  WALK_IN
+  PHONE
+  SNS
+  REFERRAL
+  OTHER
+}
+
+enum ProspectStage {
+  INQUIRY
+  VISITING
+  DECIDING
+  REGISTERED
+  DROPPED
+}
+
+model ConsultationProspect {
+  id           String         @id @default(cuid())
+  name         String
+  phone        String?
+  examType     ExamType?
+  source       ProspectSource @default(WALK_IN)
+  stage        ProspectStage  @default(INQUIRY)
+  note         String?
+  staffId      String         @db.Uuid
+  enrollmentId String?
+  visitedAt    DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  staff AdminUser @relation(fields: [staffId], references: [id])
+
+  @@index([stage])
+  @@index([staffId])
+  @@index([visitedAt])
+  @@map("consultation_prospects")
+}
+
+enum ExamEventType {
+  MORNING
+  MONTHLY
+  SPECIAL
+  EXTERNAL
+
+  @@map("ExamEventType")
+}
+
+enum ExamDivision {
+  GONGCHAE_M
+  GONGCHAE_F
+  GYEONGCHAE
+  ONLINE
+
+  @@map("ExamDivision")
+}
+
+model ExamEvent {
+  id                   String        @id @default(cuid())
+  title                String
+  eventType            ExamEventType
+  examDate             DateTime
+  registrationFee      Int           @default(0)
+  registrationDeadline DateTime?
+  venue                String?
+  isActive             Boolean       @default(true)
+  createdAt            DateTime      @default(now())
+
+  registrations ExamRegistration[]
+
+  @@index([eventType, examDate])
+  @@map("exam_events")
+}
+
+model ExamRegistration {
+  id            String       @id @default(cuid())
+  examEventId   String
+  examNumber    String?
+  externalName  String?
+  externalPhone String?
+  division      ExamDivision
+  isPaid        Boolean      @default(false)
+  paidAmount    Int          @default(0)
+  paidAt        DateTime?
+  seatNumber    String?
+  registeredAt  DateTime     @default(now())
+  cancelledAt   DateTime?
+
+  examEvent ExamEvent  @relation(fields: [examEventId], references: [id], onDelete: Cascade)
+  student   Student?   @relation(fields: [examNumber], references: [examNumber], onDelete: SetNull)
+  score     ExamScore?
+
+  @@index([examEventId, division])
+  @@index([examNumber])
+  @@map("exam_registrations")
+}
+
+model ExamScore {
+  id             String   @id @default(cuid())
+  registrationId String   @unique
+  score          Float
+  rank           Int?
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  registration ExamRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([registrationId])
+  @@map("exam_scores")
+}
+
+enum AttendStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+
+  @@map("AttendStatus")
+}
+
+model LectureSchedule {
+  id             String   @id @default(cuid())
+  cohortId       String
+  subjectName    String
+  instructorName String?
+  dayOfWeek      Int
+  startTime      String // "09:00"
+  endTime        String // "11:00"
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  cohort   Cohort           @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  sessions LectureSession[]
+
+  @@index([cohortId])
+  @@map("lecture_schedules")
+}
+
+model LectureSession {
+  id          String   @id @default(cuid())
+  scheduleId  String
+  sessionDate DateTime @db.Date
+  startTime   String
+  endTime     String
+  isCancelled Boolean  @default(false)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  schedule    LectureSchedule     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  attendances LectureAttendance[]
+
+  @@unique([scheduleId, sessionDate])
+  @@index([sessionDate])
+  @@map("lecture_sessions")
+}
+
+model LectureAttendance {
+  id        String       @id @default(cuid())
+  sessionId String
+  studentId String // Student.examNumber
+  status    AttendStatus @default(PRESENT)
+  note      String?
+  checkedAt DateTime     @default(now())
+  checkedBy String?      @db.Uuid
+
+  session LectureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student        @relation(fields: [studentId], references: [examNumber], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+  @@map("lecture_attendances")
+}

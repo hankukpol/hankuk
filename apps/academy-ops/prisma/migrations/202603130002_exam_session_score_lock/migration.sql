@@ -1,0 +1,4 @@
+ALTER TABLE "exam_sessions"
+  ADD COLUMN "isLocked" BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN "lockedAt" TIMESTAMP(3),
+  ADD COLUMN "lockedBy" TEXT;

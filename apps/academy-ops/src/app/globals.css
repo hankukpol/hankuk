@@ -1,0 +1,489 @@
+@import "react-day-picker/dist/style.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --font-sans:
+    "Pretendard Variable",
+    "Pretendard",
+    "Noto Sans KR",
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+  /* 전역 사각 처리 */
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  background-color: #F3F4F6;
+  /* light gray for the overall dashboard wrapper */
+}
+
+body {
+  margin: 0;
+  background-color: #F3F4F6;
+  color: #111827;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+@keyframes analytics-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes analytics-drawer-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid #C55A11;
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.focus\:not-sr-only:focus,
+.focus\:not-sr-only:focus-visible {
+  position: fixed;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  min-height: 40px;
+}
+
+textarea {
+  font: inherit;
+  min-height: 120px;
+}
+
+::selection {
+  background: rgba(27, 79, 187, 0.18);
+  /* primary light */
+}
+
+/* 유틸리티 테두리 카드 (선택 사항 적용) */
+.card-border {
+  border: 1px solid #D1D5DB;
+  background-color: white;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* 대시보드 기본 표 스타일 강제 적용 */
+table {
+  width: 100%;
+  border-collapse: collapse !important;
+  text-align: left;
+  background-color: white;
+  border: 1px solid #D1D5DB !important;
+}
+
+table thead th {
+  background-color: #F8FAFC !important;
+  /* Tailwind slate-50 */
+  border-bottom: 1px solid #D1D5DB !important;
+  /* 연한 회색(gray-300) */
+  color: #111827 !important;
+  font-weight: 700 !important;
+  padding: 12px 16px !important;
+  font-size: 0.875rem !important;
+  /* text-sm */
+}
+
+table tbody td {
+  border-bottom: 1px solid #E5E7EB !important;
+  /* Tailwind gray-200 */
+  padding: 12px 16px !important;
+  color: #374151 !important;
+  /* Tailwind gray-700 */
+  font-size: 0.875rem !important;
+}
+
+table tbody tr:hover td {
+  background-color: #F9FAFB !important;
+  /* Tailwind gray-50 */
+}
+
+/* 전역 사각 처리 컨테이너 덮어쓰기 (기존 rounded 계열 영향 포함) */
+.rounded-\[28px\],
+.rounded-2xl,
+.rounded-xl,
+.rounded-lg,
+.rounded-md,
+.rounded-sm,
+.rounded-full {
+  border-radius: 0 !important;
+}
+
+.shadow-sm,
+.shadow-md,
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl,
+.shadow-inner {
+  box-shadow: none !important;
+}
+
+/* 일부 요소 안에서도 bg-mist를 흰색 카드로 강제 처리 (선택 사항) */
+.bg-mist {
+  background-color: white !important;
+  border: 1px solid #D1D5DB !important;
+}
+
+.btn-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-ripple::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+}
+
+.btn-ripple:active::after {
+  opacity: 0.18;
+  transition: none;
+}
+
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 20;
+    opacity: 0;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+.check-animated {
+  stroke-dasharray: 20;
+}
+
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.count-animated {
+}
+
+.btn-success {
+  transition: background-color 200ms ease, transform 100ms ease;
+}
+
+.card-lift {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .check-animated {
+    animation: check-draw 300ms ease-out forwards;
+  }
+
+  .count-animated {
+    animation: count-up 400ms ease-out;
+  }
+
+  .btn-success:active {
+    transform: scale(0.97);
+  }
+
+  .card-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  .card-lift:active {
+    transform: translateY(0);
+  }
+}
+
+/* ─── Print styles ──────────────────────────────────────────────────────────── */
+
+/* Default print page: A4 landscape for wide score tables */
+@page {
+  size: A4 landscape;
+  margin: 12mm 10mm;
+}
+
+/* Portrait override: wrap a section with class="print-portrait" */
+@page print-portrait {
+  size: A4 portrait;
+  margin: 15mm 12mm;
+}
+
+@media print {
+  /* ── Page setup ─────────────────────────────────────────── */
+
+  /* Hide non-essential UI elements */
+  aside,
+  nav,
+  [data-sidebar],
+  .no-print,
+  button:not(.print-show),
+  .filter-bar,
+  .pagination-controls,
+  [class*="TopLoader"],
+  [role="navigation"],
+  header:not(.print-header) {
+    display: none !important;
+  }
+
+  /* Reset page layout */
+  body {
+    background: white !important;
+    font-size: 10pt;
+    line-height: 1.4;
+    color: #111827;
+  }
+
+  html {
+    background: white !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    background: white !important;
+  }
+
+  /* ── Color accuracy ─────────────────────────────────────── */
+  * {
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Cards: keep borders, remove shadow/rounded */
+  [class*="rounded"] {
+    border-radius: 0 !important;
+  }
+
+  /* ── Typography ─────────────────────────────────────────── */
+  h1 { font-size: 14pt !important; font-weight: 700 !important; margin-bottom: 6pt !important; }
+  h2 { font-size: 12pt !important; font-weight: 600 !important; margin-bottom: 4pt !important; }
+  h3 { font-size: 11pt !important; font-weight: 600 !important; }
+
+  /* ── Table print optimization ───────────────────────────── */
+  table {
+    page-break-inside: auto;
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group; /* Repeat header on every page */
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  th, td {
+    padding: 4pt 5pt !important;
+    font-size: 8.5pt !important;
+  }
+
+  /* ── Score color badges (print-safe) ────────────────────── */
+  .score-high,
+  [class*="score-high"] {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+  }
+
+  .score-mid,
+  [class*="score-mid"] {
+    background-color: #fef9c3 !important;
+    color: #854d0e !important;
+  }
+
+  .score-low,
+  [class*="score-low"] {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+  }
+
+  /* ── Text colors ────────────────────────────────────────── */
+  .text-forest, [class*="text-forest"] { color: #1F4D3A !important; }
+  .text-ember, [class*="text-ember"] { color: #C55A11 !important; }
+  .text-slate, [class*="text-slate"] { color: #4B5563 !important; }
+  .text-ink { color: #111827 !important; }
+  .text-red-700, [class*="text-red-7"] { color: #b91c1c !important; }
+  .text-amber-700, [class*="text-amber-7"] { color: #b45309 !important; }
+  .text-green-700, [class*="text-green-7"] { color: #15803d !important; }
+
+  /* ── Background colors ──────────────────────────────────── */
+  .bg-mist, [class*="bg-mist"] { background-color: #F7F4EF !important; }
+  .bg-forest\/10 { background-color: rgba(31, 77, 58, 0.1) !important; }
+
+  /* Badge/tag tint colors */
+  [class*="bg-amber"] { background-color: rgba(217, 119, 6, 0.15) !important; }
+  [class*="bg-red"]   { background-color: rgba(239, 68, 68, 0.15) !important; }
+  [class*="bg-green"], [class*="bg-forest"] { background-color: rgba(31, 77, 58, 0.15) !important; }
+  [class*="bg-sky"]   { background-color: rgba(14, 165, 233, 0.15) !important; }
+  [class*="bg-purple"]{ background-color: rgba(124, 58, 237, 0.15) !important; }
+
+  /* ── Page break helpers ─────────────────────────────────── */
+  .page-break-before { page-break-before: always; }
+  .page-break-after  { page-break-after: always; }
+  .no-page-break     { page-break-inside: avoid; }
+
+  /* ── Print title area ───────────────────────────────────── */
+
+  /* .print-title elements become visible block headers in print */
+  .print-title {
+    display: block !important;
+  }
+
+  /* data-print-title attribute pattern used by result sheets */
+  .print-title::before {
+    content: attr(data-print-title);
+    display: block;
+    font-size: 13pt;
+    font-weight: bold;
+    margin-bottom: 10pt;
+    border-bottom: 1pt solid #111827;
+    padding-bottom: 5pt;
+    color: #111827;
+  }
+
+  /* School header shown only in print */
+  .print-header-area {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 8pt;
+    font-size: 10pt;
+    color: #4B5563;
+  }
+
+  /* ── Misc ───────────────────────────────────────────────── */
+
+  /* Links: suppress URL expansion for internal admin links */
+  a[href^="/admin"]::after { content: none; }
+  a[href^="/student"]::after { content: none; }
+
+  .print-sheet-heading {
+    display: none !important;
+  }
+
+  /* Ensure overflow-x tables render fully */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+}
+
+.date-range-picker .rdp-root {
+  --rdp-accent-color: #c55a11;
+  --rdp-accent-background-color: #f7f4ef;
+  --rdp-range_middle-background-color: rgba(197, 90, 17, 0.12);
+  --rdp-range_middle-color: #111827;
+  --rdp-day_button-border-radius: 9999px;
+  --rdp-day-height: 40px;
+  --rdp-day-width: 40px;
+  --rdp-nav_button-height: 34px;
+  --rdp-nav_button-width: 34px;
+}
+
+.date-range-picker .rdp-chevron {
+  fill: #111827;
+}
+
+.date-range-picker .rdp-caption_label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.date-range-picker .rdp-weekday {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.date-range-picker .rdp-button_previous,
+.date-range-picker .rdp-button_next {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 9999px;
+}
+
+.date-range-picker .rdp-day_button:hover:not([disabled]) {
+  border-color: rgba(197, 90, 17, 0.32);
+}

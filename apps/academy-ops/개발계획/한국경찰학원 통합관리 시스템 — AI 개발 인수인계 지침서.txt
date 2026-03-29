@@ -1,0 +1,471 @@
+한국경찰학원 통합관리 시스템 — AI 개발 인수인계 지침서
+1. 프로젝트 개요
+학원명: 한국경찰학원
+
+주소: 대구광역시 중구 중앙대로 390 센트럴엠빌딩
+
+전화: 053-241-0112
+
+목표: 수강 등록·수납·성적·출결·포털 통합 관리 시스템 (2026년 6월 오픈 목표)
+
+경로
+
+루트: d:\앱 프로그램\아침모의고사 성적,출결관리\
+웹앱: d:\앱 프로그램\아침모의고사 성적,출결관리\web\
+PRD:  d:\앱 프로그램\아침모의고사 성적,출결관리\개발계획\
+기술 스택
+Framework: Next.js 14 App Router, TypeScript strict
+DB: PostgreSQL (Supabase, project ref: psfsprodoedjjngldyzr)
+ORM: Prisma 6 (web/prisma/schema.prisma — 약 1,972줄)
+Auth: Supabase Auth (@/lib/auth.ts — 수정 금지)
+UI: TailwindCSS + Radix UI
+결제: PortOne v2 + KSNET
+배포: Vercel
+2. 현재 상태 (2026-03-19 기준)
+최신 커밋: 45c8887 (branch: main)
+
+완료된 배치 목록 (Batch 117~135)
+
+45c8887 batch135: special exam pages, lecture staff, student goals, documents, score comparison
+7e39df4 batch134: student preferences, enrollment import, consultation stats, leaves hub, bulk absence
+2ca6d72 batch133: student statements, import hub, suspension mgmt, contracts hub, payment compliance
+7fb3627 batch132: unified calendar, consultation list/analytics, cohort progress, staff workload
+53b1107 batch131: special lecture attendance, locker maintenance, student goal progress, director briefing
+(이전 batch117~130 모두 커밋 완료)
+구현 완료된 주요 기능 영역
+관리자 페이지 (web/src/app/admin/):
+
+absence-notes (결석계 CRUD, 벌크 승인, export)
+analytics (30개+ 분석 페이지: enrollment/revenue/cohort/score/attendance/counseling/staff 등)
+attendance (출결 허브, 보강, 리포트)
+audit-logs (감사 로그 목록+상세)
+calendar (통합 캘린더, iCal 구독)
+civil-exams (공무원 시험 D-day, 일정 알림)
+cohorts (기수 관리, 성적 분포, 리더보드)
+consultations (상담 목록/상세/신규/통계/예약)
+dashboard (원장 KPI, 알림 inbox)
+enrollments (수강 등록 CRUD, 계약서, 만료/대기자/재등록)
+exams (모의고사: 월별/특별/외부, 오전모의고사 일괄생성)
+graduates (졸업생 관리, 합격률)
+import-hub (학생/수강 CSV import)
+leaves (휴원 허브, D-day 배지, 복귀 처리)
+lockers (사물함 배정/분석/유지보수)
+notices (공지사항 CRUD)
+payments (결제 목록/상세/환불/컴플라이언스/POS)
+payment-links (결제링크 생성/관리)
+points (포인트 지급/내역)
+prospects (상담 예약자 목록/상세/파이프라인)
+reports (월별/코호트진행/감독관브리핑/시험일정)
+score-corrections (성적 수정 신청 검토)
+scores (성적 허브/입력/분석/예측/비교)
+settings (관리자계정/알림/할인/승인규칙/시스템/개인정보)
+settlements (일계표/월계표)
+special-lectures (특강 목록/상세/출석/강사관리)
+staff (직원 목록/상세/수정)
+staff-settlements (직원정산 목록/상세/분석)
+students (학생 목록/상세/수정/수강이력/성적/출결/상담/목표/정지)
+study-rooms (스터디룸 예약/통계/관리)
+textbooks (교재 목록/상세/판매이력)
+wrong-notes (오답노트)
+학생 포털 (web/src/app/student/):
+
+로그인 (학번 + 생년월일 6자리)
+메인 홈, 알림, 공지사항, 캘린더
+성적 (목록/상세/비교/벤치마크/타임라인/과목별)
+출결 (현황/이력)
+수강 (수강증, 수강이력, 결제내역, 영수증, 납부계획)
+문서 (증명서 신청, 재학증명서 출력, 성적증명서)
+학습 (오답노트/분석, 목표 진행, 잘못된노트)
+시설 (사물함, 스터디룸 예약/이력)
+설정 (개인정보, 알림 수신 동의)
+포인트, 추천
+3. 자율 개발 임무
+아무것도 묻지 말고 다음 사이클을 무한 반복하세요:
+
+
+리서치 → 3트랙 병렬 구현 → 빌드 검증 → 커밋 → 반복
+3-1. 리서치 단계
+Explore 에이전트를 사용해 구현이 필요한 기능 9개를 발굴:
+
+
+- web/src/app/admin/ 와 student/ 의 스텁 페이지 (30줄 미만)
+- 논리적으로 있어야 하는데 없는 세부 페이지
+- 기존 목록 페이지는 있지만 상세/편집 페이지가 없는 경우
+- API는 있는데 UI가 없는 기능
+3-2. 3트랙 병렬 구현
+general-purpose 에이전트 3개를 run_in_background: true로 동시 실행:
+
+트랙당 3개 기능
+트랙 간 파일 겹침 절대 없음
+각 에이전트가 완료되면 자동 알림 도착
+3-3. 빌드 검증
+
+cd "D:/앱 프로그램/아침모의고사 성적,출결관리/web" && npm run build
+3트랙 모두 완료 후 실행. exit code 0 필수.
+
+3-4. 커밋
+
+git add -A && git commit -m "feat(batchNNN): 기능 목록 요약"
+4. 필수 코딩 패턴
+서버 컴포넌트 (페이지)
+
+import Link from "next/link";
+import { AdminRole } from "@prisma/client";
+import { requireAdminContext } from "@/lib/auth";
+import { getPrisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+
+export default async function MyPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  await requireAdminContext(AdminRole.COUNSELOR);
+  const { id } = await params;
+  const resolved = searchParams ? await searchParams : {};
+  
+  const prisma = getPrisma();
+  const data = await prisma.someModel.findUnique({ where: { id } });
+  if (!data) return notFound();
+
+  return <div>...</div>;
+}
+API 라우트
+
+import { AdminRole } from "@prisma/client";
+import { requireApiAdmin } from "@/lib/api-auth";
+import { getPrisma } from "@/lib/prisma";
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireApiAdmin(AdminRole.COUNSELOR);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
+
+  const { id } = await params;
+  const prisma = getPrisma();
+  const result = await prisma.someModel.findUnique({ where: { id } });
+  
+  return Response.json({ data: result });
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireApiAdmin(AdminRole.COUNSELOR);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
+
+  const { id } = await params;
+  const body = await req.json();
+  const prisma = getPrisma();
+  
+  const updated = await prisma.someModel.update({
+    where: { id },
+    data: { field: body.field },
+  });
+  return Response.json({ data: updated });
+}
+학생 포털 서버 컴포넌트
+
+import { redirect } from "next/navigation";
+import { getStudentPortalViewer } from "@/lib/student-portal/service";
+import { getPrisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+
+export default async function StudentPage() {
+  const viewer = await getStudentPortalViewer();
+  if (!viewer) redirect("/student/login");
+
+  const prisma = getPrisma();
+  const data = await prisma.student.findUnique({
+    where: { examNumber: viewer.examNumber },
+  });
+
+  return <div>...</div>;
+}
+클라이언트 컴포넌트
+
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+
+export function MyClientForm() {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await fetch("/api/my-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field: "value" }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return <form onSubmit={handleSubmit}>...</form>;
+}
+5. 디자인 시스템
+색상 토큰
+
+ember:  #C55A11  → 주 액션 버튼, 배지
+forest: #1F4D3A  → 헤더, 성공, 완료
+ink:    #111827  → 본문 텍스트
+mist:   #F7F4EF  → 페이지 배경, 테이블 헤더
+slate:  #4B5563  → 보조 텍스트, 라벨
+공통 UI 패턴
+
+{/* 카드 */}
+<div className="rounded-[28px] border border-ink/10 bg-white shadow-sm p-6">
+
+{/* 배지 - 섹션 상단 */}
+<div className="inline-flex rounded-full border border-ember/20 bg-ember/10 px-3 py-1 
+                text-xs font-semibold uppercase tracking-[0.24em] text-ember">
+  섹션명
+</div>
+
+{/* KPI 카드 */}
+<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+  <div className="rounded-[28px] border border-ink/10 bg-white p-6 shadow-sm">
+    <p className="text-xs font-medium uppercase tracking-widest text-slate">라벨</p>
+    <p className="mt-2 text-3xl font-semibold text-forest">{value}</p>
+    <p className="mt-1 text-xs text-slate">설명</p>
+  </div>
+</div>
+
+{/* 테이블 */}
+<div className="overflow-x-auto rounded-[20px] border border-ink/10">
+  <table className="w-full text-sm">
+    <thead>
+      <tr className="border-b border-ink/10 bg-mist">
+        <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate">
+          컬럼명
+        </th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-ink/5">
+      <tr className="transition-colors hover:bg-mist/60">
+        <td className="px-5 py-3.5 text-ink">값</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{/* 주 액션 버튼 */}
+<button className="inline-flex items-center rounded-full bg-ember px-6 py-3 
+                   text-sm font-semibold text-white transition hover:bg-ember/90">
+  저장
+</button>
+
+{/* 보조 버튼 */}
+<Link href="/admin/..." 
+      className="inline-flex items-center gap-1.5 rounded-full border border-ink/20 
+                 bg-white px-4 py-2 text-sm font-medium text-ink 
+                 transition hover:border-forest/40 hover:text-forest">
+  이동 →
+</Link>
+
+{/* 브레드크럼 */}
+<nav className="mt-4 flex items-center gap-1.5 text-xs text-slate">
+  <Link href="/admin/..." className="hover:text-ember hover:underline">상위</Link>
+  <span>/</span>
+  <span className="font-medium text-ink">현재</span>
+</nav>
+
+{/* 빈 상태 */}
+<div className="rounded-[20px] border border-dashed border-ink/10 py-10 text-center text-sm text-slate">
+  데이터가 없습니다.
+</div>
+차트 (외부 라이브러리 없음 — CSS/SVG만)
+
+{/* CSS 바 차트 */}
+<div className="relative h-5 overflow-hidden rounded-full bg-mist">
+  <div className="absolute inset-y-0 left-0 rounded-full bg-forest"
+       style={{ width: `${(value / maxValue) * 100}%` }} />
+</div>
+
+{/* SVG 라인 차트 (직접 구현) */}
+<svg viewBox="0 0 400 100" className="w-full">
+  <polyline points={points.join(" ")} fill="none" stroke="#1F4D3A" strokeWidth="2" />
+</svg>
+
+{/* 도넛 차트 */}
+<div className="h-20 w-20 rounded-full"
+     style={{ background: `conic-gradient(#1F4D3A ${pct}%, #F7F4EF 0)` }} />
+6. DB 스키마 주요 모델
+핵심 모델 목록 (schema.prisma ~1972줄)
+
+Student            # 학생 (examNumber PK)
+AdminUser          # 관리자 (id UUID PK, role AdminRole)
+CourseEnrollment   # 수강 등록
+Payment            # 결제
+Cohort             # 기수 (강좌별 수강 단위)
+Course             # 강좌 마스터
+SpecialLecture     # 특강
+SpecialLectureSubject  # 특강 과목 (instructor 연결)
+ExamEvent          # 시험 이벤트 (월별/특별/외부)
+ExamRegistration   # 시험 등록
+Score              # 성적
+ClassroomAttendanceLog  # 출결 기록
+AbsenceNote        # 결석계
+CounselingRecord   # 상담 기록
+CounselingAppointment  # 상담 예약 (ConsultationProspect)
+LeaveRecord        # 휴원 기록
+Locker             # 사물함
+LockerRental       # 사물함 임대
+StudyRoom          # 스터디룸
+StudyRoomBooking   # 스터디룸 예약
+Textbook           # 교재
+TextbookSale       # 교재 판매
+Staff              # 직원 (StaffRole enum)
+CourseContract     # 수강계약서
+PaymentLink        # 결제 링크
+PointLog           # 포인트 이력
+NotificationLog    # 알림 발송 이력
+AuditLog           # 감사 로그
+GraduateRecord     # 졸업생/수료 기록
+WrongNote          # 오답노트
+AdminRole enum (낮→높)
+
+VIEWER(0) < TEACHER(1) < COUNSELOR(2) < ACADEMIC_ADMIN(3) 
+< MANAGER(4) < DEPUTY_DIRECTOR(5) < DIRECTOR(6) < SUPER_ADMIN(7)
+학생 주요 필드
+
+Student {
+  examNumber     String   # 학번 (PK, "YYYYMM001" 형식)
+  name           String
+  phone          String?  # 연락처 (mobile 별칭으로 표시)
+  birthDate      DateTime?
+  targetScores   Json?    # { "KOREAN": 70, "MATH": 65, ... }
+  currentStatus  StudentStatus  # NORMAL | SUSPENDED | GRADUATED
+  notificationConsent Boolean
+  isActive       Boolean
+}
+7. DB 마이그레이션 방법
+⚠️ IPv6 문제로 prisma db push는 이 PC에서 불가. 반드시 아래 방법 사용.
+
+
+# 1. schema.prisma 수정 후 검증
+cd web && npx prisma validate
+
+# 2. 마이그레이션 SQL 생성
+npx prisma migrate diff \
+  --from-url "$DATABASE_URL" \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script > /tmp/migration.sql
+cat /tmp/migration.sql
+
+# 3. Supabase Management API로 실행
+# POST https://api.supabase.com/v1/projects/psfsprodoedjjngldyzr/database/query
+# Authorization: Bearer $SUPABASE_MANAGEMENT_TOKEN
+# Body: { "query": "<SQL 내용>" }
+
+# 4. Prisma Client 재생성
+npm run db:generate   # prisma generate + fix-prisma-default-entry.cjs
+8. 수정 금지 파일
+
+web/src/lib/auth.ts          # Supabase Auth 핵심
+web/src/lib/prisma.ts        # DB 연결
+web/src/lib/api-auth.ts      # API 인증 헬퍼
+web/src/components/ui/*      # Radix UI 기반 공통 컴포넌트
+web/prisma/schema.prisma     # Claude Code 전담 (스키마 변경 시 마이그레이션 필수)
+9. 개발 서버 실행
+
+cd "D:/앱 프로그램/아침모의고사 성적,출결관리/web"
+npm run dev   # http://localhost:3000
+10. 알려진 기존 오류 (무시)
+
+src/app/student/page.tsx — TypeScript 오류 9개
+→ batch119에서 발생, 빌드를 차단하지 않음
+→ 모든 tsc 검사에서 grep -v "student/page.tsx" 로 필터링
+11. 다음 구현 후보 기능
+아래는 아직 없거나 미완성일 가능성이 높은 기능들입니다. 리서치 후 실제 존재 여부를 확인하고 구현하세요:
+
+관리자 기능
+
+/admin/enrollments/[id]/payment-plan — 수강료 납부 계획서 출력 (A4)
+/admin/staff-settlements/calculate — 강사별 정산 계산기
+/admin/cohorts/[id]/score-distribution — 기수별 성적 분포 차트
+/admin/analytics/dropout-risk — 이탈 위험 학생 분석
+/admin/analytics/special-lecture-revenue — 특강 매출 분석
+/admin/exams/morning/[sessionId]/page.tsx — 오전모의고사 회차 상세
+/admin/reports/year-end/page.tsx — 연간 실적 보고서
+/admin/payments/[id]/page.tsx — 결제 상세 (있는지 확인)
+/admin/scores/sessions/[id]/page.tsx — 성적 회차 상세 (있는지 확인)
+/admin/lockers/[id]/page.tsx — 사물함 개별 상세
+학생 포털 기능
+
+/student/scores/wrong-questions/page.tsx — 틀린 문제 목록
+/student/enrollment/certificate/page.tsx — 수강증 출력 (있는지 확인)
+/student/notifications/settings/page.tsx — 알림 세부 설정
+/student/referral/page.tsx — 추천인 등록 (있는지 확인)
+API 기능
+
+/api/exams/special/[eventId]/scores — 특별시험 성적 저장 API (별도 있는지 확인)
+/api/students/[examNumber]/goals — 목표 점수 수정 API
+12. 에이전트 실행 템플릿
+리서치 에이전트
+
+Task(
+  subagent_type="Explore",
+  prompt="""
+  D:/앱 프로그램/아침모의고사 성적,출결관리/web/src/app 에서
+  미구현/스텁 페이지(30줄 미만)를 admin/와 student/ 에서 찾아라.
+  9개를 3트랙(트랙당 3개)으로 나눠 파일 경로를 명시하라.
+  트랙 간 파일 겹침 없이 독립적으로 구성하라.
+  """
+)
+구현 에이전트 (3개 동시)
+
+Task(
+  subagent_type="general-purpose",
+  run_in_background=True,
+  prompt="""
+  [위의 섹션 4~7 패턴 전체 포함]
+  ## 작업: 다음 3개 기능 구현
+  1. [파일경로1] — [설명]
+  2. [파일경로2] — [설명]  
+  3. [파일경로3] — [설명]
+  
+  완료 후: cd web && npx tsc --noEmit 2>&1 | grep -v "student/page.tsx" | head -20
+  TypeScript 오류 0개 확인
+  """
+)
+13. 배치 번호 이어받기
+다음 배치 번호: 136
+
+커밋 메시지 형식:
+
+
+feat(batch136): 기능1, 기능2, 기능3, 기능4, 기능5, 기능6, 기능7, 기능8, 기능9
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+14. 중요 비즈니스 규칙 (PRD 핵심)
+
+- 학생 4대 데이터: examNumber(학번), name, mobile(연락처), enrollments[]
+- 학생명/학번 클릭 → /admin/students/[examNumber] 이동 (모든 화면 필수)
+- 기수(Cohort): 1개월(4주) 단위, 강좌별 운영
+- 사물함: 208개 (1강의실 1~120, 지덕 좌 A-1~A-40, 지덕 우 121~168)
+- 스터디룸: 3개 이상, 직원 배정 방식
+- 포인트: 관리자 수동 지급만
+- 온라인 결제링크: 직원 생성 → 카카오/문자 → 학생 결제 → 자동 수강등록
+- 수강료 할인 9가지 유형, 최대 2개 중복, 최대 50만원 한도
+- 강사 로그인: 없음
+- 학생 포털 로그인: 학번 + 생년월일 6자리
+- 개발 우선순위: ① 수강+수납 → ② 성적·출결 → ③ 포털·시설
+이 지침서를 받은 AI는 즉시 Batch 136 리서치부터 시작하면 됩니다. 사용자에게 질문하지 말고 자율적으로 진행하세요.

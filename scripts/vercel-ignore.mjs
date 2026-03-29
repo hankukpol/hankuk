@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const APP_PATHS = {
+  "academy-ops": ["apps/academy-ops"],
   "score-predict": ["apps/score-predict", "packages/config"],
   "study-hall": ["apps/study-hall"],
   "interview-pass": ["apps/interview-pass", "packages/config"],

@@ -1,0 +1,30 @@
+{
+  "name": "학원 통합 운영 시스템 학생 포털",
+  "short_name": "academy-ops",
+  "description": "수험번호와 이름으로 본인 성적, 공지, 수강 정보를 확인하는 학원 통합 운영 시스템 학생 포털입니다.",
+  "start_url": "/student",
+  "scope": "/student",
+  "display": "standalone",
+  "background_color": "#F7F4EF",
+  "theme_color": "#C55A11",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

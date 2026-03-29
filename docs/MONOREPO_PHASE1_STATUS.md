@@ -6,20 +6,22 @@ Last updated: 2026-03-29
 
 - Root `.git` is active and linked to GitHub.
 - Root `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, and `turbo.json` are in place.
-- `score-predict`, `study-hall`, `interview-pass`, and `interview-mate` now live under `apps/`.
+- `academy-ops`, `score-predict`, `study-hall`, `interview-pass`, and `interview-mate` now live under `apps/`.
 - Root workspace scripts now target `apps/*` paths and use `pnpm`.
 - Root `pnpm install` completed and `pnpm-lock.yaml` was generated.
 - Migrated apps now use the single root lockfile instead of per-app `package-lock.json`.
 - `score-predict`, `study-hall`, and `interview-pass` all pass build verification from the new workspace layout.
-- Vercel `Root Directory` was updated to `apps/score-predict`, `apps/study-hall`, and `apps/interview-pass`.
-- All three migrated apps were manually redeployed from the monorepo root and promoted back to production aliases.
+- Vercel `Root Directory` was updated to `apps/academy-ops`, `apps/score-predict`, `apps/study-hall`, and `apps/interview-pass`.
+- `academy-ops` and `interview-mate` now ship `pnpm build` plus `ignoreCommand` support in `vercel.json`.
+- The migrated apps were manually redeployed and promoted back to production aliases.
 - The first dependency-light shared workspace package, `@hankuk/config`, is now in `packages/config`.
 - The migrated apps now ship `ignoreCommand` rules so `packages/config`, `supabase`, and root workspace config changes are treated as deployment-relevant.
-- `study-hall`, `interview-pass`, and `score-predict` now declare `pnpm build` in `vercel.json` instead of app-local `npm run build`.
+- `academy-ops`, `study-hall`, `interview-pass`, `score-predict`, and `interview-mate` now declare `pnpm build` in `vercel.json` instead of app-local `npm run build`.
 
 ## Deployment-Sensitive Follow-Up
 
 - Root Vercel archive deployments are currently large, so manual redeploys should use `vercel deploy --archive=tgz`.
+- `academy-ops` now has a new monorepo-linked Vercel project, but its current legacy Supabase connection values point at an unavailable project ref (`psfsprodoedjjngldyzr`), so runtime verification is blocked until valid DB credentials are provided.
 
 ## Still Not Done
 

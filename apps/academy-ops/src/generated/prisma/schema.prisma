@@ -1,0 +1,459 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator app_client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Student {
+  examNumber          String        @id
+  name                String
+  phone               String?
+  generation          Int?
+  className           String?
+  examType            ExamType
+  studentType         StudentType   @default(EXISTING)
+  onlineId            String?       @unique
+  registeredAt        DateTime?
+  note                String?
+  isActive            Boolean       @default(true)
+  notificationConsent Boolean       @default(false)
+  consentedAt         DateTime?
+  targetScores        Json?
+  currentStatus       StudentStatus @default(NORMAL)
+  statusUpdatedAt     DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  absenceNotes           AbsenceNote[]
+  counselingAppointments CounselingAppointment[]
+  counselingRecords      CounselingRecord[]
+  enrollments            PeriodEnrollment[]
+  notifications          NotificationLog[]
+  pointLogs              PointLog[]
+  scores                 Score[]
+  studentAnswers         StudentAnswer[]
+  weeklyStatusSnapshots  WeeklyStatusSnapshot[]
+  wrongNoteBookmarks     WrongNoteBookmark[]
+
+  @@index([examType, isActive])
+  @@index([examType, isActive, currentStatus])
+  @@index([examType, generation, isActive, examNumber])
+  @@index([studentType])
+  @@map("students")
+}
+
+model ExamPeriod {
+  id                  Int      @id @default(autoincrement())
+  name                String
+  startDate           DateTime
+  endDate             DateTime
+  totalWeeks          Int      @default(8)
+  isActive            Boolean  @default(false)
+  isGongchaeEnabled   Boolean  @default(true)
+  isGyeongchaeEnabled Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  enrollments           PeriodEnrollment[]
+  monthlyResults        MonthlyResult[]
+  pointLogs             PointLog[]
+  sessions              ExamSession[]
+  weeklyStatusSnapshots WeeklyStatusSnapshot[]
+
+  @@map("exam_periods")
+}
+
+model MonthlyResult {
+  id          Int       @id @default(autoincrement())
+  periodId    Int
+  month       Int
+  year        Int
+  publishedAt DateTime?
+  isPublished Boolean   @default(false)
+
+  period ExamPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, year, month])
+  @@map("monthly_results")
+}
+
+model ExamSession {
+  id           Int      @id @default(autoincrement())
+  periodId     Int
+  examType     ExamType
+  week         Int
+  subject      Subject
+  examDate     DateTime
+  isCancelled  Boolean  @default(false)
+  cancelReason String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  absenceNotes AbsenceNote[]
+  period       ExamPeriod     @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  questions    ExamQuestion[]
+  scores       Score[]
+
+  @@unique([periodId, examType, examDate, subject])
+  @@index([periodId, examType, week])
+  @@index([periodId, examType, examDate])
+  @@map("exam_sessions")
+}
+
+model Score {
+  id         Int         @id @default(autoincrement())
+  examNumber String
+  sessionId  Int
+  rawScore   Float?
+  oxScore    Float?
+  finalScore Float?
+  attendType AttendType
+  sourceType ScoreSource
+  note       String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, sessionId])
+  @@index([sessionId])
+  @@index([examNumber])
+  @@map("scores")
+}
+
+model AbsenceNote {
+  id                            Int              @id @default(autoincrement())
+  examNumber                    String
+  sessionId                     Int
+  reason                        String
+  absenceCategory               AbsenceCategory?
+  submittedAt                   DateTime?
+  approvedAt                    DateTime?
+  status                        AbsenceStatus    @default(PENDING)
+  attendGrantsPerfectAttendance Boolean          @default(false)
+  adminNote                     String?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, sessionId])
+  @@index([status, submittedAt])
+  @@index([sessionId, status])
+  @@map("absence_notes")
+}
+
+model NotificationLog {
+  id         Int                 @id @default(autoincrement())
+  examNumber String
+  type       NotificationType
+  channel    NotificationChannel
+  message    String
+  status     String              @default("sent")
+  sentAt     DateTime            @default(now())
+  failReason String?
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, type])
+  @@index([status, sentAt])
+  @@map("notification_logs")
+}
+
+model WeeklyStatusSnapshot {
+  id                Int            @id @default(autoincrement())
+  periodId          Int
+  examNumber        String
+  examType          ExamType
+  weekKey           String
+  weekStartDate     DateTime
+  weekEndDate       DateTime
+  weekAbsenceCount  Int            @default(0)
+  monthAbsenceCount Int            @default(0)
+  status            StudentStatus
+  recoveryDate      DateTime?
+  dropoutReason     DropoutReason?
+  calculatedAt      DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  period  ExamPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  student Student    @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([periodId, examNumber, weekKey])
+  @@index([periodId, examType, weekKey, status])
+  @@index([examNumber, weekStartDate])
+  @@map("weekly_status_snapshots")
+}
+
+model CounselingRecord {
+  id             Int       @id @default(autoincrement())
+  examNumber     String
+  counselorName  String
+  content        String
+  recommendation String?
+  nextSchedule   DateTime?
+  counseledAt    DateTime
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, counseledAt])
+  @@map("counseling_records")
+}
+
+model CounselingAppointment {
+  id            Int               @id @default(autoincrement())
+  examNumber    String
+  scheduledAt   DateTime
+  counselorName String
+  agenda        String?
+  status        AppointmentStatus @default(SCHEDULED)
+  cancelReason  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  student Student @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("counseling_appointments")
+}
+
+model ExamQuestion {
+  id                 Int      @id @default(autoincrement())
+  sessionId          Int
+  questionNo         Int
+  correctAnswer      String
+  correctRate        Float?
+  difficulty         String?
+  answerDistribution Json?
+  createdAt          DateTime @default(now())
+
+  questionSession    ExamSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentAnswers     StudentAnswer[]
+  wrongNoteBookmarks WrongNoteBookmark[]
+
+  @@unique([sessionId, questionNo])
+  @@map("exam_questions")
+}
+
+model StudentAnswer {
+  id         Int      @id @default(autoincrement())
+  examNumber String
+  questionId Int
+  answer     String
+  isCorrect  Boolean
+  createdAt  DateTime @default(now())
+
+  question ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student  Student      @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, questionId])
+  @@map("student_answers")
+}
+
+model PointLog {
+  id         Int       @id @default(autoincrement())
+  examNumber String
+  type       PointType
+  amount     Int
+  reason     String
+  periodId   Int?
+  month      Int?
+  year       Int?
+  grantedAt  DateTime  @default(now())
+  grantedBy  String?
+
+  period  ExamPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  student Student     @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@index([examNumber, grantedAt])
+  @@index([periodId, grantedAt])
+  @@index([periodId, year, month, type])
+  @@map("point_logs")
+}
+
+model AdminUser {
+  id        String    @id @db.Uuid
+  email     String    @unique
+  name      String
+  role      AdminRole @default(TEACHER)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  adminId    String   @db.Uuid
+  action     String
+  targetType String
+  targetId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  admin AdminUser @relation(fields: [adminId], references: [id], onDelete: Restrict)
+
+  @@index([action, createdAt])
+  @@index([adminId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notice {
+  id          Int              @id @default(autoincrement())
+  title       String
+  content     String
+  targetType  NoticeTargetType @default(ALL)
+  isPublished Boolean          @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([targetType, isPublished])
+  @@map("notices")
+}
+
+model PeriodEnrollment {
+  id         Int      @id @default(autoincrement())
+  periodId   Int
+  examNumber String
+  enrolledAt DateTime @default(now())
+
+  period  ExamPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  student Student    @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([periodId, examNumber])
+  @@index([periodId])
+  @@map("period_enrollments")
+}
+
+model WrongNoteBookmark {
+  id         Int      @id @default(autoincrement())
+  examNumber String
+  questionId Int
+  memo       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  question ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student  Student      @relation(fields: [examNumber], references: [examNumber], onDelete: Cascade)
+
+  @@unique([examNumber, questionId])
+  @@map("wrong_note_bookmarks")
+}
+
+enum ExamType {
+  GONGCHAE
+  GYEONGCHAE
+}
+
+enum StudentType {
+  NEW
+  EXISTING
+}
+
+enum Subject {
+  CONSTITUTIONAL_LAW
+  CRIMINOLOGY
+  CRIMINAL_PROCEDURE
+  CRIMINAL_LAW
+  POLICE_SCIENCE
+  CUMULATIVE
+}
+
+enum AttendType {
+  NORMAL
+  LIVE
+  EXCUSED
+  ABSENT
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AbsenceCategory {
+  MILITARY
+  MEDICAL
+  FAMILY
+  OTHER
+}
+
+enum NotificationType {
+  WARNING_1
+  WARNING_2
+  DROPOUT
+  POINT
+  NOTICE
+}
+
+enum NotificationChannel {
+  ALIMTALK
+  SMS
+}
+
+enum PointType {
+  PERFECT_ATTENDANCE
+  SCORE_EXCELLENCE
+  ESSAY_EXCELLENCE
+  MANUAL
+}
+
+enum ScoreSource {
+  OFFLINE_UPLOAD
+  ONLINE_UPLOAD
+  MANUAL_INPUT
+  PASTE_INPUT
+  MIGRATION
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  TEACHER
+  VIEWER
+}
+
+enum StudentStatus {
+  NORMAL
+  WARNING_1
+  WARNING_2
+  DROPOUT
+}
+
+enum DropoutReason {
+  WEEKLY_3
+  MONTHLY_8
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum NoticeTargetType {
+  ALL
+  GONGCHAE
+  GYEONGCHAE
+}

@@ -21,6 +21,7 @@ export function createServerClient() {
   }
 
   return createClient(url, key, {
+    db: { schema: 'interview' },
     auth: { persistSession: false, autoRefreshToken: false },
   })
 }

@@ -1,6 +1,6 @@
 import "server-only";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getPrismaClientForTenant } from "@/lib/prisma";
 import type { TenantType } from "@/lib/tenant";
 import { getServerTenantType } from "@/lib/tenant.server";
 
@@ -24,6 +24,7 @@ const ACTIVE_EVENTS_TAG = "active-events";
 
 async function fetchActiveEventsFromDb(tenantType: TenantType): Promise<PublicEventItem[]> {
   const now = new Date();
+  const prisma = getPrismaClientForTenant(tenantType);
   const events = await prisma.eventSection.findMany({
     where: {
       tenantType,

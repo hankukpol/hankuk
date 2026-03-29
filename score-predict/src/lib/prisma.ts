@@ -222,6 +222,10 @@ const prismaProxy = new Proxy(
 
 export const prisma = prismaProxy as PrismaClient;
 
+export function getPrismaClientForTenant(tenantType: TenantType): PrismaClient {
+  return getTenantClient(tenantType);
+}
+
 function isRetryablePrismaConnectionError(
   error: unknown
 ): error is Prisma.PrismaClientKnownRequestError {

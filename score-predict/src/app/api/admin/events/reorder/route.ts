@@ -72,16 +72,18 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "존재하지 않거나 다른 직렬의 이벤트가 포함되어 있습니다." }, { status: 404 });
     }
 
-    await prisma.$transaction(
-      eventIds.map((id, index) =>
-        prisma.eventSection.update({
+    await prisma.$transaction(async (tx) => {
+      return Promise.all(
+        eventIds.map((id, index) =>
+          tx.eventSection.update({
           where: { id },
           data: {
             sortOrder: index,
           },
         })
-      )
-    );
+        )
+      );
+    });
 
     revalidateEventsCache(tenantType);
 

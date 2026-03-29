@@ -1,6 +1,6 @@
 import "server-only";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getPrismaClientForTenant } from "@/lib/prisma";
 import { sanitizeBannerHtml } from "@/lib/sanitize-banner-html";
 import type { TenantType } from "@/lib/tenant";
 import { getServerTenantType } from "@/lib/tenant.server";
@@ -29,6 +29,7 @@ export function isBannerZone(value: string): value is BannerZone {
 }
 
 async function fetchActiveBannersFromDb(tenantType: TenantType): Promise<PublicBannerItem[]> {
+  const prisma = getPrismaClientForTenant(tenantType);
   const banners = await prisma.banner.findMany({
     where: {
       tenantType,

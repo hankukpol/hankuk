@@ -1,6 +1,6 @@
 import "server-only";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { prisma, withPrismaConnectionRetry } from "@/lib/prisma";
+import { getPrismaClientForTenant, prisma, withPrismaConnectionRetry } from "@/lib/prisma";
 import { getTenantSiteSettingDefaults } from "@/lib/site-settings.defaults";
 import {
   SITE_SETTING_TYPES,
@@ -123,11 +123,12 @@ async function readSiteSettingsFromDb(tenantType: TenantType): Promise<SiteSetti
   const merged: SiteSettingsMap = getTenantSiteSettingDefaults(tenantType);
   const baseKeys = Object.keys(SITE_SETTING_TYPES) as SiteSettingKey[];
   const scopedKeys = baseKeys.map((key) => toScopedSiteSettingKey(tenantType, key));
+  const tenantPrisma = getPrismaClientForTenant(tenantType);
 
   try {
     const rows = await withPrismaConnectionRetry(
       () =>
-        prisma.siteSetting.findMany({
+        tenantPrisma.siteSetting.findMany({
           where: {
             key: {
               in: [...baseKeys, ...scopedKeys],
@@ -183,6 +184,7 @@ function getCachedSiteSettingsByTenant(tenantType: TenantType) {
 
 async function readActiveNoticesFromDb(tenantType: TenantType): Promise<PublicNoticeItem[]> {
   const now = new Date();
+  const prisma = getPrismaClientForTenant(tenantType);
 
   const notices = await prisma.notice.findMany({
     where: {
@@ -285,15 +287,17 @@ export function normalizeSiteSettingUpdateEntries(input: Record<string, unknown>
 export async function upsertSiteSettings(entries: Array<{ key: SiteSettingKey; value: string }>) {
   const tenantType = await getServerTenantType();
 
-  await prisma.$transaction(
-    entries.map((entry) =>
-      prisma.siteSetting.upsert({
+  await prisma.$transaction(async (tx) => {
+    return Promise.all(
+      entries.map((entry) =>
+        tx.siteSetting.upsert({
         where: { key: toScopedSiteSettingKey(tenantType, entry.key) },
         update: { value: entry.value },
         create: { key: toScopedSiteSettingKey(tenantType, entry.key), value: entry.value },
       })
-    )
-  );
+      )
+    );
+  });
 
   revalidateTag(SITE_SETTINGS_TAG, "max");
   revalidateTag(`${SITE_SETTINGS_TAG}:${tenantType}`, "max");

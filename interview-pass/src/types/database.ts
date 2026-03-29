@@ -57,6 +57,10 @@ export interface StaffJwtPayload {
   role: 'staff' | 'admin'
   division?: 'police' | 'fire'
   adminId?: string
+  staffAccountId?: string
+  staffLoginId?: string
+  staffName?: string
+  authMethod?: 'legacy_staff_pin' | 'staff_account' | 'admin_pin' | 'admin_shared'
   sharedUserId?: string | null
   sharedLinked?: boolean
   iat: number

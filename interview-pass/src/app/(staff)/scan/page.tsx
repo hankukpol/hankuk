@@ -33,6 +33,14 @@ interface Material {
   is_active: boolean
 }
 
+interface StaffSessionStatus {
+  role: 'staff' | 'admin'
+  authMethod: 'legacy_staff_pin' | 'staff_account' | 'admin_pin' | 'admin_shared' | null
+  staffLoginId: string
+  staffName: string
+  adminId: string
+}
+
 interface CameraOption {
   id: string
   label: string
@@ -78,6 +86,7 @@ export default function ScanPage() {
   const initialUrlTokenRef = useRef('')
 
   const [materials, setMaterials] = useState<Material[]>([])
+  const [sessionInfo, setSessionInfo] = useState<StaffSessionStatus | null>(null)
   const [quickPhone, setQuickPhone] = useState('')
   const [quickMatId, setQuickMatId] = useState<number | null>(null)
   const [quickLoading, setQuickLoading] = useState(false)
@@ -102,6 +111,13 @@ export default function ScanPage() {
 
       const scanEnabled = appConfig?.staff_scan_enabled ?? true
       const quickEnabled = appConfig?.staff_quick_distribution_enabled ?? true
+      const nextSessionInfo = await fetch('/api/auth/staff/session', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null) as StaffSessionStatus | null
+
+      if (cancelled) return
+
+      setSessionInfo(nextSessionInfo)
       setStaffScanEnabled(scanEnabled)
       setStaffQuickEnabled(quickEnabled)
       setIsFeatureLoading(false)
@@ -622,6 +638,18 @@ export default function ScanPage() {
       className="flex min-h-dvh flex-col items-center px-5 py-6"
       style={{ background: tab === 'quick' ? '#F9FAFB' : '#F0F2F8' }}
     >
+      {sessionInfo ? (
+        <div className="mb-4 w-full max-w-sm rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm">
+          <p className="font-semibold text-gray-900">
+            {sessionInfo.role === 'admin'
+              ? `관리자 인증${sessionInfo.adminId ? ` (${sessionInfo.adminId})` : ''}`
+              : sessionInfo.authMethod === 'staff_account'
+                ? `직원 계정 ${sessionInfo.staffName}${sessionInfo.staffLoginId ? ` (${sessionInfo.staffLoginId})` : ''}`
+                : '공용 직원 PIN'}
+          </p>
+        </div>
+      ) : null}
+
       {staffScanEnabled && staffQuickEnabled ? (
         <div className="mb-5 flex w-full max-w-sm overflow-hidden border border-gray-200">
           {(['qr', 'quick'] as TabMode[]).map((t) => (

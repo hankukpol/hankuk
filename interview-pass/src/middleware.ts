@@ -118,6 +118,7 @@ export async function middleware(req: NextRequest) {
       pathname.startsWith('/api/config/cache') ||
       pathname.startsWith('/api/auth/admin/logout') ||
       pathname.startsWith('/api/auth/staff/pin') ||
+      pathname.startsWith('/api/auth/staff/accounts') ||
       pathname.startsWith('/api/auth/admin/pin') ||
       pathname.startsWith('/api/auth/admin/id')
     )

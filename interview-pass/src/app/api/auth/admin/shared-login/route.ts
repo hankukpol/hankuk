@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     const token = await signJwt('admin', sessionId, {
       division,
       adminId: sharedSession.adminId,
+      authMethod: 'admin_shared',
       sharedUserId: sharedSession.sharedUserId,
       sharedLinked: sharedSession.sharedLinked,
     })

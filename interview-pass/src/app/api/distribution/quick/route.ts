@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createServerClient } from '@/lib/supabase/server'
-import { normalizePhone, normalizeName } from '@/lib/utils'
-import { distributeMaterial } from '@/lib/distribution/materials'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { verifyJwt, ADMIN_COOKIE, STAFF_COOKIE } from '@/lib/auth/jwt'
+import { getDistributionActorLabel } from '@/lib/auth/session-actor'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { distributeMaterial } from '@/lib/distribution/materials'
+import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+import { normalizeName, normalizePhone } from '@/lib/utils'
 
 const schema = z.object({
   exam_number: z.string().min(1).optional(),
@@ -26,6 +28,15 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: '입력값이 올바르지 않습니다.' }, { status: 400 })
   }
+
+  const staffCookie = req.cookies.get(STAFF_COOKIE)?.value
+  const adminCookie = req.cookies.get(ADMIN_COOKIE)?.value
+  const payload = staffCookie
+    ? await verifyJwt(staffCookie)
+    : adminCookie
+      ? await verifyJwt(adminCookie)
+      : null
+  const actorLabel = getDistributionActorLabel(payload)
 
   const { exam_number, name, phone, material_id: materialId } = parsed.data
   const db = createServerClient()
@@ -58,7 +69,9 @@ export async function POST(req: NextRequest) {
       if (scoped) {
         query = query.in('division', scope)
       }
-      if (name) query = query.eq('name', normalizeName(name))
+      if (name) {
+        query = query.eq('name', normalizeName(name))
+      }
       return query.maybeSingle()
     }
     const { data } = await withDivisionFallback(
@@ -69,19 +82,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (!student) {
-    return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
+    return NextResponse.json({ error: '수험생을 찾을 수 없습니다.' }, { status: 404 })
   }
 
   try {
     const result = await distributeMaterial({
       studentId: student.id,
       materialId,
-      distributedBy: '빠른 배부',
+      distributedBy: actorLabel,
     })
 
     if (!result.success) {
       const messages: Record<string, string> = {
-        already_distributed: '이미 배부한 자료입니다.',
+        already_distributed: '이미 배부된 자료입니다.',
         material_inactive: '비활성화된 자료입니다.',
       }
 
@@ -95,6 +108,7 @@ export async function POST(req: NextRequest) {
       success: true,
       student_name: result.student_name,
       material_name: result.material_name,
+      distributed_by: actorLabel,
     })
   } catch {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })

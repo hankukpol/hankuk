@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { verifyQrToken } from '@/lib/qr/token'
-import { createServerClient } from '@/lib/supabase/server'
-import { verifyJwt, STAFF_COOKIE, ADMIN_COOKIE } from '@/lib/auth/jwt'
+import { isAppFeatureEnabled } from '@/lib/app-config'
+import { verifyJwt, ADMIN_COOKIE, STAFF_COOKIE } from '@/lib/auth/jwt'
+import { getDistributionActorLabel } from '@/lib/auth/session-actor'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { distributeMaterial } from '@/lib/distribution/materials'
-import { isAppFeatureEnabled } from '@/lib/app-config'
+import { verifyQrToken } from '@/lib/qr/token'
+import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const studentSelect = 'name, exam_number, series, region'
@@ -19,7 +20,7 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   if (!(await isAppFeatureEnabled('staff_scan_enabled'))) {
     return NextResponse.json(
-      { success: false, reason: '吏곸썝 ?ㅼ틪 湲곕뒫??鍮꾪솢?깊솕?섏뼱 ?덉뒿?덈떎.' },
+      { success: false, reason: '직원 QR 스캔 기능이 현재 비활성화되어 있습니다.' },
       { status: 403 },
     )
   }
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     : adminCookie
       ? await verifyJwt(adminCookie)
       : null
-  const actorLabel = payload?.role === 'admin' ? '愿由ъ옄' : '吏곸썝 PIN ?몄쬆'
+  const actorLabel = getDistributionActorLabel(payload)
 
   const qrPayload = await verifyQrToken(parsed.data.token)
   if (!qrPayload) {
@@ -84,7 +85,6 @@ export async function POST(req: NextRequest) {
   const receivedIds = new Set((allLogs ?? []).map((log) => log.material_id))
 
   const unreceived = materials.filter((material) => !receivedIds.has(material.id))
-
   if (unreceived.length === 0) {
     return NextResponse.json({ success: false, reason: 'ALL_RECEIVED' })
   }

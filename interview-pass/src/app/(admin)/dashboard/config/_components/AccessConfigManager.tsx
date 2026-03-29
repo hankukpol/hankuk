@@ -13,6 +13,7 @@ import {
 } from '../_lib/config-client'
 import ConfigPanel from './ConfigPanel'
 import ConfigStatusMessage from './ConfigStatusMessage'
+import StaffAccountManager from './StaffAccountManager'
 
 function getDivisionLabel(division: AdminClaimStatus['division']) {
   return division === 'fire' ? '소방' : '경찰'
@@ -33,7 +34,7 @@ function getClaimSummary(claimInfo: AdminClaimStatus | null) {
         ? `이미 ${claimInfo.claimedEmailMasked} 계정에 연결되어 있습니다.`
         : '이미 공통 인증 계정에 연결되어 있습니다.'
     default:
-      return '이 관리자 아이디는 아직 공통 인증 계정에 연결되지 않았습니다.'
+      return '이 관리자 아이디는 아직 공통 인증 계정과 연결되지 않았습니다.'
   }
 }
 
@@ -94,7 +95,7 @@ export default function AccessConfigManager() {
     }
   }, [])
 
-    async function refreshClaimStatus() {
+  async function refreshClaimStatus() {
     const [nextClaimInfo, nextSessionInfo] = await Promise.all([
       loadAdminClaimStatus(),
       loadAdminSessionStatus(),
@@ -165,7 +166,7 @@ export default function AccessConfigManager() {
 
   async function handleClaimSharedAuth() {
     if (!claimEmail.trim()) {
-      setClaimStatus({ tone: 'error', text: '공통 인증에 사용할 이메일을 입력해 주세요.' })
+      setClaimStatus({ tone: 'error', text: '공통 인증 이메일을 입력해 주세요.' })
       return
     }
 
@@ -214,38 +215,11 @@ export default function AccessConfigManager() {
         <p className="text-sm text-gray-500">관리자 인증 설정을 불러오는 중입니다...</p>
       ) : (
         <div className="space-y-6">
-          <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
-            <div className="space-y-1">
-              <h3 className="text-base font-semibold text-gray-900">관리자 아이디</h3>
-              <p className="text-sm leading-6 text-gray-500">
-                현재 division에서 사용하는 관리자 아이디입니다. 비워 두면 PIN만으로 로그인합니다.
-              </p>
-            </div>
-
-            <input
-              type="text"
-              value={adminId}
-              onChange={(event) => setAdminId(event.target.value)}
-              placeholder="아이디를 비우면 PIN만 사용"
-              autoComplete="off"
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1a237e] focus:outline-none"
-            />
-
-            <button
-              type="button"
-              onClick={handleSaveAdminId}
-              disabled={isSavingAdminId}
-              className="rounded-xl bg-[#1a237e] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {isSavingAdminId ? '저장 중...' : '관리자 아이디 저장'}
-            </button>
-          </div>
-
           <div className="space-y-4 rounded-2xl border border-[#d8defd] bg-[#f6f8ff] p-5">
             <div className="space-y-1">
               <h3 className="text-base font-semibold text-gray-900">공통 인증 연결</h3>
               <p className="text-sm leading-6 text-gray-500">
-                기존 관리자 PIN 로그인은 유지한 채, 현재 관리자 아이디를 hankuk 공통 인증 계정에 연결합니다.
+                기존 관리자 PIN 로그인과 별개로 현재 관리자 아이디를 hankuk 공통 인증 계정과 연결합니다.
               </p>
             </div>
 
@@ -270,8 +244,8 @@ export default function AccessConfigManager() {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">Current Session</p>
               <p className="mt-2 font-semibold text-gray-900">
                 {sessionInfo?.sharedLinked
-                  ? '현재 관리자 세션이 공통 인증 사용자와 연결되어 있습니다.'
-                  : '현재 관리자 세션은 아직 공통 인증 사용자 정보를 싣고 있지 않습니다.'}
+                  ? '현재 관리자 세션은 공통 인증 사용자와 연결되어 있습니다.'
+                  : '현재 관리자 세션은 아직 공통 인증 사용자 정보를 포함하고 있지 않습니다.'}
               </p>
               <p className="mt-1 text-sm text-gray-500">
                 {sessionInfo?.sharedLinked
@@ -283,7 +257,7 @@ export default function AccessConfigManager() {
             {claimInfo?.claimable ? (
               <div className="space-y-3 rounded-2xl border border-white/70 bg-white p-4">
                 <p className="text-sm text-gray-600">
-                  이미 만든 공통 계정이 있으면 해당 이메일과 비밀번호를 입력하고, 없으면 새 계정이 생성됩니다.
+                  이미 만든 공통 계정이 있으면 해당 이메일과 비밀번호를 입력하고, 없으면 새 계정을 생성합니다.
                 </p>
 
                 <input
@@ -316,11 +290,38 @@ export default function AccessConfigManager() {
             ) : null}
           </div>
 
+          <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold text-gray-900">관리자 아이디</h3>
+              <p className="text-sm leading-6 text-gray-500">
+                현재 division에서 사용하는 관리자 아이디입니다. 비워 두면 PIN만으로 로그인됩니다.
+              </p>
+            </div>
+
+            <input
+              type="text"
+              value={adminId}
+              onChange={(event) => setAdminId(event.target.value)}
+              placeholder="아이디를 비우면 PIN만 사용"
+              autoComplete="off"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1a237e] focus:outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={handleSaveAdminId}
+              disabled={isSavingAdminId}
+              className="rounded-xl bg-[#1a237e] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {isSavingAdminId ? '저장 중...' : '관리자 아이디 저장'}
+            </button>
+          </div>
+
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
               <div className="space-y-1">
-                <h3 className="text-base font-semibold text-gray-900">직원 PIN</h3>
-                <p className="text-sm text-gray-500">스태프와 배부 직원 로그인에 사용하는 기본 PIN입니다.</p>
+                <h3 className="text-base font-semibold text-gray-900">공용 직원 PIN</h3>
+                <p className="text-sm text-gray-500">fallback 로그인용 공용 직원 PIN입니다.</p>
               </div>
 
               <input
@@ -346,14 +347,14 @@ export default function AccessConfigManager() {
                 disabled={isSavingPin}
                 className="rounded-xl bg-[#1a237e] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
               >
-                직원 PIN 저장
+                공용 직원 PIN 저장
               </button>
             </div>
 
             <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-5">
               <div className="space-y-1">
                 <h3 className="text-base font-semibold text-gray-900">관리자 PIN</h3>
-                <p className="text-sm text-gray-500">관리자 로그인에 사용하는 PIN입니다.</p>
+                <p className="text-sm text-gray-500">관리자 PIN 로그인에 사용하는 값입니다.</p>
               </div>
 
               <input
@@ -383,6 +384,8 @@ export default function AccessConfigManager() {
               </button>
             </div>
           </div>
+
+          <StaffAccountManager />
         </div>
       )}
     </ConfigPanel>

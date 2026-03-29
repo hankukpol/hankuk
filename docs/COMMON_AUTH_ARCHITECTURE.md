@@ -17,6 +17,8 @@ Last updated: 2026-03-29
   - Division admin IDs can now be claimed into shared auth from the admin config screen.
   - Admin login now reads the claimed shared identity and carries that link into the app session.
   - Claimed admins can now also log in with shared auth email and password while PIN login remains as fallback.
+  - Staff can now use named operator accounts stored in `interview.staff_accounts`.
+  - Shared staff PIN still exists as a fallback path for kiosk-style operations.
 - `interview-mate`
   - Uses `ADMIN_KEY` request validation for admin APIs.
   - Participant access is phone and reservation based, not account based.
@@ -74,10 +76,11 @@ The shared identity source should be:
 - `study-hall`
   - Best candidate for the first full shared-auth cutover because admin records already point to Supabase Auth users.
 - `interview-pass`
-  - Keep staff PIN flow for operations.
+  - Keep named staff operator accounts and shared staff PIN fallback for operations.
   - Division admin IDs are now reserved and claimable.
   - Admin PIN login now acts as an adapter session that can carry a claimed shared user ID.
   - The next larger cutover would be replacing admin PIN-first login with shared-auth-first login while keeping PIN as a recovery or kiosk path.
+  - The next staff cutover would be linking named operator accounts to shared auth users instead of stopping at app-local identity.
 - `score-predict`
   - A live adapter now claims reserved legacy identities into `auth.users` on successful login and registration.
   - Password reset and admin deletion flows now keep shared identity state in sync.
@@ -94,6 +97,7 @@ The shared identity source should be:
   - A live admin claim API and config UI for linking division admin IDs to shared auth users.
   - Admin login/bootstrap now resolve and carry shared identity linkage into the app JWT session.
   - A shared-auth-first admin login endpoint and login-screen entry point now exist for claimed admin identities.
+  - A named operator account model now exists for staff, with admin CRUD, staff login support, and operator-aware distribution logs.
 
 ## What Is Not Live Yet
 
@@ -101,5 +105,5 @@ The shared identity source should be:
 - App login pages still use their existing local mechanisms.
 - `score-predict` still issues its own NextAuth session after syncing shared memberships.
 - `study-hall` student login is still app-local.
-- `interview-pass` staff access is still shared-PIN based, not person-level operator auth.
+- `interview-pass` staff operator accounts are still app-local and not linked to shared auth yet.
 - `interview-mate` does not yet have a live shared-auth adapter.

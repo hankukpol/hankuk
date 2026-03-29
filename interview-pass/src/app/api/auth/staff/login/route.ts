@@ -1,13 +1,18 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAppConfig } from '@/lib/app-config'
 import { isStaffDistributionEnabled } from '@/lib/app-config.shared'
-import { verifyPin, getPinHash } from '@/lib/auth/pin'
-import { signJwt, STAFF_COOKIE, STAFF_TTL_SEC, cookieOptions } from '@/lib/auth/jwt'
-import { randomUUID } from 'crypto'
-import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
+import { getPinHash, verifyPin } from '@/lib/auth/pin'
+import { checkRateLimit, getClientIp, resetRateLimit } from '@/lib/auth/rateLimiter'
+import { authenticateStaffAccount } from '@/lib/auth/staff-accounts'
+import { STAFF_COOKIE, STAFF_TTL_SEC, cookieOptions, signJwt } from '@/lib/auth/jwt'
+import { getServerTenantType } from '@/lib/tenant.server'
 
-const schema = z.object({ pin: z.string().min(1) })
+const schema = z.object({
+  pin: z.string().min(1),
+  loginId: z.string().trim().max(64).optional(),
+})
 
 export async function POST(req: NextRequest) {
   const config = await getAppConfig()
@@ -24,7 +29,7 @@ export async function POST(req: NextRequest) {
     const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000)
     return NextResponse.json(
       { error: `로그인 시도 횟수를 초과했습니다. ${retryAfterSec}초 후 다시 시도해 주세요.` },
-      { status: 429, headers: { 'Retry-After': String(retryAfterSec) } }
+      { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
     )
   }
 
@@ -34,21 +39,75 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PIN을 입력해 주세요.' }, { status: 400 })
   }
 
+  const division = await getServerTenantType()
+  const loginId = parsed.data.loginId?.trim() ?? ''
+
+  if (loginId) {
+    const account = await authenticateStaffAccount({
+      division,
+      loginId,
+      pin: parsed.data.pin,
+    })
+
+    if (!account) {
+      return NextResponse.json({ error: '직원 계정 정보가 올바르지 않습니다.' }, { status: 401 })
+    }
+
+    resetRateLimit(`staff:${ip}`)
+    const sessionId = randomUUID()
+    const token = await signJwt('staff', sessionId, {
+      division,
+      staffAccountId: account.accountId,
+      staffLoginId: account.loginId,
+      staffName: account.displayName,
+      authMethod: account.authMethod,
+      sharedUserId: account.sharedUserId,
+      sharedLinked: account.sharedLinked,
+    })
+
+    const res = NextResponse.json({
+      success: true,
+      role: 'staff',
+      division,
+      authMethod: account.authMethod,
+      staffAccountId: account.accountId,
+      staffLoginId: account.loginId,
+      staffName: account.displayName,
+      sharedLinked: account.sharedLinked,
+      sharedUserId: account.sharedUserId,
+    })
+    res.cookies.set(STAFF_COOKIE, token, cookieOptions(STAFF_TTL_SEC))
+    return res
+  }
+
   const hash = await getPinHash('staff_pin_hash')
   if (!hash) {
     return NextResponse.json(
       { error: '직원 PIN이 아직 설정되지 않았습니다. 관리자에게 문의해 주세요.' },
-      { status: 503 }
+      { status: 503 },
     )
   }
+
   if (!(await verifyPin(parsed.data.pin, hash))) {
     return NextResponse.json({ error: '직원 PIN이 올바르지 않습니다.' }, { status: 401 })
   }
 
   resetRateLimit(`staff:${ip}`)
   const sessionId = randomUUID()
-  const token = await signJwt('staff', sessionId)
-  const res = NextResponse.json({ success: true, role: 'staff' })
+  const token = await signJwt('staff', sessionId, {
+    division,
+    authMethod: 'legacy_staff_pin',
+    sharedUserId: null,
+    sharedLinked: false,
+  })
+  const res = NextResponse.json({
+    success: true,
+    role: 'staff',
+    division,
+    authMethod: 'legacy_staff_pin',
+    sharedLinked: false,
+    sharedUserId: null,
+  })
   res.cookies.set(STAFF_COOKIE, token, cookieOptions(STAFF_TTL_SEC))
   return res
 }

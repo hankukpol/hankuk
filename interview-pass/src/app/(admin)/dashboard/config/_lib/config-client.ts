@@ -3,7 +3,6 @@
 import type { AppConfigSnapshot } from '@/lib/app-config.shared'
 
 export type AppConfigResponse = AppConfigSnapshot
-
 export type AppConfigPayload = Partial<AppConfigResponse>
 
 export type PopupContent = {
@@ -40,6 +39,48 @@ export type AdminSessionStatus = {
   role: 'admin'
   division: 'police' | 'fire' | null
   adminId: string
+  sharedLinked: boolean
+  sharedUserId: string | null
+}
+
+export type StaffAccountStatus = 'active' | 'inactive'
+
+export type StaffAccountSummary = {
+  id: string
+  division: 'police' | 'fire'
+  loginId: string
+  displayName: string
+  status: StaffAccountStatus
+  note: string
+  sharedUserId: string | null
+  lastLoginAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type StaffAccountCreatePayload = {
+  loginId: string
+  displayName: string
+  pin: string
+  note?: string
+}
+
+export type StaffAccountUpdatePayload = {
+  loginId?: string
+  displayName?: string
+  pin?: string
+  note?: string
+  status?: StaffAccountStatus
+}
+
+export type StaffSessionStatus = {
+  role: 'staff' | 'admin'
+  division: 'police' | 'fire' | null
+  authMethod: 'legacy_staff_pin' | 'staff_account' | 'admin_pin' | 'admin_shared' | null
+  adminId: string
+  staffAccountId: string | null
+  staffLoginId: string
+  staffName: string
   sharedLinked: boolean
   sharedUserId: string | null
 }
@@ -86,7 +127,7 @@ export async function savePopupConfig(payload: PopupContent): Promise<PopupConte
     body: JSON.stringify(payload),
   })
 
-  return readJson<PopupContent>(response, '팝업 저장에 실패했습니다.')
+  return readJson<PopupContent>(response, '팝업 설정 저장에 실패했습니다.')
 }
 
 export async function loadAdminId(): Promise<AdminIdPayload> {
@@ -132,6 +173,51 @@ export async function claimAdminSharedAuth(payload: AdminClaimPayload): Promise<
 export async function loadAdminSessionStatus(): Promise<AdminSessionStatus> {
   const response = await fetch('/api/auth/admin/session', { method: 'GET', cache: 'no-store' })
   return readJson<AdminSessionStatus>(response, '현재 관리자 세션 상태를 불러오지 못했습니다.')
+}
+
+export async function loadStaffAccounts(): Promise<StaffAccountSummary[]> {
+  const response = await fetch('/api/auth/staff/accounts', { method: 'GET', cache: 'no-store' })
+  const payload = await readJson<{ accounts?: StaffAccountSummary[] }>(
+    response,
+    '직원 계정 목록을 불러오지 못했습니다.',
+  )
+  return payload.accounts ?? []
+}
+
+export async function createStaffAccount(payload: StaffAccountCreatePayload): Promise<StaffAccountSummary> {
+  const response = await fetch('/api/auth/staff/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await readJson<{ account: StaffAccountSummary }>(
+    response,
+    '직원 계정을 만들지 못했습니다.',
+  )
+  return data.account
+}
+
+export async function updateStaffAccount(
+  accountId: string,
+  payload: StaffAccountUpdatePayload,
+): Promise<StaffAccountSummary> {
+  const response = await fetch(`/api/auth/staff/accounts/${accountId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await readJson<{ account: StaffAccountSummary }>(
+    response,
+    '직원 계정을 수정하지 못했습니다.',
+  )
+  return data.account
+}
+
+export async function loadStaffSessionStatus(): Promise<StaffSessionStatus> {
+  const response = await fetch('/api/auth/staff/session', { method: 'GET', cache: 'no-store' })
+  return readJson<StaffSessionStatus>(response, '현재 직원 세션 상태를 불러오지 못했습니다.')
 }
 
 export async function invalidateConfigCache(): Promise<{ message?: string }> {

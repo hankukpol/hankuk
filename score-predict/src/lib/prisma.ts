@@ -211,7 +211,7 @@ const prismaProxy = new Proxy(
           const method = (client as unknown as Record<string, (...methodArgs: unknown[]) => Promise<unknown>>)[
             property
           ];
-          return method(...args);
+          return Reflect.apply(method, client, args);
         };
       }
 

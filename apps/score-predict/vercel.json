@@ -1,5 +1,8 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "buildCommand": "pnpm build",
+  "ignoreCommand": "node ../../scripts/vercel-ignore.mjs score-predict",
   "regions": ["icn1"],
   "crons": [
     {

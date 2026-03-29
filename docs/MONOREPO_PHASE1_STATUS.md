@@ -14,6 +14,8 @@ Last updated: 2026-03-29
 - Vercel `Root Directory` was updated to `apps/score-predict`, `apps/study-hall`, and `apps/interview-pass`.
 - All three migrated apps were manually redeployed from the monorepo root and promoted back to production aliases.
 - The first dependency-light shared workspace package, `@hankuk/config`, is now in `packages/config`.
+- The migrated apps now ship `ignoreCommand` rules so `packages/config`, `supabase`, and root workspace config changes are treated as deployment-relevant.
+- `study-hall`, `interview-pass`, and `score-predict` now declare `pnpm build` in `vercel.json` instead of app-local `npm run build`.
 
 ## Temporary Exception
 

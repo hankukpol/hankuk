@@ -1,0 +1,93 @@
+'use client'
+
+import type { AppConfigSnapshot } from '@/lib/app-config.shared'
+
+export type AppConfigResponse = AppConfigSnapshot
+
+export type AppConfigPayload = Partial<AppConfigResponse>
+
+export type PopupContent = {
+  popup_key: string
+  title: string
+  body: string
+  is_active: boolean
+}
+
+export type AdminIdPayload = {
+  id: string
+}
+
+type ApiErrorPayload = {
+  error?: string
+  message?: string
+}
+
+async function readJson<T>(response: Response, fallbackError: string): Promise<T> {
+  const data = (await response.json().catch(() => null)) as (T & ApiErrorPayload) | null
+
+  if (!response.ok) {
+    throw new Error(data?.error ?? data?.message ?? fallbackError)
+  }
+
+  return (data ?? {}) as T
+}
+
+export async function loadAppConfig(): Promise<AppConfigResponse> {
+  const response = await fetch('/api/config/app', { method: 'GET', cache: 'no-store' })
+  return readJson<AppConfigResponse>(response, '앱 설정을 불러오지 못했습니다.')
+}
+
+export async function saveAppConfig(payload: AppConfigPayload): Promise<void> {
+  const response = await fetch('/api/config/app', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  await readJson<{ success?: boolean }>(response, '앱 설정 저장에 실패했습니다.')
+}
+
+export async function loadPopupConfigs(): Promise<PopupContent[]> {
+  const response = await fetch('/api/config/popups', { method: 'GET', cache: 'no-store' })
+  return readJson<PopupContent[]>(response, '팝업 설정을 불러오지 못했습니다.')
+}
+
+export async function savePopupConfig(payload: PopupContent): Promise<PopupContent> {
+  const response = await fetch('/api/config/popups', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  return readJson<PopupContent>(response, '팝업 저장에 실패했습니다.')
+}
+
+export async function loadAdminId(): Promise<AdminIdPayload> {
+  const response = await fetch('/api/auth/admin/id', { method: 'GET', cache: 'no-store' })
+  return readJson<AdminIdPayload>(response, '관리자 아이디를 불러오지 못했습니다.')
+}
+
+export async function saveAdminId(payload: AdminIdPayload): Promise<void> {
+  const response = await fetch('/api/auth/admin/id', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  await readJson<{ ok?: boolean }>(response, '관리자 아이디 저장에 실패했습니다.')
+}
+
+export async function savePin(role: 'staff' | 'admin', pin: string): Promise<void> {
+  const response = await fetch(`/api/auth/${role}/pin`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin }),
+  })
+
+  await readJson<{ ok?: boolean }>(response, 'PIN 저장에 실패했습니다.')
+}
+
+export async function invalidateConfigCache(): Promise<{ message?: string }> {
+  const response = await fetch('/api/config/cache/invalidate', { method: 'POST' })
+  return readJson<{ message?: string }>(response, '캐시 초기화에 실패했습니다.')
+}

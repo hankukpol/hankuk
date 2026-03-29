@@ -1,0 +1,577 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ExamType {
+  PUBLIC           // 공채
+  CAREER           // 경찰: 경행경채
+  CAREER_RESCUE    // 소방: 구조 경채 (남자만)
+  CAREER_ACADEMIC  // 소방: 소방관련학과 경채 (남/여/양성)
+  CAREER_EMT       // 소방: 구급 경채 (소방학개론+응급처치학개론)
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum BonusType {
+  NONE
+  VETERAN_5
+  VETERAN_10
+  HERO_3
+  HERO_5
+}
+
+enum DifficultyRatingLevel {
+  VERY_EASY
+  EASY
+  NORMAL
+  HARD
+  VERY_HARD
+}
+
+enum SubmissionScoringStatus {
+  PENDING
+  SCORED
+}
+
+enum PassCutSnapshotStatus {
+  READY
+  COLLECTING_LOW_PARTICIPATION
+  COLLECTING_UNSTABLE
+  COLLECTING_MISSING_APPLICANT_COUNT
+  COLLECTING_INSUFFICIENT_SAMPLE
+}
+
+model User {
+  id              Int          @id @default(autoincrement())
+  name            String
+  email           String?      @unique
+  phone           String       @unique
+  contactPhone    String       @default("") // 경찰: 문자 수신용 연락처 (필수)
+  password        String
+  role            Role         @default(USER)
+  createdAt       DateTime     @default(now())
+  termsAgreedAt   DateTime?    // 서비스 이용약관 동의 일시
+  privacyAgreedAt DateTime?    // 개인정보 수집·이용 동의 일시
+  submissions     Submission[]
+  comments        Comment[]
+  answerKeyLogs   AnswerKeyLog[]
+  rescoreEventsCreated  RescoreEvent[]
+  passCutReleasesCreated PassCutRelease[]
+  rescoreDetails  RescoreDetail[]
+  finalPredictions FinalPrediction[]
+  submissionLogs  SubmissionLog[]
+  passwordResetTokens  PasswordResetToken[]
+  recoveryCodes   RecoveryCode[]
+  visitorLogs     VisitorLog[]
+  preRegistrations PreRegistration[]
+}
+
+model PasswordResetToken {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  tokenHash        String   @unique
+  expiresAt        DateTime
+  usedAt           DateTime?
+  requestedIp      String?
+  requestedAgent   String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model RecoveryCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@index([codeHash])
+}
+
+model Exam {
+  id               Int               @id @default(autoincrement())
+  name             String
+  year             Int
+  round            Int
+  examDate         DateTime
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  answerKeys       AnswerKey[]
+  answerKeyLogs    AnswerKeyLog[]
+  submissions      Submission[]
+  comments         Comment[]
+  rescoreEvents    RescoreEvent[]
+  passCutReleases  PassCutRelease[]
+  quotas           ExamRegionQuota[]
+  preRegistrations PreRegistration[] // 경찰: 사전등록
+
+  @@unique([year, round])
+}
+
+model Region {
+  id               Int                @id @default(autoincrement())
+  name             String             @unique
+  isActive         Boolean            @default(true)
+  submissions      Submission[]
+  passCutSnapshots PassCutSnapshot[]
+  quotas           ExamRegionQuota[]
+  preRegistrations PreRegistration[] // 경찰: 사전등록
+}
+
+model ExamRegionQuota {
+  id                          Int    @id @default(autoincrement())
+  examId                      Int
+  regionId                    Int
+  // ── 경찰 전용 필드 ──
+  recruitCount                Int    @default(0) // 경찰: 공채 모집인원
+  recruitCountCareer          Int    @default(0) // 경찰: 경행경채 모집인원
+  applicantCount              Int?               // 경찰: 공채 출원인원
+  applicantCountCareer        Int?               // 경찰: 경행경채 출원인원
+  examNumberStartCareer       String?            // 경찰: 경행경채 응시번호 시작
+  examNumberEndCareer         String?            // 경찰: 경행경채 응시번호 끝
+  // ── 소방 전용 필드 (성별 분리 모집) ──
+  recruitPublicMale           Int    @default(0)
+  recruitPublicFemale         Int    @default(0)
+  recruitRescue               Int    @default(0) // 구조 (남자만)
+  recruitAcademicMale         Int    @default(0)
+  recruitAcademicFemale       Int    @default(0)
+  recruitAcademicCombined     Int    @default(0) // 양성
+  recruitEmtMale              Int    @default(0)
+  recruitEmtFemale            Int    @default(0)
+  applicantPublicMale         Int?
+  applicantPublicFemale       Int?
+  applicantRescue             Int?
+  applicantAcademicMale       Int?
+  applicantAcademicFemale     Int?
+  applicantAcademicCombined   Int?
+  applicantEmtMale            Int?
+  applicantEmtFemale          Int?
+  // ── 응시번호 범위 (소방: 직렬/성별별) ──
+  examNumberStartPublicMale              String?
+  examNumberEndPublicMale                String?
+  examNumberStartPublicFemale            String?
+  examNumberEndPublicFemale              String?
+  examNumberStartCareerRescue            String?
+  examNumberEndCareerRescue              String?
+  examNumberStartCareerAcademicMale      String?
+  examNumberEndCareerAcademicMale        String?
+  examNumberStartCareerAcademicFemale    String?
+  examNumberEndCareerAcademicFemale      String?
+  examNumberStartCareerAcademicCombined  String?
+  examNumberEndCareerAcademicCombined    String?
+  examNumberStartCareerEmtMale           String?
+  examNumberEndCareerEmtMale             String?
+  examNumberStartCareerEmtFemale         String?
+  examNumberEndCareerEmtFemale           String?
+  // ── 공통 필드 ──
+  examNumberStart             String?            // 공통: 공채 응시번호 시작
+  examNumberEnd               String?            // 공통: 공채 응시번호 끝
+  exam                        Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  region                      Region @relation(fields: [regionId], references: [id], onDelete: Restrict)
+
+  @@unique([examId, regionId])
+  @@map("exam_region_quotas")
+}
+
+model Subject {
+  id               Int            @id @default(autoincrement())
+  name             String
+  questionCount    Int
+  pointPerQuestion Float
+  maxScore         Float
+  examType         ExamType
+  answerKeys       AnswerKey[]
+  answerKeyLogs    AnswerKeyLog[]
+  userAnswers      UserAnswer[]
+  subjectScores    SubjectScore[]
+  difficultyRatings DifficultyRating[]
+
+  @@unique([name, examType])
+}
+
+model AnswerKey {
+  id             Int     @id @default(autoincrement())
+  examId         Int
+  subjectId      Int
+  questionNumber Int
+  correctAnswer  Int
+  isConfirmed    Boolean @default(false)
+  exam           Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject        Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([examId, subjectId, questionNumber])
+}
+
+model AnswerKeyLog {
+  id             Int      @id @default(autoincrement())
+  examId         Int
+  examType       ExamType
+  subjectId      Int
+  questionNumber Int
+  oldAnswer      Int?
+  newAnswer      Int
+  changedBy      Int
+  createdAt      DateTime @default(now())
+  exam           Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject        Subject  @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  admin          User     @relation(fields: [changedBy], references: [id], onDelete: Restrict)
+
+  @@index([examId, examType, createdAt])
+  @@index([subjectId, questionNumber])
+}
+
+model Submission {
+  id            Int            @id @default(autoincrement())
+  examId        Int
+  userId        Int
+  regionId      Int
+  examType      ExamType
+  gender        Gender
+  examNumber    String
+  totalScore    Float
+  bonusType     BonusType      @default(NONE)
+  bonusRate     Float          @default(0)
+  certificateBonus Float        @default(0) // 자격증 가산점 (0/2/4/5, 최종합격 시 적용)
+  finalScore    Float
+  scoringStatus SubmissionScoringStatus @default(SCORED)
+  editCount         Int            @default(0)
+  isSuspicious      Boolean        @default(false)
+  suspiciousReason  String?        @db.Text
+  submitDurationMs  Int?           // 페이지 로드 후 제출까지 소요시간 (밀리초)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now()) @updatedAt
+  exam          Exam           @relation(fields: [examId], references: [id], onDelete: Restrict)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  region        Region         @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  userAnswers   UserAnswer[]
+  subjectScores SubjectScore[]
+  difficultyRatings DifficultyRating[]
+  rescoreDetails RescoreDetail[]
+  finalPrediction FinalPrediction?
+  logs          SubmissionLog[]
+
+  @@unique([userId, examId])
+  @@unique([examId, regionId, examNumber])
+  @@index([examId, regionId, examType])
+  @@index([examId, examType, finalScore])
+  @@index([examId, regionId, examType, gender, isSuspicious], name: "idx_sub_rank_suspicious")
+  @@index([examId, regionId, examType, gender, finalScore], name: "idx_sub_rank_score")
+  @@index([examId, regionId, examType, isSuspicious])        // 경찰: gender 없는 인덱스
+  @@index([examId, regionId, examType, finalScore])           // 경찰: gender 없는 score 인덱스
+  @@index([examId, regionId, examType, totalScore])           // 경찰: totalScore 인덱스
+  @@index([examId, createdAt])                                 // 경찰: 생성일 인덱스
+}
+
+model UserAnswer {
+  id             Int        @id @default(autoincrement())
+  submissionId   Int
+  subjectId      Int
+  questionNumber Int
+  selectedAnswer Int
+  isCorrect      Boolean
+  submission     Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  subject        Subject    @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([submissionId, subjectId, questionNumber])
+}
+
+model SubjectScore {
+  id           Int        @id @default(autoincrement())
+  submissionId Int
+  subjectId    Int
+  rawScore     Float
+  isFailed     Boolean
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  subject      Subject    @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([submissionId, subjectId])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  examId    Int
+  userId    Int
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([examId, createdAt])
+  @@index([userId])
+}
+
+model SiteSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Notice {
+  id        Int      @id @default(autoincrement())
+  tenantType String  @default("fire") @db.VarChar(16)
+  title     String
+  content   String   @db.Text
+  isActive  Boolean  @default(true)
+  priority  Int      @default(0)
+  startAt   DateTime?
+  endAt     DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([tenantType, isActive, priority, createdAt])
+}
+
+model Faq {
+  id        Int      @id @default(autoincrement())
+  tenantType String  @default("fire") @db.VarChar(16)
+  question  String
+  answer    String   @db.Text
+  isActive  Boolean  @default(true)
+  priority  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([tenantType, isActive, priority, updatedAt])
+}
+
+model Banner {
+  id               Int      @id @default(autoincrement())
+  tenantType       String   @default("fire") @db.VarChar(16)
+  zone             String
+  imageUrl         String?
+  mobileImageUrl   String?
+  linkUrl          String?
+  altText     String   @default("")
+  htmlContent String?  @db.Text
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([zone, isActive])
+  @@index([tenantType, zone, isActive, sortOrder])
+}
+
+model EventSection {
+  id          Int      @id @default(autoincrement())
+  tenantType  String   @default("fire") @db.VarChar(16)
+  title       String
+  description String?  @db.Text
+  imageUrl    String?
+  linkUrl     String?
+  linkText    String?
+  bgColor     String   @default("#ffffff")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  startAt     DateTime?
+  endAt       DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([tenantType, isActive, sortOrder])
+}
+
+model DifficultyRating {
+  id           Int        @id @default(autoincrement())
+  submissionId Int
+  subjectId    Int
+  rating       DifficultyRatingLevel
+  createdAt    DateTime   @default(now())
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  subject      Subject    @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([submissionId, subjectId])
+  @@index([subjectId, rating])
+}
+
+// One rescore run metadata.
+model RescoreEvent {
+  id        Int      @id @default(autoincrement())
+  examId    Int
+  examType  ExamType
+  reason    String?  @db.Text
+  summary   String   @db.Text
+  createdBy Int
+  createdAt DateTime @default(now())
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  admin     User     @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  details   RescoreDetail[]
+
+  @@index([examId, createdAt])
+}
+
+// Per-submission score deltas recorded for a rescore event.
+model RescoreDetail {
+  id             Int      @id @default(autoincrement())
+  rescoreEventId Int
+  submissionId   Int
+  userId         Int
+  oldTotalScore  Float
+  newTotalScore  Float
+  oldFinalScore  Float
+  newFinalScore  Float
+  oldRank        Int?
+  newRank        Int?
+  scoreDelta     Float
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  rescoreEvent   RescoreEvent @relation(fields: [rescoreEventId], references: [id], onDelete: Cascade)
+  submission     Submission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([rescoreEventId, submissionId])
+  @@index([userId, isRead])
+  @@index([submissionId])
+}
+
+// 1st~4th pass-cut release snapshots.
+model PassCutRelease {
+  id               Int      @id @default(autoincrement())
+  examId           Int
+  releaseNumber    Int
+  releasedAt       DateTime @default(now())
+  participantCount Int
+  createdBy        Int
+  memo             String?  @db.Text
+  exam             Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  admin            User     @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  snapshots        PassCutSnapshot[]
+
+  @@unique([examId, releaseNumber])
+  @@index([examId])
+}
+
+// Region + examType row captured at release time.
+model PassCutSnapshot {
+  id                  Int      @id @default(autoincrement())
+  passCutReleaseId    Int
+  regionId            Int
+  examType            ExamType
+  gender              Gender?           // 공채: MALE/FEMALE, 경채: null
+  status              PassCutSnapshotStatus @default(READY)
+  statusReason        String?  @db.Text
+  applicantCount      Int?
+  targetParticipantCount Int?
+  coverageRate        Float?
+  stabilityScore      Float?
+  participantCount    Int
+  recruitCount        Int
+  averageScore        Float?
+  oneMultipleCutScore Float?
+  sureMinScore        Float?
+  likelyMinScore      Float?
+  possibleMinScore    Float?
+  passCutRelease      PassCutRelease @relation(fields: [passCutReleaseId], references: [id], onDelete: Cascade)
+  region              Region         @relation(fields: [regionId], references: [id], onDelete: Restrict)
+
+  @@unique([passCutReleaseId, regionId, examType, gender])
+  @@index([passCutReleaseId])
+}
+
+// Reserved for post-written/final prediction phase.
+model FinalPrediction {
+  id             Int      @id @default(autoincrement())
+  submissionId   Int      @unique
+  userId         Int
+  fitnessScore   Float?
+  interviewScore Float?
+  interviewGrade String?
+  finalScore     Float?
+  finalRank      Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  submission     Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// 일별 방문자 로그 (로그인 + 비회원 모두, 하루 1회)
+// - 로그인 사용자: userId 기록, anonymousId는 null
+// - 비회원: anonymousId(UUID) 기록, userId는 null
+model VisitorLog {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @db.Date          // 방문 날짜 (시간 제외)
+  userId      Int?                       // 로그인 사용자 ID (비회원은 null)
+  anonymousId String?  @db.VarChar(36)  // 비회원 UUID (로그인 사용자는 null)
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([date, userId])        // 로그인 사용자: 하루 1회
+  @@unique([date, anonymousId])   // 비회원: 하루 1회
+  @@index([date])
+  @@map("visitor_logs")
+}
+
+// 제출/수정 감사 로그
+model SubmissionLog {
+  id               Int        @id @default(autoincrement())
+  submissionId     Int
+  userId           Int
+  action           String     // "CREATE" | "UPDATE"
+  ipAddress        String?
+  submitDurationMs Int?
+  changedFields    String?    @db.Text  // JSON: 변경된 필드 목록
+  createdAt        DateTime   @default(now())
+  submission       Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([userId, createdAt])
+}
+
+// ── 경찰 전용 모델 ───────────────────────────────────────
+// 사전등록 (경찰: 시험 전 응시번호 등록)
+model PreRegistration {
+  id         Int      @id @default(autoincrement())
+  examId     Int
+  userId     Int
+  regionId   Int
+  examType   ExamType
+  gender     Gender
+  examNumber String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  region     Region   @relation(fields: [regionId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, examId])
+  @@unique([examId, regionId, examNumber])
+  @@index([examId, regionId, examType])
+}
+
+// 경찰: 인증 레이트 리밋 버킷 (persistent)
+model AuthRateLimitBucket {
+  id              Int      @id @default(autoincrement())
+  namespace       String
+  key             String
+  count           Int      @default(0)
+  windowStartedAt DateTime
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([namespace, key])
+  @@index([expiresAt])
+}

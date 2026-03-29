@@ -1,0 +1,571 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum StudentStatus {
+  ACTIVE
+  ON_LEAVE
+  WITHDRAWN
+  GRADUATED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  TARDY
+  ABSENT
+  EXCUSED
+  HOLIDAY
+  HALF_HOLIDAY
+  NOT_APPLICABLE
+}
+
+enum PointCategory {
+  ATTENDANCE
+  BEHAVIOR
+  EXAM
+  LIFE
+  OTHER
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  ASSISTANT
+}
+
+enum LeaveType {
+  HOLIDAY
+  HALF_DAY
+  HEALTH
+  OUTING
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  USED
+}
+
+enum ResultType {
+  WARNING_1
+  WARNING_2
+  INTERVIEW
+  WITHDRAWAL
+}
+
+enum ExamScheduleType {
+  WRITTEN
+  PHYSICAL
+  INTERVIEW
+  RESULT
+  OTHER
+}
+
+enum ExamCategory {
+  MORNING
+  REGULAR
+}
+
+enum PhoneSubmissionStatus {
+  SUBMITTED
+  NOT_SUBMITTED
+  RENTED
+}
+
+model Division {
+  id                String            @id @default(cuid())
+  name              String
+  slug              String            @unique
+  fullName          String            @map("full_name")
+  color             String
+  isActive          Boolean           @default(true) @map("is_active")
+  displayOrder      Int               @default(0) @map("display_order")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  students          Student[]
+  periods           Period[]
+  pointRules        PointRule[]
+  paymentCategories PaymentCategory[]
+  tuitionPlans      TuitionPlan[]
+  examTypes         ExamType[]
+  studyRooms        StudyRoom[]
+  seats             Seat[]
+  settings          DivisionSettings?
+  admins            Admin[]
+  announcements     Announcement[]
+  examSchedules     ExamSchedule[]
+  phoneSubmissions  PhoneSubmission[]
+
+  @@map("divisions")
+}
+
+model Student {
+  id                String            @id @default(cuid())
+  divisionId        String            @map("division_id")
+  name              String
+  studentNumber     String            @map("student_number")
+  studyTrack        String?           @map("study_track")
+  phone             String?
+  seatId            String?           @unique @map("seat_id")
+  courseStartDate   DateTime?         @map("course_start_date") @db.Date
+  courseEndDate     DateTime?         @map("course_end_date") @db.Date
+  tuitionPlanId     String?           @map("tuition_plan_id")
+  tuitionAmount     Int?              @map("tuition_amount")
+  status            StudentStatus     @default(ACTIVE)
+  enrolledAt        DateTime          @default(now()) @map("enrolled_at")
+  withdrawnAt       DateTime?         @map("withdrawn_at")
+  withdrawnNote     String?           @map("withdrawn_note")
+  memo              String?
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  division          Division          @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  seat              Seat?             @relation(fields: [seatId], references: [id], onDelete: SetNull)
+  tuitionPlan       TuitionPlan?      @relation(fields: [tuitionPlanId], references: [id], onDelete: SetNull)
+  attendanceRecords Attendance[]
+  pointRecords      PointRecord[]
+  leavePermissions  LeavePermission[]
+  interviews        Interview[]
+  payments          Payment[]
+  examScores        ExamScore[]
+  morningExamScores MorningExamScore[]
+  scoreTargets      ScoreTarget[]
+  phoneSubmissions  PhoneSubmission[]
+
+  @@unique([divisionId, studentNumber])
+  @@index([divisionId])
+  @@index([divisionId, status])
+  @@index([tuitionPlanId])
+  @@map("students")
+}
+
+model Period {
+  id                String       @id @default(cuid())
+  divisionId        String       @map("division_id")
+  name              String
+  label             String?
+  displayOrder      Int          @map("display_order")
+  startTime         String       @map("start_time")
+  endTime           String       @map("end_time")
+  isMandatory       Boolean      @default(true) @map("is_mandatory")
+  isActive          Boolean      @default(true) @map("is_active")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+  division          Division          @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  attendanceRecords Attendance[]
+  phoneSubmissions  PhoneSubmission[]
+
+  @@unique([divisionId, displayOrder])
+  @@index([divisionId])
+  @@map("periods")
+}
+
+model Attendance {
+  id           String           @id @default(cuid())
+  studentId    String           @map("student_id")
+  periodId     String           @map("period_id")
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  reason       String?
+  checkInTime  DateTime?        @map("check_in_time")
+  recordedById String?          @map("recorded_by_id")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  period       Period           @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  recordedBy   Admin?           @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, periodId, date])
+  @@index([studentId, date])
+  @@index([periodId, date])
+  @@map("attendance")
+}
+
+model PointRule {
+  id           String        @id @default(cuid())
+  divisionId   String        @map("division_id")
+  category     PointCategory
+  name         String
+  points       Int
+  description  String?
+  isActive     Boolean       @default(true) @map("is_active")
+  displayOrder Int           @default(0) @map("display_order")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  division     Division      @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pointRecords PointRecord[]
+
+  @@index([divisionId])
+  @@map("point_rules")
+}
+
+model PointRecord {
+  id           String     @id @default(cuid())
+  studentId    String     @map("student_id")
+  ruleId       String?    @map("rule_id")
+  points       Int
+  date         DateTime   @default(now())
+  notes        String?
+  recordedById String     @map("recorded_by_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  rule         PointRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  recordedBy   Admin      @relation("PointRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([studentId, date])
+  @@index([ruleId])
+  @@index([recordedById])
+  @@map("point_records")
+}
+
+model LeavePermission {
+  id           String      @id @default(cuid())
+  studentId    String      @map("student_id")
+  type         LeaveType
+  date         DateTime    @db.Date
+  reason       String?
+  approvedById String      @map("approved_by_id")
+  status       LeaveStatus
+  createdAt    DateTime    @default(now()) @map("created_at")
+  student      Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  approvedBy   Admin       @relation("LeaveApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@index([studentId, date])
+  @@index([approvedById])
+  @@map("leave_permissions")
+}
+
+model Interview {
+  id          String     @id @default(cuid())
+  studentId   String     @map("student_id")
+  date        DateTime
+  trigger     String?
+  reason      String
+  content     String?
+  result      String?
+  resultType  ResultType @map("result_type")
+  createdById String     @map("created_by_id")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  student     Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy   Admin      @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([studentId, date])
+  @@index([createdById])
+  @@map("interviews")
+}
+
+model Payment {
+  id            String          @id @default(cuid())
+  studentId     String          @map("student_id")
+  paymentTypeId String          @map("payment_type_id")
+  amount        Int
+  paymentDate   DateTime        @map("payment_date") @db.Date
+  method        String?
+  notes         String?
+  recordedById  String          @map("recorded_by_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  student       Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  paymentType   PaymentCategory @relation(fields: [paymentTypeId], references: [id], onDelete: Restrict)
+  recordedBy    Admin           @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([studentId, paymentDate])
+  @@index([paymentTypeId])
+  @@index([recordedById])
+  @@map("payments")
+}
+
+model PaymentCategory {
+  id           String    @id @default(cuid())
+  divisionId   String    @map("division_id")
+  name         String
+  isActive     Boolean   @default(true) @map("is_active")
+  displayOrder Int       @default(0) @map("display_order")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  division     Division  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@unique([divisionId, name])
+  @@index([divisionId])
+  @@map("payment_categories")
+}
+
+model TuitionPlan {
+  id           String    @id @default(cuid())
+  divisionId   String    @map("division_id")
+  name         String
+  durationDays Int?      @map("duration_days")
+  amount       Int
+  description  String?
+  isActive     Boolean   @default(true) @map("is_active")
+  displayOrder Int       @default(0) @map("display_order")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  division     Division  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  students     Student[]
+
+  @@unique([divisionId, name])
+  @@index([divisionId])
+  @@map("tuition_plans")
+}
+
+model ExamType {
+  id            String             @id @default(cuid())
+  divisionId    String             @map("division_id")
+  name          String
+  category      ExamCategory       @default(REGULAR)
+  studyTrack    String?            @map("study_track")
+  isActive      Boolean            @default(true) @map("is_active")
+  displayOrder  Int                @default(0) @map("display_order")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  division      Division           @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  subjects      ExamSubject[]
+  scores        ExamScore[]
+  morningScores MorningExamScore[]
+  scoreTargets  ScoreTarget[]
+
+  @@index([divisionId])
+  @@index([divisionId, category])
+  @@map("exam_types")
+}
+
+model ExamSubject {
+  id            String             @id @default(cuid())
+  examTypeId    String             @map("exam_type_id")
+  name          String
+  totalItems    Int?               @map("total_items")
+  pointsPerItem Float?             @map("points_per_item")
+  displayOrder  Int                @default(0) @map("display_order")
+  isActive      Boolean            @default(true) @map("is_active")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  examType      ExamType           @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
+  morningScores MorningExamScore[]
+
+  @@index([examTypeId])
+  @@map("exam_subjects")
+}
+
+model ExamScore {
+  id           String    @id @default(cuid())
+  studentId    String    @map("student_id")
+  examTypeId   String    @map("exam_type_id")
+  examRound    Int       @map("exam_round")
+  examDate     DateTime? @map("exam_date") @db.Date
+  scores       Json
+  totalScore   Int?      @map("total_score")
+  rankInClass  Int?      @map("rank_in_class")
+  notes        String?
+  recordedById String    @map("recorded_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  examType     ExamType  @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
+  recordedBy   Admin     @relation("ExamRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, examTypeId, examRound])
+  @@index([studentId])
+  @@index([examTypeId, examRound])
+  @@index([recordedById])
+  @@map("exam_scores")
+}
+
+model MorningExamScore {
+  id           String      @id @default(cuid())
+  studentId    String      @map("student_id")
+  examTypeId   String      @map("exam_type_id")
+  subjectId    String      @map("subject_id")
+  examDate     DateTime    @map("exam_date") @db.Date
+  score        Int?
+  weekNumber   Int         @map("week_number")
+  weekYear     Int         @map("week_year")
+  notes        String?
+  recordedById String      @map("recorded_by_id")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  student      Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  examType     ExamType    @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
+  subject      ExamSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  recordedBy   Admin       @relation("MorningExamRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, examTypeId, subjectId, examDate])
+  @@index([examTypeId, examDate])
+  @@index([examTypeId, weekYear, weekNumber])
+  @@index([studentId, weekYear, weekNumber])
+  @@index([recordedById])
+  @@map("morning_exam_scores")
+}
+
+model ScoreTarget {
+  id          String   @id @default(cuid())
+  studentId   String   @map("student_id")
+  examTypeId  String   @map("exam_type_id")
+  targetScore Int      @map("target_score")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  examType    ExamType @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, examTypeId])
+  @@index([examTypeId])
+  @@map("score_targets")
+}
+
+model StudyRoom {
+  id           String   @id @default(cuid())
+  divisionId   String   @map("division_id")
+  name         String
+  columns      Int      @default(9)
+  rows         Int      @default(6)
+  aisleColumns Json     @default("[]") @map("aisle_columns")
+  isActive     Boolean  @default(true) @map("is_active")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  division     Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  seats        Seat[]
+
+  @@unique([divisionId, name])
+  @@index([divisionId])
+  @@map("study_rooms")
+}
+
+model Seat {
+  id          String    @id @default(cuid())
+  divisionId  String    @map("division_id")
+  studyRoomId String    @map("study_room_id")
+  label       String
+  positionX   Int       @map("position_x")
+  positionY   Int       @map("position_y")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  division    Division  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  studyRoom   StudyRoom @relation(fields: [studyRoomId], references: [id], onDelete: Cascade)
+  student     Student?
+
+  // @@unique([studyRoomId, label]) -- SQL partial unique index로 관리 (빈 label 허용)
+  @@unique([studyRoomId, positionX, positionY])
+  @@index([divisionId])
+  @@index([studyRoomId])
+  @@map("seats")
+}
+
+model DivisionSettings {
+  id                       String   @id @default(cuid())
+  divisionId               String   @unique @map("division_id")
+  warnLevel1               Int      @default(10) @map("warn_level1")
+  warnLevel2               Int      @default(20) @map("warn_level2")
+  warnInterview            Int      @default(25) @map("warn_interview")
+  warnWithdraw             Int      @default(30) @map("warn_withdraw")
+  warnMsgLevel1            String?  @map("warn_msg_level1")
+  warnMsgLevel2            String?  @map("warn_msg_level2")
+  warnMsgInterview         String?  @map("warn_msg_interview")
+  warnMsgWithdraw          String?  @map("warn_msg_withdraw")
+  tardyMinutes             Int      @default(20) @map("tardy_minutes")
+  assistantPastEditAllowed Boolean  @default(false) @map("assistant_past_edit_allowed")
+  assistantPastEditDays    Int      @default(0) @map("assistant_past_edit_days")
+  holidayLimit             Int      @default(1) @map("holiday_limit")
+  halfDayLimit             Int      @default(2) @map("half_day_limit")
+  healthLimit              Int      @default(1) @map("health_limit")
+  holidayUnusedPts         Int      @default(5) @map("holiday_unused_pts")
+  halfDayUnusedPts         Int      @default(2) @map("half_day_unused_pts")
+  operatingDays            Json     @default("{}") @map("operating_days")
+  studyTracks              Json     @default("[]") @map("study_tracks")
+  featureFlags             Json     @default("{}") @map("feature_flags")
+  perfectAttendancePtsEnabled Boolean @default(false) @map("perfect_attendance_pts_enabled")
+  perfectAttendancePts     Int      @default(0) @map("perfect_attendance_pts")
+  expirationWarningDays    Int      @default(14) @map("expiration_warning_days")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  division                 Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+
+  @@map("division_settings")
+}
+
+model Admin {
+  id                   String            @id @default(cuid())
+  userId               String            @unique @map("user_id")
+  name                 String
+  role                 AdminRole
+  divisionId           String?           @map("division_id")
+  isActive             Boolean           @default(true) @map("is_active")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  division             Division?         @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  attendanceRecords    Attendance[]      @relation("AttendanceRecordedBy")
+  pointRecords         PointRecord[]     @relation("PointRecordedBy")
+  leaveApprovals       LeavePermission[] @relation("LeaveApprovedBy")
+  interviewsCreated    Interview[]       @relation("InterviewCreatedBy")
+  paymentsRecorded     Payment[]         @relation("PaymentRecordedBy")
+  examScoresRecorded         ExamScore[]         @relation("ExamRecordedBy")
+  morningExamScoresRecorded  MorningExamScore[]  @relation("MorningExamRecordedBy")
+  announcementsCreated       Announcement[]      @relation("AnnouncementCreatedBy")
+  examSchedulesCreated ExamSchedule[]    @relation("ExamScheduleCreatedBy")
+  phoneSubmissionsRecorded PhoneSubmission[] @relation("PhoneSubmissionRecordedBy")
+
+  @@index([divisionId])
+  @@map("admins")
+}
+
+model Announcement {
+  id          String    @id @default(cuid())
+  divisionId  String?   @map("division_id")
+  title       String
+  content     String
+  isPinned    Boolean   @default(false) @map("is_pinned")
+  publishedAt DateTime? @map("published_at")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  division    Division? @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  createdBy   Admin     @relation("AnnouncementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([divisionId])
+  @@index([createdById])
+  @@index([publishedAt])
+  @@map("announcements")
+}
+
+model ExamSchedule {
+  id          String           @id @default(cuid())
+  divisionId  String           @map("division_id")
+  name        String
+  type        ExamScheduleType
+  examDate    DateTime         @map("exam_date") @db.Date
+  description String?
+  isActive    Boolean          @default(true) @map("is_active")
+  createdById String           @map("created_by_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  division    Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  createdBy   Admin            @relation("ExamScheduleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([divisionId, examDate])
+  @@index([createdById])
+  @@map("exam_schedules")
+}
+
+model PhoneSubmission {
+  id           String                @id @default(cuid())
+  divisionId   String                @map("division_id")
+  studentId    String                @map("student_id")
+  periodId     String                @map("period_id")
+  date         DateTime              @db.Date
+  status       PhoneSubmissionStatus @default(SUBMITTED)
+  rentalNote   String?               @map("rental_note")
+  recordedById String                @map("recorded_by_id")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  division     Division              @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  student      Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  period       Period                @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  recordedBy   Admin                 @relation("PhoneSubmissionRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, date, periodId])
+  @@index([divisionId, date])
+  @@map("phone_submissions")
+}

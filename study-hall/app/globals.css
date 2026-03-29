@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root {
+  --background: #F7F7F5;
+  --foreground: #191F28;
+  --muted: #6B7684;
+  --border: #EBEBEB;
+  --card: #ffffff;
+  --division-color: #1b4fbb;
+  --division-color-rgb: 27 79 187;
+  --division-color-light: #ebf0fb;
+  --division-color-dark: #0d2d6b;
+  --division-color-soft: #eef4ff;
+  --division-color-muted: #f8faff;
+  --division-color-strong: #183f92;
+  --division-hero-end: #2858c9;
+  --division-on-accent: #ffffff;
+  --division-on-accent-muted: rgb(255 255 255 / 0.72);
+  --division-accent-surface: rgb(255 255 255 / 0.15);
+  --division-accent-surface-soft: rgb(255 255 255 / 0.08);
+  --division-accent-border: rgb(255 255 255 / 0.2);
+  --division-accent-outline: rgb(255 255 255 / 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-pretendard), 'Pretendard', sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    @apply transition-transform duration-100 ease-out active:scale-[0.98];
+  }
+
+  table {
+    @apply border-collapse w-full text-sm bg-white;
+  }
+  
+  th {
+    @apply bg-white font-semibold text-slate-800 border-t-2 border-t-slate-800 border-b border-gray-200 px-4 py-3 text-left;
+  }
+  
+  td {
+    @apply border-b border-gray-100 px-4 py-3 text-slate-700;
+  }
+
+  tbody tr:hover td {
+    @apply bg-gray-50;
+  }
+} 

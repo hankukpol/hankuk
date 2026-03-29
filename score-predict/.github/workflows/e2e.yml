@@ -1,0 +1,83 @@
+name: E2E Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main", "master"]
+  push:
+    branches: ["main", "master"]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?schema=public
+      NEXTAUTH_SECRET: fire-e2e-secret-key
+      NEXTAUTH_URL: http://localhost:3200
+      CRON_SECRET: fire-exam-cron-2026-secret
+      AUTO_PASSCUT_CRON_SECRET: fire-exam-cron-2026-secret
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key
+      SUPABASE_STORAGE_BUCKET: uploads
+      ADMIN_PHONE: 010-0000-0000
+      ADMIN_PASSWORD: Admin2026!
+      E2E_SERVER_MODE: prod
+      UI_MIN_SUBMIT_DURATION_MS: "121000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Push Prisma schema
+        run: npx prisma db push
+
+      - name: Seed database
+        run: npx prisma db seed
+
+      - name: Build app
+        run: npm run build
+
+      - name: Run API E2E
+        run: npm run test:e2e:api
+
+      - name: Run UI E2E
+        run: npm run test:e2e:ui
+
+      - name: Upload UI E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-artifacts
+          path: artifacts/ui-e2e
+          if-no-files-found: ignore

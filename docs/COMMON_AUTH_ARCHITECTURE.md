@@ -28,6 +28,7 @@ The shared identity source should be:
 3. `public.user_app_memberships`
 4. `public.user_division_memberships`
 5. `public.user_login_aliases`
+6. `public.identity_claim_reservations`
 
 ## Shared Public Tables
 
@@ -43,6 +44,9 @@ The shared identity source should be:
 - `public.user_login_aliases`
   - Keeps legacy identifiers that need to survive migration.
   - Example: phone number, username, student number, admin id
+- `public.identity_claim_reservations`
+  - Holds reserved legacy identifiers before a real shared auth user exists.
+  - Example: `interview-pass` admin IDs that still log in with PIN only
 
 ## Phase Order
 
@@ -51,7 +55,8 @@ The shared identity source should be:
   - Keep all existing app auth flows running.
 2. Backfill
   - Backfill current admin and staff identities from app schemas into shared membership tables.
-  - Do this app by app, starting with `study-hall` and `interview-pass`.
+  - Do this app by app, starting with `study-hall`.
+  - For apps that do not yet have real shared auth users, reserve their legacy identifiers first.
 3. Adapter Layer
   - Each app reads shared memberships before issuing its own app session.
   - This keeps runtime behavior stable while moving identity ownership to `hankuk-main`.
@@ -66,7 +71,8 @@ The shared identity source should be:
 - `study-hall`
   - Best candidate for the first backfill because admin records already point to Supabase Auth users.
 - `interview-pass`
-  - Keep staff PIN flow for operations, but map admins and staff to shared identities.
+  - Keep staff PIN flow for operations.
+  - Reserve division admin IDs first, then attach them to shared users later.
 - `score-predict`
   - Replace NextAuth credential ownership gradually.
   - The app should eventually trust shared identity and app membership data from `public`.
@@ -79,6 +85,14 @@ The shared identity source should be:
 - Root monorepo scaffold files: `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, `turbo.json`
 - A new additive SQL migration for common auth foundation in `public`
 - This architecture note for the next backfill and app cutover work
+
+## Backfill Status
+
+- `study-hall`
+  - Active admins can be backfilled directly because they already reference Supabase Auth user IDs.
+- `interview-pass`
+  - Division admin IDs can be reserved now.
+  - Staff PIN-only access still cannot map to a person until named operator accounts exist.
 
 ## What Is Not Live Yet
 

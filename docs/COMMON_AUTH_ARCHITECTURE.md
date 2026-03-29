@@ -74,7 +74,8 @@ The shared identity source should be:
   - Keep staff PIN flow for operations.
   - Reserve division admin IDs first, then attach them to shared users later.
 - `score-predict`
-  - Replace NextAuth credential ownership gradually.
+  - Reserve existing legacy accounts first.
+  - Replace NextAuth credential ownership gradually after the reservation layer is stable.
   - The app should eventually trust shared identity and app membership data from `public`.
 - `interview-mate`
   - Keep `ADMIN_KEY` temporarily.
@@ -93,6 +94,10 @@ The shared identity source should be:
 - `interview-pass`
   - Division admin IDs can be reserved now.
   - Staff PIN-only access still cannot map to a person until named operator accounts exist.
+- `score-predict`
+  - Existing legacy users can be reserved now because login identifiers already exist in the tenant schemas.
+  - Fire uses phone login.
+  - Police uses username-style login stored in the legacy `phone` column.
 
 ## What Is Not Live Yet
 

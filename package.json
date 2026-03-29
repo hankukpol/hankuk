@@ -1,0 +1,23 @@
+{
+  "name": "hankuk",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=22.17.1 <23"
+  },
+  "scripts": {
+    "prepare:pnpm": "corepack prepare pnpm@10.0.0 --activate",
+    "dev:score-predict": "npm --prefix score-predict run dev",
+    "dev:study-hall": "npm --prefix study-hall run dev",
+    "dev:interview-pass": "npm --prefix interview-pass run dev",
+    "dev:interview-mate": "npm --prefix interview-mate run dev",
+    "build:score-predict": "npm --prefix score-predict run build",
+    "build:study-hall": "npm --prefix study-hall run build",
+    "build:interview-pass": "npm --prefix interview-pass run build",
+    "build:interview-mate": "npm --prefix interview-mate run build",
+    "turbo:build": "npx turbo run build",
+    "turbo:lint": "npx turbo run lint",
+    "turbo:typecheck": "npx turbo run typecheck",
+    "turbo:dev": "npx turbo run dev --parallel"
+  }
+}

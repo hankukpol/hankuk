@@ -39,6 +39,19 @@ type SharedAuthSyncResult = {
   createdAuthUser: boolean;
 };
 
+type SharedAuthPasswordSyncResult = {
+  sharedUserId: string;
+  passwordUpdated: boolean;
+};
+
+type SqlExecutor = Pick<Prisma.TransactionClient, "$executeRaw" | "$queryRaw">;
+
+type SharedAuthAccountRow = {
+  id: string;
+  email: string | null;
+  raw_user_meta_data: Prisma.JsonValue | null;
+};
+
 let cachedAdminClient: SupabaseClient | null = null;
 
 function getSharedAuthEnv() {
@@ -165,6 +178,34 @@ async function findClaimedReservationUserId(tenantType: TenantType, aliases: Sha
   return rows[0]?.claimed_user_id ?? null;
 }
 
+async function findClaimedReservationUserIdWithExecutor(
+  executor: SqlExecutor,
+  tenantType: TenantType,
+  aliases: SharedAlias[]
+) {
+  if (aliases.length === 0) {
+    return null;
+  }
+
+  const aliasConditions = Prisma.join(
+    aliases.map((alias) => Prisma.sql`(alias_type = ${alias.aliasType} and alias_value = ${alias.aliasValue})`),
+    " or "
+  );
+
+  const rows = await executor.$queryRaw<Array<{ claimed_user_id: string }>>(Prisma.sql`
+    select distinct claimed_user_id::text as claimed_user_id
+    from public.identity_claim_reservations
+    where app_key = ${APP_KEY}
+      and division_slug = ${tenantType}
+      and claimed_user_id is not null
+      and (${aliasConditions})
+    order by claimed_user_id
+    limit 1
+  `);
+
+  return rows[0]?.claimed_user_id ?? null;
+}
+
 async function findAuthUserByEmail(email: string) {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     select id::text as id
@@ -175,6 +216,38 @@ async function findAuthUserByEmail(email: string) {
   `);
 
   return rows[0]?.id ?? null;
+}
+
+async function findSharedAuthAccountById(sharedUserId: string) {
+  const rows = await prisma.$queryRaw<SharedAuthAccountRow[]>(Prisma.sql`
+    select
+      id::text as id,
+      email,
+      raw_user_meta_data
+    from auth.users
+    where id = ${sharedUserId}::uuid
+    limit 1
+  `);
+
+  return rows[0] ?? null;
+}
+
+function isManagedScorePredictAuthAccount(account: SharedAuthAccountRow | null) {
+  if (!account) {
+    return false;
+  }
+
+  if (account.email?.endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`)) {
+    return true;
+  }
+
+  const metadata = account.raw_user_meta_data;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+
+  const legacySource = metadata.legacy_source;
+  return typeof legacySource === "string" && legacySource.startsWith(`${APP_KEY}:`);
 }
 
 async function createManagedAuthUser(params: {
@@ -375,4 +448,102 @@ export async function ensureScorePredictSharedIdentity(params: {
     sharedUserId: userId,
     createdAuthUser: created,
   };
+}
+
+export async function syncScorePredictSharedPassword(params: {
+  tenantType: TenantType;
+  identity: ScorePredictLegacyIdentity;
+  password: string;
+}): Promise<SharedAuthPasswordSyncResult> {
+  const result = await ensureScorePredictSharedIdentity({
+    tenantType: params.tenantType,
+    identity: params.identity,
+    password: params.password,
+  });
+
+  const account = await findSharedAuthAccountById(result.sharedUserId);
+  if (!isManagedScorePredictAuthAccount(account)) {
+    return {
+      sharedUserId: result.sharedUserId,
+      passwordUpdated: false,
+    };
+  }
+
+  const adminClient = getSharedAuthAdminClient();
+  if (!adminClient) {
+    throw new Error("Shared Supabase auth environment variables are not configured.");
+  }
+
+  const { error } = await adminClient.auth.admin.updateUserById(result.sharedUserId, {
+    password: params.password,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    sharedUserId: result.sharedUserId,
+    passwordUpdated: true,
+  };
+}
+
+export async function archiveScorePredictSharedIdentity(
+  params: {
+    tenantType: TenantType;
+    identity: ScorePredictLegacyIdentity;
+  },
+  executor: SqlExecutor = prisma
+) {
+  const aliases = buildAliases(params.tenantType, params.identity);
+  const sharedUserId = await findClaimedReservationUserIdWithExecutor(executor, params.tenantType, aliases);
+
+  if (sharedUserId) {
+    await executor.$executeRaw(Prisma.sql`
+      update public.user_app_memberships
+      set
+        status = 'archived',
+        updated_at = timezone('utc', now())
+      where user_id = ${sharedUserId}::uuid
+        and app_key = ${APP_KEY}
+    `);
+
+    await executor.$executeRaw(Prisma.sql`
+      update public.user_division_memberships
+      set
+        status = 'archived',
+        updated_at = timezone('utc', now())
+      where user_id = ${sharedUserId}::uuid
+        and app_key = ${APP_KEY}
+        and division_slug = ${params.tenantType}
+    `);
+  }
+
+  for (const alias of aliases) {
+    if (sharedUserId && alias.appKey === APP_KEY) {
+      await executor.$executeRaw(Prisma.sql`
+        delete from public.user_login_aliases
+        where user_id = ${sharedUserId}::uuid
+          and app_key = ${alias.appKey}
+          and alias_type = ${alias.aliasType}
+          and alias_value = ${alias.aliasValue}
+      `);
+    }
+
+    await executor.$executeRaw(Prisma.sql`
+      update public.identity_claim_reservations
+      set
+        status = 'revoked',
+        claimed_user_id = case
+          when claimed_user_id = ${sharedUserId ?? null}::uuid then null
+          else claimed_user_id
+        end,
+        updated_at = timezone('utc', now())
+      where app_key = ${APP_KEY}
+        and division_slug = ${params.tenantType}
+        and alias_type = ${alias.aliasType}
+        and alias_value = ${alias.aliasValue}
+        and (claimed_user_id is null or claimed_user_id = ${sharedUserId ?? null}::uuid)
+    `);
+  }
 }

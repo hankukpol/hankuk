@@ -5,6 +5,7 @@ import { confirmPasswordReset } from "@/lib/police/password-reset";
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import { syncScorePredictSharedPassword } from "@/lib/shared-auth";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { validatePasswordStrength } from "@/lib/validations";
 
@@ -84,12 +85,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (!resetToken) {
-      return false;
+      return null;
     }
 
-    await tx.user.update({
+    const user = await tx.user.update({
       where: { id: resetToken.userId },
       data: { password: hashedPassword },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+      },
     });
 
     await tx.passwordResetToken.updateMany({
@@ -97,7 +105,7 @@ export async function POST(request: NextRequest) {
       data: { usedAt: now },
     });
 
-    return true;
+    return user;
   });
 
   if (!changed) {
@@ -105,6 +113,22 @@ export async function POST(request: NextRequest) {
       { error: "유효하지 않거나 만료된 재설정 링크입니다. 다시 요청해 주세요." },
       { status: 400 }
     );
+  }
+
+  try {
+    await syncScorePredictSharedPassword({
+      tenantType: "fire",
+      identity: {
+        legacyUserId: changed.id,
+        name: changed.name,
+        email: changed.email,
+        loginIdentifier: changed.phone,
+        role: changed.role,
+      },
+      password: passwordResult.data,
+    });
+  } catch (error) {
+    console.error("[password-reset] Failed to sync fire shared auth password.", error);
   }
 
   return NextResponse.json({

@@ -1,10 +1,15 @@
 import type { Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
+
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
-import { ensureScorePredictSharedIdentity } from "@/lib/shared-auth";
+import {
+  archiveScorePredictSharedIdentity,
+  ensureScorePredictSharedIdentity,
+  syncScorePredictSharedPassword,
+} from "@/lib/shared-auth";
 import { getServerTenantType } from "@/lib/tenant.server";
 
 export const runtime = "nodejs";
@@ -13,6 +18,15 @@ interface UserUpdatePayload {
   role?: unknown;
   resetPassword?: unknown;
 }
+
+type EditableUser = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string;
+  role: Role;
+  contactPhone?: string | null;
+};
 
 function parsePositiveInt(value: string | null): number | null {
   if (!value) return null;
@@ -49,10 +63,36 @@ function parseResetPasswordFlag(value: unknown): boolean | null {
 }
 
 function buildTempPassword(phone: string): string {
-  // 소문자(fire) + 전화번호 뒷 4자리 + 특수문자(!) → 유효성 조건 충족
   const digits = phone.replace(/\D/g, "");
   const suffix = digits.length >= 4 ? digits.slice(-4) : "0000";
   return `fire${suffix}!`;
+}
+
+async function loadEditableUser(userId: number, tenantType: "fire" | "police"): Promise<EditableUser | null> {
+  if (tenantType === "police") {
+    return prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        contactPhone: true,
+        email: true,
+        id: true,
+        name: true,
+        phone: true,
+        role: true,
+      },
+    });
+  }
+
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      email: true,
+      id: true,
+      name: true,
+      phone: true,
+      role: true,
+    },
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -77,10 +117,7 @@ export async function GET(request: NextRequest) {
       ...(role ? { role } : {}),
       ...(search
         ? {
-            OR: [
-              { name: { contains: search } },
-              { phone: { contains: search } },
-            ],
+            OR: [{ name: { contains: search } }, { phone: { contains: search } }],
           }
         : {}),
     };
@@ -164,42 +201,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "변경할 정보가 없습니다." }, { status: 400 });
     }
 
-    let user:
-      | {
-          id: number;
-          name: string;
-          email: string | null;
-          phone: string;
-          role: Role;
-          contactPhone?: string | null;
-        }
-      | null;
-
-    if (tenantType === "police") {
-      user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          contactPhone: true,
-          email: true,
-          id: true,
-          name: true,
-          phone: true,
-          role: true,
-        },
-      });
-    } else {
-      user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          email: true,
-          id: true,
-          name: true,
-          phone: true,
-          role: true,
-        },
-      });
-    }
-
+    const user = await loadEditableUser(userId, tenantType);
     if (!user) {
       return NextResponse.json({ error: "수정할 사용자를 찾을 수 없습니다." }, { status: 404 });
     }
@@ -224,6 +226,8 @@ export async function PUT(request: NextRequest) {
       data: updateData,
     });
 
+    const effectiveRole = role ?? user.role;
+
     if (role !== null) {
       try {
         await ensureScorePredictSharedIdentity({
@@ -234,11 +238,30 @@ export async function PUT(request: NextRequest) {
             email: user.email,
             loginIdentifier: user.phone,
             contactPhone: tenantType === "police" ? user.contactPhone : undefined,
-            role,
+            role: effectiveRole,
           },
         });
       } catch (error) {
         console.error("[admin/users] Failed to sync shared identity after role update.", error);
+      }
+    }
+
+    if (resetPassword && tempPassword) {
+      try {
+        await syncScorePredictSharedPassword({
+          tenantType,
+          identity: {
+            legacyUserId: user.id,
+            name: user.name,
+            email: user.email,
+            loginIdentifier: user.phone,
+            contactPhone: tenantType === "police" ? user.contactPhone : undefined,
+            role: effectiveRole,
+          },
+          password: tempPassword,
+        });
+      } catch (error) {
+        console.error("[admin/users] Failed to sync shared auth password after admin reset.", error);
       }
     }
 
@@ -276,15 +299,28 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
-    });
+    const tenantType = await getServerTenantType();
+    const user = await loadEditableUser(userId, tenantType);
     if (!user) {
       return NextResponse.json({ error: "삭제할 사용자를 찾을 수 없습니다." }, { status: 404 });
     }
 
     await prisma.$transaction(async (tx) => {
+      await archiveScorePredictSharedIdentity(
+        {
+          tenantType,
+          identity: {
+            legacyUserId: user.id,
+            name: user.name,
+            email: user.email,
+            loginIdentifier: user.phone,
+            contactPhone: tenantType === "police" ? user.contactPhone : undefined,
+            role: user.role,
+          },
+        },
+        tx
+      );
+
       const submissions = await tx.submission.findMany({
         where: { userId },
         select: { id: true },

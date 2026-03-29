@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
+
 import {
   generateRecoveryCodes,
   hashRecoveryCode,
@@ -8,6 +9,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import { syncScorePredictSharedPassword } from "@/lib/shared-auth";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { normalizePhone, validatePasswordStrength } from "@/lib/validations";
 
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
   );
 
   if (!/^010-\d{4}-\d{4}$/.test(phone)) {
-    return NextResponse.json({ error: "연락처는 010-XXXX-XXXX 형식으로 입력해 주세요." }, { status: 400 });
+    return NextResponse.json({ error: "전화번호는 010-XXXX-XXXX 형식으로 입력해 주세요." }, { status: 400 });
   }
 
   if (codeNormalized.length !== 10) {
@@ -88,7 +90,13 @@ export async function POST(request: NextRequest) {
   const changed = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
       where: { phone },
-      select: { id: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+      },
     });
     if (!user) {
       return null;
@@ -128,19 +136,38 @@ export async function POST(request: NextRequest) {
       })),
     });
 
-    return nextRecoveryCodes;
+    return {
+      recoveryCodes: nextRecoveryCodes,
+      user,
+    };
   });
 
   if (!changed) {
     return NextResponse.json(
-      { error: "연락처 또는 복구코드가 올바르지 않습니다." },
+      { error: "전화번호 또는 복구코드가 올바르지 않습니다." },
       { status: 400 }
     );
   }
 
+  try {
+    await syncScorePredictSharedPassword({
+      tenantType: "fire",
+      identity: {
+        legacyUserId: changed.user.id,
+        name: changed.user.name,
+        email: changed.user.email,
+        loginIdentifier: changed.user.phone,
+        role: changed.user.role,
+      },
+      password: passwordResult.data,
+    });
+  } catch (error) {
+    console.error("[password-reset] Failed to sync fire recovery password.", error);
+  }
+
   return NextResponse.json({
     success: true,
-    message: "비밀번호가 변경되었습니다. 새 복구코드를 안전한 곳에 저장해 주세요.",
-    recoveryCodes: changed,
+    message: "비밀번호가 변경되었습니다. 새 복구코드를 안전한 곳에 보관해 주세요.",
+    recoveryCodes: changed.recoveryCodes,
   });
 }

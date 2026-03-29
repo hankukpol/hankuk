@@ -17,6 +17,25 @@ export type AdminIdPayload = {
   id: string
 }
 
+export type AdminClaimReservationStatus =
+  | 'missing_admin_id'
+  | 'missing_reservation'
+  | 'reserved'
+  | 'claimed'
+
+export type AdminClaimStatus = {
+  division: 'police' | 'fire'
+  adminId: string
+  reservationStatus: AdminClaimReservationStatus
+  claimable: boolean
+  claimedEmailMasked: string | null
+}
+
+export type AdminClaimPayload = {
+  email: string
+  password: string
+}
+
 type ApiErrorPayload = {
   error?: string
   message?: string
@@ -85,6 +104,21 @@ export async function savePin(role: 'staff' | 'admin', pin: string): Promise<voi
   })
 
   await readJson<{ ok?: boolean }>(response, 'PIN 저장에 실패했습니다.')
+}
+
+export async function loadAdminClaimStatus(): Promise<AdminClaimStatus> {
+  const response = await fetch('/api/auth/admin/claim', { method: 'GET', cache: 'no-store' })
+  return readJson<AdminClaimStatus>(response, '공통 인증 연결 상태를 불러오지 못했습니다.')
+}
+
+export async function claimAdminSharedAuth(payload: AdminClaimPayload): Promise<AdminClaimStatus> {
+  const response = await fetch('/api/auth/admin/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  return readJson<AdminClaimStatus>(response, '공통 인증 계정을 연결하지 못했습니다.')
 }
 
 export async function invalidateConfigCache(): Promise<{ message?: string }> {

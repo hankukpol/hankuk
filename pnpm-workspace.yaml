@@ -1,4 +1,6 @@
 packages:
-  - "apps/*"
+  - "apps/score-predict"
+  - "apps/study-hall"
+  - "apps/interview-pass"
   - "interview-mate"
   - "packages/*"

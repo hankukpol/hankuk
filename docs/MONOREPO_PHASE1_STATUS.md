@@ -8,7 +8,11 @@ Last updated: 2026-03-29
 - Root `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, and `turbo.json` are in place.
 - `score-predict`, `study-hall`, and `interview-pass` were moved into `apps/`.
 - Root workspace scripts now target `apps/*` paths and use `pnpm`.
-- `score-predict` and `study-hall` app scripts were updated to stop calling `npm run`.
+- Root `pnpm install` completed and `pnpm-lock.yaml` was generated.
+- Migrated apps now use the single root lockfile instead of per-app `package-lock.json`.
+- `score-predict`, `study-hall`, and `interview-pass` all pass build verification from the new workspace layout.
+- Vercel `Root Directory` was updated to `apps/score-predict`, `apps/study-hall`, and `apps/interview-pass`.
+- All three migrated apps were manually redeployed from the monorepo root and promoted back to production aliases.
 
 ## Temporary Exception
 
@@ -18,16 +22,14 @@ Last updated: 2026-03-29
 
 ## Deployment-Sensitive Follow-Up
 
-- `score-predict`, `study-hall`, and `interview-pass` Vercel projects must use `apps/<app-name>` as Root Directory.
 - `interview-mate` should keep its current root-level Vercel path until that folder is clean and ready to move.
+- Root Vercel archive deployments are currently large, so manual redeploys should use `vercel deploy --archive=tgz`.
 
 ## Still Not Done
 
-- Root `pnpm install` and `pnpm-lock.yaml` generation
-- Per-app `package-lock.json` removal
-- Full workspace build verification from the root
 - `interview-mate` path migration into `apps/`
 - Version alignment for shared framework-dependent packages
+- Shared package extraction beyond dependency-light utilities
 
 ## Current Shared-Package Constraint
 

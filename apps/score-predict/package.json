@@ -2,6 +2,9 @@
   "name": "fire-exam-prediction",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev -p 3200 --webpack",
     "build": "prisma generate && next build --webpack",

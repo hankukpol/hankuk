@@ -1,11 +1,12 @@
 import 'server-only'
 
 import { createClient, type AuthError, type SupabaseClient } from '@supabase/supabase-js'
+import { HANKUK_APP_KEYS } from '@hankuk/config'
 import { getAdminId } from '@/lib/auth/pin'
 import type { TenantType } from '@/lib/tenant'
 
-const APP_KEY = 'interview-pass'
-const DEFAULT_APP = 'interview-pass'
+const APP_KEY = HANKUK_APP_KEYS.INTERVIEW_PASS
+const DEFAULT_APP = HANKUK_APP_KEYS.INTERVIEW_PASS
 
 export type InterviewAdminClaimReservationStatus =
   | 'missing_admin_id'

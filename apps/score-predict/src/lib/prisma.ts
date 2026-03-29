@@ -1,11 +1,11 @@
 import "server-only";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { SCORE_PREDICT_RUNTIME_SCHEMAS } from "@hankuk/config";
 import { DEFAULT_TENANT_TYPE, TENANT_TYPES, type TenantType } from "@/lib/tenant";
 import { getServerTenantType } from "@/lib/tenant.server";
 
 const SCHEMA_BY_TENANT: Record<TenantType, string> = {
-  fire: "score_predict_fire",
-  police: "score_predict_police",
+  ...SCORE_PREDICT_RUNTIME_SCHEMAS,
 };
 
 const TENANT_BY_SCHEMA = new Map<string, TenantType>(

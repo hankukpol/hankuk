@@ -13,6 +13,7 @@ Last updated: 2026-03-29
 - `score-predict`, `study-hall`, and `interview-pass` all pass build verification from the new workspace layout.
 - Vercel `Root Directory` was updated to `apps/score-predict`, `apps/study-hall`, and `apps/interview-pass`.
 - All three migrated apps were manually redeployed from the monorepo root and promoted back to production aliases.
+- The first dependency-light shared workspace package, `@hankuk/config`, is now in `packages/config`.
 
 ## Temporary Exception
 

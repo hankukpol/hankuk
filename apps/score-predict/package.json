@@ -20,6 +20,7 @@
     "prisma:backfill-exam-number-ranges": "tsx prisma/backfill-exam-number-ranges.ts"
   },
   "dependencies": {
+    "@hankuk/config": "workspace:*",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.100.1",
     "bcryptjs": "^3.0.3",

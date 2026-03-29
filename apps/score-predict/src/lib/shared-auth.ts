@@ -4,15 +4,16 @@ import { randomUUID } from "node:crypto";
 
 import { Prisma, type Role } from "@prisma/client";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { HANKUK_APP_KEYS, HANKUK_PLACEHOLDER_EMAIL_DOMAIN } from "@hankuk/config";
 
 import { prisma } from "@/lib/prisma";
 import { normalizeContactPhone, normalizeUsername } from "@/lib/police/validations";
 import type { TenantType } from "@/lib/tenant";
 import { isValidEmail, normalizeEmail, normalizePhone } from "@/lib/validations";
 
-const APP_KEY = "score-predict";
-const DEFAULT_APP = "score-predict";
-const PLACEHOLDER_EMAIL_DOMAIN = "identity.hankukpol.local";
+const APP_KEY = HANKUK_APP_KEYS.SCORE_PREDICT;
+const DEFAULT_APP = HANKUK_APP_KEYS.SCORE_PREDICT;
+const PLACEHOLDER_EMAIL_DOMAIN = HANKUK_PLACEHOLDER_EMAIL_DOMAIN;
 
 type SharedRoleKey = "admin" | "student";
 type SharedAliasType = "email" | "phone" | "username";

@@ -9,6 +9,7 @@ import {
   getPersistentFixedWindowRateLimitState,
   resetPersistentFixedWindowRateLimit,
 } from "@/lib/police/persistent-rate-limit";
+import { ensureScorePredictSharedIdentity } from "@/lib/shared-auth";
 import { prisma } from "@/lib/prisma";
 import {
   consumeFixedWindowRateLimit,
@@ -142,6 +143,7 @@ type AuthUser = User & {
   role: Role;
   phone?: string;
   username?: string;
+  sharedUserId?: string;
 };
 
 function readRequestHeader(
@@ -305,6 +307,7 @@ async function authorizeFireUser(
     where: { phone },
     select: {
       id: true,
+      email: true,
       name: true,
       phone: true,
       password: true,
@@ -325,11 +328,30 @@ async function authorizeFireUser(
 
   clearFireLoginFailures(phone);
 
+  let sharedUserId: string | undefined;
+  try {
+    const result = await ensureScorePredictSharedIdentity({
+      tenantType: "fire",
+      identity: {
+        legacyUserId: user.id,
+        name: user.name,
+        email: user.email,
+        loginIdentifier: user.phone,
+        role: user.role,
+      },
+      password,
+    });
+    sharedUserId = result.sharedUserId;
+  } catch (error) {
+    console.error("[auth] Failed to sync fire shared identity.", error);
+  }
+
   return {
     id: String(user.id),
     name: user.name,
     role: user.role,
     phone: user.phone,
+    sharedUserId,
   };
 }
 
@@ -377,7 +399,9 @@ async function authorizePoliceUser(
   const user = await prisma.user.findUnique({
     where: { phone: username },
     select: {
+      contactPhone: true,
       id: true,
+      email: true,
       name: true,
       phone: true,
       password: true,
@@ -407,11 +431,31 @@ async function authorizePoliceUser(
 
   await clearPoliceLoginFailures(username);
 
+  let sharedUserId: string | undefined;
+  try {
+    const result = await ensureScorePredictSharedIdentity({
+      tenantType: "police",
+      identity: {
+        legacyUserId: user.id,
+        name: user.name,
+        email: user.email,
+        loginIdentifier: user.phone,
+        contactPhone: user.contactPhone,
+        role: user.role,
+      },
+      password,
+    });
+    sharedUserId = result.sharedUserId;
+  } catch (error) {
+    console.error("[auth] Failed to sync police shared identity.", error);
+  }
+
   return {
     id: String(user.id),
     name: user.name,
     role: user.role,
     username: user.phone,
+    sharedUserId,
   };
 }
 
@@ -468,6 +512,7 @@ export const authOptions: NextAuthOptions = {
         token.role = authUser.role;
         token.phone = authUser.phone;
         token.username = authUser.username;
+        token.sharedUserId = authUser.sharedUserId;
       }
 
       return token;
@@ -478,6 +523,8 @@ export const authOptions: NextAuthOptions = {
         session.user.role = (token.role as Role | undefined) ?? "USER";
         session.user.phone = typeof token.phone === "string" ? token.phone : "";
         session.user.username = typeof token.username === "string" ? token.username : "";
+        session.user.sharedUserId =
+          typeof token.sharedUserId === "string" ? token.sharedUserId : "";
       }
 
       return session;

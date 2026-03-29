@@ -7,6 +7,7 @@ Last updated: 2026-03-29
 - `score-predict`
   - Uses NextAuth credentials against its own Prisma user table.
   - Session cookies are app-local.
+  - Successful login and registration now claim or refresh shared identity membership in `public`.
 - `study-hall`
   - Uses Supabase Auth for admin identities, then issues app-local JWT cookies.
   - Student login is still app-local.
@@ -75,7 +76,8 @@ The shared identity source should be:
   - Reserve division admin IDs first, then attach them to shared users later.
 - `score-predict`
   - Reserve existing legacy accounts first.
-  - Replace NextAuth credential ownership gradually after the reservation layer is stable.
+  - A live adapter now claims reserved legacy identities into `auth.users` on successful login and registration.
+  - Replace NextAuth credential ownership gradually after the adapter layer is stable.
   - The app should eventually trust shared identity and app membership data from `public`.
 - `interview-mate`
   - Keep `ADMIN_KEY` temporarily.
@@ -98,9 +100,11 @@ The shared identity source should be:
   - Existing legacy users can be reserved now because login identifiers already exist in the tenant schemas.
   - Fire uses phone login.
   - Police uses username-style login stored in the legacy `phone` column.
+  - Runtime claim is now live for successful login and registration flows.
 
 ## What Is Not Live Yet
 
 - Cross-app SSO is not live.
 - App login pages still use their existing local mechanisms.
-- No legacy admin or staff memberships have been backfilled yet.
+- `score-predict` still issues its own NextAuth session after syncing shared memberships.
+- `interview-pass` and `interview-mate` do not have a live shared-auth adapter yet.

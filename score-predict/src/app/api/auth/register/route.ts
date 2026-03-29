@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { generateRecoveryCodes, hashRecoveryCode } from "@/lib/password-recovery";
 import { validateRegisterInput as validatePoliceRegisterInput } from "@/lib/police/validations";
 import { prisma } from "@/lib/prisma";
+import { ensureScorePredictSharedIdentity } from "@/lib/shared-auth";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { validateRegisterInput as validateFireRegisterInput } from "@/lib/validations";
 
@@ -175,6 +176,22 @@ async function handleFireRegister(body: FireRegisterRequestBody) {
     throw error;
   }
 
+  try {
+    await ensureScorePredictSharedIdentity({
+      tenantType: "fire",
+      identity: {
+        legacyUserId: createdUserId,
+        name,
+        email,
+        loginIdentifier: phone,
+        role: "USER",
+      },
+      password,
+    });
+  } catch (error) {
+    console.error("[register] Failed to sync fire shared identity.", error);
+  }
+
   return NextResponse.json(
     {
       success: true,
@@ -228,9 +245,10 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
   const hashedPassword = await bcrypt.hash(password, 12);
   const now = new Date();
   const supportsContactPhoneColumn = await hasUserContactPhoneColumn();
+  let createdUserId: number;
 
   if (!supportsContactPhoneColumn) {
-    await createLegacyUser({
+    createdUserId = await createLegacyUser({
       name,
       email,
       phone: username,
@@ -239,7 +257,7 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
     });
   } else {
     try {
-      await prisma.user.create({
+      const created = await prisma.user.create({
         data: {
           name,
           email,
@@ -249,13 +267,15 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
           termsAgreedAt: now,
           privacyAgreedAt: now,
         },
+        select: { id: true },
       });
+      createdUserId = created.id;
     } catch (error) {
       if (!isMissingContactPhoneColumnError(error)) {
         throw error;
       }
 
-      await createLegacyUser({
+      createdUserId = await createLegacyUser({
         name,
         email,
         phone: username,
@@ -263,6 +283,23 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
         now,
       });
     }
+  }
+
+  try {
+    await ensureScorePredictSharedIdentity({
+      tenantType: "police",
+      identity: {
+        legacyUserId: createdUserId,
+        name,
+        email,
+        loginIdentifier: username,
+        contactPhone,
+        role: "USER",
+      },
+      password,
+    });
+  } catch (error) {
+    console.error("[register] Failed to sync police shared identity.", error);
   }
 
   return NextResponse.json(

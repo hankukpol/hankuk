@@ -6,8 +6,9 @@ declare module "next-auth" {
     user: DefaultSession["user"] & {
       id: string;
       role: Role;
-      phone?: string;    // 소방: 전화번호 로그인
-      username?: string;  // 경찰: 아이디 로그인
+      phone?: string;
+      username?: string;
+      sharedUserId?: string;
     };
   }
 
@@ -16,6 +17,7 @@ declare module "next-auth" {
     role: Role;
     phone?: string;
     username?: string;
+    sharedUserId?: string;
   }
 }
 
@@ -25,5 +27,6 @@ declare module "next-auth/jwt" {
     role?: Role;
     phone?: string;
     username?: string;
+    sharedUserId?: string;
   }
 }

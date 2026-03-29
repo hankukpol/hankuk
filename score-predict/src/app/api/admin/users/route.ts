@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
+import { ensureScorePredictSharedIdentity } from "@/lib/shared-auth";
+import { getServerTenantType } from "@/lib/tenant.server";
 
 export const runtime = "nodejs";
 
@@ -147,6 +149,7 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const tenantType = await getServerTenantType();
     const body = (await request.json()) as UserUpdatePayload;
     const role = parseUpdateRole(body.role);
     const resetPassword = parseResetPasswordFlag(body.resetPassword);
@@ -161,13 +164,41 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "변경할 정보가 없습니다." }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        phone: true,
-      },
-    });
+    let user:
+      | {
+          id: number;
+          name: string;
+          email: string | null;
+          phone: string;
+          role: Role;
+          contactPhone?: string | null;
+        }
+      | null;
+
+    if (tenantType === "police") {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          contactPhone: true,
+          email: true,
+          id: true,
+          name: true,
+          phone: true,
+          role: true,
+        },
+      });
+    } else {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          email: true,
+          id: true,
+          name: true,
+          phone: true,
+          role: true,
+        },
+      });
+    }
 
     if (!user) {
       return NextResponse.json({ error: "수정할 사용자를 찾을 수 없습니다." }, { status: 404 });
@@ -192,6 +223,24 @@ export async function PUT(request: NextRequest) {
       where: { id: userId },
       data: updateData,
     });
+
+    if (role !== null) {
+      try {
+        await ensureScorePredictSharedIdentity({
+          tenantType,
+          identity: {
+            legacyUserId: user.id,
+            name: user.name,
+            email: user.email,
+            loginIdentifier: user.phone,
+            contactPhone: tenantType === "police" ? user.contactPhone : undefined,
+            role,
+          },
+        });
+      } catch (error) {
+        console.error("[admin/users] Failed to sync shared identity after role update.", error);
+      }
+    }
 
     return NextResponse.json({
       success: true,

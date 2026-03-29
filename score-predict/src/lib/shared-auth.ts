@@ -44,6 +44,22 @@ type SharedAuthPasswordSyncResult = {
   passwordUpdated: boolean;
 };
 
+type SharedAuthLoginResult =
+  | {
+      status: "success";
+      sharedUserId: string;
+    }
+  | {
+      status: "missing";
+    }
+  | {
+      status: "invalid";
+    }
+  | {
+      status: "unavailable";
+      error: string;
+    };
+
 type SqlExecutor = Pick<Prisma.TransactionClient, "$executeRaw" | "$queryRaw">;
 
 type SharedAuthAccountRow = {
@@ -53,6 +69,7 @@ type SharedAuthAccountRow = {
 };
 
 let cachedAdminClient: SupabaseClient | null = null;
+let cachedAnonClient: SupabaseClient | null = null;
 
 function getSharedAuthEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -81,6 +98,25 @@ function getSharedAuthAdminClient() {
   }
 
   return cachedAdminClient;
+}
+
+function getSharedAuthAnonClient() {
+  const env = getSharedAuthEnv();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!env || !anonKey) {
+    return null;
+  }
+
+  if (!cachedAnonClient) {
+    cachedAnonClient = createClient(env.url, anonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+
+  return cachedAnonClient;
 }
 
 function mapRoleKey(role: Role): SharedRoleKey {
@@ -178,6 +214,37 @@ async function findClaimedReservationUserId(tenantType: TenantType, aliases: Sha
   return rows[0]?.claimed_user_id ?? null;
 }
 
+async function findSharedLoginUserId(tenantType: TenantType, aliases: SharedAlias[]) {
+  if (aliases.length === 0) {
+    return null;
+  }
+
+  const aliasConditions = Prisma.join(
+    aliases.map(
+      (alias) => Prisma.sql`(
+        coalesce(app_key, '') = coalesce(${alias.appKey}, '')
+        and alias_type = ${alias.aliasType}
+        and alias_value = ${alias.aliasValue}
+      )`
+    ),
+    " or "
+  );
+
+  const aliasRows = await prisma.$queryRaw<Array<{ user_id: string }>>(Prisma.sql`
+    select distinct user_id::text as user_id
+    from public.user_login_aliases
+    where ${aliasConditions}
+    order by user_id
+    limit 1
+  `);
+
+  if (aliasRows[0]?.user_id) {
+    return aliasRows[0].user_id;
+  }
+
+  return findClaimedReservationUserId(tenantType, aliases);
+}
+
 async function findClaimedReservationUserIdWithExecutor(
   executor: SqlExecutor,
   tenantType: TenantType,
@@ -230,6 +297,39 @@ async function findSharedAuthAccountById(sharedUserId: string) {
   `);
 
   return rows[0] ?? null;
+}
+
+async function authenticateSharedAuthAccount(sharedUserId: string, password: string): Promise<SharedAuthLoginResult> {
+  const account = await findSharedAuthAccountById(sharedUserId);
+  if (!account?.email) {
+    return { status: "missing" };
+  }
+
+  const anonClient = getSharedAuthAnonClient();
+  if (!anonClient) {
+    return {
+      status: "unavailable",
+      error: "Shared Supabase auth environment variables are not configured.",
+    };
+  }
+
+  const { data, error } = await anonClient.auth.signInWithPassword({
+    email: account.email,
+    password,
+  });
+
+  if (error || !data.user) {
+    return { status: "invalid" };
+  }
+
+  if (data.user.id !== sharedUserId) {
+    return { status: "invalid" };
+  }
+
+  return {
+    status: "success",
+    sharedUserId,
+  };
 }
 
 function isManagedScorePredictAuthAccount(account: SharedAuthAccountRow | null) {
@@ -448,6 +548,31 @@ export async function ensureScorePredictSharedIdentity(params: {
     sharedUserId: userId,
     createdAuthUser: created,
   };
+}
+
+export async function authenticateScorePredictSharedIdentity(params: {
+  tenantType: TenantType;
+  identity: ScorePredictLegacyIdentity;
+  password: string;
+}): Promise<SharedAuthLoginResult> {
+  if (!getSharedAuthEnv() || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return {
+      status: "unavailable",
+      error: "Shared Supabase auth environment variables are not configured.",
+    };
+  }
+
+  const aliases = buildAliases(params.tenantType, params.identity);
+  if (aliases.length === 0) {
+    return { status: "missing" };
+  }
+
+  const sharedUserId = await findSharedLoginUserId(params.tenantType, aliases);
+  if (!sharedUserId) {
+    return { status: "missing" };
+  }
+
+  return authenticateSharedAuthAccount(sharedUserId, params.password);
 }
 
 export async function syncScorePredictSharedPassword(params: {

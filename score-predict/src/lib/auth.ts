@@ -9,7 +9,10 @@ import {
   getPersistentFixedWindowRateLimitState,
   resetPersistentFixedWindowRateLimit,
 } from "@/lib/police/persistent-rate-limit";
-import { ensureScorePredictSharedIdentity } from "@/lib/shared-auth";
+import {
+  authenticateScorePredictSharedIdentity,
+  ensureScorePredictSharedIdentity,
+} from "@/lib/shared-auth";
 import { prisma } from "@/lib/prisma";
 import {
   consumeFixedWindowRateLimit,
@@ -320,30 +323,60 @@ async function authorizeFireUser(
     return null;
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    recordFireLoginFailure(phone);
-    return null;
-  }
-
-  clearFireLoginFailures(phone);
+  const identity = {
+    legacyUserId: user.id,
+    name: user.name,
+    email: user.email,
+    loginIdentifier: user.phone,
+    role: user.role,
+  } as const;
 
   let sharedUserId: string | undefined;
+  let shouldFallbackToLocalPassword = true;
   try {
-    const result = await ensureScorePredictSharedIdentity({
+    const sharedLogin = await authenticateScorePredictSharedIdentity({
       tenantType: "fire",
-      identity: {
-        legacyUserId: user.id,
-        name: user.name,
-        email: user.email,
-        loginIdentifier: user.phone,
-        role: user.role,
-      },
+      identity,
       password,
     });
-    sharedUserId = result.sharedUserId;
+
+    if (sharedLogin.status === "success") {
+      shouldFallbackToLocalPassword = false;
+      sharedUserId = sharedLogin.sharedUserId;
+      clearFireLoginFailures(phone);
+      await ensureScorePredictSharedIdentity({
+        tenantType: "fire",
+        identity,
+      });
+    } else if (sharedLogin.status === "invalid") {
+      recordFireLoginFailure(phone);
+      return null;
+    } else if (sharedLogin.status === "unavailable") {
+      console.error("[auth] Fire shared auth is unavailable.", sharedLogin.error);
+    }
   } catch (error) {
-    console.error("[auth] Failed to sync fire shared identity.", error);
+    console.error("[auth] Failed to authenticate fire shared identity.", error);
+  }
+
+  if (shouldFallbackToLocalPassword) {
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      recordFireLoginFailure(phone);
+      return null;
+    }
+
+    clearFireLoginFailures(phone);
+
+    try {
+      const result = await ensureScorePredictSharedIdentity({
+        tenantType: "fire",
+        identity,
+        password,
+      });
+      sharedUserId = result.sharedUserId;
+    } catch (error) {
+      console.error("[auth] Failed to sync fire shared identity.", error);
+    }
   }
 
   return {
@@ -418,36 +451,71 @@ async function authorizePoliceUser(
     return null;
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    await recordPoliceLoginFailure(username);
-    return null;
-  }
-
-  if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
-    await recordPoliceLoginFailure(username);
-    return null;
-  }
-
-  await clearPoliceLoginFailures(username);
+  const identity = {
+    legacyUserId: user.id,
+    name: user.name,
+    email: user.email,
+    loginIdentifier: user.phone,
+    contactPhone: user.contactPhone,
+    role: user.role,
+  } as const;
 
   let sharedUserId: string | undefined;
+  let shouldFallbackToLocalPassword = true;
   try {
-    const result = await ensureScorePredictSharedIdentity({
+    const sharedLogin = await authenticateScorePredictSharedIdentity({
       tenantType: "police",
-      identity: {
-        legacyUserId: user.id,
-        name: user.name,
-        email: user.email,
-        loginIdentifier: user.phone,
-        contactPhone: user.contactPhone,
-        role: user.role,
-      },
+      identity,
       password,
     });
-    sharedUserId = result.sharedUserId;
+
+    if (sharedLogin.status === "success") {
+      if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
+        await recordPoliceLoginFailure(username);
+        return null;
+      }
+
+      shouldFallbackToLocalPassword = false;
+      sharedUserId = sharedLogin.sharedUserId;
+      await clearPoliceLoginFailures(username);
+      await ensureScorePredictSharedIdentity({
+        tenantType: "police",
+        identity,
+      });
+    } else if (sharedLogin.status === "invalid") {
+      await recordPoliceLoginFailure(username);
+      return null;
+    } else if (sharedLogin.status === "unavailable") {
+      console.error("[auth] Police shared auth is unavailable.", sharedLogin.error);
+    }
   } catch (error) {
-    console.error("[auth] Failed to sync police shared identity.", error);
+    console.error("[auth] Failed to authenticate police shared identity.", error);
+  }
+
+  if (shouldFallbackToLocalPassword) {
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      await recordPoliceLoginFailure(username);
+      return null;
+    }
+
+    if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
+      await recordPoliceLoginFailure(username);
+      return null;
+    }
+
+    await clearPoliceLoginFailures(username);
+
+    try {
+      const result = await ensureScorePredictSharedIdentity({
+        tenantType: "police",
+        identity,
+        password,
+      });
+      sharedUserId = result.sharedUserId;
+    } catch (error) {
+      console.error("[auth] Failed to sync police shared identity.", error);
+    }
   }
 
   return {

@@ -7,6 +7,7 @@ Last updated: 2026-03-29
 - `score-predict`
   - Uses NextAuth credentials against its own Prisma user table.
   - Session cookies are still app-local.
+  - When a linked shared identity exists, login now authenticates against shared auth first and only falls back to the local password for unsynced legacy users.
   - Successful login, registration, password reset, admin password reset, and admin account deletion now sync the shared identity layer in `public`.
 - `study-hall`
   - Uses Supabase Auth for admin identities, then issues app-local JWT cookies.
@@ -88,6 +89,7 @@ The shared identity source should be:
   - The next staff cutover would be deciding when shared-auth login should become the default for named operators and where shared staff PIN should remain allowed.
 - `score-predict`
   - A live adapter now claims reserved legacy identities into `auth.users` on successful login and registration.
+  - Login now prefers shared auth for already linked identities while keeping legacy fallback for unsynced users.
   - Password reset and admin deletion flows now keep shared identity state in sync.
   - The app should eventually trust shared identity and app membership data from `public` instead of owning primary credentials in Prisma.
 - `interview-mate`
@@ -98,6 +100,7 @@ The shared identity source should be:
 
 - `score-predict`
   - Shared-auth sync now covers password reset, admin-triggered password reset, and account deletion.
+  - Shared-auth-first login is now enabled for identities already linked to `hankuk-main`.
 - `interview-pass`
   - A live admin claim API and config UI for linking division admin IDs to shared auth users.
   - Admin login/bootstrap now resolve and carry shared identity linkage into the app JWT session.
@@ -112,6 +115,7 @@ The shared identity source should be:
 - Cross-app SSO is not live.
 - App login pages still use their existing local mechanisms.
 - `score-predict` still issues its own NextAuth session after syncing shared memberships.
+- `score-predict` still falls back to the local password path for legacy users that have not been linked into shared auth yet.
 - `study-hall` student login is still app-local.
 - `interview-pass` staff shared login still requires both operator login ID and shared auth email/password.
 - `interview-pass` shared staff PIN still exists as a separate fallback path for kiosk use.

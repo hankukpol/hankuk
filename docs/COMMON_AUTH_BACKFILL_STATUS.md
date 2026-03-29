@@ -27,6 +27,7 @@ Last updated: 2026-03-29
     - `public.identity_claim_reservations`
   - Fire login identifier is stored as `phone`
   - Police login identifier is stored as `username`
+  - Linked identities now authenticate against shared auth first at login time.
   - Successful login, registration, password reset, admin password reset, and admin account deletion now sync the shared identity layer.
 
 ## Auto Sync
@@ -42,6 +43,7 @@ Last updated: 2026-03-29
   - Claimed operator logins now read shared linkage during session issuance.
   - Shared-auth operator logins now refresh `interview.staff_accounts.last_login_at` and common membership linkage on success.
 - `score-predict`
+  - Linked shared identities are now checked before the local password path at login time.
   - Successful login refreshes shared profile, app membership, division membership, and alias rows.
   - Role changes from the admin user screen refresh shared memberships immediately.
   - Password reset and admin-triggered deletion now keep shared shadow identity state aligned.
@@ -50,7 +52,7 @@ Last updated: 2026-03-29
 
 - Legacy shared staff PIN still exists as a fallback path and is not backfilled into shared auth tables.
 - `interview-pass` staff shared login still requires both operator login ID and shared auth email/password.
-- `score-predict` users still authenticate against local tenant tables.
+- `score-predict` still falls back to local tenant passwords for users that are not yet linked into shared auth.
 - Reservation rows only prepare later claim and cutover steps; they do not enable SSO by themselves.
 - `study-hall` student auth is still separate from shared auth.
 
@@ -60,6 +62,6 @@ Last updated: 2026-03-29
    - Decide when named operator accounts should prefer shared-auth login by default and where PIN fallback should remain.
    - Keep moving admin auth toward shared-auth-first while retaining PIN as fallback and recovery.
 2. `score-predict`
-   - Replace NextAuth credential ownership with shared-auth-first login once the adapter layer is stable.
+   - Decide when local password fallback can be removed after enough legacy users have been linked into shared auth.
 3. `study-hall`
    - Extend shared auth from admin identities into student-facing flows only if there is a real cross-app need.

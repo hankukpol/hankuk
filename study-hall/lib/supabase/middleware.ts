@@ -2,6 +2,7 @@ import { createServerClient as createSupabaseServerClient } from "@supabase/ssr"
 import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
 import { isMockMode } from "@/lib/mock-data";
 
 type SessionUpdateResult = {
@@ -50,7 +51,7 @@ export async function updateSession(request: NextRequest): Promise<SessionUpdate
         });
 
         cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
+          response.cookies.set(name, value, withConfiguredCookieDomain(options ?? {}));
         });
       },
     },

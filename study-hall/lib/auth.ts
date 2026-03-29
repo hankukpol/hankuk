@@ -20,6 +20,7 @@ import {
   type SessionAdminRole,
 } from "@/lib/session-tokens";
 import { findStudentSessionById } from "@/lib/services/student.service";
+import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
 
 export type AdminSessionRole = SessionAdminRole;
 
@@ -210,13 +211,13 @@ export async function requireSuperAdminAccess() {
 }
 
 function getCookieOptions(maxAge: number) {
-  return {
+  return withConfiguredCookieDomain({
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge,
-  };
+  });
 }
 
 export async function applyAdminContextCookies(response: NextResponse, session: AdminSession) {
@@ -241,6 +242,7 @@ export function clearAuthCookies(response: NextResponse) {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 0,
+      ...withConfiguredCookieDomain({}),
     });
   });
 }

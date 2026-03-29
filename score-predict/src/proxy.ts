@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { getPreferredExamRoute } from "@/lib/exam-surface";
 import { getTenantSiteSettingDefaults } from "@/lib/site-settings.defaults";
+import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
 import {
   DEFAULT_TENANT_TYPE,
   TENANT_COOKIE,
@@ -32,12 +33,12 @@ interface SiteSettingsResponse {
 }
 
 function withTenantCookie(response: NextResponse, tenantType: TenantType) {
-  response.cookies.set(TENANT_COOKIE, tenantType, {
+  response.cookies.set(TENANT_COOKIE, tenantType, withConfiguredCookieDomain({
     path: "/",
-    sameSite: "lax",
+    sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 30,
-  });
+  }));
 
   return response;
 }

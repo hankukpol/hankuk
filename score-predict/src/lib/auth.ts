@@ -24,6 +24,7 @@ import {
   type TenantType,
 } from "@/lib/tenant";
 import { normalizePhone, normalizeUsername } from "@/lib/validations";
+import { getCookieDomain, withConfiguredCookieDomain } from "@/lib/cookie-domain";
 
 const INSECURE_SECRETS = new Set([
   "change-this-to-a-long-random-string",
@@ -39,6 +40,74 @@ const INSECURE_SECRETS = new Set([
 const nextAuthSecret = process.env.NEXTAUTH_SECRET ?? "";
 const isProduction = process.env.NODE_ENV === "production";
 const isNextBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+const cookieDomain = getCookieDomain();
+
+function buildSharedNextAuthCookies() {
+  if (!cookieDomain) {
+    return undefined;
+  }
+
+  const securePrefix = isProduction ? "__Secure-" : "";
+  const csrfPrefix = isProduction ? "__Secure-" : "";
+
+  return {
+    sessionToken: {
+      name: `${securePrefix}next-auth.session-token`,
+      options: withConfiguredCookieDomain({
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+      }),
+    },
+    callbackUrl: {
+      name: `${securePrefix}next-auth.callback-url`,
+      options: withConfiguredCookieDomain({
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+      }),
+    },
+    csrfToken: {
+      name: `${csrfPrefix}next-auth.csrf-token`,
+      options: withConfiguredCookieDomain({
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+      }),
+    },
+    pkceCodeVerifier: {
+      name: `${securePrefix}next-auth.pkce.code_verifier`,
+      options: withConfiguredCookieDomain({
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+        maxAge: 60 * 15,
+      }),
+    },
+    state: {
+      name: `${securePrefix}next-auth.state`,
+      options: withConfiguredCookieDomain({
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+        maxAge: 60 * 15,
+      }),
+    },
+    nonce: {
+      name: `${securePrefix}next-auth.nonce`,
+      options: withConfiguredCookieDomain({
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+      }),
+    },
+  };
+}
 
 function isInsecureSecret(value: string): boolean {
   if (INSECURE_SECRETS.has(value)) return true;
@@ -351,6 +420,7 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 60 * 60 * 24,
   },
+  cookies: buildSharedNextAuthCookies(),
   pages: {
     signIn: "/login",
   },

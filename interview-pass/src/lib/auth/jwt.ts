@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import type { StaffJwtPayload } from '@/types/database'
+import { withConfiguredCookieDomain } from '@/lib/auth/cookie-domain'
 
 const secret = () => new TextEncoder().encode(process.env.JWT_SECRET!)
 
@@ -30,11 +31,21 @@ export async function verifyJwt(token: string): Promise<StaffJwtPayload | null> 
 }
 
 export function cookieOptions(ttlSec: number) {
-  return {
+  return withConfiguredCookieDomain({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict' as const,
     path: '/',
     maxAge: ttlSec,
-  }
+  })
+}
+
+export function clearCookieOptions() {
+  return withConfiguredCookieDomain({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict' as const,
+    path: '/',
+    maxAge: 0,
+  })
 }

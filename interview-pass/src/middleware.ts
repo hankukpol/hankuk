@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyJwt, STAFF_COOKIE, ADMIN_COOKIE } from '@/lib/auth/jwt'
+import { withConfiguredCookieDomain } from '@/lib/auth/cookie-domain'
 import {
   DEFAULT_TENANT_TYPE,
   TENANT_COOKIE,
@@ -14,12 +15,12 @@ import {
 const PUBLIC_FILE = /\.[^/]+$/
 
 function withDivisionCookie(response: NextResponse, division: TenantType) {
-  response.cookies.set(TENANT_COOKIE, division, {
+  response.cookies.set(TENANT_COOKIE, division, withConfiguredCookieDomain({
     path: '/',
-    sameSite: 'lax',
+    sameSite: 'lax' as const,
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 30,
-  })
+  }))
 
   return response
 }

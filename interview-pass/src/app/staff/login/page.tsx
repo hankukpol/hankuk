@@ -12,7 +12,7 @@ const LS_MODE = 'staff_auth_mode'
 const LS_ID = 'staff_auth_id'
 const LS_PIN = 'staff_auth_pin'
 
-type AuthMode = 'operator' | 'staff-pin' | 'admin'
+type AuthMode = 'operator' | 'operator-shared' | 'staff-pin' | 'admin'
 
 function normalizeSavedMode(mode: string | null): AuthMode | null {
   if (mode === 'operator' || mode === 'staff-pin' || mode === 'admin') {
@@ -26,7 +26,15 @@ function normalizeSavedMode(mode: string | null): AuthMode | null {
   return null
 }
 
-async function doAuth(authMode: AuthMode, authPin: string, authId: string) {
+async function doAuth(params: {
+  authMode: AuthMode
+  authId: string
+  authPin: string
+  authEmail: string
+  authPassword: string
+}) {
+  const { authMode, authId, authPin, authEmail, authPassword } = params
+
   if (authMode === 'admin') {
     return fetch('/api/auth/admin/login', {
       method: 'POST',
@@ -40,6 +48,18 @@ async function doAuth(authMode: AuthMode, authPin: string, authId: string) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ loginId: authId, pin: authPin }),
+    })
+  }
+
+  if (authMode === 'operator-shared') {
+    return fetch('/api/auth/staff/shared-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        loginId: authId,
+        email: authEmail,
+        password: authPassword,
+      }),
     })
   }
 
@@ -80,6 +100,8 @@ function StaffLoginForm() {
 
   const [mode, setMode] = useState<AuthMode>('operator')
   const [authId, setAuthId] = useState('')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -118,7 +140,13 @@ function StaffLoginForm() {
         }
 
         try {
-          const res = await doAuth(savedMode, savedPin, savedId)
+          const res = await doAuth({
+            authMode: savedMode,
+            authId: savedId,
+            authPin: savedPin,
+            authEmail: '',
+            authPassword: '',
+          })
           if (res.ok) {
             router.replace(redirect)
             return
@@ -163,11 +191,21 @@ function StaffLoginForm() {
     }
 
     if (mode !== 'staff-pin' && !authId.trim()) {
-      setError(mode === 'operator' ? '직원 로그인 아이디를 입력해 주세요.' : '관리자 아이디를 입력해 주세요.')
+      setError(mode === 'admin' ? '관리자 아이디를 입력해 주세요.' : '직원 로그인 아이디를 입력해 주세요.')
       return
     }
 
-    if (!pin) {
+    if (mode === 'operator-shared') {
+      if (!authEmail.trim()) {
+        setError('공통 인증 이메일을 입력해 주세요.')
+        return
+      }
+
+      if (authPassword.length < 6) {
+        setError('공통 인증 비밀번호는 6자 이상이어야 합니다.')
+        return
+      }
+    } else if (!pin) {
       setError('PIN을 입력해 주세요.')
       return
     }
@@ -175,7 +213,13 @@ function StaffLoginForm() {
     setError('')
     setLoading(true)
 
-    const res = await doAuth(mode, pin, authId.trim())
+    const res = await doAuth({
+      authMode: mode,
+      authId: authId.trim(),
+      authPin: pin,
+      authEmail: authEmail.trim(),
+      authPassword,
+    })
     const data = (await res.json().catch(() => null)) as { error?: string } | null
     setLoading(false)
 
@@ -184,12 +228,16 @@ function StaffLoginForm() {
       return
     }
 
-    localStorage.setItem(LS_MODE, mode)
-    localStorage.setItem(LS_PIN, pin)
-    if (mode === 'staff-pin') {
-      localStorage.removeItem(LS_ID)
+    if (mode === 'operator-shared') {
+      clearSavedStaffAuth()
     } else {
-      localStorage.setItem(LS_ID, authId.trim())
+      localStorage.setItem(LS_MODE, mode)
+      localStorage.setItem(LS_PIN, pin)
+      if (mode === 'staff-pin') {
+        localStorage.removeItem(LS_ID)
+      } else {
+        localStorage.setItem(LS_ID, authId.trim())
+      }
     }
 
     router.push(redirect)
@@ -260,12 +308,13 @@ function StaffLoginForm() {
         <p className="text-sm leading-relaxed text-gray-600">
           인증된 상태에서만 QR 스캔과 배부 처리를 진행할 수 있습니다.
           <br />
-          한 번 로그인하면 같은 기기에서는 자동 로그인됩니다.
+          PIN 로그인만 같은 기기에서 자동 로그인되며, 공통 인증은 매번 다시 확인합니다.
         </p>
 
-        <div className="flex overflow-hidden border border-gray-200">
+        <div className="grid grid-cols-2 overflow-hidden border border-gray-200 sm:grid-cols-4">
           {([
             ['operator', '직원 계정'],
+            ['operator-shared', '직원 공통 인증'],
             ['staff-pin', '공용 직원 PIN'],
             ['admin', '관리자 인증'],
           ] as const).map(([nextMode, label]) => (
@@ -291,34 +340,69 @@ function StaffLoginForm() {
         {mode !== 'staff-pin' ? (
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-gray-700">
-              {mode === 'operator' ? '직원 로그인 아이디' : '관리자 아이디'}
+              {mode === 'admin' ? '관리자 아이디' : '직원 로그인 아이디'}
             </label>
             <input
               type="text"
               value={authId}
               onChange={(e) => setAuthId(e.target.value)}
-              placeholder={mode === 'operator' ? '예: desk-a, gate1, kimhj' : '관리자 아이디 입력'}
-              autoComplete={mode === 'operator' ? 'username' : 'username'}
+              placeholder={mode === 'admin' ? '관리자 아이디 입력' : '예: desk-a, gate1, kimhj'}
+              autoComplete="username"
               className="w-full border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
             />
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700">
-            {mode === 'admin' ? '관리자 PIN' : 'PIN'}
-          </label>
-          <input
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="PIN 입력"
-            inputMode="numeric"
-            autoComplete="current-password"
-            autoFocus
-            className="w-full border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
-          />
-        </div>
+        {mode === 'operator-shared' ? (
+          <>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-gray-700">공통 인증 이메일</label>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="shared-user@hankukpol.co.kr"
+                autoComplete="email"
+                className="w-full border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-gray-700">공통 인증 비밀번호</label>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="비밀번호 입력"
+                autoComplete="current-password"
+                autoFocus
+                className="w-full border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700">
+              {mode === 'admin' ? '관리자 PIN' : 'PIN'}
+            </label>
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="PIN 입력"
+              inputMode="numeric"
+              autoComplete="current-password"
+              autoFocus
+              className="w-full border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
+            />
+          </div>
+        )}
+
+        {mode === 'operator-shared' ? (
+          <p className="-mt-2 text-xs leading-5 text-gray-500">
+            이 모드는 관리자 설정 화면에서 해당 직원 계정을 공통 인증과 먼저 연결한 뒤 사용할 수 있습니다.
+          </p>
+        ) : null}
 
         {error ? <p className="-mt-2 text-sm text-red-600">{error}</p> : null}
 

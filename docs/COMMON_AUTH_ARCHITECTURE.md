@@ -21,6 +21,7 @@ Last updated: 2026-03-29
   - Staff operator accounts now reserve `staff_id` aliases in `public.identity_claim_reservations`.
   - Named operator accounts can now be claimed into shared auth from the admin config screen.
   - Staff PIN login now reads shared linkage from common memberships when an operator account has been claimed.
+  - Claimed operator accounts can now also log in with shared auth email and password while operator PIN remains as fallback.
   - Shared staff PIN still exists as a fallback path for kiosk-style operations.
 - `interview-mate`
   - Uses `ADMIN_KEY` request validation for admin APIs.
@@ -84,7 +85,7 @@ The shared identity source should be:
   - Admin PIN login now acts as an adapter session that can carry a claimed shared user ID.
   - The next larger cutover would be replacing admin PIN-first login with shared-auth-first login while keeping PIN as a recovery or kiosk path.
   - Named operator accounts can now be claimed into shared auth while keeping PIN login as an operational fallback.
-  - The next staff cutover would be allowing shared-auth-first operator login while retaining PIN for kiosk flows.
+  - The next staff cutover would be deciding when shared-auth login should become the default for named operators and where shared staff PIN should remain allowed.
 - `score-predict`
   - A live adapter now claims reserved legacy identities into `auth.users` on successful login and registration.
   - Password reset and admin deletion flows now keep shared identity state in sync.
@@ -104,6 +105,7 @@ The shared identity source should be:
   - A named operator account model now exists for staff, with admin CRUD, staff login support, and operator-aware distribution logs.
   - Named operator accounts now reserve `staff_id` aliases and can be claimed into shared auth from the admin config screen.
   - Staff PIN login now surfaces whether the operator account is linked to an active shared membership.
+  - A shared-auth-first staff login endpoint and login-screen mode now exist for claimed operator identities.
 
 ## What Is Not Live Yet
 
@@ -111,6 +113,6 @@ The shared identity source should be:
 - App login pages still use their existing local mechanisms.
 - `score-predict` still issues its own NextAuth session after syncing shared memberships.
 - `study-hall` student login is still app-local.
-- `interview-pass` staff operator accounts are still app-local and not linked to shared auth yet.
-- `interview-pass` staff operator accounts still log in with PIN first even after they are linked to shared auth.
+- `interview-pass` staff shared login still requires both operator login ID and shared auth email/password.
+- `interview-pass` shared staff PIN still exists as a separate fallback path for kiosk use.
 - `interview-mate` does not yet have a live shared-auth adapter.

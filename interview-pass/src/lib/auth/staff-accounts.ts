@@ -186,6 +186,24 @@ async function resolveClaimUser(email: string, password: string) {
   throw new Error(createResult.error?.message ?? '공통 인증 계정을 만들지 못했습니다.')
 }
 
+async function authenticateSharedUser(email: string, password: string) {
+  const normalizedEmail = normalizeEmail(email)
+  const anonDb = getSharedAnonClient()
+  const loginResult = await anonDb.auth.signInWithPassword({
+    email: normalizedEmail,
+    password,
+  })
+
+  if (!loginResult.data.user) {
+    throw new Error('?몄쬆 ?대찓?쇨낵 鍮꾨?踰덊샇瑜??뺤씤??二쇱꽭??')
+  }
+
+  return {
+    userId: loginResult.data.user.id,
+    email: normalizeEmail(loginResult.data.user.email ?? normalizedEmail),
+  }
+}
+
 async function loadClaimedEmailMasked(claimedUserId: string | null) {
   if (!claimedUserId) {
     return null
@@ -519,6 +537,19 @@ async function updateStaffAccountSharedUser(accountId: string, sharedUserId: str
   }
 }
 
+async function touchStaffAccountLastLogin(division: TenantType, accountId: string) {
+  const db = createServerClient()
+  const { error } = await db
+    .from('staff_accounts')
+    .update({ last_login_at: new Date().toISOString() })
+    .eq('id', accountId)
+    .eq('division', division)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
 async function markReservationClaimed(
   reservation: ReservationRow,
   userId: string,
@@ -720,17 +751,7 @@ export async function authenticateStaffAccount(params: {
     return null
   }
 
-  const db = createServerClient()
-  const now = new Date().toISOString()
-  const { error } = await db
-    .from('staff_accounts')
-    .update({ last_login_at: now })
-    .eq('id', account.id)
-    .eq('division', params.division)
-
-  if (error) {
-    throw new Error(error.message)
-  }
+  await touchStaffAccountLastLogin(params.division, account.id)
 
   const sharedLinked =
     account.shared_user_id
@@ -744,5 +765,50 @@ export async function authenticateStaffAccount(params: {
     sharedUserId: account.shared_user_id,
     sharedLinked,
     authMethod: 'staff_account' as const,
+  }
+}
+
+export async function authenticateStaffAccountWithSharedAuth(params: {
+  division: TenantType
+  loginId: string
+  email: string
+  password: string
+}) {
+  const normalizedLoginId = normalizeLoginId(params.loginId)
+  const account = await loadAccountByLoginId(params.division, normalizedLoginId)
+  if (!account || account.status !== 'active') {
+    throw new Error('吏곸썝 怨꾩젙 ?뺣낫媛 ?щ컮瑜댁? ?딆뒿?덈떎.')
+  }
+
+  if (!account.shared_user_id) {
+    throw new Error('癒쇱? 愿由ъ옄 ?ㅼ젙?먯꽌 怨듯넻 ?몄쬆 怨꾩젙??留곹겕??二쇱꽭??')
+  }
+
+  const sharedUser = await authenticateSharedUser(params.email, params.password)
+  if (account.shared_user_id !== sharedUser.userId) {
+    throw new Error('?대? 吏곸썝 怨꾩젙怨??곌껐??怨듯넻 ?몄쬆 怨꾩젙?낅땲??')
+  }
+
+  await ensureStaffReservation(account)
+  await syncClaimedStaffAccountToCommonAuth(account, account.login_id)
+
+  const sharedLinked = Boolean(
+    (await loadSharedMembershipStates([account.shared_user_id], params.division)).get(account.shared_user_id),
+  )
+
+  if (!sharedLinked) {
+    throw new Error('怨듯넻 ?몄쬆 怨꾩젙 沅뚰븳???꾩슂?⑸땲?? 愿由ъ옄 ?ㅼ젙?먯꽌 ?ㅼ떆 ?곌껐??二쇱꽭??')
+  }
+
+  await touchStaffAccountLastLogin(params.division, account.id)
+
+  return {
+    accountId: account.id,
+    loginId: account.login_id,
+    displayName: account.display_name,
+    sharedUserId: account.shared_user_id,
+    sharedLinked,
+    sharedEmail: sharedUser.email,
+    authMethod: 'staff_shared' as const,
   }
 }

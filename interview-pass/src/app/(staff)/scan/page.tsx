@@ -35,7 +35,7 @@ interface Material {
 
 interface StaffSessionStatus {
   role: 'staff' | 'admin'
-  authMethod: 'legacy_staff_pin' | 'staff_account' | 'admin_pin' | 'admin_shared' | null
+  authMethod: 'legacy_staff_pin' | 'staff_account' | 'staff_shared' | 'admin_pin' | 'admin_shared' | null
   staffLoginId: string
   staffName: string
   adminId: string
@@ -643,7 +643,7 @@ export default function ScanPage() {
           <p className="font-semibold text-gray-900">
             {sessionInfo.role === 'admin'
               ? `관리자 인증${sessionInfo.adminId ? ` (${sessionInfo.adminId})` : ''}`
-              : sessionInfo.authMethod === 'staff_account'
+              : sessionInfo.authMethod === 'staff_account' || sessionInfo.authMethod === 'staff_shared'
                 ? `직원 계정 ${sessionInfo.staffName}${sessionInfo.staffLoginId ? ` (${sessionInfo.staffLoginId})` : ''}`
                 : '공용 직원 PIN'}
           </p>

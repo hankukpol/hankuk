@@ -60,7 +60,7 @@ export interface StaffJwtPayload {
   staffAccountId?: string
   staffLoginId?: string
   staffName?: string
-  authMethod?: 'legacy_staff_pin' | 'staff_account' | 'admin_pin' | 'admin_shared'
+  authMethod?: 'legacy_staff_pin' | 'staff_account' | 'staff_shared' | 'admin_pin' | 'admin_shared'
   sharedUserId?: string | null
   sharedLinked?: boolean
   iat: number

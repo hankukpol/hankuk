@@ -86,7 +86,7 @@ export type StaffAccountClaimPayload = {
 export type StaffSessionStatus = {
   role: 'staff' | 'admin'
   division: 'police' | 'fire' | null
-  authMethod: 'legacy_staff_pin' | 'staff_account' | 'admin_pin' | 'admin_shared' | null
+  authMethod: 'legacy_staff_pin' | 'staff_account' | 'staff_shared' | 'admin_pin' | 'admin_shared' | null
   adminId: string
   staffAccountId: string | null
   staffLoginId: string

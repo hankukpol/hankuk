@@ -37,7 +37,12 @@ These app versions are still intentionally unaligned:
 
 - `score-predict`: Next 16 / React 19 / Prisma 5
 - `study-hall`: Next 14 / React 18 / Prisma 6
-- `interview-pass`: Next 15 / React 19 / Supabase SSR 0.6
+- `interview-pass`: Next 15 / React 19
 - `interview-mate`: Next 14 / React 18
 
-Because of that, only dependency-light shared packages should be extracted for now.
+Partial alignment already done:
+
+- `@supabase/supabase-js` is now aligned at `^2.100.1` across `score-predict`, `study-hall`, and `interview-pass`.
+- `interview-pass` no longer carries an unused `@supabase/ssr` dependency.
+
+Because of the remaining Next.js, React, and Prisma major-version gaps, only dependency-light shared packages should be extracted for now.

@@ -23,7 +23,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.19.0",
     "@supabase/ssr": "^0.9.0",
-    "@supabase/supabase-js": "^2.99.3",
+    "@supabase/supabase-js": "^2.100.1",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.38.0",
     "jose": "^6.2.2",

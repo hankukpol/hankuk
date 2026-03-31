@@ -375,7 +375,7 @@ async function listRecentInterviewGroups(
       date: { gte: new Date(`${sinceDate}T00:00:00Z`) },
     },
     _max: { date: true },
-  });
+  }) as unknown as RecentInterviewGroup[];
 }
 
 async function getAdminDashboardDataUncached(divisionSlug: string): Promise<AdminDashboardData> {

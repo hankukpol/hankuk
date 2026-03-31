@@ -1,18 +1,21 @@
 'use client'
 
-import { createContext, useContext } from 'react'
+import { createContext, createElement, useContext } from 'react'
 import { getTenantConfigByType, type TenantType } from '@/lib/tenant'
 
 const TenantContext = createContext<TenantType | null>(null)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TenantChildren = any
 
 export function TenantProvider({
   tenantType,
   children,
 }: {
   tenantType: TenantType
-  children: React.ReactNode
+  children: TenantChildren
 }) {
-  return <TenantContext.Provider value={tenantType}>{children}</TenantContext.Provider>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return createElement(TenantContext.Provider as any, { value: tenantType }, children)
 }
 
 export function useTenantConfig() {

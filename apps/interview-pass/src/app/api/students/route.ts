@@ -1,9 +1,11 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase/server'
 import { normalizePhone, normalizeName } from '@/lib/utils'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -18,6 +20,11 @@ const studentSchema = z.object({
 })
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -57,6 +64,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -71,6 +83,7 @@ export async function POST(req: NextRequest) {
   const db = createServerClient()
   const division = await getServerTenantType()
   const payload = {
+    id: randomUUID(),
     name: normalizeName(parsed.data.name),
     phone: normalizePhone(parsed.data.phone),
     exam_number: parsed.data.exam_number || null,
@@ -95,6 +108,12 @@ export async function POST(req: NextRequest) {
   )
 
   if (error) {
+    console.error('[students:POST] failed to insert student', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
     if (error.code === '23505') {
       return NextResponse.json(
         { error: '같은 학생 정보가 이미 등록되어 있습니다. 기존 학생 목록을 먼저 확인해 주세요.' },

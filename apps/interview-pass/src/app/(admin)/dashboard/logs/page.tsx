@@ -78,9 +78,15 @@ export default function LogsPage() {
 
   async function handleDelete(id: number) {
     setDeletingId(id)
-    await fetch(`/api/distribution/logs/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/distribution/logs/${id}`, { method: 'DELETE' })
     setDeletingId(null)
     setConfirmDeleteId(null)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error ?? '배부 로그 삭제에 실패했습니다.')
+      return
+    }
+
     void load()
   }
 

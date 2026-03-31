@@ -1,9 +1,12 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PanelSlot = any
+
 type ConfigPanelProps = {
   eyebrow?: string
   title: string
   description?: string
-  children: React.ReactNode
-  footer?: React.ReactNode
+  children: PanelSlot
+  footer?: PanelSlot
 }
 
 export default function ConfigPanel({

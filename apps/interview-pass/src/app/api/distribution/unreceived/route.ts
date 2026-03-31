@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -20,7 +26,10 @@ export async function GET(req: NextRequest) {
   const division = await getServerTenantType()
   const scope = getScopedDivisionValues(division)
 
-  const [{ data: received }, { data: students, error }] = await Promise.all([
+  const [
+    { data: received, error: receivedError },
+    { data: students, error: studentsError },
+  ] = await Promise.all([
     withDivisionFallback(
       () =>
         db
@@ -49,7 +58,7 @@ export async function GET(req: NextRequest) {
     ),
   ])
 
-  if (error) {
+  if (receivedError || studentsError) {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 

@@ -2,11 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTenantConfig } from '@/components/TenantProvider'
 import { useAppConfig } from '@/hooks/use-app-config'
+import { stripTenantPrefix, withTenantPrefix } from '@/lib/tenant'
 import { CONFIG_SECTIONS } from '../_lib/config-sections'
 
 export default function ConfigSubTabNav() {
-  const pathname = usePathname()
+  const tenant = useTenantConfig()
+  const pathname = stripTenantPrefix(usePathname())
   const { config, isLoading } = useAppConfig()
   const visibleSections = CONFIG_SECTIONS.filter(
     (section) => !section.feature || (!isLoading && config[section.feature]),
@@ -24,7 +27,7 @@ export default function ConfigSubTabNav() {
           return (
             <li key={section.href}>
               <Link
-                href={section.href}
+                href={withTenantPrefix(section.href, tenant.type)}
                 className={`inline-flex items-center rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-[#1a237e] text-white'

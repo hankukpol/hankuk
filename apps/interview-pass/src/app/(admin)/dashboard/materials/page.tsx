@@ -31,11 +31,17 @@ export default function MaterialsPage() {
   }, [config.admin_materials_enabled, isFeatureLoading])
 
   async function toggleActive(material: Material) {
-    await fetch(`/api/materials/${material.id}`, {
+    const res = await fetch(`/api/materials/${material.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !material.is_active }),
     })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error ?? '자료 상태 변경에 실패했습니다.')
+      return
+    }
+
     void load()
   }
 
@@ -91,8 +97,9 @@ export default function MaterialsPage() {
       setConfirmDeleteId(null)
       void load()
     } else {
+      const data = await res.json().catch(() => ({}))
       setConfirmDeleteId(null)
-      alert('자료 삭제에 실패했습니다.')
+      alert(data.error ?? '자료 삭제에 실패했습니다.')
     }
   }
 

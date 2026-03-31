@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import type { FormEvent } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useAppConfig } from '@/hooks/use-app-config'
 import { isStaffDistributionEnabled } from '@/lib/app-config.shared'
@@ -90,12 +91,7 @@ function getSavedLabel(mode: AuthMode, authId: string) {
 
 function StaffLoginForm() {
   const router = useRouter()
-  const params = useSearchParams()
   const tenant = useTenantConfig()
-  const redirect = useMemo(
-    () => withTenantPrefix(params.get('redirect') ?? '/scan', tenant.type),
-    [params, tenant.type],
-  )
   const { config, isLoading: isConfigLoading } = useAppConfig()
 
   const [mode, setMode] = useState<AuthMode>('operator')
@@ -108,13 +104,25 @@ function StaffLoginForm() {
   const [autoLogging, setAutoLogging] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [savedLabel, setSavedLabel] = useState('')
+  const [redirect, setRedirect] = useState<string | null>(null)
   const staffEntryEnabled = isStaffDistributionEnabled(config)
+  const redirectTarget = redirect ?? withTenantPrefix('/scan', tenant.type)
 
   useEffect(() => {
-    if (isConfigLoading) {
+    const nextRedirect =
+      typeof window === 'undefined'
+        ? '/scan'
+        : new URLSearchParams(window.location.search).get('redirect') ?? '/scan'
+
+    setRedirect(withTenantPrefix(nextRedirect, tenant.type))
+  }, [tenant.type])
+
+  useEffect(() => {
+    if (isConfigLoading || !redirect) {
       return
     }
 
+    const redirectPath = redirect
     let cancelled = false
 
     async function prepare() {
@@ -148,7 +156,7 @@ function StaffLoginForm() {
             authPassword: '',
           })
           if (res.ok) {
-            router.replace(redirect)
+            router.replace(redirectPath)
             return
           }
 
@@ -182,7 +190,7 @@ function StaffLoginForm() {
     }
   }, [isConfigLoading, redirect, router, staffEntryEnabled])
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
     if (!staffEntryEnabled) {
@@ -240,10 +248,10 @@ function StaffLoginForm() {
       }
     }
 
-    router.push(redirect)
+    router.push(redirectTarget)
   }
 
-  if (isConfigLoading || autoLogging) {
+  if (isConfigLoading || autoLogging || !redirect) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6">
         <div
@@ -420,9 +428,5 @@ function StaffLoginForm() {
 }
 
 export default function StaffLoginPage() {
-  return (
-    <Suspense>
-      <StaffLoginForm />
-    </Suspense>
-  )
+  return <StaffLoginForm />
 }

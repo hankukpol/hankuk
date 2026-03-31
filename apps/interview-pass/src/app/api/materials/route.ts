@@ -2,12 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase/server'
-import { verifyJwt, ADMIN_COOKIE } from '@/lib/auth/jwt'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { getServerTenantType } from '@/lib/tenant.server'
+
+function logMaterialsRouteError(context: string, error: {
+  code?: string
+  message?: string
+  details?: string
+  hint?: string
+}) {
+  console.error(`[materials:${context}]`, {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  })
+}
 
 const getActiveMaterials = unstable_cache(
   async (division: 'police' | 'fire') => {
@@ -51,15 +65,14 @@ export async function GET(req: NextRequest) {
   const division = await getServerTenantType()
 
   if (all) {
+    const authError = await requireAdminApi(req)
+    if (authError) {
+      return authError
+    }
+
     const featureError = await requireAppFeature('admin_materials_enabled')
     if (featureError) {
       return featureError
-    }
-
-    const token = req.cookies.get(ADMIN_COOKIE)?.value
-    const payload = token ? await verifyJwt(token) : null
-    if (!payload || payload.role !== 'admin') {
-      return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 })
     }
   }
 
@@ -68,6 +81,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_materials_enabled')
   if (featureError) {
     return featureError
@@ -104,6 +122,7 @@ export async function POST(req: NextRequest) {
   )
 
   if (error) {
+    logMaterialsRouteError('POST', error)
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 

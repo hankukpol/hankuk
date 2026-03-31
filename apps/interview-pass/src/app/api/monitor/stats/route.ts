@@ -18,7 +18,7 @@ export async function GET() {
   const scope = getScopedDivisionValues(division)
 
   const [
-    { count: totalStudents },
+    { count: totalStudents, error: totalStudentsError },
     { data: materials, error: materialsError },
     { data: logs, error: logsError },
   ] = await Promise.all([
@@ -36,7 +36,7 @@ export async function GET() {
     ),
   ])
 
-  if (materialsError || logsError) {
+  if (totalStudentsError || materialsError || logsError) {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 

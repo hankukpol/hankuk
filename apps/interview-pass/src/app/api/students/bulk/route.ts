@@ -1,9 +1,11 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase/server'
 import { normalizePhone, normalizeName } from '@/lib/utils'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -19,6 +21,11 @@ const rowSchema = z.object({
 const bulkSchema = z.array(rowSchema).min(1).max(500)
 
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -32,6 +39,7 @@ export async function POST(req: NextRequest) {
 
   const rows = parsed.data
     .map((row) => ({
+      id: randomUUID(),
       name: normalizeName(row.name),
       phone: normalizePhone(row.phone),
       exam_number: row.exam_number || null,

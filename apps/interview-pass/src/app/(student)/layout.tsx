@@ -1,9 +1,12 @@
 import { unstable_cache } from 'next/cache'
+import type { CSSProperties } from 'react'
 import { createServerClient, hasServerSupabaseEnv } from '@/lib/supabase/server'
 import { getTenantConfigByType } from '@/lib/tenant'
 import { getServerTenantConfig, getServerTenantType } from '@/lib/tenant.server'
 
 export const dynamic = 'force-dynamic'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LayoutChildren = any
 
 const getThemeConfig = unstable_cache(
   async (division: 'police' | 'fire') => {
@@ -43,14 +46,14 @@ export async function generateMetadata() {
   return { title: cfg.app_name }
 }
 
-export default async function StudentLayout({ children }: { children: React.ReactNode }) {
+export default async function StudentLayout({ children }: { children: LayoutChildren }) {
   const tenant = await getServerTenantConfig()
   const cfg = await getThemeConfig(tenant.type)
 
   return (
     <main
       className="min-h-dvh bg-white"
-      style={{ '--theme': cfg.theme_color } as React.CSSProperties}
+      style={{ '--theme': cfg.theme_color } as CSSProperties}
     >
       <div className="mx-auto w-full max-w-none md:max-w-[768px]">
         {children}

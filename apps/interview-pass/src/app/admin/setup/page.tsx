@@ -1,15 +1,23 @@
 'use client'
 
 import Link from 'next/link'
+import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
 
+type BootstrapStatus = {
+  configured?: boolean
+  bootstrapAllowed?: boolean
+  message?: string
+}
+
 export default function AdminSetupPage() {
   const router = useRouter()
   const tenant = useTenantConfig()
   const [configured, setConfigured] = useState<boolean | null>(null)
+  const [bootstrapAllowed, setBootstrapAllowed] = useState(true)
   const [id, setId] = useState('')
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
@@ -19,17 +27,23 @@ export default function AdminSetupPage() {
   useEffect(() => {
     fetch('/api/auth/admin/bootstrap')
       .then((res) => res.json())
-      .then((data: { configured?: boolean }) => {
+      .then((data: BootstrapStatus) => {
         setConfigured(Boolean(data.configured))
+        setBootstrapAllowed(data.bootstrapAllowed !== false)
+        setError(data.message ?? '')
       })
       .catch(() => {
-        setError('초기 설정 상태를 확인하지 못했습니다.')
         setConfigured(false)
+        setError('초기 설정 상태를 확인하지 못했습니다.')
       })
   }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+
+    if (!bootstrapAllowed) {
+      return
+    }
 
     if (pin.length < 4) {
       setError('관리자 PIN은 4자리 이상이어야 합니다.')
@@ -55,6 +69,9 @@ export default function AdminSetupPage() {
 
     if (!res.ok) {
       setError(data.error ?? '초기 관리자 설정에 실패했습니다.')
+      if (res.status === 403) {
+        setBootstrapAllowed(false)
+      }
       if (res.status === 409) {
         setConfigured(true)
       }
@@ -89,6 +106,19 @@ export default function AdminSetupPage() {
               관리자 로그인으로 이동
             </Link>
           </div>
+        ) : !bootstrapAllowed ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {error || '현재 환경에서는 초기 관리자 설정이 비활성화되어 있습니다.'}
+            </div>
+            <Link
+              href={withTenantPrefix('/admin/login', tenant.type)}
+              className="block w-full rounded-lg py-3 text-center text-base font-medium text-white"
+              style={{ background: 'var(--theme)' }}
+            >
+              관리자 로그인으로 이동
+            </Link>
+          </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
@@ -96,12 +126,14 @@ export default function AdminSetupPage() {
               <input
                 type="text"
                 value={id}
-                onChange={(e) => setId(e.target.value)}
-                placeholder="선택 사항입니다"
+                onChange={(event) => setId(event.target.value)}
+                placeholder="선택 사항입니다."
                 autoComplete="username"
                 className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
               />
-              <p className="text-xs text-gray-500">비워 두면 PIN만으로 로그인할 수 있습니다.</p>
+              <p className="text-xs text-gray-500">
+                비워 두면 PIN만으로 로그인할 수 있습니다.
+              </p>
             </div>
 
             <div className="space-y-1">
@@ -109,7 +141,7 @@ export default function AdminSetupPage() {
               <input
                 type="password"
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
+                onChange={(event) => setPin(event.target.value)}
                 placeholder="4자리 이상 입력"
                 autoComplete="new-password"
                 inputMode="numeric"
@@ -122,7 +154,7 @@ export default function AdminSetupPage() {
               <input
                 type="password"
                 value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value)}
+                onChange={(event) => setConfirmPin(event.target.value)}
                 placeholder="같은 PIN을 다시 입력"
                 autoComplete="new-password"
                 inputMode="numeric"
@@ -141,7 +173,10 @@ export default function AdminSetupPage() {
               {loading ? '설정 중...' : '관리자 설정 완료'}
             </button>
 
-            <Link href={withTenantPrefix('/admin/login', tenant.type)} className="block text-center text-sm text-gray-500 underline">
+            <Link
+              href={withTenantPrefix('/admin/login', tenant.type)}
+              className="block text-center text-sm text-gray-500 underline"
+            >
               관리자 로그인이 이미 가능하면 여기로 이동
             </Link>
           </form>

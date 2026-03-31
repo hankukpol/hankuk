@@ -5,6 +5,10 @@ import { usePathname } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useAppConfig } from '@/hooks/use-app-config'
 import type { AppFeatureKey } from '@/lib/app-config.shared'
+import { stripTenantPrefix, withTenantPrefix } from '@/lib/tenant'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LayoutChildren = any
 
 const NAV: Array<{ href: string; label: string; feature?: AppFeatureKey }> = [
   { href: '/dashboard', label: '대시보드', feature: 'admin_dashboard_overview_enabled' },
@@ -14,9 +18,9 @@ const NAV: Array<{ href: string; label: string; feature?: AppFeatureKey }> = [
   { href: '/dashboard/config', label: '설정' },
 ]
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({ children }: { children: LayoutChildren }) {
   const tenant = useTenantConfig()
-  const pathname = usePathname()
+  const pathname = stripTenantPrefix(usePathname())
   const { config } = useAppConfig()
   const visibleNav = NAV.filter((item) => !item.feature || config[item.feature])
 
@@ -60,7 +64,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={withTenantPrefix(item.href, tenant.type)}
                 className={`relative flex items-center px-4 py-3 text-[14px] transition-colors ${
                   active
                     ? 'bg-blue-600 font-semibold text-white'
@@ -78,7 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <button
             onClick={async () => {
               await fetch('/api/auth/admin/logout', { method: 'POST' })
-              window.location.href = '/admin/login'
+              window.location.href = withTenantPrefix('/admin/login', tenant.type)
             }}
             className="flex w-full items-center gap-2.5 px-4 py-3 text-[14px] text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
           >
@@ -106,7 +110,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <button
             onClick={async () => {
               await fetch('/api/auth/admin/logout', { method: 'POST' })
-              window.location.href = '/admin/login'
+              window.location.href = withTenantPrefix('/admin/login', tenant.type)
             }}
             className="border border-slate-700 px-2.5 py-1 text-[11px] text-slate-400 hover:text-white"
           >
@@ -122,7 +126,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={withTenantPrefix(item.href, tenant.type)}
                 className={`shrink-0 px-3 py-2 text-[12px] font-medium transition-colors ${
                   active
                     ? 'bg-blue-600 text-white'

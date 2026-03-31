@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -21,7 +27,7 @@ export async function GET(req: NextRequest) {
   const division = await getServerTenantType()
   const scope = getScopedDivisionValues(division)
 
-  const { data: materials } = await withDivisionFallback(
+  const { data: materials, error: materialsError } = await withDivisionFallback(
     () =>
       db
         .from('materials')
@@ -57,11 +63,11 @@ export async function GET(req: NextRequest) {
     return query.range(offset, offset + limit - 1)
   }
 
-  const { data: students, count, error } = await withDivisionFallback(
+  const { data: students, count, error: studentsError } = await withDivisionFallback(
     () => buildStudentsQuery(true),
     () => buildStudentsQuery(false),
   )
-  if (error) {
+  if (materialsError || studentsError) {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 
@@ -70,7 +76,7 @@ export async function GET(req: NextRequest) {
   }
 
   const studentIds = students.map((student) => student.id)
-  const { data: logs } = await withDivisionFallback(
+  const { data: logs, error: logsError } = await withDivisionFallback(
     () =>
       db
         .from('distribution_logs')
@@ -83,6 +89,10 @@ export async function GET(req: NextRequest) {
         .select('student_id, material_id')
         .in('student_id', studentIds),
   )
+
+  if (logsError) {
+    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
+  }
 
   const receiptMap: Record<string, Set<number>> = {}
   for (const log of logs ?? []) {

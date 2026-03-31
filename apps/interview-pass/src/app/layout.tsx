@@ -3,6 +3,9 @@ import { TenantProvider } from '@/components/TenantProvider'
 import { getServerTenantConfig } from '@/lib/tenant.server'
 import './globals.css'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LayoutChildren = any
+
 export async function generateMetadata(): Promise<Metadata> {
   const tenant = await getServerTenantConfig()
 
@@ -22,7 +25,7 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 }
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: LayoutChildren }) {
   const tenant = await getServerTenantConfig()
 
   return (

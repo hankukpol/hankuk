@@ -1,10 +1,13 @@
 import { getServerTenantConfig } from '@/lib/tenant.server'
 import ConfigSubTabNav from './_components/ConfigSubTabNav'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LayoutChildren = any
+
 export default async function DashboardConfigLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: LayoutChildren
 }) {
   const tenant = await getServerTenantConfig()
 

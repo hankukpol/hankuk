@@ -4,6 +4,7 @@ import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { getServerTenantConfig } from '@/lib/tenant.server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 
 interface JoinedStudent {
   name: string
@@ -85,6 +86,11 @@ async function loadRows(
 }
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_distribution_logs_enabled')
   if (featureError) {
     return featureError

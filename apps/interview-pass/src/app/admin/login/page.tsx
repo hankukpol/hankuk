@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
@@ -8,10 +9,18 @@ import { withTenantPrefix } from '@/lib/tenant'
 
 type LoginMode = 'pin' | 'shared'
 
+type BootstrapStatus = {
+  configured?: boolean
+  bootstrapAllowed?: boolean
+  message?: string
+}
+
 export default function AdminLoginPage() {
   const router = useRouter()
   const tenant = useTenantConfig()
   const [configured, setConfigured] = useState<boolean | null>(null)
+  const [bootstrapAllowed, setBootstrapAllowed] = useState(true)
+  const [bootstrapMessage, setBootstrapMessage] = useState('')
   const [mode, setMode] = useState<LoginMode>('pin')
   const [id, setId] = useState('')
   const [pin, setPin] = useState('')
@@ -23,16 +32,18 @@ export default function AdminLoginPage() {
   useEffect(() => {
     fetch('/api/auth/admin/bootstrap')
       .then((res) => res.json())
-      .then((data: { configured?: boolean }) => {
+      .then((data: BootstrapStatus) => {
         setConfigured(Boolean(data.configured))
+        setBootstrapAllowed(data.bootstrapAllowed !== false)
+        setBootstrapMessage(data.message ?? '')
       })
       .catch(() => {
         setConfigured(true)
       })
   }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
 
     if (mode === 'pin' && !pin) {
       setError('관리자 PIN을 입력해 주세요.')
@@ -41,12 +52,12 @@ export default function AdminLoginPage() {
 
     if (mode === 'shared') {
       if (!email.trim()) {
-        setError('공통 인증 이메일을 입력해 주세요.')
+        setError('공용 인증 이메일을 입력해 주세요.')
         return
       }
 
       if (password.length < 6) {
-        setError('공통 인증 비밀번호는 6자 이상이어야 합니다.')
+        setError('공용 인증 비밀번호는 6자리 이상이어야 합니다.')
         return
       }
     }
@@ -54,13 +65,9 @@ export default function AdminLoginPage() {
     setLoading(true)
     setError('')
 
-    const endpoint = mode === 'pin'
-      ? '/api/auth/admin/login'
-      : '/api/auth/admin/shared-login'
-
-    const payload = mode === 'pin'
-      ? { id, pin }
-      : { email, password }
+    const endpoint =
+      mode === 'pin' ? '/api/auth/admin/login' : '/api/auth/admin/shared-login'
+    const payload = mode === 'pin' ? { id, pin } : { email, password }
 
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -91,18 +98,27 @@ export default function AdminLoginPage() {
 
           {setupRequired ? (
             <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              관리자 PIN이 아직 설정되지 않았습니다.{` `}
-              <Link href={withTenantPrefix('/admin/setup', tenant.type)} className="font-semibold underline">
-                초기 관리자 설정
-              </Link>
-              으로 먼저 진행해 주세요.
+              {bootstrapAllowed ? (
+                <>
+                  관리자 PIN이 아직 설정되지 않았습니다.{' '}
+                  <Link
+                    href={withTenantPrefix('/admin/setup', tenant.type)}
+                    className="font-semibold underline"
+                  >
+                    초기 관리자 설정
+                  </Link>
+                  으로 먼저 진행해 주세요.
+                </>
+              ) : (
+                bootstrapMessage || '현재 환경에서는 초기 관리자 설정이 비활성화되어 있습니다.'
+              )}
             </div>
           ) : null}
 
           <div className="mb-5 flex overflow-hidden rounded-xl border border-gray-200">
             {([
               ['pin', 'PIN 로그인'],
-              ['shared', '공통 인증 로그인'],
+              ['shared', '공용 인증 로그인'],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -125,7 +141,8 @@ export default function AdminLoginPage() {
 
           {mode === 'shared' ? (
             <p className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
-              공통 인증 로그인은 먼저 관리자 설정 화면에서 현재 division 관리자 아이디를 공통 인증 계정에 연결한 뒤 사용할 수 있습니다.
+              공용 인증 로그인은 관리자 설정 화면에서 현재 division 관리자 아이디를 공용 인증
+              계정에 연결한 뒤 사용할 수 있습니다.
             </p>
           ) : null}
 
@@ -137,8 +154,8 @@ export default function AdminLoginPage() {
                   <input
                     type="text"
                     value={id}
-                    onChange={(e) => setId(e.target.value)}
-                    placeholder="설정하지 않았다면 비워 두세요"
+                    onChange={(event) => setId(event.target.value)}
+                    placeholder="설정하지 않았다면 비워 두세요."
                     autoComplete="username"
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
                   />
@@ -149,7 +166,7 @@ export default function AdminLoginPage() {
                   <input
                     type="password"
                     value={pin}
-                    onChange={(e) => setPin(e.target.value)}
+                    onChange={(event) => setPin(event.target.value)}
                     placeholder="관리자 PIN"
                     inputMode="numeric"
                     autoComplete="current-password"
@@ -160,11 +177,11 @@ export default function AdminLoginPage() {
             ) : (
               <>
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-700">공통 인증 이메일</label>
+                  <label className="text-sm font-medium text-gray-700">공용 인증 이메일</label>
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(event) => setEmail(event.target.value)}
                     placeholder="shared auth 이메일"
                     autoComplete="email"
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
@@ -172,12 +189,12 @@ export default function AdminLoginPage() {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-700">공통 인증 비밀번호</label>
+                  <label className="text-sm font-medium text-gray-700">공용 인증 비밀번호</label>
                   <input
                     type="password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="공통 인증 비밀번호"
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="공용 인증 비밀번호"
                     autoComplete="current-password"
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base focus:border-blue-900 focus:outline-none"
                   />
@@ -189,7 +206,7 @@ export default function AdminLoginPage() {
 
             <button
               type="submit"
-              disabled={loading || (setupRequired && mode === 'pin')}
+              disabled={loading || (setupRequired && !bootstrapAllowed && mode === 'pin')}
               className="w-full rounded-lg py-3 text-base font-medium text-white disabled:opacity-60"
               style={{ background: 'var(--theme)' }}
             >

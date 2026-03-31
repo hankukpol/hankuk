@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createServerClient } from '@/lib/supabase/server'
-import { normalizePhone, normalizeName } from '@/lib/utils'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { invalidateCache } from '@/lib/cache/revalidate'
 import { withDivisionFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+import { normalizeName, normalizePhone } from '@/lib/utils'
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -17,10 +18,69 @@ const patchSchema = z.object({
   series: z.string().optional(),
 })
 
+type SupabaseErrorLike = {
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+} | null
+
+type StudentLookupResult = {
+  data: { id: string } | null
+  error: SupabaseErrorLike
+}
+
+async function findStudentById(
+  id: string,
+  division: Awaited<ReturnType<typeof getServerTenantType>>,
+) {
+  const db = createServerClient()
+  const scope = getScopedDivisionValues(division)
+
+  return withDivisionFallback<StudentLookupResult>(
+    () =>
+      db
+        .from('students')
+        .select('id')
+        .eq('id', id)
+        .in('division', scope)
+        .maybeSingle(),
+    () =>
+      db
+        .from('students')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle(),
+  )
+}
+
+function logStudentRouteError(
+  action: 'GET' | 'PATCH' | 'DELETE',
+  studentId: string,
+  error: SupabaseErrorLike,
+) {
+  if (!error) {
+    return
+  }
+
+  console.error(`[students:${action}] failed`, {
+    studentId,
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  })
+}
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -47,11 +107,16 @@ export async function GET(
         .maybeSingle(),
   )
 
-  if (error || !student) {
+  if (error) {
+    logStudentRouteError('GET', id, error)
+    return NextResponse.json({ error: '학생 정보를 불러오지 못했습니다.' }, { status: 500 })
+  }
+
+  if (!student) {
     return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  const { data: logs } = await withDivisionFallback(
+  const { data: logs, error: logsError } = await withDivisionFallback(
     () =>
       db
         .from('distribution_logs')
@@ -67,6 +132,11 @@ export async function GET(
         .order('distributed_at', { ascending: false }),
   )
 
+  if (logsError) {
+    logStudentRouteError('GET', id, logsError)
+    return NextResponse.json({ error: '학생 배부 이력을 불러오지 못했습니다.' }, { status: 500 })
+  }
+
   return NextResponse.json({
     student: {
       ...student,
@@ -79,6 +149,11 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -86,13 +161,27 @@ export async function PATCH(
 
   const { id } = await params
   const division = await getServerTenantType()
+  const { data: existingStudent, error: existingStudentError } = await findStudentById(id, division)
+
+  if (existingStudentError) {
+    logStudentRouteError('PATCH', id, existingStudentError)
+    return NextResponse.json({ error: '학생 정보를 확인하지 못했습니다.' }, { status: 500 })
+  }
+
+  if (!existingStudent) {
+    return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
+  }
+
   const body = await req.json().catch(() => null)
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: '입력값이 올바르지 않습니다.' }, { status: 400 })
+    return NextResponse.json({ error: '입력값을 확인해 주세요.' }, { status: 400 })
   }
 
-  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
   if (parsed.data.name) update.name = normalizeName(parsed.data.name)
   if (parsed.data.phone) update.phone = normalizePhone(parsed.data.phone)
   if (parsed.data.exam_number !== undefined) update.exam_number = parsed.data.exam_number || null
@@ -109,18 +198,30 @@ export async function PATCH(
         .eq('id', id)
         .in('division', getScopedDivisionValues(division))
         .select()
-        .single(),
+        .maybeSingle(),
     () =>
       db
         .from('students')
         .update(update)
         .eq('id', id)
         .select()
-        .single(),
+        .maybeSingle(),
   )
 
   if (error) {
-    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
+    logStudentRouteError('PATCH', id, error)
+    if (error.code === '23505') {
+      return NextResponse.json(
+        { error: '같은 이름과 연락처를 가진 학생이 이미 등록되어 있습니다.' },
+        { status: 409 },
+      )
+    }
+
+    return NextResponse.json({ error: '학생 정보를 수정하지 못했습니다.' }, { status: 500 })
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
   }
 
   await invalidateCache('students')
@@ -128,9 +229,14 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authError = await requireAdminApi(req)
+  if (authError) {
+    return authError
+  }
+
   const featureError = await requireAppFeature('admin_student_management_enabled')
   if (featureError) {
     return featureError
@@ -138,8 +244,19 @@ export async function DELETE(
 
   const { id } = await params
   const division = await getServerTenantType()
+  const { data: existingStudent, error: existingStudentError } = await findStudentById(id, division)
+
+  if (existingStudentError) {
+    logStudentRouteError('DELETE', id, existingStudentError)
+    return NextResponse.json({ error: '학생 정보를 확인하지 못했습니다.' }, { status: 500 })
+  }
+
+  if (!existingStudent) {
+    return NextResponse.json({ error: '학생을 찾을 수 없습니다.' }, { status: 404 })
+  }
+
   const db = createServerClient()
-  const { error } = await withDivisionFallback(
+  let { error } = await withDivisionFallback(
     () =>
       db
         .from('students')
@@ -153,8 +270,51 @@ export async function DELETE(
         .eq('id', id),
   )
 
+  if (error?.code === '23503') {
+    return NextResponse.json(
+      { error: '배부 이력이 있는 학생은 삭제할 수 없습니다. 먼저 배부 이력을 정리해 주세요.' },
+      { status: 409 },
+    )
+
+    const { error: logDeleteError } = await withDivisionFallback(
+      () =>
+        db
+          .from('distribution_logs')
+          .delete()
+          .eq('student_id', id)
+          .in('division', getScopedDivisionValues(division)),
+      () =>
+        db
+          .from('distribution_logs')
+          .delete()
+          .eq('student_id', id),
+    )
+
+    if (logDeleteError) {
+      logStudentRouteError('DELETE', id, logDeleteError)
+      return NextResponse.json({ error: '학생 배부 이력을 정리하지 못했습니다.' }, { status: 500 })
+    }
+
+    const retry = await withDivisionFallback(
+      () =>
+        db
+          .from('students')
+          .delete()
+          .eq('id', id)
+          .in('division', getScopedDivisionValues(division)),
+      () =>
+        db
+          .from('students')
+          .delete()
+          .eq('id', id),
+    )
+
+    error = retry.error
+  }
+
   if (error) {
-    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
+    logStudentRouteError('DELETE', id, error)
+    return NextResponse.json({ error: '학생을 삭제하지 못했습니다.' }, { status: 500 })
   }
 
   await invalidateCache('students')

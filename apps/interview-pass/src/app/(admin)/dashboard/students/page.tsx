@@ -130,7 +130,9 @@ export default function StudentsPage() {
       setRcStudents(data.students ?? [])
       setRcMaterials(data.materials ?? [])
       setRcTotal(data.total ?? 0)
-    } catch { /* ignore */ } finally {
+    } catch {
+      setDistMsg({ text: '수령 현황을 불러오지 못했습니다.', ok: false })
+    } finally {
       setRcLoading(false)
     }
   }, [rcPage, rcSearch])
@@ -143,7 +145,9 @@ export default function StudentsPage() {
       if (!res.ok) throw new Error()
       const data = await res.json()
       setFilteredStudents(data.students ?? [])
-    } catch { /* ignore */ } finally {
+    } catch {
+      setDistMsg({ text: '미수령 학생 목록을 불러오지 못했습니다.', ok: false })
+    } finally {
       setFilteredLoading(false)
     }
   }, [filterMatId])
@@ -186,7 +190,10 @@ export default function StudentsPage() {
     const res = await fetch(`/api/students/${id}`, { method: 'DELETE' })
     setConfirmDeleteStudentId(null)
     if (res.ok) load()
-    else alert('삭제 실패')
+    else {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error ?? '삭제에 실패했습니다.')
+    }
   }
 
   function startEdit(s: Student) {

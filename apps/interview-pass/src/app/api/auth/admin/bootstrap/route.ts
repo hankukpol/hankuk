@@ -11,12 +11,54 @@ const schema = z.object({
   pin: z.string().min(4).max(20),
 })
 
-export async function GET() {
+const BOOTSTRAP_TOGGLE_ENV = 'INTERVIEW_ADMIN_BOOTSTRAP_ENABLED'
+const BOOTSTRAP_DISABLED_MESSAGE =
+  '운영 환경에서는 초기 관리자 설정이 비활성화되어 있습니다. 필요 시 INTERVIEW_ADMIN_BOOTSTRAP_ENABLED=true 로 일시 활성화해 주세요.'
+
+function isLocalHost(hostname: string | null | undefined) {
+  if (!hostname) {
+    return false
+  }
+
+  const normalized = hostname.trim().toLowerCase().split(':')[0]
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '[::1]'
+}
+
+function isBootstrapAllowed(req: NextRequest) {
+  if (process.env.NODE_ENV !== 'production') {
+    return true
+  }
+
+  if (process.env[BOOTSTRAP_TOGGLE_ENV] === 'true') {
+    return true
+  }
+
+  const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+  return isLocalHost(req.nextUrl.hostname) || isLocalHost(forwardedHost)
+}
+
+export async function GET(req: NextRequest) {
   const hash = await getPinHash('admin_pin_hash')
-  return NextResponse.json({ configured: Boolean(hash) })
+  const configured = Boolean(hash)
+  const bootstrapAllowed = isBootstrapAllowed(req)
+
+  return NextResponse.json({
+    configured,
+    bootstrapAllowed,
+    message: !configured && !bootstrapAllowed ? BOOTSTRAP_DISABLED_MESSAGE : '',
+  })
 }
 
 export async function POST(req: NextRequest) {
+  const existingHash = await getPinHash('admin_pin_hash')
+  if (existingHash) {
+    return NextResponse.json({ error: '관리자 설정이 이미 완료되었습니다.' }, { status: 409 })
+  }
+
+  if (!isBootstrapAllowed(req)) {
+    return NextResponse.json({ error: BOOTSTRAP_DISABLED_MESSAGE }, { status: 403 })
+  }
+
   let body: unknown
   try {
     body = await req.json()
@@ -27,11 +69,6 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: '관리자 PIN은 4~20자리여야 합니다.' }, { status: 400 })
-  }
-
-  const existingHash = await getPinHash('admin_pin_hash')
-  if (existingHash) {
-    return NextResponse.json({ error: '관리자 설정이 이미 완료되었습니다.' }, { status: 409 })
   }
 
   const adminId = parsed.data.id.trim()

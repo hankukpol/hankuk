@@ -1,5 +1,6 @@
 'use client'
 
+import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
@@ -119,7 +120,7 @@ export default function StudentLoginPage() {
     await login(savedName, savedPhone)
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     await login(name, phone)
   }

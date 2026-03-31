@@ -59,16 +59,31 @@ async function getStats() {
           .select('distributed_at')
           .gte('distributed_at', `${today}T00:00:00+09:00`),
     ),
-  ])) as Array<{ count?: number | null; data?: Array<Record<string, unknown>> | null }>
+  ])) as Array<{
+    count?: number | null
+    data?: Array<Record<string, unknown>> | null
+    error?: { message?: string } | null
+  }>
 
   const [
-    { count: totalStudents },
-    { count: totalLogs },
-    { count: todayLogs },
-    { data: materials },
-    { data: allDistLogs },
-    { data: todayLogsDetailed },
+    { count: totalStudents, error: totalStudentsError },
+    { count: totalLogs, error: totalLogsError },
+    { count: todayLogs, error: todayLogsError },
+    { data: materials, error: materialsError },
+    { data: allDistLogs, error: allDistLogsError },
+    { data: todayLogsDetailed, error: todayLogsDetailedError },
   ] = results
+
+  if (
+    totalStudentsError ||
+    totalLogsError ||
+    todayLogsError ||
+    materialsError ||
+    allDistLogsError ||
+    todayLogsDetailedError
+  ) {
+    throw new Error('Failed to load dashboard stats')
+  }
 
   const materialRows = (materials ?? []) as Array<{ id: number; name: string; is_active: boolean }>
   const distributionRows = (allDistLogs ?? []) as Array<{ material_id: number; student_id: string }>
@@ -127,7 +142,18 @@ export default async function DashboardPage() {
     )
   }
 
-  const { totalStudents, totalLogs, todayLogs, materials, matCountMap, completedCount, hourMap } = await getStats()
+  let stats: Awaited<ReturnType<typeof getStats>>
+  try {
+    stats = await getStats()
+  } catch {
+    return (
+      <div className="border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+        대시보드 통계를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+      </div>
+    )
+  }
+
+  const { totalStudents, totalLogs, todayLogs, materials, matCountMap, completedCount, hourMap } = stats
   const total = totalStudents ?? 0
   const maxHourCount = Math.max(...CHART_HOURS.map((hour) => hourMap[hour] ?? 0), 1)
   const completedPct = total > 0 ? Math.round((completedCount / total) * 100) : 0

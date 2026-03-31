@@ -12,6 +12,7 @@ import {
   detectRepeatedTardy,
 } from "@/lib/services/attendance-pattern.service";
 import { listExamSchedules, type ExamScheduleItem } from "@/lib/services/exam-schedule.service";
+import { listInterviews } from "@/lib/services/interview.service";
 import { listLeavePermissions } from "@/lib/services/leave.service";
 import { getPrismaClient } from "@/lib/service-helpers";
 
@@ -323,6 +324,60 @@ function getSnapshotOrThrow(snapshotMap: Map<string, AttendanceSnapshot>, date: 
   return snapshot;
 }
 
+type RecentInterviewGroup = {
+  studentId: string;
+  _max: {
+    date: Date | null;
+  };
+};
+
+async function listRecentInterviewGroups(
+  divisionSlug: string,
+  sinceDate: string,
+): Promise<RecentInterviewGroup[]> {
+  if (isMockMode()) {
+    const interviews = await listInterviews(divisionSlug);
+    const latestByStudent = new Map<string, string>();
+
+    for (const interview of interviews) {
+      if (interview.date < sinceDate) {
+        continue;
+      }
+
+      const current = latestByStudent.get(interview.studentId);
+      if (!current || interview.date > current) {
+        latestByStudent.set(interview.studentId, interview.date);
+      }
+    }
+
+    return Array.from(latestByStudent.entries()).map(([studentId, date]) => ({
+      studentId,
+      _max: {
+        date: new Date(`${date}T00:00:00Z`),
+      },
+    }));
+  }
+
+  const prisma = await getPrismaClient();
+  const division = await prisma.division.findUnique({
+    where: { slug: divisionSlug },
+    select: { id: true },
+  });
+
+  if (!division?.id) {
+    return [];
+  }
+
+  return prisma.interview.groupBy({
+    by: ["studentId"],
+    where: {
+      student: { divisionId: division.id },
+      date: { gte: new Date(`${sinceDate}T00:00:00Z`) },
+    },
+    _max: { date: true },
+  });
+}
+
 async function getAdminDashboardDataUncached(divisionSlug: string): Promise<AdminDashboardData> {
   const today = getKstDate();
   const yesterday = getPreviousDate(today);
@@ -354,8 +409,6 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   const examScheduleManagementEnabled = settings.featureFlags.examScheduleManagement;
   const paymentManagementEnabled = settings.featureFlags.paymentManagement;
 
-  const prismaClient = await getPrismaClient();
-
   const [students, snapshots, recentPoints, thisMonthPayments, todayLeaves, interviewGroups, examSchedules, repeatedTardy, repeatedAbsent] = await Promise.all([
     listStudents(divisionSlug),
     attendanceManagementEnabled
@@ -371,19 +424,10 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
       ? listLeavePermissions(divisionSlug, { month: today.slice(0, 7) }).catch(() => [] as Awaited<ReturnType<typeof listLeavePermissions>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listLeavePermissions>>),
     interviewManagementEnabled
-      ? prismaClient.division.findUnique({ where: { slug: divisionSlug }, select: { id: true } })
-          .then((row) => row?.id
-            ? prismaClient.interview.groupBy({
-                by: ["studentId"],
-                where: {
-                  student: { divisionId: row.id },
-                  date: { gte: new Date(thirtyDaysAgo + "T00:00:00Z") },
-                },
-                _max: { date: true },
-              })
-            : [] as { studentId: string; _max: { date: Date | null } }[],
-          ).catch(() => [] as { studentId: string; _max: { date: Date | null } }[])
-      : Promise.resolve([] as { studentId: string; _max: { date: Date | null } }[]),
+      ? listRecentInterviewGroups(divisionSlug, thirtyDaysAgo).catch(
+          () => [] as RecentInterviewGroup[],
+        )
+      : Promise.resolve([] as RecentInterviewGroup[]),
     examScheduleManagementEnabled
       ? listExamSchedules(divisionSlug, { onlyActive: true }).catch(() => [] as Awaited<ReturnType<typeof listExamSchedules>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listExamSchedules>>),

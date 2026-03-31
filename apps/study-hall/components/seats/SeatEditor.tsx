@@ -120,6 +120,10 @@ function areDraftSeatsEqual(left: DraftSeat[], right: DraftSeat[]) {
   });
 }
 
+function areNumberArraysEqual(left: number[], right: number[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function buildDraftSeats(layout: SeatLayout) {
   return buildAutoDraftSeats(
     layout.columns,
@@ -532,6 +536,34 @@ export function SeatEditor({
     setIsDirty(true);
   }
 
+  async function persistRoomConfiguration(
+    roomId: string,
+    options?: { showSuccessToast?: boolean },
+  ) {
+    const response = await fetch(`/api/${divisionSlug}/study-rooms/${roomId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: roomForm.name,
+        columns: roomForm.columns,
+        rows: roomForm.rows,
+        aisleColumns: previewAisleColumns,
+        isActive: roomForm.isActive,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error ?? "자습실 수정에 실패했습니다.");
+    }
+
+    if (options?.showSuccessToast) {
+      toast.success("자습실 정보를 저장했습니다.");
+    }
+
+    return data.room as StudyRoomItem;
+  }
+
   async function handleCreateRoom() {
     setIsCreatingRoom(true);
 
@@ -573,24 +605,7 @@ export function SeatEditor({
     setIsSavingRoom(true);
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/study-rooms/${selectedRoomId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: roomForm.name,
-          columns: roomForm.columns,
-          rows: roomForm.rows,
-          aisleColumns: previewAisleColumns,
-          isActive: roomForm.isActive,
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "자습실 수정에 실패했습니다.");
-      }
-
-      toast.success("자습실 정보를 저장했습니다.");
+      await persistRoomConfiguration(selectedRoomId, { showSuccessToast: true });
       await refreshRooms(selectedRoomId);
       await loadLayout(selectedRoomId);
     } catch (error) {
@@ -652,6 +667,18 @@ export function SeatEditor({
     setIsSavingLayout(true);
 
     try {
+      const hasRoomConfigurationChanges =
+        currentRoom != null &&
+        (currentRoom.name !== roomForm.name ||
+          currentRoom.columns !== roomForm.columns ||
+          currentRoom.rows !== roomForm.rows ||
+          currentRoom.isActive !== roomForm.isActive ||
+          !areNumberArraysEqual(currentRoom.aisleColumns, previewAisleColumns));
+
+      if (hasRoomConfigurationChanges) {
+        await persistRoomConfiguration(selectedRoomId);
+      }
+
       const response = await fetch(`/api/${divisionSlug}/seats/layout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -699,7 +726,7 @@ export function SeatEditor({
 
       await Promise.all([refreshStudents(), refreshRooms(selectedRoomId)]);
       await loadLayout(selectedRoomId);
-      toast.success("좌석 배치를 저장했습니다.");
+      toast.success(hasRoomConfigurationChanges ? "좌석 설정을 저장했습니다." : "좌석 배치를 저장했습니다.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "좌석 배치 저장에 실패했습니다.");
     } finally {

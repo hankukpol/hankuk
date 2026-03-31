@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { CheckSquare, LoaderCircle, PlusSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/ui/section-card";
 import type { SessionSummary } from "@/lib/sessions";
@@ -12,6 +13,9 @@ type AdminRoomBulkPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
   onCreated?: () => void;
 };
 
@@ -24,6 +28,7 @@ type WaitingStudent = {
   region: string;
   series: string;
   score: number | null;
+  interviewExperience: boolean | null;
   createdAt: string;
 };
 
@@ -35,6 +40,11 @@ type BulkCreatedRoom = {
   status: "recruiting" | "formed" | "closed";
   maxMembers: number;
   memberCount: number;
+};
+
+type BulkCreateResponse = {
+  room: BulkCreatedRoom;
+  warning?: string;
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -62,9 +72,17 @@ export function AdminRoomBulkPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
   onCreated,
 }: AdminRoomBulkPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId, selectedSession } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [waitingStudents, setWaitingStudents] = useState<WaitingStudent[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [roomName, setRoomName] = useState("");
@@ -82,30 +100,9 @@ export function AdminRoomBulkPanel({
     [adminKey],
   );
 
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === sessionId) ?? null,
-    [sessionId, sessions],
-  );
-
   const isReadOnly = selectedSession?.status !== "active";
   const allSelected =
     waitingStudents.length > 0 && selectedStudentIds.length === waitingStudents.length;
-
-  useEffect(() => {
-    if (sessionId) {
-      return;
-    }
-
-    const defaultSessionId =
-      initialSessionId ||
-      sessions.find((session) => session.status === "active")?.id ||
-      sessions[0]?.id ||
-      "";
-
-    if (defaultSessionId) {
-      setSessionId(defaultSessionId);
-    }
-  }, [initialSessionId, sessionId, sessions]);
 
   const loadWaitingStudents = useCallback(
     async (nextSessionId: string) => {
@@ -164,7 +161,7 @@ export function AdminRoomBulkPanel({
 
   const handleBulkCreate = () => {
     if (!sessionId) {
-      toast.error("세션을 먼저 선택해 주세요.");
+      toast.error("면접 회차를 먼저 선택해 주세요.");
       return;
     }
 
@@ -186,7 +183,7 @@ export function AdminRoomBulkPanel({
               password: password.trim() || undefined,
               maxMembers: maxMembers ? Number(maxMembers) : undefined,
             }),
-          }).then(readJson<{ room: BulkCreatedRoom }>);
+          }).then(readJson<BulkCreateResponse>);
 
           setLastCreatedRoom(payload.room);
           setSelectedStudentIds([]);
@@ -195,6 +192,9 @@ export function AdminRoomBulkPanel({
           setMaxMembers("");
           await loadWaitingStudents(sessionId);
           onCreated?.();
+          if (payload.warning) {
+            toast.warning(payload.warning);
+          }
           toast.success("관리자 일괄 조 방 생성을 완료했습니다.");
         } catch (error) {
           toast.error(
@@ -209,8 +209,8 @@ export function AdminRoomBulkPanel({
 
   return (
     <SectionCard
-      title="조 방 일괄 생성"
-      description="대기자 여러 명을 선택해서 새 조 방을 한 번에 만들 수 있습니다. 생성된 방은 학생 `/join`·`/room` 흐름에서 바로 소비됩니다."
+      title="조 방 한 번에 만들기"
+      description="선택한 예약의 대기자 여러 명을 묶어 새 조 방을 한 번에 만들 수 있습니다. 생성된 방은 학생 `/join`·`/room` 흐름에서 바로 사용됩니다."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={isReadOnly ? "neutral" : "success"}>
@@ -224,18 +224,20 @@ export function AdminRoomBulkPanel({
       <div className="grid gap-5 xl:grid-cols-[minmax(0,0.86fr)_minmax(320px,0.74fr)]">
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-[220px_auto]">
+            {!hideSessionField && (
             <select
               value={sessionId}
               onChange={(event) => setSessionId(event.target.value)}
               className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
             >
-              <option value="">세션 선택</option>
+              <option value="">면접 회차 선택</option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.name}
                 </option>
               ))}
             </select>
+            )}
             <button
               type="button"
               onClick={handleToggleAll}
@@ -276,6 +278,11 @@ export function AdminRoomBulkPanel({
                         <Badge tone={checked ? "info" : "brand"}>
                           {student.series}
                         </Badge>
+                        {student.interviewExperience !== null ? (
+                          <Badge tone={checked ? "warning" : "info"}>
+                            면접 경험 {student.interviewExperience ? "있음" : "없음"}
+                          </Badge>
+                        ) : null}
                       </div>
                       <p
                         className={`mt-1 text-xs ${
@@ -308,8 +315,8 @@ export function AdminRoomBulkPanel({
             })}
 
             {!isLoading && waitingStudents.length === 0 ? (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                현재 세션의 대기자가 없습니다.
+                <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                현재 예약의 대기자가 없습니다.
               </div>
             ) : null}
           </div>
@@ -350,7 +357,8 @@ export function AdminRoomBulkPanel({
 
             <div className="mt-4 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
               선택한 학생 {selectedStudentIds.length}명으로 새 조 방을 만듭니다.
-              세션 최소 인원 이상이면 자동으로 `편성 완료`, 미만이면 `모집 중` 상태로 생성됩니다.
+              예약 최소 인원 기준 이상이면 자동으로 `편성 완료`, 미만이면 `모집 중`
+              상태로 생성됩니다.
             </div>
 
             <div className="mt-4 flex justify-end">

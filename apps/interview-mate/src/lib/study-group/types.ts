@@ -11,6 +11,7 @@ export interface Member {
   region: string;
   score?: number;
   age?: number;
+  interviewExperience?: boolean | null;
   preAssignedGroup?: number;
 }
 
@@ -20,6 +21,7 @@ export interface PenaltyWeights {
   region: number;
   series: number;
   score: number;
+  interviewExperience: number;
 }
 
 export interface GroupSettings {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart3, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/ui/section-card";
 import { TRACKS } from "@/lib/constants";
@@ -13,6 +14,9 @@ type AdminStatsPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
 };
 
 type StatsPayload = {
@@ -94,7 +98,7 @@ function DistributionList({
   const maxCount = Math.max(...items.map((item) => item.count), 1);
 
   return (
-    <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+    <div className="rounded-[10px] border border-slate-200 bg-white p-5">
       <p className="text-sm text-slate-500">{title}</p>
       <div className="mt-4 grid gap-3">
         {items.map((item) => (
@@ -125,16 +129,18 @@ export function AdminStatsPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
 }: AdminStatsPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [stats, setStats] = useState<StatsPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!sessionId && initialSessionId) {
-      setSessionId(initialSessionId);
-    }
-  }, [initialSessionId, sessionId]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -214,7 +220,7 @@ export function AdminStatsPanel({
   return (
     <SectionCard
       title="운영 통계"
-      description="세션별 예약, 지원, 대기자, 조 편성 현황을 한 번에 확인합니다."
+      description="면접 회차별 예약, 지원, 대기자, 조 편성 현황을 한 번에 확인합니다."
       action={
         <div className="flex items-center gap-2">
           {statsSession ? <Badge tone="brand">{track.label}</Badge> : null}
@@ -224,18 +230,20 @@ export function AdminStatsPanel({
     >
       <div className="space-y-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {!hideSessionField && (
           <select
             value={sessionId}
             onChange={(event) => setSessionId(event.target.value)}
             className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm md:max-w-sm"
           >
-            <option value="">세션 선택</option>
+            <option value="">면접 회차 선택</option>
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
                 {session.name}
               </option>
             ))}
           </select>
+          )}
 
           {statsSession ? (
             <div className="flex flex-wrap gap-2">
@@ -252,7 +260,7 @@ export function AdminStatsPanel({
         </div>
 
         {isLoading ? (
-          <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-16 text-center text-sm text-slate-500">
+          <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-16 text-center text-sm text-slate-500">
             <div className="mx-auto inline-flex items-center gap-2">
               <LoaderCircle className="h-4 w-4 animate-spin" />
               통계 데이터를 불러오는 중입니다.
@@ -261,15 +269,15 @@ export function AdminStatsPanel({
         ) : null}
 
         {!isLoading && !stats ? (
-          <div className="rounded-[16px] border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center text-sm text-slate-500">
-            세션을 선택하면 운영 통계를 확인할 수 있습니다.
+          <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center text-sm text-slate-500">
+            면접 회차를 선택하면 운영 통계를 확인할 수 있습니다.
           </div>
         ) : null}
 
         {!isLoading && stats ? (
           <>
             <div
-              className="rounded-[18px] border p-5"
+              className="rounded-[10px] border p-5"
               style={{
                 borderColor: track.lightColor,
                 background: `linear-gradient(135deg, ${track.lightColor} 0%, #ffffff 100%)`,
@@ -289,7 +297,7 @@ export function AdminStatsPanel({
                     {overview.confirmedReservationCount}건
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    슬롯 충원율 {reservationFillRate}%
+                    예약 시간 충원율 {reservationFillRate}%
                   </p>
                 </div>
                 <div className="rounded-[12px] bg-white/80 px-4 py-4">
@@ -314,28 +322,28 @@ export function AdminStatsPanel({
             </div>
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-4">
-                <p className="text-sm text-slate-500">예약 슬롯</p>
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
+                <p className="text-sm text-slate-500">예약 시간</p>
                 <p className="mt-2 text-xl font-semibold text-slate-950">
                   {overview.activeSlotCount} / {overview.slotCount}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">활성 슬롯 수</p>
+                <p className="mt-1 text-xs text-slate-500">활성 예약 시간 수</p>
               </div>
-              <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
                 <p className="text-sm text-slate-500">예약 취소</p>
                 <p className="mt-2 text-xl font-semibold text-slate-950">
                   {overview.cancelledReservationCount}건
                 </p>
                 <p className="mt-1 text-xs text-slate-500">운영 중 취소 이력</p>
               </div>
-              <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
                 <p className="text-sm text-slate-500">조 배정 인원</p>
                 <p className="mt-2 text-xl font-semibold text-slate-950">
                   {overview.totalJoinedMembers}명
                 </p>
                 <p className="mt-1 text-xs text-slate-500">현재 방에 배정된 인원</p>
               </div>
-              <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
                 <p className="text-sm text-slate-500">추가 요청 방</p>
                 <p className="mt-2 text-xl font-semibold text-slate-950">
                   {overview.extraRequestRoomCount}개
@@ -365,7 +373,7 @@ export function AdminStatsPanel({
                   accentClass="bg-[var(--division-color)]"
                 />
 
-                <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+                <div className="rounded-[10px] border border-slate-200 bg-white p-5">
                   <p className="text-sm text-slate-500">방 충원 현황</p>
                   <div className="mt-4 grid gap-3">
                     {roomOccupancy.map((room) => (

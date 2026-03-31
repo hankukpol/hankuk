@@ -113,7 +113,7 @@ tr:hover {
 
   /* ───── Card Surfaces ───── */
   .surface-card {
-    @apply rounded-[14px] border border-black/[0.06] bg-white;
+    @apply rounded-[10px] border border-black/[0.06] bg-white;
   }
 
   /* ───── Student Page Container ───── */

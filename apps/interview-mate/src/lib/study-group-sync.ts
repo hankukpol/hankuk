@@ -1,6 +1,10 @@
 import ExcelJS from "exceljs";
 import { Readable } from "node:stream";
 
+import {
+  INTERVIEW_EXPERIENCE_HEADER_KEYWORDS,
+  parseInterviewExperience,
+} from "@/lib/interview-experience";
 import { normalizePhone } from "@/lib/phone";
 
 export type StudyGroupImportRow = {
@@ -11,6 +15,7 @@ export type StudyGroupImportRow = {
   region: string | null;
   age: number | null;
   score: number | null;
+  interviewExperience: boolean | null;
   groupNumber: number | null;
 };
 
@@ -133,6 +138,10 @@ export async function parseStudyGroupFile(
   const ageIndex = findHeaderIndex(headers, AGE_KEYWORDS);
   const scoreIndex = findHeaderIndex(headers, SCORE_KEYWORDS);
   const groupIndex = findHeaderIndex(headers, GROUP_KEYWORDS);
+  const interviewExperienceIndex = findHeaderIndex(
+    headers,
+    INTERVIEW_EXPERIENCE_HEADER_KEYWORDS.map((keyword) => keyword.toLowerCase()),
+  );
 
   if (nameIndex === -1 || phoneIndex === -1) {
     throw new Error("가져올 파일에 이름 또는 연락처 헤더가 없습니다.");
@@ -164,6 +173,10 @@ export async function parseStudyGroupFile(
         regionIndex >= 0 ? String(values[regionIndex] ?? "").trim() || null : null,
       age: ageIndex >= 0 ? parseAge(values[ageIndex]) : null,
       score: scoreIndex >= 0 ? parseScore(values[scoreIndex]) : null,
+      interviewExperience:
+        interviewExperienceIndex >= 0
+          ? parseInterviewExperience(values[interviewExperienceIndex])
+          : null,
       groupNumber: groupIndex >= 0 ? parseGroupNumber(values[groupIndex]) : null,
     });
   });

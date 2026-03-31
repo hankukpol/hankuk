@@ -130,7 +130,7 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return errorResponse("대기자 명단에 등록하지 못했습니다.", 500);
+    return errorResponse("편성 대기 상태로 등록하지 못했습니다.", 500);
   }
 
   return jsonResponse(

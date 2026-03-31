@@ -16,7 +16,19 @@ type SessionPayload = {
   minGroupSize?: number;
 };
 
-function normalizeSessionPayload(payload: SessionPayload) {
+type NormalizedSessionPayload = {
+  name?: string;
+  track?: string;
+  reservation_open_at: string | null;
+  reservation_close_at: string | null;
+  apply_open_at: string | null;
+  apply_close_at: string | null;
+  interview_date: string | null;
+  max_group_size: number;
+  min_group_size: number;
+};
+
+function normalizeSessionPayload(payload: SessionPayload): NormalizedSessionPayload {
   return {
     name: payload.name?.trim(),
     track: payload.track,
@@ -30,9 +42,79 @@ function normalizeSessionPayload(payload: SessionPayload) {
   };
 }
 
+function validateGroupSizeRange(payload: Pick<NormalizedSessionPayload, "max_group_size" | "min_group_size">) {
+  if (!Number.isInteger(payload.max_group_size) || payload.max_group_size < 1) {
+    return "최대 조 인원은 1명 이상 정수여야 합니다.";
+  }
+
+  if (!Number.isInteger(payload.min_group_size) || payload.min_group_size < 1) {
+    return "최소 조 인원은 1명 이상 정수여야 합니다.";
+  }
+
+  if (payload.min_group_size > payload.max_group_size) {
+    return "최소 조 인원은 최대 조 인원보다 클 수 없습니다.";
+  }
+
+  return null;
+}
+
+function validateSessionWindows(payload: Pick<
+  NormalizedSessionPayload,
+  "reservation_open_at" | "reservation_close_at" | "apply_open_at" | "apply_close_at"
+>) {
+  const reservationOpenAt =
+    payload.reservation_open_at ? Date.parse(payload.reservation_open_at) : null;
+  const reservationCloseAt =
+    payload.reservation_close_at ? Date.parse(payload.reservation_close_at) : null;
+  const applyOpenAt = payload.apply_open_at ? Date.parse(payload.apply_open_at) : null;
+  const applyCloseAt = payload.apply_close_at ? Date.parse(payload.apply_close_at) : null;
+
+  if (
+    (payload.reservation_open_at && Number.isNaN(reservationOpenAt)) ||
+    (payload.reservation_close_at && Number.isNaN(reservationCloseAt))
+  ) {
+    return "예약 시간 형식이 올바르지 않습니다.";
+  }
+
+  if ((payload.apply_open_at && Number.isNaN(applyOpenAt)) || (payload.apply_close_at && Number.isNaN(applyCloseAt))) {
+    return "지원 시간 형식이 올바르지 않습니다.";
+  }
+
+  if (
+    reservationOpenAt !== null &&
+    reservationCloseAt !== null &&
+    reservationOpenAt > reservationCloseAt
+  ) {
+    return "예약 시작 시간은 종료 시간보다 늦을 수 없습니다.";
+  }
+
+  if (applyOpenAt !== null && applyCloseAt !== null && applyOpenAt > applyCloseAt) {
+    return "지원 시작 시간은 종료 시간보다 늦을 수 없습니다.";
+  }
+
+  return null;
+}
+
+async function findActiveSessionByTrack(track: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("track", track)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 export async function GET(request: Request) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const supabase = createServerSupabaseClient();
@@ -54,32 +136,44 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const payload = normalizeSessionPayload((await request.json()) as SessionPayload);
 
   if (!payload.name) {
-    return errorResponse("면접반 이름을 입력해주세요.");
+    return errorResponse("면접반 이름을 입력해 주세요.");
   }
 
   if (!isTrack(payload.track)) {
     return errorResponse("직렬 값이 올바르지 않습니다.");
   }
 
-  const supabase = createServerSupabaseClient();
-  const { data: existingActiveSession } = await supabase
-    .from("sessions")
-    .select("id")
-    .eq("track", payload.track)
-    .eq("status", "active")
-    .limit(1)
-    .maybeSingle();
+  const groupSizeError = validateGroupSizeRange(payload);
+
+  if (groupSizeError) {
+    return errorResponse(groupSizeError);
+  }
+
+  const sessionWindowError = validateSessionWindows(payload);
+
+  if (sessionWindowError) {
+    return errorResponse(sessionWindowError);
+  }
+
+  let existingActiveSession;
+
+  try {
+    existingActiveSession = await findActiveSessionByTrack(payload.track);
+  } catch {
+    return errorResponse("현재 운영 중인 세션을 확인하지 못했습니다.", 500);
+  }
 
   if (existingActiveSession) {
     return errorResponse("해당 직렬에는 이미 운영 중인 세션이 있습니다.", 409);
   }
 
+  const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("sessions")
     .insert({

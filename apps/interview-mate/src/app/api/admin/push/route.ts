@@ -1,5 +1,5 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
-import { errorResponse, jsonResponse } from "@/lib/http";
+import { errorResponse, internalErrorResponse, jsonResponse } from "@/lib/http";
 import { sendPushToAll, sendPushToSession } from "@/lib/push";
 
 type PushPayload = {
@@ -34,9 +34,12 @@ export async function POST(request: Request) {
       message: `${result.sent}건 발송, ${result.failed}건 실패`,
     });
   } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : "푸시 알림 발송에 실패했습니다.",
-      500,
-    );
+    return internalErrorResponse("푸시 알림 발송에 실패했습니다.", {
+      error,
+      scope: "admin/push:send",
+      details: {
+        sessionId: payload.sessionId ?? null,
+      },
+    });
   }
 }

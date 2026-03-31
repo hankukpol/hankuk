@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/ui/section-card";
 import type { SessionSummary } from "@/lib/sessions";
@@ -12,6 +13,9 @@ type AdminExportPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
 };
 
 type ExportTarget = "reservations" | "rooms" | null;
@@ -42,8 +46,16 @@ export function AdminExportPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
 }: AdminExportPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [exportTarget, setExportTarget] = useState<ExportTarget>(null);
 
   const headers = useMemo(
@@ -53,17 +65,11 @@ export function AdminExportPanel({
     [adminKey],
   );
 
-  useEffect(() => {
-    if (!sessionId && initialSessionId) {
-      setSessionId(initialSessionId);
-    }
-  }, [initialSessionId, sessionId]);
-
   const selectedSession = sessions.find((session) => session.id === sessionId) ?? null;
 
   const handleExport = async (target: Exclude<ExportTarget, null>) => {
     if (!sessionId) {
-      toast.error("내보낼 세션을 먼저 선택해 주세요.");
+      toast.error("내보낼 면접 회차를 먼저 선택해 주세요.");
       return;
     }
 
@@ -116,32 +122,34 @@ export function AdminExportPanel({
     >
       <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
         <div className="space-y-3">
+          {!hideSessionField && (
           <select
             value={sessionId}
             onChange={(event) => setSessionId(event.target.value)}
             className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
           >
-            <option value="">세션 선택</option>
+            <option value="">면접 회차 선택</option>
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
                 {session.name}
               </option>
             ))}
           </select>
+          )}
           <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
             {selectedSession
-              ? `${selectedSession.name} 세션의 예약 현황과 조 편성 결과를 각각 CSV로 다운로드합니다.`
-              : "먼저 세션을 선택하면 예약/조 편성 데이터를 내려받을 수 있습니다."}
+              ? `${selectedSession.name} 회차의 예약 현황과 조 편성 결과를 각각 CSV로 다운로드합니다.`
+              : "먼저 면접 회차를 선택하면 예약/조 편성 데이터를 내려받을 수 있습니다."}
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+          <div className="rounded-[10px] border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm text-slate-500">예약 CSV</p>
+                <p className="text-sm text-slate-500">모의면접 예약 CSV</p>
                 <p className="mt-2 text-xl font-semibold text-slate-950">
-                  예약 운영 내보내기
+                  모의면접 예약 내보내기
                 </p>
               </div>
               <Badge tone="info">reservation</Badge>
@@ -167,7 +175,7 @@ export function AdminExportPanel({
             </div>
           </div>
 
-          <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+          <div className="rounded-[10px] border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm text-slate-500">조 편성 CSV</p>

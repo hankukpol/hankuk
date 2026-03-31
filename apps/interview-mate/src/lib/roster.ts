@@ -1,6 +1,10 @@
 import ExcelJS from "exceljs";
 import { Readable } from "node:stream";
 
+import {
+  INTERVIEW_EXPERIENCE_HEADER_KEYWORDS,
+  parseInterviewExperience,
+} from "@/lib/interview-experience";
 import { normalizePhone } from "@/lib/phone";
 
 export type RosterRow = {
@@ -8,12 +12,30 @@ export type RosterRow = {
   phone: string;
   gender: "남" | "여" | null;
   series: string | null;
+  interviewExperience: boolean | null;
 };
 
 const HEADER_NAME = "이름";
 const HEADER_PHONE = "연락처";
 const HEADER_GENDER = "성별";
 const HEADER_SERIES = "직렬";
+
+function findHeaderIndex(headers: string[], keywords: string[]) {
+  const exact = headers.findIndex((header) =>
+    keywords.some((keyword) => header.toLowerCase() === keyword.toLowerCase()),
+  );
+
+  if (exact >= 0) {
+    return exact;
+  }
+
+  return headers.findIndex((header) =>
+    keywords.some(
+      (keyword) =>
+        keyword.length >= 2 && header.toLowerCase().includes(keyword.toLowerCase()),
+    ),
+  );
+}
 
 function normalizeHeader(value: unknown) {
   return String(value ?? "").trim();
@@ -55,6 +77,10 @@ export async function parseRosterFile(fileName: string, buffer: Uint8Array) {
   const phoneIndex = headerCells.indexOf(HEADER_PHONE);
   const genderIndex = headerCells.indexOf(HEADER_GENDER);
   const seriesIndex = headerCells.indexOf(HEADER_SERIES);
+  const interviewExperienceIndex = findHeaderIndex(
+    headerCells,
+    INTERVIEW_EXPERIENCE_HEADER_KEYWORDS,
+  );
 
   if (nameIndex === -1 || phoneIndex === -1) {
     throw new Error("명단 파일에 이름 또는 연락처 헤더가 없습니다.");
@@ -82,6 +108,10 @@ export async function parseRosterFile(fileName: string, buffer: Uint8Array) {
       phone,
       gender: genderValue === "남" || genderValue === "여" ? genderValue : null,
       series: series || null,
+      interviewExperience:
+        interviewExperienceIndex >= 0
+          ? parseInterviewExperience(values[interviewExperienceIndex])
+          : null,
     });
   });
 

@@ -1,5 +1,6 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
 import { errorResponse, jsonResponse } from "@/lib/http";
+import { getSessionById } from "@/lib/session-queries";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type SlotBatchPayload = {
@@ -76,6 +77,16 @@ export async function POST(request: Request) {
 
   if (sessionEnd < sessionStart) {
     return errorResponse("종료 날짜는 시작 날짜보다 빠를 수 없습니다.");
+  }
+
+  const session = await getSessionById(body.sessionId);
+
+  if (!session) {
+    return errorResponse("세션을 찾을 수 없습니다.", 404);
+  }
+
+  if (session.status !== "active") {
+    return errorResponse("운영 중인 세션에서만 예약 슬롯을 생성할 수 있습니다.", 409);
   }
 
   const rows: {

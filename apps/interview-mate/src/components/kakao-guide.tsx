@@ -1,6 +1,14 @@
 import { MessageCircleMore } from "lucide-react";
 
-export function KakaoGuide() {
+type KakaoGuideProps = {
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+export function KakaoGuide({
+  actionLabel = "초대 정보 보기",
+  onAction,
+}: KakaoGuideProps) {
   return (
     <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-4">
       <div className="flex items-start gap-3">
@@ -9,15 +17,21 @@ export function KakaoGuide() {
         </span>
         <div className="space-y-2">
           <p className="text-sm font-semibold text-amber-900">
-            조 방은 임시 소통 공간입니다.
+            이 방은 카카오톡 이동 전 임시 소통 공간입니다.
           </p>
           <p className="text-sm leading-6 text-amber-800">
-            조원 확인과 간단한 일정 조율 후 카카오톡 단체방으로 이동할 수 있도록
-            안내 배너를 배치합니다.
+            조원 확인, 초대 코드 공유, 간단한 인사까지만 빠르게 마친 뒤
+            카카오톡 단체방으로 이동하는 흐름을 기준으로 사용해 주세요.
           </p>
-          <button className="inline-flex items-center rounded-[10px] border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900">
-            카카오톡 방 안내 보기
-          </button>
+          {onAction ? (
+            <button
+              type="button"
+              onClick={onAction}
+              className="inline-flex items-center rounded-[10px] border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900"
+            >
+              {actionLabel}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

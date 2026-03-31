@@ -88,7 +88,7 @@ export default function StudyGroupsPage({
 
           <div className="grid gap-3 md:grid-cols-2">
             <a
-              href={trackKey === "police" ? "/mock-police-300.csv" : "/mock-fire-180.csv"}
+              href={`/api/study-groups/sample?track=${trackKey}`}
               download
               className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4"
             >

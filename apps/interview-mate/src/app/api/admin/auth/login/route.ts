@@ -4,10 +4,9 @@ import {
   ADMIN_SESSION_COOKIE,
   adminSessionCookieOptions,
   createAdminSessionToken,
-  isAdminPasswordConfigured,
   isAdminSessionConfigured,
-  isAdminAuthorized,
 } from "@/lib/auth";
+import { authenticateAdminUser, hasActiveAdminUsers } from "@/lib/admin-users";
 
 function redirectWithError(request: Request, error: string) {
   const loginUrl = new URL("/admin/login", request.url);
@@ -18,18 +17,29 @@ function redirectWithError(request: Request, error: string) {
 
 export async function POST(request: Request) {
   const formData = await request.formData();
+  const loginId = String(formData.get("loginId") ?? "").trim();
   const password = String(formData.get("password") ?? "").trim();
 
-  if (!isAdminPasswordConfigured() || !isAdminSessionConfigured()) {
+  if (!isAdminSessionConfigured()) {
     return redirectWithError(request, "missing_config");
+  }
+
+  if (!(await hasActiveAdminUsers())) {
+    return redirectWithError(request, "missing_admin_users");
+  }
+
+  if (!loginId) {
+    return redirectWithError(request, "missing_login_id");
   }
 
   if (!password) {
     return redirectWithError(request, "missing_password");
   }
 
-  if (!isAdminAuthorized(password)) {
-    return redirectWithError(request, "invalid_password");
+  const adminUser = await authenticateAdminUser(loginId, password);
+
+  if (!adminUser) {
+    return redirectWithError(request, "invalid_credentials");
   }
 
   const response = NextResponse.redirect(new URL("/admin", request.url), {
@@ -38,7 +48,7 @@ export async function POST(request: Request) {
 
   response.cookies.set(
     ADMIN_SESSION_COOKIE,
-    createAdminSessionToken(),
+    createAdminSessionToken(adminUser),
     adminSessionCookieOptions(),
   );
 

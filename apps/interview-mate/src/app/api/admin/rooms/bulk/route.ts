@@ -1,5 +1,5 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
-import { errorResponse, jsonResponse } from "@/lib/http";
+import { errorResponse, internalErrorResponse, jsonResponse } from "@/lib/http";
 import { generateInviteCode, generateRoomPassword } from "@/lib/invite";
 import { getSessionById } from "@/lib/session-queries";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -24,15 +24,26 @@ type StudentRow = {
   name: string;
 };
 
-async function createAdminRoom(options: {
-  sessionId: string;
-  roomName: string;
-  creatorStudentId: string;
-  maxMembers: number;
+type RoomInsertRow = {
+  id: string;
+  room_name: string | null;
+  invite_code: string;
   password: string;
-  status: "recruiting" | "formed";
-}) {
-  const supabase = createServerSupabaseClient();
+  status: "recruiting" | "formed" | "closed";
+  max_members: number;
+};
+
+async function createAdminRoom(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  options: {
+    sessionId: string;
+    roomName: string;
+    creatorStudentId: string;
+    maxMembers: number;
+    password: string;
+    status: "recruiting" | "formed";
+  },
+) {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -52,7 +63,7 @@ async function createAdminRoom(options: {
       .single();
 
     if (!error && data) {
-      return data;
+      return data as RoomInsertRow;
     }
 
     if (error?.code !== "23505") {
@@ -63,6 +74,44 @@ async function createAdminRoom(options: {
   }
 
   throw lastError ?? new Error("조 방을 생성하지 못했습니다.");
+}
+
+async function rollbackCreatedRoom(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  options: {
+    roomId: string;
+    sessionId: string;
+    studentIds: string[];
+  },
+) {
+  const rollbackIssues: string[] = [];
+
+  const { error: waitingResetError } = await supabase
+    .from("waiting_pool")
+    .update({
+      assigned_room_id: null,
+    })
+    .eq("session_id", options.sessionId)
+    .in("student_id", options.studentIds);
+
+  if (waitingResetError) {
+    rollbackIssues.push(`대기열 롤백 실패: ${waitingResetError.message}`);
+  }
+
+  const { error: roomDeleteError } = await supabase
+    .from("group_rooms")
+    .delete()
+    .eq("id", options.roomId);
+
+  if (roomDeleteError) {
+    rollbackIssues.push(`생성된 조 삭제 실패: ${roomDeleteError.message}`);
+  }
+
+  if (rollbackIssues.length > 0) {
+    throw new Error(
+      `조 생성 중 오류가 발생했고 자동 롤백도 완료되지 않았습니다. ${rollbackIssues.join(" / ")}`,
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -162,7 +211,7 @@ export async function POST(request: Request) {
 
   const resolvedRoomName =
     roomName || `${orderedStudents[0].name} 외 ${Math.max(orderedStudents.length - 1, 0)}명`;
-  const room = await createAdminRoom({
+  const room = await createAdminRoom(supabase, {
     sessionId,
     roomName: resolvedRoomName,
     creatorStudentId: orderedStudents[0].id,
@@ -174,31 +223,63 @@ export async function POST(request: Request) {
         : "recruiting",
   });
 
-  const roomMembers = orderedStudents.map((student, index) => ({
-    room_id: room.id,
-    student_id: student.id,
-    role: index === 0 ? "creator" : "member",
-    status: "joined" as const,
-  }));
+  try {
+    const roomMembers = orderedStudents.map((student, index) => ({
+      room_id: room.id,
+      student_id: student.id,
+      role: index === 0 ? "creator" : "member",
+      status: "joined" as const,
+    }));
 
-  const { error: membersError } = await supabase
-    .from("room_members")
-    .insert(roomMembers);
+    const { error: membersError } = await supabase
+      .from("room_members")
+      .insert(roomMembers);
 
-  if (membersError) {
-    return errorResponse("조 방 멤버를 생성하지 못했습니다.", 500);
-  }
+    if (membersError) {
+      throw membersError;
+    }
 
-  const { error: waitingUpdateError } = await supabase
-    .from("waiting_pool")
-    .update({
-      assigned_room_id: room.id,
-    })
-    .eq("session_id", sessionId)
-    .in("student_id", selectedStudentIds);
+    const { error: waitingUpdateError } = await supabase
+      .from("waiting_pool")
+      .update({
+        assigned_room_id: room.id,
+      })
+      .eq("session_id", sessionId)
+      .in("student_id", selectedStudentIds);
 
-  if (waitingUpdateError) {
-    return errorResponse("대기열 배정 상태를 저장하지 못했습니다.", 500);
+    if (waitingUpdateError) {
+      throw waitingUpdateError;
+    }
+  } catch (error) {
+    try {
+      await rollbackCreatedRoom(supabase, {
+        roomId: room.id,
+        sessionId,
+        studentIds: selectedStudentIds,
+      });
+    } catch (rollbackError) {
+      return internalErrorResponse(
+        "조 생성 중 오류가 발생했고 자동 롤백도 실패했습니다.",
+        {
+          error: rollbackError,
+          scope: "admin/rooms/bulk:rollback-created-room",
+          details: {
+            sessionId,
+            roomId: room.id,
+            studentIds: selectedStudentIds,
+          },
+        },
+      );
+    }
+
+    return internalErrorResponse("조 방을 생성하지 못했습니다.", {
+      error,
+      scope: "admin/rooms/bulk:create-room",
+      details: {
+        sessionId,
+        studentIds: selectedStudentIds,
+      },
+    });
   }
 
   const memberNames = orderedStudents.map((student) => student.name).join(", ");
@@ -208,10 +289,6 @@ export async function POST(request: Request) {
     message: `관리자가 새 조 방을 생성했습니다. 참여 조원: ${memberNames}`,
     is_system: true,
   });
-
-  if (messageError) {
-    return errorResponse("조 방 안내 메시지를 저장하지 못했습니다.", 500);
-  }
 
   return jsonResponse(
     {
@@ -224,6 +301,9 @@ export async function POST(request: Request) {
         maxMembers: room.max_members,
         memberCount: orderedStudents.length,
       },
+      warning: messageError
+        ? "조 방은 생성되었지만 안내 시스템 메시지를 남기지 못했습니다."
+        : undefined,
     },
     { status: 201 },
   );

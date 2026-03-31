@@ -42,6 +42,7 @@ export async function removeJoinedMemberFromRoom({
   moveToWaitingPool = true,
 }: RemoveJoinedMemberOptions) {
   const supabase = createServerSupabaseClient();
+  let warning: string | undefined;
 
   const { error: leaveError } = await supabase
     .from("room_members")
@@ -69,27 +70,40 @@ export async function removeJoinedMemberFromRoom({
   const nextMembers = (remainingMembers ?? []) as RemainingMemberRow[];
 
   if (role === "creator" && nextMembers.length > 0) {
-    await supabase
+    const { error: promoteCreatorError } = await supabase
       .from("room_members")
       .update({ role: "creator" })
       .eq("id", nextMembers[0].id);
 
-    await supabase
+    if (promoteCreatorError) {
+      throw promoteCreatorError;
+    }
+
+    const { error: updateRoomCreatorError } = await supabase
       .from("group_rooms")
       .update({ creator_student_id: nextMembers[0].student_id })
       .eq("id", roomId);
-  } else if (role === "leader" && nextMembers.length > 0) {
-    const nextLeader =
-      nextMembers.find((member) => member.role !== "creator") ?? nextMembers[0];
 
-    await supabase
-      .from("room_members")
-      .update({ role: "leader" })
-      .eq("id", nextLeader.id);
+    if (updateRoomCreatorError) {
+      throw updateRoomCreatorError;
+    }
+  } else if (role === "leader" && nextMembers.length > 0) {
+    const nextLeader = nextMembers.find((member) => member.role !== "creator");
+
+    if (nextLeader) {
+      const { error: promoteLeaderError } = await supabase
+        .from("room_members")
+        .update({ role: "leader" })
+        .eq("id", nextLeader.id);
+
+      if (promoteLeaderError) {
+        throw promoteLeaderError;
+      }
+    }
   }
 
   if (nextMembers.length === 0) {
-    await supabase
+    const { error: closeRoomError } = await supabase
       .from("group_rooms")
       .update({
         status: "closed",
@@ -98,10 +112,14 @@ export async function removeJoinedMemberFromRoom({
         request_extra_reason: null,
       })
       .eq("id", roomId);
+
+    if (closeRoomError) {
+      throw closeRoomError;
+    }
   }
 
   if (moveToWaitingPool) {
-    await Promise.all([
+    const [chatResult, waitingResult] = await Promise.all([
       supabase.from("chat_messages").insert({
         room_id: roomId,
         student_id: null,
@@ -119,13 +137,25 @@ export async function removeJoinedMemberFromRoom({
         },
       ),
     ]);
+
+    if (waitingResult.error) {
+      throw waitingResult.error;
+    }
+
+    if (chatResult.error) {
+      warning = "조원 퇴장은 완료되었지만 방 시스템 메시지를 남기지 못했습니다.";
+    }
   } else {
-    await supabase.from("chat_messages").insert({
+    const { error: chatError } = await supabase.from("chat_messages").insert({
       room_id: roomId,
       student_id: null,
       message: noticeMessage,
       is_system: true,
     });
+
+    if (chatError) {
+      warning = "조원 상태는 변경되었지만 방 시스템 메시지를 남기지 못했습니다.";
+    }
   }
 
   return {
@@ -133,6 +163,7 @@ export async function removeJoinedMemberFromRoom({
     studentId,
     studentName,
     remainingCount: nextMembers.length,
+    warning,
   };
 }
 
@@ -144,6 +175,7 @@ export async function dissolveRoom({
 }: DissolveRoomOptions) {
   const supabase = createServerSupabaseClient();
   const leftAt = new Date().toISOString();
+  let warning: string | undefined;
 
   if (members.length > 0) {
     const membershipIds = members.map((member) => member.id);
@@ -200,11 +232,12 @@ export async function dissolveRoom({
   });
 
   if (chatError) {
-    throw chatError;
+    warning = "방 해산은 완료되었지만 안내 시스템 메시지를 남기지 못했습니다.";
   }
 
   return {
     roomId,
     movedCount: members.length,
+    warning,
   };
 }

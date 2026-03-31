@@ -10,6 +10,7 @@ export const DEFAULT_PENALTY_WEIGHTS: PenaltyWeights = {
   region: 4.0,
   series: 1.0,
   score: 1.5,
+  interviewExperience: 1.5,
 };
 
 function createDefaultSettings(examType: 'police' | 'fire'): GroupSettings {

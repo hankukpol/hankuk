@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const body = (await request.json()) as CreateRoomPayload;
 
   if (!body.password?.trim()) {
-    return errorResponse("방 비밀번호를 입력해주세요.");
+    return errorResponse("방 비밀번호를 입력해 주세요.");
   }
 
   const session = await getSessionById(student.session_id);
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   const applyWindowStatus = getApplyWindowStatus(session);
 
   if (applyWindowStatus === "before_open") {
-    return errorResponse("지원 오픈 전입니다.", 409);
+    return errorResponse("지원 시작 전입니다.", 409);
   }
 
   if (applyWindowStatus === "after_close") {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const existingMembership = await getJoinedMembershipByStudent(student.id);
 
   if (existingMembership) {
-    return errorResponse("이미 다른 조에 소속되어 있습니다.", 409);
+    return errorResponse("이미 다른 조에 속해 있습니다.", 409);
   }
 
   const maxMembers =
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    return errorResponse(error.message || "조 방을 생성하지 못했습니다.", 400);
+    return errorResponse("조 방을 생성하지 못했습니다. 입력값과 현재 상태를 확인해 주세요.", 400);
   }
 
   const room = data as { id: string; invite_code: string; room_name: string | null };

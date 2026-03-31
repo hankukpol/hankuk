@@ -1,17 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, LoaderCircle, Upload } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/ui/section-card";
 import type { SessionSummary } from "@/lib/sessions";
+import {
+  formatBytes,
+  getSpreadsheetUploadLimitMessage,
+  MAX_SPREADSHEET_UPLOAD_BYTES,
+} from "@/lib/uploads";
 
 type AdminGroupSyncPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
   onImported?: (sessionId: string) => void;
 };
 
@@ -22,6 +31,7 @@ type ImportSummary = {
   assignedCount: number;
   waitingCount: number;
   unmatchedCount: number;
+  warning?: string;
   rooms: Array<{
     roomId: string;
     roomName: string;
@@ -63,9 +73,17 @@ export function AdminGroupSyncPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
   onImported,
 }: AdminGroupSyncPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId, selectedSession } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [downloadTarget, setDownloadTarget] = useState<DownloadTarget>(null);
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -79,17 +97,9 @@ export function AdminGroupSyncPanel({
     [adminKey],
   );
 
-  useEffect(() => {
-    if (!sessionId && initialSessionId) {
-      setSessionId(initialSessionId);
-    }
-  }, [initialSessionId, sessionId]);
-
-  const selectedSession = sessions.find((session) => session.id === sessionId) ?? null;
-
   const handleDownload = async (target: Exclude<DownloadTarget, null>) => {
     if (!sessionId) {
-      toast.error("먼저 세션을 선택해 주세요.");
+      toast.error("먼저 면접 회차를 선택해 주세요.");
       return;
     }
 
@@ -134,9 +144,22 @@ export function AdminGroupSyncPanel({
     }
   };
 
+  const handleImportFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+
+    if (nextFile && nextFile.size > MAX_SPREADSHEET_UPLOAD_BYTES) {
+      event.target.value = "";
+      setImportFile(null);
+      toast.error(getSpreadsheetUploadLimitMessage());
+      return;
+    }
+
+    setImportFile(nextFile);
+  };
+
   const handleImport = async () => {
     if (!sessionId) {
-      toast.error("먼저 세션을 선택해 주세요.");
+      toast.error("먼저 면접 회차를 선택해 주세요.");
       return;
     }
 
@@ -167,8 +190,13 @@ export function AdminGroupSyncPanel({
       setImportFile(null);
       setFileInputKey((current) => current + 1);
       onImported?.(sessionId);
+
+      if (payload.warning) {
+        toast.warning(payload.warning);
+      }
+
       toast.success(
-        `${payload.roomCount}개 조 방과 ${payload.assignedCount}명 배정을 반영했습니다.`,
+        `${payload.roomCount}개 조와 ${payload.assignedCount}명 배정을 반영했습니다.`,
       );
     } catch (error) {
       toast.error(
@@ -184,27 +212,29 @@ export function AdminGroupSyncPanel({
   return (
     <SectionCard
       title="조 편성 연동"
-      description="기존 조 편성 프로그램과 호환되는 CSV를 내보내고, 편성 결과를 다시 가져와 조 방과 SMS 발송 데이터를 한 번에 준비합니다."
+      description="조 편성 CSV와 SMS CSV를 내려받고, 외부 편성 결과를 다시 가져와 현재 회차에 반영합니다."
     >
       <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-4">
+          {!hideSessionField && (
           <select
             value={sessionId}
             onChange={(event) => setSessionId(event.target.value)}
             className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
           >
-            <option value="">세션 선택</option>
+            <option value="">면접 회차 선택</option>
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
                 {session.name}
               </option>
             ))}
           </select>
+          )}
 
           <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
             {selectedSession
-              ? `${selectedSession.name} 세션 기준으로 조 편성 CSV와 SMS CSV를 처리합니다.`
-              : "세션을 선택하면 조 편성 CSV 다운로드, 결과 가져오기, SMS CSV 다운로드를 진행할 수 있습니다."}
+              ? `${selectedSession.name} 회차 기준으로 조 편성 CSV와 SMS CSV를 처리합니다.`
+              : "면접 회차를 선택하면 조 편성 CSV 다운로드, 결과 가져오기, SMS CSV 다운로드를 진행할 수 있습니다."}
           </div>
 
           <div className="grid gap-3">
@@ -226,9 +256,14 @@ export function AdminGroupSyncPanel({
               key={fileInputKey}
               type="file"
               accept=".csv,.xlsx,.xls"
-              onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+              onChange={handleImportFileChange}
               className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
             />
+
+            <p className="text-xs text-slate-500">
+              CSV/XLSX 파일만 업로드할 수 있으며, 최대 크기는{" "}
+              {formatBytes(MAX_SPREADSHEET_UPLOAD_BYTES)}입니다.
+            </p>
 
             <button
               type="button"
@@ -260,18 +295,19 @@ export function AdminGroupSyncPanel({
           </div>
 
           <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-xs leading-6 text-slate-600">
-            조 편성 CSV 헤더는 `이름,연락처,성별,직렬,지역,나이,필기성적,조` 형식을 유지합니다.
-            결과 파일을 가져오면 기존 조 방과 대기자 배정 상태를 세션 단위로 다시 구성합니다.
+            조 편성 CSV 헤더는 `이름,연락처,성별,직렬,지역,면접 경험 여부,조`
+            형식을 따릅니다.
+            결과 파일을 가져오면 기존 조 배정과 대기열 상태를 현재 회차 기준으로 다시 구성합니다.
           </div>
         </div>
 
         <div className="grid gap-5 md:grid-cols-2">
-          <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+          <div className="rounded-[10px] border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm text-slate-500">가져오기 결과</p>
                 <p className="mt-2 text-xl font-semibold text-slate-950">
-                  {summary ? `${summary.roomCount}개 조 방 반영` : "아직 가져오기 전"}
+                  {summary ? `${summary.roomCount}개 조 반영` : "아직 가져오기 전"}
                 </p>
               </div>
               <Badge tone={summary ? "success" : "neutral"}>
@@ -287,7 +323,7 @@ export function AdminGroupSyncPanel({
                 </p>
               </div>
               <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4">
-                <p className="text-xs text-slate-500">대기 유지</p>
+                <p className="text-xs text-slate-500">대기 인원</p>
                 <p className="mt-2 text-lg font-semibold text-slate-950">
                   {summary?.waitingCount ?? 0}명
                 </p>
@@ -312,7 +348,7 @@ export function AdminGroupSyncPanel({
                         {room.roomName}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {room.memberCount}명 쨌 초대코드 {room.inviteCode} 쨌 비밀번호 {room.password}
+                        {room.memberCount}명, 초대코드 {room.inviteCode}, 비밀번호 {room.password}
                       </p>
                     </div>
                     <Badge tone="brand">room</Badge>
@@ -321,13 +357,13 @@ export function AdminGroupSyncPanel({
               ))}
               {summary && summary.rooms.length === 0 ? (
                 <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                  생성된 조 방이 없습니다.
+                  생성된 조가 없습니다.
                 </div>
               ) : null}
             </div>
           </div>
 
-          <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+          <div className="rounded-[10px] border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm text-slate-500">매칭 실패 미리보기</p>
@@ -350,13 +386,13 @@ export function AdminGroupSyncPanel({
                 >
                   <p className="text-sm font-semibold text-amber-900">{row.name}</p>
                   <p className="mt-1 text-xs text-amber-800">
-                    {row.phone} 쨌 조 {row.groupNumber ?? "-"}
+                    {row.phone} / 조 {row.groupNumber ?? "-"}
                   </p>
                 </div>
               ))}
               {summary && summary.unmatchedRows.length === 0 ? (
                 <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                  현재 세션 학생과 모두 정상 매칭됐습니다.
+                  현재 회차 학생과 모두 정상 매칭되었습니다.
                 </div>
               ) : null}
               {!summary ? (

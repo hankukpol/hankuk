@@ -44,6 +44,9 @@ export default function GroupResult({
   const hasAges = groups.some((group) =>
     group.members.some((member) => member.age !== undefined)
   );
+  const hasInterviewExperience = groups.some((group) =>
+    group.members.some((member) => member.interviewExperience !== undefined)
+  );
   const lockedIdSet = new Set(lockedMemberIds);
 
   return (
@@ -81,6 +84,9 @@ export default function GroupResult({
             </span>
             <span className="rounded bg-white px-2 py-0.5">
               성적 {metrics.penaltyBreakdown.score.toFixed(2)}
+            </span>
+            <span className="rounded bg-white px-2 py-0.5">
+              면접 경험 {metrics.penaltyBreakdown.interviewExperience.toFixed(2)}
             </span>
           </div>
         </div>
@@ -188,6 +194,16 @@ export default function GroupResult({
                       <span className="text-xs text-gray-500">
                         {member.region || '-'}
                       </span>
+                      {hasInterviewExperience && (
+                        <span className="text-xs text-gray-500">
+                          면접 경험{" "}
+                          {member.interviewExperience === true
+                            ? '있음'
+                            : member.interviewExperience === false
+                              ? '없음'
+                              : '-'}
+                        </span>
+                      )}
                       {hasAges && (
                         <span className="text-xs text-gray-500">
                           {member.age !== undefined

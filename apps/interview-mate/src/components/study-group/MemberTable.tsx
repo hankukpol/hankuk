@@ -17,6 +17,9 @@ export default function MemberTable({
   const femaleCount = members.length - maleCount;
   const hasScores = members.some((member) => member.score !== undefined);
   const hasAges = members.some((member) => member.age !== undefined);
+  const hasInterviewExperience = members.some(
+    (member) => member.interviewExperience !== undefined
+  );
   const hasPreAssigned = members.some(
     (member) => member.preAssignedGroup !== undefined
   );
@@ -61,6 +64,16 @@ export default function MemberTable({
               성적 입력 {members.filter((member) => member.score !== undefined).length}명
             </span>
           )}
+          {hasInterviewExperience && (
+            <span>
+              면접 경험 입력{" "}
+              {
+                members.filter((member) => member.interviewExperience !== undefined)
+                  .length
+              }
+              명
+            </span>
+          )}
         </div>
       </div>
 
@@ -85,6 +98,11 @@ export default function MemberTable({
               <th className="px-3 py-2 text-left font-medium text-gray-600">성별</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600">직렬</th>
               <th className="px-3 py-2 text-left font-medium text-gray-600">지역</th>
+              {hasInterviewExperience && (
+                <th className="px-3 py-2 text-left font-medium text-gray-600">
+                  면접 경험
+                </th>
+              )}
               {hasAges && (
                 <th className="px-3 py-2 text-left font-medium text-gray-600">나이</th>
               )}
@@ -119,6 +137,15 @@ export default function MemberTable({
                 </td>
                 <td className="px-3 py-2">{member.series || '-'}</td>
                 <td className="px-3 py-2">{member.region || '-'}</td>
+                {hasInterviewExperience && (
+                  <td className="px-3 py-2 text-gray-600">
+                    {member.interviewExperience === true
+                      ? '있음'
+                      : member.interviewExperience === false
+                        ? '없음'
+                        : '-'}
+                  </td>
+                )}
                 {hasAges && (
                   <td className="px-3 py-2 text-gray-600">
                     {member.age !== undefined ? `${member.age}세` : '-'}

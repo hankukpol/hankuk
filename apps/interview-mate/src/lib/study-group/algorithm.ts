@@ -19,6 +19,7 @@ interface GlobalStats {
   stdScore: number;
   scoredRatio: number;
   agedRatio: number;
+  experiencedRatio: number;
   ageBracketRatios: Record<AgeBracket, number>;
   targetFemaleRatio: number;
   seriesIdealMax: Record<string, number>;
@@ -51,6 +52,7 @@ function createEmptyWeights(): PenaltyWeights {
     region: 0,
     series: 0,
     score: 0,
+    interviewExperience: 0,
   };
 }
 
@@ -131,8 +133,16 @@ export function computeGlobalStats(
 ): GlobalStats {
   const scoredMembers = members.filter((member) => member.score !== undefined);
   const agedMembers = members.filter((member) => getAgeBracket(member.age) !== null);
+  const experiencedMembers = members.filter(
+    (member) => member.interviewExperience !== undefined && member.interviewExperience !== null
+  );
   const scoredRatio = members.length > 0 ? scoredMembers.length / members.length : 0;
   const agedRatio = members.length > 0 ? agedMembers.length / members.length : 0;
+  const experiencedRatio =
+    experiencedMembers.length > 0
+      ? experiencedMembers.filter((member) => member.interviewExperience === true).length /
+        experiencedMembers.length
+      : 0;
   const avgScore =
     scoredMembers.length > 0
       ? scoredMembers.reduce((sum, member) => sum + member.score!, 0) / scoredMembers.length
@@ -203,6 +213,7 @@ export function computeGlobalStats(
     stdScore,
     scoredRatio,
     agedRatio,
+    experiencedRatio,
     ageBracketRatios,
     targetFemaleRatio: getTargetFemaleRatio(members, settings),
     seriesIdealMax,
@@ -306,6 +317,25 @@ export function calcGroupPenalty(
         scoredMembers.reduce((sum, member) => sum + member.score!, 0) / scoredMembers.length;
       penalty +=
         (Math.abs(groupAvgScore - stats.avgScore) / stats.stdScore) * weights.score;
+    }
+  }
+
+  if (weights.interviewExperience > 0) {
+    const experiencedMembers = group.members.filter(
+      (member) =>
+        member.interviewExperience !== undefined && member.interviewExperience !== null
+    );
+
+    if (experiencedMembers.length > 0) {
+      const experiencedCount = experiencedMembers.filter(
+        (member) => member.interviewExperience === true
+      ).length;
+      const targetExperiencedCount =
+        experiencedMembers.length * stats.experiencedRatio;
+
+      penalty +=
+        Math.abs(experiencedCount - targetExperiencedCount) *
+        weights.interviewExperience;
     }
   }
 

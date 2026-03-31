@@ -1,5 +1,6 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
 import { errorResponse, jsonResponse } from "@/lib/http";
+import { parseInterviewExperience } from "@/lib/interview-experience";
 import { normalizePhone } from "@/lib/phone";
 import { getSessionById } from "@/lib/session-queries";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -10,6 +11,7 @@ type ManualRosterPayload = {
   phone?: string;
   gender?: string | null;
   series?: string | null;
+  interviewExperience?: boolean | null;
 };
 
 function normalizeGender(value: string | null | undefined) {
@@ -31,6 +33,7 @@ export async function POST(request: Request) {
   const phone = normalizePhone(String(body.phone ?? "").trim());
   const gender = normalizeGender(body.gender);
   const series = String(body.series ?? "").trim() || null;
+  const interviewExperience = parseInterviewExperience(body.interviewExperience);
 
   if (!sessionId) {
     return errorResponse("세션을 선택해주세요.");
@@ -76,10 +79,11 @@ export async function POST(request: Request) {
         phone,
         gender,
         series,
+        interview_experience: interviewExperience,
       },
       { onConflict: "session_id,phone" },
     )
-    .select("id, session_id, name, phone, gender, series, created_at")
+    .select("id, session_id, name, phone, gender, series, interview_experience, created_at")
     .single();
 
   if (error || !data) {
@@ -95,6 +99,7 @@ export async function POST(request: Request) {
         phone: data.phone,
         gender: data.gender,
         series: data.series,
+        interviewExperience: data.interview_experience,
         createdAt: data.created_at,
       },
       mode: existingStudent ? "updated" : "created",

@@ -3,7 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { StudentRecord } from "@/lib/students";
 
 export const STUDENT_SELECT_COLUMNS =
-  "id, session_id, phone, name, gender, series, region, age, score, access_token, created_at";
+  "id, session_id, phone, name, gender, series, region, age, score, interview_experience, access_token, created_at";
 
 export async function getStudentByAccessToken(accessToken: string) {
   const supabase = createServerSupabaseClient();

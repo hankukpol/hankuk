@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SectionCard } from "@/components/ui/section-card";
@@ -28,6 +29,9 @@ type AdminReservationOpsPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
 };
 
 type ReservationStatusFilter = "all" | "확정" | "취소";
@@ -103,8 +107,16 @@ export function AdminReservationOpsPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
 }: AdminReservationOpsPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [status, setStatus] = useState<ReservationStatusFilter>("all");
@@ -137,22 +149,6 @@ export function AdminReservationOpsPanel({
     }),
     [adminKey],
   );
-
-  useEffect(() => {
-    if (sessionId) {
-      return;
-    }
-
-    const defaultSessionId =
-      initialSessionId ||
-      sessions.find((session) => session.status === "active")?.id ||
-      sessions[0]?.id ||
-      "";
-
-    if (defaultSessionId) {
-      setSessionId(defaultSessionId);
-    }
-  }, [initialSessionId, sessionId, sessions]);
 
   const loadReservations = useCallback(
     async (
@@ -229,7 +225,7 @@ export function AdminReservationOpsPanel({
       toast.error(
         error instanceof Error
           ? error.message
-          : "예약 슬롯을 불러오지 못했습니다.",
+          : "예약 시간을 불러오지 못했습니다.",
       );
     } finally {
       setIsLoadingSlots(false);
@@ -268,7 +264,7 @@ export function AdminReservationOpsPanel({
 
   const handleManualReservation = () => {
     if (!sessionId || !selectedSlotId || !manualName.trim() || !manualPhone.trim()) {
-      toast.error("세션, 슬롯, 이름, 연락처를 모두 입력해주세요.");
+      toast.error("면접 회차, 예약 시간, 이름, 연락처를 모두 입력해 주세요.");
       return;
     }
 
@@ -343,12 +339,12 @@ export function AdminReservationOpsPanel({
           }).then(readJson<{ slot: SlotSummary }>);
 
           await refreshReservationState();
-          toast.success("예약 슬롯 설정을 저장했습니다.");
+          toast.success("예약 시간 설정을 저장했습니다.");
         } catch (error) {
           toast.error(
             error instanceof Error
               ? error.message
-              : "예약 슬롯을 수정하지 못했습니다.",
+              : "예약 시간을 수정하지 못했습니다.",
           );
         }
       })();
@@ -370,12 +366,12 @@ export function AdminReservationOpsPanel({
 
           setSlotDeleteTarget(null);
           await refreshReservationState();
-          toast.success("예약 슬롯을 삭제했습니다.");
+          toast.success("예약 시간을 삭제했습니다.");
         } catch (error) {
           toast.error(
             error instanceof Error
               ? error.message
-              : "예약 슬롯을 삭제하지 못했습니다.",
+              : "예약 시간을 삭제하지 못했습니다.",
           );
         }
       })();
@@ -385,23 +381,25 @@ export function AdminReservationOpsPanel({
   return (
     <>
       <SectionCard
-        title="예약 운영"
-        description="전체 예약 조회, 대리 예약 등록, 슬롯 정원 조정과 활성 상태 관리까지 관리자 화면에서 처리합니다."
+        title="모의면접 수동 예약"
+        description="관리자가 대리로 예약을 등록하고, 예약 현황 조회와 시간별 정원·활성 상태를 관리합니다."
       >
         <div className="space-y-5">
           <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)_140px_auto]">
+            {!hideSessionField && (
             <select
               value={sessionId}
               onChange={(event) => setSessionId(event.target.value)}
               className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
             >
-              <option value="">세션 선택</option>
+              <option value="">면접 회차 선택</option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.name}
                 </option>
               ))}
             </select>
+            )}
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -456,12 +454,12 @@ export function AdminReservationOpsPanel({
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,0.98fr)_minmax(0,1.02fr)]">
-            <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+            <div className="rounded-[10px] border border-slate-200 bg-white p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm text-slate-500">관리자 대리 예약</p>
                   <p className="mt-2 text-xl font-semibold text-slate-950">
-                    예약 슬롯 선택 후 직접 등록
+                    예약 시간 선택 후 직접 등록
                   </p>
                 </div>
                 <Badge tone="brand">booked_by=관리자</Badge>
@@ -479,7 +477,7 @@ export function AdminReservationOpsPanel({
                   onChange={(event) => setSelectedSlotId(event.target.value)}
                   className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
                 >
-                  <option value="">예약 슬롯 선택</option>
+                  <option value="">예약 시간 선택</option>
                   {availableSlots.map((slot) => (
                     <option
                       key={slot.id}
@@ -505,10 +503,10 @@ export function AdminReservationOpsPanel({
                 />
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                   {isLoadingSlots
-                    ? "선택한 날짜의 슬롯을 불러오는 중입니다."
+                    ? "선택한 날짜의 예약 시간을 불러오는 중입니다."
                     : availableSlots.length > 0
-                      ? `${availableSlots.length}개의 활성 슬롯이 있습니다. 잔여 좌석이 없는 슬롯은 선택할 수 없습니다.`
-                      : "선택한 날짜에는 등록된 활성 슬롯이 없습니다."}
+                      ? `${availableSlots.length}개의 예약 시간이 있습니다. 잔여 좌석이 없는 시간은 선택할 수 없습니다.`
+                      : "선택한 날짜에는 등록된 예약 시간이 없습니다."}
                 </div>
                 <div className="flex justify-end">
                   <button
@@ -530,9 +528,9 @@ export function AdminReservationOpsPanel({
               <div className="mt-6 border-t border-slate-200 pt-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm text-slate-500">슬롯 관리</p>
+                    <p className="text-sm text-slate-500">예약 시간 관리</p>
                     <p className="mt-2 text-base font-semibold text-slate-950">
-                      날짜별 예약 슬롯 운영
+                      날짜별 예약 시간 운영
                     </p>
                   </div>
                   <Badge tone="info">{slots.length}개</Badge>
@@ -623,7 +621,7 @@ export function AdminReservationOpsPanel({
                           className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-semibold text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          슬롯 삭제
+                          예약 시간 삭제
                         </button>
                       </div>
                     </div>
@@ -631,19 +629,19 @@ export function AdminReservationOpsPanel({
 
                   {!isLoadingSlots && slots.length === 0 ? (
                     <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
-                      선택한 날짜에 생성된 예약 슬롯이 없습니다.
+                      선택한 날짜에 생성된 예약 시간이 없습니다.
                     </div>
                   ) : null}
                 </div>
               </div>
             </div>
 
-            <div className="rounded-[16px] border border-slate-200 bg-white p-5">
+            <div className="rounded-[10px] border border-slate-200 bg-white p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm text-slate-500">예약 목록</p>
                   <p className="mt-2 text-xl font-semibold text-slate-950">
-                    {sessionId ? "현재 세션 예약 현황" : "세션을 선택해주세요"}
+                    {sessionId ? "현재 예약 현황" : "면접 회차를 선택해 주세요"}
                   </p>
                 </div>
                 {submittedQuery ? (
@@ -803,7 +801,7 @@ export function AdminReservationOpsPanel({
 
       <ConfirmDialog
         open={Boolean(slotDeleteTarget)}
-        title="예약 슬롯을 삭제하시겠습니까?"
+        title="예약 시간을 삭제하시겠습니까?"
         description={
           slotDeleteTarget
             ? `${formatDateLabel(slotDeleteTarget.date)} · ${formatTimeLabel(
@@ -811,7 +809,7 @@ export function AdminReservationOpsPanel({
               )} ~ ${formatTimeLabel(slotDeleteTarget.endTime)}`
             : ""
         }
-        confirmText="슬롯 삭제"
+        confirmText="예약 시간 삭제"
         tone="danger"
         isPending={isPending}
         onCancel={() => setSlotDeleteTarget(null)}

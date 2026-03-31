@@ -26,7 +26,7 @@ function createJoinErrorResponse(error: RpcJoinError) {
     return jsonResponse(
       {
         message:
-          "비밀번호를 5회 잘못 입력해 5분 동안 잠겼습니다. 잠시 후 다시 시도해주세요.",
+          "비밀번호를 5회 이상 잘못 입력해 5분 동안 잠겼습니다. 잠시 후 다시 시도해 주세요.",
         lockedUntil: error.details ?? null,
       },
       { status: 429 },
@@ -52,11 +52,11 @@ function createJoinErrorResponse(error: RpcJoinError) {
   }
 
   if (error.code === "RJ410") {
-    return errorResponse("닫힌 조 방에는 입장할 수 없습니다.", 409);
+    return errorResponse("마감된 조 방에는 입장할 수 없습니다.", 409);
   }
 
   if (error.code === "RJ409") {
-    return errorResponse("이미 다른 조에 소속되어 있습니다.", 409);
+    return errorResponse("이미 다른 조에 속해 있습니다.", 409);
   }
 
   if (error.code === "RJ420") {
@@ -67,7 +67,7 @@ function createJoinErrorResponse(error: RpcJoinError) {
     return errorResponse("조 방을 찾을 수 없습니다.", 404);
   }
 
-  return errorResponse(error.message || "조 방 입장에 실패했습니다.", 400);
+  return errorResponse("조 방 입장에 실패했습니다. 비밀번호와 현재 상태를 확인해 주세요.", 400);
 }
 
 export async function POST(request: Request, { params }: JoinRoomRouteProps) {
@@ -80,7 +80,7 @@ export async function POST(request: Request, { params }: JoinRoomRouteProps) {
   const body = (await request.json()) as JoinRoomPayload;
 
   if (!body.password?.trim()) {
-    return errorResponse("방 비밀번호를 입력해주세요.");
+    return errorResponse("방 비밀번호를 입력해 주세요.");
   }
 
   const room = await getRoomById(params.roomId);
@@ -102,7 +102,7 @@ export async function POST(request: Request, { params }: JoinRoomRouteProps) {
   const applyWindowStatus = getApplyWindowStatus(session);
 
   if (applyWindowStatus === "before_open") {
-    return errorResponse("지원 오픈 전입니다.", 409);
+    return errorResponse("지원 시작 전입니다.", 409);
   }
 
   if (applyWindowStatus === "after_close") {
@@ -112,7 +112,7 @@ export async function POST(request: Request, { params }: JoinRoomRouteProps) {
   const existingMembership = await getJoinedMembershipByStudent(student.id);
 
   if (existingMembership && existingMembership.room_id !== params.roomId) {
-    return errorResponse("이미 다른 조에 소속되어 있습니다.", 409);
+    return errorResponse("이미 다른 조에 속해 있습니다.", 409);
   }
 
   const supabase = createServerSupabaseClient();

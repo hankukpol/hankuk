@@ -15,7 +15,7 @@ type ReservationRouteProps = {
 
 export async function DELETE(request: Request, { params }: ReservationRouteProps) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   let cancelReason: string | null = null;
@@ -38,7 +38,7 @@ export async function DELETE(request: Request, { params }: ReservationRouteProps
   });
 
   if (error) {
-    return errorResponse(error.message || "예약을 취소하지 못했습니다.", 400);
+    return errorResponse("예약을 취소하지 못했습니다.", 400);
   }
 
   return jsonResponse({

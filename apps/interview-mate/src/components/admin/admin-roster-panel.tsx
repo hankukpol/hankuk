@@ -1,25 +1,28 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import {
-  LoaderCircle,
-  Plus,
-  Search,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { LoaderCircle, Plus, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SectionCard } from "@/components/ui/section-card";
 import { normalizePhone } from "@/lib/phone";
 import type { SessionSummary } from "@/lib/sessions";
+import {
+  formatBytes,
+  getSpreadsheetUploadLimitMessage,
+  MAX_SPREADSHEET_UPLOAD_BYTES,
+} from "@/lib/uploads";
 
 type AdminRosterPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
 };
 
 type RegisteredStudentSummary = {
@@ -29,6 +32,7 @@ type RegisteredStudentSummary = {
   phone: string;
   gender: string | null;
   series: string | null;
+  interviewExperience: boolean | null;
   createdAt: string;
 };
 
@@ -37,6 +41,7 @@ type ManualRosterForm = {
   phone: string;
   gender: string;
   series: string;
+  interviewExperience: "" | "있음" | "없음";
 };
 
 type DeleteAllPayload = {
@@ -49,6 +54,7 @@ const defaultManualForm: ManualRosterForm = {
   phone: "",
   gender: "",
   series: "",
+  interviewExperience: "",
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -67,8 +73,16 @@ export function AdminRosterPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
 }: AdminRosterPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId, selectedSession } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [replaceExisting, setReplaceExisting] = useState(true);
@@ -87,27 +101,6 @@ export function AdminRosterPanel({
       "x-admin-key": adminKey,
     }),
     [adminKey],
-  );
-
-  useEffect(() => {
-    if (sessionId) {
-      return;
-    }
-
-    const defaultSessionId =
-      initialSessionId ||
-      sessions.find((session) => session.status === "active")?.id ||
-      sessions[0]?.id ||
-      "";
-
-    if (defaultSessionId) {
-      setSessionId(defaultSessionId);
-    }
-  }, [initialSessionId, sessionId, sessions]);
-
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === sessionId) ?? null,
-    [sessionId, sessions],
   );
 
   const isEditable = selectedSession?.status === "active";
@@ -155,12 +148,35 @@ export function AdminRosterPanel({
     }
 
     return students.filter((student) =>
-      [student.name, student.phone, student.series ?? "", student.gender ?? ""]
+      [
+        student.name,
+        student.phone,
+        student.series ?? "",
+        student.gender ?? "",
+        student.interviewExperience === true
+          ? "면접경험 있음"
+          : student.interviewExperience === false
+            ? "면접경험 없음"
+            : "",
+      ]
         .join(" ")
         .toLowerCase()
         .includes(keyword),
     );
   }, [search, students]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+
+    if (nextFile && nextFile.size > MAX_SPREADSHEET_UPLOAD_BYTES) {
+      event.target.value = "";
+      setFile(null);
+      toast.error(getSpreadsheetUploadLimitMessage());
+      return;
+    }
+
+    setFile(nextFile);
+  };
 
   const handleUpload = () => {
     if (!sessionId) {
@@ -235,6 +251,12 @@ export function AdminRosterPanel({
               phone: normalizePhone(manualForm.phone),
               gender: manualForm.gender || null,
               series: manualForm.series.trim() || null,
+              interviewExperience:
+                manualForm.interviewExperience === "있음"
+                  ? true
+                  : manualForm.interviewExperience === "없음"
+                    ? false
+                    : null,
             }),
           }).then(
             readJson<{
@@ -337,6 +359,7 @@ export function AdminRosterPanel({
           <div className="space-y-4">
             <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4">
               <p className="text-sm font-semibold text-slate-900">운영 세션</p>
+              {!hideSessionField && (
               <select
                 value={sessionId}
                 onChange={(event) => setSessionId(event.target.value)}
@@ -349,9 +372,10 @@ export function AdminRosterPanel({
                   </option>
                 ))}
               </select>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge tone={isEditable ? "success" : "neutral"}>
-                  {isEditable ? "운영 중" : "종료됨"}
+                  {isEditable ? "운영 중" : "종료"}
                 </Badge>
                 {selectedSession?.track ? (
                   <Badge tone="brand">{selectedSession.track}</Badge>
@@ -363,12 +387,14 @@ export function AdminRosterPanel({
               <p className="text-sm font-semibold text-slate-900">파일 업로드</p>
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 `이름`, `연락처` 헤더를 포함한 CSV 또는 엑셀 파일을 업로드합니다.
+                `면접 경험 여부` 열을 함께 넣으면 명단에 같이 저장됩니다.
+                최대 파일 크기는 {formatBytes(MAX_SPREADSHEET_UPLOAD_BYTES)}입니다.
               </p>
               <input
                 key={fileInputKey}
                 type="file"
                 accept=".csv,.xlsx,.xls"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                onChange={handleFileChange}
                 disabled={!isEditable}
                 className="mt-3 w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:bg-slate-50"
               />
@@ -400,7 +426,7 @@ export function AdminRosterPanel({
             <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
               <p className="text-sm font-semibold text-slate-900">수동 등록</p>
               <p className="mt-1 text-xs leading-5 text-slate-500">
-                파일 외 학생을 바로 추가하거나 같은 연락처 기준으로 덮어쓸 수 있습니다.
+                파일 없이 학생을 바로 추가하거나 같은 연락처 기준으로 수정할 수 있습니다.
               </p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <input
@@ -438,7 +464,7 @@ export function AdminRosterPanel({
                   disabled={!isEditable}
                   className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50"
                 >
-                  <option value="">성별 미지정</option>
+                  <option value="">성별 미선택</option>
                   <option value="남">남</option>
                   <option value="여">여</option>
                 </select>
@@ -454,6 +480,22 @@ export function AdminRosterPanel({
                   className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50"
                   placeholder="직렬"
                 />
+                <select
+                  value={manualForm.interviewExperience}
+                  onChange={(event) =>
+                    setManualForm((current) => ({
+                      ...current,
+                      interviewExperience:
+                        event.target.value as ManualRosterForm["interviewExperience"],
+                    }))
+                  }
+                  disabled={!isEditable}
+                  className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50"
+                >
+                  <option value="">면접 경험 미선택</option>
+                  <option value="있음">면접 경험 있음</option>
+                  <option value="없음">면접 경험 없음</option>
+                </select>
               </div>
               <button
                 type="button"
@@ -486,7 +528,7 @@ export function AdminRosterPanel({
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     className="w-full rounded-full border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm"
-                    placeholder="이름, 연락처, 직렬 검색"
+                    placeholder="이름, 연락처, 직렬, 면접 경험 검색"
                   />
                 </div>
               </div>
@@ -533,6 +575,11 @@ export function AdminRosterPanel({
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {student.gender ? <Badge tone="neutral">{student.gender}</Badge> : null}
                     {student.series ? <Badge tone="brand">{student.series}</Badge> : null}
+                    {student.interviewExperience !== null ? (
+                      <Badge tone={student.interviewExperience ? "info" : "neutral"}>
+                        면접 경험 {student.interviewExperience ? "있음" : "없음"}
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -567,7 +614,7 @@ export function AdminRosterPanel({
       <ConfirmDialog
         open={deleteAllConfirmOpen}
         title="등록 명단을 초기화하시겠습니까?"
-        description={`등록된 학생 ${students.length}명이 전체 삭제됩니다.`}
+        description={`등록 학생 ${students.length}명이 전체 삭제됩니다.`}
         confirmText="전체 삭제"
         tone="danger"
         isPending={isPending}

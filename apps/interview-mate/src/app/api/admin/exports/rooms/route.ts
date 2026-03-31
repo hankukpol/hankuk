@@ -1,6 +1,7 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
 import { buildCsv, createCsvResponse } from "@/lib/csv";
 import { errorResponse } from "@/lib/http";
+import { formatInterviewExperience } from "@/lib/interview-experience";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type SessionRow = {
@@ -37,6 +38,7 @@ type StudentRow = {
   series: string | null;
   region: string | null;
   score: number | null;
+  interview_experience: boolean | null;
 };
 
 function sanitizeFileNamePart(value: string) {
@@ -103,7 +105,7 @@ export async function GET(request: Request) {
     if (studentIds.length > 0) {
       const { data: studentsData, error: studentsError } = await supabase
         .from("students")
-        .select("id, name, phone, gender, series, region, score")
+        .select("id, name, phone, gender, series, region, score, interview_experience")
         .in("id", studentIds);
 
       if (studentsError) {
@@ -149,6 +151,7 @@ export async function GET(request: Request) {
           "",
           "",
           "",
+          "",
         ],
       ];
     }
@@ -175,6 +178,7 @@ export async function GET(request: Request) {
         student?.series ?? "",
         student?.region ?? "",
         student?.score ?? "",
+        formatInterviewExperience(student?.interview_experience),
         member.joined_at,
       ];
     });
@@ -201,6 +205,7 @@ export async function GET(request: Request) {
       "직렬표기",
       "지역",
       "점수",
+      "면접 경험 여부",
       "입장일시",
     ],
     ...rows,

@@ -14,7 +14,7 @@ type ManualReservationPayload = {
 
 export async function POST(request: Request) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const body = (await request.json()) as ManualReservationPayload;
@@ -44,14 +44,12 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    return errorResponse(error.message || "대리 예약을 등록하지 못했습니다.", 400);
+    return errorResponse("관리자 예약을 등록하지 못했습니다.", 400);
   }
 
   return jsonResponse(
     {
-      reservation: await getReservationDetailById(
-        (data as { id: string }).id,
-      ),
+      reservation: await getReservationDetailById((data as { id: string }).id),
     },
     { status: 201 },
   );

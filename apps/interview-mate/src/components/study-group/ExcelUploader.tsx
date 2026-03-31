@@ -1,8 +1,16 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { downloadCsvTemplate, parseExcel } from '@/lib/study-group/excel';
+
+import { parseExcel } from '@/lib/study-group/excel';
+import { downloadEmptyCsvTemplate } from '@/lib/study-group/template';
 import { Member, StudyGroup } from '@/lib/study-group/types';
+import {
+  formatBytes,
+  getSpreadsheetUploadLimitMessage,
+  MAX_SPREADSHEET_UPLOAD_BYTES,
+} from '@/lib/uploads';
+
 import TextPasteInput from './TextPasteInput';
 
 type InputTab = 'excel' | 'text';
@@ -20,12 +28,19 @@ export default function ExcelUploader({ onUpload }: ExcelUploaderProps) {
 
   const handleFile = useCallback(
     async (file: File) => {
+      const lowerName = file.name.toLowerCase();
+
       if (
-        !file.name.endsWith('.xlsx') &&
-        !file.name.endsWith('.xls') &&
-        !file.name.endsWith('.csv')
+        !lowerName.endsWith('.xlsx') &&
+        !lowerName.endsWith('.xls') &&
+        !lowerName.endsWith('.csv')
       ) {
         setError('엑셀 파일(.xlsx, .xls) 또는 CSV 파일만 업로드할 수 있습니다.');
+        return;
+      }
+
+      if (file.size > MAX_SPREADSHEET_UPLOAD_BYTES) {
+        setError(getSpreadsheetUploadLimitMessage());
         return;
       }
 
@@ -35,22 +50,24 @@ export default function ExcelUploader({ onUpload }: ExcelUploaderProps) {
 
       try {
         const result = await parseExcel(file);
+
         if (result.members.length === 0) {
-          setError('파일에서 읽을 수 있는 데이터가 없습니다.');
+          setError('파일에서 읽을 수 있는 명단이 없습니다.');
           return;
         }
+
         onUpload(result.members, result.restoredGroups);
-      } catch (error) {
+      } catch (nextError) {
         setError(
-          error instanceof Error
-            ? error.message
-            : '파일을 처리하는 중 오류가 발생했습니다.'
+          nextError instanceof Error
+            ? nextError.message
+            : '파일을 처리하는 중 오류가 발생했습니다.',
         );
       } finally {
         setLoading(false);
       }
     },
-    [onUpload]
+    [onUpload],
   );
 
   const handleDrop = useCallback(
@@ -59,21 +76,23 @@ export default function ExcelUploader({ onUpload }: ExcelUploaderProps) {
       setIsDragging(false);
 
       const file = event.dataTransfer.files[0];
+
       if (file) {
-        handleFile(file);
+        void handleFile(file);
       }
     },
-    [handleFile]
+    [handleFile],
   );
 
   const handleChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
+
       if (file) {
-        handleFile(file);
+        void handleFile(file);
       }
     },
-    [handleFile]
+    [handleFile],
   );
 
   return (
@@ -81,7 +100,7 @@ export default function ExcelUploader({ onUpload }: ExcelUploaderProps) {
       <div className="flex items-center justify-between">
         <label className="text-sm font-semibold text-gray-700">명단 입력</label>
         <button
-          onClick={downloadCsvTemplate}
+          onClick={downloadEmptyCsvTemplate}
           className="text-xs text-blue-600 hover:text-blue-700 hover:underline"
         >
           CSV 양식 다운로드
@@ -142,16 +161,19 @@ export default function ExcelUploader({ onUpload }: ExcelUploaderProps) {
                 <p className="text-sm text-gray-600">업로드한 파일</p>
                 <p className="font-medium text-blue-600">{fileName}</p>
                 <p className="mt-1 text-xs text-gray-400">
-                  다른 파일을 올리려면 다시 클릭하거나 드래그하세요.
+                  다른 파일로 바꾸려면 다시 클릭하거나 드래그해 주세요.
                 </p>
               </div>
             ) : (
               <div>
                 <p className="text-gray-500">
-                  엑셀 또는 CSV 파일을 드래그하거나 클릭해서 업로드하세요.
+                  엑셀 또는 CSV 파일을 드래그하거나 클릭해서 업로드해 주세요.
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
-                  권장 열: 이름, 연락처, 성별, 직렬, 지역, 나이, 필기성적, 조
+                  권장 열: 이름, 연락처, 성별, 직렬, 지역, 면접 경험 여부, 조
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  최대 파일 크기: {formatBytes(MAX_SPREADSHEET_UPLOAD_BYTES)}
                 </p>
               </div>
             )}

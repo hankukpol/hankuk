@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SectionCard } from "@/components/ui/section-card";
@@ -23,6 +24,9 @@ type Props = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
 };
 
 type RoomStatus = "recruiting" | "formed" | "closed";
@@ -70,6 +74,7 @@ type WaitingStudent = {
   region: string;
   series: string;
   score: number | null;
+  interviewExperience: boolean | null;
   createdAt: string;
 };
 
@@ -193,8 +198,16 @@ export function AdminRoomOpsPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
 }: Props) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId, selectedSession } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [detail, setDetail] = useState<RoomDetail | null>(null);
@@ -223,11 +236,6 @@ export function AdminRoomOpsPanel({
       "x-admin-key": adminKey,
     }),
     [adminKey],
-  );
-
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === sessionId) ?? null,
-    [sessionId, sessions],
   );
 
   const selectedRoom = useMemo(
@@ -389,23 +397,6 @@ export function AdminRoomOpsPanel({
   ]);
 
   useEffect(() => {
-    if (sessionId) {
-      return;
-    }
-
-    const defaultSessionId =
-      initialSessionId && sessions.some((session) => session.id === initialSessionId)
-        ? initialSessionId
-        : sessions.find((session) => session.status === "active")?.id ??
-          sessions[0]?.id ??
-          "";
-
-    if (defaultSessionId) {
-      setSessionId(defaultSessionId);
-    }
-  }, [initialSessionId, sessionId, sessions]);
-
-  useEffect(() => {
     void refresh().catch((error: unknown) => {
       toast.error(
         error instanceof Error
@@ -467,7 +458,7 @@ export function AdminRoomOpsPanel({
             throw new Error("정원은 숫자로 입력해 주세요.");
           }
 
-          await fetch(`/api/admin/rooms/${selectedRoomId}`, {
+          const payload = await fetch(`/api/admin/rooms/${selectedRoomId}`, {
             method: "PATCH",
             headers,
             body: JSON.stringify({
@@ -476,9 +467,12 @@ export function AdminRoomOpsPanel({
               leaderStudentId: leaderStudentId || null,
               password: password.trim(),
             }),
-          }).then(readJson<RoomDetail>);
+          }).then(readJson<RoomDetail & { warning?: string }>);
 
           await refresh(selectedRoomId);
+          if (payload.warning) {
+            toast.warning(payload.warning);
+          }
           toast.success("방 설정을 저장했습니다.");
         } catch (error) {
           toast.error(
@@ -507,13 +501,16 @@ export function AdminRoomOpsPanel({
     startTransition(() => {
       void (async () => {
         try {
-          await fetch(`/api/admin/rooms/${selectedRoomId}`, {
+          const payload = await fetch(`/api/admin/rooms/${selectedRoomId}`, {
             method: "PATCH",
             headers,
             body: JSON.stringify({ clearExtraRequest: true }),
-          }).then(readJson<RoomDetail>);
+          }).then(readJson<RoomDetail & { warning?: string }>);
 
           await refresh(selectedRoomId);
+          if (payload.warning) {
+            toast.warning(payload.warning);
+          }
           toast.success("추가 인원 요청을 정리했습니다.");
         } catch (error) {
           toast.error(
@@ -536,16 +533,21 @@ export function AdminRoomOpsPanel({
       startTransition(() => {
         void (async () => {
           try {
-            await fetch("/api/admin/waiting-pool", {
+            const payload = await fetch("/api/admin/waiting-pool", {
               method: "PATCH",
               headers,
               body: JSON.stringify({
                 waitingId,
                 roomId: selectedRoomId,
               }),
-            }).then(readJson<{ waitingId: string; roomId: string }>);
+            }).then(
+              readJson<{ waitingId: string; roomId: string; warning?: string }>,
+            );
 
             await refresh(selectedRoomId);
+            if (payload.warning) {
+              toast.warning(payload.warning);
+            }
             toast.success("대기자를 조 방에 배정했습니다.");
           } catch (error) {
             toast.error(
@@ -568,16 +570,21 @@ export function AdminRoomOpsPanel({
     startTransition(() => {
       void (async () => {
         try {
-          await fetch(
+          const payload = await fetch(
             `/api/admin/rooms/${selectedRoomId}/members/${removeMemberTarget.studentId}`,
             {
               method: "DELETE",
               headers,
             },
-          ).then(readJson<{ roomId: string; studentId: string }>);
+          ).then(
+            readJson<{ roomId: string; studentId: string; warning?: string }>,
+          );
 
           setRemoveMemberTarget(null);
           await refresh(selectedRoomId);
+          if (payload.warning) {
+            toast.warning(payload.warning);
+          }
           toast.success("조원을 대기열로 이동시켰습니다.");
         } catch (error) {
           toast.error(
@@ -598,13 +605,16 @@ export function AdminRoomOpsPanel({
     startTransition(() => {
       void (async () => {
         try {
-          await fetch(`/api/admin/rooms/${selectedRoomId}`, {
+          const payload = await fetch(`/api/admin/rooms/${selectedRoomId}`, {
             method: "DELETE",
             headers,
-          }).then(readJson<{ dissolved: boolean }>);
+          }).then(readJson<{ dissolved: boolean; warning?: string }>);
 
           setDissolveConfirmOpen(false);
           await refresh();
+          if (payload.warning) {
+            toast.warning(payload.warning);
+          }
           toast.success("조 방을 해산했습니다.");
         } catch (error) {
           toast.error(
@@ -648,7 +658,7 @@ export function AdminRoomOpsPanel({
 
   const announceAll = useCallback(() => {
     if (!sessionId) {
-      toast.error("먼저 세션을 선택해 주세요.");
+      toast.error("먼저 면접 회차를 선택해 주세요.");
       return;
     }
 
@@ -666,7 +676,7 @@ export function AdminRoomOpsPanel({
 
           setAllNotice("");
           await refresh(selectedRoomId || undefined);
-          toast.success("세션 전체 공지를 전송했습니다.");
+          toast.success("선택한 예약 전체 공지를 전송했습니다.");
         } catch (error) {
           toast.error(
             error instanceof Error
@@ -704,18 +714,20 @@ export function AdminRoomOpsPanel({
       >
         <div className="space-y-4">
           <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
+            {!hideSessionField && (
             <select
               value={sessionId}
               onChange={(event) => setSessionId(event.target.value)}
               className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
             >
-              <option value="">세션 선택</option>
+              <option value="">면접 회차 선택</option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.name}
                 </option>
               ))}
             </select>
+            )}
 
             <div className="flex flex-wrap gap-2">
               {(Object.keys(FILTER_LABELS) as RoomFilter[]).map((filter) => {
@@ -747,7 +759,7 @@ export function AdminRoomOpsPanel({
                   {TRACKS[selectedSession.track].label}
                 </Badge>
                 <Badge tone={selectedSession.status === "active" ? "success" : "neutral"}>
-                  {selectedSession.status === "active" ? "활성 세션" : "종료 세션"}
+                  {selectedSession.status === "active" ? "운영 중 예약" : "종료된 예약"}
                 </Badge>
                 <span className="text-sm font-semibold text-slate-900">
                   {selectedSession.name}
@@ -756,7 +768,7 @@ export function AdminRoomOpsPanel({
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {selectedSession.status === "active"
                   ? "관리자 인증을 다시 확인한 상태로 방 설정 저장, 강제 퇴장, 대기자 배정, 공지 전송이 가능합니다."
-                  : "종료된 세션은 조회만 가능하고, 쓰기 작업은 비활성화됩니다."}
+                  : "종료된 예약은 조회만 가능하고, 쓰기 작업은 비활성화됩니다."}
               </p>
             </div>
           ) : null}
@@ -1016,6 +1028,11 @@ export function AdminRoomOpsPanel({
                                   {member.phone} · {member.region} · {member.series}
                                   {member.score !== null ? ` · ${member.score}점` : ""}
                                 </p>
+                                {member.interviewExperience !== null ? (
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    면접 경험 {member.interviewExperience ? "있음" : "없음"}
+                                  </p>
+                                ) : null}
                                 {member.intro ? (
                                   <p className="mt-2 text-sm leading-6 text-slate-600">
                                     {member.intro}
@@ -1163,6 +1180,11 @@ export function AdminRoomOpsPanel({
                             </p>
                             <Badge tone="neutral">{student.gender}</Badge>
                             <Badge tone="brand">{student.series}</Badge>
+                            {student.interviewExperience !== null ? (
+                              <Badge tone={student.interviewExperience ? "info" : "neutral"}>
+                                면접 경험 {student.interviewExperience ? "있음" : "없음"}
+                              </Badge>
+                            ) : null}
                           </div>
                           <p className="mt-1 text-xs text-slate-500">
                             {student.phone} · {student.region}
@@ -1195,7 +1217,7 @@ export function AdminRoomOpsPanel({
               <div className="rounded-[10px] border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">세션 전체 공지</p>
+                    <p className="text-sm font-semibold text-slate-900">선택 예약 전체 공지</p>
                     <p className="mt-1 text-sm text-slate-500">
                       종료되지 않은 모든 조 방에 같은 공지를 보냅니다.
                     </p>
@@ -1212,7 +1234,7 @@ export function AdminRoomOpsPanel({
                     disabled={!sessionId || isReadOnly || isPending}
                     rows={4}
                     className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700"
-                    placeholder="현재 세션의 모든 조 방에 보낼 공지를 입력하세요."
+                    placeholder="현재 선택한 예약의 모든 조 방에 보낼 공지를 입력하세요."
                   />
                   <div className="flex justify-end">
                     <button

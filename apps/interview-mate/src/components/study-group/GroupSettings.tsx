@@ -12,6 +12,7 @@ interface GroupSettingsProps {
   seriesList: string[];
   hasScores: boolean;
   hasAges: boolean;
+  hasInterviewExperience: boolean;
   hasPreAssigned: boolean;
 }
 
@@ -62,6 +63,7 @@ export default function GroupSettings({
   seriesList,
   hasScores,
   hasAges,
+  hasInterviewExperience,
   hasPreAssigned,
 }: GroupSettingsProps) {
   const togglePenalty = (key: keyof PenaltyWeights, enabled: boolean) => {
@@ -270,6 +272,16 @@ export default function GroupSettings({
             description="조별 평균 성적 편차가 줄어들도록 스왑 최적화를 수행합니다."
             weight={DEFAULT_PENALTY_WEIGHTS.score}
             onChange={(checked) => togglePenalty('score', checked)}
+          />
+        )}
+
+        {hasInterviewExperience && (
+          <ToggleRow
+            checked={settings.penaltyWeights.interviewExperience > 0}
+            label="면접 경험 분산"
+            description="경험자와 비경험자가 특정 조에 몰리지 않도록 각 조의 경험 비율을 맞춥니다."
+            weight={DEFAULT_PENALTY_WEIGHTS.interviewExperience}
+            onChange={(checked) => togglePenalty('interviewExperience', checked)}
           />
         )}
       </div>

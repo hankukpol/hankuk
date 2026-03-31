@@ -1,5 +1,5 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
-import { errorResponse, jsonResponse } from "@/lib/http";
+import { errorResponse, internalErrorResponse, jsonResponse } from "@/lib/http";
 import { getRoomById } from "@/lib/room-service";
 import { getSessionById } from "@/lib/session-queries";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -20,6 +20,7 @@ type StudentRow = {
   series: string;
   region: string;
   score: number | null;
+  interview_experience: boolean | null;
 };
 
 type AssignWaitingPayload = {
@@ -27,9 +28,67 @@ type AssignWaitingPayload = {
   roomId?: string;
 };
 
+type ExistingMembershipRow = {
+  id: string;
+  role: "creator" | "leader" | "member";
+  status: "joined" | "left";
+  left_at: string | null;
+};
+
+type MembershipMutation =
+  | {
+      type: "none";
+    }
+  | {
+      type: "restore";
+      membershipId: string;
+      previousRole: ExistingMembershipRow["role"];
+      previousStatus: ExistingMembershipRow["status"];
+      previousLeftAt: string | null;
+    }
+  | {
+      type: "insert";
+      membershipId: string;
+    };
+
+async function rollbackMembershipMutation(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  mutation: MembershipMutation,
+) {
+  if (mutation.type === "none") {
+    return;
+  }
+
+  if (mutation.type === "restore") {
+    const { error } = await supabase
+      .from("room_members")
+      .update({
+        role: mutation.previousRole,
+        status: mutation.previousStatus,
+        left_at: mutation.previousLeftAt,
+      })
+      .eq("id", mutation.membershipId);
+
+    if (error) {
+      throw new Error(`멤버 상태 롤백에 실패했습니다. ${error.message}`);
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("room_members")
+    .delete()
+    .eq("id", mutation.membershipId);
+
+  if (error) {
+    throw new Error(`생성된 멤버 롤백에 실패했습니다. ${error.message}`);
+  }
+}
+
 export async function GET(request: Request) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const { searchParams } = new URL(request.url);
@@ -60,7 +119,7 @@ export async function GET(request: Request) {
 
   const { data: studentsData, error: studentsError } = await supabase
     .from("students")
-    .select("id, name, phone, gender, series, region, score")
+    .select("id, name, phone, gender, series, region, score, interview_experience")
     .in("id", studentIds);
 
   if (studentsError) {
@@ -92,6 +151,7 @@ export async function GET(request: Request) {
           series: student.series,
           region: student.region,
           score: student.score,
+          interviewExperience: student.interview_experience,
         };
       })
       .filter(Boolean),
@@ -100,7 +160,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const body = (await request.json()) as AssignWaitingPayload;
@@ -122,6 +182,10 @@ export async function PATCH(request: Request) {
 
   if (!waitingEntry) {
     return errorResponse("대기자 정보를 찾을 수 없습니다.", 404);
+  }
+
+  if (waitingEntry.assigned_room_id && waitingEntry.assigned_room_id !== body.roomId) {
+    return errorResponse("이미 다른 조에 배정된 학생입니다.", 409);
   }
 
   const room = await getRoomById(body.roomId);
@@ -162,7 +226,7 @@ export async function PATCH(request: Request) {
       .eq("status", "joined"),
     supabase
       .from("room_members")
-      .select("id, role, status")
+      .select("id, role, status, left_at")
       .eq("room_id", body.roomId)
       .eq("student_id", waitingEntry.student_id)
       .maybeSingle(),
@@ -180,7 +244,9 @@ export async function PATCH(request: Request) {
     return errorResponse("선택한 조 방의 정원이 가득 찼습니다.", 409);
   }
 
-  if (existingMembership) {
+  let membershipMutation: MembershipMutation = { type: "none" };
+
+  if (existingMembership && existingMembership.status !== "joined") {
     const { error: restoreMembershipError } = await supabase
       .from("room_members")
       .update({
@@ -193,19 +259,34 @@ export async function PATCH(request: Request) {
     if (restoreMembershipError) {
       return errorResponse("기존 멤버 상태를 복구하지 못했습니다.", 500);
     }
-  } else if (!joinedMembership) {
-    const { error: insertMembershipError } = await supabase
+
+    membershipMutation = {
+      type: "restore",
+      membershipId: existingMembership.id,
+      previousRole: existingMembership.role,
+      previousStatus: existingMembership.status,
+      previousLeftAt: existingMembership.left_at,
+    };
+  } else if (!joinedMembership && !existingMembership) {
+    const { data: insertedMembership, error: insertMembershipError } = await supabase
       .from("room_members")
       .insert({
         room_id: body.roomId,
         student_id: waitingEntry.student_id,
         role: "member",
         status: "joined",
-      });
+      })
+      .select("id")
+      .single();
 
-    if (insertMembershipError) {
+    if (insertMembershipError || !insertedMembership) {
       return errorResponse("대기자를 조 방에 배정하지 못했습니다.", 500);
     }
+
+    membershipMutation = {
+      type: "insert",
+      membershipId: insertedMembership.id,
+    };
   }
 
   const { error: assignWaitingError } = await supabase
@@ -216,20 +297,48 @@ export async function PATCH(request: Request) {
     .eq("id", body.waitingId);
 
   if (assignWaitingError) {
-    return errorResponse("대기자 배정 정보를 저장하지 못했습니다.", 500);
+    try {
+      await rollbackMembershipMutation(supabase, membershipMutation);
+    } catch (rollbackError) {
+      return internalErrorResponse(
+        "대기자 배정에 실패했고 멤버 상태 롤백도 실패했습니다.",
+        {
+          error: rollbackError,
+          scope: "admin/waiting-pool:rollback-membership",
+          details: {
+            waitingId: body.waitingId,
+            roomId: body.roomId,
+          },
+        },
+      );
+    }
+
+    return internalErrorResponse("대기자 배정 정보를 업데이트하지 못했습니다.", {
+      error: assignWaitingError,
+      scope: "admin/waiting-pool:update-assignment",
+      details: {
+        waitingId: body.waitingId,
+        roomId: body.roomId,
+      },
+    });
   }
 
-  const notices: {
+  const warnings: string[] = [];
+  const notices: Array<{
     room_id: string;
     student_id: null;
     message: string;
     is_system: true;
-  }[] = [];
-  const { data: studentData } = await supabase
+  }> = [];
+  const { data: studentData, error: studentError } = await supabase
     .from("students")
     .select("name")
     .eq("id", waitingEntry.student_id)
     .maybeSingle();
+
+  if (studentError) {
+    warnings.push("배정 학생 이름을 불러오지 못해 안내 메시지 일부가 기본값으로 기록되었습니다.");
+  }
 
   notices.push({
     room_id: body.roomId,
@@ -250,18 +359,18 @@ export async function PATCH(request: Request) {
       .eq("id", body.roomId);
 
     if (roomUpdateError) {
-      return errorResponse("추가 인원 요청 상태를 갱신하지 못했습니다.", 500);
+      warnings.push("추가 인원 요청 카운트를 갱신하지 못했습니다.");
+    } else {
+      notices.push({
+        room_id: body.roomId,
+        student_id: null,
+        message:
+          nextRequestExtraMembers > 0
+            ? `추가 인원 요청이 1명 반영되어 현재 ${nextRequestExtraMembers}명 남아 있습니다.`
+            : "추가 인원 요청이 모두 충족되었습니다.",
+        is_system: true,
+      });
     }
-
-    notices.push({
-      room_id: body.roomId,
-      student_id: null,
-      message:
-        nextRequestExtraMembers > 0
-          ? `추가 인원 요청이 1명 반영되어 현재 ${nextRequestExtraMembers}명 남았습니다.`
-          : "추가 인원 요청이 모두 충족되었습니다.",
-      is_system: true,
-    });
   }
 
   const { error: noticeError } = await supabase
@@ -269,12 +378,13 @@ export async function PATCH(request: Request) {
     .insert(notices);
 
   if (noticeError) {
-    return errorResponse("배정 공지를 남기지 못했습니다.", 500);
+    warnings.push("배정 안내 시스템 메시지를 남기지 못했습니다.");
   }
 
   return jsonResponse({
     waitingId: waitingEntry.id,
     roomId: body.roomId,
     sessionId: session.id,
+    warning: warnings.length > 0 ? warnings.join(" ") : undefined,
   });
 }

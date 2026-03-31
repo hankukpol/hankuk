@@ -1,5 +1,6 @@
 import { REGIONS, POLICE_REGIONS, FIRE_REGIONS } from "@/lib/constants";
 import { errorResponse, jsonResponse } from "@/lib/http";
+import { parseInterviewExperience } from "@/lib/interview-experience";
 import { generateAccessToken } from "@/lib/invite";
 import { normalizePhone } from "@/lib/phone";
 import { removeJoinedMemberFromRoom } from "@/lib/room-admin-actions";
@@ -22,6 +23,7 @@ type StudentPayload = {
   region?: string;
   age?: number;
   score?: number | null;
+  interviewExperience?: boolean | null;
 };
 
 function parseAge(value: number | undefined) {
@@ -38,6 +40,14 @@ function parseScore(value: number | null | undefined) {
   }
 
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseInterviewExperienceValue(value: boolean | null | undefined) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  return parseInterviewExperience(value);
 }
 
 function isValidGender(value: string | undefined): value is "남" | "여" {
@@ -202,6 +212,7 @@ export async function POST(request: Request) {
     region: body.region!,
     age: parseAge(body.age),
     score: parseScore(body.score),
+    interview_experience: parseInterviewExperienceValue(body.interviewExperience),
   };
 
   if (existingStudent) {
@@ -210,7 +221,7 @@ export async function POST(request: Request) {
       .update(payload)
       .eq("id", existingStudent.id)
       .select(
-        "id, session_id, phone, name, gender, series, region, age, score, access_token, created_at",
+        "id, session_id, phone, name, gender, series, region, age, score, interview_experience, access_token, created_at",
       )
       .single();
 
@@ -231,7 +242,7 @@ export async function POST(request: Request) {
       access_token: generateAccessToken(),
     })
     .select(
-      "id, session_id, phone, name, gender, series, region, age, score, access_token, created_at",
+      "id, session_id, phone, name, gender, series, region, age, score, interview_experience, access_token, created_at",
     )
     .single();
 
@@ -280,6 +291,7 @@ export async function PATCH(request: Request) {
   }
 
   const score = parseScore(body.score);
+  const interviewExperience = parseInterviewExperienceValue(body.interviewExperience);
 
   if (score === null) {
     return errorResponse("필기 성적을 입력해 주세요.");
@@ -311,10 +323,11 @@ export async function PATCH(request: Request) {
       region: body.region,
       age,
       score,
+      interview_experience: interviewExperience,
     })
     .eq("id", currentStudent.id)
     .select(
-      "id, session_id, phone, name, gender, series, region, age, score, access_token, created_at",
+      "id, session_id, phone, name, gender, series, region, age, score, interview_experience, access_token, created_at",
     )
     .single();
 

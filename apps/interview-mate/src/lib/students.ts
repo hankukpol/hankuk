@@ -5,6 +5,7 @@ export type RegisteredStudentRecord = {
   phone: string;
   gender: "남" | "여" | null;
   series: string | null;
+  interview_experience: boolean | null;
   created_at: string;
 };
 
@@ -18,6 +19,7 @@ export type StudentRecord = {
   region: string;
   age: number | null;
   score: number | null;
+  interview_experience: boolean | null;
   access_token: string;
   created_at: string;
 };
@@ -32,6 +34,7 @@ export type StudentSummary = {
   region: string;
   age: number | null;
   score: number | null;
+  interviewExperience: boolean | null;
   accessToken: string;
   createdAt: string;
 };
@@ -47,6 +50,7 @@ export function serializeStudent(student: StudentRecord): StudentSummary {
     region: student.region,
     age: student.age,
     score: student.score,
+    interviewExperience: student.interview_experience,
     accessToken: student.access_token,
     createdAt: student.created_at,
   };

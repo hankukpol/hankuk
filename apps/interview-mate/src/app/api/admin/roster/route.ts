@@ -2,6 +2,10 @@ import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
 import { errorResponse, jsonResponse } from "@/lib/http";
 import { parseRosterFile } from "@/lib/roster";
 import { getSessionById } from "@/lib/session-queries";
+import {
+  getSpreadsheetUploadLimitMessage,
+  MAX_SPREADSHEET_UPLOAD_BYTES,
+} from "@/lib/uploads";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -19,7 +23,7 @@ export async function GET(request: Request) {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("registered_students")
-    .select("id, session_id, name, phone, gender, series, created_at")
+    .select("id, session_id, name, phone, gender, series, interview_experience, created_at")
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
 
@@ -35,6 +39,7 @@ export async function GET(request: Request) {
       phone: student.phone,
       gender: student.gender,
       series: student.series,
+      interviewExperience: student.interview_experience,
       createdAt: student.created_at,
     })),
   });
@@ -56,6 +61,10 @@ export async function POST(request: Request) {
 
   if (!(file instanceof File)) {
     return errorResponse("업로드할 파일이 필요합니다.");
+  }
+
+  if (file.size > MAX_SPREADSHEET_UPLOAD_BYTES) {
+    return errorResponse(getSpreadsheetUploadLimitMessage(), 413);
   }
 
   const session = await getSessionById(sessionId);
@@ -103,6 +112,7 @@ export async function POST(request: Request) {
     phone: row.phone,
     gender: row.gender,
     series: row.series,
+    interview_experience: row.interviewExperience,
   }));
 
   const { error } = await supabase.from("registered_students").upsert(payload, {

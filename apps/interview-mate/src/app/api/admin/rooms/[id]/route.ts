@@ -1,5 +1,5 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
-import { errorResponse, jsonResponse } from "@/lib/http";
+import { errorResponse, internalErrorResponse, jsonResponse } from "@/lib/http";
 import { dissolveRoom } from "@/lib/room-admin-actions";
 import { getRoomDetail } from "@/lib/room-service";
 import { getSessionById } from "@/lib/session-queries";
@@ -42,7 +42,7 @@ async function getRoomPassword(roomId: string) {
 
 export async function GET(request: Request, { params }: RoomRouteProps) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const detail = await getRoomDetail(params.id);
@@ -79,7 +79,7 @@ export async function GET(request: Request, { params }: RoomRouteProps) {
 
 export async function PATCH(request: Request, { params }: RoomRouteProps) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const detail = await getRoomDetail(params.id);
@@ -120,7 +120,7 @@ export async function PATCH(request: Request, { params }: RoomRouteProps) {
     }
 
     if (maxMembers < memberCount) {
-      return errorResponse("현재 조원 수보다 작은 정원으로는 변경할 수 없습니다.");
+      return errorResponse("현재 조원 수보다 적은 정원으로는 변경할 수 없습니다.");
     }
 
     if (maxMembers > session.max_group_size) {
@@ -158,52 +158,24 @@ export async function PATCH(request: Request, { params }: RoomRouteProps) {
     notices.push("추가 인원 요청이 관리자에 의해 처리 완료되었습니다.");
   }
 
-  if (body.leaderStudentId !== undefined) {
-    const currentLeader =
-      detail.members.find((member) => member.role === "leader") ?? null;
-    const nextLeader =
-      body.leaderStudentId === null || body.leaderStudentId === ""
+  const currentLeader =
+    detail.members.find((member) => member.role === "leader") ?? null;
+  const nextLeader =
+    body.leaderStudentId === undefined
+      ? currentLeader
+      : body.leaderStudentId === null || body.leaderStudentId === ""
         ? null
         : detail.members.find((member) => member.studentId === body.leaderStudentId) ??
           null;
 
-    if (body.leaderStudentId && !nextLeader) {
-      return errorResponse("조장으로 지정할 멤버를 찾을 수 없습니다.");
-    }
+  if (body.leaderStudentId && !nextLeader) {
+    return errorResponse("조장으로 지정할 멤버를 찾을 수 없습니다.");
+  }
 
-    if (nextLeader?.role === "creator") {
-      return errorResponse(
-        "방장은 creator 역할을 유지합니다. 조장은 다른 멤버로 지정해 주세요.",
-      );
-    }
-
-    if (currentLeader && (!nextLeader || currentLeader.id !== nextLeader.id)) {
-      const { error: resetLeaderError } = await supabase
-        .from("room_members")
-        .update({ role: "member" })
-        .eq("id", currentLeader.id);
-
-      if (resetLeaderError) {
-        return errorResponse("기존 조장 정보를 해제하지 못했습니다.", 500);
-      }
-    }
-
-    if (nextLeader && nextLeader.role !== "leader") {
-      const { error: nextLeaderError } = await supabase
-        .from("room_members")
-        .update({ role: "leader" })
-        .eq("id", nextLeader.id);
-
-      if (nextLeaderError) {
-        return errorResponse("새 조장을 지정하지 못했습니다.", 500);
-      }
-
-      notices.push(`${nextLeader.name}님을 새 조장으로 지정했습니다.`);
-    }
-
-    if (!nextLeader && currentLeader) {
-      notices.push("조장 지정을 해제했습니다.");
-    }
+  if (nextLeader?.role === "creator") {
+    return errorResponse(
+      "방장은 creator 역할로 유지됩니다. 조장은 다른 멤버로 지정해 주세요.",
+    );
   }
 
   if (Object.keys(updates).length > 0) {
@@ -213,7 +185,62 @@ export async function PATCH(request: Request, { params }: RoomRouteProps) {
       .eq("id", params.id);
 
     if (updateRoomError) {
-      return errorResponse("조 방 정보를 저장하지 못했습니다.", 500);
+      return errorResponse("조 방 정보를 업데이트하지 못했습니다.", 500);
+    }
+  }
+
+  let warning: string | undefined;
+
+  if (body.leaderStudentId !== undefined) {
+    const leaderChanged =
+      (currentLeader?.id ?? null) !== (nextLeader?.id ?? null);
+
+    if (leaderChanged) {
+      let promotedNextLeader = false;
+
+      if (nextLeader && nextLeader.role !== "leader") {
+        const { error: nextLeaderError } = await supabase
+          .from("room_members")
+          .update({ role: "leader" })
+          .eq("id", nextLeader.id);
+
+        if (nextLeaderError) {
+          return errorResponse("새 조장을 지정하지 못했습니다.", 500);
+        }
+
+        promotedNextLeader = true;
+      }
+
+      if (currentLeader) {
+        const { error: resetLeaderError } = await supabase
+          .from("room_members")
+          .update({ role: "member" })
+          .eq("id", currentLeader.id);
+
+        if (resetLeaderError) {
+          if (promotedNextLeader && nextLeader) {
+            const { error: rollbackLeaderError } = await supabase
+              .from("room_members")
+              .update({ role: "member" })
+              .eq("id", nextLeader.id);
+
+            if (rollbackLeaderError) {
+              return errorResponse(
+                `조장 변경에 실패했고 역할 롤백도 실패했습니다. ${rollbackLeaderError.message}`,
+                500,
+              );
+            }
+          }
+
+          return errorResponse("기존 조장 정보를 해제하지 못했습니다.", 500);
+        }
+      }
+
+      if (nextLeader) {
+        notices.push(`${nextLeader.name}님을 새 조장으로 지정했습니다.`);
+      } else if (currentLeader) {
+        notices.push("조장 지정을 해제했습니다.");
+      }
     }
   }
 
@@ -228,14 +255,14 @@ export async function PATCH(request: Request, { params }: RoomRouteProps) {
     );
 
     if (noticeError) {
-      return errorResponse("운영 변경 공지를 저장하지 못했습니다.", 500);
+      warning = "방 설정은 저장되었지만 운영 변경 공지를 남기지 못했습니다.";
     }
   }
 
   const updatedDetail = await getRoomDetail(params.id);
 
   if (!updatedDetail) {
-    return errorResponse("수정 후 조 방을 다시 불러오지 못했습니다.", 500);
+    return errorResponse("수정된 조 방을 다시 불러오지 못했습니다.", 500);
   }
 
   const updatedPassword = await getRoomPassword(params.id);
@@ -252,12 +279,13 @@ export async function PATCH(request: Request, { params }: RoomRouteProps) {
       password: updatedPassword,
     },
     members: updatedDetail.members,
+    warning,
   });
 }
 
 export async function DELETE(request: Request, { params }: RoomRouteProps) {
   if (!isAdminAuthorized(getAdminKey(request.headers))) {
-    return errorResponse("접근 권한이 없습니다.", 401);
+    return errorResponse("관리자 권한이 없습니다.", 401);
   }
 
   const detail = await getRoomDetail(params.id);
@@ -272,16 +300,30 @@ export async function DELETE(request: Request, { params }: RoomRouteProps) {
     return errorResponse("운영 중인 세션이 아니어서 방을 해산할 수 없습니다.", 409);
   }
 
-  const result = await dissolveRoom({
-    roomId: params.id,
-    sessionId: detail.room.sessionId,
-    members: detail.members.map((member) => ({
-      id: member.id,
-      studentId: member.studentId,
-      name: member.name,
-    })),
-    noticeMessage: "관리자에 의해 조 방이 해산되었습니다.",
-  });
+  try {
+    const result = await dissolveRoom({
+      roomId: params.id,
+      sessionId: detail.room.sessionId,
+      members: detail.members.map((member) => ({
+        id: member.id,
+        studentId: member.studentId,
+        name: member.name,
+      })),
+      noticeMessage: "관리자에 의해 조 방이 해산되었습니다.",
+    });
 
-  return jsonResponse(result);
+    return jsonResponse({
+      dissolved: true,
+      ...result,
+    });
+  } catch (error) {
+    return internalErrorResponse("조 방을 해산하지 못했습니다.", {
+      error,
+      scope: "admin/rooms:delete",
+      details: {
+        roomId: params.id,
+        sessionId: detail.room.sessionId,
+      },
+    });
+  }
 }

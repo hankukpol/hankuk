@@ -45,6 +45,7 @@ export type RoomMemberSummary = {
   series: string;
   region: string;
   score: number | null;
+  interviewExperience: boolean | null;
   intro: string | null;
   showPhone: boolean;
 };
@@ -109,7 +110,7 @@ async function getStudentsByIds(studentIds: string[]) {
   const { data, error } = await supabase
     .from("students")
     .select(
-      "id, session_id, phone, name, gender, series, region, age, score, access_token, created_at",
+      "id, session_id, phone, name, gender, series, region, age, score, interview_experience, access_token, created_at",
     )
     .in("id", studentIds);
 
@@ -187,6 +188,7 @@ export async function getRoomMembers(roomId: string) {
         series: student.series,
         region: student.region,
         score: student.score,
+        interviewExperience: student.interview_experience,
         intro: profile?.intro ?? null,
         showPhone: profile?.show_phone ?? false,
       } satisfies RoomMemberSummary;

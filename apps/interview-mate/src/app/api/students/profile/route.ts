@@ -93,7 +93,7 @@ export async function GET(request: Request) {
   const canRead = await ensureSameJoinedRoom(student.id, targetStudentId);
 
   if (!canRead) {
-    return errorResponse("같은 조 방 조원 프로필만 조회할 수 있습니다.", 403);
+    return errorResponse("같은 조에 참여한 조원 프로필만 조회할 수 있습니다.", 403);
   }
 
   const [profile, targetStudent] = await Promise.all([
@@ -131,11 +131,11 @@ export async function PUT(request: Request) {
   const session = await getSessionById(student.session_id);
 
   if (!session || session.status !== "active") {
-    return errorResponse("?댁쁺 以묒씤 硫댁젒諛섏쓣 李얠쓣 ???놁뒿?덈떎.", 404);
+    return errorResponse("운영 중인 면접반을 찾을 수 없습니다.", 404);
   }
 
   if (getApplyWindowStatus(session) === "after_close") {
-    return errorResponse("吏??留덇컧 ?댄썑?먮뒗 ?꾨줈?꾩쓣 ?섏젙?????놁뒿?덈떎.", 409);
+    return errorResponse("신청 마감 이후에는 프로필을 수정할 수 없습니다.", 409);
   }
 
   const body = (await request.json()) as ProfilePayload;

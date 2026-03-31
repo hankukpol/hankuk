@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
   Archive,
@@ -593,6 +594,14 @@ export function AdminDashboard({ adminKey }: AdminDashboardProps) {
               );
             })}
           </div>
+          <div className="mt-4 px-3">
+            <Link
+              href="/admin/setup"
+              className="inline-flex w-full items-center justify-center rounded-[10px] border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-medium text-white/60 hover:bg-white/10 hover:text-white"
+            >
+              관리자 계정 관리
+            </Link>
+          </div>
           <div className="mt-6 px-3">
             <form action="/api/admin/auth/logout" method="post">
               <button
@@ -647,6 +656,12 @@ export function AdminDashboard({ adminKey }: AdminDashboardProps) {
                   );
                 })}
                 <div className="mt-1 border-t border-slate-100 pt-1">
+                  <Link
+                    href="/admin/setup"
+                    className="flex w-full items-center gap-3 rounded-[10px] px-3 py-3 text-left text-sm text-slate-500 hover:bg-slate-50"
+                  >
+                    관리자 계정 관리
+                  </Link>
                   <form action="/api/admin/auth/logout" method="post">
                     <button type="submit" className="flex w-full items-center gap-3 rounded-[10px] px-3 py-3 text-left text-sm text-slate-500 hover:bg-slate-50">
                       로그아웃

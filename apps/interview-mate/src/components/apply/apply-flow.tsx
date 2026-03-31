@@ -36,6 +36,7 @@ type RegisteredStudent = {
   phone: string;
   gender: "남" | "여" | null;
   series: string | null;
+  interview_experience: boolean | null;
   created_at: string;
 };
 
@@ -46,6 +47,7 @@ type ApplyFormState = {
   region: string;
   age: string;
   score: string;
+  interviewExperience: "" | "있음" | "없음";
 };
 
 type RoomSummary = {
@@ -62,6 +64,7 @@ const defaultFormState: ApplyFormState = {
   region: "",
   age: "",
   score: "",
+  interviewExperience: "",
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -89,6 +92,29 @@ function createFormState(
     score: student?.score !== null && student?.score !== undefined
       ? String(student.score)
       : "",
+    interviewExperience:
+      student?.interviewExperience === true
+        ? "있음"
+        : student?.interviewExperience === false
+          ? "없음"
+          : registeredStudent.interview_experience === true
+            ? "있음"
+            : registeredStudent.interview_experience === false
+              ? "없음"
+              : "",
+  };
+}
+
+function createRegisteredStudentFromStudent(student: StudentSummary): RegisteredStudent {
+  return {
+    id: student.id,
+    session_id: student.sessionId,
+    name: student.name,
+    phone: student.phone,
+    gender: student.gender,
+    series: student.series,
+    interview_experience: student.interviewExperience,
+    created_at: student.createdAt,
   };
 }
 
@@ -116,6 +142,7 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
     useState<RegisteredStudent | null>(null);
   const [student, setStudent] = useState<StudentSummary | null>(null);
   const [joinedRoom, setJoinedRoom] = useState<RoomSummary | null>(null);
+  const [hasExistingWaiting, setHasExistingWaiting] = useState(false);
   const [form, setForm] = useState<ApplyFormState>(defaultFormState);
   const [roomName, setRoomName] = useState("");
   const [roomPassword, setRoomPassword] = useState("");
@@ -147,9 +174,17 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
         );
 
         setStudent(payload.student);
+        setHasExistingWaiting(Boolean(payload.waiting) && !payload.joinedRoom);
 
         if (payload.joinedRoom) {
           setJoinedRoom(payload.joinedRoom);
+          setRegisteredStudent(createRegisteredStudentFromStudent(payload.student));
+          setForm(
+            createFormState(
+              createRegisteredStudentFromStudent(payload.student),
+              payload.student,
+            ),
+          );
           saveStudentSession({
             token: stored.token,
             roomId: payload.joinedRoom.id,
@@ -157,9 +192,16 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
             name: payload.student.name,
           });
         } else if (payload.waiting) {
-          // Already in waiting pool — redirect to status
-          router.replace(`/status?token=${stored.token}`);
-          return;
+          // Keep the user on the apply page so they can review or update the profile.
+          const restoredStudent = createRegisteredStudentFromStudent(payload.student);
+
+          setRegisteredStudent(restoredStudent);
+          setForm(createFormState(restoredStudent, payload.student));
+          saveStudentSession({
+            token: stored.token,
+            track,
+            name: payload.student.name,
+          });
         }
       } catch {
         // Token invalid — clear and proceed normally
@@ -257,6 +299,8 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
       setStudent(payload.student);
       setPhone(payload.registeredStudent.phone);
       setForm(createFormState(payload.registeredStudent, payload.student));
+      setJoinedRoom(null);
+      setHasExistingWaiting(false);
       setRoomName((current) =>
         current || `${payload.registeredStudent.name}의 조`,
       );
@@ -279,6 +323,7 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
 
           if (studentPayload.joinedRoom) {
             setJoinedRoom(studentPayload.joinedRoom);
+            setHasExistingWaiting(false);
             saveStudentSession({
               token: payload.student.accessToken,
               roomId: studentPayload.joinedRoom.id,
@@ -290,13 +335,13 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
           }
 
           if (studentPayload.waiting) {
+            setHasExistingWaiting(true);
             saveStudentSession({
               token: payload.student.accessToken,
               track,
               name: payload.student.name,
             });
-            toast.success("이미 개인지원이 완료된 상태입니다. 대기 현황 페이지로 이동합니다.");
-            router.push(`/status?token=${payload.student.accessToken}`);
+            toast.success("이미 개인지원이 완료된 상태입니다. 진행 현황을 확인하거나 정보를 수정할 수 있습니다.");
             return;
           }
         } catch {
@@ -341,6 +386,12 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
         region: form.region,
         age: Number(form.age),
         score: Number(form.score),
+        interviewExperience:
+          form.interviewExperience === "있음"
+            ? true
+            : form.interviewExperience === "없음"
+              ? false
+              : null,
       }),
     }).then(
       readJson<{
@@ -350,6 +401,7 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
     );
 
     setStudent(payload.student);
+    setHasExistingWaiting(false);
 
     return payload;
   };
@@ -386,11 +438,12 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
             track,
             name: studentPayload.student.name,
           });
+          setHasExistingWaiting(true);
 
           toast.success(
             studentPayload.created
               ? "개인지원이 완료되었습니다."
-              : "지원 정보를 저장하고 대기자 명단을 갱신했습니다.",
+              : "지원 정보를 저장하고 진행 상태를 갱신했습니다.",
           );
 
           router.push(`/status?token=${studentPayload.student.accessToken}`);
@@ -522,13 +575,49 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
                 href={`/status?token=${student.accessToken}`}
                 className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700"
               >
-                대기 현황 확인
+                진행 현황 확인
               </Link>
             </div>
           </div>
         </SectionCard>
       ) : (
         <>
+          {hasExistingWaiting && student ? (
+            <SectionCard
+              title="이미 지원 대기 상태입니다"
+              description="현재 대기 상태를 유지한 채 진행 현황을 확인하거나 정보를 수정할 수 있습니다."
+              action={<Badge tone="warning">편성 대기 중</Badge>}
+            >
+              <div className="space-y-4">
+                <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
+                  현재 대기 상태를 바로 확인할 수 있고, 아래 입력값을 수정한 뒤 다시
+                  저장해도 대기 상태는 그대로 유지됩니다.
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link
+                    href={`/status?token=${student.accessToken}`}
+                    className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[var(--division-color)] px-5 py-2.5 text-sm font-semibold text-white"
+                  >
+                    진행 현황 확인
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const formSection = document.getElementById("apply-profile-form");
+                      formSection?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700"
+                  >
+                    정보 수정
+                  </button>
+                </div>
+              </div>
+            </SectionCard>
+          ) : null}
+
           <SectionCard
             title={`${trackInfo.label} 조 편성 지원`}
             description="본인 확인 후 자기 정보 입력, 조 생성 또는 개인 지원으로 이어지는 흐름입니다."
@@ -565,6 +654,7 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
 
           {registeredStudent ? (
             <>
+              <div id="apply-profile-form">
               <SectionCard
                 title="지원 정보 입력"
                 description="지원 완료 후 access token이 발급되고, 상태 조회와 이후 조 방 기능에 사용됩니다."
@@ -640,7 +730,7 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
                       placeholder="직렬 또는 응시 계열"
                     />
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <label className="block space-y-1">
                       <span className="text-xs font-medium text-slate-500">나이</span>
                       <input
@@ -675,9 +765,28 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
                         placeholder="필기성적"
                       />
                     </label>
+                    <label className="block space-y-1">
+                      <span className="text-xs font-medium text-slate-500">면접 경험 여부</span>
+                      <select
+                        value={form.interviewExperience}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            interviewExperience:
+                              event.target.value as ApplyFormState["interviewExperience"],
+                          }))
+                        }
+                        className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">선택 안 함</option>
+                        <option value="있음">있음</option>
+                        <option value="없음">없음</option>
+                      </select>
+                    </label>
                   </div>
                 </div>
               </SectionCard>
+              </div>
 
               <div className="grid gap-4">
                 <SectionCard
@@ -736,7 +845,7 @@ export function ApplyFlow({ track }: ApplyFlowProps) {
 
                 <SectionCard
                   title="개인 지원"
-                  description="조원이 없는 경우 대기자 명단에 등록되고 관리자 편성을 기다립니다."
+                  description="조원이 없는 경우 편성 대기 상태로 등록되고 관리자 배정을 기다립니다."
                 >
                   <button
                     type="button"

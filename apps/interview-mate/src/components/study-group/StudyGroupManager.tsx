@@ -41,6 +41,9 @@ export default function StudyGroupManager({ config }: StudyGroupManagerProps) {
 
   const hasScores = members.some((member) => member.score !== undefined);
   const hasAges = members.some((member) => member.age !== undefined);
+  const hasInterviewExperience = members.some(
+    (member) => member.interviewExperience !== undefined
+  );
   const hasPreAssigned = members.some(
     (member) => member.preAssignedGroup !== undefined
   );
@@ -170,6 +173,7 @@ export default function StudyGroupManager({ config }: StudyGroupManagerProps) {
                 seriesList={seriesList}
                 hasScores={hasScores}
                 hasAges={hasAges}
+                hasInterviewExperience={hasInterviewExperience}
                 hasPreAssigned={hasPreAssigned}
               />
             <hr />

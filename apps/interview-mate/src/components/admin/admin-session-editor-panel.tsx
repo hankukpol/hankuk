@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { LoaderCircle, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionSelection } from "@/components/admin/use-session-selection";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/ui/section-card";
 import { TRACKS, type Track } from "@/lib/constants";
@@ -13,6 +14,9 @@ type AdminSessionEditorPanelProps = {
   adminKey: string;
   sessions: SessionSummary[];
   initialSessionId?: string;
+  sessionId?: string;
+  onSessionIdChange?: (sessionId: string) => void;
+  hideSessionField?: boolean;
   onUpdated: (session: SessionSummary) => void;
 };
 
@@ -72,32 +76,19 @@ export function AdminSessionEditorPanel({
   adminKey,
   sessions,
   initialSessionId,
+  sessionId: controlledSessionId,
+  onSessionIdChange,
+  hideSessionField = false,
   onUpdated,
 }: AdminSessionEditorPanelProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId ?? "");
+  const { sessionId, setSessionId, selectedSession } = useSessionSelection({
+    sessions,
+    initialSessionId,
+    sessionId: controlledSessionId,
+    onSessionIdChange,
+  });
   const [form, setForm] = useState<SessionEditForm>(() => createEditForm(null));
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (sessionId) {
-      return;
-    }
-
-    const defaultSessionId =
-      initialSessionId ||
-      sessions.find((session) => session.status === "active")?.id ||
-      sessions[0]?.id ||
-      "";
-
-    if (defaultSessionId) {
-      setSessionId(defaultSessionId);
-    }
-  }, [initialSessionId, sessionId, sessions]);
-
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === sessionId) ?? null,
-    [sessionId, sessions],
-  );
 
   useEffect(() => {
     setForm(createEditForm(selectedSession));
@@ -107,7 +98,7 @@ export function AdminSessionEditorPanel({
 
   const handleSubmit = () => {
     if (!selectedSession) {
-      toast.error("수정할 세션을 선택해주세요.");
+      toast.error("수정할 면접 회차를 선택해 주세요.");
       return;
     }
 
@@ -134,12 +125,12 @@ export function AdminSessionEditorPanel({
           }).then(readJson<{ session: SessionSummary }>);
 
           onUpdated(payload.session);
-          toast.success("세션 설정을 저장했습니다.");
+          toast.success("면접반 설정을 저장했습니다.");
         } catch (error) {
           toast.error(
             error instanceof Error
               ? error.message
-              : "세션 설정을 저장하지 못했습니다.",
+              : "면접반 설정을 저장하지 못했습니다.",
           );
         }
       })();
@@ -148,8 +139,8 @@ export function AdminSessionEditorPanel({
 
   return (
     <SectionCard
-      title="세션 수정"
-      description="운영 중이거나 종료된 세션의 이름, 기간, 면접일, 조 편성 기준 인원을 다시 조정합니다."
+      title="면접반 설정"
+      description="선택한 면접 회차의 이름, 일정, 조 편성 기준 인원을 수정합니다."
       action={
         selectedSession ? (
           <div className="flex items-center gap-2">
@@ -162,14 +153,15 @@ export function AdminSessionEditorPanel({
       }
     >
       <div className="grid gap-4 md:grid-cols-2">
+        {!hideSessionField && (
         <label className="space-y-1.5 md:col-span-2">
-          <span className="text-xs font-medium text-slate-500">대상 세션</span>
+          <span className="text-xs font-medium text-slate-500">수정할 회차</span>
           <select
             value={sessionId}
             onChange={(event) => setSessionId(event.target.value)}
             className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
           >
-            <option value="">세션 선택</option>
+            <option value="">면접 회차 선택</option>
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
                 {session.name}
@@ -177,9 +169,10 @@ export function AdminSessionEditorPanel({
             ))}
           </select>
         </label>
+        )}
 
         <label className="space-y-1.5 md:col-span-2">
-          <span className="text-xs font-medium text-slate-500">세션 이름</span>
+          <span className="text-xs font-medium text-slate-500">회차 이름</span>
           <input
             value={form.name}
             onChange={(event) =>
@@ -189,7 +182,7 @@ export function AdminSessionEditorPanel({
               }))
             }
             className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm"
-            placeholder="세션 이름"
+            placeholder="예: 2026 상반기 경찰 면접반"
           />
         </label>
 
@@ -316,7 +309,8 @@ export function AdminSessionEditorPanel({
       </div>
 
       <div className="mt-4 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-        세션 수정은 관리자 전용 설정이며, 공개 화면에서는 같은 세션 정보를 예약/지원 기간 계산에 그대로 사용합니다.
+        여기서 바꾼 회차 정보는 공개 화면의 예약 기간, 지원 기간, 조 편성 기준에도
+        바로 반영됩니다.
       </div>
 
       <div className="mt-4 flex justify-end">
@@ -331,7 +325,7 @@ export function AdminSessionEditorPanel({
           ) : (
             <PencilLine className="h-4 w-4" />
           )}
-          세션 저장
+          면접반 저장
         </button>
       </div>
     </SectionCard>

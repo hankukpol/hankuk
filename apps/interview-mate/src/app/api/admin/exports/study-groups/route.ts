@@ -1,6 +1,7 @@
 import { getAdminKey, isAdminAuthorized } from "@/lib/auth";
 import { buildCsv, createCsvResponse } from "@/lib/csv";
 import { errorResponse } from "@/lib/http";
+import { formatInterviewExperience } from "@/lib/interview-experience";
 import { normalizePhone } from "@/lib/phone";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -19,6 +20,7 @@ type StudentRow = {
   region: string;
   age: number | null;
   score: number | null;
+  interview_experience: boolean | null;
   created_at: string;
 };
 
@@ -64,7 +66,7 @@ export async function GET(request: Request) {
       supabase
         .from("students")
         .select(
-          "id, name, phone, gender, series, region, age, score, created_at",
+          "id, name, phone, gender, series, region, age, score, interview_experience, created_at",
         )
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true }),
@@ -116,13 +118,24 @@ export async function GET(request: Request) {
     student.gender,
     student.series,
     student.region,
+    formatInterviewExperience(student.interview_experience),
     student.age ?? "",
     student.score ?? "",
     groupByStudentId.get(student.id) || "",
   ]);
 
   const csv = buildCsv([
-    ["이름", "연락처", "성별", "직렬", "지역", "나이", "필기성적", "조"],
+    [
+      "이름",
+      "연락처",
+      "성별",
+      "직렬",
+      "지역",
+      "면접 경험 여부",
+      "나이",
+      "필기성적",
+      "조",
+    ],
     ...rows,
   ]);
 

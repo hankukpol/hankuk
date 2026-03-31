@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 
 import Link from "next/link";
+import { KakaoGuide } from "@/components/kakao-guide";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SectionCard } from "@/components/ui/section-card";
@@ -92,7 +93,7 @@ type InviteDetailsPayload = {
   };
 };
 
-type MenuSection = "members" | "invite" | "profile" | "polls" | "extra" | "leader" | null;
+type MenuSection = "members" | "invite" | "tools" | null;
 
 async function readJson<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {
@@ -273,10 +274,22 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
   const canMutateRoomData = !isRoomClosed && !isApplyClosed;
   const canManageRoom = detail?.viewerRole === "creator" || detail?.viewerRole === "leader";
   const canManageMutableRoomData = canManageRoom && canMutateRoomData;
+  const canEditProfile = canMutateRoomData;
   const canTransferLeader = canManageMutableRoomData && leaderTransferCandidates.length > 0;
   const requiresLeaderTransferBeforeLeave = detail?.viewerRole === "leader" && leaderTransferCandidates.length > 0;
   const canLeaveRoom = !isApplyClosed && !isRoomClosed;
   const canSendMessage = !isRoomClosed;
+  const roomStatusLabel =
+    detail?.room.status === "recruiting"
+      ? "모집 중"
+      : detail?.room.status === "formed"
+        ? "구성 완료"
+        : "종료";
+  const showAdvancedTools =
+    canManageRoom ||
+    canEditProfile ||
+    polls.length > 0 ||
+    Boolean(detail?.room.requestExtraMembers);
 
   const refreshRoom = async () => { await loadRoom(false); };
   const refreshAll = async () => { await Promise.all([loadRoom(false), loadPolls(), loadInviteDetails()]); };
@@ -346,7 +359,7 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
             headers: { "x-access-token": token },
           }).then(readJson<{ roomId: string; movedToWaitingPool: boolean }>);
           clearStudentSession();
-          toast.success("조 방을 나가고 대기자 목록으로 이동했습니다.");
+          toast.success("조 방을 나가고 편성 대기 상태로 전환했습니다.");
           router.push(`/status?token=${token}`);
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "조 탈퇴를 처리하지 못했습니다.");
@@ -538,11 +551,8 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
 
   const menuItems: { key: MenuSection; label: string; show: boolean }[] = [
     { key: "members", label: `조원 목록 (${detail?.members.length ?? 0}명)`, show: true },
-    { key: "invite", label: "초대 정보 · 공유", show: true },
-    { key: "profile", label: "내 프로필 설정", show: true },
-    { key: "polls", label: `스터디 투표 (${polls.length}개)`, show: true },
-    { key: "extra", label: "추가 인원 요청", show: canManageRoom || Boolean(detail?.room.requestExtraMembers) },
-    { key: "leader", label: "조장 위임", show: canManageRoom },
+    { key: "invite", label: "초대 정보", show: true },
+    { key: "tools", label: "추가 기능", show: showAdvancedTools },
   ];
 
   return (
@@ -580,24 +590,23 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
                   {
                     members: "조원 목록",
                     invite: "초대 정보",
-                    profile: "내 프로필",
-                    polls: "스터디 투표",
-                    extra: "추가 인원 요청",
-                    leader: "조장 위임",
+                    tools: "추가 기능",
                   }[activeSection] ?? "조 방"
                 ) : (detail?.room.roomName ?? "조 방")}
               </h1>
               <p className="text-xs text-slate-500">
                 {activeSection
-                  ? "← 탭하면 댓글로 돌아갑니다"
-                  : isLoading ? "불러오는 중..." : `${detail?.members.length ?? 0}/${detail?.room.maxMembers ?? 0}명 · ${detail?.room.inviteCode ?? ""}`}
+                  ? "핵심 흐름 밖의 기능입니다. 필요할 때만 열어보세요."
+                  : isLoading
+                    ? "불러오는 중..."
+                    : `${detail?.members.length ?? 0}/${detail?.room.maxMembers ?? 0}명 · ${detail?.room.inviteCode ?? ""}`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {!activeSection && (
               <Badge tone={detail?.room.status === "closed" ? "neutral" : "info"}>
-                {detail?.room.status === "recruiting" ? "모집중" : detail?.room.status === "formed" ? "편성완료" : detail?.room.status ?? "..."}
+                {roomStatusLabel}
               </Badge>
             )}
             <button
@@ -647,6 +656,17 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
       {/* ===== Active Section Panel ===== */}
       {activeSection && (
         <div className="space-y-4 pt-4 pb-6">
+          {activeSection === "tools" && (
+            <SectionCard
+              title="추가 기능"
+              description="핵심 흐름은 조원 확인, 초대 정보 공유, 간단한 대화입니다. 아래 기능은 꼭 필요할 때만 사용하세요."
+            >
+              <p className="text-sm leading-6 text-slate-600">
+                프로필 수정, 일정 투표, 추가 인원 요청, 조장 위임은 모두
+                보조 기능입니다. 기본 소통과 카카오톡 이동이 먼저입니다.
+              </p>
+            </SectionCard>
+          )}
 
           {/* Members */}
           {activeSection === "members" && (
@@ -716,7 +736,7 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
           )}
 
           {/* Profile */}
-          {activeSection === "profile" && (
+          {activeSection === "tools" && canEditProfile && (
             <SectionCard title="내 프로필" description="조원 목록에 보일 자기소개와 연락처 공개 여부를 설정합니다.">
               <div className="space-y-3">
                 <textarea
@@ -749,7 +769,7 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
           )}
 
           {/* Polls */}
-          {activeSection === "polls" && (
+          {activeSection === "tools" && (
             <SectionCard title="스터디 일정 투표" description="조원들이 가능한 시간대를 선택합니다." action={<Badge tone={polls.length > 0 ? "brand" : "neutral"}>투표 {polls.length}개</Badge>}>
               <div className="space-y-4">
                 {canManageRoom && (
@@ -819,7 +839,7 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
           )}
 
           {/* Extra Members */}
-          {activeSection === "extra" && (
+          {activeSection === "tools" && (
             <SectionCard title="추가 인원 요청" description="관리자에게 추가 인원 배정을 요청합니다." action={<Badge tone={detail?.room.requestExtraMembers ? "warning" : "neutral"}>{detail?.room.requestExtraMembers ? `요청 ${detail.room.requestExtraMembers}명` : "요청 없음"}</Badge>}>
               <div className="space-y-3">
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">현재 정원 {detail?.room.maxMembers ?? 0}명</div>
@@ -845,7 +865,7 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
           )}
 
           {/* Leader Transfer */}
-          {activeSection === "leader" && canManageRoom && (
+          {activeSection === "tools" && canManageRoom && (
             <SectionCard title="조장 위임" description="다른 조원에게 조장을 넘길 수 있습니다." action={<Badge tone={canTransferLeader ? "brand" : "neutral"}>{canTransferLeader ? "위임 가능" : "위임 대상 없음"}</Badge>}>
               <div className="space-y-3">
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">조장을 바꾸면 기존 조장은 일반 조원으로 전환됩니다.</div>
@@ -865,6 +885,48 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
       {/* ===== Main: Comments (default view) ===== */}
       {!activeSection && (
         <div className="flex flex-col" style={{ minHeight: "calc(100dvh - 120px)" }}>
+          <div className="space-y-3 py-4">
+            <KakaoGuide
+              actionLabel="초대 정보 열기"
+              onAction={() => openSection("invite")}
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
+                <p className="text-xs font-semibold text-slate-500">초대 코드</p>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {detail?.room.inviteCode ?? "-"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void copyInviteValue(
+                        "초대 코드",
+                        detail?.room.inviteCode ?? "",
+                      )
+                    }
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-slate-200 bg-slate-50 text-slate-500"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
+                <p className="text-xs font-semibold text-slate-500">현재 상태</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {detail?.members.length ?? 0}/{detail?.room.maxMembers ?? 0}명 · {roomStatusLabel}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openSection("members")}
+                  className="mt-3 inline-flex items-center rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600"
+                >
+                  조원 목록 보기
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Chat area with subtle background */}
           <div className="flex-1 -mx-4 bg-[var(--division-color-light)]/30 px-4 py-3 md:-mx-6 md:px-6">
             <div className="space-y-3">
@@ -966,7 +1028,7 @@ export function RoomFlow({ token: initialToken, roomId: initialRoomId, restoreFr
       <ConfirmDialog
         open={leaveConfirmOpen}
         title="조를 탈퇴하시겠습니까?"
-        description="탈퇴하면 대기자 목록으로 이동하고, 관리자가 다른 조에 다시 배정할 수 있습니다."
+        description="탈퇴하면 편성 대기 상태로 전환되고, 관리자가 다른 조에 다시 배정할 수 있습니다."
         confirmText="탈퇴"
         tone="danger"
         isPending={isPending}

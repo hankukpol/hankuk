@@ -59,6 +59,8 @@ export default function TextPasteInput({ onApply }: TextPasteInputProps) {
   const previewHasAges = preview?.some((member) => member.age !== undefined) ?? false;
   const previewHasScores =
     preview?.some((member) => member.score !== undefined) ?? false;
+  const previewHasInterviewExperience =
+    preview?.some((member) => member.interviewExperience !== undefined) ?? false;
   const previewHasGroups =
     preview?.some((member) => member.preAssignedGroup !== undefined) ?? false;
 
@@ -75,9 +77,9 @@ export default function TextPasteInput({ onApply }: TextPasteInputProps) {
         placeholder={`엑셀에서 복사한 데이터를 붙여넣으세요.
 
 예시 (탭 구분):
-이름\t연락처\t성별\t직렬\t지역\t나이\t필기성적\t조
-홍길동\t010-1234-5678\t남\t일반\t서울\t28\t85.5\t
-김영희\t010-9876-5432\t여\t101경비단\t경기\t1998\t\t1`}
+이름\t연락처\t성별\t직렬\t지역\t면접 경험 여부\t나이\t필기성적\t조
+홍길동\t010-1234-5678\t남\t일반\t서울\t있음\t28\t85.5\t
+김영희\t010-9876-5432\t여\t101경비단\t경기\t없음\t1998\t\t1`}
         className="h-40 w-full resize-y rounded-lg border p-3 font-mono text-sm focus:border-blue-400 focus:outline-none"
       />
 
@@ -138,6 +140,11 @@ export default function TextPasteInput({ onApply }: TextPasteInputProps) {
                   <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500">
                     지역
                   </th>
+                  {previewHasInterviewExperience && (
+                    <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500">
+                      면접 경험
+                    </th>
+                  )}
                   {previewHasAges && (
                     <th className="px-3 py-1.5 text-left text-xs font-medium text-gray-500">
                       나이
@@ -169,6 +176,15 @@ export default function TextPasteInput({ onApply }: TextPasteInputProps) {
                     </td>
                     <td className="px-3 py-1.5">{member.series || '-'}</td>
                     <td className="px-3 py-1.5">{member.region || '-'}</td>
+                    {previewHasInterviewExperience && (
+                      <td className="px-3 py-1.5">
+                        {member.interviewExperience === true
+                          ? '있음'
+                          : member.interviewExperience === false
+                            ? '없음'
+                            : '-'}
+                      </td>
+                    )}
                     {previewHasAges && (
                       <td className="px-3 py-1.5">
                         {member.age !== undefined ? `${member.age}세` : '-'}

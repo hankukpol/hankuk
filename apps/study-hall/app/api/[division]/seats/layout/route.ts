@@ -4,7 +4,7 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { seatLayoutSchema } from "@/lib/seat-schemas";
-import { saveSeatLayout } from "@/lib/services/seat.service";
+import { saveSeatEditorLayout } from "@/lib/services/seat.service";
 
 export async function POST(
   request: NextRequest,
@@ -36,7 +36,7 @@ export async function POST(
   }
 
   try {
-    const layout = await saveSeatLayout(params.division, parsed.data.roomId, parsed.data.seats);
+    const layout = await saveSeatEditorLayout(params.division, parsed.data);
     return NextResponse.json({ layout });
   } catch (error) {
     return toApiErrorResponse(error, "좌석 배치 저장에 실패했습니다.");

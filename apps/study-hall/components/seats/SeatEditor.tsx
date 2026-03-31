@@ -675,21 +675,27 @@ export function SeatEditor({
           currentRoom.isActive !== roomForm.isActive ||
           !areNumberArraysEqual(currentRoom.aisleColumns, previewAisleColumns));
 
-      if (hasRoomConfigurationChanges) {
-        await persistRoomConfiguration(selectedRoomId);
-      }
-
       const response = await fetch(`/api/${divisionSlug}/seats/layout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId: selectedRoomId,
+          room: hasRoomConfigurationChanges
+            ? {
+                name: roomForm.name,
+                columns: roomForm.columns,
+                rows: roomForm.rows,
+                aisleColumns: previewAisleColumns,
+                isActive: roomForm.isActive,
+              }
+            : undefined,
           seats: draftSeats.map((seat) => ({
             id: seat.id,
             label: seat.label,
             positionX: seat.positionX,
             positionY: seat.positionY,
             isActive: seat.isActive,
+            assignedStudentId: seat.assignedStudentId,
           })),
         }),
       });
@@ -697,31 +703,6 @@ export function SeatEditor({
 
       if (!response.ok) {
         throw new Error(data.error ?? "좌석 배치 저장에 실패했습니다.");
-      }
-
-      const desiredAssignments = new Map(
-        draftSeats.map((seat) => [getSeatPositionKey(seat.positionX, seat.positionY), seat.assignedStudentId]),
-      );
-
-      for (const seat of data.layout.seats as SeatMapSeat[]) {
-        const desiredStudentId =
-          desiredAssignments.get(getSeatPositionKey(seat.positionX, seat.positionY)) ?? null;
-        const currentStudentId = seat.assignedStudent?.id ?? null;
-
-        if (desiredStudentId === currentStudentId) {
-          continue;
-        }
-
-        const assignResponse = await fetch(`/api/${divisionSlug}/seats/${seat.id}/assign`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ studentId: desiredStudentId }),
-        });
-        const assignData = await assignResponse.json();
-
-        if (!assignResponse.ok) {
-          throw new Error(assignData.error ?? "좌석 배정 저장에 실패했습니다.");
-        }
       }
 
       await Promise.all([refreshStudents(), refreshRooms(selectedRoomId)]);

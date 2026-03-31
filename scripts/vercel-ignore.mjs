@@ -1,74 +1,41 @@
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+/**
+ * Vercel ignoreCommand script (commit message trigger)
+ *
+ * - 커밋 메시지에 [deploy <app>] 포함 → 배포 (exit 1)
+ * - 포함 안 됨 → 건너뛰기 (exit 0)
+ *
+ * 사용법:
+ *   git commit -m "feat: 새 기능 [deploy score-predict]"
+ *   git commit -m "fix: 공통 수정 [deploy score-predict] [deploy study-hall]"
+ */
+import { execSync } from "node:child_process";
 
-const APP_PATHS = {
-  "academy-ops": ["apps/academy-ops"],
-  "score-predict": ["apps/score-predict", "packages/config"],
-  "study-hall": ["apps/study-hall"],
-  "interview-pass": ["apps/interview-pass", "packages/config"],
-  "interview-mate": ["apps/interview-mate"],
-};
+const APP_NAME = process.argv[2];
 
-const COMMON_PATHS = [
-  ".nvmrc",
-  ".vercelignore",
-  "package.json",
-  "pnpm-lock.yaml",
-  "pnpm-workspace.yaml",
-  "scripts/vercel-ignore.mjs",
-  "supabase",
-  "turbo.json",
-];
-
-const appKey = process.argv[2];
-const appPaths = APP_PATHS[appKey];
-
-if (!appPaths) {
-  console.error(`[vercel-ignore] Unknown app key: ${appKey ?? "<missing>"}`);
+if (!APP_NAME) {
+  console.error("[vercel-ignore] App name argument is required.");
   process.exit(1);
 }
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, "..");
+const DEPLOY_TAG = `[deploy ${APP_NAME}]`;
 
-function runGit(args) {
-  return execFileSync("git", args, {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
-}
-
-let baseCommit = "";
+console.log(`=== Vercel Ignore Check (${APP_NAME}) ===`);
 
 try {
-  baseCommit = runGit(["rev-parse", "--verify", "HEAD^"]);
-} catch {
-  console.log(`[vercel-ignore] No parent commit detected for ${appKey}; continuing build.`);
-  process.exit(1);
-}
+  const commitMessage = execSync("git log -1 --pretty=%B", {
+    encoding: "utf-8",
+  }).trim();
+  console.log("Commit message:", commitMessage.split("\n")[0]);
 
-const changedFiles = runGit([
-  "diff",
-  "--name-only",
-  baseCommit,
-  "HEAD",
-  "--",
-  ...appPaths,
-  ...COMMON_PATHS,
-])
-  .split(/\r?\n/)
-  .filter(Boolean);
-
-if (changedFiles.length === 0) {
-  console.log(`[vercel-ignore] No relevant changes for ${appKey}; skipping build.`);
+  if (commitMessage.includes(DEPLOY_TAG)) {
+    console.log(`\nFound ${DEPLOY_TAG} → BUILDING`);
+    process.exit(1);
+  } else {
+    console.log(`\nNo ${DEPLOY_TAG} found → SKIPPING build`);
+    process.exit(0);
+  }
+} catch (error) {
+  console.log("Error:", error.message);
+  console.log("Fallback: SKIPPING build");
   process.exit(0);
 }
-
-console.log(`[vercel-ignore] Relevant changes found for ${appKey}:`);
-for (const changedFile of changedFiles) {
-  console.log(changedFile);
-}
-
-process.exit(1);

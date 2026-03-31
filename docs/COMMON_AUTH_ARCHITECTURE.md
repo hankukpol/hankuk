@@ -25,7 +25,8 @@ Last updated: 2026-03-29
   - Claimed operator accounts can now also log in with shared auth email and password while operator PIN remains as fallback.
   - Shared staff PIN still exists as a fallback path for kiosk-style operations.
 - `interview-mate`
-  - Uses `ADMIN_KEY` request validation for admin APIs.
+  - Uses DB-backed admin accounts in `interview_mate.admin_users`.
+  - Admin login verifies ID and password, then issues an app-local signed `httpOnly` session cookie.
   - Participant access is phone and reservation based, not account based.
 
 This means `hankuk-main` is already unified at the database level, while browser authentication is moving app by app through adapter layers instead of a risky full cutover.
@@ -93,7 +94,7 @@ The shared identity source should be:
   - Password reset and admin deletion flows now keep shared identity state in sync.
   - The app should eventually trust shared identity and app membership data from `public` instead of owning primary credentials in Prisma.
 - `interview-mate`
-  - Keep `ADMIN_KEY` temporarily.
+  - Keep DB-backed admin accounts and app-local session cookies for now.
   - Move admin UI access to shared auth later.
 
 ## What This Turn Adds

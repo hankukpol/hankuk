@@ -106,6 +106,10 @@ type SeatNormalizationSource = SeatDraftLayoutItem & {
   assignedStudentId?: string | null;
 };
 
+type SeatLayoutSaveItem = SeatDraftLayoutItem & {
+  assignedStudentId?: string | null;
+};
+
 async function getPrismaClient() {
   const { prisma } = await import("@/lib/prisma");
   return prisma;
@@ -1489,6 +1493,278 @@ export async function saveSeatLayout(
   revalidateSeatData(divisionSlug, roomId);
   return getSeatLayout(divisionSlug, roomId);
 }
+
+export async function saveSeatEditorLayout(
+  divisionSlug: string,
+  input: {
+    roomId: string;
+    room?: StudyRoomInput;
+    seats: SeatLayoutSaveItem[];
+  },
+) {
+  const normalizedSeats = input.seats.map((seat) => ({
+    ...seat,
+    label: !seat.label.trim() && !seat.isActive ? "" : seat.label.trim(),
+  }));
+
+  // 학생 배정 유효성 검사
+  const assignedStudentIds = new Set<string>();
+  for (const seat of normalizedSeats) {
+    const studentId = seat.assignedStudentId ?? null;
+    if (!studentId) continue;
+    if (!seat.isActive) {
+      throw badRequest("비활성 좌석에는 학생을 배정할 수 없습니다.");
+    }
+    if (assignedStudentIds.has(studentId)) {
+      throw conflict("한 학생을 여러 좌석에 동시에 배정할 수 없습니다.");
+    }
+    assignedStudentIds.add(studentId);
+  }
+
+  if (isMockMode()) {
+    await updateMockState(async (state) => {
+      const rooms = state.studyRoomsByDivision[divisionSlug] ?? [];
+      const currentRoom = rooms.find((item) => item.id === input.roomId);
+      if (!currentRoom) {
+        throw notFound("자습실 정보를 찾을 수 없습니다.");
+      }
+
+      const nextRoomConfig = input.room
+        ? validateRoomInput(input.room)
+        : {
+            name: currentRoom.name,
+            columns: currentRoom.columns,
+            rows: currentRoom.rows,
+            aisleColumns: currentRoom.aisleColumns,
+            isActive: currentRoom.isActive,
+          };
+
+      if (input.room && rooms.some((item) => item.id !== input.roomId && item.name === nextRoomConfig.name)) {
+        throw conflict("이미 같은 이름의 자습실이 있습니다.");
+      }
+
+      validateSeatDrafts(normalizedSeats, nextRoomConfig);
+
+      const students = state.studentsByDivision[divisionSlug] ?? [];
+      const desiredStudentIds = Array.from(
+        new Set(
+          normalizedSeats
+            .map((s) => s.assignedStudentId ?? null)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      for (const studentId of desiredStudentIds) {
+        const student = students.find((item) => item.id === studentId);
+        if (!student) throw notFound("학생 정보를 찾을 수 없습니다.");
+        if (!["ACTIVE", "ON_LEAVE"].includes(student.status)) {
+          throw badRequest("재원 또는 휴원 상태 학생만 좌석에 배정할 수 있습니다.");
+        }
+      }
+
+      const currentSeats = (state.seatsByDivision[divisionSlug] ?? []).filter(
+        (seat) => seat.studyRoomId === input.roomId,
+      );
+      const otherSeats = (state.seatsByDivision[divisionSlug] ?? []).filter(
+        (seat) => seat.studyRoomId !== input.roomId,
+      );
+      const now = new Date().toISOString();
+      const nextRoomSeats = sortSeats(
+        normalizedSeats.map((seat, index) => {
+          const existing = currentSeats.find((item) => item.id === seat.id);
+          return {
+            id: existing?.id ?? "mock-seat-" + divisionSlug + "-" + input.roomId + "-" + Date.now() + "-" + index,
+            divisionId: currentRoom.divisionId,
+            studyRoomId: input.roomId,
+            label: seat.label,
+            positionX: seat.positionX,
+            positionY: seat.positionY,
+            isActive: seat.isActive,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+          } satisfies MockSeatRecord;
+        }),
+      );
+
+      const nextSeatByPosition = new Map(
+        nextRoomSeats.map((seat) => [getSeatPositionKey(seat.positionX, seat.positionY), seat]),
+      );
+      const desiredSeatIdByStudentId = new Map<string, string>();
+      for (const seat of normalizedSeats) {
+        const sid = seat.assignedStudentId ?? null;
+        if (!sid) continue;
+        const persisted = nextSeatByPosition.get(getSeatPositionKey(seat.positionX, seat.positionY));
+        if (persisted) desiredSeatIdByStudentId.set(sid, persisted.id);
+      }
+
+      state.studyRoomsByDivision[divisionSlug] = rooms.map((room) =>
+        room.id === input.roomId ? { ...room, ...nextRoomConfig, updatedAt: now } : room,
+      );
+      state.seatsByDivision[divisionSlug] = [...otherSeats, ...nextRoomSeats];
+      state.studentsByDivision[divisionSlug] = students.map((student) => {
+        const desiredSeatId = desiredSeatIdByStudentId.get(student.id) ?? null;
+        if (desiredSeatId) {
+          const desiredSeat = nextRoomSeats.find((s) => s.id === desiredSeatId);
+          return {
+            ...student,
+            seatId: desiredSeat?.id ?? null,
+            seatLabel: desiredSeat?.label ?? null,
+            updatedAt: now,
+          };
+        }
+        if (student.seatId && currentSeats.some((s) => s.id === student.seatId)) {
+          return { ...student, seatId: null, seatLabel: null, updatedAt: now };
+        }
+        return student;
+      });
+    });
+
+    return getSeatLayout(divisionSlug, input.roomId);
+  }
+
+  const division = await getDivisionOrThrow(divisionSlug);
+  const prisma = await getPrismaClient();
+
+  await prisma.$transaction(async (tx) => {
+    const currentRoom = await tx.studyRoom.findFirst({
+      where: { id: input.roomId, divisionId: division.id },
+      select: { id: true, name: true, columns: true, rows: true, aisleColumns: true, isActive: true },
+    });
+
+    if (!currentRoom) {
+      throw notFound("자습실 정보를 찾을 수 없습니다.");
+    }
+
+    const nextRoomConfig = input.room
+      ? validateRoomInput(input.room)
+      : {
+          name: currentRoom.name,
+          columns: currentRoom.columns,
+          rows: currentRoom.rows,
+          aisleColumns: normalizeAisleColumns(currentRoom.aisleColumns, currentRoom.columns),
+          isActive: currentRoom.isActive,
+        };
+
+    if (input.room) {
+      const duplicate = await tx.studyRoom.findFirst({
+        where: { divisionId: division.id, name: nextRoomConfig.name, id: { not: input.roomId } },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw conflict("이미 같은 이름의 자습실이 있습니다.");
+      }
+    }
+
+    // 새 방 설정 기준으로 좌석 검증 (핵심 수정: 방 설정과 좌석을 동일 트랜잭션에서 처리)
+    validateSeatDrafts(normalizedSeats, nextRoomConfig);
+
+    // 학생 존재/상태 검증
+    const desiredStudentIds = Array.from(
+      new Set(
+        normalizedSeats
+          .map((s) => s.assignedStudentId ?? null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (desiredStudentIds.length > 0) {
+      const students = await tx.student.findMany({
+        where: { divisionId: division.id, id: { in: desiredStudentIds } },
+        select: { id: true, status: true },
+      });
+      if (students.length !== desiredStudentIds.length) {
+        throw notFound("학생 정보를 찾을 수 없습니다.");
+      }
+      const invalid = students.find((s) => !["ACTIVE", "ON_LEAVE"].includes(s.status));
+      if (invalid) {
+        throw badRequest("재원 또는 휴원 상태 학생만 좌석에 배정할 수 있습니다.");
+      }
+    }
+
+    // 1. 방 설정 업데이트
+    if (input.room) {
+      await tx.studyRoom.update({
+        where: { id: input.roomId },
+        data: nextRoomConfig,
+      });
+    }
+
+    // 2. 기존 좌석 조회
+    const existingSeats = await tx.seat.findMany({
+      where: { divisionId: division.id, studyRoomId: input.roomId },
+      select: { id: true, label: true },
+    });
+
+    const incomingIds = new Set(normalizedSeats.filter((s) => s.id).map((s) => s.id as string));
+    const removedIds = existingSeats.filter((s) => !incomingIds.has(s.id)).map((s) => s.id);
+
+    // 3. 이 방의 모든 학생 배정 해제 (나중에 다시 배정)
+    await tx.student.updateMany({
+      where: { divisionId: division.id, seat: { studyRoomId: input.roomId } },
+      data: { seatId: null },
+    });
+
+    // 4. 제거할 좌석 삭제
+    if (removedIds.length > 0) {
+      await tx.seat.deleteMany({ where: { id: { in: removedIds } } });
+    }
+
+    // 5. 기존 좌석 임시 라벨로 업데이트 (unique 제약 회피)
+    const existingDrafts = normalizedSeats.filter((s): s is SeatLayoutSaveItem & { id: string } => Boolean(s.id));
+    for (const seat of existingDrafts) {
+      await tx.seat.update({
+        where: { id: seat.id },
+        data: { label: "temp-" + seat.id, positionX: seat.positionX, positionY: seat.positionY, isActive: seat.isActive },
+      });
+    }
+
+    // 6. 새 좌석 생성
+    for (const seat of normalizedSeats.filter((s) => !s.id)) {
+      await tx.seat.create({
+        data: {
+          divisionId: division.id,
+          studyRoomId: input.roomId,
+          label: seat.label,
+          positionX: seat.positionX,
+          positionY: seat.positionY,
+          isActive: seat.isActive,
+        },
+      });
+    }
+
+    // 7. 기존 좌석 최종 라벨 복원
+    for (const seat of existingDrafts) {
+      await tx.seat.update({
+        where: { id: seat.id },
+        data: { label: seat.label, positionX: seat.positionX, positionY: seat.positionY, isActive: seat.isActive },
+      });
+    }
+
+    // 8. 저장된 좌석 다시 조회
+    const persistedSeats = await tx.seat.findMany({
+      where: { divisionId: division.id, studyRoomId: input.roomId },
+      select: { id: true, positionX: true, positionY: true },
+    });
+    const persistedSeatIdByPosition = new Map(
+      persistedSeats.map((s) => [getSeatPositionKey(s.positionX, s.positionY), s.id]),
+    );
+
+    // 9. 학생 배정
+    for (const seat of normalizedSeats) {
+      const studentId = seat.assignedStudentId ?? null;
+      if (!studentId) continue;
+      const persistedSeatId = persistedSeatIdByPosition.get(getSeatPositionKey(seat.positionX, seat.positionY));
+      if (!persistedSeatId) continue;
+      try {
+        await tx.student.update({ where: { id: studentId }, data: { seatId: persistedSeatId } });
+      } catch (error) {
+        throw toSeatAssignmentError(error);
+      }
+    }
+  });
+
+  revalidateSeatData(divisionSlug, input.roomId);
+  return getSeatLayout(divisionSlug, input.roomId);
+}
+
 export async function assignStudentToSeat(
   divisionSlug: string,
   seatId: string,

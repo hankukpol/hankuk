@@ -1,6 +1,7 @@
 # Local assistant and repo metadata
 .claude/
 .git-backups/
+.mcp.json
 
 # Dependencies
 **/node_modules/
@@ -26,6 +27,7 @@
 **/.env.*
 !**/.env.example
 !**/.env.local.example
+**/*수파베이스*.txt
 
 # Logs and temp files
 **/*.log
@@ -40,3 +42,5 @@
 **/.DS_Store
 **/*.pem
 **/.local/
+
+.vercel

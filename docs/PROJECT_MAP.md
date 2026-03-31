@@ -18,7 +18,6 @@
 │  │ (학원 운영)   │ │  (합격예측)   │ │ (자습반관리)  │ │ (면접수강증)  ││
 │  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘│
 │                                                                      │
-│  루트 (예외)                                                          │
 │  ┌──────────────┐                                                    │
 │  │interview-mate│                                                    │
 │  │ (면접 메이트) │                                                    │
@@ -110,17 +109,19 @@
 
 | 구분 | 내용 |
 |------|------|
-| **앱 위치** | `interview-mate/` (루트, apps/ 이동 전) |
+| **앱 위치** | `apps/interview-mate/` |
 | **메인 페이지** | `/` (전체), `/student` (학생 전용) |
 | **사이트 (현재)** | https://interview-mate-lime.vercel.app |
 | **사이트 (커스텀 도메인 예정)** | 미정 (공개 전 결정 필요) |
 | **학생 주요 경로** | `/reservation` (예약), `/my-reservation` (내 예약 확인), `/apply` (지원), `/status` (현황), `/room` (조 방), `/join/[inviteCode]` (초대코드로 방 참여), `/study-groups` (스터디 그룹) |
 | **관리자 로그인 경로** | `/admin/login` |
 | **관리자 대시보드** | `/admin` (로그인 세션 필요) |
-| **관리자 비밀번호** | `0112` (`.env.local`의 `ADMIN_PASSWORD`) |
-| **로그인 방식** | `ADMIN_PASSWORD` 입력 → `httpOnly` 서명 세션 쿠키 발급 (8시간 만료) → `/api/admin/*` 보호 |
-| **관리자 인증 환경변수** | `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` (`ADMIN_KEY`는 구배포 호환 fallback) |
+| **관리자 초기설정/복구 경로** | `/admin/setup` |
+| **현재 운영 관리자 계정** | `ikma` / `pol_0112^^` |
+| **로그인 방식** | `interview_mate.admin_users`의 관리자 ID + 비밀번호 검증 → `httpOnly` 서명 세션 쿠키 발급 (8시간 만료) → `/api/admin/*` 보호 |
+| **관리자 인증 환경변수** | `ADMIN_SETUP_KEY`, `ADMIN_SESSION_SECRET` |
 | **관리자 대시보드 메뉴** | 개요, 세션, 명단, 예약, 조 방, 대기자 (사이드바 탭 전환) |
+| **현재 상태** | `hankuk-main`의 `interview_mate` 스키마에 `admin_users` 적용 완료, Production 배포 및 관리자 로그인 검증 완료, 경찰 목업 운영 데이터 초기화 완료 |
 | **관리자 기능** | 면접세션 관리, 학원설정, 예약슬롯 관리, 조 방 관리, 명단 업로드/관리, 통계, 그룹 동기화, 데이터 내보내기 |
 
 ### academy-ops (학원 운영 — 신규)
@@ -168,7 +169,7 @@
 | `score_predict_police` | 합격예측-경찰 브릿지 | (score_predict의 tenant별 뷰) | - |
 | `study_hall` | 자습반 | divisions, students, periods, attendance, payments 등 24개 테이블 | 스키마만 구축 (데이터 0) |
 | `interview` | 면접수강증 | students(128), materials(14), distribution_logs(497), app_config(28), popup_content(4) | 671건 |
-| `interview_mate` | 면접메이트 | (초기 시드 데이터) | 소량 |
+| `interview_mate` | 면접메이트 | sessions(2), reservation_slots(120), admin_users(2), registered_students(0), students(0), group_rooms(0) | 운영 틀 유지, 경찰 목업 데이터 초기화 완료 |
 
 ---
 
@@ -248,7 +249,12 @@ d:\hankuk/
 │   ├── score-predict/       # 합격예측 (Next.js 16, Prisma 5)
 │   ├── study-hall/          # 자습반 관리 (Next.js 14, Prisma 6)
 │   └── interview-pass/      # 면접 수강증 (Next.js 15, Supabase JS)
-├── interview-mate/          # 면접 메이트 (Next.js 14, Supabase JS) — apps/ 이동 전
+├── apps/
+│   ├── academy-ops/         # 학원 운영 (Next.js 14, Prisma 6)
+│   ├── score-predict/       # 합격예측 (Next.js 16, Prisma 5)
+│   ├── study-hall/          # 자습반 관리 (Next.js 14, Prisma 6)
+│   ├── interview-pass/      # 면접 수강증 (Next.js 15, Supabase JS)
+│   └── interview-mate/      # 면접 메이트 (Next.js 14, Supabase JS)
 ├── docs/                    # 프로젝트 문서
 ├── supabase/                # 통합 마이그레이션 (7개 SQL)
 ├── package.json             # 루트 (pnpm 워크스페이스)

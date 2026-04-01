@@ -86,6 +86,8 @@ export function StudentForm({
   const [tuitionAmount, setTuitionAmount] = useState(
     initialStudent?.tuitionAmount ? String(initialStudent.tuitionAmount) : "",
   );
+  const [tuitionExempt, setTuitionExempt] = useState(initialStudent?.tuitionExempt ?? false);
+  const [tuitionExemptReason, setTuitionExemptReason] = useState(initialStudent?.tuitionExemptReason ?? "");
   const [status, setStatus] = useState<(typeof editableStatusOptions)[number]["value"]>(
     getInitialStatus(initialStudent),
   );
@@ -295,6 +297,8 @@ export function StudentForm({
           courseEndDate: courseEndDate || null,
           tuitionPlanId: tuitionPlanId || null,
           tuitionAmount: tuitionAmount ? Number(tuitionAmount) : null,
+          tuitionExempt,
+          tuitionExemptReason: tuitionExempt ? tuitionExemptReason || null : null,
           status,
           memo: memo || null,
         }),
@@ -408,6 +412,38 @@ export function StudentForm({
             <p className="text-xl font-bold text-slate-950">등록 기간 및 금액</p>
             <p className="text-sm text-slate-500">등록 플랜을 선택하면 금액과 종료일을 빠르게 맞출 수 있습니다.</p>
           </div>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <label className="flex items-start gap-3 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4">
+            <input
+              type="checkbox"
+              checked={tuitionExempt}
+              onChange={(event) => setTuitionExempt(event.target.checked)}
+              disabled={!canEdit || isSaving}
+              className="mt-1 h-4 w-4 rounded border-slate-300 accent-sky-600"
+            />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-slate-900">수납 면제</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                조교, 장학생처럼 수납 대상에서 제외해야 하는 학생이면 켜 두세요. 면제 학생은 미납 목록에서 제외되고 등록 시 결제를 건너뛸 수 있습니다.
+              </p>
+            </div>
+          </label>
+
+          {tuitionExempt ? (
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">면제 사유</span>
+              <textarea
+                value={tuitionExemptReason}
+                onChange={(event) => setTuitionExemptReason(event.target.value)}
+                rows={3}
+                className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                placeholder="예: 조교, 장학생, 내부 운영 지원"
+                disabled={!canEdit || isSaving}
+              />
+            </label>
+          ) : null}
         </div>
 
         {activeTuitionPlans.length > 0 ? (
@@ -528,6 +564,11 @@ export function StudentForm({
         <p className="mt-3 text-xs text-slate-500">
           시작일과 기간이 있는 등록 플랜을 함께 선택하면 종료일이 자동 계산됩니다.
         </p>
+        {tuitionExempt ? (
+          <p className="mt-2 text-xs font-medium text-sky-700">
+            면제 학생은 등록 기간과 플랜 정보는 유지하되, 수납 대상과 미납 집계에서는 제외됩니다.
+          </p>
+        ) : null}
       </section></>)}
 
       {!hideSeatSection && <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">

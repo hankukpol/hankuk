@@ -1,6 +1,5 @@
 import { PointRuleManager } from "@/components/points/PointRuleManager";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
-import { listPointRules } from "@/lib/services/point.service";
 
 type PointRulePageProps = {
   params: {
@@ -10,7 +9,6 @@ type PointRulePageProps = {
 
 export default async function PointRulePage({ params }: PointRulePageProps) {
   await redirectIfDivisionFeatureDisabled(params.division, "pointManagement");
-  const rules = await listPointRules(params.division);
 
   return (
     <div className="space-y-6">
@@ -21,7 +19,7 @@ export default async function PointRulePage({ params }: PointRulePageProps) {
         </p>
       </section>
 
-      <PointRuleManager divisionSlug={params.division} initialRules={rules} />
+      <PointRuleManager divisionSlug={params.division} />
     </div>
   );
 }

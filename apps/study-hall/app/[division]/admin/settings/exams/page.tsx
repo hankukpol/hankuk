@@ -20,7 +20,7 @@ export default async function ExamSettingsPage({ params }: ExamSettingsPageProps
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
+      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
           설정 / 시험
         </p>

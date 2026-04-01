@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
-import { examTypeSchema } from "@/lib/exam-schemas";
-import { deleteExamType, updateExamType } from "@/lib/services/exam.service";
+import { examTypeReorderSchema, examTypeSchema } from "@/lib/exam-schemas";
+import { deleteExamType, reorderExamTypes, updateExamType } from "@/lib/services/exam.service";
 
 export async function PATCH(
   request: NextRequest,
@@ -26,6 +26,25 @@ export async function PATCH(
   }
 
   const body = await request.json().catch(() => null);
+
+  if (body && typeof body === "object" && "reorderIds" in body) {
+    const reorderParsed = examTypeReorderSchema.safeParse(body);
+
+    if (!reorderParsed.success) {
+      return NextResponse.json(
+        { error: getZodErrorMessage(reorderParsed.error, "시험 템플릿 목록을 다시 확인해주세요.") },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const examTypes = await reorderExamTypes(params.division, reorderParsed.data.reorderIds);
+      return NextResponse.json({ examTypes });
+    } catch (error) {
+      return toApiErrorResponse(error, "시험 템플릿 처리 중 오류가 발생했습니다.");
+    }
+  }
+
   const parsed = examTypeSchema.safeParse(body);
 
   if (!parsed.success) {

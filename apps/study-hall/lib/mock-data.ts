@@ -1,4 +1,5 @@
 import { DEFAULT_DIVISION_FEATURE_FLAGS, type DivisionFeatureFlags } from "@/lib/division-features";
+import { DEFAULT_POINT_CATEGORIES } from "@/lib/point-meta";
 
 export type MockDivision = {
   id: string;
@@ -27,6 +28,8 @@ export type MockStudent = {
   courseEndDate?: string | null;
   tuitionPlanId?: string | null;
   tuitionAmount?: number | null;
+  tuitionExempt?: boolean;
+  tuitionExemptReason?: string | null;
   status: MockStudentStatus;
   enrolledAt: string;
   withdrawnAt: string | null;
@@ -59,6 +62,7 @@ export type MockDivisionSettings = {
   expirationWarningDays: number;
   operatingDays: Record<string, boolean>;
   studyTracks: string[];
+  pointCategories: string[];
   featureFlags: DivisionFeatureFlags;
   updatedAt: Date;
 };
@@ -118,6 +122,7 @@ function createDefaultSettings(divisionId: string, divisionSlug: string): MockDi
       sun: false,
     },
     studyTracks: getDefaultStudyTracks(divisionSlug),
+    pointCategories: [...DEFAULT_POINT_CATEGORIES],
     featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
     updatedAt: createdAt,
   };

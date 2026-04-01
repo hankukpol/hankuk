@@ -89,6 +89,13 @@ function getSubjectMeta(subject: ExamScoreSheet["subjects"][number]) {
   return meta.join(" · ");
 }
 
+function triggerDownload(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  link.click();
+}
+
 export function ExamScoreManager({
   divisionSlug,
   initialExamTypes,
@@ -509,23 +516,10 @@ export function ExamScoreManager({
                 disabled={!sheet}
                 onClick={() => {
                   if (!sheet || !selectedExamType) return;
-                  const subjects = sheet.subjects.filter((s) => s.isActive !== false);
-                  const headers = ["수험번호", "이름", ...subjects.map((s) => s.name)];
-                  const rowLines = sheet.rows.map((row) =>
-                    [
-                      row.studentNumber,
-                      row.studentName,
-                      ...subjects.map(() => ""),
-                    ].join(","),
-                  );
-                  const csv = [headers.join(","), ...rowLines].join("\n");
-                  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${selectedExamType.name}_${appliedExamRound}회차_성적양식.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  const url = new URL(`/api/${divisionSlug}/exams/template`, window.location.origin);
+                  url.searchParams.set("examTypeId", selectedExamType.id);
+                  url.searchParams.set("examRound", appliedExamRound);
+                  triggerDownload(url.toString());
                 }}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
               >

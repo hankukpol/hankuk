@@ -28,6 +28,10 @@ export const examTypeSchema = z.object({
   subjects: z.array(examSubjectSchema).min(1, "과목을 하나 이상 추가해주세요."),
 });
 
+export const examTypeReorderSchema = z.object({
+  reorderIds: z.array(z.string().min(1)).min(1, "시험 템플릿 목록을 다시 확인해주세요."),
+});
+
 export const examScoresBatchSchema = z.object({
   examTypeId: z.string().min(1, "시험 종류를 선택해주세요."),
   examRound: z
@@ -51,4 +55,5 @@ export const examScoresBatchSchema = z.object({
 });
 
 export type ExamTypeSchemaInput = z.infer<typeof examTypeSchema>;
+export type ExamTypeReorderSchemaInput = z.infer<typeof examTypeReorderSchema>;
 export type ExamScoresBatchSchemaInput = z.infer<typeof examScoresBatchSchema>;

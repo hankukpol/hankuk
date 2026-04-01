@@ -555,7 +555,10 @@ async function getTuitionStatusUncached(month?: string): Promise<TuitionStatusSu
     if (isMockMode()) {
       const students = await listStudents(division.slug);
       const activeStudents = students.filter(
-        (s) => (s.status === "ACTIVE" || s.status === "ON_LEAVE") && (s.tuitionAmount ?? 0) > 0,
+        (s) =>
+          (s.status === "ACTIVE" || s.status === "ON_LEAVE") &&
+          !s.tuitionExempt &&
+          (s.tuitionAmount ?? 0) > 0,
       );
       activeStudentCount = activeStudents.length;
       expected = activeStudents.reduce((sum, s) => sum + (s.tuitionAmount ?? 0), 0);
@@ -569,6 +572,7 @@ async function getTuitionStatusUncached(month?: string): Promise<TuitionStatusSu
           where: {
             divisionId: division.id,
             status: { in: ["ACTIVE", "ON_LEAVE"] },
+            tuitionExempt: false,
             tuitionAmount: { gt: 0 },
           },
           select: { id: true, tuitionAmount: true },

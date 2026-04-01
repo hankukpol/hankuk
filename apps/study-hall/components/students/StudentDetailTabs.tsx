@@ -7,6 +7,8 @@ import { CalendarDays, CreditCard, LoaderCircle, MessageSquareWarning, Plus, Sta
 import { toast } from "sonner";
 
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
+import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
+import { RefundModal } from "@/components/payments/RefundModal";
 import { AttendanceCalendar } from "@/components/student-view/AttendanceCalendar";
 import { Modal } from "@/components/ui/Modal";
 import { getInterviewResultTypeClasses, getInterviewResultTypeLabel } from "@/lib/interview-meta";
@@ -26,6 +28,8 @@ type StudentDetailTabId = "attendance" | "points" | "exams" | "payments" | "inte
 type StudentDetailTabsProps = {
   divisionSlug: string;
   studentId: string;
+  studentName: string;
+  studentNumber: string;
   canManageScoreTargets: boolean;
   canEdit: boolean;
   attendanceManagementEnabled: boolean;
@@ -96,6 +100,8 @@ function formatCurrency(value: number) {
 export function StudentDetailTabs({
   divisionSlug,
   studentId,
+  studentName,
+  studentNumber,
   canManageScoreTargets,
   canEdit,
   attendanceManagementEnabled,
@@ -122,12 +128,13 @@ export function StudentDetailTabs({
 }: StudentDetailTabsProps) {
   const router = useRouter();
 
-  // Payment add state
+  // Payment add/refund state
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [isRefundOpen, setIsRefundOpen] = useState(false);
   const [paymentTypeId, setPaymentTypeId] = useState("");
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paymentAmount, setPaymentAmount] = useState(defaultPaymentAmount != null ? String(defaultPaymentAmount) : "");
-  const [paymentMethod, setPaymentMethod] = useState("카드");
+  const [paymentMethod, setPaymentMethod] = useState("card");
   const [paymentNotes, setPaymentNotes] = useState(defaultPaymentNotes ?? "");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
@@ -152,7 +159,7 @@ export function StudentDetailTabs({
     setPaymentTypeId("");
     setPaymentDate(new Date().toISOString().slice(0, 10));
     setPaymentAmount(defaultPaymentAmount != null ? String(defaultPaymentAmount) : "");
-    setPaymentMethod("카드");
+    setPaymentMethod("card");
     setPaymentNotes(defaultPaymentNotes ?? "");
     setSelectedPlanId("");
   }
@@ -209,7 +216,7 @@ export function StudentDetailTabs({
           paymentTypeId,
           amount: parseInt(paymentAmount, 10),
           paymentDate,
-          method: paymentMethod || null,
+          method: paymentMethod,
           notes: paymentNotes || null,
         }),
       });
@@ -588,14 +595,23 @@ export function StudentDetailTabs({
             <span className="text-sm font-medium">수납</span>
           </div>
           {canEdit && (
-            <button
-              type="button"
-              onClick={() => setIsAddPaymentOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--division-color)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              수납 추가
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsRefundOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+              >
+                환불 처리
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddPaymentOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--division-color)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                수납 추가
+              </button>
+            </div>
           )}
         </div>
 
@@ -618,8 +634,8 @@ export function StudentDetailTabs({
                       <p className="font-medium text-slate-900">{payment.paymentTypeName}</p>
                       <p className="mt-1 text-xs text-slate-500">{payment.notes || "메모 없음"}</p>
                     </td>
-                    <td className="px-3 py-4 font-semibold text-slate-950">
-                      {formatCurrency(payment.amount)}원
+                    <td className={`px-3 py-4 font-semibold ${payment.amount < 0 ? "text-rose-600" : "text-slate-950"}`}>
+                      {payment.amount < 0 ? "-" : ""}{formatCurrency(Math.abs(payment.amount))}원
                     </td>
                     <td className="px-3 py-4 text-slate-600">{formatDate(payment.paymentDate)}</td>
                     <td className="px-3 py-4 text-slate-600">{formatPaymentMethod(payment.method)}</td>
@@ -718,16 +734,15 @@ export function StudentDetailTabs({
 
             <div>
               <label className="block text-sm font-medium text-slate-700">납부 방식</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="mt-1.5 w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 focus:outline-none focus:ring-2 focus:ring-slate-950"
-              >
-                <option value="">선택 안 함</option>
-                <option value="현금">현금</option>
-                <option value="계좌이체">계좌이체</option>
-                <option value="카드">카드</option>
-              </select>
+              <div className="mt-1.5">
+                <PaymentMethodSelect
+                  value={paymentMethod}
+                  onChange={setPaymentMethod}
+                  required
+                  selectClassName="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                  inputClassName="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-950 focus:outline-none focus:ring-2 focus:ring-slate-950"
+                />
+              </div>
             </div>
 
             <div>
@@ -761,6 +776,17 @@ export function StudentDetailTabs({
             </div>
           </form>
         </Modal>
+
+        <RefundModal
+          open={isRefundOpen}
+          onClose={() => setIsRefundOpen(false)}
+          divisionSlug={divisionSlug}
+          student={{ id: studentId, name: studentName, studentNumber }}
+          students={[]}
+          paymentCategories={paymentCategories}
+          paymentRecords={paymentRecords}
+          onSuccess={() => router.refresh()}
+        />
       </div>
     );
   }

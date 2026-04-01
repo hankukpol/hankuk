@@ -25,14 +25,6 @@ enum AttendanceStatus {
   NOT_APPLICABLE
 }
 
-enum PointCategory {
-  ATTENDANCE
-  BEHAVIOR
-  EXAM
-  LIFE
-  OTHER
-}
-
 enum AdminRole {
   SUPER_ADMIN
   ADMIN
@@ -106,36 +98,38 @@ model Division {
 }
 
 model Student {
-  id                String            @id @default(cuid())
-  divisionId        String            @map("division_id")
-  name              String
-  studentNumber     String            @map("student_number")
-  studyTrack        String?           @map("study_track")
-  phone             String?
-  seatId            String?           @unique @map("seat_id")
-  courseStartDate   DateTime?         @map("course_start_date") @db.Date
-  courseEndDate     DateTime?         @map("course_end_date") @db.Date
-  tuitionPlanId     String?           @map("tuition_plan_id")
-  tuitionAmount     Int?              @map("tuition_amount")
-  status            StudentStatus     @default(ACTIVE)
-  enrolledAt        DateTime          @default(now()) @map("enrolled_at")
-  withdrawnAt       DateTime?         @map("withdrawn_at")
-  withdrawnNote     String?           @map("withdrawn_note")
-  memo              String?
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
-  division          Division          @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  seat              Seat?             @relation(fields: [seatId], references: [id], onDelete: SetNull)
-  tuitionPlan       TuitionPlan?      @relation(fields: [tuitionPlanId], references: [id], onDelete: SetNull)
-  attendanceRecords Attendance[]
-  pointRecords      PointRecord[]
-  leavePermissions  LeavePermission[]
-  interviews        Interview[]
-  payments          Payment[]
-  examScores        ExamScore[]
-  morningExamScores MorningExamScore[]
-  scoreTargets      ScoreTarget[]
-  phoneSubmissions  PhoneSubmission[]
+  id                  String             @id @default(cuid())
+  divisionId          String             @map("division_id")
+  name                String
+  studentNumber       String             @map("student_number")
+  studyTrack          String?            @map("study_track")
+  phone               String?
+  seatId              String?            @unique @map("seat_id")
+  courseStartDate     DateTime?          @map("course_start_date") @db.Date
+  courseEndDate       DateTime?          @map("course_end_date") @db.Date
+  tuitionPlanId       String?            @map("tuition_plan_id")
+  tuitionAmount       Int?               @map("tuition_amount")
+  tuitionExempt       Boolean            @default(false) @map("tuition_exempt")
+  tuitionExemptReason String?            @map("tuition_exempt_reason")
+  status              StudentStatus      @default(ACTIVE)
+  enrolledAt          DateTime           @default(now()) @map("enrolled_at")
+  withdrawnAt         DateTime?          @map("withdrawn_at")
+  withdrawnNote       String?            @map("withdrawn_note")
+  memo                String?
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  division            Division           @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  seat                Seat?              @relation(fields: [seatId], references: [id], onDelete: SetNull)
+  tuitionPlan         TuitionPlan?       @relation(fields: [tuitionPlanId], references: [id], onDelete: SetNull)
+  attendanceRecords   Attendance[]
+  pointRecords        PointRecord[]
+  leavePermissions    LeavePermission[]
+  interviews          Interview[]
+  payments            Payment[]
+  examScores          ExamScore[]
+  morningExamScores   MorningExamScore[]
+  scoreTargets        ScoreTarget[]
+  phoneSubmissions    PhoneSubmission[]
 
   @@unique([divisionId, studentNumber])
   @@index([divisionId])
@@ -145,17 +139,17 @@ model Student {
 }
 
 model Period {
-  id                String       @id @default(cuid())
-  divisionId        String       @map("division_id")
+  id                String            @id @default(cuid())
+  divisionId        String            @map("division_id")
   name              String
   label             String?
-  displayOrder      Int          @map("display_order")
-  startTime         String       @map("start_time")
-  endTime           String       @map("end_time")
-  isMandatory       Boolean      @default(true) @map("is_mandatory")
-  isActive          Boolean      @default(true) @map("is_active")
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
+  displayOrder      Int               @map("display_order")
+  startTime         String            @map("start_time")
+  endTime           String            @map("end_time")
+  isMandatory       Boolean           @default(true) @map("is_mandatory")
+  isActive          Boolean           @default(true) @map("is_active")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
   division          Division          @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   attendanceRecords Attendance[]
   phoneSubmissions  PhoneSubmission[]
@@ -189,7 +183,7 @@ model Attendance {
 model PointRule {
   id           String        @id @default(cuid())
   divisionId   String        @map("division_id")
-  category     PointCategory
+  category     String
   name         String
   points       Int
   description  String?
@@ -457,55 +451,56 @@ model Seat {
 }
 
 model DivisionSettings {
-  id                       String   @id @default(cuid())
-  divisionId               String   @unique @map("division_id")
-  warnLevel1               Int      @default(10) @map("warn_level1")
-  warnLevel2               Int      @default(20) @map("warn_level2")
-  warnInterview            Int      @default(25) @map("warn_interview")
-  warnWithdraw             Int      @default(30) @map("warn_withdraw")
-  warnMsgLevel1            String?  @map("warn_msg_level1")
-  warnMsgLevel2            String?  @map("warn_msg_level2")
-  warnMsgInterview         String?  @map("warn_msg_interview")
-  warnMsgWithdraw          String?  @map("warn_msg_withdraw")
-  tardyMinutes             Int      @default(20) @map("tardy_minutes")
-  assistantPastEditAllowed Boolean  @default(false) @map("assistant_past_edit_allowed")
-  assistantPastEditDays    Int      @default(0) @map("assistant_past_edit_days")
-  holidayLimit             Int      @default(1) @map("holiday_limit")
-  halfDayLimit             Int      @default(2) @map("half_day_limit")
-  healthLimit              Int      @default(1) @map("health_limit")
-  holidayUnusedPts         Int      @default(5) @map("holiday_unused_pts")
-  halfDayUnusedPts         Int      @default(2) @map("half_day_unused_pts")
-  operatingDays            Json     @default("{}") @map("operating_days")
-  studyTracks              Json     @default("[]") @map("study_tracks")
-  featureFlags             Json     @default("{}") @map("feature_flags")
-  perfectAttendancePtsEnabled Boolean @default(false) @map("perfect_attendance_pts_enabled")
-  perfectAttendancePts     Int      @default(0) @map("perfect_attendance_pts")
-  expirationWarningDays    Int      @default(14) @map("expiration_warning_days")
-  updatedAt                DateTime @updatedAt @map("updated_at")
-  division                 Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  id                          String   @id @default(cuid())
+  divisionId                  String   @unique @map("division_id")
+  warnLevel1                  Int      @default(10) @map("warn_level1")
+  warnLevel2                  Int      @default(20) @map("warn_level2")
+  warnInterview               Int      @default(25) @map("warn_interview")
+  warnWithdraw                Int      @default(30) @map("warn_withdraw")
+  warnMsgLevel1               String?  @map("warn_msg_level1")
+  warnMsgLevel2               String?  @map("warn_msg_level2")
+  warnMsgInterview            String?  @map("warn_msg_interview")
+  warnMsgWithdraw             String?  @map("warn_msg_withdraw")
+  tardyMinutes                Int      @default(20) @map("tardy_minutes")
+  assistantPastEditAllowed    Boolean  @default(false) @map("assistant_past_edit_allowed")
+  assistantPastEditDays       Int      @default(0) @map("assistant_past_edit_days")
+  holidayLimit                Int      @default(1) @map("holiday_limit")
+  halfDayLimit                Int      @default(2) @map("half_day_limit")
+  healthLimit                 Int      @default(1) @map("health_limit")
+  holidayUnusedPts            Int      @default(5) @map("holiday_unused_pts")
+  halfDayUnusedPts            Int      @default(2) @map("half_day_unused_pts")
+  operatingDays               Json     @default("{}") @map("operating_days")
+  studyTracks                 Json     @default("[]") @map("study_tracks")
+  pointCategories             Json     @default("[]") @map("point_categories")
+  featureFlags                Json     @default("{}") @map("feature_flags")
+  perfectAttendancePtsEnabled Boolean  @default(false) @map("perfect_attendance_pts_enabled")
+  perfectAttendancePts        Int      @default(0) @map("perfect_attendance_pts")
+  expirationWarningDays       Int      @default(14) @map("expiration_warning_days")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+  division                    Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
 
   @@map("division_settings")
 }
 
 model Admin {
-  id                   String            @id @default(cuid())
-  userId               String            @unique @map("user_id")
-  name                 String
-  role                 AdminRole
-  divisionId           String?           @map("division_id")
-  isActive             Boolean           @default(true) @map("is_active")
-  createdAt            DateTime          @default(now()) @map("created_at")
-  division             Division?         @relation(fields: [divisionId], references: [id], onDelete: SetNull)
-  attendanceRecords    Attendance[]      @relation("AttendanceRecordedBy")
-  pointRecords         PointRecord[]     @relation("PointRecordedBy")
-  leaveApprovals       LeavePermission[] @relation("LeaveApprovedBy")
-  interviewsCreated    Interview[]       @relation("InterviewCreatedBy")
-  paymentsRecorded     Payment[]         @relation("PaymentRecordedBy")
-  examScoresRecorded         ExamScore[]         @relation("ExamRecordedBy")
-  morningExamScoresRecorded  MorningExamScore[]  @relation("MorningExamRecordedBy")
-  announcementsCreated       Announcement[]      @relation("AnnouncementCreatedBy")
-  examSchedulesCreated ExamSchedule[]    @relation("ExamScheduleCreatedBy")
-  phoneSubmissionsRecorded PhoneSubmission[] @relation("PhoneSubmissionRecordedBy")
+  id                        String             @id @default(cuid())
+  userId                    String             @unique @map("user_id")
+  name                      String
+  role                      AdminRole
+  divisionId                String?            @map("division_id")
+  isActive                  Boolean            @default(true) @map("is_active")
+  createdAt                 DateTime           @default(now()) @map("created_at")
+  division                  Division?          @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  attendanceRecords         Attendance[]       @relation("AttendanceRecordedBy")
+  pointRecords              PointRecord[]      @relation("PointRecordedBy")
+  leaveApprovals            LeavePermission[]  @relation("LeaveApprovedBy")
+  interviewsCreated         Interview[]        @relation("InterviewCreatedBy")
+  paymentsRecorded          Payment[]          @relation("PaymentRecordedBy")
+  examScoresRecorded        ExamScore[]        @relation("ExamRecordedBy")
+  morningExamScoresRecorded MorningExamScore[] @relation("MorningExamRecordedBy")
+  announcementsCreated      Announcement[]     @relation("AnnouncementCreatedBy")
+  examSchedulesCreated      ExamSchedule[]     @relation("ExamScheduleCreatedBy")
+  phoneSubmissionsRecorded  PhoneSubmission[]  @relation("PhoneSubmissionRecordedBy")
 
   @@index([divisionId])
   @@map("admins")

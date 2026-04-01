@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
+import { formatPaymentMethod } from "@/lib/payment-meta";
 import { getPaymentExportRows } from "@/lib/services/report.service";
 
 export async function GET(
@@ -13,15 +14,6 @@ export async function GET(
 
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const reportingDisabledError = await getDivisionFeatureDisabledError(
-    params.division,
-    "reporting",
-  );
-
-  if (reportingDisabledError) {
-    return NextResponse.json({ error: reportingDisabledError }, { status: 403 });
   }
 
   const paymentDisabledError = await getDivisionFeatureDisabledError(
@@ -52,16 +44,22 @@ export async function GET(
 
     worksheet.columns = [
       { header: "납부일", key: "paymentDate", width: 14 },
-      { header: "학번", key: "studentNumber", width: 14 },
+      { header: "수험번호", key: "studentNumber", width: 14 },
       { header: "이름", key: "studentName", width: 14 },
       { header: "유형", key: "paymentTypeName", width: 16 },
       { header: "금액", key: "amount", width: 12 },
-      { header: "방법", key: "method", width: 14 },
+      { header: "결제수단", key: "methodLabel", width: 16 },
       { header: "메모", key: "notes", width: 28 },
-      { header: "처리자", key: "recordedByName", width: 16 },
+      { header: "기록자", key: "recordedByName", width: 16 },
     ];
 
-    rows.forEach((row) => worksheet.addRow(row));
+    rows.forEach((row) =>
+      worksheet.addRow({
+        ...row,
+        amount: row.amount,
+        methodLabel: formatPaymentMethod(row.method),
+      }),
+    );
 
     const buffer = await workbook.xlsx.writeBuffer();
 
@@ -74,6 +72,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return toApiErrorResponse(error, "수납 내보내기에 실패했습니다.");
+    return toApiErrorResponse(error, "수납 엑셀 내보내기에 실패했습니다.");
   }
 }

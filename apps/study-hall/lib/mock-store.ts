@@ -81,13 +81,21 @@ export type MockAdminRecord = {
 
 export type MockStudentRecord = Omit<
   MockStudent,
-  "seatId" | "courseStartDate" | "courseEndDate" | "tuitionPlanId" | "tuitionAmount"
+  | "seatId"
+  | "courseStartDate"
+  | "courseEndDate"
+  | "tuitionPlanId"
+  | "tuitionAmount"
+  | "tuitionExempt"
+  | "tuitionExemptReason"
 > & {
   seatId: string | null;
   courseStartDate: string;
   courseEndDate: string | null;
   tuitionPlanId: string | null;
   tuitionAmount: number | null;
+  tuitionExempt: boolean;
+  tuitionExemptReason: string | null;
 };
 
 export type MockStudyRoomRecord = {
@@ -462,6 +470,7 @@ function createDefaultDivisionSettingsRecord(division: MockDivisionRecord): Mock
       sun: false,
     },
     studyTracks: [],
+    pointCategories: ["출결", "생활", "시험", "자습", "기타"],
     featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
     updatedAt: new Date().toISOString(),
   };
@@ -576,6 +585,8 @@ function createInitialStudents(divisionSlug: string) {
     courseEndDate: student.courseEndDate ?? null,
     tuitionPlanId: student.tuitionPlanId ?? null,
     tuitionAmount: student.tuitionAmount ?? null,
+    tuitionExempt: student.tuitionExempt ?? false,
+    tuitionExemptReason: student.tuitionExemptReason ?? null,
   }));
 }
 
@@ -587,6 +598,8 @@ function createInitialStudentsWithDivisions(divisionSlug: string) {
     courseEndDate: student.courseEndDate ?? null,
     tuitionPlanId: student.tuitionPlanId ?? null,
     tuitionAmount: student.tuitionAmount ?? null,
+    tuitionExempt: student.tuitionExempt ?? false,
+    tuitionExemptReason: student.tuitionExemptReason ?? null,
   }));
 }
 
@@ -761,7 +774,7 @@ function createInitialPaymentCategories(divisionSlug: string, divisions?: MockDi
   }
 
   const now = new Date().toISOString();
-  const categories = ["등록비", "월납부", "환불"];
+  const categories = ["등록비", "월납부", "교재비", "환불"];
 
   return categories.map((name, index) => ({
     id: `mock-payment-category-${divisionSlug}-${index}`,
@@ -1565,6 +1578,8 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
               courseEndDate: student.courseEndDate ?? null,
               tuitionPlanId: student.tuitionPlanId ?? null,
               tuitionAmount: student.tuitionAmount ?? null,
+              tuitionExempt: student.tuitionExempt ?? false,
+              tuitionExemptReason: student.tuitionExemptReason ?? null,
             };
           })
         : createInitialStudentsWithDivisions(divisionSlug),

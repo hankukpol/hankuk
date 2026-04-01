@@ -4,6 +4,25 @@ import { requireApiSuperAdminAuth } from "@/lib/api-auth";
 import { toApiErrorResponse } from "@/lib/api-error-response";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState } from "@/lib/mock-store";
+import { supportsPointCategoryCustomization } from "@/lib/services/point.service";
+import { getDivisionSettings } from "@/lib/services/settings.service";
+
+type SourcePointRuleRow = {
+  category: string;
+  name: string;
+  points: number;
+  description: string | null;
+  isActive: boolean;
+  displayOrder: number;
+};
+
+function assertLegacyPointCategory(category: string) {
+  if (!/^[A-Z_]+$/.test(category)) {
+    throw new Error(`지원하지 않는 상벌점 카테고리 값입니다: ${category}`);
+  }
+
+  return category;
+}
 
 /**
  * POST /api/super-admin/copy-division-settings
@@ -35,6 +54,7 @@ export async function POST(request: NextRequest) {
       const state = await readMockState();
       const sourcePeriods = state.periodsByDivision?.[sourceSlug] ?? [];
       const sourceRules = state.pointRulesByDivision?.[sourceSlug] ?? [];
+      const sourceSettings = state.divisionSettingsByDivision?.[sourceSlug] ?? null;
 
       await updateMockState((s) => {
         // 교시 복사
@@ -55,6 +75,14 @@ export async function POST(request: NextRequest) {
           divisionId: targetSlug,
           createdAt: new Date().toISOString(),
         }));
+
+        if (sourceSettings) {
+          s.divisionSettingsByDivision[targetSlug] = {
+            ...sourceSettings,
+            divisionId: s.divisions.find((division) => division.slug === targetSlug)?.id ?? sourceSettings.divisionId,
+            updatedAt: new Date().toISOString(),
+          };
+        }
 
         return s;
       });
@@ -82,11 +110,39 @@ export async function POST(request: NextRequest) {
     }
 
     // 원본 데이터 조회
-    const [sourcePeriods, sourceRules, sourceSettings] = await Promise.all([
+    const [sourcePeriods, sourceRules, sourceSettingsRow, categoryCustomizationEnabled, pointRuleCategoryColumn] = await Promise.all([
       prisma.period.findMany({ where: { divisionId: sourceDivision.id } }),
-      prisma.pointRule.findMany({ where: { divisionId: sourceDivision.id } }),
-      prisma.divisionSettings.findUnique({ where: { divisionId: sourceDivision.id } }),
+      prisma.$queryRaw<SourcePointRuleRow[]>`
+        SELECT
+          category::text AS category,
+          name,
+          points,
+          description,
+          is_active AS "isActive",
+          display_order AS "displayOrder"
+        FROM point_rules
+        WHERE division_id = ${sourceDivision.id}
+        ORDER BY display_order ASC
+      `,
+      prisma.divisionSettings.findUnique({
+        where: { divisionId: sourceDivision.id },
+        select: { divisionId: true },
+      }),
+      supportsPointCategoryCustomization(),
+      prisma.$queryRaw<Array<{ udtName: string }>>`
+        SELECT udt_name AS "udtName"
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'point_rules'
+          AND column_name = 'category'
+        LIMIT 1
+      `,
     ]);
+    const sourceSettings = sourceSettingsRow
+      ? await getDivisionSettings(sourceSlug)
+      : null;
+    const isLegacyPointRuleCategory =
+      (pointRuleCategoryColumn[0]?.udtName ?? "text") !== "text";
 
     // 대상 직렬 기존 데이터에 연결된 레코드가 있으면 삭제 차단
     const [targetAttendanceCount, targetPointRecordCount] = await Promise.all([
@@ -134,53 +190,81 @@ export async function POST(request: NextRequest) {
       // 상벌점 규칙 삭제 후 재생성
       await tx.pointRule.deleteMany({ where: { divisionId: targetDivision.id } });
       if (sourceRules.length > 0) {
-        await tx.pointRule.createMany({
-          data: sourceRules.map((r) => ({
-            divisionId: targetDivision.id,
-            category: r.category,
-            name: r.name,
-            points: r.points,
-            description: r.description,
-            isActive: r.isActive,
-            displayOrder: r.displayOrder,
-          })),
-        });
+        if (isLegacyPointRuleCategory) {
+          for (const rule of sourceRules) {
+            const legacyCategory = assertLegacyPointCategory(rule.category);
+
+            await tx.$executeRawUnsafe(
+              `
+                INSERT INTO point_rules (
+                  division_id,
+                  category,
+                  name,
+                  points,
+                  description,
+                  is_active,
+                  display_order
+                ) VALUES (
+                  $1,
+                  '${legacyCategory}',
+                  $2,
+                  $3,
+                  $4,
+                  $5,
+                  $6
+                )
+              `,
+              targetDivision.id,
+              rule.name,
+              rule.points,
+              rule.description,
+              rule.isActive,
+              rule.displayOrder,
+            );
+          }
+        } else {
+          await tx.pointRule.createMany({
+            data: sourceRules.map((r) => ({
+              divisionId: targetDivision.id,
+              category: r.category,
+              name: r.name,
+              points: r.points,
+              description: r.description,
+              isActive: r.isActive,
+              displayOrder: r.displayOrder,
+            })),
+          });
+        }
       }
 
       // 운영 설정 복사 (upsert)
       if (sourceSettings) {
+        const divisionSettingsData = {
+          warnLevel1: sourceSettings.warnLevel1,
+          warnLevel2: sourceSettings.warnLevel2,
+          warnInterview: sourceSettings.warnInterview,
+          warnWithdraw: sourceSettings.warnWithdraw,
+          tardyMinutes: sourceSettings.tardyMinutes,
+          holidayLimit: sourceSettings.holidayLimit,
+          halfDayLimit: sourceSettings.halfDayLimit,
+          healthLimit: sourceSettings.healthLimit,
+          holidayUnusedPts: sourceSettings.holidayUnusedPts,
+          halfDayUnusedPts: sourceSettings.halfDayUnusedPts,
+          perfectAttendancePtsEnabled: sourceSettings.perfectAttendancePtsEnabled,
+          perfectAttendancePts: sourceSettings.perfectAttendancePts,
+          operatingDays: sourceSettings.operatingDays as never,
+          studyTracks: sourceSettings.studyTracks as never,
+          ...(categoryCustomizationEnabled
+            ? { pointCategories: sourceSettings.pointCategories as never }
+            : {}),
+        };
+
         await tx.divisionSettings.upsert({
           where: { divisionId: targetDivision.id },
-          update: {
-            warnLevel1: sourceSettings.warnLevel1,
-            warnLevel2: sourceSettings.warnLevel2,
-            warnInterview: sourceSettings.warnInterview,
-            warnWithdraw: sourceSettings.warnWithdraw,
-            tardyMinutes: sourceSettings.tardyMinutes,
-            holidayLimit: sourceSettings.holidayLimit,
-            halfDayLimit: sourceSettings.halfDayLimit,
-            healthLimit: sourceSettings.healthLimit,
-            holidayUnusedPts: sourceSettings.holidayUnusedPts,
-            halfDayUnusedPts: sourceSettings.halfDayUnusedPts,
-            perfectAttendancePtsEnabled: sourceSettings.perfectAttendancePtsEnabled,
-            perfectAttendancePts: sourceSettings.perfectAttendancePts,
-            operatingDays: sourceSettings.operatingDays as never,
-          },
+          update: divisionSettingsData,
           create: {
             divisionId: targetDivision.id,
-            warnLevel1: sourceSettings.warnLevel1,
-            warnLevel2: sourceSettings.warnLevel2,
-            warnInterview: sourceSettings.warnInterview,
-            warnWithdraw: sourceSettings.warnWithdraw,
-            tardyMinutes: sourceSettings.tardyMinutes,
-            holidayLimit: sourceSettings.holidayLimit,
-            halfDayLimit: sourceSettings.halfDayLimit,
-            healthLimit: sourceSettings.healthLimit,
-            holidayUnusedPts: sourceSettings.holidayUnusedPts,
-            halfDayUnusedPts: sourceSettings.halfDayUnusedPts,
-            perfectAttendancePtsEnabled: sourceSettings.perfectAttendancePtsEnabled,
-            perfectAttendancePts: sourceSettings.perfectAttendancePts,
-            operatingDays: sourceSettings.operatingDays as never,
+            ...divisionSettingsData,
           },
         });
       }

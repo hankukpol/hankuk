@@ -24,3 +24,20 @@ export function WarningStageBadge({ stage }: { stage: string }) {
     </span>
   );
 }
+
+export function TuitionExemptBadge({
+  reason,
+  className = "",
+}: {
+  reason?: string | null;
+  className?: string;
+}) {
+  return (
+    <span
+      title={reason ?? undefined}
+      className={`inline-flex items-center rounded-[10px] border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 ${className}`.trim()}
+    >
+      수납 면제
+    </span>
+  );
+}

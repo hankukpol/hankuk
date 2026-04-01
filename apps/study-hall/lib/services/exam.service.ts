@@ -470,6 +470,83 @@ export async function listExamTypes(divisionSlug: string) {
   }
 }
 
+export async function reorderExamTypes(divisionSlug: string, orderedIds: string[]) {
+  if (isMockMode()) {
+    const reordered = await updateMockState((state) => {
+      const current = state.examTypesByDivision[divisionSlug] ?? [];
+      const currentIds = new Set(current.map((examType) => examType.id));
+      const nextIdSet = new Set(orderedIds);
+
+      if (
+        current.length !== orderedIds.length ||
+        nextIdSet.size !== current.length ||
+        orderedIds.some((id) => !currentIds.has(id))
+      ) {
+        throw new Error("시험 템플릿 목록을 다시 확인해주세요.");
+      }
+
+      const now = new Date().toISOString();
+      const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
+      const next = current
+        .map((examType) => ({
+          ...examType,
+          displayOrder: orderMap.get(examType.id) ?? examType.displayOrder,
+          updatedAt: now,
+        }))
+        .sort((left, right) => left.displayOrder - right.displayOrder);
+
+      state.examTypesByDivision[divisionSlug] = next;
+      return next;
+    });
+
+    return reordered.map((examType) => toExamTypeItem(examType));
+  }
+
+  const division = await getDivisionOrThrow(divisionSlug);
+  const { prisma } = await import("@/lib/prisma");
+  const current = await prisma.examType.findMany({
+    where: {
+      divisionId: division.id,
+    },
+    select: {
+      id: true,
+    },
+    orderBy: {
+      displayOrder: "asc",
+    },
+  });
+  const currentIds = new Set(current.map((examType) => examType.id));
+  const nextIdSet = new Set(orderedIds);
+
+  if (
+    current.length !== orderedIds.length ||
+    nextIdSet.size !== current.length ||
+    orderedIds.some((id) => !currentIds.has(id))
+  ) {
+    throw new Error("시험 템플릿 목록을 다시 확인해주세요.");
+  }
+
+  await prisma.$transaction(
+    orderedIds.map((id, index) =>
+      prisma.examType.update({
+        where: { id },
+        data: { displayOrder: index + 1000 },
+      }),
+    ),
+  );
+
+  await prisma.$transaction(
+    orderedIds.map((id, index) =>
+      prisma.examType.update({
+        where: { id },
+        data: { displayOrder: index },
+      }),
+    ),
+  );
+
+  return listExamTypes(divisionSlug);
+}
+
 export async function createExamType(divisionSlug: string, input: ExamTypeSchemaInput) {
   const name = normalizeText(input.name);
   const studyTrack = normalizeOptionalText(input.studyTrack);
@@ -562,6 +639,8 @@ export async function updateExamType(
           ? {
               ...examType,
               name,
+              category:
+                (input.category === "MORNING" ? "MORNING" : "REGULAR") as MockExamTypeRecord["category"],
               studyTrack,
               isActive: input.isActive ?? examType.isActive,
               updatedAt: new Date().toISOString(),
@@ -607,6 +686,7 @@ export async function updateExamType(
       },
       data: {
         name,
+        category: input.category === "MORNING" ? "MORNING" : "REGULAR",
         studyTrack,
         isActive: input.isActive ?? examType.isActive,
       },

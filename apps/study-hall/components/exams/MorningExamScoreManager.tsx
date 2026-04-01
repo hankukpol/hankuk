@@ -4,6 +4,11 @@ import { ChevronLeft, ChevronRight, Download, LoaderCircle, Save, Upload } from 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  inferDelimitedFileDelimiter,
+  parseDelimitedLine,
+  readTextFileWithEncoding,
+} from "@/lib/csv";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 import type { MorningExamDailySheet, MorningExamWeeklySummary } from "@/lib/services/morning-exam.service";
 
@@ -59,21 +64,11 @@ function sheetToRows(sheet: MorningExamDailySheet): EditableRow[] {
   }));
 }
 
-function buildCsvTemplate(examTypeName: string, subjectName: string, rows: EditableRow[]) {
-  const header = "수험번호\t이름\t점수\t비고";
-  const dataRows = rows.map((row) => `${row.studentNumber}\t${row.studentName}\t${row.score}\t${row.notes}`);
-  return `${examTypeName} - ${subjectName}\n${header}\n${dataRows.join("\n")}`;
-}
-
-function downloadCsv(content: string, filename: string) {
-  const bom = "\uFEFF";
-  const blob = new Blob([bom + content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
+function triggerDownload(url: string) {
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = "";
   link.click();
-  URL.revokeObjectURL(url);
 }
 
 export function MorningExamScoreManager({
@@ -212,22 +207,31 @@ export function MorningExamScoreManager({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
+    void (async () => {
+      const text = await readTextFileWithEncoding(file);
       if (!text) return;
 
-      const lines = text.trim().split("\n");
+      const delimiter = inferDelimitedFileDelimiter(text);
+      const lines = text.trim().split(/\r?\n/);
       const updatedRows = [...rows];
       let matchCount = 0;
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(/[\t,]/);
-        if (cols.length < 3) continue;
+      for (const line of lines) {
+        const cols = parseDelimitedLine(line, delimiter);
+        if (cols.length < 2) continue;
 
         const studentNumber = cols[0]?.trim();
-        const scoreValue = cols[2]?.trim();
-        const notesValue = cols.length >= 4 ? cols[3]?.trim() : "";
+        if (
+          !studentNumber ||
+          studentNumber === "수험번호" ||
+          studentNumber.toLowerCase().startsWith("sep=")
+        ) {
+          continue;
+        }
+
+        const hasNameColumn = cols.length >= 4;
+        const scoreValue = hasNameColumn ? cols[2]?.trim() : cols[1]?.trim();
+        const notesValue = hasNameColumn ? cols[3]?.trim() : cols[2]?.trim() ?? "";
 
         const idx = updatedRows.findIndex((r) => r.studentNumber === studentNumber);
         if (idx >= 0) {
@@ -242,36 +246,29 @@ export function MorningExamScoreManager({
 
       setRows(updatedRows);
       toast.success(`CSV 파일에서 ${matchCount}명의 성적을 반영했습니다.`);
-    };
-    reader.readAsText(file, "UTF-8");
+    })().catch((error) => {
+      toast.error(error instanceof Error ? error.message : "CSV 파일을 읽지 못했습니다.");
+    });
 
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleDownloadTemplate() {
     if (!selectedExamType || !selectedSubject) return;
-    const csv = buildCsvTemplate(selectedExamType.name, selectedSubject.name, rows);
-    const dateLabel = examDate.replace(/-/g, "");
-    downloadCsv(csv, `아침모의고사_${selectedExamType.name}_${selectedSubject.name}_${dateLabel}.csv`);
+    const url = new URL(`/api/${divisionSlug}/morning-exams/template`, window.location.origin);
+    url.searchParams.set("examTypeId", selectedExamType.id);
+    url.searchParams.set("subjectId", selectedSubject.id);
+    url.searchParams.set("date", examDate);
+    triggerDownload(url.toString());
   }
 
   function handleDownloadWeeklyCsv() {
     if (!weeklySummary) return;
-
-    const dayHeaders = weeklySummary.dailyEntries
-      .map((e) => `${e.dayOfWeek}(${e.subjectName})`)
-      .join("\t");
-    const header = `수험번호\t이름\t${dayHeaders}\t주간합\t평균\t석차`;
-
-    const dataRows = weeklySummary.rankings.map((r) => {
-      const dayScores = weeklySummary.dailyEntries
-        .map((e) => r.dailyScores[e.date]?.score ?? "")
-        .join("\t");
-      return `${r.studentNumber}\t${r.studentName}\t${dayScores}\t${r.weeklyTotal ?? ""}\t${r.weeklyAverage ?? ""}\t${r.weeklyRank ?? ""}`;
-    });
-
-    const csv = `${weeklySummary.examTypeName} - ${weeklySummary.weekYear}년 ${weeklySummary.weekNumber}주차\n${header}\n${dataRows.join("\n")}`;
-    downloadCsv(csv, `주간성적_${weeklySummary.examTypeName}_${weeklySummary.weekYear}W${weeklySummary.weekNumber}.csv`);
+    const url = new URL(`/api/${divisionSlug}/morning-exams/weekly/export`, window.location.origin);
+    url.searchParams.set("examTypeId", weeklySummary.examTypeId);
+    url.searchParams.set("weekYear", String(weeklySummary.weekYear));
+    url.searchParams.set("weekNumber", String(weeklySummary.weekNumber));
+    triggerDownload(url.toString());
   }
 
   async function handleSave() {

@@ -32,9 +32,13 @@ export async function GET(
       dateFrom: request.nextUrl.searchParams.get("dateFrom") || undefined,
       dateTo: request.nextUrl.searchParams.get("dateTo") || undefined,
     });
-    return NextResponse.json({ payments }, { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" } });
+
+    return NextResponse.json(
+      { payments },
+      { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" } },
+    );
   } catch (error) {
-    return toApiErrorResponse(error, "수납 처리 중 오류가 발생했습니다.");
+    return toApiErrorResponse(error, "수납 내역을 불러오는 중 오류가 발생했습니다.");
   }
 }
 
@@ -62,7 +66,7 @@ export async function POST(
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: getZodErrorMessage(parsed.error, "수납 정보를 다시 확인해주세요.") },
+      { error: getZodErrorMessage(parsed.error, "수납 정보를 다시 확인해 주세요.") },
       { status: 400 },
     );
   }

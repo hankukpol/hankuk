@@ -30,7 +30,7 @@ export async function PATCH(
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: getZodErrorMessage(parsed.error, "수납 정보를 다시 확인해주세요.") },
+      { error: getZodErrorMessage(parsed.error, "수납 정보를 다시 확인해 주세요.") },
       { status: 400 },
     );
   }
@@ -39,7 +39,7 @@ export async function PATCH(
     const payment = await updatePayment(params.division, params.id, parsed.data);
     return NextResponse.json({ payment });
   } catch (error) {
-    return toApiErrorResponse(error, "수납 처리 중 오류가 발생했습니다.");
+    return toApiErrorResponse(error, "수납 수정 중 오류가 발생했습니다.");
   }
 }
 
@@ -66,6 +66,6 @@ export async function DELETE(
     await deletePayment(params.division, params.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return toApiErrorResponse(error, "수납 처리 중 오류가 발생했습니다.");
+    return toApiErrorResponse(error, "수납 삭제 중 오류가 발생했습니다.");
   }
 }

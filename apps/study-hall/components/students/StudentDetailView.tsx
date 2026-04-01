@@ -6,7 +6,8 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Ban, CircleAlert, LoaderCircle, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { StudentStatusBadge, WarningStageBadge } from "@/components/students/StudentBadges";
+import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
+import { StudentStatusBadge, TuitionExemptBadge, WarningStageBadge } from "@/components/students/StudentBadges";
 import { StudentDetailTabs } from "@/components/students/StudentDetailTabs";
 import { Modal } from "@/components/ui/Modal";
 import type { ExamTypeItem, StudentExamResultItem } from "@/lib/services/exam.service";
@@ -125,7 +126,7 @@ export function StudentDetailView({
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [isRefundEnabled, setIsRefundEnabled] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
-  const [refundMethod, setRefundMethod] = useState("");
+  const [refundMethod, setRefundMethod] = useState("bank-transfer");
   const [refundNotes, setRefundNotes] = useState("");
   const [memo, setMemo] = useState(initialStudent.memo ?? "");
   const [memoDraft, setMemoDraft] = useState(initialStudent.memo ?? "");
@@ -260,7 +261,7 @@ export function StudentDetailView({
     setWithdrawnNote("");
     setIsRefundEnabled(false);
     setRefundAmount("");
-    setRefundMethod("");
+    setRefundMethod("bank-transfer");
     setRefundNotes("");
   }
 
@@ -294,9 +295,9 @@ export function StudentDetailView({
             body: JSON.stringify({
               studentId: initialStudent.id,
               paymentTypeId: refundCategory.id,
-              amount,
+              amount: amount * -1,
               paymentDate: new Date().toISOString().slice(0, 10),
-              method: refundMethod || null,
+              method: refundMethod,
               notes: refundNotes || null,
             }),
           });
@@ -373,6 +374,9 @@ export function StudentDetailView({
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <StudentStatusBadge status={initialStudent.status} />
               <WarningStageBadge stage={initialStudent.warningStage} />
+              {initialStudent.tuitionExempt ? (
+                <TuitionExemptBadge reason={initialStudent.tuitionExemptReason} />
+              ) : null}
               {canEdit && warningManagementEnabled && pointManagementEnabled && (
                 <button
                   type="button"
@@ -393,6 +397,15 @@ export function StudentDetailView({
                 좌석 {initialStudent.seatDisplay || "미배정"}
               </span>
             </div>
+
+            {initialStudent.tuitionExempt ? (
+              <div className="mt-5 rounded-[10px] border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900">
+                <p className="font-semibold">수납 면제 학생</p>
+                <p className="mt-1">
+                  {initialStudent.tuitionExemptReason || "면제 사유가 아직 입력되지 않았습니다."}
+                </p>
+              </div>
+            ) : null}
 
             <div className="mt-5 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4">
               <p className="text-sm font-medium text-slate-700">메모</p>
@@ -576,6 +589,8 @@ export function StudentDetailView({
             <StudentDetailTabs
               divisionSlug={divisionSlug}
               studentId={initialStudent.id}
+              studentName={initialStudent.name}
+              studentNumber={initialStudent.studentNumber}
               canManageScoreTargets={canEdit}
               canEdit={canEdit}
               attendanceManagementEnabled={attendanceManagementEnabled}
@@ -692,10 +707,10 @@ export function StudentDetailView({
                     <p className="font-medium text-slate-700">기존 수납 이력 참고</p>
                     <div className="mt-2 space-y-1">
                       <p>
-                        총 수납:{" "}
+                        총 납부:{" "}
                         {formatCurrency(
                           paymentRecords
-                            .filter((p) => p.paymentTypeName !== "환불")
+                            .filter((p) => p.amount > 0)
                             .reduce((s, p) => s + p.amount, 0),
                         )}
                         원
@@ -703,9 +718,18 @@ export function StudentDetailView({
                       <p>
                         기존 환불:{" "}
                         {formatCurrency(
-                          paymentRecords
-                            .filter((p) => p.paymentTypeName === "환불")
-                            .reduce((s, p) => s + p.amount, 0),
+                          Math.abs(
+                            paymentRecords
+                              .filter((p) => p.amount < 0)
+                              .reduce((s, p) => s + p.amount, 0),
+                          ),
+                        )}
+                        원
+                      </p>
+                      <p className="font-semibold text-slate-900">
+                        순 잔액:{" "}
+                        {formatCurrency(
+                          paymentRecords.reduce((s, p) => s + p.amount, 0),
                         )}
                         원
                       </p>
@@ -729,13 +753,13 @@ export function StudentDetailView({
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-slate-700">환불 방법</span>
-                    <input
-                      type="text"
+                    <PaymentMethodSelect
                       value={refundMethod}
-                      onChange={(event) => setRefundMethod(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                      placeholder="예: 계좌이체, 현금"
+                      onChange={setRefundMethod}
+                      required
                       disabled={isWithdrawing}
+                      selectClassName="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      inputClassName="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
                     />
                   </label>
                 </div>

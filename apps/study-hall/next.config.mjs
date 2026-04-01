@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const externalPackages = ["@prisma/client", "prisma", "exceljs"];
+const isProduction = process.env.NODE_ENV === "production";
 
 const nextConfig = {
   experimental: {
@@ -42,7 +43,12 @@ const nextConfig = {
       {
         source: "/_next/static/(.*)",
         headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+          {
+            key: "Cache-Control",
+            value: isProduction
+              ? "public, max-age=31536000, immutable"
+              : "no-store, max-age=0, must-revalidate",
+          },
         ],
       },
     ];

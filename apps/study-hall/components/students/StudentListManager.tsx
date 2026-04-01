@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Modal } from "@/components/ui/Modal";
-import { StudentStatusBadge, WarningStageBadge } from "@/components/students/StudentBadges";
+import { StudentStatusBadge, TuitionExemptBadge, WarningStageBadge } from "@/components/students/StudentBadges";
 import {
   STUDENT_STATUS_OPTIONS,
   WARNING_STAGE_OPTIONS,
@@ -641,7 +641,10 @@ export function StudentListManager({
                     <td className="px-4 py-4 font-medium text-slate-950">{student.studentNumber}</td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-slate-950">{student.name}</div>
-                      <div className="mt-1 text-xs text-slate-500">{student.phone || "연락처 미등록"}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-slate-500">{student.phone || "연락처 미등록"}</span>
+                        {student.tuitionExempt ? <TuitionExemptBadge reason={student.tuitionExemptReason} /> : null}
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
@@ -698,6 +701,7 @@ export function StudentListManager({
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <StudentStatusBadge status={student.status} />
+                  {student.tuitionExempt ? <TuitionExemptBadge reason={student.tuitionExemptReason} /> : null}
                   <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                     직렬 {student.studyTrack || "미지정"}
                   </span>

@@ -32,6 +32,8 @@ export type DivisionStudent = {
   tuitionPlanId: string | null;
   tuitionPlanName: string | null;
   tuitionAmount: number | null;
+  tuitionExempt: boolean;
+  tuitionExemptReason: string | null;
   status: StudentStatusValue;
 };
 
@@ -58,6 +60,8 @@ export type StudentUpsertInput = {
   courseEndDate?: string | null;
   tuitionPlanId?: string | null;
   tuitionAmount?: number | null;
+  tuitionExempt?: boolean;
+  tuitionExemptReason?: string | null;
   status?: StudentStatusValue;
   memo?: string | null;
 };
@@ -100,6 +104,8 @@ type DbStudentRecord = {
   courseEndDate: Date | null;
   tuitionAmount: number | null;
   tuitionPlanId: string | null;
+  tuitionExempt: boolean;
+  tuitionExemptReason: string | null;
   tuitionPlan: {
     id: string;
     name: string;
@@ -165,6 +171,8 @@ function toStudentWriteError(error: unknown) {
       "course_end_date",
       "tuition_plan_id",
       "tuition_amount",
+      "tuition_exempt",
+      "tuition_exempt_reason",
     ])
   ) {
     return badRequest("학생 관련 데이터베이스 변경이 아직 반영되지 않았습니다. DB 마이그레이션 상태를 확인해 주세요.");
@@ -275,6 +283,8 @@ function serializeMockStudent(
     tuitionPlanId: student.tuitionPlanId ?? null,
     tuitionPlanName,
     tuitionAmount: student.tuitionAmount ?? null,
+    tuitionExempt: student.tuitionExempt,
+    tuitionExemptReason: student.tuitionExemptReason ?? null,
     status: student.status,
     enrolledAt: student.enrolledAt,
     createdAt: student.createdAt,
@@ -309,6 +319,8 @@ function serializeDbStudent(
     tuitionPlanId: student.tuitionPlanId,
     tuitionPlanName: student.tuitionPlan?.name ?? null,
     tuitionAmount: student.tuitionAmount,
+    tuitionExempt: student.tuitionExempt,
+    tuitionExemptReason: student.tuitionExemptReason,
     status: student.status,
     enrolledAt: student.enrolledAt.toISOString(),
     createdAt: student.createdAt.toISOString(),
@@ -343,6 +355,8 @@ function serializeLegacyStudent(
     tuitionPlanId: null,
     tuitionPlanName: null,
     tuitionAmount: null,
+    tuitionExempt: false,
+    tuitionExemptReason: null,
     status: student.status,
     enrolledAt: student.enrolledAt.toISOString(),
     createdAt: student.createdAt.toISOString(),
@@ -465,6 +479,8 @@ async function getDbStudentsWithMetrics(divisionSlug: string) {
         "course_end_date",
         "tuition_plan_id",
         "tuition_amount",
+        "tuition_exempt",
+        "tuition_exempt_reason",
         "study_room_id",
         "tuition_plans",
         "study_rooms",
@@ -715,6 +731,8 @@ export async function getDivisionStudents(divisionSlug: string): Promise<Divisio
       tuitionPlanId: student.tuitionPlanId,
       tuitionPlanName: student.tuitionPlanName,
       tuitionAmount: student.tuitionAmount,
+      tuitionExempt: student.tuitionExempt,
+      tuitionExemptReason: student.tuitionExemptReason,
       status: student.status,
     }));
 }
@@ -806,6 +824,8 @@ export async function getStudentDetail(divisionSlug: string, studentId: string) 
         "course_end_date",
         "tuition_plan_id",
         "tuition_amount",
+        "tuition_exempt",
+        "tuition_exempt_reason",
         "study_room_id",
         "tuition_plans",
         "study_rooms",
@@ -830,6 +850,8 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
   const studentNumber = normalizeText(input.studentNumber);
   const studyTrack = normalizeOptionalText(input.studyTrack);
   const phone = normalizeOptionalText(input.phone);
+  const tuitionExempt = Boolean(input.tuitionExempt);
+  const tuitionExemptReason = tuitionExempt ? normalizeOptionalText(input.tuitionExemptReason) : null;
   const memo = normalizeOptionalText(input.memo);
   const status = input.status ?? "ACTIVE";
   const isWithdrawn = status === "WITHDRAWN";
@@ -870,6 +892,8 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
         courseEndDate,
         tuitionPlanId: tuition.tuitionPlanId,
         tuitionAmount: tuition.tuitionAmount,
+        tuitionExempt,
+        tuitionExemptReason,
         status,
         enrolledAt: now,
         withdrawnAt: status === "WITHDRAWN" ? now : null,
@@ -918,6 +942,8 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
       courseEndDate: courseEndDate ? parseDateString(courseEndDate) : null,
       tuitionPlanId: tuition.tuitionPlanId,
       tuitionAmount: tuition.tuitionAmount,
+      tuitionExempt,
+      tuitionExemptReason,
       status,
       memo,
       withdrawnAt: status === "WITHDRAWN" ? new Date() : null,
@@ -940,6 +966,8 @@ export async function updateStudent(
   const studentNumber = normalizeText(input.studentNumber);
   const studyTrack = normalizeOptionalText(input.studyTrack);
   const phone = normalizeOptionalText(input.phone);
+  const tuitionExempt = Boolean(input.tuitionExempt);
+  const tuitionExemptReason = tuitionExempt ? normalizeOptionalText(input.tuitionExemptReason) : null;
   const memo = normalizeOptionalText(input.memo);
   const status = input.status ?? "ACTIVE";
   const isWithdrawn = status === "WITHDRAWN";
@@ -986,6 +1014,8 @@ export async function updateStudent(
               courseEndDate,
               tuitionPlanId: tuition.tuitionPlanId,
               tuitionAmount: tuition.tuitionAmount,
+              tuitionExempt,
+              tuitionExemptReason,
               status,
               memo,
               withdrawnAt: isWithdrawn ? student.withdrawnAt ?? new Date().toISOString() : null,
@@ -1051,6 +1081,8 @@ export async function updateStudent(
       courseEndDate: courseEndDate ? parseDateString(courseEndDate) : null,
       tuitionPlanId: tuition.tuitionPlanId,
       tuitionAmount: tuition.tuitionAmount,
+      tuitionExempt,
+      tuitionExemptReason,
       status,
       memo,
       withdrawnAt: isWithdrawn ? student.withdrawnAt ?? new Date() : null,

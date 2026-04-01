@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { DEFAULT_PAYMENT_CATEGORY_NAMES } from "../lib/payment-meta";
 import { DEFAULT_POINT_RULE_TEMPLATES } from "../lib/point-meta";
+import { DEFAULT_POINT_CATEGORIES } from "../lib/point-meta";
 import {
   DEFAULT_SEAT_AISLE_COLUMNS,
   DEFAULT_SEAT_LAYOUT_COLUMNS,
@@ -604,6 +605,7 @@ async function seedDivision(template: (typeof ALL_DIVISION_TEMPLATES)[number]) {
         holidayUnusedPts: 5,
         halfDayUnusedPts: 2,
         studyTracks: template.studyTracks,
+        pointCategories: [...DEFAULT_POINT_CATEGORIES],
       operatingDays: {
         mon: true,
         tue: true,
@@ -633,9 +635,10 @@ async function seedDivision(template: (typeof ALL_DIVISION_TEMPLATES)[number]) {
         holidayUnusedPts: 5,
         halfDayUnusedPts: 2,
         studyTracks: template.studyTracks,
-      operatingDays: {
-        mon: true,
-        tue: true,
+        pointCategories: [...DEFAULT_POINT_CATEGORIES],
+        operatingDays: {
+          mon: true,
+          tue: true,
         wed: true,
         thu: true,
         fri: true,

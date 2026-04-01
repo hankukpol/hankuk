@@ -28,6 +28,7 @@ import {
   getStudyTrackBadgeClasses,
   getStudyTrackShortLabel,
 } from "@/lib/study-track-meta";
+import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -221,7 +222,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
     new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 10),
   );
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("카드");
+  const [paymentMethod, setPaymentMethod] = useState("card");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [fetchedPayments, setFetchedPayments] = useState<PaymentItem[]>([]);
@@ -602,7 +603,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
           paymentTypeId,
           amount: Number(paymentAmount),
           paymentDate,
-          method: paymentMethod || null,
+          method: paymentMethod,
           notes: paymentNotes || null,
         }),
       });
@@ -667,7 +668,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
     setSelectedPlanId("");
     setPaymentTypeId("");
     setPaymentAmount("");
-    setPaymentMethod("카드");
+    setPaymentMethod("card");
     setPaymentNotes("");
     setFetchedPayments([]);
     setPointRuleId("");
@@ -1434,15 +1435,13 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
                   <div className="space-y-1">
                     <label className="block text-xs font-medium text-slate-600">납부 방식</label>
-                    <select
+                    <PaymentMethodSelect
                       value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
-                    >
-                      <option value="현금">현금</option>
-                      <option value="계좌이체">계좌이체</option>
-                      <option value="카드">카드</option>
-                    </select>
+                      onChange={setPaymentMethod}
+                      required
+                      selectClassName="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                      inputClassName="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                    />
                   </div>
 
                   <div className="space-y-1">

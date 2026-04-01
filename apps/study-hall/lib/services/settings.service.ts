@@ -13,6 +13,11 @@ import {
   type MockDivisionSettingsRecord,
 } from "@/lib/mock-store";
 import {
+  DEFAULT_POINT_CATEGORIES,
+  normalizePointCategories,
+  type PointCategoryList,
+} from "@/lib/point-meta";
+import {
   type DivisionFeatureSettingsInput,
   normalizeOperatingDays,
   normalizeStudyTracks,
@@ -51,6 +56,7 @@ type RawDbDivisionSettingsRecord = {
   halfDayUnusedPts: number;
   operatingDays: unknown;
   studyTracks: unknown;
+  pointCategories: unknown;
   featureFlags: unknown;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
@@ -143,13 +149,14 @@ export type DivisionSettingsRecord = {
   expirationWarningDays: number;
   operatingDays: OperatingDays;
   studyTracks: StudyTrackList;
+  pointCategories: PointCategoryList;
   featureFlags: DivisionFeatureFlags;
   updatedAt: string;
 };
 
 export type DivisionRuleSettings = Omit<
   DivisionSettingsRecord,
-  "divisionId" | "operatingDays" | "studyTracks" | "featureFlags"
+  "divisionId" | "operatingDays" | "studyTracks" | "pointCategories" | "featureFlags"
 >;
 
 export type DivisionGeneralSettings = {
@@ -191,6 +198,7 @@ function createMockDefaultSettingsRecord(
     ...getDefaultWarningTemplates(),
     operatingDays: normalizeOperatingDays(undefined),
     studyTracks: normalizeStudyTracks(studyTracks),
+    pointCategories: [...DEFAULT_POINT_CATEGORIES],
     featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
     updatedAt: new Date().toISOString(),
   };
@@ -207,6 +215,7 @@ function createDbDefaultSettingsCreateInput(divisionId: string, studyTracks?: un
     warnMsgWithdraw: templates.warnMsgWithdraw,
     operatingDays: normalizeOperatingDays(undefined),
     studyTracks: normalizeStudyTracks(studyTracks),
+    pointCategories: [...DEFAULT_POINT_CATEGORIES],
     featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
   };
 }
@@ -218,6 +227,7 @@ function createDefaultSettingsRecord(divisionId: string, studyTracks?: unknown) 
     ...getDefaultWarningTemplates(),
     operatingDays: normalizeOperatingDays(undefined),
     studyTracks: normalizeStudyTracks(studyTracks),
+    pointCategories: [...DEFAULT_POINT_CATEGORIES],
     featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
     updatedAt: new Date(),
   });
@@ -263,6 +273,7 @@ function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSet
     expirationWarningDays: (record as { expirationWarningDays?: number }).expirationWarningDays ?? 14,
     operatingDays: normalizeOperatingDays(record.operatingDays),
     studyTracks: normalizeStudyTracks(record.studyTracks),
+    pointCategories: normalizePointCategories((record as { pointCategories?: unknown }).pointCategories),
     featureFlags: normalizeDivisionFeatureFlags((record as { featureFlags?: unknown }).featureFlags),
     updatedAt:
       typeof record.updatedAt === "string" ? record.updatedAt : record.updatedAt.toISOString(),
@@ -293,6 +304,7 @@ function serializeLegacySettingsRecord(record: LegacyDivisionSettingsRow): Divis
     expirationWarningDays: DEFAULT_RULE_VALUES.expirationWarningDays,
     operatingDays: record.operatingDays ?? normalizeOperatingDays(undefined),
     studyTracks: normalizeStudyTracks(undefined),
+    pointCategories: [...DEFAULT_POINT_CATEGORIES],
     featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
     updatedAt: record.updatedAt ?? new Date(),
   });
@@ -490,6 +502,7 @@ async function ensureDbDivisionSettings(divisionSlug: string) {
         "assistant_past_edit",
         "warn_msg_",
         "study_tracks",
+        "point_categories",
         "feature_flags",
       ])
     ) {
@@ -651,6 +664,20 @@ export async function getDivisionGeneralSettings(
   };
 }
 
+export async function getDivisionPointCategories(
+  divisionSlug: string,
+): Promise<PointCategoryList> {
+  const settings = await getDivisionSettings(divisionSlug);
+  return settings.pointCategories;
+}
+
+export async function getDivisionPointCategoriesUncached(
+  divisionSlug: string,
+): Promise<PointCategoryList> {
+  const settings = await getDivisionSettingsUncached(divisionSlug);
+  return settings.pointCategories;
+}
+
 export async function getDivisionFeatureSettings(
   divisionSlug: string,
 ): Promise<DivisionFeatureSettings> {
@@ -768,6 +795,7 @@ export async function updateDivisionRuleSettings(
         "assistant_past_edit",
         "warn_msg_",
         "study_tracks",
+        "point_categories",
         "feature_flags",
       ])
     ) {
@@ -830,7 +858,7 @@ export async function updateDivisionFeatureSettings(
       },
     });
   } catch (error) {
-    if (!isPrismaSchemaMismatchError(error, ["division_settings", "feature_flags"])) {
+    if (!isPrismaSchemaMismatchError(error, ["division_settings", "feature_flags", "point_categories"])) {
       throw error;
     }
 
@@ -928,6 +956,7 @@ export async function updateDivisionGeneralSettings(
         "division_settings",
         "study_tracks",
         "assistant_past_edit",
+        "point_categories",
         "feature_flags",
       ])
     ) {

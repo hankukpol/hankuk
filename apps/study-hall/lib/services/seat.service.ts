@@ -1152,16 +1152,32 @@ export async function updateStudyRoom(
         throw new Error("이미 같은 이름의 자습실이 있습니다.");
       }
       const roomSeats = (state.seatsByDivision[divisionSlug] ?? []).filter((seat) => seat.studyRoomId === roomId);
-      validateSeatDrafts(
-        roomSeats.map((seat) => ({
-          id: seat.id,
-          label: seat.label,
-          positionX: seat.positionX,
-          positionY: seat.positionY,
-          isActive: seat.isActive,
-        })),
-        normalized,
-      );
+          // 복도/그리드 변경 시 기존 좌석을 자동 정규화 (범위 밖/복도 위 좌석 비활성화)
+      const normalizedRoomSeats = buildNormalizedGridSeatDrafts(normalized, roomSeats.map((seat) => ({
+        id: seat.id,
+        label: seat.label,
+        positionX: seat.positionX,
+        positionY: seat.positionY,
+        isActive: seat.isActive,
+        assignedStudentId: null,
+      })));
+      state.seatsByDivision[divisionSlug] = [
+        ...(state.seatsByDivision[divisionSlug] ?? []).filter((seat) => seat.studyRoomId !== roomId),
+        ...normalizedRoomSeats.map((seat, index) => {
+          const existing = roomSeats.find((item) => item.id === seat.id);
+          return {
+            id: existing?.id ?? "mock-seat-" + divisionSlug + "-" + roomId + "-" + Date.now() + "-" + index,
+            divisionId: room.divisionId,
+            studyRoomId: roomId,
+            label: seat.label,
+            positionX: seat.positionX,
+            positionY: seat.positionY,
+            isActive: seat.isActive,
+            createdAt: existing?.createdAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          } satisfies MockSeatRecord;
+        }),
+      ];
       const now = new Date().toISOString();
       state.studyRoomsByDivision[divisionSlug] = rooms.map((item) =>
         item.id === roomId
@@ -1225,8 +1241,7 @@ export async function updateStudyRoom(
     throw new Error("이미 같은 이름의 자습실이 있습니다.");
   }
 
-  validateSeatDrafts(room.seats, normalized);
-
+  // 방 설정 업데이트 후 좌석을 자동 정규화 (복도/범위 변경 시 좌석 재배치)
   const updated = await prisma.studyRoom.update({
     where: {
       id: roomId,
@@ -1245,10 +1260,26 @@ export async function updateStudyRoom(
     },
   });
 
+  await normalizePersistedRoomSeatsIfNeeded(prisma, division.id, divisionSlug, {
+    ...updated,
+    aisleColumns: normalized.aisleColumns,
+  });
+
+  const refreshed = await prisma.studyRoom.findUniqueOrThrow({
+    where: { id: roomId },
+    include: {
+      seats: {
+        include: {
+          student: { select: { id: true } },
+        },
+      },
+    },
+  });
+
   const serializedRoom = serializeRoom(
-    updated,
-    updated.seats.length,
-    updated.seats.reduce((sum, seat) => sum + (seat.student ? 1 : 0), 0),
+    refreshed,
+    refreshed.seats.length,
+    refreshed.seats.reduce((sum, seat) => sum + (seat.student ? 1 : 0), 0),
   );
   revalidateSeatData(divisionSlug, roomId);
   return serializedRoom;

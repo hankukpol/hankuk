@@ -1,11 +1,30 @@
 import { z } from "zod";
 
+const pointCategoryNameSchema = z
+  .string()
+  .trim()
+  .min(1, "카테고리 이름을 입력해주세요.")
+  .max(30, "카테고리 이름은 30자 이하여야 합니다.");
+
 export const pointRuleSchema = z.object({
-  category: z.enum(["ATTENDANCE", "BEHAVIOR", "EXAM", "LIFE", "OTHER"]),
+  category: pointCategoryNameSchema,
   name: z.string().trim().min(1, "규칙 이름을 입력해주세요."),
   points: z.number().int(),
   description: z.string().trim().nullable().optional(),
   isActive: z.boolean().optional(),
+});
+
+export const pointCategoryCreateSchema = z.object({
+  name: pointCategoryNameSchema,
+});
+
+export const pointCategoryRenameSchema = z.object({
+  currentName: pointCategoryNameSchema,
+  nextName: pointCategoryNameSchema,
+});
+
+export const pointCategoryDeleteSchema = z.object({
+  name: pointCategoryNameSchema,
 });
 
 export const pointRecordSchema = z

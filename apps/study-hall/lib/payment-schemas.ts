@@ -94,11 +94,6 @@ export const renewPaymentSchema = z
       .optional(),
     payment: paymentPayloadSchema.optional(),
     payments: paymentEntriesSchema.optional(),
-  })
-  .superRefine((value, _ctx) => {
-    if (!value.payment && !value.payments?.length) {
-      return;
-    }
   });
 
 const refundBaseSchema = z.object({

@@ -96,7 +96,7 @@ export function RefundModal({
   }, [studentPayments]);
 
   const paymentGroups = useMemo(() => Array.from(groupMap.entries()), [groupMap]);
-  const selectedGroupPayments = groupMap.get(selectedGroupId) ?? [];
+  const selectedGroupPayments = useMemo(() => groupMap.get(selectedGroupId) ?? [], [groupMap, selectedGroupId]);
   const eligiblePayments = useMemo(
     () =>
       selectedGroupPayments.filter((payment) =>

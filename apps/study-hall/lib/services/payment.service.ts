@@ -339,17 +339,6 @@ function ensureStudentStatusForPayment(status: StudentStatusValue) {
   }
 }
 
-function ensurePaymentPayload(
-  payment: EnrollPaymentSchemaInput["payment"] | RenewPaymentSchemaInput["payment"],
-  message: string,
-) {
-  if (!payment) {
-    throw badRequest(message);
-  }
-
-  return payment;
-}
-
 function resolvePaymentEntries(
   payment: EnrollPaymentSchemaInput["payment"] | RenewPaymentSchemaInput["payment"],
   payments?: EnrollPaymentSchemaInput["payments"] | RenewPaymentSchemaInput["payments"],

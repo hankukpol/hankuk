@@ -1,4 +1,5 @@
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { notFound } from "@/lib/errors";
 import { readMockState, updateMockState, type MockExamScheduleRecord } from "@/lib/mock-store";
 import type { ExamScheduleSchemaInput, ExamScheduleUpdateSchemaInput } from "@/lib/exam-schedule-schemas";
@@ -162,6 +163,7 @@ export async function createExamSchedule(
     },
   });
 
+  revalidateDivisionOperationalViews(divisionSlug);
   return serializeDbRecord(created);
 }
 
@@ -212,6 +214,7 @@ export async function updateExamSchedule(
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
   const updated = await prisma.examSchedule.update({ where: { id: scheduleId }, data });
+  revalidateDivisionOperationalViews(divisionSlug);
   return serializeDbRecord(updated);
 }
 
@@ -241,4 +244,5 @@ export async function deleteExamSchedule(
   if (!existing) throw notFound("시험 일정을 찾을 수 없습니다.");
 
   await prisma.examSchedule.delete({ where: { id: scheduleId } });
+  revalidateDivisionOperationalViews(divisionSlug);
 }

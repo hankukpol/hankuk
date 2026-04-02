@@ -5,7 +5,7 @@ export type LeaveTypeValue = (typeof LEAVE_TYPE_VALUES)[number];
 export type LeaveStatusValue = (typeof LEAVE_STATUS_VALUES)[number];
 
 export const LEAVE_TYPE_OPTIONS = [
-  { value: "HOLIDAY", label: "휴가" },
+  { value: "HOLIDAY", label: "연가" },
   { value: "HALF_DAY", label: "반차" },
   { value: "HEALTH", label: "병가" },
   { value: "OUTING", label: "외출" },

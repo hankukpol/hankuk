@@ -4,6 +4,7 @@ import { CalendarClock, LoaderCircle, Plus, RefreshCcw, Save } from "lucide-reac
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import {
@@ -109,6 +110,11 @@ export const LeaveManager = memo(function LeaveManager({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
   const loadedMonthsRef = useRef(new Set<string>([initialMonth]));
 
   function mergePermissionsForMonth(month: string, nextPermissions: LeavePermissionItem[]) {
@@ -314,6 +320,14 @@ export const LeaveManager = memo(function LeaveManager({
       await refreshPermissions(false, [summaryMonth, historyMonth, form.date.slice(0, 7)]);
       setSummaryStudentId(form.studentId);
       closeEditor();
+      setSaveSuccessModal({
+        title: form.type === "OUTING" ? "외출 등록 완료" : "휴가 등록 완료",
+        description:
+          form.type === "OUTING"
+            ? `${formatDate(form.date)} 외출 허가가 저장되었습니다.`
+            : `${formatDate(form.date)} 휴가가 저장되고 출결에 반영되었습니다.`,
+        notice: "등록된 외출·휴가 정보는 사용 현황과 이력 화면에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "외출/휴가 등록에 실패했습니다.");
     } finally {
@@ -357,6 +371,11 @@ export const LeaveManager = memo(function LeaveManager({
 
       toast.success(`${data.result.createdCount}명에게 총 ${data.result.totalRewardPoints}점을 지급했습니다.`);
       await loadSettlementPreview();
+      setSaveSuccessModal({
+        title: "월말 정산 완료",
+        description: `${data.result.createdCount}명에게 총 ${data.result.totalRewardPoints}점을 지급했습니다.`,
+        notice: "정산 결과는 현재 월말 정산 미리보기와 포인트 현황에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "월말 정산에 실패했습니다.");
     } finally {
@@ -706,6 +725,14 @@ export const LeaveManager = memo(function LeaveManager({
           </div>
         </form>
       </Modal>
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
+      />
     </>
   );
 });

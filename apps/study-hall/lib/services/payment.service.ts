@@ -16,6 +16,7 @@ import type {
   RenewPaymentSchemaInput,
 } from "@/lib/payment-schemas";
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { parseUtcDateFromYmd } from "@/lib/date-utils";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import {
@@ -838,6 +839,7 @@ export async function createPaymentsBatch(
     ),
   );
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return {
     payments: payments.map((payment) => serializePayment(payment)),
   };
@@ -1005,6 +1007,7 @@ export async function updatePayment(
     select: paymentSelectForWrite,
   });
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return serializePayment(updated);
 }
 
@@ -1040,6 +1043,7 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
     },
     select: {
       id: true,
+      studentId: true,
     },
   });
 
@@ -1068,6 +1072,7 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
     },
   });
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: payment.studentId });
   return true;
 }
 
@@ -1339,6 +1344,7 @@ export async function refundPayment(
       select: paymentSelectForWrite,
     });
 
+    revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
     return {
       payments: [serializePayment(payment)],
     };
@@ -1475,6 +1481,7 @@ export async function refundPayment(
     };
   });
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
   return {
     payments: [
       serializePayment(result.refundPaymentRecord),
@@ -1676,6 +1683,7 @@ export async function enrollAndPay(
       };
     });
 
+    revalidateDivisionOperationalViews(divisionSlug, { studentId: result.studentId });
     return {
       student: await getStudentDetail(divisionSlug, result.studentId),
       payments: result.payments,
@@ -1870,6 +1878,7 @@ export async function renewAndPay(
     };
   });
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: result.studentId });
   return {
     student: await getStudentDetail(divisionSlug, result.studentId),
     payments: result.payments,

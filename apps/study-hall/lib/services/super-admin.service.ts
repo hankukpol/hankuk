@@ -1,3 +1,5 @@
+import { revalidatePath, revalidateTag } from "next/cache";
+
 import { isMockMode } from "@/lib/mock-data";
 import {
   readMockState,
@@ -59,6 +61,14 @@ export type ManagedAdminAssignment = {
 async function getPrismaClient() {
   const { prisma } = await import("@/lib/prisma");
   return prisma;
+}
+
+function revalidateSuperAdminMutationViews() {
+  revalidateTag("divisions");
+  revalidateTag("super-admin-overview");
+  revalidateTag("super-admin-student-trend");
+  revalidateTag("super-admin-tuition-status");
+  revalidatePath("/super-admin");
 }
 
 function serializeDivision(division: {
@@ -212,6 +222,7 @@ export async function createManagedDivision(input: DivisionCreateInput) {
     return createdDivision;
   });
 
+  revalidateSuperAdminMutationViews();
   return serializeDivision(division);
 }
 
@@ -254,6 +265,7 @@ export async function updateManagedDivision(slug: string, input: DivisionUpdateI
     },
   });
 
+  revalidateSuperAdminMutationViews();
   return serializeDivision(division);
 }
 
@@ -375,6 +387,7 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
     }),
   ]);
 
+  revalidateSuperAdminMutationViews();
   return {
     slug: division.slug,
     name: division.name,
@@ -523,6 +536,7 @@ export async function createManagedAdminAccount(input: AdminAccountCreateInput) 
       },
     });
 
+    revalidateSuperAdminMutationViews();
     return {
       id: admin.id,
       userId: admin.userId,
@@ -562,6 +576,7 @@ export async function deleteManagedAdminAccount(id: string) {
   }
 
   await prisma.admin.update({ where: { id }, data: { isActive: false } });
+  revalidateSuperAdminMutationViews();
   return { id: admin.id, name: admin.name };
 }
 
@@ -638,6 +653,7 @@ export async function updateManagedAdminAccount(id: string, input: AdminAccountU
 
   const usersById = await listSupabaseUsersByIds([admin.userId]);
 
+  revalidateSuperAdminMutationViews();
   return {
     id: admin.id,
     userId: admin.userId,

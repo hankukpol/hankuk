@@ -245,6 +245,10 @@ export function SeatEditor({
   const [movingSeatId, setMovingSeatId] = useState<string | null>(null);
   const [extraSelectedLocalIds, setExtraSelectedLocalIds] = useState<Set<string>>(new Set());
   const [isDirty, setIsDirty] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
 
   const assignableStudents = useMemo(
     () => students.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
@@ -608,6 +612,10 @@ export function SeatEditor({
       await persistRoomConfiguration(selectedRoomId, { showSuccessToast: true });
       await refreshRooms(selectedRoomId);
       await loadLayout(selectedRoomId);
+      setSaveSuccessModal({
+        title: "자습실 정보 저장 완료",
+        description: "자습실 정보 변경이 저장되어 현재 좌석 편집 화면에 반영되었습니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "자습실 수정에 실패했습니다.");
     } finally {
@@ -708,6 +716,12 @@ export function SeatEditor({
       await Promise.all([refreshStudents(), refreshRooms(selectedRoomId)]);
       await loadLayout(selectedRoomId);
       toast.success(hasRoomConfigurationChanges ? "좌석 설정을 저장했습니다." : "좌석 배치를 저장했습니다.");
+      setSaveSuccessModal({
+        title: hasRoomConfigurationChanges ? "좌석 설정 저장 완료" : "좌석 배치 저장 완료",
+        description: hasRoomConfigurationChanges
+          ? "자습실 정보와 좌석 배치 변경이 저장되어 현재 편집 화면에 반영되었습니다."
+          : "좌석 배치 변경이 저장되어 현재 편집 화면에 반영되었습니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "좌석 배치 저장에 실패했습니다.");
     } finally {
@@ -1258,6 +1272,31 @@ export function SeatEditor({
               </div>
             </div>
           ) : null}
+        </Modal>
+
+        <Modal
+          open={saveSuccessModal !== null}
+          onClose={() => setSaveSuccessModal(null)}
+          badge="저장 완료"
+          title={saveSuccessModal?.title ?? "저장 완료"}
+          description={saveSuccessModal?.description}
+          widthClassName="max-w-md"
+        >
+          <div className="space-y-5">
+            <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-6 text-emerald-900">
+              저장된 좌석 정보는 현재 화면에 바로 반영되며, 새로고침 후에도 유지됩니다.
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSaveSuccessModal(null)}
+                className="inline-flex items-center rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+              >
+                확인
+              </button>
+            </div>
+          </div>
         </Modal>
       </article>
     </div>

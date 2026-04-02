@@ -6,6 +6,7 @@ import { toast } from "@/lib/sonner";
 
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { getKstToday } from "@/components/payments/payment-client-helpers";
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import {
@@ -55,6 +56,11 @@ export function RefundModal({
   const [rechargeCategoryId, setRechargeCategoryId] = useState("");
   const [rechargeNotes, setRechargeNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
 
   const today = getKstToday();
   const refundCategory = paymentCategories.find((category) => category.name === "환불") ?? null;
@@ -133,6 +139,14 @@ export function RefundModal({
       setRechargeCategoryId(selectedPayment.paymentTypeId);
     }
   }, [mode, rechargeCategoryId, selectedPayment]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setSaveSuccessModal(null);
+  }, [open]);
 
   function resetForm() {
     if (!fixedStudent) {
@@ -217,6 +231,15 @@ export function RefundModal({
 
       resetForm();
       await onSuccess();
+      toast.success(mode === "simple" ? "환불 처리를 완료했습니다." : "카드 전체취소와 재결제를 완료했습니다.");
+      setSaveSuccessModal({
+        title: mode === "simple" ? "환불 처리 완료" : "카드 전체취소 완료",
+        description:
+          mode === "simple"
+            ? "환불 내역이 저장되어 수납 이력과 잔액에 반영되었습니다."
+            : "카드 전체취소와 재결제 내역이 함께 저장되었습니다.",
+        notice: "변경된 환불 내역은 현재 수납 이력과 학생별 잔여 금액에 바로 반영됩니다.",
+      });
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "환불 처리에 실패했습니다.");
@@ -226,8 +249,9 @@ export function RefundModal({
   }
 
   return (
-    <Modal open={open} onClose={handleClose} badge="환불" title="환불 처리" description="납부 묶음 기준으로 환불을 처리합니다." widthClassName="max-w-3xl">
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <>
+      <Modal open={open} onClose={handleClose} badge="환불" title="환불 처리" description="납부 묶음 기준으로 환불을 처리합니다." widthClassName="max-w-3xl">
+        <form onSubmit={handleSubmit} className="space-y-5">
         {fixedStudent ? (
           <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
             <p className="text-slate-500">대상 학생</p>
@@ -337,7 +361,16 @@ export function RefundModal({
             환불 처리 완료
           </button>
         </div>
-      </form>
-    </Modal>
+        </form>
+      </Modal>
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
+      />
+    </>
   );
 }

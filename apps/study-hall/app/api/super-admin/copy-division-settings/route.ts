@@ -1,9 +1,11 @@
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
 import { toApiErrorResponse } from "@/lib/api-error-response";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState } from "@/lib/mock-store";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { supportsPointCategoryCustomization } from "@/lib/services/point.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 
@@ -22,6 +24,14 @@ function assertLegacyPointCategory(category: string) {
   }
 
   return category;
+}
+
+function revalidateCopiedDivisionSettings(targetSlug: string) {
+  revalidateTag(`periods:${targetSlug}`);
+  revalidateTag(`division-settings:${targetSlug}`);
+  revalidateDivisionOperationalViews(targetSlug);
+  revalidatePath(`/${targetSlug}/admin/points`);
+  revalidatePath(`/${targetSlug}/admin/points/rules`);
 }
 
 /**
@@ -269,6 +279,8 @@ export async function POST(request: NextRequest) {
         });
       }
     });
+
+    revalidateCopiedDivisionSettings(targetSlug);
 
     return NextResponse.json({
       ok: true,

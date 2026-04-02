@@ -25,6 +25,7 @@ import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments
 import { RefundModal } from "@/components/payments/RefundModal";
 import { RenewPaymentModal } from "@/components/payments/RenewPaymentModal";
 import { SettlementView } from "@/components/payments/SettlementView";
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { formatCurrency, formatPaymentMethod, formatPaymentMonth } from "@/lib/payment-meta";
@@ -136,6 +137,11 @@ export function PaymentManager({
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
 
   const activeStudents = useMemo(
     () => studentList.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
@@ -376,6 +382,19 @@ export function PaymentManager({
       );
       await refreshData();
       closeEditor();
+      setSaveSuccessModal({
+        title: editingPaymentId
+          ? "수납 수정 완료"
+          : paymentEntries.length > 1
+            ? "분할 결제 등록 완료"
+            : "수납 등록 완료",
+        description: editingPaymentId
+          ? "수납 내역 변경이 저장되어 목록과 미납 현황에 반영되었습니다."
+          : paymentEntries.length > 1
+            ? "여러 결제 수단이 같은 납부 건으로 저장되었습니다."
+            : "수납 내역이 저장되어 목록과 미납 현황에 반영되었습니다.",
+        notice: "저장된 수납 내역은 학생별 수납 현황과 수납 이력에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "수납 처리에 실패했습니다.");
     } finally {
@@ -1017,6 +1036,14 @@ export function PaymentManager({
         paymentCategories={paymentCategories}
         paymentRecords={payments}
         onSuccess={() => refreshData()}
+      />
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
       />
     </>
   );

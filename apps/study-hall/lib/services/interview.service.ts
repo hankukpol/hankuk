@@ -1,6 +1,7 @@
 import { cache } from "react";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { normalizeYmMonth, parseUtcDateFromYmd } from "@/lib/date-utils";
 import {
   readMockState,
@@ -275,5 +276,6 @@ export async function createInterview(
     },
   });
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return serializeInterviewRecord(interview, interview.student, interview.createdBy.name);
 }

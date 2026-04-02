@@ -178,6 +178,15 @@ export function StudentDetailView({
     }
   }, [activeTab, availableTabs]);
 
+  useEffect(() => {
+    if (isEditingMemo) {
+      return;
+    }
+
+    setMemo(initialStudent.memo ?? "");
+    setMemoDraft(initialStudent.memo ?? "");
+  }, [initialStudent.memo, initialStudent.updatedAt, isEditingMemo]);
+
   async function handleWarnAdjust() {
     const target = warnTargets.find((t) => t.stage === selectedWarnTarget);
     if (!target) return;

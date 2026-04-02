@@ -3,6 +3,7 @@ import { cache } from "react";
 import { Prisma } from "@prisma/client";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { parseUtcDateFromYmd } from "@/lib/date-utils";
 import { badRequest, notFound } from "@/lib/errors";
 import {
@@ -1352,6 +1353,7 @@ export async function createPointRecord(
   );
   const recordCategory = record.ruleId ? categoryMap.get(record.ruleId) ?? "기타" : "기타";
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return {
     id: record.id,
     studentId: record.student.id,
@@ -1481,6 +1483,7 @@ export async function createPointRecordsBatch(
     })),
   });
 
+  revalidateDivisionOperationalViews(divisionSlug);
   return {
     createdCount: students.length,
     date: input.date,
@@ -1513,6 +1516,7 @@ export async function deletePointRecord(divisionSlug: string, recordId: string) 
     },
     select: {
       id: true,
+      studentId: true,
     },
   });
 
@@ -1526,6 +1530,7 @@ export async function deletePointRecord(divisionSlug: string, recordId: string) 
     },
   });
 
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: record.studentId });
   return true;
 }
 

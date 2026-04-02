@@ -10,6 +10,7 @@ import {
   type PaymentEntryFormValue,
 } from "@/components/payments/PaymentEntriesEditor";
 import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments/payment-client-helpers";
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { formatCurrency } from "@/lib/payment-meta";
@@ -98,6 +99,11 @@ export function RenewPaymentModal({
     createInitialState(paymentCategories, tuitionPlans, initialStudentId),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -106,6 +112,7 @@ export function RenewPaymentModal({
 
     setForm(createInitialState(paymentCategories, tuitionPlans, initialStudentId));
     setIsSubmitting(false);
+    setSaveSuccessModal(null);
   }, [initialStudentId, open, paymentCategories, tuitionPlans]);
 
   const activeStudents = useMemo(
@@ -155,6 +162,13 @@ export function RenewPaymentModal({
           : "연장 수납과 기간 갱신을 완료했습니다.",
       );
       await onSuccess();
+      setSaveSuccessModal({
+        title: selectedStudent?.tuitionExempt ? "수강 기간 연장 완료" : "연장 수납 완료",
+        description: selectedStudent?.tuitionExempt
+          ? "수강 기간 연장이 저장되어 학생 정보에 반영되었습니다."
+          : "연장 수납과 수강 기간 갱신이 저장되었습니다.",
+        notice: "변경된 수강 기간과 수납 내역은 학생 정보와 수납 현황에 바로 반영됩니다.",
+      });
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "연장 처리에 실패했습니다.");
@@ -164,18 +178,19 @@ export function RenewPaymentModal({
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={() => !isSubmitting && onClose()}
-      badge="연장 등록"
-      title={selectedStudent?.tuitionExempt ? "수강 기간 연장" : "연장 수납"}
-      description={
-        selectedStudent?.tuitionExempt
-          ? "면제 학생은 결제 없이 기간만 연장합니다."
-          : "기존 학생의 수강 기간을 연장하고 결제를 함께 기록합니다."
-      }
-    >
-      <form onSubmit={handleSubmit} className="space-y-6">
+    <>
+      <Modal
+        open={open}
+        onClose={() => !isSubmitting && onClose()}
+        badge="연장 등록"
+        title={selectedStudent?.tuitionExempt ? "수강 기간 연장" : "연장 수납"}
+        description={
+          selectedStudent?.tuitionExempt
+            ? "면제 학생은 결제 없이 기간만 연장합니다."
+            : "기존 학생의 수강 기간을 연장하고 결제를 함께 기록합니다."
+        }
+      >
+        <form onSubmit={handleSubmit} className="space-y-6">
         <section className="rounded-[10px] border border-slate-200 bg-white p-5">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">학생 선택</span>
@@ -323,7 +338,16 @@ export function RenewPaymentModal({
             {selectedStudent?.tuitionExempt ? "연장 완료" : "연장 수납 완료"}
           </button>
         </div>
-      </form>
-    </Modal>
+        </form>
+      </Modal>
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
+      />
+    </>
   );
 }

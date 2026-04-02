@@ -1,3 +1,5 @@
+import { revalidatePath, revalidateTag } from "next/cache";
+
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState, type MockAdminRecord } from "@/lib/mock-store";
 import type { StaffCreateInput, StaffUpdateInput } from "@/lib/division-staff-schemas";
@@ -17,6 +19,11 @@ export type DivisionStaffAccount = {
   isActive: boolean;
   createdAt: string;
 };
+
+function revalidateDivisionStaffMutationViews() {
+  revalidateTag("super-admin-overview");
+  revalidatePath("/super-admin");
+}
 
 function serializeMockStaff(admin: MockAdminRecord): DivisionStaffAccount {
   return {
@@ -109,6 +116,7 @@ export async function createDivisionStaff(
       },
     });
 
+    revalidateDivisionStaffMutationViews();
     return {
       id: admin.id,
       userId: admin.userId,
@@ -156,6 +164,7 @@ export async function updateDivisionStaff(
   });
 
   const usersById = await listSupabaseUsersByIds([admin.userId]);
+  revalidateDivisionStaffMutationViews();
   return {
     id: admin.id,
     userId: admin.userId,
@@ -188,6 +197,7 @@ export async function deleteDivisionStaff(divisionId: string, staffId: string) {
   if (!existing) throw new Error("직원 정보를 찾을 수 없습니다.");
 
   await prisma.admin.update({ where: { id: staffId }, data: { isActive: false } });
+  revalidateDivisionStaffMutationViews();
   return { id: existing.id, name: existing.name };
 }
 
@@ -211,6 +221,7 @@ export async function permanentDeleteDivisionStaff(divisionId: string, staffId: 
 
   await prisma.admin.delete({ where: { id: staffId } });
   await deleteSupabaseManagedUser(existing.userId).catch(() => undefined);
+  revalidateDivisionStaffMutationViews();
   return { id: existing.id, name: existing.name };
 }
 

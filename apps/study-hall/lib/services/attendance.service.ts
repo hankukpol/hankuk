@@ -10,6 +10,7 @@ import {
 import { normalizeYmdDate } from "@/lib/date-utils";
 import { badRequest, notFound } from "@/lib/errors";
 import { isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { getPrismaClient } from "@/lib/service-helpers";
 import { getPeriods } from "@/lib/services/period.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
@@ -767,6 +768,7 @@ export async function upsertAttendanceBatch(
     console.error("[PerfectAttendancePoints]", error);
   }
 
+  revalidateDivisionOperationalViews(divisionSlug);
   return snapshot;
 }
 

@@ -10,6 +10,7 @@ import {
   type PaymentEntryFormValue,
 } from "@/components/payments/PaymentEntriesEditor";
 import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments/payment-client-helpers";
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency } from "@/lib/payment-meta";
 import type { PaymentCategoryItem } from "@/lib/services/payment.service";
@@ -92,6 +93,11 @@ export function EnrollPaymentModal({
 }: EnrollPaymentModalProps) {
   const [form, setForm] = useState<FormState>(() => createInitialState(paymentCategories, tuitionPlans));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -100,6 +106,7 @@ export function EnrollPaymentModal({
 
     setForm(createInitialState(paymentCategories, tuitionPlans));
     setIsSubmitting(false);
+    setSaveSuccessModal(null);
   }, [open, paymentCategories, tuitionPlans]);
 
   const activeStudents = useMemo(
@@ -160,6 +167,13 @@ export function EnrollPaymentModal({
 
       toast.success(form.tuitionExempt ? "학생 등록을 완료했습니다." : "학생 등록과 수납 처리를 완료했습니다.");
       await onSuccess();
+      setSaveSuccessModal({
+        title: form.tuitionExempt ? "학생 등록 완료" : "등록 및 수납 완료",
+        description: form.tuitionExempt
+          ? "학생 등록이 저장되어 학생 목록과 수납 화면에 반영되었습니다."
+          : "학생 등록과 첫 수납 처리가 저장되었습니다.",
+        notice: "등록된 학생 정보와 첫 수납 내역은 현재 화면과 학생 목록에 바로 반영됩니다.",
+      });
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "신규 등록 처리에 실패했습니다.");
@@ -169,18 +183,19 @@ export function EnrollPaymentModal({
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={() => !isSubmitting && onClose()}
-      badge="신규 등록"
-      title={form.tuitionExempt ? "학생 등록" : "학생 등록과 수납"}
-      description={
-        form.tuitionExempt
-          ? "수납 면제 학생은 결제 없이 등록합니다."
-          : "신규 학생 등록과 첫 수납을 한 번에 처리합니다."
-      }
-    >
-      <form onSubmit={handleSubmit} className="space-y-6">
+    <>
+      <Modal
+        open={open}
+        onClose={() => !isSubmitting && onClose()}
+        badge="신규 등록"
+        title={form.tuitionExempt ? "학생 등록" : "학생 등록과 수납"}
+        description={
+          form.tuitionExempt
+            ? "수납 면제 학생은 결제 없이 등록합니다."
+            : "신규 학생 등록과 첫 수납을 한 번에 처리합니다."
+        }
+      >
+        <form onSubmit={handleSubmit} className="space-y-6">
         <section className="rounded-[10px] border border-slate-200 bg-white p-5">
           <div>
             <p className="text-sm font-semibold text-slate-900">기존 학생 확인</p>
@@ -421,7 +436,16 @@ export function EnrollPaymentModal({
             {form.tuitionExempt ? "등록 완료" : "등록 + 수납 완료"}
           </button>
         </div>
-      </form>
-    </Modal>
+        </form>
+      </Modal>
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
+      />
+    </>
   );
 }

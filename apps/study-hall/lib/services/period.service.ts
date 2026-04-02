@@ -3,6 +3,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { readMockState, type MockPeriodRecord, updateMockState } from "@/lib/mock-store";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 
 export type PeriodRecord = {
   id: string;
@@ -160,6 +161,7 @@ export async function createPeriod(divisionSlug: string, input: PeriodInput) {
   });
 
   revalidateTag(`periods:${divisionSlug}`);
+  revalidateDivisionOperationalViews(divisionSlug);
   return createdPeriod;
 }
 
@@ -202,6 +204,7 @@ export async function updatePeriod(
   if (input.reorderIds?.length) {
     const reorderedPeriods = await reorderDivisionPeriodsInDb(division.id, input.reorderIds);
     revalidateTag(`periods:${divisionSlug}`);
+    revalidateDivisionOperationalViews(divisionSlug);
     return reorderedPeriods;
   }
 
@@ -235,6 +238,7 @@ export async function updatePeriod(
   });
 
   revalidateTag(`periods:${divisionSlug}`);
+  revalidateDivisionOperationalViews(divisionSlug);
   return updatedPeriod;
 }
 
@@ -300,6 +304,7 @@ export async function deletePeriod(divisionSlug: string, periodId: string) {
   );
 
   revalidateTag(`periods:${divisionSlug}`);
+  revalidateDivisionOperationalViews(divisionSlug);
   return reorderedPeriods;
 }
 

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client/index";
 
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import {
   readMockState,
   updateMockState,
@@ -136,6 +137,8 @@ function revalidateSeatData(divisionSlug: string, roomId?: string) {
   if (roomId) {
     revalidateTag(seatLayoutTag(divisionSlug, roomId));
   }
+
+  revalidateDivisionOperationalViews(divisionSlug);
 }
 
 function normalizeText(value: string) {
@@ -1785,7 +1788,11 @@ export async function saveSeatEditorLayout(
       const persistedSeatId = persistedSeatIdByPosition.get(getSeatPositionKey(seat.positionX, seat.positionY));
       if (!persistedSeatId) continue;
       try {
-        await tx.student.update({ where: { id: studentId }, data: { seatId: persistedSeatId } });
+        await tx.student.update({
+          where: { id: studentId },
+          data: { seatId: persistedSeatId },
+          select: { id: true },
+        });
       } catch (error) {
         throw toSeatAssignmentError(error);
       }
@@ -1908,6 +1915,9 @@ export async function assignStudentToSeat(
           },
           data: {
             seatId,
+          },
+          select: {
+            id: true,
           },
         });
       } else {

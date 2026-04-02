@@ -10,6 +10,7 @@ import {
   getAttendanceStatusClasses,
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
 
@@ -118,6 +119,11 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [periods, setPeriods] = useState(initialPeriods);
   const [matrix, setMatrix] = useState<MatrixState>(() => initialMatrix);
   const [stats, setStats] = useState(initialStats);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
@@ -306,6 +312,11 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       await savePeriodsForStudents();
       setIsDirty(false);
       toast.success("출석부를 저장했습니다.");
+      setSaveSuccessModal({
+        title: "출석부 저장 완료",
+        description: `${selectedDate} 출석부가 저장되어 통계와 좌석 보드에 반영되었습니다.`,
+        notice: "저장된 출결은 현재 날짜의 통계와 좌석 보드에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "출석부 저장에 실패했습니다.");
     } finally {
@@ -314,8 +325,19 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }
 
   async function handleSaveStudent(studentId: string) {
-    await savePeriodsForStudents([studentId]);
-    toast.success("저장되었습니다.");
+    try {
+      await savePeriodsForStudents([studentId]);
+      const targetStudent = students.find((student) => student.id === studentId);
+      toast.success("저장되었습니다.");
+      setSaveSuccessModal({
+        title: "학생 출결 저장 완료",
+        description: `${targetStudent?.name ?? "선택한 학생"}의 ${selectedDate} 출결이 저장되었습니다.`,
+        notice: "저장된 출결은 현재 날짜의 좌석 보드와 출석 통계에 바로 반영됩니다.",
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "학생 출결 저장에 실패했습니다.");
+      throw error;
+    }
   }
 
   return (
@@ -518,6 +540,14 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           </table>
         </div>
       </section>
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
+      />
     </div>
   );
 });

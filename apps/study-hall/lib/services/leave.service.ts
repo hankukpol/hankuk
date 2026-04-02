@@ -1,6 +1,7 @@
 import { cache } from "react";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import { normalizeYmMonth, parseUtcDateFromYmd } from "@/lib/date-utils";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import {
@@ -554,6 +555,7 @@ export async function createLeavePermission(
     },
   });
   if (!createdPermission) return null;
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return serializeLeaveRecord(createdPermission, createdPermission.student, createdPermission.approvedBy.name);
 }
 
@@ -738,6 +740,7 @@ export async function settleLeaveMonth(
     })),
   });
 
+  revalidateDivisionOperationalViews(divisionSlug);
   return {
     month: preview.month,
     createdCount: records.length,

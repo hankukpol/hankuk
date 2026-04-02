@@ -14,6 +14,7 @@ import {
 import { toast } from "@/lib/sonner";
 
 import { SeatMap } from "@/components/seats/SeatMap";
+import { Modal } from "@/components/ui/Modal";
 import type { SeatLayout, SeatOptionItem, StudyRoomItem } from "@/lib/services/seat.service";
 import type { StudentDetail } from "@/lib/services/student.service";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
@@ -93,12 +94,37 @@ export function StudentForm({
   );
   const [memo, setMemo] = useState(initialStudent?.memo ?? "");
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
   const [rooms, setRooms] = useState<StudyRoomItem[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [seatLayout, setSeatLayout] = useState<SeatLayout | null>(null);
   const [isSeatLayoutLoading, setIsSeatLayoutLoading] = useState(false);
   const [isSeatBrowserOpen, setIsSeatBrowserOpen] = useState(showSeatSectionOnly);
   const [hasLoadedSeatBrowser, setHasLoadedSeatBrowser] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "edit" || !initialStudent) {
+      return;
+    }
+
+    setName(initialStudent.name);
+    setStudentNumber(initialStudent.studentNumber);
+    setStudyTrack(initialStudent.studyTrack ?? "");
+    setPhone(initialStudent.phone ?? "");
+    setSeatId(initialStudent.seatId ?? "");
+    setCourseStartDate(initialStudent.courseStartDate ?? "");
+    setCourseEndDate(initialStudent.courseEndDate ?? "");
+    setTuitionPlanId(initialStudent.tuitionPlanId ?? "");
+    setTuitionAmount(initialStudent.tuitionAmount != null ? String(initialStudent.tuitionAmount) : "");
+    setTuitionExempt(initialStudent.tuitionExempt);
+    setTuitionExemptReason(initialStudent.tuitionExemptReason ?? "");
+    setStatus(getInitialStatus(initialStudent));
+    setMemo(initialStudent.memo ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialStudent?.id, initialStudent?.updatedAt, mode]);
 
   const activeTuitionPlans = useMemo(
     () => tuitionPlans.filter((plan) => plan.isActive || plan.id === initialStudent?.tuitionPlanId),
@@ -311,6 +337,18 @@ export function StudentForm({
 
       toast.success(mode === "create" ? "학생을 등록했습니다." : "학생 정보를 수정했습니다.");
 
+      if (mode === "edit") {
+        setSaveSuccessModal({
+          title: "학생 정보 저장 완료",
+          description: "기본정보 변경이 저장되어 학생 상세 화면에 반영되었습니다.",
+        });
+      } else if (!redirectOnCreate) {
+        setSaveSuccessModal({
+          title: "학생 등록 완료",
+          description: "학생이 등록되어 목록과 상세 화면에 반영되었습니다.",
+        });
+      }
+
       if (mode === "create") {
         if (redirectOnCreate) {
           router.push(`/${divisionSlug}/admin/students/${data.student.id}`);
@@ -330,7 +368,8 @@ export function StudentForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <>
+      <form onSubmit={handleSubmit} className="space-y-6">
       {!showSeatSectionOnly && (<><section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
@@ -788,6 +827,32 @@ export function StudentForm({
           ) : null}
         </div>
       </div>
-    </form>
+      </form>
+
+      <Modal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        badge="저장 완료"
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        widthClassName="max-w-md"
+      >
+        <div className="space-y-5">
+          <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-6 text-emerald-900">
+            저장된 내용은 현재 화면에 바로 반영되며, 새로고침 후에도 유지됩니다.
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setSaveSuccessModal(null)}
+              className="inline-flex items-center rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

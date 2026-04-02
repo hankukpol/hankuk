@@ -105,7 +105,7 @@ export default function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="비밀번호를 입력해 주세요."
+                  placeholder="비밀번호를 입력해 주세요"
                   className="w-full border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-gray-500"
                   required
                 />

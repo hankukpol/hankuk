@@ -21,6 +21,7 @@ import {
   getAttendanceStatusLabel,
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 
 type PeriodItem = {
   id: string;
@@ -132,6 +133,11 @@ export function MobileCheckForm({
   const [formState, setFormState] = useState<FormState>(() => buildInitialState(initialStudents, initialRecords));
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessModal, setSaveSuccessModal] = useState<{
+    title: string;
+    description: string;
+    notice?: string;
+  } | null>(null);
   const [showOnlyUnchecked, setShowOnlyUnchecked] = useState(false);
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
@@ -354,6 +360,11 @@ export function MobileCheckForm({
       setFormState(buildInitialState(data.students, data.records));
       setSwipeOffsets({});
       toast.success("출석 기록을 저장했습니다.");
+      setSaveSuccessModal({
+        title: "출석 저장 완료",
+        description: `${selectedDate} ${selectedPeriod?.name ?? "선택한 교시"} 출결이 저장되었습니다.`,
+        notice: "저장된 출결은 현재 교시 카드와 출결 상태에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "출석 저장에 실패했습니다.");
     } finally {
@@ -708,6 +719,14 @@ export function MobileCheckForm({
           );
         })}
       </section>
+
+      <ActionCompleteModal
+        open={saveSuccessModal !== null}
+        onClose={() => setSaveSuccessModal(null)}
+        title={saveSuccessModal?.title ?? "저장 완료"}
+        description={saveSuccessModal?.description}
+        notice={saveSuccessModal?.notice}
+      />
     </div>
   );
 }

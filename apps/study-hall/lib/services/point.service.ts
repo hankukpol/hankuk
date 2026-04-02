@@ -323,7 +323,7 @@ async function listLegacyPointRuleRows(
         display_order AS "displayOrder",
         created_at AS "createdAt",
         created_at AS "updatedAt"
-      FROM point_rules
+      FROM study_hall.point_rules
       WHERE division_id = ${divisionId}
         AND is_active = true
       ORDER BY display_order ASC
@@ -342,7 +342,7 @@ async function listLegacyPointRuleRows(
       display_order AS "displayOrder",
       created_at AS "createdAt",
       created_at AS "updatedAt"
-    FROM point_rules
+    FROM study_hall.point_rules
     WHERE division_id = ${divisionId}
     ORDER BY display_order ASC
   `;
@@ -362,7 +362,7 @@ async function getLegacyPointRuleRow(divisionId: string, ruleId: string) {
       display_order AS "displayOrder",
       created_at AS "createdAt",
       created_at AS "updatedAt"
-    FROM point_rules
+    FROM study_hall.point_rules
     WHERE division_id = ${divisionId}
       AND id = ${ruleId}
     LIMIT 1
@@ -381,7 +381,7 @@ async function getLegacyPointRuleCategoryMap(ruleIds: string[]) {
     SELECT
       id,
       category::text AS category
-    FROM point_rules
+    FROM study_hall.point_rules
     WHERE id IN (${Prisma.join(ruleIds)})
   `;
 
@@ -779,7 +779,7 @@ export async function createPointRule(divisionSlug: string, input: PointRuleInpu
     const displayOrder = current.length;
     const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
       `
-        INSERT INTO point_rules (
+        INSERT INTO study_hall.point_rules (
           division_id,
           category,
           name,
@@ -853,7 +853,7 @@ export async function createPointRule(divisionSlug: string, input: PointRuleInpu
     const displayOrder = current.length;
     const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
       `
-        INSERT INTO point_rules (
+        INSERT INTO study_hall.point_rules (
           division_id,
           category,
           name,
@@ -963,7 +963,7 @@ export async function updatePointRule(
     const legacyCategory = assertLegacyPointCategorySupported(nextCategory);
     const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
       `
-        UPDATE point_rules
+        UPDATE study_hall.point_rules
         SET
           category = '${legacyCategory}',
           name = $2,
@@ -1056,7 +1056,7 @@ export async function updatePointRule(
     const legacyCategory = assertLegacyPointCategorySupported(legacyNextCategory);
     const rows = await prisma.$queryRawUnsafe<PointRuleRow[]>(
       `
-        UPDATE point_rules
+        UPDATE study_hall.point_rules
         SET
           category = '${legacyCategory}',
           name = $2,

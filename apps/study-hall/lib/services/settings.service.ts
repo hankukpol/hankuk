@@ -329,7 +329,7 @@ async function readLegacyDivisionSettings(
       half_day_unused_pts AS "halfDayUnusedPts",
       operating_days AS "operatingDays",
       updated_at AS "updatedAt"
-    FROM division_settings
+    FROM study_hall.division_settings
     WHERE division_id = ${divisionId}
     LIMIT 1
   `;
@@ -343,7 +343,7 @@ async function upsertLegacyDivisionRuleSettings(
   input: RulesSettingsInput,
 ) {
   await prisma.$executeRaw`
-    INSERT INTO division_settings (
+    INSERT INTO study_hall.division_settings (
       division_id,
       warn_level1,
       warn_level2,
@@ -388,7 +388,7 @@ async function upsertLegacyDivisionGeneralSettings(
   input: GeneralSettingsInput,
 ) {
   await prisma.$executeRaw`
-    INSERT INTO division_settings (
+    INSERT INTO study_hall.division_settings (
       division_id,
       operating_days
     ) VALUES (

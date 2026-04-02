@@ -243,8 +243,8 @@ async function readLegacySeatRows(
       student.student_number AS "studentNumber",
       student.status::text AS "studentStatus",
       to_char(student.course_end_date, 'YYYY-MM-DD') AS "courseEndDate"
-    FROM seats seat
-    LEFT JOIN students student
+    FROM study_hall.seats seat
+    LEFT JOIN study_hall.students student
       ON student.seat_id = seat.id
     WHERE seat.division_id = ${divisionId}
     ORDER BY seat.position_y ASC, seat.position_x ASC

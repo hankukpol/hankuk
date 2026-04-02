@@ -474,6 +474,11 @@ function toStudentSession(student: Pick<StudentListItem, "id" | "divisionId" | "
 }
 
 function toNetPoints(rawPointsSum: number) {
+  return rawPointsSum;
+}
+
+/** Demerit-only value for warning stage calculation (always >= 0) */
+function toDemeritPoints(rawPointsSum: number) {
   return Math.abs(Math.min(rawPointsSum, 0));
 }
 
@@ -611,14 +616,14 @@ async function readCompatibleStudents(
   const schema = options?.schema ?? await getStudentSchemaCompatibility();
   const roomJoin = schema.hasStudyRoomsTable
     ? Prisma.sql`
-        LEFT JOIN study_rooms room
+        LEFT JOIN study_hall.study_rooms room
           ON room.id = seat.study_room_id
       `
     : Prisma.empty;
   const planJoin =
     schema.hasTuitionPlansTable && schema.hasTuitionPlanId
       ? Prisma.sql`
-          LEFT JOIN tuition_plans plan
+          LEFT JOIN study_hall.tuition_plans plan
             ON plan.id = s.tuition_plan_id
         `
       : Prisma.empty;
@@ -654,10 +659,10 @@ async function readCompatibleStudents(
       ${schema.hasTuitionAmount ? Prisma.sql`s.tuition_amount` : Prisma.sql`NULL`} AS "tuitionAmount",
       ${schema.hasTuitionExempt ? Prisma.sql`COALESCE(s.tuition_exempt, false)` : Prisma.sql`false`} AS "tuitionExempt",
       ${schema.hasTuitionExemptReason ? Prisma.sql`s.tuition_exempt_reason` : Prisma.sql`NULL`} AS "tuitionExemptReason"
-    FROM students s
-    JOIN divisions d
+    FROM study_hall.students s
+    JOIN study_hall.divisions d
       ON d.id = s.division_id
-    LEFT JOIN seats seat
+    LEFT JOIN study_hall.seats seat
       ON seat.id = s.seat_id
     ${roomJoin}
     ${planJoin}
@@ -693,7 +698,7 @@ async function getMockStudentsWithMetrics(divisionSlug: string) {
       return serializeMockStudent(
         student,
         netPoints,
-        getWarningStage(netPoints, settings),
+        getWarningStage(toDemeritPoints(netPoints), settings),
         {
           seatId: student.seatId ?? seat?.id ?? null,
           seatLabel: seat?.label ?? student.seatLabel ?? null,
@@ -737,7 +742,7 @@ async function getDbStudentsWithMetrics(divisionSlug: string) {
     return sortBySeatAndName(
       compatibleStudents.map((student) => {
         const netPoints = toNetPoints(pointTotals.get(student.id) ?? 0);
-        return serializeCompatibleStudent(student, netPoints, getWarningStage(netPoints, settings));
+        return serializeCompatibleStudent(student, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
       }),
     );
   }
@@ -792,7 +797,7 @@ async function getDbStudentsWithMetrics(divisionSlug: string) {
     return sortBySeatAndName(
       compatibleStudents.map((student) => {
         const netPoints = toNetPoints(pointTotals.get(student.id) ?? 0);
-        return serializeCompatibleStudent(student, netPoints, getWarningStage(netPoints, settings));
+        return serializeCompatibleStudent(student, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
       }),
     );
   }
@@ -814,7 +819,7 @@ async function getDbStudentsWithMetrics(divisionSlug: string) {
   return sortBySeatAndName(
     students.map((student) => {
       const netPoints = toNetPoints(pointTotals.get(student.id) ?? 0);
-      return serializeDbStudent(student, netPoints, getWarningStage(netPoints, settings));
+      return serializeDbStudent(student, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
     }),
   );
 }
@@ -1102,7 +1107,7 @@ export async function getStudentDetail(divisionSlug: string, studentId: string) 
     }
 
     const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);
-    return serializeCompatibleStudent(raw, netPoints, getWarningStage(netPoints, settings));
+    return serializeCompatibleStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
   }
 
   try {
@@ -1157,7 +1162,7 @@ export async function getStudentDetail(divisionSlug: string, studentId: string) 
 
   const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);
 
-    return serializeDbStudent(raw, netPoints, getWarningStage(netPoints, settings));
+    return serializeDbStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
   } catch (error) {
     if (
       !isPrismaSchemaMismatchError(error, [
@@ -1205,7 +1210,7 @@ export async function getStudentDetail(divisionSlug: string, studentId: string) 
     }
 
     const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);
-    return serializeCompatibleStudent(raw, netPoints, getWarningStage(netPoints, settings));
+    return serializeCompatibleStudent(raw, netPoints, getWarningStage(toDemeritPoints(netPoints), settings));
   }
 }
 
@@ -1343,7 +1348,7 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
       const now = new Date();
 
       await prisma.$executeRaw`
-        INSERT INTO students (
+        INSERT INTO study_hall.students (
           id,
           division_id,
           name,
@@ -1541,7 +1546,7 @@ export async function updateStudent(
       }),
     runLegacy: () =>
       prisma.$executeRaw`
-        UPDATE students
+        UPDATE study_hall.students
         SET
           name = ${name},
           student_number = ${studentNumber},
@@ -1727,7 +1732,7 @@ export async function deleteStudent(divisionSlug: string, studentId: string) {
 
   // Student 관련 레코드는 onDelete: Cascade로 자동 삭제
   await prisma.$executeRaw`
-    DELETE FROM students
+    DELETE FROM study_hall.students
     WHERE id = ${studentId}
       AND division_id = ${division.id}
   `;

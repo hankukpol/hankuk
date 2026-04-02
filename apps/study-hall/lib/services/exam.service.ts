@@ -228,10 +228,10 @@ async function readLegacyExamTypes(
       es.total_items AS "subjectTotalItems",
       es.display_order AS "subjectDisplayOrder",
       es.is_active AS "subjectIsActive"
-    FROM exam_types et
-    JOIN divisions d
+    FROM study_hall.exam_types et
+    JOIN study_hall.divisions d
       ON d.id = et.division_id
-    LEFT JOIN exam_subjects es
+    LEFT JOIN study_hall.exam_subjects es
       ON es.exam_type_id = et.id
     WHERE d.slug = ${divisionSlug}
     ORDER BY et.display_order ASC, es.display_order ASC

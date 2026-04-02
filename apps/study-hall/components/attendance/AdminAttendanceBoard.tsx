@@ -77,6 +77,10 @@ type MatrixState = Record<
   >
 >;
 
+function getCellState(matrix: MatrixState, studentId: string, periodId: string) {
+  return matrix[studentId]?.[periodId] ?? { status: "", reason: "" };
+}
+
 function createMatrix(
   students: StudentItem[],
   periods: PeriodItem[],
@@ -118,6 +122,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [students, setStudents] = useState(initialStudents);
   const [periods, setPeriods] = useState(initialPeriods);
   const [matrix, setMatrix] = useState<MatrixState>(() => initialMatrix);
+  const [savedMatrix, setSavedMatrix] = useState<MatrixState>(() => initialMatrix);
   const [stats, setStats] = useState(initialStats);
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
@@ -151,6 +156,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       setStudents(initialStudents);
       setPeriods(initialPeriods);
       setMatrix(initialMatrix);
+      setSavedMatrix(initialMatrix);
       setStats(initialStats);
       setIsLoading(false);
 
@@ -184,9 +190,12 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           return;
         }
 
+        const nextMatrix = createMatrix(attendanceData.students, attendanceData.periods, attendanceData.records);
+
         setStudents(attendanceData.students);
         setPeriods(attendanceData.periods);
-        setMatrix(createMatrix(attendanceData.students, attendanceData.periods, attendanceData.records));
+        setMatrix(nextMatrix);
+        setSavedMatrix(nextMatrix);
         setStats(statsData);
         setIsDirty(false);
       } catch (error) {
@@ -251,49 +260,61 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     });
   }
 
-  async function savePeriodsForStudents(targetStudentIds?: string[]) {
+  async function persistPeriodsForStudents(targetStudentIds?: string[]) {
     const targetStudents = targetStudentIds
-      ? students.filter((s) => targetStudentIds.includes(s.id))
+      ? students.filter((student) => targetStudentIds.includes(student.id))
       : students;
 
-    // 입력된 교시만 필터 (최소 1명이라도 상태가 설정된 교시)
-    const periodsWithData = periods.filter((period) =>
-      targetStudents.some((student) => matrix[student.id]?.[period.id]?.status),
+    const periodsWithChanges = periods.filter((period) =>
+      targetStudents.some((student) => {
+        const currentCell = getCellState(matrix, student.id, period.id);
+        const previousCell = getCellState(savedMatrix, student.id, period.id);
+
+        return currentCell.status !== previousCell.status || currentCell.reason !== previousCell.reason;
+      }),
     );
 
-    if (periodsWithData.length === 0) {
-      throw new Error("저장할 출결 데이터가 없습니다. 최소 1개 교시의 출석 상태를 입력해주세요.");
+    if (periodsWithChanges.length === 0) {
+      throw new Error("변경된 출결 데이터가 없습니다.");
     }
 
-    // 입력된 교시에 대해서만 검증 (해당 교시 내 모든 학생이 채워져야 함)
-    for (const period of periodsWithData) {
-      const unresolved = targetStudents.find((student) => !matrix[student.id]?.[period.id]?.status);
+    for (const period of periodsWithChanges) {
+      const unresolved = targetStudents.find((student) => {
+        const currentCell = getCellState(matrix, student.id, period.id);
+        const previousCell = getCellState(savedMatrix, student.id, period.id);
+
+        return currentCell.status === "" && previousCell.status === "";
+      });
+
       if (unresolved) {
         throw new Error(`${period.name}에서 ${unresolved.name} 학생 상태가 비어 있습니다.`);
       }
     }
 
-    // 입력된 교시만 저장
     await Promise.all(
-      periodsWithData.map(async (period) => {
+      periodsWithChanges.map(async (period) => {
         const response = await fetch(`/api/${divisionSlug}/attendance`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             periodId: period.id,
             date: selectedDate,
-            records: targetStudents.map((student) => ({
-              studentId: student.id,
-              status: matrix[student.id][period.id].status,
-              reason: matrix[student.id][period.id].reason || null,
-            })),
+            records: targetStudents.map((student) => {
+              const cell = getCellState(matrix, student.id, period.id);
+              return {
+                studentId: student.id,
+                status: cell.status,
+                reason: cell.reason || null,
+              };
+            }),
           }),
         });
+
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error ?? `${period.name} 저장에 실패했습니다.`);
         }
-      })
+      }),
     );
 
     const statsResponse = await fetch(
@@ -304,12 +325,26 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     if (statsResponse.ok) {
       setStats(statsData);
     }
+
+    setSavedMatrix((current) => {
+      if (!targetStudentIds) {
+        return matrix;
+      }
+
+      const next = { ...current };
+      for (const studentId of targetStudentIds) {
+        if (matrix[studentId]) {
+          next[studentId] = matrix[studentId];
+        }
+      }
+      return next;
+    });
   }
 
   async function handleSaveAll() {
     setIsSaving(true);
     try {
-      await savePeriodsForStudents();
+      await persistPeriodsForStudents();
       setIsDirty(false);
       toast.success("출석부를 저장했습니다.");
       setSaveSuccessModal({
@@ -326,7 +361,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   async function handleSaveStudent(studentId: string) {
     try {
-      await savePeriodsForStudents([studentId]);
+      await persistPeriodsForStudents([studentId]);
       const targetStudent = students.find((student) => student.id === studentId);
       toast.success("저장되었습니다.");
       setSaveSuccessModal({

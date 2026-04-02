@@ -27,7 +27,7 @@ type AttendanceStatus =
 
 type AttendanceInputRecord = {
   studentId: string;
-  status: AttendanceStatus;
+  status: AttendanceStatus | "";
   reason?: string | null;
 };
 
@@ -645,6 +645,11 @@ export async function upsertAttendanceBatch(
           date: normalizedDate,
         });
 
+        if (record.status === "") {
+          touchedMap.delete(id);
+          continue;
+        }
+
         const checkInTime = resolveCheckInTime(
           record.status,
           normalizedDate,
@@ -703,6 +708,16 @@ export async function upsertAttendanceBatch(
 
   await prisma.$transaction(
     input.records.map((record) => {
+      if (record.status === "") {
+        return prisma.attendance.deleteMany({
+          where: {
+            studentId: record.studentId,
+            periodId: input.periodId,
+            date: start,
+          },
+        });
+      }
+
       const checkInTime = resolveCheckInTime(
         record.status,
         normalizedDate,
@@ -799,8 +814,6 @@ export async function getAttendanceStats(
   const students = context.students;
   const periods = context.periods;
   const dates = enumerateDates(normalizedFrom, normalizedTo);
-  const mandatoryPeriods = periods.filter((period) => period.isMandatory && period.isActive);
-
   let records: AttendanceSnapshot["records"] = [];
 
   if (isMockMode()) {
@@ -856,12 +869,35 @@ export async function getAttendanceStats(
     attendanceRate: 0,
   }));
 
+  // --- Per-period summaries (record-level counts, unchanged) ---
   for (const record of records) {
-    totals[statusKey(record.status)] += 1;
-
     const summary = periodSummaries.find((item) => item.periodId === record.periodId);
     if (summary) {
       summary.counts[statusKey(record.status)] += 1;
+    }
+  }
+  // --- Totals: unique student counts per date ---
+  // 출석: 왔는데 지각 없음, 지각: 왔는데 지각 1회 이상, 결석: 아예 안 옴 (기록 없거나 전부 결석)
+  for (const date of dates) {
+    const studentStatuses = new Map<string, Set<string>>();
+
+    for (const record of records) {
+      if (record.date !== date) continue;
+      if (!studentStatuses.has(record.studentId)) {
+        studentStatuses.set(record.studentId, new Set());
+      }
+      studentStatuses.get(record.studentId)!.add(statusKey(record.status));
+    }
+
+    for (const [, statuses] of Array.from(studentStatuses.entries())) {
+      const allAbsent = statuses.size === 1 && statuses.has("absent");
+      if (allAbsent) {
+        totals.absent += 1;
+      } else if (statuses.has("tardy")) {
+        totals.tardy += 1;
+      } else {
+        totals.present += 1;
+      }
     }
   }
 
@@ -884,16 +920,11 @@ export async function getAttendanceStats(
     summary.attendanceRate = expected > 0 ? Number(((presentLike / expected) * 100).toFixed(1)) : 0;
   }
 
-  const processedTotal = Object.entries(totals)
-    .filter(([key]) => key !== "unprocessed")
-    .reduce((sum, [, value]) => sum + value, 0);
-
-  totals.unprocessed = Math.max(students.length * mandatoryPeriods.length * dates.length - processedTotal, 0);
-
-  const presentLikeTotal = totals.present + totals.tardy + totals.holiday + totals.half_holiday;
-  const expectedTotal = students.length * mandatoryPeriods.length * dates.length - totals.not_applicable;
+  // 출석률 = (출석 + 지각) / 전체학생 × 100  (학생 기준)
+  const cameStudents = totals.present + totals.tardy;
+  const expectedStudentDates = students.length * dates.length;
   const attendanceRate =
-    expectedTotal > 0 ? Number(((presentLikeTotal / expectedTotal) * 100).toFixed(1)) : 0;
+    expectedStudentDates > 0 ? Number(((cameStudents / expectedStudentDates) * 100).toFixed(1)) : 0;
 
   return {
     dateFrom: normalizedFrom,

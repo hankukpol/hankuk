@@ -176,7 +176,9 @@ export type MockPaymentRecord = {
   paymentTypeId: string;
   amount: number;
   paymentDate: string;
-  method: string | null;
+  method: string;
+  paymentGroupId: string | null;
+  originalPaymentId: string | null;
   notes: string | null;
   recordedById: string;
   createdAt: string;
@@ -803,6 +805,8 @@ function createInitialPaymentRecords(divisionSlug: string) {
         amount: 300000,
         paymentDate: "2026-03-01",
         method: "계좌이체",
+        paymentGroupId: null,
+        originalPaymentId: null,
         notes: "등록비 납부 완료",
         recordedById: "mock-admin-police",
         createdAt: now,
@@ -814,6 +818,8 @@ function createInitialPaymentRecords(divisionSlug: string) {
         amount: 250000,
         paymentDate: "2026-03-05",
         method: "카드",
+        paymentGroupId: null,
+        originalPaymentId: null,
         notes: "3월 월납부",
         recordedById: "mock-admin-police",
         createdAt: now,
@@ -825,6 +831,8 @@ function createInitialPaymentRecords(divisionSlug: string) {
         amount: 250000,
         paymentDate: "2026-03-06",
         method: "현금",
+        paymentGroupId: null,
+        originalPaymentId: null,
         notes: "3월 월납부",
         recordedById: "mock-admin-police",
         createdAt: now,
@@ -840,6 +848,8 @@ function createInitialPaymentRecords(divisionSlug: string) {
       amount: 280000,
       paymentDate: "2026-03-02",
       method: "계좌이체",
+      paymentGroupId: null,
+      originalPaymentId: null,
       notes: "소방반 등록비",
       recordedById: "mock-admin-fire",
       createdAt: now,
@@ -851,6 +861,8 @@ function createInitialPaymentRecords(divisionSlug: string) {
       amount: 240000,
       paymentDate: "2026-03-07",
       method: "카드",
+      paymentGroupId: null,
+      originalPaymentId: null,
       notes: "3월 월납부",
       recordedById: "mock-admin-fire",
       createdAt: now,
@@ -1630,7 +1642,12 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     getDivisionSlugs({ ...state, divisions: normalizedDivisions, deletedDivisionSlugs }).map((divisionSlug) => [
       divisionSlug,
       Array.isArray(state.paymentRecordsByDivision?.[divisionSlug])
-        ? state.paymentRecordsByDivision?.[divisionSlug]
+        ? state.paymentRecordsByDivision[divisionSlug].map((record) => ({
+            ...record,
+            method: record.method ?? "other",
+            paymentGroupId: record.paymentGroupId ?? null,
+            originalPaymentId: record.originalPaymentId ?? null,
+          }))
         : createInitialPaymentRecords(divisionSlug),
     ]),
   );

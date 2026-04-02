@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 type PeriodItem = {
   id: string;

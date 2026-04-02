@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { Modal } from "@/components/ui/Modal";
 import type { AnnouncementItem, AnnouncementScope } from "@/lib/services/announcement.service";

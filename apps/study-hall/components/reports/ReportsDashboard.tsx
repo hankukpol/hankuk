@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Download, LoaderCircle, RefreshCcw } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { getWarningStageLabel } from "@/lib/student-meta";
 import type {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Download, LoaderCircle, Printer } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { getKstToday } from "@/components/payments/payment-client-helpers";
 import { formatCurrency, formatPaymentMethod } from "@/lib/payment-meta";

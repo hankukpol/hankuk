@@ -32,7 +32,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { WarningStageBadge } from "@/components/students/StudentBadges";
 import type { DivisionFeatureKey } from "@/lib/division-features";

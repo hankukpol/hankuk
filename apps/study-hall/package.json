@@ -6,14 +6,14 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "prisma generate && node scripts/fix-prisma-default.cjs && next dev",
-    "build": "prisma generate && node scripts/fix-prisma-default.cjs && node scripts/clean-build-artifacts.cjs && next build",
-    "start": "prisma generate && node scripts/fix-prisma-default.cjs && next start",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate && node scripts/fix-prisma-default.cjs",
+    "dev": "node scripts/ensure-prisma-generated.cjs && next dev",
+    "build": "node scripts/ensure-prisma-generated.cjs && node scripts/clean-build-artifacts.cjs && next build",
+    "start": "node scripts/ensure-prisma-generated.cjs && next start",
+    "lint": "node scripts/ensure-prisma-generated.cjs && next lint",
+    "typecheck": "node scripts/ensure-prisma-generated.cjs && tsc --noEmit",
+    "prisma:generate": "node scripts/ensure-prisma-generated.cjs --force",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed",
+    "db:seed": "node scripts/ensure-prisma-generated.cjs && prisma db seed",
     "reset:all": "node scripts/reset-all-data.mjs",
     "smoke:test": "node scripts/smoke-test.mjs"
   },

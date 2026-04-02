@@ -2,7 +2,7 @@
 
 import { LoaderCircle, Target, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import {
   PortalEmptyState,

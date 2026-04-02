@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Download, LoaderCircle, Save, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import {
   inferDelimitedFileDelimiter,

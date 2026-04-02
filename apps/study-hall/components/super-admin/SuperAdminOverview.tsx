@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnchorHTMLAttributes, CSSProperties, ReactNode } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { DivisionOverviewSummary } from "@/lib/services/super-admin-overview.service";
 

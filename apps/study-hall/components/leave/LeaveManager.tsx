@@ -2,7 +2,7 @@
 
 import { CalendarClock, LoaderCircle, Plus, RefreshCcw, Save } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";

@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle, Search } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
-import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
+import {
+  createPaymentEntryFormValue,
+  PaymentEntriesEditor,
+  type PaymentEntryFormValue,
+} from "@/components/payments/PaymentEntriesEditor";
 import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments/payment-client-helpers";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency } from "@/lib/payment-meta";
@@ -35,16 +39,13 @@ type FormState = {
   tuitionPlanId: string;
   tuitionAmount: string;
   courseStartDate: string;
-  paymentTypeId: string;
-  paymentAmount: string;
-  paymentDate: string;
-  paymentMethod: string;
-  paymentNotes: string;
+  payments: PaymentEntryFormValue[];
 };
 
 function createInitialState(paymentCategories: PaymentCategoryItem[], tuitionPlans: TuitionPlanItem[]): FormState {
   const defaultPlanId = tuitionPlans[0]?.id ?? "";
   const defaultPlan = tuitionPlans.find((plan) => plan.id === defaultPlanId) ?? null;
+  const defaultPaymentTypeId = findDefaultPaymentCategoryId(paymentCategories, ["등록비", "월납부"]);
 
   return {
     search: "",
@@ -57,12 +58,26 @@ function createInitialState(paymentCategories: PaymentCategoryItem[], tuitionPla
     tuitionPlanId: defaultPlanId,
     tuitionAmount: defaultPlan ? String(defaultPlan.amount) : "",
     courseStartDate: getKstToday(),
-    paymentTypeId: findDefaultPaymentCategoryId(paymentCategories, ["등록비", "월납부"]),
-    paymentAmount: defaultPlan ? String(defaultPlan.amount) : "",
-    paymentDate: getKstToday(),
-    paymentMethod: "card",
-    paymentNotes: defaultPlan?.name ?? "",
+    payments: [
+      createPaymentEntryFormValue({
+        paymentTypeId: defaultPaymentTypeId,
+        amount: defaultPlan ? String(defaultPlan.amount) : "",
+        paymentDate: getKstToday(),
+        method: "card",
+        notes: defaultPlan?.name ?? "",
+      }),
+    ],
   };
+}
+
+function toPaymentPayload(entries: PaymentEntryFormValue[]) {
+  return entries.map((entry) => ({
+    paymentTypeId: entry.paymentTypeId,
+    amount: Number(entry.amount),
+    paymentDate: entry.paymentDate,
+    method: entry.method,
+    notes: entry.notes || null,
+  }));
 }
 
 export function EnrollPaymentModal({
@@ -134,15 +149,7 @@ export function EnrollPaymentModal({
           tuitionPlanId: form.tuitionPlanId,
           tuitionAmount: form.tuitionAmount ? Number(form.tuitionAmount) : null,
           courseStartDate: form.courseStartDate,
-          payment: form.tuitionExempt
-            ? undefined
-            : {
-                paymentTypeId: form.paymentTypeId,
-                amount: Number(form.paymentAmount),
-                paymentDate: form.paymentDate,
-                method: form.paymentMethod,
-                notes: form.paymentNotes || null,
-              },
+          payments: form.tuitionExempt ? undefined : toPaymentPayload(form.payments),
         }),
       });
       const data = await response.json();
@@ -151,7 +158,7 @@ export function EnrollPaymentModal({
         throw new Error(data.error ?? "신규 등록 처리에 실패했습니다.");
       }
 
-      toast.success(form.tuitionExempt ? "학생 등록이 완료되었습니다." : "학생 등록과 수납 처리가 완료되었습니다.");
+      toast.success(form.tuitionExempt ? "학생 등록을 완료했습니다." : "학생 등록과 수납 처리를 완료했습니다.");
       await onSuccess();
       onClose();
     } catch (error) {
@@ -170,7 +177,7 @@ export function EnrollPaymentModal({
       description={
         form.tuitionExempt
           ? "수납 면제 학생은 결제 없이 등록합니다."
-          : "신규 학생 등록과 첫 수납 기록을 한 번에 처리합니다."
+          : "신규 학생 등록과 첫 수납을 한 번에 처리합니다."
       }
     >
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -178,7 +185,7 @@ export function EnrollPaymentModal({
           <div>
             <p className="text-sm font-semibold text-slate-900">기존 학생 확인</p>
             <p className="mt-1 text-sm text-slate-500">
-              이름이나 학번으로 먼저 검색해 중복 등록을 막습니다.
+              이름이나 수험번호를 먼저 검색해 중복 등록을 막습니다.
             </p>
           </div>
 
@@ -188,7 +195,7 @@ export function EnrollPaymentModal({
               value={form.search}
               onChange={(event) => setForm((current) => ({ ...current, search: event.target.value }))}
               className="w-full rounded-[10px] border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-slate-400"
-              placeholder="이름 또는 학번 검색"
+              placeholder="이름 또는 수험번호 검색"
             />
           </label>
 
@@ -208,7 +215,7 @@ export function EnrollPaymentModal({
                       {student.studyTrack ? ` · ${student.studyTrack}` : ""}
                     </p>
                   </div>
-                  <span className="text-xs font-semibold text-amber-700">연장 등록으로 전환</span>
+                  <span className="text-xs font-semibold text-amber-700">연장 수납으로 전환</span>
                 </button>
               ))}
             </div>
@@ -232,10 +239,12 @@ export function EnrollPaymentModal({
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">학번</span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">수험번호</span>
               <input
                 value={form.studentNumber}
-                onChange={(event) => setForm((current) => ({ ...current, studentNumber: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, studentNumber: event.target.value }))
+                }
                 required
                 className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
               />
@@ -278,7 +287,7 @@ export function EnrollPaymentModal({
             <div className="flex-1">
               <p className="text-sm font-semibold text-slate-900">수납 면제</p>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                조교나 장학생처럼 신규 등록 시 별도 결제를 받지 않아야 하는 학생이면 켜 두세요.
+                장학 또는 운영 예외로 신규 등록 시 결제를 받지 않는 학생이면 체크해 주세요.
               </p>
             </div>
           </label>
@@ -296,7 +305,7 @@ export function EnrollPaymentModal({
                 }
                 rows={3}
                 className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                placeholder="예: 조교, 장학생, 내부 운영 지원"
+                placeholder="예: 장학, 운영 지원"
               />
             </label>
           ) : null}
@@ -316,8 +325,16 @@ export function EnrollPaymentModal({
                     ...current,
                     tuitionPlanId: nextPlanId,
                     tuitionAmount: nextPlan ? String(nextPlan.amount) : "",
-                    paymentAmount: nextPlan ? String(nextPlan.amount) : current.paymentAmount,
-                    paymentNotes: nextPlan?.name ?? current.paymentNotes,
+                    payments:
+                      current.payments.length === 1
+                        ? [
+                            {
+                              ...current.payments[0],
+                              amount: nextPlan ? String(nextPlan.amount) : "",
+                              notes: nextPlan?.name ?? current.payments[0].notes,
+                            },
+                          ]
+                        : current.payments,
                   }));
                 }}
                 required
@@ -337,7 +354,9 @@ export function EnrollPaymentModal({
               <input
                 type="date"
                 value={form.courseStartDate}
-                onChange={(event) => setForm((current) => ({ ...current, courseStartDate: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, courseStartDate: event.target.value }))
+                }
                 required
                 className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
               />
@@ -348,7 +367,9 @@ export function EnrollPaymentModal({
               <input
                 type="number"
                 value={form.tuitionAmount}
-                onChange={(event) => setForm((current) => ({ ...current, tuitionAmount: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, tuitionAmount: event.target.value }))
+                }
                 min="0"
                 className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
               />
@@ -358,7 +379,7 @@ export function EnrollPaymentModal({
               <p className="text-sm font-medium text-slate-700">예상 수강 종료일</p>
               <p className="mt-2 text-lg font-bold text-slate-950">{computedCourseEndDate ?? "자동 계산 없음"}</p>
               <p className="mt-1 text-xs text-slate-500">
-                {selectedPlan?.durationDays ? `${selectedPlan.durationDays}일 기준 자동 계산` : "기간 자유 플랜"}
+                {selectedPlan?.durationDays ? `${selectedPlan.durationDays}일 기준으로 계산합니다.` : "기간 자유 플랜입니다."}
               </p>
             </div>
           </div>
@@ -366,74 +387,20 @@ export function EnrollPaymentModal({
 
         {form.tuitionExempt ? (
           <section className="rounded-[10px] border border-sky-200 bg-sky-50 p-5">
-            <p className="text-sm font-semibold text-sky-900">수납 없이 등록됩니다.</p>
+            <p className="text-sm font-semibold text-sky-900">수납 없이 등록합니다.</p>
             <p className="mt-2 text-sm leading-6 text-sky-800">
-              면제 학생은 결제 기록을 만들지 않고 등록되며, 수납 현황의 미납 목록에서도 제외됩니다.
+              면제 학생은 결제 레코드를 만들지 않고 등록만 진행합니다.
             </p>
           </section>
         ) : (
-          <section className="rounded-[10px] border border-slate-200 bg-white p-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">수납 유형</span>
-                <select
-                  value={form.paymentTypeId}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentTypeId: event.target.value }))}
-                  required
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                >
-                  <option value="">수납 유형 선택</option>
-                  {paymentCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제일</span>
-                <input
-                  type="date"
-                  value={form.paymentDate}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentDate: event.target.value }))}
-                  required
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제 금액</span>
-                <input
-                  type="number"
-                  value={form.paymentAmount}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentAmount: event.target.value }))}
-                  min="1"
-                  required
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제 수단</span>
-                <PaymentMethodSelect
-                  value={form.paymentMethod}
-                  onChange={(value) => setForm((current) => ({ ...current, paymentMethod: value }))}
-                  required
-                />
-              </label>
-
-              <label className="block md:col-span-2">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제 메모</span>
-                <textarea
-                  value={form.paymentNotes}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentNotes: event.target.value }))}
-                  rows={3}
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-            </div>
-          </section>
+          <PaymentEntriesEditor
+            entries={form.payments}
+            onChange={(payments) => setForm((current) => ({ ...current, payments }))}
+            paymentCategories={paymentCategories}
+            disabled={isSubmitting}
+            title="결제 정보"
+            description="카드와 포인트를 함께 받는 경우 결제 수단 추가로 분할 결제를 등록하세요."
+          />
         )}
 
         <div className="flex justify-end gap-2">

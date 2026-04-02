@@ -2,7 +2,7 @@
 
 import { Clock } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { StudentStudyTimeStats } from "@/lib/services/study-time.service";
 

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { LayoutGrid, LoaderCircle, RefreshCcw, Save, Table2 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import {
   ATTENDANCE_STATUS_OPTIONS,
@@ -226,6 +226,25 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     });
   }
 
+  function updatePeriodAllStudents(periodId: string, status: AttendanceOptionValue) {
+    markDirty();
+    setMatrix((current) => {
+      const updated = { ...current };
+
+      for (const student of students) {
+        updated[student.id] = {
+          ...(current[student.id] ?? {}),
+          [periodId]: {
+            status,
+            reason: "",
+          },
+        };
+      }
+
+      return updated;
+    });
+  }
+
   async function savePeriodsForStudents(targetStudentIds?: string[]) {
     const targetStudents = targetStudentIds
       ? students.filter((s) => targetStudentIds.includes(s.id))
@@ -416,6 +435,13 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     <div className="mt-1 text-xs font-normal text-slate-500">
                       {period.startTime}-{period.endTime}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => updatePeriodAllStudents(period.id, "PRESENT")}
+                      className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                      전체 출석
+                    </button>
                   </th>
                 ))}
               </tr>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Clipboard, Copy, RefreshCcw, TriangleAlert } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { WarningStageBadge } from "@/components/students/StudentBadges";
 import type { WarningStudentItem } from "@/lib/services/point.service";

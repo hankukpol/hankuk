@@ -8,7 +8,6 @@ const nextConfig = {
     optimizePackageImports: [
       "lucide-react",
       "recharts",
-      "sonner",
       "@dnd-kit/core",
       "@dnd-kit/sortable",
       "@dnd-kit/utilities",

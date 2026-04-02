@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Download, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { ExamScoreSheet, ExamTypeItem } from "@/lib/services/exam.service";
 

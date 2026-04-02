@@ -4,8 +4,8 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { PAYMENT_API_MESSAGES } from "@/lib/payment-meta";
-import { enrollPaymentSchema } from "@/lib/payment-schemas";
-import { enrollAndPay } from "@/lib/services/payment.service";
+import { paymentBatchSchema } from "@/lib/payment-schemas";
+import { createPaymentsBatch } from "@/lib/services/payment.service";
 
 export async function POST(
   request: NextRequest,
@@ -22,18 +22,18 @@ export async function POST(
   }
 
   const body = await request.json().catch(() => null);
-  const parsed = enrollPaymentSchema.safeParse(body);
+  const parsed = paymentBatchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: getZodErrorMessage(parsed.error, PAYMENT_API_MESSAGES.enrollSchemaError) },
+      { error: getZodErrorMessage(parsed.error, PAYMENT_API_MESSAGES.batchSchemaError) },
       { status: 400 },
     );
   }
 
   try {
-    const result = await enrollAndPay(params.division, auth.session, parsed.data);
+    const result = await createPaymentsBatch(params.division, auth.session, parsed.data);
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    return toApiErrorResponse(error, PAYMENT_API_MESSAGES.enrollError);
+    return toApiErrorResponse(error, PAYMENT_API_MESSAGES.batchError);
   }
 }

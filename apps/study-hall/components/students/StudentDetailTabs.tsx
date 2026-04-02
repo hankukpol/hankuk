@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { CalendarDays, CreditCard, LoaderCircle, MessageSquareWarning, Plus, Star, Target } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";

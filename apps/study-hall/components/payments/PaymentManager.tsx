@@ -13,10 +13,14 @@ import {
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { EnrollPaymentModal } from "@/components/payments/EnrollPaymentModal";
-import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
+import {
+  createPaymentEntryFormValue,
+  PaymentEntriesEditor,
+  type PaymentEntryFormValue,
+} from "@/components/payments/PaymentEntriesEditor";
 import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments/payment-client-helpers";
 import { RefundModal } from "@/components/payments/RefundModal";
 import { RenewPaymentModal } from "@/components/payments/RenewPaymentModal";
@@ -38,11 +42,7 @@ type PaymentManagerProps = {
 
 type FormState = {
   studentId: string;
-  paymentTypeId: string;
-  amount: string;
-  paymentDate: string;
-  method: string;
-  notes: string;
+  payments: PaymentEntryFormValue[];
 };
 
 type StatusFilter = "ALL" | "PAID" | "UNPAID";
@@ -56,16 +56,45 @@ function getSuggestedPaymentDate(targetMonth: string) {
   return targetMonth === getCurrentMonth() ? getKstToday() : `${targetMonth}-01`;
 }
 
+function createDefaultPaymentEntry(
+  paymentCategories: PaymentCategoryItem[],
+  options?: Partial<Omit<PaymentEntryFormValue, "id">>,
+) {
+  return createPaymentEntryFormValue({
+    paymentTypeId:
+      options?.paymentTypeId ?? findDefaultPaymentCategoryId(paymentCategories, ["월납부", "등록비"]),
+    amount: options?.amount ?? "",
+    paymentDate: options?.paymentDate ?? getKstToday(),
+    method: options?.method ?? "card",
+    notes: options?.notes ?? "",
+  });
+}
+
 function toFormState(paymentCategories: PaymentCategoryItem[], payment?: PaymentItem | null): FormState {
   return {
     studentId: payment?.studentId ?? "",
-    paymentTypeId:
-      payment?.paymentTypeId ?? findDefaultPaymentCategoryId(paymentCategories, ["월납부", "등록비"]),
-    amount: payment ? String(payment.amount) : "",
-    paymentDate: payment?.paymentDate ?? getKstToday(),
-    method: payment?.method ?? "card",
-    notes: payment?.notes ?? "",
+    payments: [
+      createDefaultPaymentEntry(paymentCategories, payment
+        ? {
+            paymentTypeId: payment.paymentTypeId,
+            amount: String(payment.amount),
+            paymentDate: payment.paymentDate,
+            method: payment.method ?? "card",
+            notes: payment.notes ?? "",
+          }
+        : undefined),
+    ],
   };
+}
+
+function toPaymentRequestEntries(entries: PaymentEntryFormValue[]) {
+  return entries.map((entry) => ({
+    paymentTypeId: entry.paymentTypeId,
+    amount: Number.parseInt(entry.amount.replaceAll(",", ""), 10) || 0,
+    paymentDate: entry.paymentDate,
+    method: entry.method,
+    notes: entry.notes.trim() ? entry.notes : null,
+  }));
 }
 
 function monthMatches(date: string, targetMonth: string) {
@@ -267,11 +296,14 @@ export function PaymentManager({
   function openCreatePanel(studentId?: string) {
     resetForm();
     setForm({
-      ...toFormState(paymentCategories),
       studentId: studentId ?? "",
-      paymentTypeId:
-        summaryPaymentTypeId || findDefaultPaymentCategoryId(paymentCategories, ["월납부", "등록비"]),
-      paymentDate: getSuggestedPaymentDate(summaryMonth),
+      payments: [
+        createDefaultPaymentEntry(paymentCategories, {
+          paymentTypeId:
+            summaryPaymentTypeId || findDefaultPaymentCategoryId(paymentCategories, ["월납부", "등록비"]),
+          paymentDate: getSuggestedPaymentDate(summaryMonth),
+        }),
+      ],
     });
     setIsEditorOpen(true);
   }
@@ -285,24 +317,48 @@ export function PaymentManager({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!form.studentId) {
+      toast.error("학생을 선택해 주세요.");
+      return;
+    }
+
+    const paymentEntries = toPaymentRequestEntries(form.payments);
+    const firstPayment = paymentEntries[0];
+
+    if (!firstPayment) {
+      toast.error("결제 정보를 입력해 주세요.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
       const response = await fetch(
         editingPaymentId
           ? `/api/${divisionSlug}/payments/${editingPaymentId}`
-          : `/api/${divisionSlug}/payments`,
+          : paymentEntries.length > 1
+            ? `/api/${divisionSlug}/payments/batch`
+            : `/api/${divisionSlug}/payments`,
         {
           method: editingPaymentId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            studentId: form.studentId,
-            paymentTypeId: form.paymentTypeId,
-            amount: Number(form.amount),
-            paymentDate: form.paymentDate,
-            method: form.method,
-            notes: form.notes || null,
-          }),
+          body: JSON.stringify(
+            editingPaymentId
+              ? {
+                  studentId: form.studentId,
+                  ...firstPayment,
+                }
+              : paymentEntries.length > 1
+                ? {
+                    studentId: form.studentId,
+                    payments: paymentEntries,
+                  }
+                : {
+                    studentId: form.studentId,
+                    ...firstPayment,
+                  },
+          ),
         },
       );
       const data = await response.json();
@@ -311,7 +367,13 @@ export function PaymentManager({
         throw new Error(data.error ?? "수납 처리에 실패했습니다.");
       }
 
-      toast.success(editingPaymentId ? "수납 내역을 수정했습니다." : "수납 내역을 등록했습니다.");
+      toast.success(
+        editingPaymentId
+          ? "수납 내역을 수정했습니다."
+          : paymentEntries.length > 1
+            ? "분할 결제를 등록했습니다."
+            : "수납 내역을 등록했습니다.",
+      );
       await refreshData();
       closeEditor();
     } catch (error) {
@@ -788,32 +850,18 @@ export function PaymentManager({
               </label>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">수납 유형</span>
-                  <select
-                    value={form.paymentTypeId}
-                    onChange={(event) => setForm((current) => ({ ...current, paymentTypeId: event.target.value }))}
-                    className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                    required
-                  >
-                    {paymentCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">결제일</span>
-                  <input
-                    type="date"
-                    value={form.paymentDate}
-                    onChange={(event) => setForm((current) => ({ ...current, paymentDate: event.target.value }))}
-                    className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                    required
-                  />
-                </label>
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 md:col-span-2">
+                  <p className="font-medium text-slate-900">
+                    {editingPaymentId
+                      ? "수정 모드에서는 선택한 수납 1건만 변경합니다."
+                      : "여러 결제 수단을 추가하면 같은 납부 건으로 묶어서 저장합니다."}
+                  </p>
+                  {!editingPaymentId ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      예: 카드 15만 원 + 포인트 15만 원을 한 번의 납부로 등록
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -837,6 +885,11 @@ export function PaymentManager({
                 <p className="mt-1 text-sm text-slate-500">
                   자주 쓰는 등록 플랜 금액을 일반 수납 폼에 바로 반영할 수 있습니다.
                 </p>
+                {!editingPaymentId && form.payments.length > 1 ? (
+                  <p className="mt-2 text-xs font-medium text-sky-700">
+                    분할 결제 중에는 첫 번째 결제 항목에만 플랜 금액이 반영됩니다.
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -848,8 +901,22 @@ export function PaymentManager({
                       setSelectedPlanId(plan.id);
                       setForm((current) => ({
                         ...current,
-                        amount: String(plan.amount),
-                        notes: plan.name,
+                        payments: current.payments.length > 0
+                          ? current.payments.map((payment, index) =>
+                              index === 0
+                                ? {
+                                    ...payment,
+                                    amount: String(plan.amount),
+                                    notes: plan.name,
+                                  }
+                                : payment,
+                            )
+                          : [
+                              createDefaultPaymentEntry(paymentCategories, {
+                                amount: String(plan.amount),
+                                notes: plan.name,
+                              }),
+                            ],
                       }));
                     }}
                     className={`rounded-[10px] border p-4 text-left transition ${
@@ -876,39 +943,20 @@ export function PaymentManager({
             </section>
           ) : null}
 
-          <section className="rounded-[10px] border border-slate-200 bg-white p-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">금액</span>
-                <input
-                  value={form.amount}
-                  onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                  inputMode="numeric"
-                  required
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제수단</span>
-                <PaymentMethodSelect
-                  value={form.method}
-                  onChange={(value) => setForm((current) => ({ ...current, method: value }))}
-                  required
-                />
-              </label>
-
-              <label className="block md:col-span-2">
-                <span className="mb-2 block text-sm font-medium text-slate-700">메모</span>
-                <textarea
-                  value={form.notes}
-                  onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-                  rows={4}
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-            </div>
-          </section>
+          <PaymentEntriesEditor
+            entries={form.payments}
+            onChange={(payments) => setForm((current) => ({ ...current, payments }))}
+            paymentCategories={paymentCategories}
+            disabled={isSaving}
+            allowMultiple={!editingPaymentId}
+            allowNegativeAmounts={Boolean(editingPaymentId && Number(form.payments[0]?.amount ?? 0) < 0)}
+            title={editingPaymentId ? "수납 정보" : "결제 정보"}
+            description={
+              editingPaymentId
+                ? "선택한 수납 1건을 수정합니다."
+                : "여러 결제 수단을 추가하면 같은 납부 건으로 묶어서 기록합니다."
+            }
+          />
 
           <div className="flex justify-end gap-2">
             <button

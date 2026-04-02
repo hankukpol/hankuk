@@ -13,7 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import {
   ATTENDANCE_STATUS_OPTIONS,

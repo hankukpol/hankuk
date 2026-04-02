@@ -2,7 +2,7 @@
 
 import { LoaderCircle, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
 import type { PointRuleItem } from "@/lib/services/point.service";

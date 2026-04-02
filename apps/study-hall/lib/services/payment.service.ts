@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { cache } from "react";
 
 import { Prisma } from "@prisma/client/index";
@@ -10,6 +11,7 @@ import {
 } from "@/lib/payment-meta";
 import type {
   EnrollPaymentSchemaInput,
+  PaymentBatchSchemaInput,
   RefundPaymentSchemaInput,
   RenewPaymentSchemaInput,
 } from "@/lib/payment-schemas";
@@ -24,7 +26,12 @@ import {
   type MockStudentRecord,
   type MockTuitionPlanRecord,
 } from "@/lib/mock-store";
-import { getPrismaClient, normalizeOptionalText } from "@/lib/service-helpers";
+import {
+  getPrismaClient,
+  isPrismaSchemaMismatchError,
+  logSchemaCompatibilityFallback,
+  normalizeOptionalText,
+} from "@/lib/service-helpers";
 import type { StudentDetail } from "@/lib/services/student.service";
 import { getStudentDetail } from "@/lib/services/student.service";
 import type { StudentStatusValue } from "@/lib/student-meta";
@@ -56,14 +63,15 @@ export type PaymentItem = {
   amount: number;
   paymentDate: string;
   method: string | null;
+  paymentGroupId: string | null;
+  originalPaymentId: string | null;
   notes: string | null;
   recordedById: string;
   recordedByName: string;
   createdAt: string;
 };
 
-export type PaymentInput = {
-  studentId: string;
+export type PaymentEntryInput = {
   paymentTypeId: string;
   amount: number;
   paymentDate: string;
@@ -71,13 +79,24 @@ export type PaymentInput = {
   notes?: string | null;
 };
 
+export type PaymentInput = {
+  studentId: string;
+} & PaymentEntryInput;
+
+export type PaymentBatchInput = {
+  studentId: string;
+  payments: PaymentEntryInput[];
+};
+
 export type EnrollPaymentResult = {
   student: StudentDetail;
+  payments: PaymentItem[];
   payment: PaymentItem | null;
 };
 
 export type RenewPaymentResult = {
   student: StudentDetail;
+  payments: PaymentItem[];
   payment: PaymentItem | null;
 };
 
@@ -105,29 +124,24 @@ export type SettlementSummary = {
   payments: PaymentItem[];
 };
 
-type PaymentWithIncludes = {
-  id: string;
-  amount: number;
-  paymentDate: Date;
-  method: string | null;
-  notes: string | null;
-  createdAt: Date;
-  student: {
-    id: string;
-    name: string;
-    studentNumber: string;
-  };
-  paymentType: {
-    id: string;
-    name: string;
-  };
-  recordedBy: {
-    id: string;
-    name: string;
-  };
+type PaymentSchemaCompatibility = {
+  supportsGroupedPayments: boolean;
 };
 
 type PaymentPrismaClient = Awaited<ReturnType<typeof getPrismaClient>> | Prisma.TransactionClient;
+
+type PaymentCreateMeta = {
+  paymentGroupId?: string | null;
+  originalPaymentId?: string | null;
+};
+
+const PAYMENT_SCHEMA_MISMATCH_PATTERNS = [
+  "payments",
+  "payment_group_id",
+  "original_payment_id",
+] as const;
+
+let paymentSchemaCompatibilityPromise: Promise<PaymentSchemaCompatibility> | null = null;
 
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -140,6 +154,41 @@ function getKstToday() {
 
 function parseDateString(value: string) {
   return parseUtcDateFromYmd(value, "날짜");
+}
+
+async function detectPaymentSchemaCompatibility(): Promise<PaymentSchemaCompatibility> {
+  const prisma = await getPrismaClient();
+  const columns = await prisma.$queryRaw<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name = 'payments'
+      AND table_schema IN (current_schema(), 'study_hall')
+      AND column_name IN ('payment_group_id', 'original_payment_id')
+  `;
+  const columnNames = new Set(columns.map((column) => column.column_name));
+
+  return {
+    supportsGroupedPayments:
+      columnNames.has("payment_group_id") && columnNames.has("original_payment_id"),
+  };
+}
+
+async function getPaymentSchemaCompatibility() {
+  if (!paymentSchemaCompatibilityPromise) {
+    paymentSchemaCompatibilityPromise = detectPaymentSchemaCompatibility().catch((error) => {
+      logSchemaCompatibilityFallback("payments:schema-detect", error);
+
+      return {
+        supportsGroupedPayments: false,
+      } satisfies PaymentSchemaCompatibility;
+    });
+  }
+
+  return paymentSchemaCompatibilityPromise;
+}
+
+function createPaymentGroupId() {
+  return `payment-group-${randomUUID()}`;
 }
 
 function toDateString(value: Date | string) {
@@ -159,6 +208,11 @@ function toUtcRange(dateFrom?: string, dateTo?: string) {
 
 function normalizeMethodForStorage(value?: string | null) {
   return serializePaymentMethodValue(value);
+}
+
+function normalizePaymentGroupId(value?: string | null) {
+  const normalized = normalizeOptionalText(value);
+  return normalized ?? null;
 }
 
 /** 수납/환불 금액 — 음수(환불) 허용, 0 거부 */
@@ -222,6 +276,8 @@ function serializePayment(payment: PaymentWithIncludes) {
     amount: payment.amount,
     paymentDate: toDateString(payment.paymentDate),
     method: payment.method,
+    paymentGroupId: "paymentGroupId" in payment ? payment.paymentGroupId ?? null : null,
+    originalPaymentId: "originalPaymentId" in payment ? payment.originalPaymentId ?? null : null,
     notes: payment.notes,
     recordedById: payment.recordedBy.id,
     recordedByName: payment.recordedBy.name,
@@ -252,6 +308,8 @@ function serializeMockPayment(
     amount: record.amount,
     paymentDate: record.paymentDate,
     method: record.method,
+    paymentGroupId: record.paymentGroupId ?? null,
+    originalPaymentId: record.originalPaymentId ?? null,
     notes: record.notes,
     recordedById: record.recordedById,
     recordedByName: getMockAdminSession(divisionSlug).name,
@@ -290,6 +348,32 @@ function ensurePaymentPayload(
   }
 
   return payment;
+}
+
+function resolvePaymentEntries(
+  payment: EnrollPaymentSchemaInput["payment"] | RenewPaymentSchemaInput["payment"],
+  payments?: EnrollPaymentSchemaInput["payments"] | RenewPaymentSchemaInput["payments"],
+) {
+  if (payments?.length) {
+    return payments;
+  }
+
+  if (payment) {
+    return [payment];
+  }
+
+  return [];
+}
+
+function ensurePaymentEntries(
+  payments: PaymentEntryInput[],
+  message: string,
+) {
+  if (payments.length === 0) {
+    throw badRequest(message);
+  }
+
+  return payments;
 }
 
 function resolveRenewedCourseEndDate(currentCourseEndDate: string | null, durationDays: number | null) {
@@ -402,14 +486,9 @@ function findMockPaymentCategory(
 function buildMockPaymentRecord(
   divisionSlug: string,
   actor: PaymentActor,
-  payment: {
-    paymentTypeId: string;
-    amount: number;
-    paymentDate: string;
-    method?: string | null;
-    notes?: string | null;
-  },
+  payment: PaymentEntryInput,
   studentId: string,
+  meta?: PaymentCreateMeta,
 ) {
   return {
     id: `mock-payment-record-${divisionSlug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -417,7 +496,9 @@ function buildMockPaymentRecord(
     paymentTypeId: payment.paymentTypeId,
     amount: normalizePaymentAmount(payment.amount),
     paymentDate: payment.paymentDate,
-    method: normalizeMethodForStorage(payment.method),
+    method: normalizeMethodForStorage(payment.method) ?? "other",
+    paymentGroupId: normalizePaymentGroupId(meta?.paymentGroupId),
+    originalPaymentId: normalizePaymentGroupId(meta?.originalPaymentId),
     notes: normalizeOptionalText(payment.notes),
     recordedById: actor.id,
     createdAt: new Date().toISOString(),
@@ -451,6 +532,95 @@ async function getStudentPaymentBalance(
   });
 
   return aggregate._sum.amount ?? 0;
+}
+
+function getMockRefundedAmountForOriginalPayment(
+  records: MockPaymentRecord[],
+  originalPaymentId: string,
+) {
+  return records
+    .filter((record) => record.originalPaymentId === originalPaymentId && record.amount < 0)
+    .reduce((sum, record) => sum + Math.abs(record.amount), 0);
+}
+
+async function getRefundedAmountForOriginalPayment(
+  prisma: PaymentPrismaClient,
+  originalPaymentId: string,
+) {
+  const paymentSchema = await getPaymentSchemaCompatibility();
+
+  if (!paymentSchema.supportsGroupedPayments) {
+    return 0;
+  }
+
+  const aggregate = await prisma.payment.aggregate({
+    _sum: {
+      amount: true,
+    },
+    where: {
+      originalPaymentId,
+      amount: {
+        lt: 0,
+      },
+    },
+  });
+
+  return Math.abs(aggregate._sum.amount ?? 0);
+}
+
+function toPrismaPaymentCreateInput(
+  supportsGroupedPayments: boolean,
+  actor: PaymentActor,
+  studentId: string,
+  payment: PaymentEntryInput,
+  meta?: PaymentCreateMeta,
+) {
+  const data: Prisma.PaymentUncheckedCreateInput = {
+    studentId,
+    paymentTypeId: payment.paymentTypeId,
+    amount: normalizePaymentAmount(payment.amount),
+    paymentDate: parseDateString(payment.paymentDate),
+    method: normalizeMethodForStorage(payment.method),
+    notes: normalizeOptionalText(payment.notes),
+    recordedById: actor.id,
+  };
+
+  if (supportsGroupedPayments) {
+    data.paymentGroupId = normalizePaymentGroupId(meta?.paymentGroupId);
+    data.originalPaymentId = normalizePaymentGroupId(meta?.originalPaymentId);
+  }
+
+  return data;
+}
+
+const paymentRelationSelect = {
+  student: { select: { id: true, name: true, studentNumber: true } },
+  paymentType: { select: { id: true, name: true } },
+  recordedBy: { select: { id: true, name: true } },
+} as const;
+
+const legacyPaymentSelect = {
+  id: true,
+  amount: true,
+  paymentDate: true,
+  method: true,
+  notes: true,
+  createdAt: true,
+  ...paymentRelationSelect,
+} satisfies Prisma.PaymentSelect;
+
+const paymentSelect = {
+  ...legacyPaymentSelect,
+  paymentGroupId: true,
+  originalPaymentId: true,
+} satisfies Prisma.PaymentSelect;
+
+type PaymentWithIncludes =
+  | Prisma.PaymentGetPayload<{ select: typeof paymentSelect }>
+  | Prisma.PaymentGetPayload<{ select: typeof legacyPaymentSelect }>;
+
+function getPaymentSelect(supportsGroupedPayments: boolean) {
+  return supportsGroupedPayments ? paymentSelect : legacyPaymentSelect;
 }
 
 function ensureNonNegativePaymentBalance(balance: number) {
@@ -522,63 +692,65 @@ export async function listPayments(
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
   const { from, to } = toUtcRange(options?.dateFrom, options?.dateTo);
+  const paymentSchema = await getPaymentSchemaCompatibility();
+  const paymentWhere = {
+    student: {
+      divisionId: division.id,
+    },
+    ...(options?.studentId ? { studentId: options.studentId } : {}),
+    ...(options?.paymentTypeId ? { paymentTypeId: options.paymentTypeId } : {}),
+    ...(from || to
+      ? {
+          paymentDate: {
+            ...(from ? { gte: from } : {}),
+            ...(to ? { lt: to } : {}),
+          },
+        }
+      : {}),
+  } satisfies Prisma.PaymentWhereInput;
+  let payments: PaymentWithIncludes[];
 
-  const payments = await prisma.payment.findMany({
-    where: {
-      student: {
-        divisionId: division.id,
-      },
-      ...(options?.studentId ? { studentId: options.studentId } : {}),
-      ...(options?.paymentTypeId ? { paymentTypeId: options.paymentTypeId } : {}),
-      ...(from || to
-        ? {
-            paymentDate: {
-              ...(from ? { gte: from } : {}),
-              ...(to ? { lt: to } : {}),
-            },
-          }
-        : {}),
-    },
-    include: {
-      student: {
-        select: {
-          id: true,
-          name: true,
-          studentNumber: true,
-        },
-      },
-      paymentType: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      recordedBy: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
-  });
+  try {
+    payments = await prisma.payment.findMany({
+      where: paymentWhere,
+      select: getPaymentSelect(paymentSchema.supportsGroupedPayments),
+      orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+    });
+  } catch (error) {
+    if (!isPrismaSchemaMismatchError(error, [...PAYMENT_SCHEMA_MISMATCH_PATTERNS])) {
+      throw error;
+    }
+
+    logSchemaCompatibilityFallback("payments:list", error);
+    payments = await prisma.payment.findMany({
+      where: paymentWhere,
+      select: legacyPaymentSelect,
+      orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }],
+    });
+  }
 
   return payments.map((payment) => serializePayment(payment)) satisfies PaymentItem[];
 }
 
-export async function createPayment(
+export async function createPaymentsBatch(
   divisionSlug: string,
   actor: PaymentActor,
-  input: PaymentInput,
+  input: PaymentBatchInput | PaymentBatchSchemaInput,
 ) {
-  const normalizedAmount = normalizePaymentAmount(input.amount);
+  const normalizedPayments = input.payments.map((payment) => ({
+    ...payment,
+    amount: normalizePaymentAmount(payment.amount),
+  }));
+
+  if (normalizedPayments.length === 0) {
+    throw badRequest("결제 항목을 1개 이상 입력해 주세요.");
+  }
 
   if (isMockMode()) {
-    const recordId = await updateMockState((state) => {
+    const paymentIds = await updateMockState((state) => {
       const student = (state.studentsByDivision[divisionSlug] ?? []).find((item) => item.id === input.studentId);
-      const category = (state.paymentCategoriesByDivision[divisionSlug] ?? []).find(
-        (item) => item.id === input.paymentTypeId,
-      );
+      const categories = state.paymentCategoriesByDivision[divisionSlug] ?? [];
+      const records = state.paymentRecordsByDivision[divisionSlug] ?? [];
 
       if (!student) {
         throw notFound("학생 정보를 찾을 수 없습니다.");
@@ -586,41 +758,44 @@ export async function createPayment(
 
       ensureStudentStatusForPayment(student.status);
 
-      if (!category) {
-        throw notFound("수납 유형을 찾을 수 없습니다.");
+      for (const payment of normalizedPayments) {
+        if (!categories.some((item) => item.id === payment.paymentTypeId)) {
+          throw notFound("수납 유형을 찾을 수 없습니다.");
+        }
       }
 
-      if (normalizedAmount < 0) {
-        const currentBalance = getMockStudentPaymentBalance(
-          state.paymentRecordsByDivision[divisionSlug] ?? [],
-          input.studentId,
-        );
-        ensureNonNegativePaymentBalance(currentBalance + normalizedAmount);
+      const balanceDelta = normalizedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      if (balanceDelta < 0) {
+        const currentBalance = getMockStudentPaymentBalance(records, input.studentId);
+        ensureNonNegativePaymentBalance(currentBalance + balanceDelta);
       }
 
-      const nextRecord = buildMockPaymentRecord(
-        divisionSlug,
-        actor,
-        { ...input, amount: normalizedAmount },
-        input.studentId,
+      const paymentGroupId = normalizedPayments.length > 1 ? createPaymentGroupId() : null;
+      const createdRecords = normalizedPayments.map((payment) =>
+        buildMockPaymentRecord(divisionSlug, actor, payment, input.studentId, {
+          paymentGroupId,
+        }),
       );
 
-      state.paymentRecordsByDivision[divisionSlug] = [
-        nextRecord,
-        ...(state.paymentRecordsByDivision[divisionSlug] ?? []),
-      ];
+      state.paymentRecordsByDivision[divisionSlug] = [...createdRecords, ...records];
 
-      return nextRecord.id;
+      return createdRecords.map((record) => record.id);
     });
 
-    return findPaymentById(divisionSlug, recordId);
+    return {
+      payments: (
+        await Promise.all(paymentIds.map((paymentId) => findPaymentById(divisionSlug, paymentId)))
+      ).filter((payment): payment is PaymentItem => Boolean(payment)),
+    };
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
+  const paymentSchema = await getPaymentSchemaCompatibility();
+  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
 
-  const [student, category] = await Promise.all([
+  const [student, categories] = await Promise.all([
     prisma.student.findFirst({
       where: {
         id: input.studentId,
@@ -631,10 +806,12 @@ export async function createPayment(
         status: true,
       },
     }),
-    prisma.paymentCategory.findFirst({
+    prisma.paymentCategory.findMany({
       where: {
-        id: input.paymentTypeId,
         divisionId: division.id,
+        id: {
+          in: Array.from(new Set(normalizedPayments.map((payment) => payment.paymentTypeId))),
+        },
       },
       select: {
         id: true,
@@ -648,33 +825,60 @@ export async function createPayment(
 
   ensureStudentStatusForPayment(student.status);
 
-  if (!category) {
+  if (categories.length !== new Set(normalizedPayments.map((payment) => payment.paymentTypeId)).size) {
     throw notFound("수납 유형을 찾을 수 없습니다.");
   }
 
-  if (normalizedAmount < 0) {
+  const balanceDelta = normalizedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  if (balanceDelta < 0) {
     const currentBalance = await getStudentPaymentBalance(prisma, input.studentId);
-    ensureNonNegativePaymentBalance(currentBalance + normalizedAmount);
+    ensureNonNegativePaymentBalance(currentBalance + balanceDelta);
   }
 
-  const payment = await prisma.payment.create({
-    data: {
-      studentId: input.studentId,
-      paymentTypeId: input.paymentTypeId,
-      amount: normalizedAmount,
-      paymentDate: parseDateString(input.paymentDate),
-      method: normalizeMethodForStorage(input.method),
-      notes: normalizeOptionalText(input.notes),
-      recordedById: actor.id,
-    },
-    include: {
-      student: { select: { id: true, name: true, studentNumber: true } },
-      paymentType: { select: { id: true, name: true } },
-      recordedBy: { select: { id: true, name: true } },
-    },
+  const paymentGroupId = normalizedPayments.length > 1 ? createPaymentGroupId() : null;
+  const payments = await prisma.$transaction(async (tx) =>
+    Promise.all(
+      normalizedPayments.map((payment) =>
+        tx.payment.create({
+          data: toPrismaPaymentCreateInput(paymentSchema.supportsGroupedPayments, actor, input.studentId, payment, {
+            paymentGroupId,
+          }),
+          select: paymentSelectForWrite,
+        }),
+      ),
+    ),
+  );
+
+  return {
+    payments: payments.map((payment) => serializePayment(payment)),
+  };
+}
+
+export async function createPayment(
+  divisionSlug: string,
+  actor: PaymentActor,
+  input: PaymentInput,
+) {
+  const result = await createPaymentsBatch(divisionSlug, actor, {
+    studentId: input.studentId,
+    payments: [
+      {
+        paymentTypeId: input.paymentTypeId,
+        amount: input.amount,
+        paymentDate: input.paymentDate,
+        method: input.method,
+        notes: input.notes,
+      },
+    ],
   });
 
-  return serializePayment(payment);
+  const payment = result.payments[0] ?? null;
+
+  if (!payment) {
+    throw badRequest("수납 등록에 실패했습니다.");
+  }
+
+  return payment;
 }
 
 export async function updatePayment(
@@ -724,7 +928,7 @@ export async function updatePayment(
               paymentTypeId: input.paymentTypeId,
               amount: normalizedAmount,
               paymentDate: input.paymentDate,
-              method: normalizeMethodForStorage(input.method),
+              method: normalizeMethodForStorage(input.method) ?? "other",
               notes: normalizeOptionalText(input.notes),
             }
           : record,
@@ -737,6 +941,8 @@ export async function updatePayment(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
+  const paymentSchema = await getPaymentSchemaCompatibility();
+  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
 
   const payment = await prisma.payment.findFirst({
     where: {
@@ -807,11 +1013,7 @@ export async function updatePayment(
       method: normalizeMethodForStorage(input.method),
       notes: normalizeOptionalText(input.notes),
     },
-    include: {
-      student: { select: { id: true, name: true, studentNumber: true } },
-      paymentType: { select: { id: true, name: true } },
-      recordedBy: { select: { id: true, name: true } },
-    },
+    select: paymentSelectForWrite,
   });
 
   return serializePayment(updated);
@@ -826,6 +1028,10 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
         throw notFound("수납 기록을 찾을 수 없습니다.");
       }
 
+      if (current.some((record) => record.originalPaymentId === paymentId)) {
+        throw badRequest("연결된 환불 이력이 있는 원결제는 삭제할 수 없습니다.");
+      }
+
       state.paymentRecordsByDivision[divisionSlug] = current.filter((record) => record.id !== paymentId);
     });
 
@@ -834,6 +1040,7 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
+  const paymentSchema = await getPaymentSchemaCompatibility();
 
   const payment = await prisma.payment.findFirst({
     where: {
@@ -849,6 +1056,21 @@ export async function deletePayment(divisionSlug: string, paymentId: string) {
 
   if (!payment) {
     throw notFound("수납 기록을 찾을 수 없습니다.");
+  }
+
+  const linkedRefundCount = paymentSchema.supportsGroupedPayments
+    ? await prisma.payment.count({
+        where: {
+          originalPaymentId: paymentId,
+          student: {
+            divisionId: division.id,
+          },
+        },
+      })
+    : 0;
+
+  if (linkedRefundCount > 0) {
+    throw badRequest("연결된 환불 이력이 있는 원결제는 삭제할 수 없습니다.");
   }
 
   await prisma.payment.delete({
@@ -889,6 +1111,29 @@ export async function refundPayment(
         const currentBalance = getMockStudentPaymentBalance(records, input.studentId);
         ensureNonNegativePaymentBalance(currentBalance + refundAmount);
 
+        if (input.originalPaymentId) {
+          const originalPayment = records.find(
+            (record) => record.id === input.originalPaymentId && record.studentId === input.studentId,
+          );
+
+          if (!originalPayment) {
+            throw notFound("원결제를 찾을 수 없습니다.");
+          }
+
+          if (originalPayment.amount <= 0) {
+            throw badRequest("원결제 금액이 올바르지 않습니다.");
+          }
+
+          const refundedAmount = getMockRefundedAmountForOriginalPayment(records, originalPayment.id);
+          const refundableAmount = originalPayment.amount - refundedAmount;
+
+          if (input.amount > refundableAmount) {
+            throw badRequest("환불 금액이 원결제의 남은 환불 가능액을 초과했습니다.");
+          }
+        }
+
+        const refundGroupId = input.originalPaymentId ? createPaymentGroupId() : null;
+
         const refundRecord = buildMockPaymentRecord(
           divisionSlug,
           actor,
@@ -900,6 +1145,10 @@ export async function refundPayment(
             notes: input.notes,
           },
           input.studentId,
+          {
+            paymentGroupId: refundGroupId,
+            originalPaymentId: input.originalPaymentId ?? null,
+          },
         );
 
         state.paymentRecordsByDivision[divisionSlug] = [refundRecord, ...records];
@@ -941,8 +1190,14 @@ export async function refundPayment(
         throw badRequest("재결제 금액은 원결제 금액보다 작아야 합니다.");
       }
 
+      const refundedAmount = getMockRefundedAmountForOriginalPayment(records, originalPayment.id);
+      if (refundedAmount > 0) {
+        throw badRequest("이미 환불 이력이 있는 카드 결제는 전체취소를 다시 진행할 수 없습니다.");
+      }
+
       const currentBalance = getMockStudentPaymentBalance(records, input.studentId);
       ensureNonNegativePaymentBalance(currentBalance - originalPayment.amount + rechargeAmount);
+      const refundGroupId = createPaymentGroupId();
 
       const refundRecord = buildMockPaymentRecord(
         divisionSlug,
@@ -957,6 +1212,10 @@ export async function refundPayment(
             `카드 전체취소 (원결제 ${originalPayment.paymentDate})`,
         },
         input.studentId,
+        {
+          paymentGroupId: refundGroupId,
+          originalPaymentId: originalPayment.id,
+        },
       );
 
       const rechargeRecord = buildMockPaymentRecord(
@@ -970,6 +1229,10 @@ export async function refundPayment(
           notes: input.rechargeNotes ?? "카드 재결제 (공제 후)",
         },
         input.studentId,
+        {
+          paymentGroupId: refundGroupId,
+          originalPaymentId: originalPayment.id,
+        },
       );
 
       state.paymentRecordsByDivision[divisionSlug] = [refundRecord, rechargeRecord, ...records];
@@ -989,10 +1252,16 @@ export async function refundPayment(
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
+  const paymentSchema = await getPaymentSchemaCompatibility();
+  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
+
+  if (!paymentSchema.supportsGroupedPayments) {
+    throw badRequest("현재 데이터베이스에 최신 결제 환불 마이그레이션이 적용되지 않아 환불 기능을 사용할 수 없습니다.");
+  }
 
   if (input.mode === "simple") {
     const refundAmount = normalizePaymentAmount(input.amount * -1);
-    const [student, refundCategory] = await Promise.all([
+    const [student, refundCategory, originalPayment] = await Promise.all([
       prisma.student.findFirst({
         where: {
           id: input.studentId,
@@ -1012,6 +1281,21 @@ export async function refundPayment(
           id: true,
         },
       }),
+      input.originalPaymentId
+        ? prisma.payment.findFirst({
+            where: {
+              id: input.originalPaymentId,
+              studentId: input.studentId,
+              student: {
+                divisionId: division.id,
+              },
+            },
+            select: {
+              id: true,
+              amount: true,
+            },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!student) {
@@ -1027,21 +1311,43 @@ export async function refundPayment(
     const currentBalance = await getStudentPaymentBalance(prisma, student.id);
     ensureNonNegativePaymentBalance(currentBalance + refundAmount);
 
+    if (input.originalPaymentId) {
+      if (!originalPayment) {
+        throw notFound("원결제를 찾을 수 없습니다.");
+      }
+
+      if (originalPayment.amount <= 0) {
+        throw badRequest("원결제 금액이 올바르지 않습니다.");
+      }
+
+      const refundedAmount = await getRefundedAmountForOriginalPayment(prisma, originalPayment.id);
+      const refundableAmount = originalPayment.amount - refundedAmount;
+
+      if (input.amount > refundableAmount) {
+        throw badRequest("환불 금액이 원결제의 남은 환불 가능액을 초과했습니다.");
+      }
+    }
+
+    const refundGroupId = input.originalPaymentId ? createPaymentGroupId() : null;
+
     const payment = await prisma.payment.create({
-      data: {
-        studentId: student.id,
-        paymentTypeId: refundCategory.id,
-        amount: refundAmount,
-        paymentDate: parseDateString(input.paymentDate),
-        method: normalizeMethodForStorage(input.method),
-        notes: normalizeOptionalText(input.notes),
-        recordedById: actor.id,
-      },
-      include: {
-        student: { select: { id: true, name: true, studentNumber: true } },
-        paymentType: { select: { id: true, name: true } },
-        recordedBy: { select: { id: true, name: true } },
-      },
+      data: toPrismaPaymentCreateInput(
+        paymentSchema.supportsGroupedPayments,
+        actor,
+        student.id,
+        {
+          paymentTypeId: refundCategory.id,
+          amount: refundAmount,
+          paymentDate: input.paymentDate,
+          method: input.method,
+          notes: input.notes,
+        },
+        {
+          paymentGroupId: refundGroupId,
+          originalPaymentId: input.originalPaymentId ?? null,
+        },
+      ),
+      select: paymentSelectForWrite,
     });
 
     return {
@@ -1131,10 +1437,16 @@ export async function refundPayment(
     throw badRequest("재결제 금액은 원결제 금액보다 작아야 합니다.");
   }
 
+  const refundedAmount = await getRefundedAmountForOriginalPayment(prisma, originalPayment.id);
+  if (refundedAmount > 0) {
+    throw badRequest("이미 환불 이력이 있는 카드 결제는 전체취소를 다시 진행할 수 없습니다.");
+  }
+
   const currentBalance = await getStudentPaymentBalance(prisma, student.id);
   ensureNonNegativePaymentBalance(currentBalance - originalPayment.amount + rechargeAmount);
 
   const originalPaymentDate = toDateString(originalPayment.paymentDate);
+  const refundGroupId = createPaymentGroupId();
   const result = await prisma.$transaction(async (tx) => {
     const refundPaymentRecord = await tx.payment.create({
       data: {
@@ -1143,16 +1455,14 @@ export async function refundPayment(
         amount: originalPayment.amount * -1,
         paymentDate: parseDateString(input.paymentDate),
         method: "card",
+        paymentGroupId: refundGroupId,
+        originalPaymentId: originalPayment.id,
         notes:
           normalizeOptionalText(input.refundNotes) ??
           `카드 전체취소 (원결제 ${originalPaymentDate})`,
         recordedById: actor.id,
       },
-      include: {
-        student: { select: { id: true, name: true, studentNumber: true } },
-        paymentType: { select: { id: true, name: true } },
-        recordedBy: { select: { id: true, name: true } },
-      },
+      select: paymentSelectForWrite,
     });
 
     const rechargePaymentRecord = await tx.payment.create({
@@ -1162,14 +1472,12 @@ export async function refundPayment(
         amount: rechargeAmount,
         paymentDate: parseDateString(input.paymentDate),
         method: "card",
+        paymentGroupId: refundGroupId,
+        originalPaymentId: originalPayment.id,
         notes: normalizeOptionalText(input.rechargeNotes) ?? "카드 재결제 (공제 후)",
         recordedById: actor.id,
       },
-      include: {
-        student: { select: { id: true, name: true, studentNumber: true } },
-        paymentType: { select: { id: true, name: true } },
-        recordedBy: { select: { id: true, name: true } },
-      },
+      select: paymentSelectForWrite,
     });
 
     return {
@@ -1192,9 +1500,12 @@ export async function enrollAndPay(
   input: EnrollPaymentSchemaInput,
 ): Promise<EnrollPaymentResult> {
   const courseStartDate = input.courseStartDate ?? getKstToday();
-  const paymentPayload = input.tuitionExempt
-    ? null
-    : ensurePaymentPayload(input.payment, "면제 학생이 아니면 수납 정보를 입력해 주세요.");
+  const paymentEntries = input.tuitionExempt
+    ? []
+    : ensurePaymentEntries(
+        resolvePaymentEntries(input.payment, input.payments),
+        "면제 학생이 아니면 수납 정보를 입력해 주세요.",
+      );
 
   if (isMockMode()) {
     const result = await updateMockState((state) => {
@@ -1213,10 +1524,10 @@ export async function enrollAndPay(
         state.tuitionPlansByDivision[divisionSlug] ?? [],
         input.tuitionPlanId,
       );
-      if (paymentPayload) {
+      for (const payment of paymentEntries) {
         findMockPaymentCategory(
           state.paymentCategoriesByDivision[divisionSlug] ?? [],
-          paymentPayload.paymentTypeId,
+          payment.paymentTypeId,
         );
       }
 
@@ -1251,39 +1562,42 @@ export async function enrollAndPay(
         createdAt: now,
         updatedAt: now,
       } satisfies MockStudentRecord;
-      const paymentRecord = paymentPayload
-        ? buildMockPaymentRecord(divisionSlug, actor, paymentPayload, studentId)
-        : null;
+      const paymentGroupId = paymentEntries.length > 1 ? createPaymentGroupId() : null;
+      const paymentRecords = paymentEntries.map((payment) =>
+        buildMockPaymentRecord(divisionSlug, actor, payment, studentId, {
+          paymentGroupId,
+        }),
+      );
 
       state.studentsByDivision[divisionSlug] = [...divisionStudents, studentRecord];
-      if (paymentRecord) {
+      if (paymentRecords.length > 0) {
         state.paymentRecordsByDivision[divisionSlug] = [
-          paymentRecord,
+          ...paymentRecords,
           ...(state.paymentRecordsByDivision[divisionSlug] ?? []),
         ];
       }
 
       return {
         studentId,
-        paymentId: paymentRecord?.id ?? null,
+        paymentIds: paymentRecords.map((payment) => payment.id),
       };
     });
 
     const student = await getStudentDetail(divisionSlug, result.studentId);
-    const payment = result.paymentId ? await findPaymentById(divisionSlug, result.paymentId) : null;
+    const payments = (
+      await Promise.all(result.paymentIds.map((paymentId) => findPaymentById(divisionSlug, paymentId)))
+    ).filter((payment): payment is PaymentItem => Boolean(payment));
 
-    if (!payment && result.paymentId) {
-      throw notFound("수납 기록을 찾을 수 없습니다.");
-    }
-
-    return { student, payment };
+    return { student, payments, payment: payments[0] ?? null };
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
+  const paymentSchema = await getPaymentSchemaCompatibility();
+  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
 
-  const [duplicate, plan, category] = await Promise.all([
+  const [duplicate, plan, categories] = await Promise.all([
     prisma.student.findFirst({
       where: {
         divisionId: division.id,
@@ -1302,15 +1616,17 @@ export async function enrollAndPay(
         durationDays: true,
       },
     }),
-    paymentPayload
-      ? prisma.paymentCategory.findFirst({
+    paymentEntries.length > 0
+      ? prisma.paymentCategory.findMany({
           where: {
-            id: paymentPayload.paymentTypeId,
             divisionId: division.id,
+            id: {
+              in: Array.from(new Set(paymentEntries.map((payment) => payment.paymentTypeId))),
+            },
           },
           select: { id: true },
         })
-      : Promise.resolve(null),
+      : Promise.resolve([]),
   ]);
 
   if (duplicate) {
@@ -1321,7 +1637,7 @@ export async function enrollAndPay(
     throw notFound("수강 플랜을 찾을 수 없습니다.");
   }
 
-  if (paymentPayload && !category) {
+  if (categories.length !== new Set(paymentEntries.map((payment) => payment.paymentTypeId)).size) {
     throw notFound("수납 유형을 찾을 수 없습니다.");
   }
 
@@ -1353,34 +1669,28 @@ export async function enrollAndPay(
         },
       });
 
-      const payment = paymentPayload
-        ? await tx.payment.create({
-            data: {
-              studentId: student.id,
-              paymentTypeId: paymentPayload.paymentTypeId,
-              amount: normalizePaymentAmount(paymentPayload.amount),
-              paymentDate: parseDateString(paymentPayload.paymentDate),
-              method: normalizeMethodForStorage(paymentPayload.method),
-              notes: normalizeOptionalText(paymentPayload.notes),
-              recordedById: actor.id,
-            },
-            include: {
-              student: { select: { id: true, name: true, studentNumber: true } },
-              paymentType: { select: { id: true, name: true } },
-              recordedBy: { select: { id: true, name: true } },
-            },
-          })
-        : null;
+      const paymentGroupId = paymentEntries.length > 1 ? createPaymentGroupId() : null;
+      const payments = await Promise.all(
+        paymentEntries.map((payment) =>
+          tx.payment.create({
+            data: toPrismaPaymentCreateInput(paymentSchema.supportsGroupedPayments, actor, student.id, payment, {
+              paymentGroupId,
+            }),
+            select: paymentSelectForWrite,
+          }),
+        ),
+      );
 
       return {
         studentId: student.id,
-        payment: payment ? serializePayment(payment) : null,
+        payments: payments.map((payment) => serializePayment(payment)),
       };
     });
 
     return {
       student: await getStudentDetail(divisionSlug, result.studentId),
-      payment: result.payment,
+      payments: result.payments,
+      payment: result.payments[0] ?? null,
     };
   } catch (error) {
     if (isPaymentUniqueConstraintError(error, "student_number") || isPaymentUniqueConstraintError(error, "studentNumber")) {
@@ -1406,18 +1716,21 @@ export async function renewAndPay(
       }
 
       ensureStudentStatusForPayment(student.status);
-      const paymentPayload = student.tuitionExempt
-        ? null
-        : ensurePaymentPayload(input.payment, "면제 학생이 아니면 수납 정보를 입력해 주세요.");
+      const paymentEntries = student.tuitionExempt
+        ? []
+        : ensurePaymentEntries(
+            resolvePaymentEntries(input.payment, input.payments),
+            "면제 학생이 아니면 수납 정보를 입력해 주세요.",
+          );
 
       const plan = findMockTuitionPlan(
         state.tuitionPlansByDivision[divisionSlug] ?? [],
         input.tuitionPlanId,
       );
-      if (paymentPayload) {
+      for (const payment of paymentEntries) {
         findMockPaymentCategory(
           state.paymentCategoriesByDivision[divisionSlug] ?? [],
-          paymentPayload.paymentTypeId,
+          payment.paymentTypeId,
         );
       }
 
@@ -1426,9 +1739,12 @@ export async function renewAndPay(
         typeof input.tuitionAmount === "number" && Number.isFinite(input.tuitionAmount)
           ? normalizeTuitionAmount(input.tuitionAmount)
           : plan.amount;
-      const paymentRecord = paymentPayload
-        ? buildMockPaymentRecord(divisionSlug, actor, paymentPayload, student.id)
-        : null;
+      const paymentGroupId = paymentEntries.length > 1 ? createPaymentGroupId() : null;
+      const paymentRecords = paymentEntries.map((payment) =>
+        buildMockPaymentRecord(divisionSlug, actor, payment, student.id, {
+          paymentGroupId,
+        }),
+      );
 
       state.studentsByDivision[divisionSlug] = students.map((item) =>
         item.id === student.id
@@ -1441,34 +1757,35 @@ export async function renewAndPay(
             }
           : item,
       );
-      if (paymentRecord) {
+      if (paymentRecords.length > 0) {
         state.paymentRecordsByDivision[divisionSlug] = [
-          paymentRecord,
+          ...paymentRecords,
           ...(state.paymentRecordsByDivision[divisionSlug] ?? []),
         ];
       }
 
       return {
         studentId: student.id,
-        paymentId: paymentRecord?.id ?? null,
+        paymentIds: paymentRecords.map((payment) => payment.id),
       };
     });
 
     const student = await getStudentDetail(divisionSlug, result.studentId);
-    const payment = result.paymentId ? await findPaymentById(divisionSlug, result.paymentId) : null;
+    const payments = (
+      await Promise.all(result.paymentIds.map((paymentId) => findPaymentById(divisionSlug, paymentId)))
+    ).filter((payment): payment is PaymentItem => Boolean(payment));
 
-    if (!payment && result.paymentId) {
-      throw notFound("수납 기록을 찾을 수 없습니다.");
-    }
-
-    return { student, payment };
+    return { student, payments, payment: payments[0] ?? null };
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
   await ensureDefaultPaymentCategories(division.id);
   const prisma = await getPrismaClient();
+  const paymentSchema = await getPaymentSchemaCompatibility();
+  const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
 
-  const [student, plan, category] = await Promise.all([
+  const normalizedPaymentEntries = resolvePaymentEntries(input.payment, input.payments);
+  const [student, plan, categories] = await Promise.all([
     prisma.student.findFirst({
       where: {
         id: input.studentId,
@@ -1492,17 +1809,19 @@ export async function renewAndPay(
         durationDays: true,
       },
     }),
-    input.payment
-      ? prisma.paymentCategory.findFirst({
+    normalizedPaymentEntries.length > 0
+      ? prisma.paymentCategory.findMany({
           where: {
-            id: input.payment.paymentTypeId,
             divisionId: division.id,
+            id: {
+              in: Array.from(new Set(normalizedPaymentEntries.map((payment) => payment.paymentTypeId))),
+            },
           },
           select: {
             id: true,
           },
         })
-      : Promise.resolve(null),
+      : Promise.resolve([]),
   ]);
 
   if (!student) {
@@ -1510,15 +1829,18 @@ export async function renewAndPay(
   }
 
   ensureStudentStatusForPayment(student.status);
-  const paymentPayload = student.tuitionExempt
-    ? null
-    : ensurePaymentPayload(input.payment, "면제 학생이 아니면 수납 정보를 입력해 주세요.");
+  const paymentEntries = student.tuitionExempt
+    ? []
+    : ensurePaymentEntries(
+        normalizedPaymentEntries,
+        "면제 학생이 아니면 수납 정보를 입력해 주세요.",
+      );
 
   if (!plan) {
     throw notFound("수강 플랜을 찾을 수 없습니다.");
   }
 
-  if (paymentPayload && !category) {
+  if (categories.length !== new Set(paymentEntries.map((payment) => payment.paymentTypeId)).size) {
     throw notFound("수납 유형을 찾을 수 없습니다.");
   }
 
@@ -1541,34 +1863,28 @@ export async function renewAndPay(
       },
     });
 
-    const payment = paymentPayload
-      ? await tx.payment.create({
-          data: {
-            studentId: student.id,
-            paymentTypeId: paymentPayload.paymentTypeId,
-            amount: normalizePaymentAmount(paymentPayload.amount),
-            paymentDate: parseDateString(paymentPayload.paymentDate),
-            method: normalizeMethodForStorage(paymentPayload.method),
-            notes: normalizeOptionalText(paymentPayload.notes),
-            recordedById: actor.id,
-          },
-          include: {
-            student: { select: { id: true, name: true, studentNumber: true } },
-            paymentType: { select: { id: true, name: true } },
-            recordedBy: { select: { id: true, name: true } },
-          },
-        })
-      : null;
+    const paymentGroupId = paymentEntries.length > 1 ? createPaymentGroupId() : null;
+    const payments = await Promise.all(
+      paymentEntries.map((payment) =>
+        tx.payment.create({
+          data: toPrismaPaymentCreateInput(paymentSchema.supportsGroupedPayments, actor, student.id, payment, {
+            paymentGroupId,
+          }),
+          select: paymentSelectForWrite,
+        }),
+      ),
+    );
 
     return {
       studentId: student.id,
-      payment: payment ? serializePayment(payment) : null,
+      payments: payments.map((payment) => serializePayment(payment)),
     };
   });
 
   return {
     student: await getStudentDetail(divisionSlug, result.studentId),
-    payment: result.payment,
+    payments: result.payments,
+    payment: result.payments[0] ?? null,
   };
 }
 

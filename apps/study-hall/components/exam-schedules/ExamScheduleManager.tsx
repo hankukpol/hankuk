@@ -2,7 +2,7 @@
 
 import { CalendarDays, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { EXAM_SCHEDULE_TYPES, getExamScheduleTypeLabel, type ExamScheduleTypeValue } from "@/lib/exam-schedule-meta";
 import type { ExamScheduleItem } from "@/lib/services/exam-schedule.service";

@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
-import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
+import {
+  createPaymentEntryFormValue,
+  PaymentEntriesEditor,
+  type PaymentEntryFormValue,
+} from "@/components/payments/PaymentEntriesEditor";
 import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments/payment-client-helpers";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
@@ -29,11 +33,7 @@ type FormState = {
   studentId: string;
   tuitionPlanId: string;
   tuitionAmount: string;
-  paymentTypeId: string;
-  paymentAmount: string;
-  paymentDate: string;
-  paymentMethod: string;
-  paymentNotes: string;
+  payments: PaymentEntryFormValue[];
 };
 
 function createInitialState(
@@ -43,16 +43,21 @@ function createInitialState(
 ): FormState {
   const defaultPlanId = tuitionPlans[0]?.id ?? "";
   const defaultPlan = tuitionPlans.find((plan) => plan.id === defaultPlanId) ?? null;
+  const defaultPaymentTypeId = findDefaultPaymentCategoryId(paymentCategories, ["월납부", "등록비"]);
 
   return {
     studentId: initialStudentId ?? "",
     tuitionPlanId: defaultPlanId,
     tuitionAmount: defaultPlan ? String(defaultPlan.amount) : "",
-    paymentTypeId: findDefaultPaymentCategoryId(paymentCategories, ["월납부", "등록비"]),
-    paymentAmount: defaultPlan ? String(defaultPlan.amount) : "",
-    paymentDate: getKstToday(),
-    paymentMethod: "card",
-    paymentNotes: defaultPlan?.name ?? "",
+    payments: [
+      createPaymentEntryFormValue({
+        paymentTypeId: defaultPaymentTypeId,
+        amount: defaultPlan ? String(defaultPlan.amount) : "",
+        paymentDate: getKstToday(),
+        method: "card",
+        notes: defaultPlan?.name ?? "",
+      }),
+    ],
   };
 }
 
@@ -67,6 +72,16 @@ function getRemainingDays(courseEndDate: string | null) {
     new Date(`${today}T00:00:00+09:00`).getTime();
 
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function toPaymentPayload(entries: PaymentEntryFormValue[]) {
+  return entries.map((entry) => ({
+    paymentTypeId: entry.paymentTypeId,
+    amount: Number(entry.amount),
+    paymentDate: entry.paymentDate,
+    method: entry.method,
+    notes: entry.notes || null,
+  }));
 }
 
 export function RenewPaymentModal({
@@ -125,15 +140,7 @@ export function RenewPaymentModal({
           studentId: form.studentId,
           tuitionPlanId: form.tuitionPlanId,
           tuitionAmount: form.tuitionAmount ? Number(form.tuitionAmount) : null,
-          payment: selectedStudent?.tuitionExempt
-            ? undefined
-            : {
-                paymentTypeId: form.paymentTypeId,
-                amount: Number(form.paymentAmount),
-                paymentDate: form.paymentDate,
-                method: form.paymentMethod,
-                notes: form.paymentNotes || null,
-              },
+          payments: selectedStudent?.tuitionExempt ? undefined : toPaymentPayload(form.payments),
         }),
       });
       const data = await response.json();
@@ -144,8 +151,8 @@ export function RenewPaymentModal({
 
       toast.success(
         selectedStudent?.tuitionExempt
-          ? "수강 기간 연장이 완료되었습니다."
-          : "연장 수납과 수강 종료일 갱신이 완료되었습니다.",
+          ? "수강 기간 연장을 완료했습니다."
+          : "연장 수납과 기간 갱신을 완료했습니다.",
       );
       await onSuccess();
       onClose();
@@ -164,8 +171,8 @@ export function RenewPaymentModal({
       title={selectedStudent?.tuitionExempt ? "수강 기간 연장" : "연장 수납"}
       description={
         selectedStudent?.tuitionExempt
-          ? "면제 학생은 결제 없이 수강 기간만 연장합니다."
-          : "기존 학생의 수강 기간을 연장하고 수납 기록을 남깁니다."
+          ? "면제 학생은 결제 없이 기간만 연장합니다."
+          : "기존 학생의 수강 기간을 연장하고 결제를 함께 기록합니다."
       }
     >
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -176,7 +183,7 @@ export function RenewPaymentModal({
               students={activeStudents}
               value={form.studentId}
               onChange={(studentId) => setForm((current) => ({ ...current, studentId }))}
-              placeholder="이름 또는 학번 검색"
+              placeholder="이름 또는 수험번호 검색"
               showStudyTrack
             />
           </label>
@@ -235,8 +242,16 @@ export function RenewPaymentModal({
                     ...current,
                     tuitionPlanId: nextPlanId,
                     tuitionAmount: nextPlan ? String(nextPlan.amount) : "",
-                    paymentAmount: nextPlan ? String(nextPlan.amount) : current.paymentAmount,
-                    paymentNotes: nextPlan?.name ?? current.paymentNotes,
+                    payments:
+                      current.payments.length === 1
+                        ? [
+                            {
+                              ...current.payments[0],
+                              amount: nextPlan ? String(nextPlan.amount) : "",
+                              notes: nextPlan?.name ?? current.payments[0].notes,
+                            },
+                          ]
+                        : current.payments,
                   }));
                 }}
                 required
@@ -266,7 +281,7 @@ export function RenewPaymentModal({
               <p className="text-sm font-medium text-slate-700">예상 종료일</p>
               <p className="mt-2 text-lg font-bold text-slate-950">{expectedCourseEndDate ?? "계산할 수 없음"}</p>
               <p className="mt-1 text-xs text-slate-500">
-                현재 종료일이 남아 있으면 그 날짜부터 연장하고, 이미 지났다면 오늘부터 다시 계산합니다.
+                현재 종료일이 남아 있으면 그 날짜부터 연장하고, 지났다면 오늘부터 다시 계산합니다.
               </p>
             </div>
           </div>
@@ -274,74 +289,20 @@ export function RenewPaymentModal({
 
         {selectedStudent?.tuitionExempt ? (
           <section className="rounded-[10px] border border-sky-200 bg-sky-50 p-5">
-            <p className="text-sm font-semibold text-sky-900">수납 없이 연장됩니다.</p>
+            <p className="text-sm font-semibold text-sky-900">수납 없이 연장합니다.</p>
             <p className="mt-2 text-sm leading-6 text-sky-800">
-              면제 학생은 결제 기록을 만들지 않고 종료일과 등록 정보만 갱신합니다.
+              면제 학생은 결제 레코드를 만들지 않고 종료일만 갱신합니다.
             </p>
           </section>
         ) : (
-          <section className="rounded-[10px] border border-slate-200 bg-white p-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">수납 유형</span>
-                <select
-                  value={form.paymentTypeId}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentTypeId: event.target.value }))}
-                  required
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                >
-                  <option value="">수납 유형 선택</option>
-                  {paymentCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제일</span>
-                <input
-                  type="date"
-                  value={form.paymentDate}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentDate: event.target.value }))}
-                  required
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제 금액</span>
-                <input
-                  type="number"
-                  value={form.paymentAmount}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentAmount: event.target.value }))}
-                  min="1"
-                  required
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제 수단</span>
-                <PaymentMethodSelect
-                  value={form.paymentMethod}
-                  onChange={(value) => setForm((current) => ({ ...current, paymentMethod: value }))}
-                  required
-                />
-              </label>
-
-              <label className="block md:col-span-2">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결제 메모</span>
-                <textarea
-                  value={form.paymentNotes}
-                  onChange={(event) => setForm((current) => ({ ...current, paymentNotes: event.target.value }))}
-                  rows={3}
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                />
-              </label>
-            </div>
-          </section>
+          <PaymentEntriesEditor
+            entries={form.payments}
+            onChange={(payments) => setForm((current) => ({ ...current, payments }))}
+            paymentCategories={paymentCategories}
+            disabled={isSubmitting}
+            title="결제 정보"
+            description="카드와 포인트를 함께 받는 경우 결제 수단 추가로 분할 결제를 등록하세요."
+          />
         )}
 
         <div className="flex justify-end gap-2">

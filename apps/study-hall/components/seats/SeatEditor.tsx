@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoaderCircle, Plus, RefreshCcw, Save, Sparkles, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { Modal } from "@/components/ui/Modal";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";

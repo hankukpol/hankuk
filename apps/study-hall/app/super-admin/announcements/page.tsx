@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 type GlobalAnnouncement = {
   id: string;

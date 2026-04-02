@@ -2,7 +2,7 @@
 
 import { AlertTriangle, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { DivisionRuleSettings } from "@/lib/services/settings.service";
 

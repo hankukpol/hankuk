@@ -3,7 +3,7 @@
 import { type FormEvent, useState } from "react";
 import { LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import {
   DIVISION_FEATURES,

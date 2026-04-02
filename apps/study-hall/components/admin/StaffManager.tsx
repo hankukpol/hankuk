@@ -2,7 +2,7 @@
 
 import { AlertTriangle, LoaderCircle, Pencil, Save, Trash2, UserX } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { DivisionStaffAccount } from "@/lib/services/division-staff.service";
 

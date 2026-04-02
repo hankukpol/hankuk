@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, Phone, RefreshCcw, Smartphone, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { PhoneCheckRecord } from "@/lib/services/phone-submission.service";
 import type { PointRuleItem } from "@/lib/services/point.service";

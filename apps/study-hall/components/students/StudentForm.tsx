@@ -11,7 +11,7 @@ import {
   Save,
   UserRound,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import { SeatMap } from "@/components/seats/SeatMap";
 import type { SeatLayout, SeatOptionItem, StudyRoomItem } from "@/lib/services/seat.service";

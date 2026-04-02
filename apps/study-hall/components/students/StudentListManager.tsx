@@ -20,7 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Modal } from "@/components/ui/Modal";

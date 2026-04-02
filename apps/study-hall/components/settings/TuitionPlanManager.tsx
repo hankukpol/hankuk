@@ -2,7 +2,7 @@
 
 import { LoaderCircle, Pencil, RefreshCcw, Save, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
 

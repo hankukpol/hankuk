@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 
 import { RefreshCcw, Save } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import type { PhoneCheckStatus, PhoneDaySnapshot } from "@/lib/services/phone-submission.service";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";

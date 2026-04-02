@@ -259,6 +259,8 @@ model Payment {
   amount        Int
   paymentDate   DateTime        @map("payment_date") @db.Date
   method        String?
+  paymentGroupId String?        @map("payment_group_id")
+  originalPaymentId String?     @map("original_payment_id")
   notes         String?
   recordedById  String          @map("recorded_by_id")
   createdAt     DateTime        @default(now()) @map("created_at")
@@ -268,6 +270,8 @@ model Payment {
 
   @@index([studentId, paymentDate])
   @@index([paymentTypeId])
+  @@index([paymentGroupId])
+  @@index([originalPaymentId])
   @@index([recordedById])
   @@map("payments")
 }

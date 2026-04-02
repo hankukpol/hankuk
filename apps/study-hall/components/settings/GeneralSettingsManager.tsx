@@ -3,7 +3,7 @@
 import { LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/sonner";
 
 import {
   OPERATING_DAY_KEYS,

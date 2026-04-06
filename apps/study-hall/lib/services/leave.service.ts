@@ -18,6 +18,7 @@ import type {
 } from "@/lib/leave-schemas";
 import type { LeaveTypeValue } from "@/lib/leave-meta";
 import { getPrismaClient, normalizeOptionalText } from "@/lib/service-helpers";
+import { syncAttendanceDerivedPoints } from "@/lib/services/attendance.service";
 import { getPeriods } from "@/lib/services/period.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 
@@ -224,14 +225,11 @@ async function applyMockLeaveAttendance(
   const current = new Map(
     (state.attendanceByDivision[divisionSlug] ?? []).map((record) => [record.id, record]),
   );
+  const now = new Date().toISOString();
 
   for (const period of targetPeriods) {
     const id = buildMockAttendanceId(input.studentId, period.id, input.date);
     const existing = current.get(id);
-
-    if (existing) {
-      continue;
-    }
 
     current.set(id, {
       id,
@@ -242,8 +240,8 @@ async function applyMockLeaveAttendance(
       reason: buildAttendanceReason(input.type, normalizeOptionalText(input.reason)),
       checkInTime: null,
       recordedById: actorId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
     } satisfies MockAttendanceRecord);
   }
 
@@ -272,33 +270,36 @@ async function applyDbLeaveAttendance(
   }
 
   const targetDate = parseDateString(input.date);
-  const existingRecords = await prisma.attendance.findMany({
-    where: {
-      studentId: input.studentId,
-      date: targetDate,
-    },
-    select: {
-      periodId: true,
-    },
-  });
-  const existingPeriodIds = new Set(existingRecords.map((record) => record.periodId));
-  const periodsToApply = targetPeriods.filter((period) => !existingPeriodIds.has(period.id));
+  const attendanceReason = buildAttendanceReason(input.type, normalizeOptionalText(input.reason));
 
-  if (periodsToApply.length === 0) {
-    return;
-  }
-
-  await prisma.attendance.createMany({
-    data: periodsToApply.map((period) => ({
-      studentId: input.studentId,
-      periodId: period.id,
-      date: targetDate,
-      status: attendanceStatus,
-      reason: buildAttendanceReason(input.type, normalizeOptionalText(input.reason)),
-      recordedById: actorId,
-    })),
-    skipDuplicates: true,
-  });
+  await prisma.$transaction(
+    targetPeriods.map((period) =>
+      prisma.attendance.upsert({
+        where: {
+          studentId_periodId_date: {
+            studentId: input.studentId,
+            periodId: period.id,
+            date: targetDate,
+          },
+        },
+        update: {
+          status: attendanceStatus,
+          reason: attendanceReason,
+          checkInTime: null,
+          recordedById: actorId,
+        },
+        create: {
+          studentId: input.studentId,
+          periodId: period.id,
+          date: targetDate,
+          status: attendanceStatus,
+          reason: attendanceReason,
+          checkInTime: null,
+          recordedById: actorId,
+        },
+      }),
+    ),
+  );
 }
 
 function buildLeaveSettlementPreviewItems(args: {
@@ -485,6 +486,11 @@ export async function createLeavePermission(
 
       return nextRecord;
     });
+
+    if (getAttendanceStatusForLeaveType(input.type)) {
+      await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id);
+    }
+
     const mockState = await readMockState();
     const mockStudent = (mockState.studentsByDivision[divisionSlug] ?? []).find(
       (s) => s.id === record.studentId,
@@ -546,6 +552,10 @@ export async function createLeavePermission(
     ...input,
     reason,
   });
+
+  if (getAttendanceStatusForLeaveType(input.type)) {
+    await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id);
+  }
 
   const createdPermission = await prisma.leavePermission.findUnique({
     where: { id: permission.id },

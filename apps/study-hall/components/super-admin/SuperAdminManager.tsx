@@ -4,6 +4,8 @@ import { LoaderCircle, Pencil, RefreshCcw, Save, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type {
   ManagedAdminAccount,
   ManagedDivision,
@@ -85,6 +87,8 @@ export function SuperAdminManager({
   const [isDeletingAdminId, setIsDeletingAdminId] = useState<string | null>(null);
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   async function refreshAll(showToast = false) {
     setIsRefreshing(true);
@@ -173,13 +177,30 @@ export function SuperAdminManager({
         const copyData = await copyRes.json();
         if (!copyRes.ok) {
           toast.warning(`지점은 추가됐지만 설정 복사에 실패했습니다: ${copyData.error ?? ""}`);
+          showActionComplete({
+            title: "지점 추가 완료",
+            description: `${divisionForm.name} 지점을 추가했습니다.`,
+            notice: "설정 복사는 실패했으니 필요한 운영 규칙은 지점 설정 화면에서 확인해 주세요.",
+          });
         } else {
           toast.success(
             `지점을 추가하고 설정을 복사했습니다. (교시 ${copyData.periodsCount}개, 규칙 ${copyData.rulesCount}개)`,
           );
+          showActionComplete({
+            title: "지점 추가 완료",
+            description: `${divisionForm.name} 지점을 추가하고 기본 설정을 복사했습니다.`,
+            notice: `교시 ${copyData.periodsCount}개, 규칙 ${copyData.rulesCount}개가 새 지점에 함께 반영되었습니다.`,
+          });
         }
       } else {
         toast.success(editingDivisionSlug ? "지점 정보를 수정했습니다." : "지점을 추가했습니다.");
+        showActionComplete({
+          title: editingDivisionSlug ? "지점 수정 완료" : "지점 추가 완료",
+          description: editingDivisionSlug
+            ? `${divisionForm.name} 지점 정보를 저장했습니다.`
+            : `${divisionForm.name} 지점을 추가했습니다.`,
+          notice: "저장된 지점 정보는 관리자 목록과 로그인 권한 설정에 바로 반영됩니다.",
+        });
       }
 
       resetDivisionForm();
@@ -192,16 +213,18 @@ export function SuperAdminManager({
   }
 
   async function handleDivisionDelete(division: ManagedDivision) {
-    const confirmed = window.confirm(
-      [
+    const confirmed = await confirm({
+      title: "지점 삭제",
+      description: [
         `'${division.name}' 지점을 삭제하시겠습니까?`,
-        "",
-        "삭제하면 해당 지점의 학생, 출결, 시험, 수납, 설정 등 지점 데이터가 함께 제거됩니다.",
-        "해당 지점의 관리자와 조교 계정은 비활성화되고 지점 연결이 해제됩니다.",
-        "",
+        "삭제하면 해당 지점의 학생, 출결, 시험, 수납, 설정 데이터가 함께 제거됩니다.",
+        "연결된 관리자와 조교 계정은 비활성화되고 지점 연결이 해제됩니다.",
         "이 작업은 되돌릴 수 없습니다.",
-      ].join("\n"),
-    );
+      ].join(" "),
+      confirmLabel: "삭제",
+      cancelLabel: "취소",
+      variant: "danger",
+    });
 
     if (!confirmed) {
       return;
@@ -228,6 +251,11 @@ export function SuperAdminManager({
       }
 
       toast.success(`${division.name} 지점을 삭제했습니다.`);
+      showActionComplete({
+        title: "지점 삭제 완료",
+        description: `${division.name} 지점을 삭제했습니다.`,
+        notice: "삭제된 지점의 연결 데이터와 운영 권한도 함께 정리되었습니다.",
+      });
       await refreshAll();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "지점 삭제에 실패했습니다.");
@@ -237,9 +265,16 @@ export function SuperAdminManager({
   }
 
   async function handleAdminDelete(admin: ManagedAdminAccount) {
-    const confirmed = window.confirm(
-      [`'${admin.name}' 계정을 비활성화하시겠습니까?`, "", "비활성화 후에도 데이터는 유지되며, 해당 계정으로 로그인이 불가능해집니다."].join("\n"),
-    );
+    const confirmed = await confirm({
+      title: "계정 비활성화",
+      description: [
+        `'${admin.name}' 계정을 비활성화하시겠습니까?`,
+        "비활성화 후에도 데이터는 유지되며, 해당 계정으로 로그인이 불가능해집니다.",
+      ].join(" "),
+      confirmLabel: "비활성화",
+      cancelLabel: "취소",
+      variant: "warning",
+    });
     if (!confirmed) return;
 
     setIsDeletingAdminId(admin.id);
@@ -248,6 +283,11 @@ export function SuperAdminManager({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "계정 비활성화에 실패했습니다.");
       toast.success(`${admin.name} 계정을 비활성화했습니다.`);
+      showActionComplete({
+        title: "계정 비활성화 완료",
+        description: `${admin.name} 계정을 비활성화했습니다.`,
+        notice: "비활성화된 계정은 더 이상 로그인할 수 없으며, 기존 데이터는 유지됩니다.",
+      });
       if (editingAdminId === admin.id) resetAdminForm();
       await refreshAll();
     } catch (error) {
@@ -272,6 +312,11 @@ export function SuperAdminManager({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "비밀번호 변경에 실패했습니다.");
       toast.success("비밀번호를 변경했습니다.");
+      showActionComplete({
+        title: "비밀번호 변경 완료",
+        description: "운영 계정 비밀번호를 변경했습니다.",
+        notice: "새 비밀번호는 다음 로그인부터 바로 적용됩니다.",
+      });
       setResetPasswordValue("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "비밀번호 변경에 실패했습니다.");
@@ -309,6 +354,13 @@ export function SuperAdminManager({
       }
 
       toast.success(editingAdminId ? "계정을 수정했습니다." : "계정을 추가했습니다.");
+      showActionComplete({
+        title: editingAdminId ? "계정 수정 완료" : "계정 추가 완료",
+        description: editingAdminId
+          ? `${adminForm.name} 계정 정보를 저장했습니다.`
+          : `${adminForm.name} 운영 계정을 추가했습니다.`,
+        notice: "저장된 계정 권한과 소속 지점 정보는 로그인 및 관리자 목록에 바로 반영됩니다.",
+      });
       resetAdminForm();
       await refreshAll();
     } catch (error) {
@@ -319,7 +371,8 @@ export function SuperAdminManager({
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       <div className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -761,6 +814,9 @@ export function SuperAdminManager({
           </div>
         </section>
       </div>
-    </div>
+      </div>
+      {confirmDialog}
+      {actionCompleteModal}
+    </>
   );
 }

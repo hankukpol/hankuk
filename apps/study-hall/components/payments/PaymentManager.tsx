@@ -28,6 +28,7 @@ import { SettlementView } from "@/components/payments/SettlementView";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { formatCurrency, formatPaymentMethod, formatPaymentMonth } from "@/lib/payment-meta";
 import type { PaymentCategoryItem, PaymentItem } from "@/lib/services/payment.service";
 import type { StudentListItem } from "@/lib/services/student.service";
@@ -142,6 +143,7 @@ export function PaymentManager({
     description: string;
     notice?: string;
   } | null>(null);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const activeStudents = useMemo(
     () => studentList.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
@@ -403,7 +405,15 @@ export function PaymentManager({
   }
 
   async function handleDelete(paymentId: string) {
-    if (!window.confirm("이 수납 내역을 삭제하시겠습니까?")) {
+    const confirmed = await confirm({
+      title: "수납 내역 삭제",
+      description: "이 수납 내역을 삭제하시겠습니까? 삭제 후에는 수납 이력과 미납 현황에서 함께 제거됩니다.",
+      confirmLabel: "삭제",
+      cancelLabel: "취소",
+      variant: "danger",
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -425,6 +435,12 @@ export function PaymentManager({
       if (editingPaymentId === paymentId) {
         closeEditor();
       }
+
+      setSaveSuccessModal({
+        title: "수납 삭제 완료",
+        description: "수납 내역을 삭제했습니다.",
+        notice: "삭제된 수납 정보는 목록과 미납 현황에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "수납 삭제에 실패했습니다.");
     } finally {
@@ -1045,6 +1061,7 @@ export function PaymentManager({
         description={saveSuccessModal?.description}
         notice={saveSuccessModal?.notice}
       />
+      {confirmDialog}
     </>
   );
 }

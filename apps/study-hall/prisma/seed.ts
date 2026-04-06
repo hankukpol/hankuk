@@ -604,6 +604,8 @@ async function seedDivision(template: (typeof ALL_DIVISION_TEMPLATES)[number]) {
         healthLimit: 1,
         holidayUnusedPts: 5,
         halfDayUnusedPts: 2,
+        tardyPointRuleId: null,
+        absentPointRuleId: null,
         studyTracks: template.studyTracks,
         pointCategories: [...DEFAULT_POINT_CATEGORIES],
       operatingDays: {
@@ -634,6 +636,8 @@ async function seedDivision(template: (typeof ALL_DIVISION_TEMPLATES)[number]) {
         healthLimit: 1,
         holidayUnusedPts: 5,
         halfDayUnusedPts: 2,
+        tardyPointRuleId: null,
+        absentPointRuleId: null,
         studyTracks: template.studyTracks,
         pointCategories: [...DEFAULT_POINT_CATEGORIES],
         operatingDays: {

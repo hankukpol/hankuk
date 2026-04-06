@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoaderCircle, Plus, RefreshCcw, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
+import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { SeatMap } from "@/components/seats/SeatMap";
 import {
   buildSeatLabel,
@@ -249,6 +251,7 @@ export function SeatEditor({
     title: string;
     description: string;
   } | null>(null);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const assignableStudents = useMemo(
     () => students.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
@@ -629,7 +632,14 @@ export function SeatEditor({
       return;
     }
 
-    if (!window.confirm(`"${currentRoom.name}" 자습실을 삭제하시겠습니까?`)) {
+    const confirmed = await confirm({
+      title: "자습실 삭제",
+      description: `"${currentRoom.name}" 자습실을 삭제하시겠습니까? 좌석 배치와 배정 정보도 함께 정리됩니다.`,
+      confirmLabel: "삭제",
+      cancelLabel: "취소",
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -1274,31 +1284,16 @@ export function SeatEditor({
           ) : null}
         </Modal>
 
-        <Modal
+        <ActionCompleteModal
           open={saveSuccessModal !== null}
           onClose={() => setSaveSuccessModal(null)}
           badge="저장 완료"
           title={saveSuccessModal?.title ?? "저장 완료"}
           description={saveSuccessModal?.description}
-          widthClassName="max-w-md"
-        >
-          <div className="space-y-5">
-            <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-6 text-emerald-900">
-              저장된 좌석 정보는 현재 화면에 바로 반영되며, 새로고침 후에도 유지됩니다.
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSaveSuccessModal(null)}
-                className="inline-flex items-center rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
-              >
-                확인
-              </button>
-            </div>
-          </div>
-        </Modal>
+          notice="저장된 좌석 정보는 현재 화면에 바로 반영되며, 새로고침 이후에도 유지됩니다."
+        />
       </article>
+      {confirmDialog}
     </div>
   );
 }

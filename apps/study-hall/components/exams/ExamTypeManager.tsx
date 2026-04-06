@@ -7,6 +7,8 @@ import { Copy, GripVertical, LoaderCircle, Pencil, Plus, RefreshCcw, Save, Trash
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 
 type Props = {
@@ -311,6 +313,8 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     setIsReady(true);
@@ -404,6 +408,19 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
         setForm(toFormState(matched));
       }
       toast.success(editingId ? "시험 템플릿을 수정했습니다." : isCopyMode ? "시험 템플릿을 복사했습니다." : "시험 템플릿을 추가했습니다.");
+      showActionComplete({
+        title: editingId
+          ? "시험 템플릿 수정 완료"
+          : isCopyMode
+            ? "시험 템플릿 복사 완료"
+            : "시험 템플릿 추가 완료",
+        description: editingId
+          ? "시험 템플릿 변경 사항이 저장되었습니다."
+          : isCopyMode
+            ? "기존 템플릿을 기반으로 새 시험 템플릿을 만들었습니다."
+            : "새 시험 템플릿을 등록했습니다.",
+        notice: "시험 템플릿 변경 사항은 성적 입력과 시험 설정 화면에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "시험 템플릿 저장에 실패했습니다.");
     } finally {
@@ -412,13 +429,25 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   }
 
   async function handleDelete(examTypeId: string) {
-    if (!window.confirm("이 시험 템플릿을 삭제하시겠습니까?\n성적 데이터가 있으면 삭제되지 않습니다.")) return;
+    const confirmed = await confirm({
+      title: "시험 템플릿 삭제",
+      description: "이 시험 템플릿을 삭제하시겠습니까? 성적 데이터가 연결된 템플릿은 삭제되지 않습니다.",
+      confirmLabel: "삭제",
+      cancelLabel: "취소",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     setDeletingId(examTypeId);
     try {
       const response = await fetch(`/api/${divisionSlug}/exam-types/${examTypeId}`, { method: "DELETE" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "시험 템플릿 삭제에 실패했습니다.");
       toast.success("시험 템플릿을 삭제했습니다.");
+      showActionComplete({
+        title: "시험 템플릿 삭제 완료",
+        description: "시험 템플릿을 삭제했습니다.",
+        notice: "삭제된 템플릿은 시험 설정과 성적 입력 화면에서 더 이상 표시되지 않습니다.",
+      });
       const nextExamTypes = await refreshExamTypes();
       if (selectedId === examTypeId || editingId === examTypeId || copySourceId === examTypeId) {
         const fallback = nextExamTypes?.[0];
@@ -458,7 +487,8 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
       <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -558,6 +588,9 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
           <div className="flex flex-wrap items-center justify-end gap-3"><button type="button" onClick={resetForm} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">취소</button><button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">{isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editingId ? "시험 템플릿 저장" : copySourceId ? "복사본 저장" : "시험 템플릿 추가"}</button></div>
         </form>
       </section>
-    </div>
+      </div>
+      {confirmDialog}
+      {actionCompleteModal}
+    </>
   );
 }

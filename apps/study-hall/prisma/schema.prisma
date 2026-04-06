@@ -473,6 +473,8 @@ model DivisionSettings {
   healthLimit                 Int      @default(1) @map("health_limit")
   holidayUnusedPts            Int      @default(5) @map("holiday_unused_pts")
   halfDayUnusedPts            Int      @default(2) @map("half_day_unused_pts")
+  tardyPointRuleId            String?  @map("tardy_point_rule_id")
+  absentPointRuleId           String?  @map("absent_point_rule_id")
   operatingDays               Json     @default("{}") @map("operating_days")
   studyTracks                 Json     @default("[]") @map("study_tracks")
   pointCategories             Json     @default("[]") @map("point_categories")

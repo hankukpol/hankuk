@@ -7,6 +7,7 @@ import { toast } from "@/lib/sonner";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import {
   getLeaveStatusClasses,
   getLeaveStatusLabel,
@@ -116,6 +117,7 @@ export const LeaveManager = memo(function LeaveManager({
     notice?: string;
   } | null>(null);
   const loadedMonthsRef = useRef(new Set<string>([initialMonth]));
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   function mergePermissionsForMonth(month: string, nextPermissions: LeavePermissionItem[]) {
     setPermissions((current) =>
@@ -349,9 +351,13 @@ export const LeaveManager = memo(function LeaveManager({
       return;
     }
 
-    const confirmed = window.confirm(
-      `${settlementPreview.month} 정산을 실행하시겠습니까?\n${settlementPreview.grantableCount}명에게 총 ${settlementPreview.totalRewardPoints}점을 지급합니다.`,
-    );
+    const confirmed = await confirm({
+      title: "월말 상점 지급",
+      description: `${settlementPreview.month} 정산을 실행하시겠습니까? ${settlementPreview.grantableCount}명에게 총 ${settlementPreview.totalRewardPoints}점을 지급합니다.`,
+      confirmLabel: "지급",
+      cancelLabel: "취소",
+      variant: "warning",
+    });
     if (!confirmed) {
       return;
     }
@@ -733,6 +739,7 @@ export const LeaveManager = memo(function LeaveManager({
         description={saveSuccessModal?.description}
         notice={saveSuccessModal?.notice}
       />
+      {confirmDialog}
     </>
   );
 });

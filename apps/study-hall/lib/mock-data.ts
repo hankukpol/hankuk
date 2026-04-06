@@ -57,6 +57,8 @@ export type MockDivisionSettings = {
   healthLimit: number;
   holidayUnusedPts: number;
   halfDayUnusedPts: number;
+  tardyPointRuleId: string | null;
+  absentPointRuleId: string | null;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
   expirationWarningDays: number;
@@ -109,6 +111,8 @@ function createDefaultSettings(divisionId: string, divisionSlug: string): MockDi
     healthLimit: 1,
     holidayUnusedPts: 5,
     halfDayUnusedPts: 2,
+    tardyPointRuleId: null,
+    absentPointRuleId: null,
     perfectAttendancePtsEnabled: false,
     perfectAttendancePts: 0,
     expirationWarningDays: 14,

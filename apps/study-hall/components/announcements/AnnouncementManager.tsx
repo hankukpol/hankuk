@@ -16,6 +16,8 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { Modal } from "@/components/ui/Modal";
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { AnnouncementItem, AnnouncementScope } from "@/lib/services/announcement.service";
 
 type AnnouncementManagerProps = {
@@ -125,6 +127,8 @@ export function AnnouncementManager({
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const visibleAnnouncements = useMemo(() => {
     const keyword = searchKeyword.trim().toLowerCase();
@@ -265,6 +269,13 @@ export function AnnouncementManager({
 
       toast.success(editingAnnouncementId ? "공지를 수정했습니다." : "공지를 등록했습니다.");
       await refreshAnnouncements();
+      showActionComplete({
+        title: editingAnnouncementId ? "공지 수정 완료" : "공지 등록 완료",
+        description: editingAnnouncementId
+          ? "공지 내용과 노출 설정이 수정되었습니다."
+          : "새 공지가 등록되었습니다.",
+        notice: "저장한 공지는 공지 목록과 학생/관리자 화면에 바로 반영됩니다.",
+      });
       closeEditor();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "공지 저장에 실패했습니다.");
@@ -274,7 +285,14 @@ export function AnnouncementManager({
   }
 
   async function handleDelete(announcement: AnnouncementItem) {
-    if (!window.confirm("이 공지를 삭제하시겠습니까?")) {
+    const confirmed = await confirm({
+      title: "공지 삭제",
+      description: "이 공지를 삭제하시겠습니까?",
+      confirmLabel: "삭제",
+      variant: "danger",
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -292,6 +310,11 @@ export function AnnouncementManager({
 
       toast.success("공지를 삭제했습니다.");
       await refreshAnnouncements();
+      showActionComplete({
+        title: "공지 삭제 완료",
+        description: "선택한 공지가 삭제되었습니다.",
+        notice: "삭제한 공지는 목록과 공지 노출 화면에서 즉시 사라집니다.",
+      });
 
       if (editingAnnouncementId === announcement.id) {
         closeEditor();
@@ -780,6 +803,8 @@ export function AnnouncementManager({
           </div>
         </form>
       </Modal>
+      {confirmDialog}
+      {actionCompleteModal}
     </>
   );
 }

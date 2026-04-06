@@ -4,6 +4,8 @@ import { AlertTriangle, Check, Phone, RefreshCcw, Smartphone, X } from "lucide-r
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { PhoneCheckRecord } from "@/lib/services/phone-submission.service";
 import type { PointRuleItem } from "@/lib/services/point.service";
 
@@ -55,6 +57,8 @@ export function PhoneSubmissionManager({
   const [isLoading, setIsLoading] = useState(false);
   const [isGranting, setIsGranting] = useState(false);
   const hasBootstrapped = useRef(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const notSubmittedList = useMemo(
     () => records.filter((record) => record.status === "NOT_SUBMITTED"),
@@ -157,7 +161,15 @@ export function PhoneSubmissionManager({
       ? `선택한 ${studentIds.length}명에게 "${phonePointRule.name}" 규칙으로 ${points}점을 부여하시겠습니까?`
       : `선택한 ${studentIds.length}명에게 벌점 1점을 부여하시겠습니까?\n(휴대폰 미반납 규칙이 없어 직접 부여됩니다.)`;
 
-    if (!confirm(confirmMsg)) return;
+    const confirmed = await confirm({
+      title: "벌점 일괄 부여",
+      description: confirmMsg.replace("\n", " "),
+      confirmLabel: "부여",
+      cancelLabel: "취소",
+      variant: "warning",
+    });
+
+    if (!confirmed) return;
 
     setIsGranting(true);
     try {
@@ -182,13 +194,19 @@ export function PhoneSubmissionManager({
 
       toast.success(`${studentIds.length}명에게 벌점이 부여되었습니다.`);
       setSelectedIds(new Set());
+      showActionComplete({
+        title: "벌점 부여 완료",
+        description: `${studentIds.length}명에게 휴대폰 미반납 벌점을 부여했습니다.`,
+        notice: "부여된 벌점은 상벌점 합계, 최근 내역, 랭킹 화면에 바로 반영됩니다.",
+      });
     } finally {
       setIsGranting(false);
     }
   }
 
   return (
-    <div className="space-y-5">
+    <>
+      <div className="space-y-5">
       {/* 검색 필터 */}
       <div className="flex flex-wrap items-end gap-3">
         <div>
@@ -366,6 +384,9 @@ export function PhoneSubmissionManager({
           </table>
         </div>
       )}
-    </div>
+      </div>
+      {confirmDialog}
+      {actionCompleteModal}
+    </>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import {
   OPERATING_DAY_KEYS,
   OPERATING_DAY_LABELS,
@@ -61,6 +62,7 @@ export function GeneralSettingsManager({
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   const activeDayCount = OPERATING_DAY_KEYS.filter((key) => form.operatingDays[key]).length;
   const studyTracks = parseStudyTracksText(form.studyTracksText);
@@ -116,6 +118,11 @@ export function GeneralSettingsManager({
       setForm(toFormState(data.settings));
       router.refresh();
       toast.success("기본 정보를 저장했습니다.");
+      showActionComplete({
+        title: "기본 정보 저장 완료",
+        description: "지점 기본 정보와 운영 요일, 직렬 설정이 저장되었습니다.",
+        notice: "저장한 기본 정보는 관리자 화면과 학생/운영 화면에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "기본 정보 저장에 실패했습니다.");
     } finally {
@@ -124,8 +131,9 @@ export function GeneralSettingsManager({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div
           className="rounded-[10px] p-5 text-white"
           style={{
@@ -192,9 +200,9 @@ export function GeneralSettingsManager({
             </p>
           </article>
         </div>
-      </section>
+        </section>
 
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -359,7 +367,9 @@ export function GeneralSettingsManager({
             기본 정보 저장
           </button>
         </form>
-      </section>
-    </div>
+        </section>
+      </div>
+      {actionCompleteModal}
+    </>
   );
 }

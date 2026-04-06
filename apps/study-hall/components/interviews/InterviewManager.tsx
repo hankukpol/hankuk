@@ -6,6 +6,7 @@ import { toast } from "@/lib/sonner";
 
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { WarningStageBadge } from "@/components/students/StudentBadges";
 import { toDemeritPoints } from "@/lib/student-meta";
 import {
@@ -87,6 +88,7 @@ export function InterviewManager({
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasMounted = useRef(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   const selectedStudent = activeStudents.find((student) => student.id === form.studentId) ?? null;
   const recommendedStudents = useMemo(
@@ -172,6 +174,11 @@ export function InterviewManager({
       }
 
       toast.success("면담 기록을 저장했습니다.");
+      showActionComplete({
+        title: "면담 기록 저장 완료",
+        description: `${formatDate(form.date)} 면담 기록이 저장되었습니다.`,
+        notice: "저장된 면담 내용은 권장 학생 목록과 면담 이력 화면에 바로 반영됩니다.",
+      });
       const createdMonth = form.date.slice(0, 7);
       if (createdMonth !== filterMonth) {
         setFilterMonth(createdMonth);
@@ -496,6 +503,7 @@ export function InterviewManager({
           </div>
         </form>
       </Modal>
+      {actionCompleteModal}
     </>
   );
 }

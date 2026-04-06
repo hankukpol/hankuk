@@ -16,6 +16,17 @@ export type WarningTemplateValue = {
   warnMsgWithdraw: string;
 };
 
+function normalizePointRuleIdInput(value: unknown) {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+const pointRuleIdSchema = z.preprocess(normalizePointRuleIdInput, z.string().min(1).nullable());
+
 export const OPERATING_DAY_LABELS: Record<OperatingDayKey, string> = {
   mon: "월",
   tue: "화",
@@ -106,6 +117,8 @@ export const rulesSettingsSchema = z
     warnMsgLevel2: z.string().trim().min(1, "2차 경고 문자 템플릿을 입력해 주세요.").max(1000),
     warnMsgInterview: z.string().trim().min(1, "면담 문자 템플릿을 입력해 주세요.").max(1000),
     warnMsgWithdraw: z.string().trim().min(1, "퇴원 문자 템플릿을 입력해 주세요.").max(1000),
+    tardyPointRuleId: pointRuleIdSchema.default(null),
+    absentPointRuleId: pointRuleIdSchema.default(null),
     perfectAttendancePtsEnabled: z.boolean().default(false),
     perfectAttendancePts: z.coerce.number().int().min(0, "개근 점수는 0 이상이어야 합니다.").max(100),
     expirationWarningDays: z.coerce.number().int().min(1, "만료 알림 일수는 1일 이상이어야 합니다.").max(90, "만료 알림 일수는 90일 이하여야 합니다."),

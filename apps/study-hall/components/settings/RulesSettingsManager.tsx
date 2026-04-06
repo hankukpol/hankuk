@@ -4,11 +4,14 @@ import { AlertTriangle, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import type { PointRuleItem } from "@/lib/services/point.service";
 import type { DivisionRuleSettings } from "@/lib/services/settings.service";
 
 type RulesSettingsManagerProps = {
   divisionSlug: string;
   initialSettings: DivisionRuleSettings;
+  pointRules: PointRuleItem[];
 };
 
 type FormState = {
@@ -28,6 +31,8 @@ type FormState = {
   healthLimit: string;
   holidayUnusedPts: string;
   halfDayUnusedPts: string;
+  tardyPointRuleId: string;
+  absentPointRuleId: string;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: string;
   expirationWarningDays: string;
@@ -51,6 +56,8 @@ function toFormState(settings: DivisionRuleSettings): FormState {
     healthLimit: String(settings.healthLimit),
     holidayUnusedPts: String(settings.holidayUnusedPts),
     halfDayUnusedPts: String(settings.halfDayUnusedPts),
+    tardyPointRuleId: settings.tardyPointRuleId ?? "",
+    absentPointRuleId: settings.absentPointRuleId ?? "",
     perfectAttendancePtsEnabled: settings.perfectAttendancePtsEnabled,
     perfectAttendancePts: String(settings.perfectAttendancePts),
     expirationWarningDays: String(settings.expirationWarningDays),
@@ -64,11 +71,13 @@ function asNumber(value: string) {
 export function RulesSettingsManager({
   divisionSlug,
   initialSettings,
+  pointRules,
 }: RulesSettingsManagerProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   async function refreshSettings(showToast = false) {
     setIsRefreshing(true);
@@ -123,6 +132,8 @@ export function RulesSettingsManager({
           healthLimit: form.healthLimit,
           holidayUnusedPts: form.holidayUnusedPts,
           halfDayUnusedPts: form.halfDayUnusedPts,
+          tardyPointRuleId: form.tardyPointRuleId || null,
+          absentPointRuleId: form.absentPointRuleId || null,
           perfectAttendancePtsEnabled: form.perfectAttendancePtsEnabled,
           perfectAttendancePts: form.perfectAttendancePtsEnabled ? form.perfectAttendancePts : "0",
           expirationWarningDays: form.expirationWarningDays,
@@ -137,6 +148,11 @@ export function RulesSettingsManager({
       setSettings(data.settings);
       setForm(toFormState(data.settings));
       toast.success("운영 규칙을 저장했습니다.");
+      showActionComplete({
+        title: "운영 규칙 저장 완료",
+        description: "지각 기준, 경고 임계값, 허가 한도와 자동 상벌점 연결이 저장되었습니다.",
+        notice: "저장한 규칙은 출석 처리, 경고 대상 집계, 외출/휴가 정산에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "운영 규칙 저장에 실패했습니다.");
     } finally {
@@ -145,10 +161,13 @@ export function RulesSettingsManager({
   }
 
   const warningGap = asNumber(form.warnWithdraw) - asNumber(form.warnLevel1);
+  const selectedTardyRule = pointRules.find((rule) => rule.id === form.tardyPointRuleId) ?? null;
+  const selectedAbsentRule = pointRules.find((rule) => rule.id === form.absentPointRuleId) ?? null;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.94fr_1.06fr]">
-      <section className="space-y-4">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[0.94fr_1.06fr]">
+        <section className="space-y-4">
         <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
             설정 / 운영 규칙
@@ -168,6 +187,17 @@ export function RulesSettingsManager({
           </div>
 
           <div className="mt-4 space-y-3">
+            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+              <p className="text-sm font-semibold text-slate-900">출결 자동 상벌점 규칙</p>
+              <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <p>
+                  지각: {selectedTardyRule ? `${selectedTardyRule.name} (${selectedTardyRule.points}점)` : "연동 안 함"}
+                </p>
+                <p>
+                  결석: {selectedAbsentRule ? `${selectedAbsentRule.name} (${selectedAbsentRule.points}점)` : "연동 안 함"}
+                </p>
+              </div>
+            </article>
             <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
               <p className="text-sm font-semibold text-slate-900">조교 출석 수정 범위</p>
               <p className="mt-2 text-sm text-slate-600">
@@ -231,9 +261,9 @@ export function RulesSettingsManager({
             </div>
           </div>
         </article>
-      </section>
+        </section>
 
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -313,6 +343,44 @@ export function RulesSettingsManager({
                 required
               />
             </label>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">지각 자동 부여 규칙</span>
+                <select
+                  value={form.tardyPointRuleId}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, tardyPointRuleId: event.target.value }))
+                  }
+                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                >
+                  <option value="">연동 안 함</option>
+                  {pointRules.map((rule) => (
+                    <option key={rule.id} value={rule.id}>
+                      {rule.name} ({rule.points > 0 ? `+${rule.points}` : rule.points}점)
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">결석 자동 부여 규칙</span>
+                <select
+                  value={form.absentPointRuleId}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, absentPointRuleId: event.target.value }))
+                  }
+                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                >
+                  <option value="">연동 안 함</option>
+                  {pointRules.map((rule) => (
+                    <option key={rule.id} value={rule.id}>
+                      {rule.name} ({rule.points > 0 ? `+${rule.points}` : rule.points}점)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
 
           <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
@@ -579,7 +647,9 @@ export function RulesSettingsManager({
             운영 규칙 저장
           </button>
         </form>
-      </section>
-    </div>
+        </section>
+      </div>
+      {actionCompleteModal}
+    </>
   );
 }

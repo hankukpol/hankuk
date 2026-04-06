@@ -10,6 +10,7 @@ import { supportsPointCategoryCustomization } from "@/lib/services/point.service
 import { getDivisionSettings } from "@/lib/services/settings.service";
 
 type SourcePointRuleRow = {
+  id: string;
   category: string;
   name: string;
   points: number;
@@ -79,17 +80,27 @@ export async function POST(request: NextRequest) {
 
         // 상벌점 규칙 복사
         s.pointRulesByDivision = s.pointRulesByDivision ?? {};
-        s.pointRulesByDivision[targetSlug] = sourceRules.map((r) => ({
+        const copiedRules = sourceRules.map((r) => ({
           ...r,
           id: `${r.id}_copy_${Date.now()}`,
           divisionId: targetSlug,
           createdAt: new Date().toISOString(),
         }));
+        s.pointRulesByDivision[targetSlug] = copiedRules;
 
         if (sourceSettings) {
+          const copiedRuleIdMap = new Map(
+            copiedRules.map((rule, index) => [sourceRules[index]?.id, rule.id] as const),
+          );
           s.divisionSettingsByDivision[targetSlug] = {
             ...sourceSettings,
             divisionId: s.divisions.find((division) => division.slug === targetSlug)?.id ?? sourceSettings.divisionId,
+            tardyPointRuleId: sourceSettings.tardyPointRuleId
+              ? copiedRuleIdMap.get(sourceSettings.tardyPointRuleId) ?? null
+              : null,
+            absentPointRuleId: sourceSettings.absentPointRuleId
+              ? copiedRuleIdMap.get(sourceSettings.absentPointRuleId) ?? null
+              : null,
             updatedAt: new Date().toISOString(),
           };
         }
@@ -124,6 +135,7 @@ export async function POST(request: NextRequest) {
       prisma.period.findMany({ where: { divisionId: sourceDivision.id } }),
       prisma.$queryRaw<SourcePointRuleRow[]>`
         SELECT
+          id,
           category::text AS category,
           name,
           points,
@@ -151,6 +163,9 @@ export async function POST(request: NextRequest) {
     const sourceSettings = sourceSettingsRow
       ? await getDivisionSettings(sourceSlug)
       : null;
+    const sourceRuleNameById = new Map(
+      sourceRules.map((rule) => [rule.id, rule.name] as const),
+    );
     const isLegacyPointRuleCategory =
       (pointRuleCategoryColumn[0]?.udtName ?? "text") !== "text";
 
@@ -180,6 +195,8 @@ export async function POST(request: NextRequest) {
 
     // 대상 직렬 기존 데이터 초기화 후 복사
     await prisma.$transaction(async (tx) => {
+      const targetRuleIdByName = new Map<string, string>();
+
       // 교시 삭제 후 재생성
       await tx.period.deleteMany({ where: { divisionId: targetDivision.id } });
       if (sourcePeriods.length > 0) {
@@ -245,10 +262,28 @@ export async function POST(request: NextRequest) {
             })),
           });
         }
+
+        const targetRules = await tx.pointRule.findMany({
+          where: { divisionId: targetDivision.id },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        for (const rule of targetRules) {
+          targetRuleIdByName.set(rule.name, rule.id);
+        }
       }
 
       // 운영 설정 복사 (upsert)
       if (sourceSettings) {
+        const tardyRuleName = sourceSettings.tardyPointRuleId
+          ? sourceRuleNameById.get(sourceSettings.tardyPointRuleId) ?? null
+          : null;
+        const absentRuleName = sourceSettings.absentPointRuleId
+          ? sourceRuleNameById.get(sourceSettings.absentPointRuleId) ?? null
+          : null;
         const divisionSettingsData = {
           warnLevel1: sourceSettings.warnLevel1,
           warnLevel2: sourceSettings.warnLevel2,
@@ -260,6 +295,12 @@ export async function POST(request: NextRequest) {
           healthLimit: sourceSettings.healthLimit,
           holidayUnusedPts: sourceSettings.holidayUnusedPts,
           halfDayUnusedPts: sourceSettings.halfDayUnusedPts,
+          tardyPointRuleId: tardyRuleName
+            ? targetRuleIdByName.get(tardyRuleName) ?? null
+            : null,
+          absentPointRuleId: absentRuleName
+            ? targetRuleIdByName.get(absentRuleName) ?? null
+            : null,
           perfectAttendancePtsEnabled: sourceSettings.perfectAttendancePtsEnabled,
           perfectAttendancePts: sourceSettings.perfectAttendancePts,
           operatingDays: sourceSettings.operatingDays as never,

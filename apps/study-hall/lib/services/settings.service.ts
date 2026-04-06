@@ -29,6 +29,7 @@ import {
 import {
   isPrismaSchemaMismatchError,
   logSchemaCompatibilityFallback,
+  normalizeOptionalText,
 } from "@/lib/service-helpers";
 
 async function getPrismaClient() {
@@ -54,6 +55,8 @@ type RawDbDivisionSettingsRecord = {
   healthLimit: number;
   holidayUnusedPts: number;
   halfDayUnusedPts: number;
+  tardyPointRuleId: string | null;
+  absentPointRuleId: string | null;
   operatingDays: unknown;
   studyTracks: unknown;
   pointCategories: unknown;
@@ -68,18 +71,36 @@ type RawDivisionSettingsRecord = RawDbDivisionSettingsRecord | MockDivisionSetti
 
 type LegacyDivisionSettingsRow = {
   divisionId: string;
-  warnLevel1: number | null;
-  warnLevel2: number | null;
-  warnInterview: number | null;
-  warnWithdraw: number | null;
-  tardyMinutes: number | null;
-  holidayLimit: number | null;
-  halfDayLimit: number | null;
-  healthLimit: number | null;
-  holidayUnusedPts: number | null;
-  halfDayUnusedPts: number | null;
-  operatingDays: unknown;
-  updatedAt: Date | null;
+  warnLevel1?: number | null;
+  warnLevel2?: number | null;
+  warnInterview?: number | null;
+  warnWithdraw?: number | null;
+  warnMsgLevel1?: string | null;
+  warnMsgLevel2?: string | null;
+  warnMsgInterview?: string | null;
+  warnMsgWithdraw?: string | null;
+  tardyMinutes?: number | null;
+  assistantPastEditAllowed?: boolean | null;
+  assistantPastEditDays?: number | null;
+  holidayLimit?: number | null;
+  halfDayLimit?: number | null;
+  healthLimit?: number | null;
+  holidayUnusedPts?: number | null;
+  halfDayUnusedPts?: number | null;
+  tardyPointRuleId?: string | null;
+  absentPointRuleId?: string | null;
+  operatingDays?: unknown;
+  studyTracks?: unknown;
+  pointCategories?: unknown;
+  featureFlags?: unknown;
+  perfectAttendancePtsEnabled?: boolean | null;
+  perfectAttendancePts?: number | null;
+  expirationWarningDays?: number | null;
+  updatedAt?: Date | null;
+};
+
+type DivisionSettingsColumnRow = {
+  columnName: string;
 };
 
 type DefaultRuleValues = {
@@ -95,6 +116,8 @@ type DefaultRuleValues = {
   healthLimit: number;
   holidayUnusedPts: number;
   halfDayUnusedPts: number;
+  tardyPointRuleId: string | null;
+  absentPointRuleId: string | null;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
   expirationWarningDays: number;
@@ -113,12 +136,46 @@ const DEFAULT_RULE_VALUES: DefaultRuleValues = {
   healthLimit: 1,
   holidayUnusedPts: 5,
   halfDayUnusedPts: 2,
+  tardyPointRuleId: null,
+  absentPointRuleId: null,
   perfectAttendancePtsEnabled: false,
   perfectAttendancePts: 0,
   expirationWarningDays: 14,
 };
 
 const DIVISION_NOT_FOUND_ERROR = "지점 정보를 찾을 수 없습니다.";
+
+const LEGACY_RULE_SELECT_COLUMNS = [
+  { column: "warn_level1", alias: "warnLevel1" },
+  { column: "warn_level2", alias: "warnLevel2" },
+  { column: "warn_interview", alias: "warnInterview" },
+  { column: "warn_withdraw", alias: "warnWithdraw" },
+  { column: "warn_msg_level1", alias: "warnMsgLevel1" },
+  { column: "warn_msg_level2", alias: "warnMsgLevel2" },
+  { column: "warn_msg_interview", alias: "warnMsgInterview" },
+  { column: "warn_msg_withdraw", alias: "warnMsgWithdraw" },
+  { column: "tardy_minutes", alias: "tardyMinutes" },
+  { column: "assistant_past_edit_allowed", alias: "assistantPastEditAllowed" },
+  { column: "assistant_past_edit_days", alias: "assistantPastEditDays" },
+  { column: "holiday_limit", alias: "holidayLimit" },
+  { column: "half_day_limit", alias: "halfDayLimit" },
+  { column: "health_limit", alias: "healthLimit" },
+  { column: "holiday_unused_pts", alias: "holidayUnusedPts" },
+  { column: "half_day_unused_pts", alias: "halfDayUnusedPts" },
+  { column: "tardy_point_rule_id", alias: "tardyPointRuleId" },
+  { column: "absent_point_rule_id", alias: "absentPointRuleId" },
+  { column: "perfect_attendance_pts_enabled", alias: "perfectAttendancePtsEnabled" },
+  { column: "perfect_attendance_pts", alias: "perfectAttendancePts" },
+  { column: "expiration_warning_days", alias: "expirationWarningDays" },
+] as const;
+
+const LEGACY_DIVISION_SETTINGS_OPTIONAL_SELECT_COLUMNS = [
+  { column: "operating_days", alias: "operatingDays" },
+  { column: "study_tracks", alias: "studyTracks" },
+  { column: "point_categories", alias: "pointCategories" },
+  { column: "feature_flags", alias: "featureFlags" },
+  { column: "updated_at", alias: "updatedAt" },
+] as const;
 
 export type WarningTemplateKey =
   | "warnMsgLevel1"
@@ -144,6 +201,8 @@ export type DivisionSettingsRecord = {
   healthLimit: number;
   holidayUnusedPts: number;
   halfDayUnusedPts: number;
+  tardyPointRuleId: string | null;
+  absentPointRuleId: string | null;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
   expirationWarningDays: number;
@@ -247,6 +306,58 @@ function validateWarningThresholdOrder(
   }
 }
 
+function normalizePointRuleId(value: string | null | undefined) {
+  return normalizeOptionalText(value);
+}
+
+async function listDivisionSettingsColumns(
+  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
+) {
+  const rows = await prisma.$queryRaw<DivisionSettingsColumnRow[]>`
+    SELECT column_name AS "columnName"
+    FROM information_schema.columns
+    WHERE table_schema = 'study_hall'
+      AND table_name = 'division_settings'
+  `;
+
+  return new Set(rows.map((row) => row.columnName));
+}
+
+function getLegacyDivisionSettingsSelectColumns(availableColumns: Set<string>) {
+  return [...LEGACY_RULE_SELECT_COLUMNS, ...LEGACY_DIVISION_SETTINGS_OPTIONAL_SELECT_COLUMNS].filter(
+    ({ column }) => availableColumns.has(column),
+  );
+}
+
+function getLegacyRuleColumnValues(
+  input: RulesSettingsInput,
+  attendancePointRuleSettings: ReturnType<typeof normalizeAttendancePointRuleSettings>,
+) {
+  return [
+    { column: "warn_level1", value: input.warnLevel1 },
+    { column: "warn_level2", value: input.warnLevel2 },
+    { column: "warn_interview", value: input.warnInterview },
+    { column: "warn_withdraw", value: input.warnWithdraw },
+    { column: "warn_msg_level1", value: input.warnMsgLevel1.trim() },
+    { column: "warn_msg_level2", value: input.warnMsgLevel2.trim() },
+    { column: "warn_msg_interview", value: input.warnMsgInterview.trim() },
+    { column: "warn_msg_withdraw", value: input.warnMsgWithdraw.trim() },
+    { column: "tardy_minutes", value: input.tardyMinutes },
+    { column: "assistant_past_edit_allowed", value: input.assistantPastEditAllowed },
+    { column: "assistant_past_edit_days", value: input.assistantPastEditDays },
+    { column: "holiday_limit", value: input.holidayLimit },
+    { column: "half_day_limit", value: input.halfDayLimit },
+    { column: "health_limit", value: input.healthLimit },
+    { column: "holiday_unused_pts", value: input.holidayUnusedPts },
+    { column: "half_day_unused_pts", value: input.halfDayUnusedPts },
+    { column: "tardy_point_rule_id", value: attendancePointRuleSettings.tardyPointRuleId },
+    { column: "absent_point_rule_id", value: attendancePointRuleSettings.absentPointRuleId },
+    { column: "perfect_attendance_pts_enabled", value: input.perfectAttendancePtsEnabled },
+    { column: "perfect_attendance_pts", value: input.perfectAttendancePts },
+    { column: "expiration_warning_days", value: input.expirationWarningDays },
+  ] as const;
+}
+
 function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSettingsRecord {
   const templates = getDefaultWarningTemplates();
 
@@ -268,6 +379,8 @@ function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSet
     healthLimit: record.healthLimit,
     holidayUnusedPts: record.holidayUnusedPts,
     halfDayUnusedPts: record.halfDayUnusedPts,
+    tardyPointRuleId: normalizePointRuleId((record as { tardyPointRuleId?: string | null }).tardyPointRuleId),
+    absentPointRuleId: normalizePointRuleId((record as { absentPointRuleId?: string | null }).absentPointRuleId),
     perfectAttendancePtsEnabled: record.perfectAttendancePtsEnabled ?? false,
     perfectAttendancePts: record.perfectAttendancePts ?? 0,
     expirationWarningDays: (record as { expirationWarningDays?: number }).expirationWarningDays ?? 14,
@@ -287,25 +400,30 @@ function serializeLegacySettingsRecord(record: LegacyDivisionSettingsRow): Divis
     warnLevel2: record.warnLevel2 ?? DEFAULT_RULE_VALUES.warnLevel2,
     warnInterview: record.warnInterview ?? DEFAULT_RULE_VALUES.warnInterview,
     warnWithdraw: record.warnWithdraw ?? DEFAULT_RULE_VALUES.warnWithdraw,
-    warnMsgLevel1: null,
-    warnMsgLevel2: null,
-    warnMsgInterview: null,
-    warnMsgWithdraw: null,
+    warnMsgLevel1: record.warnMsgLevel1 ?? null,
+    warnMsgLevel2: record.warnMsgLevel2 ?? null,
+    warnMsgInterview: record.warnMsgInterview ?? null,
+    warnMsgWithdraw: record.warnMsgWithdraw ?? null,
     tardyMinutes: record.tardyMinutes ?? DEFAULT_RULE_VALUES.tardyMinutes,
-    assistantPastEditAllowed: DEFAULT_RULE_VALUES.assistantPastEditAllowed,
-    assistantPastEditDays: DEFAULT_RULE_VALUES.assistantPastEditDays,
+    assistantPastEditAllowed:
+      record.assistantPastEditAllowed ?? DEFAULT_RULE_VALUES.assistantPastEditAllowed,
+    assistantPastEditDays: record.assistantPastEditDays ?? DEFAULT_RULE_VALUES.assistantPastEditDays,
     holidayLimit: record.holidayLimit ?? DEFAULT_RULE_VALUES.holidayLimit,
     halfDayLimit: record.halfDayLimit ?? DEFAULT_RULE_VALUES.halfDayLimit,
     healthLimit: record.healthLimit ?? DEFAULT_RULE_VALUES.healthLimit,
     holidayUnusedPts: record.holidayUnusedPts ?? DEFAULT_RULE_VALUES.holidayUnusedPts,
     halfDayUnusedPts: record.halfDayUnusedPts ?? DEFAULT_RULE_VALUES.halfDayUnusedPts,
-    perfectAttendancePtsEnabled: DEFAULT_RULE_VALUES.perfectAttendancePtsEnabled,
-    perfectAttendancePts: DEFAULT_RULE_VALUES.perfectAttendancePts,
-    expirationWarningDays: DEFAULT_RULE_VALUES.expirationWarningDays,
+    tardyPointRuleId: record.tardyPointRuleId ?? DEFAULT_RULE_VALUES.tardyPointRuleId,
+    absentPointRuleId: record.absentPointRuleId ?? DEFAULT_RULE_VALUES.absentPointRuleId,
+    perfectAttendancePtsEnabled:
+      record.perfectAttendancePtsEnabled ?? DEFAULT_RULE_VALUES.perfectAttendancePtsEnabled,
+    perfectAttendancePts: record.perfectAttendancePts ?? DEFAULT_RULE_VALUES.perfectAttendancePts,
+    expirationWarningDays:
+      record.expirationWarningDays ?? DEFAULT_RULE_VALUES.expirationWarningDays,
     operatingDays: record.operatingDays ?? normalizeOperatingDays(undefined),
-    studyTracks: normalizeStudyTracks(undefined),
-    pointCategories: [...DEFAULT_POINT_CATEGORIES],
-    featureFlags: { ...DEFAULT_DIVISION_FEATURE_FLAGS },
+    studyTracks: normalizeStudyTracks(record.studyTracks),
+    pointCategories: normalizePointCategories(record.pointCategories),
+    featureFlags: normalizeDivisionFeatureFlags(record.featureFlags),
     updatedAt: record.updatedAt ?? new Date(),
   });
 }
@@ -314,25 +432,20 @@ async function readLegacyDivisionSettings(
   prisma: Awaited<ReturnType<typeof getPrismaClient>>,
   divisionId: string,
 ): Promise<DivisionSettingsRecord> {
-  const rows = await prisma.$queryRaw<LegacyDivisionSettingsRow[]>`
-    SELECT
-      division_id AS "divisionId",
-      warn_level1 AS "warnLevel1",
-      warn_level2 AS "warnLevel2",
-      warn_interview AS "warnInterview",
-      warn_withdraw AS "warnWithdraw",
-      tardy_minutes AS "tardyMinutes",
-      holiday_limit AS "holidayLimit",
-      half_day_limit AS "halfDayLimit",
-      health_limit AS "healthLimit",
-      holiday_unused_pts AS "holidayUnusedPts",
-      half_day_unused_pts AS "halfDayUnusedPts",
-      operating_days AS "operatingDays",
-      updated_at AS "updatedAt"
+  const availableColumns = await listDivisionSettingsColumns(prisma);
+  const selectColumns = getLegacyDivisionSettingsSelectColumns(availableColumns);
+  const selectClause = selectColumns
+    .map(({ column, alias }) => `,\n      "${column}" AS "${alias}"`)
+    .join("");
+
+  const rows = await prisma.$queryRawUnsafe<LegacyDivisionSettingsRow[]>(
+    `SELECT
+      division_id AS "divisionId"${selectClause}
     FROM study_hall.division_settings
-    WHERE division_id = ${divisionId}
-    LIMIT 1
-  `;
+    WHERE division_id = $1
+    LIMIT 1`,
+    divisionId,
+  );
 
   return rows[0] ? serializeLegacySettingsRecord(rows[0]) : createDefaultSettingsRecord(divisionId);
 }
@@ -341,45 +454,40 @@ async function upsertLegacyDivisionRuleSettings(
   prisma: Awaited<ReturnType<typeof getPrismaClient>>,
   divisionId: string,
   input: RulesSettingsInput,
+  attendancePointRuleSettings: ReturnType<typeof normalizeAttendancePointRuleSettings>,
 ) {
-  await prisma.$executeRaw`
-    INSERT INTO study_hall.division_settings (
-      division_id,
-      warn_level1,
-      warn_level2,
-      warn_interview,
-      warn_withdraw,
-      tardy_minutes,
-      holiday_limit,
-      half_day_limit,
-      health_limit,
-      holiday_unused_pts,
-      half_day_unused_pts
+  const availableColumns = await listDivisionSettingsColumns(prisma);
+  const ruleColumnValues = getLegacyRuleColumnValues(input, attendancePointRuleSettings);
+  const missingColumns = ruleColumnValues
+    .map(({ column }) => column)
+    .filter((column) => !availableColumns.has(column));
+
+  if (missingColumns.length > 0) {
+    throw new Error(
+      `운영 규칙 저장에 필요한 DB 컬럼이 누락되어 있습니다: ${missingColumns.join(", ")}. 최신 마이그레이션을 적용한 뒤 다시 저장해 주세요.`,
+    );
+  }
+
+  const insertColumns = ["division_id", ...ruleColumnValues.map(({ column }) => column)];
+  const placeholders = insertColumns.map((_, index) => `$${index + 1}`).join(", ");
+  const updateAssignments = [
+    ...ruleColumnValues.map(({ column }) => `"${column}" = EXCLUDED."${column}"`),
+    availableColumns.has("updated_at") ? `"updated_at" = CURRENT_TIMESTAMP` : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(",\n      ");
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO study_hall.division_settings (
+      ${insertColumns.map((column) => `"${column}"`).join(",\n      ")}
     ) VALUES (
-      ${divisionId},
-      ${input.warnLevel1},
-      ${input.warnLevel2},
-      ${input.warnInterview},
-      ${input.warnWithdraw},
-      ${input.tardyMinutes},
-      ${input.holidayLimit},
-      ${input.halfDayLimit},
-      ${input.healthLimit},
-      ${input.holidayUnusedPts},
-      ${input.halfDayUnusedPts}
+      ${placeholders}
     )
     ON CONFLICT (division_id) DO UPDATE SET
-      warn_level1 = EXCLUDED.warn_level1,
-      warn_level2 = EXCLUDED.warn_level2,
-      warn_interview = EXCLUDED.warn_interview,
-      warn_withdraw = EXCLUDED.warn_withdraw,
-      tardy_minutes = EXCLUDED.tardy_minutes,
-      holiday_limit = EXCLUDED.holiday_limit,
-      half_day_limit = EXCLUDED.half_day_limit,
-      health_limit = EXCLUDED.health_limit,
-      holiday_unused_pts = EXCLUDED.holiday_unused_pts,
-      half_day_unused_pts = EXCLUDED.half_day_unused_pts
-  `;
+      ${updateAssignments}`,
+    divisionId,
+    ...ruleColumnValues.map(({ value }) => value),
+  );
 }
 
 async function upsertLegacyDivisionGeneralSettings(
@@ -420,6 +528,8 @@ function getDivisionRuleSettingsFromRecord(
     healthLimit: settings.healthLimit,
     holidayUnusedPts: settings.holidayUnusedPts,
     halfDayUnusedPts: settings.halfDayUnusedPts,
+    tardyPointRuleId: settings.tardyPointRuleId,
+    absentPointRuleId: settings.absentPointRuleId,
     perfectAttendancePtsEnabled: settings.perfectAttendancePtsEnabled,
     perfectAttendancePts: settings.perfectAttendancePts,
     expirationWarningDays: settings.expirationWarningDays,
@@ -504,6 +614,8 @@ async function ensureDbDivisionSettings(divisionSlug: string) {
         "study_tracks",
         "point_categories",
         "feature_flags",
+        "tardy_point_rule_id",
+        "absent_point_rule_id",
       ])
     ) {
       throw error;
@@ -689,11 +801,21 @@ export async function getDivisionFeatureSettings(
   };
 }
 
+function normalizeAttendancePointRuleSettings(
+  input: Pick<RulesSettingsInput, "tardyPointRuleId" | "absentPointRuleId">,
+) {
+  return {
+    tardyPointRuleId: normalizePointRuleId(input.tardyPointRuleId),
+    absentPointRuleId: normalizePointRuleId(input.absentPointRuleId),
+  };
+}
+
 export async function updateDivisionRuleSettings(
   divisionSlug: string,
   input: RulesSettingsInput,
 ): Promise<DivisionRuleSettings> {
   validateWarningThresholdOrder(input);
+  const attendancePointRuleSettings = normalizeAttendancePointRuleSettings(input);
 
   if (isMockMode()) {
     return updateMockState(async (state) => {
@@ -702,6 +824,24 @@ export async function updateDivisionRuleSettings(
 
       if (!division) {
         throw notFound(DIVISION_NOT_FOUND_ERROR);
+      }
+
+      const selectedRuleIds = Array.from(
+        new Set(
+          [
+            attendancePointRuleSettings.tardyPointRuleId,
+            attendancePointRuleSettings.absentPointRuleId,
+          ].filter((ruleId): ruleId is string => Boolean(ruleId)),
+        ),
+      );
+      const validRuleIds = new Set(
+        (state.pointRulesByDivision[divisionSlug] ?? [])
+          .filter((rule) => rule.isActive)
+          .map((rule) => rule.id),
+      );
+
+      if (selectedRuleIds.some((ruleId) => !validRuleIds.has(ruleId))) {
+        throw new Error("자동 출결 상벌점 규칙은 현재 지점의 활성 상벌점 규칙만 선택할 수 있습니다.");
       }
 
       const current =
@@ -726,6 +866,8 @@ export async function updateDivisionRuleSettings(
         healthLimit: input.healthLimit,
         holidayUnusedPts: input.holidayUnusedPts,
         halfDayUnusedPts: input.halfDayUnusedPts,
+        tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
+        absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
         perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
         perfectAttendancePts: input.perfectAttendancePts,
         expirationWarningDays: input.expirationWarningDays,
@@ -740,6 +882,30 @@ export async function updateDivisionRuleSettings(
 
   const prisma = await getPrismaClient();
   const { division } = await ensureDbDivisionSettings(divisionSlug);
+  const selectedRuleIds = Array.from(
+    new Set(
+      [
+        attendancePointRuleSettings.tardyPointRuleId,
+        attendancePointRuleSettings.absentPointRuleId,
+      ].filter((ruleId): ruleId is string => Boolean(ruleId)),
+    ),
+  );
+
+  if (selectedRuleIds.length > 0) {
+    const validRuleCount = await prisma.pointRule.count({
+      where: {
+        divisionId: division.id,
+        isActive: true,
+        id: {
+          in: selectedRuleIds,
+        },
+      },
+    });
+
+    if (validRuleCount !== selectedRuleIds.length) {
+      throw new Error("자동 출결 상벌점 규칙은 현재 지점의 활성 상벌점 규칙만 선택할 수 있습니다.");
+    }
+  }
 
   try {
     await prisma.divisionSettings.upsert({
@@ -761,6 +927,8 @@ export async function updateDivisionRuleSettings(
         healthLimit: input.healthLimit,
         holidayUnusedPts: input.holidayUnusedPts,
         halfDayUnusedPts: input.halfDayUnusedPts,
+        tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
+        absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
         perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
         perfectAttendancePts: input.perfectAttendancePts,
         expirationWarningDays: input.expirationWarningDays,
@@ -783,6 +951,8 @@ export async function updateDivisionRuleSettings(
         healthLimit: input.healthLimit,
         holidayUnusedPts: input.holidayUnusedPts,
         halfDayUnusedPts: input.halfDayUnusedPts,
+        tardyPointRuleId: attendancePointRuleSettings.tardyPointRuleId,
+        absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
         perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
         perfectAttendancePts: input.perfectAttendancePts,
         expirationWarningDays: input.expirationWarningDays,
@@ -797,13 +967,20 @@ export async function updateDivisionRuleSettings(
         "study_tracks",
         "point_categories",
         "feature_flags",
+        "tardy_point_rule_id",
+        "absent_point_rule_id",
       ])
     ) {
       throw error;
     }
 
     logSchemaCompatibilityFallback("division-settings:write-rules", error);
-    await upsertLegacyDivisionRuleSettings(prisma, division.id, input);
+    await upsertLegacyDivisionRuleSettings(
+      prisma,
+      division.id,
+      input,
+      attendancePointRuleSettings,
+    );
   }
 
   revalidateTag(`division-settings:${divisionSlug}`);

@@ -1,9 +1,12 @@
 "use client";
 
 import { AlertTriangle, Download, LoaderCircle, RefreshCcw, Save } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { ExamScoreSheet, ExamTypeItem } from "@/lib/services/exam.service";
 
 type ExamScoreManagerProps = {
@@ -112,6 +115,8 @@ export function ExamScoreManager({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const selectedExamType = useMemo(
     () => examTypes.find((examType) => examType.id === selectedExamTypeId) ?? null,
@@ -138,7 +143,6 @@ export function ExamScoreManager({
     }
     return null;
   }, [hasPendingRoundChange, hasUnsavedChanges]);
-  const navGuardArmedRef = useRef(false);
 
   async function loadSheet(options?: {
     showToast?: boolean;
@@ -199,107 +203,18 @@ export function ExamScoreManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExamTypeId, appliedExamRound]);
 
-  useEffect(() => {
-    if (!blockingChangeMessage) {
-      navGuardArmedRef.current = false;
-      return undefined;
-    }
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    const handleDocumentClick = (event: MouseEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey ||
-        !(event.target instanceof Element)
-      ) {
-        return;
-      }
-
-      const candidate = event.target.closest("a[href]");
-      if (!(candidate instanceof HTMLAnchorElement)) {
-        return;
-      }
-      const anchor = candidate;
-
-      const href = anchor.getAttribute("href");
-      if (
-        !href ||
-        href.startsWith("#") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:") ||
-        anchor.hasAttribute("download") ||
-        anchor.target === "_blank"
-      ) {
-        return;
-      }
-
-      const nextUrl = new URL(anchor.href, window.location.href);
-      const currentUrl = new URL(window.location.href);
-
-      if (
-        nextUrl.origin !== currentUrl.origin ||
-        (nextUrl.pathname === currentUrl.pathname &&
-          nextUrl.search === currentUrl.search &&
-          nextUrl.hash === currentUrl.hash)
-      ) {
-        return;
-      }
-
-      if (!window.confirm(`${blockingChangeMessage}이 있습니다. 페이지를 이동하면 변경 내용이 사라집니다. 계속하시겠습니까?`)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("click", handleDocumentClick, true);
-
-    if (!navGuardArmedRef.current) {
-      window.history.pushState({ examScoreGuard: true }, "", window.location.href);
-      navGuardArmedRef.current = true;
-    }
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      document.removeEventListener("click", handleDocumentClick, true);
-    };
-  }, [blockingChangeMessage]);
-
-  useEffect(() => {
-    if (!blockingChangeMessage) {
-      return undefined;
-    }
-
-    const handlePopState = () => {
-      if (!window.confirm(`${blockingChangeMessage}이 있습니다. 페이지를 이동하면 변경 내용이 사라집니다. 계속하시겠습니까?`)) {
-        window.history.pushState({ examScoreGuard: true }, "", window.location.href);
-        return;
-      }
-
-      window.removeEventListener("popstate", handlePopState);
-      window.history.back();
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [blockingChangeMessage]);
-
-  function confirmDiscardChanges(targetLabel: string) {
+  async function confirmDiscardChanges(targetLabel: string) {
     if (!blockingChangeMessage) {
       return true;
     }
 
-    return window.confirm(
-      `${blockingChangeMessage}이 있습니다. ${targetLabel} 전에 계속하면 변경 내용이 사라집니다. 계속하시겠습니까?`,
-    );
+    return confirm({
+      title: `${targetLabel} 전 확인`,
+      description: `${blockingChangeMessage}이 있습니다. ${targetLabel} 전에 계속하면 변경 내용이 사라집니다. 계속하시겠습니까?`,
+      confirmLabel: "계속",
+      cancelLabel: "취소",
+      variant: "warning",
+    });
   }
 
   function updateRow(studentId: string, updater: (current: EditableRow) => EditableRow) {
@@ -347,6 +262,11 @@ export function ExamScoreManager({
       setExamDate(nextExamDate);
       setSavedSnapshot(buildSnapshot(data.sheet.rows, nextExamDate));
       toast.success("성적을 저장했습니다.");
+      showActionComplete({
+        title: "성적 저장 완료",
+        description: `${selectedExamType?.name ?? "시험"} ${appliedExamRound}회차 성적을 저장했습니다.`,
+        notice: "저장된 성적은 학생 화면과 집계 화면에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "성적 저장에 실패했습니다.");
     } finally {
@@ -354,7 +274,7 @@ export function ExamScoreManager({
     }
   }
 
-  function handleExamTypeChange(nextExamTypeId: string) {
+  async function handleExamTypeChange(nextExamTypeId: string) {
     if (nextExamTypeId === selectedExamTypeId) {
       return;
     }
@@ -364,7 +284,7 @@ export function ExamScoreManager({
       return;
     }
 
-    if (!confirmDiscardChanges("시험 변경")) {
+    if (!(await confirmDiscardChanges("시험 변경"))) {
       return;
     }
 
@@ -374,7 +294,7 @@ export function ExamScoreManager({
     setSelectedExamTypeId(nextExamTypeId);
   }
 
-  function handleApplyRound() {
+  async function handleApplyRound() {
     if (!normalizedRoundInput) {
       toast.error("회차는 1 이상의 숫자로 입력해 주세요.");
       return;
@@ -385,7 +305,7 @@ export function ExamScoreManager({
       return;
     }
 
-    if (!confirmDiscardChanges("회차 변경")) {
+    if (!(await confirmDiscardChanges("회차 변경"))) {
       return;
     }
 
@@ -393,8 +313,8 @@ export function ExamScoreManager({
     setAppliedExamRound(normalizedRoundInput);
   }
 
-  function handleRefresh() {
-    if (!confirmDiscardChanges("시트 새로고침")) {
+  async function handleRefresh() {
+    if (!(await confirmDiscardChanges("시트 새로고침"))) {
       return;
     }
 
@@ -494,6 +414,14 @@ export function ExamScoreManager({
 
   return (
     <>
+      <UnsavedChangesGuard
+        isDirty={Boolean(blockingChangeMessage)}
+        message={
+          blockingChangeMessage
+            ? `${blockingChangeMessage}이 있습니다. 페이지를 떠나면 변경 내용이 사라집니다.`
+            : "저장하지 않은 변경사항이 있습니다. 페이지를 떠나시겠습니까?"
+        }
+      />
       <div className="space-y-6 pb-28">
         <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -528,7 +456,7 @@ export function ExamScoreManager({
               </button>
               <button
                 type="button"
-                onClick={handleRefresh}
+                onClick={() => void handleRefresh()}
                 disabled={isRefreshing || isLoading}
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
               >
@@ -570,7 +498,7 @@ export function ExamScoreManager({
                 <span className="mb-2 block text-sm font-medium text-slate-700">시험 템플릿</span>
                 <select
                   value={selectedExamTypeId}
-                  onChange={(event) => handleExamTypeChange(event.target.value)}
+                  onChange={(event) => void handleExamTypeChange(event.target.value)}
                   className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
                 >
                   {examTypes.map((examType) => (
@@ -589,7 +517,7 @@ export function ExamScoreManager({
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
-                      handleApplyRound();
+                      void handleApplyRound();
                     }
                   }}
                   className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
@@ -601,7 +529,7 @@ export function ExamScoreManager({
               <div className="flex items-end">
                 <button
                   type="button"
-                  onClick={handleApplyRound}
+                  onClick={() => void handleApplyRound()}
                   className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                 >
                   회차 적용
@@ -781,7 +709,7 @@ export function ExamScoreManager({
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 <button
                   type="button"
-                  onClick={handleRefresh}
+                  onClick={() => void handleRefresh()}
                   className="rounded-full border border-slate-200-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                 >
                   다시 불러오기
@@ -800,6 +728,8 @@ export function ExamScoreManager({
           </div>
         </div>
       ) : null}
+      {confirmDialog}
+      {actionCompleteModal}
     </>
   );
 }

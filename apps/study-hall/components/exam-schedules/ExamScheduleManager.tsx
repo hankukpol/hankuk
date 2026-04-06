@@ -4,6 +4,8 @@ import { CalendarDays, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { EXAM_SCHEDULE_TYPES, getExamScheduleTypeLabel, type ExamScheduleTypeValue } from "@/lib/exam-schedule-meta";
 import type { ExamScheduleItem } from "@/lib/services/exam-schedule.service";
 
@@ -55,6 +57,8 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [isSaving, setIsSaving] = useState(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   function openCreate() {
     setEditingId(null);
@@ -107,6 +111,11 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
         const { schedule } = await res.json();
         setSchedules((prev) => prev.map((s) => (s.id === editingId ? schedule : s)));
         toast.success("시험 일정이 수정되었습니다.");
+        showActionComplete({
+          title: "시험 일정 수정 완료",
+          description: `"${schedule.name}" 일정 변경이 저장되었습니다.`,
+          notice: "수정된 시험 일정은 관리자 목록과 학생 포털 표시 화면에 바로 반영됩니다.",
+        });
       } else {
         const res = await fetch(`/api/${divisionSlug}/exam-schedules`, {
           method: "POST",
@@ -123,6 +132,11 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
           [...prev, schedule].sort((a, b) => a.examDate.localeCompare(b.examDate)),
         );
         toast.success("시험 일정이 추가되었습니다.");
+        showActionComplete({
+          title: "시험 일정 등록 완료",
+          description: `"${schedule.name}" 일정을 등록했습니다.`,
+          notice: "새 일정은 관리자 목록과 학생 포털 D-Day 화면에 바로 반영됩니다.",
+        });
       }
 
       cancelForm();
@@ -144,10 +158,22 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
     const { schedule } = await res.json();
     setSchedules((prev) => prev.map((s) => (s.id === item.id ? schedule : s)));
     toast.success(schedule.isActive ? "활성화되었습니다." : "비활성화되었습니다.");
+    showActionComplete({
+      title: schedule.isActive ? "시험 일정 활성화 완료" : "시험 일정 비활성화 완료",
+      description: `"${schedule.name}" 일정 상태를 변경했습니다.`,
+      notice: "변경된 상태는 관리자 목록과 학생 포털 일정 표시에 바로 반영됩니다.",
+    });
   }
 
   async function handleDelete(item: ExamScheduleItem) {
-    if (!confirm(`"${item.name}" 일정을 삭제하시겠습니까?`)) return;
+    const confirmed = await confirm({
+      title: "시험 일정 삭제",
+      description: `"${item.name}" 일정을 삭제하시겠습니까? 삭제 후에는 학생 포털 D-Day 목록에서도 함께 제거됩니다.`,
+      confirmLabel: "삭제",
+      cancelLabel: "취소",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     const res = await fetch(`/api/${divisionSlug}/exam-schedules/${item.id}`, {
       method: "DELETE",
     });
@@ -157,10 +183,16 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
     }
     setSchedules((prev) => prev.filter((s) => s.id !== item.id));
     toast.success("삭제되었습니다.");
+    showActionComplete({
+      title: "시험 일정 삭제 완료",
+      description: `"${item.name}" 일정을 삭제했습니다.`,
+      notice: "삭제된 일정은 현재 목록과 학생 포털 화면에서 더 이상 보이지 않습니다.",
+    });
   }
 
   return (
-    <div className="space-y-4">
+    <>
+      <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
           총 <strong>{schedules.length}</strong>개 일정 (활성:{" "}
@@ -318,6 +350,9 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
           ))}
         </div>
       )}
-    </div>
+      </div>
+      {confirmDialog}
+      {actionCompleteModal}
+    </>
   );
 }

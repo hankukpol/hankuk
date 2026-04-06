@@ -16,6 +16,9 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+
 type PeriodItem = {
   id: string;
   name: string;
@@ -165,6 +168,8 @@ export function PeriodSettingsManager({
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const orderedPeriods = useMemo(
     () => [...periods].sort((left, right) => left.displayOrder - right.displayOrder),
@@ -238,6 +243,11 @@ export function PeriodSettingsManager({
       toast.success(editingId ? "교시를 수정했습니다." : "교시를 추가했습니다.");
       await refreshPeriods();
       resetForm();
+      showActionComplete({
+        title: editingId ? "교시 수정 완료" : "교시 추가 완료",
+        description: editingId ? "교시 정보가 수정되었습니다." : "새 교시가 추가되었습니다.",
+        notice: "저장한 교시 정보는 출석 체크와 학습시간 계산에 바로 반영됩니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "교시 저장에 실패했습니다.");
     } finally {
@@ -246,7 +256,14 @@ export function PeriodSettingsManager({
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("이 교시를 삭제하시겠습니까?")) {
+    const confirmed = await confirm({
+      title: "교시 삭제",
+      description: "이 교시를 삭제하시겠습니까?",
+      confirmLabel: "삭제",
+      variant: "danger",
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -268,6 +285,11 @@ export function PeriodSettingsManager({
 
       setPeriods(data.periods);
       toast.success("교시를 삭제했습니다.");
+      showActionComplete({
+        title: "교시 삭제 완료",
+        description: "선택한 교시가 삭제되었습니다.",
+        notice: "삭제한 교시는 이후 출석 체크 대상에서 제외됩니다.",
+      });
 
       if (editingId === id) {
         resetForm();
@@ -325,8 +347,9 @@ export function PeriodSettingsManager({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -374,9 +397,9 @@ export function PeriodSettingsManager({
             </SortableContext>
           </DndContext>
         </div>
-      </section>
+        </section>
 
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
           {editingId ? "교시 수정" : "교시 추가"}
         </p>
@@ -480,7 +503,10 @@ export function PeriodSettingsManager({
             </button>
           </div>
         </form>
-      </section>
-    </div>
+        </section>
+      </div>
+      {confirmDialog}
+      {actionCompleteModal}
+    </>
   );
 }

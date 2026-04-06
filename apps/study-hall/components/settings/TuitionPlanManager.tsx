@@ -4,6 +4,8 @@ import { LoaderCircle, Pencil, RefreshCcw, Save, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
 
 type TuitionPlanManagerProps = {
@@ -40,6 +42,8 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const sortedPlans = useMemo(
     () =>
@@ -112,6 +116,13 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
       await refreshPlans();
       resetForm();
       toast.success(editingPlanId ? "등록 플랜을 수정했습니다." : "등록 플랜을 추가했습니다.");
+      showActionComplete({
+        title: editingPlanId ? "등록 플랜 수정 완료" : "등록 플랜 추가 완료",
+        description: editingPlanId
+          ? "등록 플랜 정보가 수정되었습니다."
+          : "새 등록 플랜이 추가되었습니다.",
+        notice: "저장한 플랜은 학생 등록과 연장 수납 화면에서 바로 사용할 수 있습니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "등록 플랜 저장에 실패했습니다.");
     } finally {
@@ -120,7 +131,12 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   }
 
   async function handleDelete(planId: string) {
-    const confirmed = window.confirm("이 등록 플랜을 삭제하시겠습니까?");
+    const confirmed = await confirm({
+      title: "등록 플랜 삭제",
+      description: "이 등록 플랜을 삭제하시겠습니까?",
+      confirmLabel: "삭제",
+      variant: "danger",
+    });
 
     if (!confirmed) {
       return;
@@ -145,6 +161,11 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
       }
 
       toast.success("등록 플랜을 삭제했습니다.");
+      showActionComplete({
+        title: "등록 플랜 삭제 완료",
+        description: "선택한 등록 플랜이 삭제되었습니다.",
+        notice: "삭제한 플랜은 이후 등록/연장 화면에서 선택할 수 없습니다.",
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "등록 플랜 삭제에 실패했습니다.");
     } finally {
@@ -153,8 +174,9 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
+        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -231,9 +253,9 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
             </div>
           )}
         </div>
-      </section>
+        </section>
 
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">플랜 편집</p>
         <h2 className="mt-2 text-2xl font-bold text-slate-950">
           {editingPlanId ? "등록 플랜 수정" : "등록 플랜 추가"}
@@ -324,7 +346,10 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
             ) : null}
           </div>
         </form>
-      </section>
-    </div>
+        </section>
+      </div>
+      {confirmDialog}
+      {actionCompleteModal}
+    </>
   );
 }

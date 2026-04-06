@@ -5,6 +5,7 @@ import { LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import {
   DIVISION_FEATURES,
   type DivisionFeatureFlags,
@@ -29,6 +30,7 @@ export function FeatureSettingsManager({
   const [featureFlags, setFeatureFlags] = useState(initialSettings.featureFlags);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   const enabledCount = countEnabledFlags(featureFlags);
   const disabledCount = DIVISION_FEATURES.length - enabledCount;
@@ -85,6 +87,11 @@ export function FeatureSettingsManager({
       setFeatureFlags(data.settings.featureFlags);
       router.refresh();
       toast.success("기능 설정을 저장했습니다.");
+      showActionComplete({
+        title: "기능 설정 저장 완료",
+        description: "지점 기능 on/off 설정이 저장되었습니다.",
+        notice: "비활성화한 기능은 관리자 메뉴와 관련 화면에서 자동으로 숨겨집니다.",
+      });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "기능 설정 저장에 실패했습니다.",
@@ -95,8 +102,9 @@ export function FeatureSettingsManager({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="rounded-[10px] bg-slate-950 p-5 text-white">
           <p className="text-xs uppercase tracking-[0.24em] text-white/65">
             기능 요약
@@ -135,9 +143,9 @@ export function FeatureSettingsManager({
             })}
           </p>
         </article>
-      </section>
+        </section>
 
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -221,7 +229,9 @@ export function FeatureSettingsManager({
             </button>
           </div>
         </form>
-      </section>
-    </div>
+        </section>
+      </div>
+      {actionCompleteModal}
+    </>
   );
 }

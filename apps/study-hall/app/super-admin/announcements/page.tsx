@@ -14,6 +14,9 @@ import {
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+
 type GlobalAnnouncement = {
   id: string;
   title: string;
@@ -59,6 +62,8 @@ export default function SuperAdminAnnouncementsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(toFormState());
   const mountedRef = useRef(true);
+  const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const fetchAnnouncements = useCallback(async () => {
     setIsLoading(true);
@@ -130,6 +135,11 @@ export default function SuperAdminAnnouncementsPage() {
       if (!res.ok) throw new Error(data.error ?? "저장 실패");
 
       toast.success(editingId ? "공지사항을 수정했습니다." : "전체 공지사항을 등록했습니다.");
+      showActionComplete({
+        title: editingId ? "공지사항 수정 완료" : "공지사항 등록 완료",
+        description: `"${payload.title}" 공지사항이 저장되었습니다.`,
+        notice: "전체 공지는 모든 지점 학생 포털 공지 영역에 바로 반영됩니다.",
+      });
       cancelForm();
       await fetchAnnouncements();
     } catch (error) {
@@ -148,6 +158,11 @@ export default function SuperAdminAnnouncementsPage() {
       });
       if (!res.ok) throw new Error("수정 실패");
       toast.success(item.isPinned ? "핀을 해제했습니다." : "공지를 상단 고정했습니다.");
+      showActionComplete({
+        title: item.isPinned ? "공지 고정 해제 완료" : "공지 상단 고정 완료",
+        description: `"${item.title}" 공지 표시 상태를 변경했습니다.`,
+        notice: "변경된 고정 상태는 전체 공지 목록과 학생 포털 상단 표시 순서에 바로 반영됩니다.",
+      });
       await fetchAnnouncements();
     } catch {
       toast.error("처리에 실패했습니다.");
@@ -155,11 +170,23 @@ export default function SuperAdminAnnouncementsPage() {
   }
 
   async function handleDelete(id: string, title: string) {
-    if (!confirm(`"${title}" 공지사항을 삭제하시겠습니까?`)) return;
+    const confirmed = await confirm({
+      title: "공지사항 삭제",
+      description: `"${title}" 공지사항을 삭제하시겠습니까? 삭제 후에는 모든 지점 학생 포털에서 함께 제거됩니다.`,
+      confirmLabel: "삭제",
+      cancelLabel: "취소",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/super-admin/announcements/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("삭제 실패");
       toast.success("공지사항을 삭제했습니다.");
+      showActionComplete({
+        title: "공지사항 삭제 완료",
+        description: `"${title}" 공지사항을 삭제했습니다.`,
+        notice: "삭제된 공지는 모든 지점 학생 포털에서 더 이상 표시되지 않습니다.",
+      });
       await fetchAnnouncements();
     } catch {
       toast.error("삭제에 실패했습니다.");
@@ -366,6 +393,8 @@ export default function SuperAdminAnnouncementsPage() {
           각 지점 공지사항은 해당 지점 관리자 페이지에서 관리하세요.
         </p>
       </section>
+      {confirmDialog}
+      {actionCompleteModal}
     </div>
   );
 }

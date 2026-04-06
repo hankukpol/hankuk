@@ -1,4 +1,5 @@
 import { RulesSettingsManager } from "@/components/settings/RulesSettingsManager";
+import { listPointRules } from "@/lib/services/point.service";
 import { getDivisionRuleSettings } from "@/lib/services/settings.service";
 
 type RulesSettingsPageProps = {
@@ -9,7 +10,10 @@ type RulesSettingsPageProps = {
 
 
 export default async function RulesSettingsPage({ params }: RulesSettingsPageProps) {
-  const settings = await getDivisionRuleSettings(params.division);
+  const [settings, pointRules] = await Promise.all([
+    getDivisionRuleSettings(params.division),
+    listPointRules(params.division, { activeOnly: true }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -24,7 +28,11 @@ export default async function RulesSettingsPage({ params }: RulesSettingsPagePro
         </p>
       </section>
 
-      <RulesSettingsManager divisionSlug={params.division} initialSettings={settings} />
+      <RulesSettingsManager
+        divisionSlug={params.division}
+        initialSettings={settings}
+        pointRules={pointRules}
+      />
     </div>
   );
 }

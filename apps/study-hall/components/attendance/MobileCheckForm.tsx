@@ -99,6 +99,16 @@ function buildInitialState(students: StudentItem[], records: AttendanceRecordIte
   return nextState;
 }
 
+function hasStudentStateChanged(
+  currentState: { status: AttendanceOptionValue; reason: string } | undefined,
+  previousState: { status: AttendanceOptionValue; reason: string } | undefined,
+) {
+  return (
+    (currentState?.status ?? "") !== (previousState?.status ?? "") ||
+    (currentState?.reason ?? "") !== (previousState?.reason ?? "")
+  );
+}
+
 function getStudentCardClasses(status: AttendanceOptionValue) {
   switch (status) {
     case "PRESENT":
@@ -131,6 +141,10 @@ export function MobileCheckForm({
   const [students, setStudents] = useState(initialStudents);
   const [periods] = useState(initialPeriods);
   const [formState, setFormState] = useState<FormState>(() => buildInitialState(initialStudents, initialRecords));
+  // Track the last loaded/saved snapshot so mobile can also save only edited students.
+  const [savedFormState, setSavedFormState] = useState<FormState>(() =>
+    buildInitialState(initialStudents, initialRecords),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
@@ -211,6 +225,7 @@ export function MobileCheckForm({
     if (selectedDate === initialDate && selectedPeriodId === (initialPeriodId ?? initialPeriods[0]?.id ?? "")) {
       setStudents(initialStudents);
       setFormState(initialFormState);
+      setSavedFormState(initialFormState);
       setShowOnlyUnchecked(false);
       setSwipeOffsets({});
       setIsLoading(false);
@@ -237,8 +252,11 @@ export function MobileCheckForm({
           return;
         }
 
+        const nextState = buildInitialState(data.students, data.records);
+
         setStudents(data.students);
-        setFormState(buildInitialState(data.students, data.records));
+        setFormState(nextState);
+        setSavedFormState(nextState);
         setShowOnlyUnchecked(false);
         setSwipeOffsets({});
       } catch (error) {
@@ -327,9 +345,12 @@ export function MobileCheckForm({
       return;
     }
 
-    const unresolved = students.find((student) => !formState[student.id]?.status);
-    if (unresolved) {
-      toast.error(`${unresolved.name} 학생의 출결 상태가 비어 있습니다.`);
+    const changedStudents = students.filter((student) =>
+      hasStudentStateChanged(formState[student.id], savedFormState[student.id]),
+    );
+
+    if (changedStudents.length === 0) {
+      toast.error("변경한 출결 데이터가 없습니다.");
       return;
     }
 
@@ -344,7 +365,7 @@ export function MobileCheckForm({
         body: JSON.stringify({
           periodId: selectedPeriodId,
           date: selectedDate,
-          records: students.map((student) => ({
+          records: changedStudents.map((student) => ({
             studentId: student.id,
             status: formState[student.id].status,
             reason: formState[student.id].reason || null,
@@ -357,13 +378,15 @@ export function MobileCheckForm({
         throw new Error(data.error ?? "출석 저장에 실패했습니다.");
       }
 
-      setFormState(buildInitialState(data.students, data.records));
+      const nextState = buildInitialState(data.students, data.records);
+      setFormState(nextState);
+      setSavedFormState(nextState);
       setSwipeOffsets({});
       toast.success("출석 기록을 저장했습니다.");
       setSaveSuccessModal({
         title: "출석 저장 완료",
         description: `${selectedDate} ${selectedPeriod?.name ?? "선택한 교시"} 출결이 저장되었습니다.`,
-        notice: "저장된 출결은 현재 교시 카드와 출결 상태에 바로 반영됩니다.",
+        notice: "저장한 출결과 사유 메모는 선택한 날짜와 교시에 바로 반영됩니다.",
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "출석 저장에 실패했습니다.");

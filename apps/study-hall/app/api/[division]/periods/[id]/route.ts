@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { deletePeriod, updatePeriod } from "@/lib/services/period.service";
 
@@ -29,13 +30,17 @@ export async function PATCH(
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "잘못된 입력입니다." },
+      { error: getZodErrorMessage(parsed.error, "교시 정보를 다시 확인해 주세요.") },
       { status: 400 },
     );
   }
 
-  const result = await updatePeriod(params.division, params.id, parsed.data);
-  return NextResponse.json({ result });
+  try {
+    const result = await updatePeriod(params.division, params.id, parsed.data);
+    return NextResponse.json({ result });
+  } catch (error) {
+    return toApiErrorResponse(error, "교시 수정에 실패했습니다.");
+  }
 }
 
 export async function DELETE(
@@ -48,6 +53,10 @@ export async function DELETE(
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const periods = await deletePeriod(params.division, params.id);
-  return NextResponse.json({ periods });
+  try {
+    const periods = await deletePeriod(params.division, params.id);
+    return NextResponse.json({ periods });
+  } catch (error) {
+    return toApiErrorResponse(error, "교시 삭제에 실패했습니다.");
+  }
 }

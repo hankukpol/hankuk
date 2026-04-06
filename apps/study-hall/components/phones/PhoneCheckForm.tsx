@@ -2,10 +2,11 @@
 
 import dynamic from "next/dynamic";
 
-import { RefreshCcw, Save } from "lucide-react";
+import { LayoutGrid, RefreshCcw, Save, Table2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { PhoneCheckTable } from "@/components/phones/PhoneCheckTable";
 import type { PhoneCheckStatus, PhoneDaySnapshot } from "@/lib/services/phone-submission.service";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
@@ -43,6 +44,40 @@ function getKstToday() {
   }).format(new Date());
 }
 
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function getCurrentKstMinutes(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+
+  return hour * 60 + minute;
+}
+
+function getSuggestedPeriodId(snapshot: PhoneDaySnapshot, targetDate: string) {
+  if (targetDate !== getKstToday()) {
+    return null;
+  }
+
+  const currentMinutes = getCurrentKstMinutes();
+  return (
+    snapshot.periods.find((period) => {
+      const start = timeToMinutes(period.startTime);
+      const end = timeToMinutes(period.endTime) + 5;
+      return currentMinutes >= start && currentMinutes <= end;
+    })?.periodId ?? null
+  );
+}
+
 function buildInitialState(snapshot: PhoneDaySnapshot): AllPeriodsState {
   const state: AllPeriodsState = {};
   for (const period of snapshot.periods) {
@@ -63,19 +98,29 @@ type PhoneCheckFormProps = {
   divisionSlug: string;
   initialDate: string;
   initialSnapshot: PhoneDaySnapshot;
+  initialActivePeriodId?: string;
   seatRooms?: StudyRoomItem[];
   initialSeatLayout?: SeatLayout;
 };
 
-export function PhoneCheckForm({ divisionSlug, initialDate, initialSnapshot, seatRooms, initialSeatLayout }: PhoneCheckFormProps) {
+export function PhoneCheckForm({
+  divisionSlug,
+  initialDate,
+  initialSnapshot,
+  initialActivePeriodId,
+  seatRooms,
+  initialSeatLayout,
+}: PhoneCheckFormProps) {
   const [date, setDate] = useState(initialDate);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [periodsState, setPeriodsState] = useState<AllPeriodsState>(() =>
     buildInitialState(initialSnapshot),
   );
+  const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [activePeriodId, setActivePeriodId] = useState<string>(
-    initialSnapshot.periods[0]?.periodId ?? "",
+    initialActivePeriodId ?? initialSnapshot.periods[0]?.periodId ?? "",
   );
+  const [viewMode, setViewMode] = useState<"seat" | "table">(hasSeatLayout ? "seat" : "table");
   const [isLoading, setIsLoading] = useState(false);
   const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -106,12 +151,13 @@ export function PhoneCheckForm({ divisionSlug, initialDate, initialSnapshot, sea
       setSnapshot(newSnapshot);
       setPeriodsState(buildInitialState(newSnapshot));
       setIsDirty(false);
-      if (
-        newSnapshot.periods.length > 0 &&
-        !newSnapshot.periods.find((p) => p.periodId === activePeriodId)
-      ) {
-        setActivePeriodId(newSnapshot.periods[0].periodId);
-      }
+      const suggestedPeriodId = getSuggestedPeriodId(newSnapshot, newDate);
+      const fallbackPeriodId = newSnapshot.periods[0]?.periodId ?? "";
+      const retainedPeriodId = newSnapshot.periods.find(
+        (period) => period.periodId === activePeriodId,
+      )?.periodId;
+
+      setActivePeriodId(suggestedPeriodId ?? retainedPeriodId ?? fallbackPeriodId);
     } finally {
       setIsLoading(false);
     }
@@ -275,6 +321,34 @@ export function PhoneCheckForm({ divisionSlug, initialDate, initialSnapshot, sea
           <RefreshCcw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           새로고침
         </button>
+        {hasSeatLayout && (
+          <div className="ml-auto flex gap-1 rounded-[10px] border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`rounded-[10px] px-3 py-1.5 text-xs font-medium transition ${
+                viewMode === "table"
+                  ? "bg-[var(--division-color)] text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Table2 className="mr-1 inline h-3.5 w-3.5" />
+              테이블
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("seat")}
+              className={`rounded-[10px] px-3 py-1.5 text-xs font-medium transition ${
+                viewMode === "seat"
+                  ? "bg-[var(--division-color)] text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <LayoutGrid className="mr-1 inline h-3.5 w-3.5" />
+              좌석
+            </button>
+          </div>
+        )}
       </div>
 
       {periods.length === 0 ? (
@@ -372,6 +446,17 @@ export function PhoneCheckForm({ divisionSlug, initialDate, initialSnapshot, sea
                 <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
                   재원 학생이 없습니다.
                 </div>
+              ) : viewMode === "table" ? (
+                <PhoneCheckTable
+                  students={students}
+                  periodState={activePeriodState}
+                  onStatusChange={(studentId, status) =>
+                    setStudentStatus(activePeriodId, studentId, status)
+                  }
+                  onRentalNoteChange={(studentId, note) =>
+                    setRentalNote(activePeriodId, studentId, note)
+                  }
+                />
               ) : seatRooms && seatRooms.length > 0 && initialSeatLayout ? (
                 <PhoneCheckSeatMap
                   divisionSlug={divisionSlug}
@@ -379,8 +464,12 @@ export function PhoneCheckForm({ divisionSlug, initialDate, initialSnapshot, sea
                   initialSeatLayout={initialSeatLayout}
                   students={students}
                   periodState={activePeriodState}
-                  onStatusChange={(studentId, status) => setStudentStatus(activePeriodId, studentId, status)}
-                  onRentalNoteChange={(studentId, note) => setRentalNote(activePeriodId, studentId, note)}
+                  onStatusChange={(studentId, status) =>
+                    setStudentStatus(activePeriodId, studentId, status)
+                  }
+                  onRentalNoteChange={(studentId, note) =>
+                    setRentalNote(activePeriodId, studentId, note)
+                  }
                 />
               ) : (
                 <div className="space-y-2">

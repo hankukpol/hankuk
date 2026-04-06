@@ -5,6 +5,7 @@ import { ClipboardList, Smartphone } from "lucide-react";
 import { PhoneCheckForm } from "@/components/phones/PhoneCheckForm";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
 import { getPhoneDaySnapshot } from "@/lib/services/phone-submission.service";
+import { getCurrentPeriod } from "@/lib/services/period.service";
 import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 
@@ -39,8 +40,9 @@ export default async function PhoneSubmissionsPage({ params }: PhoneSubmissionsP
   await redirectIfDivisionFeatureDisabled(params.division, "phoneSubmissions");
   const today = getKstToday();
 
-  const [snapshot, seatRooms, initialSeatLayout, featureSettings] = await Promise.all([
+  const [snapshot, currentPeriod, seatRooms, initialSeatLayout, featureSettings] = await Promise.all([
     getPhoneDaySnapshot(params.division, today),
+    getCurrentPeriod(params.division),
     listStudyRooms(params.division),
     getSeatLayout(params.division),
     getDivisionFeatureSettings(params.division),
@@ -75,6 +77,7 @@ export default async function PhoneSubmissionsPage({ params }: PhoneSubmissionsP
           divisionSlug={params.division}
           initialDate={today}
           initialSnapshot={snapshot}
+          initialActivePeriodId={currentPeriod?.id ?? snapshot.periods[0]?.periodId ?? ""}
           seatRooms={seatRooms}
           initialSeatLayout={initialSeatLayout}
         />

@@ -86,6 +86,20 @@ function timeToMinutes(value: string) {
   return hours * 60 + minutes;
 }
 
+function getCurrentKstMinutes(now: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+
+  return hour * 60 + minute;
+}
+
 async function getPeriodsUncached(divisionSlug: string) {
   if (isMockMode()) {
     const state = await readMockState();
@@ -310,7 +324,7 @@ export async function deletePeriod(divisionSlug: string, periodId: string) {
 
 export async function getCurrentPeriod(divisionSlug: string, now = new Date()) {
   const periods = await getPeriods(divisionSlug);
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = getCurrentKstMinutes(now);
 
   return periods.find((period) => {
     if (!period.isActive) {

@@ -12,14 +12,17 @@ const attendanceBatchSchema = z.object({
   records: z.array(
     z.object({
       studentId: z.string().min(1),
-      status: z.enum([
-        "PRESENT",
-        "TARDY",
-        "ABSENT",
-        "EXCUSED",
-        "HOLIDAY",
-        "HALF_HOLIDAY",
-        "NOT_APPLICABLE",
+      status: z.union([
+        z.literal(""),
+        z.enum([
+          "PRESENT",
+          "TARDY",
+          "ABSENT",
+          "EXCUSED",
+          "HOLIDAY",
+          "HALF_HOLIDAY",
+          "NOT_APPLICABLE",
+        ]),
       ]),
       reason: z.string().nullable().optional(),
     }),

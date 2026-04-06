@@ -41,6 +41,24 @@ const defaultForm = {
   isActive: true,
 };
 
+type ApiErrorResponse = {
+  error?: string;
+};
+
+async function readJsonSafely<T>(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 function SortablePeriodRow({
   period,
   onEdit,
@@ -177,10 +195,14 @@ export function PeriodSettingsManager({
       const response = await fetch(`/api/${divisionSlug}/periods`, {
         cache: "no-store",
       });
-      const data = await response.json();
+      const data = (await readJsonSafely<{ periods?: PeriodItem[] } & ApiErrorResponse>(response)) ?? {};
 
       if (!response.ok) {
         throw new Error(data.error ?? "교시 목록을 불러오지 못했습니다.");
+      }
+
+      if (!data.periods) {
+        throw new Error("교시 목록 응답 형식이 올바르지 않습니다.");
       }
 
       setPeriods(data.periods);
@@ -207,7 +229,7 @@ export function PeriodSettingsManager({
         },
         body: JSON.stringify(form),
       });
-      const data = await response.json();
+      const data = (await readJsonSafely<ApiErrorResponse>(response)) ?? {};
 
       if (!response.ok) {
         throw new Error(data.error ?? "교시 저장에 실패했습니다.");
@@ -234,10 +256,14 @@ export function PeriodSettingsManager({
       const response = await fetch(`/api/${divisionSlug}/periods/${id}`, {
         method: "DELETE",
       });
-      const data = await response.json();
+      const data = (await readJsonSafely<{ periods?: PeriodItem[] } & ApiErrorResponse>(response)) ?? {};
 
       if (!response.ok) {
         throw new Error(data.error ?? "교시 삭제에 실패했습니다.");
+      }
+
+      if (!data.periods) {
+        throw new Error("교시 목록 응답 형식이 올바르지 않습니다.");
       }
 
       setPeriods(data.periods);
@@ -280,10 +306,14 @@ export function PeriodSettingsManager({
           reorderIds: reordered.map((period) => period.id),
         }),
       });
-      const data = await response.json();
+      const data = (await readJsonSafely<{ result?: PeriodItem[] } & ApiErrorResponse>(response)) ?? {};
 
       if (!response.ok) {
         throw new Error(data.error ?? "교시 순서 변경에 실패했습니다.");
+      }
+
+      if (!data.result) {
+        throw new Error("교시 목록 응답 형식이 올바르지 않습니다.");
       }
 
       setPeriods(data.result);

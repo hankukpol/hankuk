@@ -41,7 +41,7 @@ function getKstToday() {
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR");
+  return new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 }
 
 function formatRulePreview(rule: PointRuleItem) {

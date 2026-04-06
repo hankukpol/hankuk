@@ -1,7 +1,13 @@
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState } from "@/lib/mock-store";
-import { getPrismaClient, getDivisionBySlugOrThrow } from "@/lib/service-helpers";
+import { getPrismaClient } from "@/lib/service-helpers";
+import {
+  clampStudyTimeDateRange,
+  maskStudentName,
+  splitStudyMinutes,
+} from "@/lib/study-time-meta";
 import { getPeriods } from "@/lib/services/period.service";
+import { listStudents } from "@/lib/services/student.service";
 
 export type StudentStudyTimeStats = {
   month: string; // "YYYY-MM"
@@ -10,6 +16,54 @@ export type StudentStudyTimeStats = {
   totalMinutesRemainder: number;
   byDate: { date: string; minutes: number }[];
   byPeriod: { periodId: string; periodName: string; avgMinutes: number }[];
+};
+
+export type DivisionStudyTimeRankingRow = {
+  rank: number;
+  studentId: string;
+  studentName: string;
+  studentNumber: string;
+  totalMinutes: number;
+  totalHours: number;
+  totalMinutesRemainder: number;
+  studyDays: number;
+  dailyAverageMinutes: number;
+  dailyAverageHours: number;
+  dailyAverageMinutesRemainder: number;
+};
+
+export type DivisionStudyTimeRanking = {
+  month: string;
+  studentCount: number;
+  rows: DivisionStudyTimeRankingRow[];
+};
+
+export type StudentStudyTimeRankingRow = {
+  rank: number;
+  maskedName: string;
+  totalMinutes: number;
+  totalHours: number;
+  totalMinutesRemainder: number;
+  studyDays: number;
+  dailyAverageMinutes: number;
+  dailyAverageHours: number;
+  dailyAverageMinutesRemainder: number;
+  isMe: boolean;
+};
+
+export type StudentStudyTimeRanking = {
+  month: string;
+  studentCount: number;
+  rows: StudentStudyTimeRankingRow[];
+  myRank: StudentStudyTimeRankingRow | null;
+};
+
+type RawStudyTimeRecord = {
+  studentId: string;
+  date: string;
+  periodId: string;
+  checkInTime: string | null;
+  status: string;
 };
 
 /**
@@ -30,6 +84,96 @@ function calcStudyMinutes(
   return Math.max(0, Math.floor((end.getTime() - checkIn.getTime()) / 60_000));
 }
 
+function getMonthRange(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+
+  return {
+    year,
+    monthNumber,
+    dateFrom: `${month}-01`,
+    dateTo: `${month}-${String(lastDay).padStart(2, "0")}`,
+    from: new Date(Date.UTC(year, monthNumber - 1, 1)),
+    to: new Date(Date.UTC(year, monthNumber, 1)),
+  };
+}
+
+async function listMonthlyStudyTimeRecords(
+  divisionSlug: string,
+  month: string,
+  studentIds?: string[],
+): Promise<RawStudyTimeRecord[]> {
+  const range = getMonthRange(month);
+  const clampedRange = clampStudyTimeDateRange(range.dateFrom, range.dateTo);
+
+  if (!clampedRange) {
+    return [];
+  }
+
+  const { dateFrom, dateTo } = clampedRange;
+  const [fromYear, fromMonth, fromDay] = dateFrom.split("-").map(Number);
+  const from = new Date(Date.UTC(fromYear, fromMonth - 1, fromDay));
+  const to = range.to;
+
+  if (isMockMode()) {
+    const state = await readMockState();
+
+    return (state.attendanceByDivision[divisionSlug] ?? [])
+      .filter((record) => {
+        if (record.date < dateFrom || record.date > dateTo) {
+          return false;
+        }
+
+        if (record.status !== "PRESENT" && record.status !== "TARDY") {
+          return false;
+        }
+
+        if (!record.checkInTime) {
+          return false;
+        }
+
+        return !studentIds || studentIds.includes(record.studentId);
+      })
+      .map((record) => ({
+        studentId: record.studentId,
+        date: record.date,
+        periodId: record.periodId,
+        checkInTime: record.checkInTime ?? null,
+        status: record.status,
+      }));
+  }
+
+  const prisma = await getPrismaClient();
+  const records = await prisma.attendance.findMany({
+    where: {
+      date: { gte: from, lt: to },
+      status: { in: ["PRESENT", "TARDY"] },
+      checkInTime: { not: null },
+      student: {
+        division: {
+          slug: divisionSlug,
+        },
+      },
+      ...(studentIds ? { studentId: { in: studentIds } } : {}),
+    },
+    select: {
+      studentId: true,
+      date: true,
+      periodId: true,
+      checkInTime: true,
+      status: true,
+    },
+  });
+
+  return records.map((record) => ({
+    studentId: record.studentId,
+    date: record.date.toISOString().slice(0, 10),
+    periodId: record.periodId,
+    checkInTime: record.checkInTime ? record.checkInTime.toISOString() : null,
+    status: record.status,
+  }));
+}
+
 export async function getStudentStudyTimeStats(
   divisionSlug: string,
   studentId: string,
@@ -37,68 +181,7 @@ export async function getStudentStudyTimeStats(
 ): Promise<StudentStudyTimeStats> {
   const periods = await getPeriods(divisionSlug);
   const periodMap = new Map(periods.map((p) => [p.id, p]));
-
-  const dateFrom = `${month}-01`;
-  const [y, m] = month.split("-").map(Number);
-  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const dateTo = `${month}-${String(lastDay).padStart(2, "0")}`;
-
-  type RawRecord = {
-    date: string;
-    periodId: string;
-    checkInTime: string | null;
-    status: string;
-  };
-
-  let rawRecords: RawRecord[] = [];
-
-  if (isMockMode()) {
-    const state = await readMockState();
-    const records = state.attendanceByDivision[divisionSlug] ?? [];
-    rawRecords = records
-      .filter(
-        (r) =>
-          r.studentId === studentId &&
-          r.date >= dateFrom &&
-          r.date <= dateTo &&
-          (r.status === "PRESENT" || r.status === "TARDY") &&
-          r.checkInTime != null,
-      )
-      .map((r) => ({
-        date: r.date,
-        periodId: r.periodId,
-        checkInTime: r.checkInTime ?? null,
-        status: r.status,
-      }));
-  } else {
-    const division = await getDivisionBySlugOrThrow(divisionSlug);
-    const prisma = await getPrismaClient();
-    const from = new Date(Date.UTC(y, m - 1, 1));
-    const to = new Date(Date.UTC(y, m, 1)); // exclusive
-
-    const records = await prisma.attendance.findMany({
-      where: {
-        studentId,
-        student: { divisionId: division.id },
-        date: { gte: from, lt: to },
-        status: { in: ["PRESENT", "TARDY"] },
-        checkInTime: { not: null },
-      },
-      select: {
-        date: true,
-        periodId: true,
-        checkInTime: true,
-        status: true,
-      },
-    });
-
-    rawRecords = records.map((r) => ({
-      date: r.date.toISOString().slice(0, 10),
-      periodId: r.periodId,
-      checkInTime: r.checkInTime ? r.checkInTime.toISOString() : null,
-      status: r.status,
-    }));
-  }
+  const rawRecords = await listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]);
 
   // Aggregate by date
   const byDateMap = new Map<string, number>();
@@ -142,6 +225,128 @@ export async function getStudentStudyTimeStats(
     totalMinutesRemainder: totalMinutes % 60,
     byDate,
     byPeriod,
+  };
+}
+
+export async function getDivisionStudyTimeRanking(
+  divisionSlug: string,
+  month: string,
+): Promise<DivisionStudyTimeRanking> {
+  const [periods, students, rawRecords] = await Promise.all([
+    getPeriods(divisionSlug),
+    listStudents(divisionSlug),
+    listMonthlyStudyTimeRecords(divisionSlug, month),
+  ]);
+
+  const activeStudents = students.filter(
+    (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
+  );
+  const periodMap = new Map(periods.map((period) => [period.id, period]));
+  const studentSummaryMap = new Map(
+    activeStudents.map((student) => [
+      student.id,
+      {
+        student,
+        totalMinutes: 0,
+        studyDates: new Set<string>(),
+      },
+    ]),
+  );
+
+  for (const record of rawRecords) {
+    const summary = studentSummaryMap.get(record.studentId);
+    const period = periodMap.get(record.periodId);
+
+    if (!summary || !period) {
+      continue;
+    }
+
+    const minutes = calcStudyMinutes(record.checkInTime, record.date, period.endTime);
+    summary.totalMinutes += minutes;
+
+    if (minutes > 0) {
+      summary.studyDates.add(record.date);
+    }
+  }
+
+  const rankedRowsBase = activeStudents
+    .map((student) => {
+      const summary = studentSummaryMap.get(student.id);
+      const totalMinutes = summary?.totalMinutes ?? 0;
+      const studyDays = summary?.studyDates.size ?? 0;
+      const dailyAverageMinutes = studyDays > 0 ? Math.round(totalMinutes / studyDays) : 0;
+      const totalParts = splitStudyMinutes(totalMinutes);
+      const avgParts = splitStudyMinutes(dailyAverageMinutes);
+
+      return {
+        studentId: student.id,
+        studentName: student.name,
+        studentNumber: student.studentNumber,
+        totalMinutes,
+        totalHours: totalParts.hours,
+        totalMinutesRemainder: totalParts.minutes,
+        studyDays,
+        dailyAverageMinutes,
+        dailyAverageHours: avgParts.hours,
+        dailyAverageMinutesRemainder: avgParts.minutes,
+      };
+    })
+    .sort((left, right) => {
+      if (right.totalMinutes !== left.totalMinutes) {
+        return right.totalMinutes - left.totalMinutes;
+      }
+
+      if (right.studyDays !== left.studyDays) {
+        return right.studyDays - left.studyDays;
+      }
+
+      return left.studentNumber.localeCompare(right.studentNumber, "ko");
+    });
+
+  const rankByMinutes = new Map<number, number>();
+  rankedRowsBase.forEach((row, index) => {
+    if (!rankByMinutes.has(row.totalMinutes)) {
+      rankByMinutes.set(row.totalMinutes, index + 1);
+    }
+  });
+
+  const rows: DivisionStudyTimeRankingRow[] = rankedRowsBase.map((row) => ({
+    rank: rankByMinutes.get(row.totalMinutes) ?? 0,
+    ...row,
+  }));
+
+  return {
+    month,
+    studentCount: rows.length,
+    rows,
+  };
+}
+
+export async function getStudentStudyTimeRanking(
+  divisionSlug: string,
+  studentId: string,
+  month: string,
+): Promise<StudentStudyTimeRanking> {
+  const ranking = await getDivisionStudyTimeRanking(divisionSlug, month);
+  const rows = ranking.rows.map((row) => ({
+    rank: row.rank,
+    maskedName: maskStudentName(row.studentName),
+    totalMinutes: row.totalMinutes,
+    totalHours: row.totalHours,
+    totalMinutesRemainder: row.totalMinutesRemainder,
+    studyDays: row.studyDays,
+    dailyAverageMinutes: row.dailyAverageMinutes,
+    dailyAverageHours: row.dailyAverageHours,
+    dailyAverageMinutesRemainder: row.dailyAverageMinutesRemainder,
+    isMe: row.studentId === studentId,
+  }));
+  const myRank = rows.find((row) => row.isMe) ?? null;
+
+  return {
+    month: ranking.month,
+    studentCount: ranking.studentCount,
+    rows,
+    myRank,
   };
 }
 

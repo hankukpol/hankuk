@@ -20,7 +20,13 @@ type StudentPortalFrameProps = {
     color: string;
   };
   student: StudentDetail;
-  current: "dashboard" | "attendance" | "points" | "exams" | "announcements";
+  current:
+    | "dashboard"
+    | "attendance"
+    | "points"
+    | "exams"
+    | "announcements"
+    | "study-ranking";
   title: string;
   description: string;
   attendanceEnabled?: boolean;

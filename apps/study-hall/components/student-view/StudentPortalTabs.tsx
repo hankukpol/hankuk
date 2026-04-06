@@ -4,7 +4,13 @@ import { portalCardClass } from "@/components/student-view/StudentPortalUi";
 
 type StudentPortalTabsProps = {
   divisionSlug: string;
-  current: "dashboard" | "attendance" | "points" | "exams" | "announcements";
+  current:
+    | "dashboard"
+    | "announcements"
+    | "attendance"
+    | "study-ranking"
+    | "points"
+    | "exams";
   attendanceEnabled?: boolean;
   announcementsEnabled?: boolean;
   pointsEnabled?: boolean;
@@ -15,6 +21,7 @@ const items = [
   { key: "dashboard", label: "대시보드", href: "" },
   { key: "announcements", label: "공지사항", href: "announcements" },
   { key: "attendance", label: "출석 상세", href: "attendance" },
+  { key: "study-ranking", label: "학습 랭킹", href: "study-ranking" },
   { key: "points", label: "상벌점 상세", href: "points" },
   { key: "exams", label: "성적 상세", href: "exams" },
 ] as const;
@@ -44,13 +51,15 @@ export function StudentPortalTabs({
           ? "grid-cols-3"
           : "grid-cols-2";
   const mdColsClass =
-    visibleItems.length >= 5
-      ? "md:grid-cols-5"
-      : visibleItems.length === 4
-        ? "md:grid-cols-4"
-        : visibleItems.length === 3
-          ? "md:grid-cols-3"
-          : "md:grid-cols-2";
+    visibleItems.length >= 6
+      ? "md:grid-cols-6"
+      : visibleItems.length === 5
+        ? "md:grid-cols-5"
+        : visibleItems.length === 4
+          ? "md:grid-cols-4"
+          : visibleItems.length === 3
+            ? "md:grid-cols-3"
+            : "md:grid-cols-2";
   const gridClass = `grid gap-1 ${baseColsClass} ${mdColsClass}`;
 
   return (

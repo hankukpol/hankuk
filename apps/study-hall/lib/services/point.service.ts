@@ -17,6 +17,7 @@ import {
   getPrismaClient,
   normalizeOptionalText,
 } from "@/lib/service-helpers";
+import { getPeriods } from "@/lib/services/period.service";
 import { getWarningStage, getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { listStudents, type StudentListItem } from "@/lib/services/student.service";
@@ -75,6 +76,7 @@ export type PointRecordItem = {
   studentNumber: string;
   ruleId: string | null;
   ruleName: string | null;
+  displayName: string | null;
   category: string;
   categoryLabel: string;
   points: number;
@@ -83,6 +85,7 @@ export type PointRecordItem = {
   recordedByName: string;
   createdAt: string;
   date: string;
+  displayDateTime: string;
 };
 
 export type PointGrantInput = {
@@ -110,6 +113,13 @@ export type PointBatchGrantResult = {
 export type WarningStudentItem = StudentListItem & {
   warningStageLabel: string;
 };
+
+type PointDisplayContext = {
+  perfectAttendanceEndTime: string | null;
+};
+
+const DAILY_PERFECT_ATTENDANCE_LABEL = "일일 개근 상점";
+const DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX = "[자동] 개근 상점 (";
 
 function normalizeText(value: string) {
   return value.trim();
@@ -174,6 +184,74 @@ function parseDateString(value: string) {
 
 function getPointRecordDateValue(date?: string | null) {
   return date ? parseDateString(date) : new Date();
+}
+
+function isDailyPerfectAttendanceRecord(record: {
+  ruleId: string | null;
+  notes: string | null;
+}) {
+  return record.ruleId === null && Boolean(record.notes?.startsWith(DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX));
+}
+
+function getLatestMandatoryPeriodEndTime(
+  periods: Array<{
+    endTime: string;
+    isMandatory: boolean;
+    isActive: boolean;
+  }>,
+) {
+  return periods
+    .filter((period) => period.isActive && period.isMandatory)
+    .reduce<string | null>(
+      (latest, period) => (!latest || period.endTime > latest ? period.endTime : latest),
+      null,
+    );
+}
+
+function getPointDisplayContext(
+  periods: Array<{
+    endTime: string;
+    isMandatory: boolean;
+    isActive: boolean;
+  }>,
+): PointDisplayContext {
+  return {
+    perfectAttendanceEndTime: getLatestMandatoryPeriodEndTime(periods),
+  };
+}
+
+function buildKstDateTimeIso(dateValue: string | Date, time: string) {
+  const dateKey = (typeof dateValue === "string" ? dateValue : dateValue.toISOString()).slice(0, 10);
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour - 9, minute, 0, 0)).toISOString();
+}
+
+function getPointRecordDisplayName(record: {
+  ruleId: string | null;
+  ruleName: string | null;
+  notes: string | null;
+}) {
+  if (isDailyPerfectAttendanceRecord(record)) {
+    return DAILY_PERFECT_ATTENDANCE_LABEL;
+  }
+
+  return record.ruleName;
+}
+
+function getPointRecordDisplayDateTime(
+  record: {
+    ruleId: string | null;
+    notes: string | null;
+    date: string | Date;
+  },
+  context: PointDisplayContext,
+) {
+  if (isDailyPerfectAttendanceRecord(record) && context.perfectAttendanceEndTime) {
+    return buildKstDateTimeIso(record.date, context.perfectAttendanceEndTime);
+  }
+
+  return typeof record.date === "string" ? record.date : record.date.toISOString();
 }
 
 function toUtcRange(dateFrom?: string, dateTo?: string) {
@@ -408,6 +486,7 @@ function serializePointRecordFromMock(
   students: Map<string, StudentListItem>,
   rules: Map<string, MockPointRuleRecord>,
   divisionSlug: string,
+  displayContext: PointDisplayContext,
 ) {
   const student = students.get(record.studentId);
 
@@ -423,7 +502,16 @@ function serializePointRecordFromMock(
     studentName: student.name,
     studentNumber: student.studentNumber,
     ruleId: record.ruleId,
-    ruleName: rule?.name ?? null,
+    ruleName: getPointRecordDisplayName({
+      ruleId: record.ruleId,
+      ruleName: rule?.name ?? null,
+      notes: record.notes,
+    }),
+    displayName: getPointRecordDisplayName({
+      ruleId: record.ruleId,
+      ruleName: rule?.name ?? null,
+      notes: record.notes,
+    }),
     category: toLegacyPointCategoryLabel(rule?.category),
     categoryLabel: getPointCategoryLabel(toLegacyPointCategoryLabel(rule?.category)),
     points: record.points,
@@ -431,7 +519,22 @@ function serializePointRecordFromMock(
     recordedById: record.recordedById,
     recordedByName: getMockAdminSession(divisionSlug).name,
     createdAt: record.createdAt,
-    date: record.date,
+    date: getPointRecordDisplayDateTime(
+      {
+        ruleId: record.ruleId,
+        notes: record.notes,
+        date: record.date,
+      },
+      displayContext,
+    ),
+    displayDateTime: getPointRecordDisplayDateTime(
+      {
+        ruleId: record.ruleId,
+        notes: record.notes,
+        date: record.date,
+      },
+      displayContext,
+    ),
   } satisfies PointRecordItem;
 }
 
@@ -1163,7 +1266,12 @@ export async function listPointRecords(
   if (isMockMode()) {
     const students = await listStudents(divisionSlug);
     const studentMap = new Map(students.map((student) => [student.id, student]));
-    const [state, rules] = await Promise.all([readMockState(), getMockRuleMap(divisionSlug)]);
+    const [state, rules, periods] = await Promise.all([
+      readMockState(),
+      getMockRuleMap(divisionSlug),
+      getPeriods(divisionSlug),
+    ]);
+    const displayContext = getPointDisplayContext(periods);
     const filtered = (state.pointRecordsByDivision[divisionSlug] ?? [])
       .filter((record) => !options?.studentId || record.studentId === options.studentId)
       .filter((record) => !options?.dateFrom || record.date.slice(0, 10) >= options.dateFrom)
@@ -1171,7 +1279,9 @@ export async function listPointRecords(
       .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
 
     const records = filtered
-      .map((record) => serializePointRecordFromMock(record, studentMap, rules, divisionSlug))
+      .map((record) =>
+        serializePointRecordFromMock(record, studentMap, rules, divisionSlug, displayContext),
+      )
       .filter(Boolean) as PointRecordItem[];
 
     return options?.limit ? records.slice(0, options.limit) : records;
@@ -1179,6 +1289,7 @@ export async function listPointRecords(
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
+  const periodsPromise = getPeriods(divisionSlug);
   const { from, to } = toUtcRange(options?.dateFrom, options?.dateTo);
   const records = await prisma.pointRecord.findMany({
     where: {
@@ -1225,6 +1336,7 @@ export async function listPointRecords(
   const categoryMap = await getLegacyPointRuleCategoryMap(
     records.map((record) => record.ruleId).filter((ruleId): ruleId is string => Boolean(ruleId)),
   );
+  const displayContext = getPointDisplayContext(await periodsPromise);
 
   return records.map((record) => ({
     id: record.id,
@@ -1232,7 +1344,16 @@ export async function listPointRecords(
     studentName: record.student.name,
     studentNumber: record.student.studentNumber,
     ruleId: record.ruleId,
-    ruleName: record.rule?.name ?? null,
+    ruleName: getPointRecordDisplayName({
+      ruleId: record.ruleId,
+      ruleName: record.rule?.name ?? null,
+      notes: record.notes,
+    }),
+    displayName: getPointRecordDisplayName({
+      ruleId: record.ruleId,
+      ruleName: record.rule?.name ?? null,
+      notes: record.notes,
+    }),
     category: record.ruleId ? categoryMap.get(record.ruleId) ?? "기타" : "기타",
     categoryLabel: getPointCategoryLabel(record.ruleId ? categoryMap.get(record.ruleId) ?? "기타" : "기타"),
     points: record.points,
@@ -1240,7 +1361,22 @@ export async function listPointRecords(
     recordedById: record.recordedBy.id,
     recordedByName: record.recordedBy.name,
     createdAt: record.createdAt.toISOString(),
-    date: record.date.toISOString(),
+    date: getPointRecordDisplayDateTime(
+      {
+        ruleId: record.ruleId,
+        notes: record.notes,
+        date: record.date,
+      },
+      displayContext,
+    ),
+    displayDateTime: getPointRecordDisplayDateTime(
+      {
+        ruleId: record.ruleId,
+        notes: record.notes,
+        date: record.date,
+      },
+      displayContext,
+    ),
   })) satisfies PointRecordItem[];
 }
 
@@ -1292,12 +1428,19 @@ export async function createPointRecord(
     });
     const students = await listStudents(divisionSlug);
     const studentMap = new Map(students.map((s) => [s.id, s]));
-    const rules = await getMockRuleMap(divisionSlug);
-    return serializePointRecordFromMock(record, studentMap, rules, divisionSlug);
+    const [rules, periods] = await Promise.all([getMockRuleMap(divisionSlug), getPeriods(divisionSlug)]);
+    return serializePointRecordFromMock(
+      record,
+      studentMap,
+      rules,
+      divisionSlug,
+      getPointDisplayContext(periods),
+    );
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
+  const periodsPromise = getPeriods(divisionSlug);
   const student = await prisma.student.findFirst({
     where: {
       id: input.studentId,
@@ -1353,6 +1496,7 @@ export async function createPointRecord(
   );
   const recordCategory = record.ruleId ? categoryMap.get(record.ruleId) ?? "기타" : "기타";
 
+  const displayContext = getPointDisplayContext(await periodsPromise);
   revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return {
     id: record.id,
@@ -1360,7 +1504,16 @@ export async function createPointRecord(
     studentName: record.student.name,
     studentNumber: record.student.studentNumber,
     ruleId: record.ruleId,
-    ruleName: record.rule?.name ?? null,
+    ruleName: getPointRecordDisplayName({
+      ruleId: record.ruleId,
+      ruleName: record.rule?.name ?? null,
+      notes: record.notes,
+    }),
+    displayName: getPointRecordDisplayName({
+      ruleId: record.ruleId,
+      ruleName: record.rule?.name ?? null,
+      notes: record.notes,
+    }),
     category: recordCategory,
     categoryLabel: getPointCategoryLabel(recordCategory),
     points: record.points,
@@ -1368,7 +1521,22 @@ export async function createPointRecord(
     recordedById: record.recordedBy.id,
     recordedByName: record.recordedBy.name,
     createdAt: record.createdAt.toISOString(),
-    date: record.date.toISOString(),
+    date: getPointRecordDisplayDateTime(
+      {
+        ruleId: record.ruleId,
+        notes: record.notes,
+        date: record.date,
+      },
+      displayContext,
+    ),
+    displayDateTime: getPointRecordDisplayDateTime(
+      {
+        ruleId: record.ruleId,
+        notes: record.notes,
+        date: record.date,
+      },
+      displayContext,
+    ),
   } satisfies PointRecordItem;
 }
 

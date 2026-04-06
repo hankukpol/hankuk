@@ -38,6 +38,7 @@ function formatDate(value: string | null) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
@@ -216,6 +217,34 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
           caption={`누적 벌점 ${toDemeritPoints(data.student.netPoints)}점 기준`}
           valueToneClassName="text-rose-600"
         />
+      </section>
+
+      <section className={portalSectionClass}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p
+              className="text-[12px] font-bold"
+              style={{ color: "var(--division-color)" }}
+            >
+              STUDY RANKING
+            </p>
+            <h2 className="mt-1 text-[18px] font-bold text-[var(--foreground)]">
+              이번 달 학습 랭킹 확인하기
+            </h2>
+            <p className="mt-1.5 text-[13px] leading-[1.5] text-[var(--muted)]">
+              익명으로 공개되는 월간 학습시간 랭킹에서 내 순위와 공부 흐름을 확인할 수 있습니다.
+            </p>
+          </div>
+
+          <Link
+            href={`/${data.division.slug}/student/study-ranking`}
+            className="inline-flex items-center gap-1 self-start rounded-full border border-[var(--border)] px-4 py-2 text-[13px] font-medium transition hover:bg-[#F4F4F2]"
+            style={{ color: "var(--division-color)" }}
+          >
+            학습 랭킹 보기
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </section>
 
       {announcementsEnabled || attendanceEnabled ? (

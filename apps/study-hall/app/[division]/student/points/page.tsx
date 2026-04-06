@@ -25,6 +25,7 @@ type StudentPointsPageProps = {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
     month: "numeric",
     day: "numeric",
     hour: "2-digit",

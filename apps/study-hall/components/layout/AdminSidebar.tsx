@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Smartphone,
   Star,
+  Trophy,
   Users,
 } from "lucide-react";
 
@@ -69,6 +70,12 @@ const navSections: NavSection[] = [
     label: "\uD559\uC0DD \uAD00\uB9AC",
     items: [
       { href: "points", label: "\uC0C1\uBC8C\uC810", icon: Star, featureKey: "pointManagement" },
+      {
+        href: "study-ranking",
+        label: "\uD559\uC2B5 \uB7AD\uD0B9",
+        icon: Trophy,
+        featureKey: "studentManagement",
+      },
       {
         href: "leave",
         label: "\uC678\uCD9C/\uD734\uAC00",

@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { LayoutGrid, LoaderCircle, RefreshCcw, Save, Table2 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { LayoutGrid, LoaderCircle, RefreshCcw, Save, Search, Table2, X } from "lucide-react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import {
@@ -11,6 +11,7 @@ import {
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
+import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
 
@@ -38,8 +39,10 @@ type StudentItem = {
   id: string;
   name: string;
   studentNumber: string;
+  phone?: string | null;
   seatLabel: string | null;
   seatDisplay: string | null;
+  studyRoomName?: string | null;
   studyTrack: string | null;
 };
 
@@ -153,6 +156,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [savedMatrix, setSavedMatrix] = useState<MatrixState>(() => initialMatrix);
   const [stats, setStats] = useState(initialStats);
   const [bulkApplyByStudent, setBulkApplyByStudent] = useState<Record<string, BulkApplyDraft>>({});
+  const [searchQuery, setSearchQuery] = useState("");
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
     description: string;
@@ -163,6 +167,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [viewMode, setViewMode] = useState<"table" | "seat">("table");
   const [isDirty, setIsDirty] = useState(false);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const markDirty = useCallback(() => {
     setIsDirty(true);
@@ -177,6 +182,15 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     ],
     [stats],
   );
+
+  const filteredStudents = useMemo(
+    () =>
+      students.filter((student) =>
+        matchesStudentSearch(student, deferredSearchQuery, [student.studyRoomName]),
+      ),
+    [deferredSearchQuery, students],
+  );
+  const hasSearchQuery = hasStudentSearchQuery(searchQuery);
 
   useEffect(() => {
     let isMounted = true;
@@ -272,12 +286,16 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     });
   }
 
-  function updatePeriodAllStudents(periodId: string, status: AttendanceOptionValue) {
+  function updatePeriodAllStudents(
+    periodId: string,
+    status: AttendanceOptionValue,
+    targetStudents: StudentItem[] = students,
+  ) {
     markDirty();
     setMatrix((current) => {
       const updated = { ...current };
 
-      for (const student of students) {
+      for (const student of targetStudents) {
         updated[student.id] = {
           ...(current[student.id] ?? {}),
           [periodId]: {
@@ -551,20 +569,56 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         <div className="mt-4 rounded-[10px] border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
           변경한 칸만 저장됩니다. 미입력 칸은 그대로 두셔도 되고, 미래 날짜나 미래 교시의 사유 메모도 미리 기록할 수 있습니다.
         </div>
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <label className="relative block w-full md:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
+              className="w-full rounded-[10px] border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+            />
+            {hasSearchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                aria-label="검색어 지우기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </label>
+          <div className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {filteredStudents.length}명 표시 / 전체 {students.length}명
+          </div>
+        </div>
       </section>
 
       {viewMode === "seat" && hasSeatLayout && seatRooms && initialSeatLayout ? (
         <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-          <AttendanceSeatView
-            divisionSlug={divisionSlug}
-            rooms={seatRooms}
-            initialSeatLayout={initialSeatLayout}
-            students={students}
-            periods={periods}
-            matrix={matrix}
-            onUpdateCell={(studentId, periodId, value) => updateCell(studentId, periodId, value)}
-            onSaveStudent={handleSaveStudent}
-          />
+          {hasSearchQuery ? (
+            <div className="mb-4 rounded-[10px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              검색 조건에 맞는 학생만 좌석도에 표시됩니다.
+            </div>
+          ) : null}
+          {filteredStudents.length > 0 ? (
+            <AttendanceSeatView
+              divisionSlug={divisionSlug}
+              rooms={seatRooms}
+              initialSeatLayout={initialSeatLayout}
+              students={filteredStudents}
+              periods={periods}
+              matrix={matrix}
+              onUpdateCell={(studentId, periodId, value) => updateCell(studentId, periodId, value)}
+              onSaveStudent={handleSaveStudent}
+            />
+          ) : (
+            <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-16 text-center text-sm text-slate-500">
+              검색 조건에 맞는 학생이 없습니다.
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -599,7 +653,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     </div>
                     <button
                       type="button"
-                      onClick={() => updatePeriodAllStudents(period.id, "PRESENT")}
+                      onClick={() => updatePeriodAllStudents(period.id, "PRESENT", filteredStudents)}
                       className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
                     >
                       전체 출석
@@ -609,7 +663,17 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               </tr>
             </thead>
             <tbody>
-              {students.map((student) => {
+              {filteredStudents.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={periods.length + 1}
+                    className="px-4 py-12 text-center text-sm text-slate-500"
+                  >
+                    검색 조건에 맞는 학생이 없습니다.
+                  </td>
+                </tr>
+              ) : null}
+              {filteredStudents.map((student) => {
                 const bulkApplyDraft = bulkApplyByStudent[student.id] ?? createBulkApplyDraft(periods);
                 const bulkNeedsReason =
                   bulkApplyDraft.status === "ABSENT" || bulkApplyDraft.status === "EXCUSED";

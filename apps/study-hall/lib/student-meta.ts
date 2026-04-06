@@ -42,6 +42,10 @@ export function getStudentStatusClasses(status: string | null | undefined) {
   }
 }
 
+export function toDemeritPoints(points: number | null | undefined) {
+  return Math.abs(Math.min(points ?? 0, 0));
+}
+
 export function getWarningStage(points: number, thresholds: WarningThresholds): WarningStageValue {
   if (points >= thresholds.warnWithdraw) {
     return "WITHDRAWAL";

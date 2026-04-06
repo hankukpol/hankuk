@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Clipboard, Copy, RefreshCcw, TriangleAlert } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
@@ -33,6 +33,10 @@ export function WarningStudentsManager({
 }: WarningStudentsManagerProps) {
   const [students, setStudents] = useState(initialStudents);
   const [stageFilter, setStageFilter] = useState<(typeof stageOptions)[number]["value"]>("ALL");
+
+  useEffect(() => {
+    setStudents(initialStudents);
+  }, [initialStudents]);
 
   const filteredStudents = useMemo(
     () =>

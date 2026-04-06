@@ -12,6 +12,7 @@ import {
 } from "@/components/student-view/StudentPortalUi";
 import { requireDivisionStudentAccess } from "@/lib/auth";
 import { isNotFoundError } from "@/lib/errors";
+import { toDemeritPoints } from "@/lib/student-meta";
 import { listPointRecords } from "@/lib/services/point.service";
 import { getDivisionFeatureSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
@@ -46,6 +47,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
     }
 
     const records = await listPointRecords(params.division, { studentId: session.studentId });
+    const demeritPoints = toDemeritPoints(student.netPoints);
 
     const rewardCount = records.filter((record) => record.points > 0).length;
     const penaltyCount = records.filter((record) => record.points < 0).length;
@@ -65,7 +67,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <PortalMetricCard
             label="현재 벌점"
-            value={`${student.netPoints}점`}
+            value={`${demeritPoints}점`}
             caption="경고 단계 반영 기준"
           />
           <PortalMetricCard

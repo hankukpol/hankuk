@@ -10,9 +10,11 @@ import {
   LoaderCircle,
   RefreshCcw,
   Save,
+  Search,
   Users,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { toast } from "@/lib/sonner";
 
 import {
@@ -22,6 +24,7 @@ import {
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
+import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 
 type PeriodItem = {
   id: string;
@@ -37,6 +40,7 @@ type StudentItem = {
   id: string;
   name: string;
   studentNumber: string;
+  phone?: string | null;
   seatLabel: string | null;
   seatDisplay: string | null;
   studyRoomName: string | null;
@@ -153,11 +157,13 @@ export function MobileCheckForm({
     notice?: string;
   } | null>(null);
   const [showOnlyUnchecked, setShowOnlyUnchecked] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [headerHeight, setHeaderHeight] = useState(132);
   const swipeRef = useRef<SwipeContext | null>(null);
   const swipeRafRef = useRef<number>(0);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const initialFormState = useMemo(
     () => buildInitialState(initialStudents, initialRecords),
     [initialRecords, initialStudents],
@@ -197,13 +203,22 @@ export function MobileCheckForm({
     };
   }, [formState, students]);
 
+  const filteredStudents = useMemo(
+    () =>
+      students.filter((student) =>
+        matchesStudentSearch(student, deferredSearchQuery, [student.studyRoomName]),
+      ),
+    [deferredSearchQuery, students],
+  );
+
   const visibleStudents = useMemo(() => {
     if (!showOnlyUnchecked) {
-      return students;
+      return filteredStudents;
     }
 
-    return students.filter((student) => !formState[student.id]?.status);
-  }, [formState, showOnlyUnchecked, students]);
+    return filteredStudents.filter((student) => !formState[student.id]?.status);
+  }, [filteredStudents, formState, showOnlyUnchecked]);
+  const hasSearchQuery = hasStudentSearchQuery(searchQuery);
 
   const progressPercentage = students.length > 0 ? Math.round((summary.checkedCount / students.length) * 100) : 0;
 
@@ -311,7 +326,7 @@ export function MobileCheckForm({
     setFormState((current) => {
       const nextState: FormState = { ...current };
 
-      for (const student of students) {
+      for (const student of visibleStudents) {
         nextState[student.id] = { status: "PRESENT", reason: "" };
       }
 
@@ -627,6 +642,27 @@ export function MobileCheckForm({
           </span>
         </div>
 
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
+            className="w-full rounded-[10px] border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+          />
+          {hasSearchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+              aria-label="검색어 지우기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </label>
+
         {isLoading ? (
           <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
             출석 정보를 불러오는 중입니다.
@@ -635,7 +671,11 @@ export function MobileCheckForm({
 
         {!isLoading && visibleStudents.length === 0 ? (
           <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-            {showOnlyUnchecked ? "미처리 학생이 없습니다." : "출석 대상 학생이 없습니다."}
+            {hasSearchQuery
+              ? "검색 조건에 맞는 학생이 없습니다."
+              : showOnlyUnchecked
+                ? "미처리 학생이 없습니다."
+                : "출석 대상 학생이 없습니다."}
           </div>
         ) : null}
 

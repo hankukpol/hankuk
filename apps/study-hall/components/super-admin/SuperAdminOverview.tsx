@@ -420,6 +420,11 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const mountedRef = useRef(false);
 
+  useEffect(() => {
+    setDivisions(initialDivisions);
+    setLastUpdatedAt(new Date().toISOString());
+  }, [initialDivisions]);
+
   const refresh = useCallback(async (showToast = false) => {
     setIsRefreshing(true);
 

@@ -29,6 +29,7 @@ import {
   STUDENT_STATUS_OPTIONS,
   WARNING_STAGE_OPTIONS,
   getStudentStatusLabel,
+  toDemeritPoints,
   getWarningStageLabel,
 } from "@/lib/student-meta";
 import type { SeatOptionItem } from "@/lib/services/seat.service";
@@ -163,7 +164,10 @@ export function StudentListManager({
         case "name":
           return left.name.localeCompare(right.name, "ko");
         case "netPoints":
-          return right.netPoints - left.netPoints || left.name.localeCompare(right.name, "ko");
+          return (
+            toDemeritPoints(right.netPoints) - toDemeritPoints(left.netPoints) ||
+            left.name.localeCompare(right.name, "ko")
+          );
         case "createdAt":
           return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
         case "courseEndDate": {
@@ -655,7 +659,9 @@ export function StudentListManager({
                     <td className="px-4 py-4">
                       <StudentStatusBadge status={student.status} />
                     </td>
-                    <td className="px-4 py-4 font-semibold text-slate-950">{student.netPoints}점</td>
+                    <td className="px-4 py-4 font-semibold text-slate-950">
+                      {toDemeritPoints(student.netPoints)}점
+                    </td>
                     <td className="px-4 py-4">
                       <WarningStageBadge stage={student.warningStage} />
                     </td>
@@ -709,7 +715,7 @@ export function StudentListManager({
                     좌석 {student.seatDisplay || "미배정"}
                   </span>
                   <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                    벌점 {student.netPoints}점
+                    벌점 {toDemeritPoints(student.netPoints)}점
                   </span>
                 </div>
 

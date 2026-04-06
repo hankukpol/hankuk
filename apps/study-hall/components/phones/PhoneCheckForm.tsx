@@ -2,11 +2,12 @@
 
 import dynamic from "next/dynamic";
 
-import { LayoutGrid, RefreshCcw, Save, Table2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { LayoutGrid, RefreshCcw, Save, Search, Table2, X } from "lucide-react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { PhoneCheckTable } from "@/components/phones/PhoneCheckTable";
+import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 import type { PhoneCheckStatus, PhoneDaySnapshot } from "@/lib/services/phone-submission.service";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
@@ -69,12 +70,38 @@ function getSuggestedPeriodId(snapshot: PhoneDaySnapshot, targetDate: string) {
   }
 
   const currentMinutes = getCurrentKstMinutes();
-  return (
+  const activePeriod =
     snapshot.periods.find((period) => {
       const start = timeToMinutes(period.startTime);
       const end = timeToMinutes(period.endTime) + 5;
       return currentMinutes >= start && currentMinutes <= end;
-    })?.periodId ?? null
+    }) ?? null;
+
+  if (activePeriod) {
+    return activePeriod.periodId;
+  }
+
+  const startedPeriods = snapshot.periods.filter(
+    (period) => timeToMinutes(period.startTime) <= currentMinutes,
+  );
+
+  if (startedPeriods.length > 0) {
+    return startedPeriods[startedPeriods.length - 1]?.periodId ?? null;
+  }
+
+  return snapshot.periods[0]?.periodId ?? null;
+}
+
+function resolveActivePeriodId(
+  snapshot: PhoneDaySnapshot,
+  targetDate: string,
+  preferredPeriodId?: string,
+) {
+  return (
+    getSuggestedPeriodId(snapshot, targetDate) ??
+    preferredPeriodId ??
+    snapshot.periods[0]?.periodId ??
+    ""
   );
 }
 
@@ -118,12 +145,14 @@ export function PhoneCheckForm({
   );
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [activePeriodId, setActivePeriodId] = useState<string>(
-    initialActivePeriodId ?? initialSnapshot.periods[0]?.periodId ?? "",
+    resolveActivePeriodId(initialSnapshot, initialDate, initialActivePeriodId),
   );
-  const [viewMode, setViewMode] = useState<"seat" | "table">(hasSeatLayout ? "seat" : "table");
+  const [viewMode, setViewMode] = useState<"seat" | "table">("table");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const markDirty = useCallback(() => {
     setIsDirty(true);
@@ -131,11 +160,19 @@ export function PhoneCheckForm({
 
   const periods = snapshot.periods;
   const students = snapshot.students;
+  const filteredStudents = useMemo(
+    () =>
+      students.filter((student) =>
+        matchesStudentSearch(student, deferredSearchQuery, [student.studyRoomName]),
+      ),
+    [deferredSearchQuery, students],
+  );
   const activePeriod = periods.find((p) => p.periodId === activePeriodId);
   const activePeriodState = useMemo(
     () => periodsState[activePeriodId] ?? {},
     [activePeriodId, periodsState],
   );
+  const hasSearchQuery = hasStudentSearchQuery(searchQuery);
 
   async function loadSnapshot(newDate: string) {
     setIsLoading(true);
@@ -151,13 +188,11 @@ export function PhoneCheckForm({
       setSnapshot(newSnapshot);
       setPeriodsState(buildInitialState(newSnapshot));
       setIsDirty(false);
-      const suggestedPeriodId = getSuggestedPeriodId(newSnapshot, newDate);
-      const fallbackPeriodId = newSnapshot.periods[0]?.periodId ?? "";
       const retainedPeriodId = newSnapshot.periods.find(
         (period) => period.periodId === activePeriodId,
       )?.periodId;
 
-      setActivePeriodId(suggestedPeriodId ?? retainedPeriodId ?? fallbackPeriodId);
+      setActivePeriodId(resolveActivePeriodId(newSnapshot, newDate, retainedPeriodId));
     } finally {
       setIsLoading(false);
     }
@@ -196,11 +231,15 @@ export function PhoneCheckForm({
     }));
   }
 
-  function setAllForPeriod(periodId: string, status: PhoneCheckStatus) {
+  function setAllForPeriod(
+    periodId: string,
+    status: PhoneCheckStatus,
+    targetStudents: PhoneDaySnapshot["students"] = students,
+  ) {
     markDirty();
     setPeriodsState((prev) => {
       const next: LocalPeriodState = {};
-      for (const student of students) {
+      for (const student of targetStudents) {
         next[student.id] = {
           status,
           rentalNote: status === "RENTED" ? (prev[periodId]?.[student.id]?.rentalNote ?? "") : "",
@@ -351,6 +390,33 @@ export function PhoneCheckForm({
         )}
       </div>
 
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <label className="relative block w-full md:max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
+            className="w-full rounded-[10px] border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+          />
+          {hasSearchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+              aria-label="검색어 지우기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </label>
+
+        <div className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+          {filteredStudents.length}명 표시 / 전체 {students.length}명
+        </div>
+      </div>
+
       {periods.length === 0 ? (
         <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-16 text-center text-sm text-slate-500">
           활성화된 교시가 없습니다.
@@ -418,14 +484,14 @@ export function PhoneCheckForm({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED")}
+                  onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", filteredStudents)}
                   className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   전원 반납
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED")}
+                  onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED", filteredStudents)}
                   className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   전원 미반납
@@ -442,13 +508,13 @@ export function PhoneCheckForm({
               </div>
 
               {/* 학생 목록 */}
-              {students.length === 0 ? (
+              {filteredStudents.length === 0 ? (
                 <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
-                  재원 학생이 없습니다.
+                  {hasSearchQuery ? "검색 조건에 맞는 학생이 없습니다." : "재원 학생이 없습니다."}
                 </div>
               ) : viewMode === "table" ? (
                 <PhoneCheckTable
-                  students={students}
+                  students={filteredStudents}
                   periodState={activePeriodState}
                   onStatusChange={(studentId, status) =>
                     setStudentStatus(activePeriodId, studentId, status)
@@ -458,22 +524,29 @@ export function PhoneCheckForm({
                   }
                 />
               ) : seatRooms && seatRooms.length > 0 && initialSeatLayout ? (
-                <PhoneCheckSeatMap
-                  divisionSlug={divisionSlug}
-                  rooms={seatRooms}
-                  initialSeatLayout={initialSeatLayout}
-                  students={students}
-                  periodState={activePeriodState}
-                  onStatusChange={(studentId, status) =>
-                    setStudentStatus(activePeriodId, studentId, status)
-                  }
-                  onRentalNoteChange={(studentId, note) =>
-                    setRentalNote(activePeriodId, studentId, note)
-                  }
-                />
+                <div className="space-y-4">
+                  {hasSearchQuery ? (
+                    <div className="rounded-[10px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      검색 조건에 맞는 학생만 좌석도에 표시됩니다.
+                    </div>
+                  ) : null}
+                  <PhoneCheckSeatMap
+                    divisionSlug={divisionSlug}
+                    rooms={seatRooms}
+                    initialSeatLayout={initialSeatLayout}
+                    students={filteredStudents}
+                    periodState={activePeriodState}
+                    onStatusChange={(studentId, status) =>
+                      setStudentStatus(activePeriodId, studentId, status)
+                    }
+                    onRentalNoteChange={(studentId, note) =>
+                      setRentalNote(activePeriodId, studentId, note)
+                    }
+                  />
+                </div>
               ) : (
                 <div className="space-y-2">
-                  {students.map((student) => {
+                  {filteredStudents.map((student) => {
                     const entry = activePeriodState[student.id] ?? { status: null, rentalNote: "" };
                     const { status, rentalNote } = entry;
 

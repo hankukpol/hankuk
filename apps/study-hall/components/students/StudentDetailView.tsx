@@ -10,6 +10,7 @@ import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { StudentStatusBadge, TuitionExemptBadge, WarningStageBadge } from "@/components/students/StudentBadges";
 import { StudentDetailTabs } from "@/components/students/StudentDetailTabs";
 import { Modal } from "@/components/ui/Modal";
+import { toDemeritPoints } from "@/lib/student-meta";
 import type { ExamTypeItem, StudentExamResultItem } from "@/lib/services/exam.service";
 import type { InterviewItem } from "@/lib/services/interview.service";
 import type { LeavePermissionItem } from "@/lib/services/leave.service";
@@ -172,6 +173,8 @@ export function StudentDetailView({
     { stage: "WITHDRAWAL", label: "퇴실 대상", threshold: warningThresholds.warnWithdraw },
   ];
 
+  const currentDemeritPoints = toDemeritPoints(initialStudent.netPoints);
+
   useEffect(() => {
     if (!availableTabs.some((tab) => tab.id === activeTab)) {
       setActiveTab(availableTabs[0]?.id ?? "study-time");
@@ -190,7 +193,7 @@ export function StudentDetailView({
   async function handleWarnAdjust() {
     const target = warnTargets.find((t) => t.stage === selectedWarnTarget);
     if (!target) return;
-    const delta = target.threshold - initialStudent.netPoints;
+    const delta = target.threshold - currentDemeritPoints;
     if (delta === 0) {
       setIsWarnAdjustOpen(false);
       return;
@@ -465,7 +468,7 @@ export function StudentDetailView({
           <div className="grid gap-3 sm:grid-cols-2">
             <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
               <p className="text-sm text-slate-500">누적 벌점</p>
-              <p className="mt-3 text-3xl font-extrabold text-slate-950">{initialStudent.netPoints}점</p>
+              <p className="mt-3 text-3xl font-extrabold text-slate-950">{currentDemeritPoints}점</p>
             </article>
             <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
               <p className="text-sm text-slate-500">등록 플랜</p>
@@ -829,7 +832,7 @@ export function StudentDetailView({
         open={isWarnAdjustOpen}
         title="경고 단계 조정"
         badge="포인트 자동 계산"
-        description={`현재 누적 벌점 ${initialStudent.netPoints}점 · 현재 단계: ${initialStudent.warningStage}`}
+        description={`현재 누적 벌점 ${currentDemeritPoints}점 · 현재 단계: ${initialStudent.warningStage}`}
         widthClassName="max-w-sm"
         onClose={() => setIsWarnAdjustOpen(false)}
       >
@@ -840,7 +843,7 @@ export function StudentDetailView({
 
           <div className="space-y-2">
             {warnTargets.map((target) => {
-              const delta = target.threshold - initialStudent.netPoints;
+              const delta = target.threshold - currentDemeritPoints;
               const isSelected = selectedWarnTarget === target.stage;
               const isCurrent = target.stage === initialStudent.warningStage;
               return (
@@ -880,7 +883,7 @@ export function StudentDetailView({
               {(() => {
                 const t = warnTargets.find((x) => x.stage === selectedWarnTarget);
                 if (!t) return null;
-                const delta = t.threshold - initialStudent.netPoints;
+                const delta = t.threshold - currentDemeritPoints;
                 if (delta === 0) return "이미 해당 단계입니다. 변경이 필요 없습니다.";
                 if (delta > 0)
                   return `벌점 ${delta}점을 추가해 누적 벌점을 ${t.threshold}점으로 올립니다.`;
@@ -903,7 +906,7 @@ export function StudentDetailView({
                 !selectedWarnTarget ||
                 isAdjusting ||
                 warnTargets.find((t) => t.stage === selectedWarnTarget)?.threshold ===
-                  initialStudent.netPoints
+                  currentDemeritPoints
               }
               onClick={() => void handleWarnAdjust()}
               className="flex flex-1 items-center justify-center gap-2 rounded-[10px] bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"

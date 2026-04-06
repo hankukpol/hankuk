@@ -7,6 +7,7 @@ import { toast } from "@/lib/sonner";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { WarningStageBadge } from "@/components/students/StudentBadges";
+import { toDemeritPoints } from "@/lib/student-meta";
 import {
   getInterviewResultTypeClasses,
   getInterviewResultTypeLabel,
@@ -91,8 +92,11 @@ export function InterviewManager({
   const recommendedStudents = useMemo(
     () =>
       activeStudents
-        .filter((student) => student.netPoints >= warnInterview)
-        .sort((left, right) => right.netPoints - left.netPoints),
+        .filter((student) => toDemeritPoints(student.netPoints) >= warnInterview)
+        .sort(
+          (left, right) =>
+            toDemeritPoints(right.netPoints) - toDemeritPoints(left.netPoints),
+        ),
     [activeStudents, warnInterview],
   );
 
@@ -203,7 +207,9 @@ export function InterviewManager({
           </article>
           <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(245,158,11,0.10)]">
             <p className="text-sm text-amber-700">현재 선택 학생 벌점</p>
-            <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-950">{selectedStudent?.netPoints ?? 0}</p>
+            <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-950">
+              {selectedStudent ? toDemeritPoints(selectedStudent.netPoints) : 0}
+            </p>
             <p className="mt-2 text-xs text-amber-700/80">{selectedStudent?.name ?? "학생을 선택해 주세요."}</p>
           </article>
         </section>
@@ -257,7 +263,7 @@ export function InterviewManager({
                             {student.studentNumber} · {student.name}
                           </p>
                           <p className="mt-1 text-sm text-slate-500">
-                            직렬 {student.studyTrack || "미지정"} · 벌점 {student.netPoints}점
+                            직렬 {student.studyTrack || "미지정"} · 벌점 {toDemeritPoints(student.netPoints)}점
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -401,7 +407,9 @@ export function InterviewManager({
                   {selectedStudent.name}
                   <span className="ml-2 text-xs font-medium text-slate-500">{selectedStudent.studentNumber}</span>
                 </p>
-                <p className="mt-1">벌점 {selectedStudent.netPoints}점 · 경고 단계 {selectedStudent.warningStage}</p>
+                <p className="mt-1">
+                  벌점 {toDemeritPoints(selectedStudent.netPoints)}점 · 경고 단계 {selectedStudent.warningStage}
+                </p>
               </div>
             ) : null}
           </section>

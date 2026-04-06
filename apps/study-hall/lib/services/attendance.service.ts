@@ -451,15 +451,15 @@ export async function listStudentAttendanceHistory(
     });
 }
 
-async function checkAndGrantPerfectAttendancePoints(
+async function syncPerfectAttendancePoints(
   divisionSlug: string,
   date: string,
   actorId: string,
-): Promise<{ grantedCount: number }> {
+): Promise<{ grantedCount: number; revokedCount: number }> {
   const settings = await getDivisionSettings(divisionSlug);
 
   if (!settings.perfectAttendancePtsEnabled || settings.perfectAttendancePts <= 0) {
-    return { grantedCount: 0 };
+    return { grantedCount: 0, revokedCount: 0 };
   }
 
   const periods = await getPeriods(divisionSlug);
@@ -468,7 +468,7 @@ async function checkAndGrantPerfectAttendancePoints(
   );
 
   if (mandatoryActivePeriods.length === 0) {
-    return { grantedCount: 0 };
+    return { grantedCount: 0, revokedCount: 0 };
   }
 
   const mandatoryPeriodIds = new Set(mandatoryActivePeriods.map((period) => period.id));
@@ -494,11 +494,8 @@ async function checkAndGrantPerfectAttendancePoints(
 
       // 이미 부여된 학생 확인
       const existingPointRecords = state.pointRecordsByDivision[divisionSlug] ?? [];
-      const alreadyGranted = new Set(
-        existingPointRecords
-          .filter((record) => record.notes === dupCheckNotes)
-          .map((record) => record.studentId),
-      );
+      const existingAutoRecords = existingPointRecords.filter((record) => record.notes === dupCheckNotes);
+      const alreadyGranted = new Set(existingAutoRecords.map((record) => record.studentId));
 
       // 자격 학생 필터
       const qualifiedStudents = students.filter((student) => {
@@ -507,9 +504,17 @@ async function checkAndGrantPerfectAttendancePoints(
         return presentPeriods !== undefined && presentPeriods.size === mandatoryPeriodIds.size;
       });
 
-      if (qualifiedStudents.length === 0) {
-        return { grantedCount: 0 };
-      }
+      const qualifiedStudentIds = new Set(
+        students
+          .filter((student) => {
+            const presentPeriods = studentPresentMap.get(student.id);
+            return presentPeriods !== undefined && presentPeriods.size === mandatoryPeriodIds.size;
+          })
+          .map((student) => student.id),
+      );
+      const revokedCount = existingAutoRecords.filter(
+        (record) => !qualifiedStudentIds.has(record.studentId),
+      ).length;
 
       const now = new Date().toISOString();
       const newRecords: MockPointRecordRecord[] = qualifiedStudents.map((student, index) => ({
@@ -525,10 +530,12 @@ async function checkAndGrantPerfectAttendancePoints(
 
       state.pointRecordsByDivision[divisionSlug] = [
         ...newRecords,
-        ...existingPointRecords,
+        ...existingPointRecords.filter(
+          (record) => record.notes !== dupCheckNotes || qualifiedStudentIds.has(record.studentId),
+        ),
       ];
 
-      return { grantedCount: newRecords.length };
+      return { grantedCount: newRecords.length, revokedCount };
     });
   }
 
@@ -570,37 +577,76 @@ async function checkAndGrantPerfectAttendancePoints(
     .map((student) => student.id);
 
   if (candidateStudentIds.length === 0) {
-    return { grantedCount: 0 };
+    const existingAutoRecords = await prisma.pointRecord.findMany({
+      where: {
+        student: { divisionId: division.id },
+        date: start,
+        notes: dupCheckNotes,
+      },
+      select: { id: true },
+    });
+
+    if (existingAutoRecords.length === 0) {
+      return { grantedCount: 0, revokedCount: 0 };
+    }
+
+    await prisma.pointRecord.deleteMany({
+      where: {
+        id: { in: existingAutoRecords.map((record) => record.id) },
+      },
+    });
+
+    return { grantedCount: 0, revokedCount: existingAutoRecords.length };
   }
 
   // 이미 부여된 학생 확인
-  const alreadyGrantedRecords = await prisma.pointRecord.findMany({
+  const existingAutoRecords = await prisma.pointRecord.findMany({
     where: {
-      studentId: { in: candidateStudentIds },
-      notes: dupCheckNotes,
-    },
-    select: { studentId: true },
-  });
-
-  const alreadyGranted = new Set(alreadyGrantedRecords.map((record) => record.studentId));
-  const finalStudentIds = candidateStudentIds.filter((id) => !alreadyGranted.has(id));
-
-  if (finalStudentIds.length === 0) {
-    return { grantedCount: 0 };
-  }
-
-  await prisma.pointRecord.createMany({
-    data: finalStudentIds.map((studentId) => ({
-      studentId,
-      ruleId: null,
-      points: settings.perfectAttendancePts,
+      student: { divisionId: division.id },
       date: start,
       notes: dupCheckNotes,
-      recordedById: actorId,
-    })),
+    },
+    select: { id: true, studentId: true },
   });
 
-  return { grantedCount: finalStudentIds.length };
+  const alreadyGranted = new Set(existingAutoRecords.map((record) => record.studentId));
+  const finalStudentIds = candidateStudentIds.filter((id) => !alreadyGranted.has(id));
+  const candidateStudentIdSet = new Set(candidateStudentIds);
+  const revokeRecordIds = existingAutoRecords
+    .filter((record) => !candidateStudentIdSet.has(record.studentId))
+    .map((record) => record.id);
+
+  if (finalStudentIds.length === 0 && revokeRecordIds.length === 0) {
+    return { grantedCount: 0, revokedCount: 0 };
+  }
+
+  await prisma.$transaction([
+    ...(revokeRecordIds.length > 0
+      ? [
+          prisma.pointRecord.deleteMany({
+            where: {
+              id: { in: revokeRecordIds },
+            },
+          }),
+        ]
+      : []),
+    ...(finalStudentIds.length > 0
+      ? [
+          prisma.pointRecord.createMany({
+            data: finalStudentIds.map((studentId) => ({
+              studentId,
+              ruleId: null,
+              points: settings.perfectAttendancePts,
+              date: start,
+              notes: dupCheckNotes,
+              recordedById: actorId,
+            })),
+          }),
+        ]
+      : []),
+  ]);
+
+  return { grantedCount: finalStudentIds.length, revokedCount: revokeRecordIds.length };
 }
 
 export async function upsertAttendanceBatch(
@@ -692,7 +738,7 @@ export async function upsertAttendanceBatch(
       };
 
       try {
-        await checkAndGrantPerfectAttendancePoints(divisionSlug, normalizedDate, actor.id);
+        await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actor.id);
       } catch (error) {
         console.error("[PerfectAttendancePoints]", error);
       }
@@ -778,12 +824,14 @@ export async function upsertAttendanceBatch(
   };
 
   try {
-    await checkAndGrantPerfectAttendancePoints(divisionSlug, normalizedDate, actor.id);
+    await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actor.id);
   } catch (error) {
     console.error("[PerfectAttendancePoints]", error);
   }
 
-  revalidateDivisionOperationalViews(divisionSlug);
+  revalidateDivisionOperationalViews(divisionSlug, {
+    studentIds: input.records.map((record) => record.studentId),
+  });
   return snapshot;
 }
 

@@ -15,6 +15,7 @@ import { listExamSchedules, type ExamScheduleItem } from "@/lib/services/exam-sc
 import { listInterviews } from "@/lib/services/interview.service";
 import { listLeavePermissions } from "@/lib/services/leave.service";
 import { getPrismaClient } from "@/lib/service-helpers";
+import { toDemeritPoints } from "@/lib/student-meta";
 
 const kstDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",
@@ -477,15 +478,18 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   );
   const riskStudents = warningManagementEnabled
     ? students
-        .filter((student) => student.netPoints >= settings.warnLevel1)
-        .sort((left, right) => right.netPoints - left.netPoints)
+        .filter((student) => toDemeritPoints(student.netPoints) >= settings.warnLevel1)
+        .sort(
+          (left, right) =>
+            toDemeritPoints(right.netPoints) - toDemeritPoints(left.netPoints),
+        )
         .map((student) => ({
           id: student.id,
           name: student.name,
           studentNumber: student.studentNumber,
           phone: student.phone,
           seatLabel: student.seatLabel,
-          netPoints: student.netPoints,
+          netPoints: toDemeritPoints(student.netPoints),
           warningStage: student.warningStage,
         }))
     : [];
@@ -597,7 +601,9 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   );
   const interviewNeededStudents = interviewManagementEnabled
     ? students
-        .filter((s) => s.status === "ACTIVE" && s.netPoints >= settings.warnInterview)
+        .filter(
+          (s) => s.status === "ACTIVE" && toDemeritPoints(s.netPoints) >= settings.warnInterview,
+        )
         .filter((s) => {
           const lastDate = latestInterviewByStudent.get(s.id) ?? null;
           if (!lastDate) return true;
@@ -609,7 +615,7 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
           studentNumber: s.studentNumber,
           seatLabel: s.seatLabel,
           phone: s.phone,
-          netPoints: s.netPoints,
+          netPoints: toDemeritPoints(s.netPoints),
           warningStage: s.warningStage,
           lastInterviewDate: latestInterviewByStudent.get(s.id) ?? null,
         }))

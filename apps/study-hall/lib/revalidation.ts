@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 
 type OperationalRevalidationOptions = {
   studentId?: string | null;
+  studentIds?: Array<string | null | undefined>;
 };
 
 export function revalidateDivisionOperationalViews(
@@ -22,10 +23,24 @@ export function revalidateDivisionOperationalViews(
   revalidatePath(`/${divisionSlug}/admin/leave`);
   revalidatePath(`/${divisionSlug}/admin/interviews`);
   revalidatePath(`/${divisionSlug}/admin/points`);
+  revalidatePath(`/${divisionSlug}/admin/warnings`);
   revalidatePath(`/${divisionSlug}/admin/reports`);
+  revalidatePath(`/${divisionSlug}/student`);
+  revalidatePath(`/${divisionSlug}/student/attendance`);
+  revalidatePath(`/${divisionSlug}/student/points`);
+  revalidatePath(`/${divisionSlug}/student/exams`);
+  revalidatePath(`/${divisionSlug}/student/announcements`);
   revalidatePath("/super-admin");
 
-  if (options?.studentId) {
-    revalidatePath(`/${divisionSlug}/admin/students/${options.studentId}`);
+  const targetStudentIds = Array.from(
+    new Set(
+      [options?.studentId, ...(options?.studentIds ?? [])].filter(
+        (studentId): studentId is string => Boolean(studentId),
+      ),
+    ),
+  );
+
+  for (const studentId of targetStudentIds) {
+    revalidatePath(`/${divisionSlug}/admin/students/${studentId}`);
   }
 }

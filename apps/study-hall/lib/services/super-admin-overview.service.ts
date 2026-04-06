@@ -11,6 +11,7 @@ import {
   getDivisionSettings,
 } from "@/lib/services/settings.service";
 import { listStudents } from "@/lib/services/student.service";
+import { toDemeritPoints } from "@/lib/student-meta";
 import {
   listManagedAdminAssignments,
   listManagedDivisions,
@@ -62,10 +63,6 @@ function getKstToday() {
   return kstDateFormatter.format(new Date());
 }
 
-function toNetPoints(points: number | null | undefined) {
-  return Math.abs(Math.min(points ?? 0, 0));
-}
-
 function toDateOnlyString(value: Date | string | null) {
   if (!value) {
     return null;
@@ -95,7 +92,7 @@ async function getMockDivisionOverviewMetrics(slug: string, today: string) {
         id: student.id,
         status: student.status as OverviewStudentMetric["status"],
         courseEndDate: student.courseEndDate,
-        netPoints: student.netPoints,
+        netPoints: toDemeritPoints(student.netPoints),
       })) satisfies OverviewStudentMetric[],
     attendance: snapshot
       ? {
@@ -157,7 +154,7 @@ async function getDbDivisionOverviewMetrics(divisionId: string, today: string) {
   ]);
 
   const pointTotalByStudentId = new Map(
-    pointTotals.map((record) => [record.studentId, toNetPoints(record._sum.points)]),
+    pointTotals.map((record) => [record.studentId, toDemeritPoints(record._sum.points)]),
   );
 
   return {

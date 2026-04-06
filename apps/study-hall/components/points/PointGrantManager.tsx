@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   CheckSquare,
   LoaderCircle,
@@ -62,6 +62,7 @@ export const PointGrantManager = memo(function PointGrantManager({
   );
 
   const [records, setRecords] = useState(initialRecords);
+  const [rankStudents, setRankStudents] = useState(activeStudents);
   const [panelMode, setPanelMode] = useState<GrantMode | null>(null);
   const [rankingOrder, setRankingOrder] = useState<"top" | "bottom">("top");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -85,12 +86,20 @@ export const PointGrantManager = memo(function PointGrantManager({
   const selectedSingleRule = activeRules.find((rule) => rule.id === singleRuleId) ?? null;
   const selectedBatchRule = activeRules.find((rule) => rule.id === batchRuleId) ?? null;
 
+  useEffect(() => {
+    setRankStudents(activeStudents);
+  }, [activeStudents]);
+
+  useEffect(() => {
+    setRecords(initialRecords);
+  }, [initialRecords]);
+
   const rankedStudents = useMemo(() => {
-    const sorted = [...activeStudents].sort((a, b) =>
+    const sorted = [...rankStudents].sort((a, b) =>
       rankingOrder === "top" ? b.netPoints - a.netPoints : a.netPoints - b.netPoints,
     );
     return sorted.slice(0, 20);
-  }, [activeStudents, rankingOrder]);
+  }, [rankStudents, rankingOrder]);
 
   const filteredStudents = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -107,6 +116,25 @@ export const PointGrantManager = memo(function PointGrantManager({
       return candidates.includes(keyword);
     });
   }, [activeStudents, search]);
+
+  function applyPointDelta(studentIds: string[], delta: number) {
+    if (studentIds.length === 0 || delta === 0) {
+      return;
+    }
+
+    const targetIds = new Set(studentIds);
+
+    setRankStudents((current) =>
+      current.map((student) =>
+        targetIds.has(student.id)
+          ? {
+              ...student,
+              netPoints: student.netPoints + delta,
+            }
+          : student,
+      ),
+    );
+  }
 
   async function refreshRecords(showToast = false) {
     setIsRefreshing(true);
@@ -168,6 +196,7 @@ export const PointGrantManager = memo(function PointGrantManager({
       }
 
       toast.success("상벌점을 기록했습니다.");
+      applyPointDelta([singleStudentId], data.record.points);
       setSingleNotes("");
       setSingleManualPoints("");
       setPanelMode(null);
@@ -218,6 +247,7 @@ export const PointGrantManager = memo(function PointGrantManager({
       toast.success(
         `${data.result.createdCount}명에게 ${data.result.points > 0 ? "+" : ""}${data.result.points}점을 적용했습니다.`,
       );
+      applyPointDelta(selectedStudentIds, data.result.points);
       setSelectedStudentIds([]);
       setBatchNotes("");
       setBatchManualPoints("");
@@ -234,6 +264,7 @@ export const PointGrantManager = memo(function PointGrantManager({
   async function handleDelete() {
     const recordId = confirmDeleteId;
     if (!recordId) return;
+    const targetRecord = records.find((record) => record.id === recordId) ?? null;
     setDeletingId(recordId);
     setConfirmDeleteId(null);
 
@@ -249,6 +280,9 @@ export const PointGrantManager = memo(function PointGrantManager({
 
       toast.success("상벌점 기록을 삭제했습니다.");
       setRecords((current) => current.filter((record) => record.id !== recordId));
+      if (targetRecord) {
+        applyPointDelta([targetRecord.studentId], -targetRecord.points);
+      }
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "상벌점 기록 삭제에 실패했습니다.");

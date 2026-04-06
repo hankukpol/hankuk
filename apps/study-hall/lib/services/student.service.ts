@@ -16,7 +16,12 @@ import {
   normalizeOptionalText,
 } from "@/lib/service-helpers";
 import { getDivisionSettings } from "@/lib/services/settings.service";
-import { getWarningStage, type StudentStatusValue, type WarningStageValue } from "@/lib/student-meta";
+import {
+  getWarningStage,
+  toDemeritPoints,
+  type StudentStatusValue,
+  type WarningStageValue,
+} from "@/lib/student-meta";
 
 export type DivisionStudent = {
   id: string;
@@ -475,11 +480,6 @@ function toStudentSession(student: Pick<StudentListItem, "id" | "divisionId" | "
 
 function toNetPoints(rawPointsSum: number) {
   return rawPointsSum;
-}
-
-/** Demerit-only value for warning stage calculation (always >= 0) */
-function toDemeritPoints(rawPointsSum: number) {
-  return Math.abs(Math.min(rawPointsSum, 0));
 }
 
 function formatSeatDisplay(studyRoomName: string | null, seatLabel: string | null) {

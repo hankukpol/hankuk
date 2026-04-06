@@ -17,7 +17,7 @@ import {
   getPrismaClient,
   normalizeOptionalText,
 } from "@/lib/service-helpers";
-import { getWarningStage, getWarningStageLabel } from "@/lib/student-meta";
+import { getWarningStage, getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { listStudents, type StudentListItem } from "@/lib/services/student.service";
 
@@ -1483,7 +1483,7 @@ export async function createPointRecordsBatch(
     })),
   });
 
-  revalidateDivisionOperationalViews(divisionSlug);
+  revalidateDivisionOperationalViews(divisionSlug, { studentIds });
   return {
     createdCount: students.length,
     date: input.date,
@@ -1539,17 +1539,26 @@ export async function listWarningStudents(divisionSlug: string) {
   const students = await listStudents(divisionSlug);
 
   return students
+    .map((student) => ({
+      student,
+      demeritPoints: toDemeritPoints(student.netPoints),
+    }))
     .filter(
-      (student) =>
+      ({ student, demeritPoints }) =>
         (student.status === "ACTIVE" || student.status === "ON_LEAVE") &&
-        student.netPoints >= settings.warnLevel1,
+        demeritPoints >= settings.warnLevel1,
     )
-    .sort((left, right) => right.netPoints - left.netPoints || left.name.localeCompare(right.name, "ko"))
-    .map((student) => {
-      const warningStage = getWarningStage(student.netPoints, settings);
+    .sort(
+      (left, right) =>
+        right.demeritPoints - left.demeritPoints ||
+        left.student.name.localeCompare(right.student.name, "ko"),
+    )
+    .map(({ student, demeritPoints }) => {
+      const warningStage = getWarningStage(demeritPoints, settings);
 
       return {
         ...student,
+        netPoints: demeritPoints,
         warningStage,
         warningStageLabel: getWarningStageLabel(warningStage),
       };

@@ -21,7 +21,7 @@ import {
   portalInsetClass,
   portalSectionClass,
 } from "@/components/student-view/StudentPortalUi";
-import { getWarningStageLabel } from "@/lib/student-meta";
+import { getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
 import type { StudentDashboardData } from "@/lib/services/student-dashboard.service";
 
 type StudentDashboardProps = {
@@ -213,7 +213,7 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
         <PortalMetricCard
           label="현재 경고 단계"
           value={getWarningStageLabel(data.student.warningStage)}
-          caption={`누적 벌점 ${data.student.netPoints}점 기준`}
+          caption={`누적 벌점 ${toDemeritPoints(data.student.netPoints)}점 기준`}
           valueToneClassName="text-rose-600"
         />
       </section>

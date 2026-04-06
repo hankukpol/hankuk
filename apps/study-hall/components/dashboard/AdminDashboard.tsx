@@ -458,6 +458,11 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const mountedRef = useRef(false);
 
+  useEffect(() => {
+    setData(initialData);
+    setLastUpdatedAt(new Date().toISOString());
+  }, [initialData]);
+
   const refreshDashboard = useCallback(
     async (showToast: boolean) => {
       setIsRefreshing(true);

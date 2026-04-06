@@ -482,7 +482,7 @@ function buildStudentRows(
     .sort((left, right) => {
       return (
         right.attendanceRate - left.attendanceRate ||
-        left.netPoints - right.netPoints ||
+        right.netPoints - left.netPoints ||
         (right.latestExamTotal ?? -1) - (left.latestExamTotal ?? -1) ||
         left.studentNumber.localeCompare(right.studentNumber, "ko")
       );

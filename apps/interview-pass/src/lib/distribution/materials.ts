@@ -1,5 +1,6 @@
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -34,9 +35,41 @@ export async function distributeMaterial({
   const scope = getScopedDivisionValues(division)
 
   const [{ data: student }, { data: material }] = await Promise.all([
-    withDivisionFallback(
-      () => db.from('students').select('id, name').eq('id', studentId).in('division', scope).maybeSingle(),
-      () => db.from('students').select('id, name').eq('id', studentId).maybeSingle(),
+    withStudentStatusFallback(
+      () =>
+        withDivisionFallback(
+          () =>
+            db
+              .from('students')
+              .select('id, name')
+              .eq('id', studentId)
+              .in('division', scope)
+              .eq('status', ACTIVE_STUDENT_STATUS)
+              .maybeSingle(),
+          () =>
+            db
+              .from('students')
+              .select('id, name')
+              .eq('id', studentId)
+              .eq('status', ACTIVE_STUDENT_STATUS)
+              .maybeSingle(),
+        ),
+      () =>
+        withDivisionFallback(
+          () =>
+            db
+              .from('students')
+              .select('id, name')
+              .eq('id', studentId)
+              .in('division', scope)
+              .maybeSingle(),
+          () =>
+            db
+              .from('students')
+              .select('id, name')
+              .eq('id', studentId)
+              .maybeSingle(),
+        ),
     ),
     withDivisionFallback(
       () => db.from('materials').select('id, name, is_active').eq('id', materialId).in('division', scope).maybeSingle(),

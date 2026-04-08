@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic'
 
 import ConfigFeatureDisabled from '@/app/(admin)/dashboard/config/_components/ConfigFeatureDisabled'
 import { getAppConfig } from '@/lib/app-config'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { getTodayKey } from '@/lib/utils'
@@ -17,46 +18,53 @@ async function getStats() {
   const today = getTodayKey()
 
   const results = (await Promise.all([
-    withDivisionFallback(
-      () => db.from('students').select('*', { count: 'exact', head: true }).in('division', scope),
-      () => db.from('students').select('*', { count: 'exact', head: true }),
-    ),
-    withDivisionFallback(
-      () => db.from('distribution_logs').select('*', { count: 'exact', head: true }).in('division', scope),
-      () => db.from('distribution_logs').select('*', { count: 'exact', head: true }),
-    ),
-    withDivisionFallback(
+    withStudentStatusFallback(
       () =>
-        db
-          .from('distribution_logs')
-          .select('*', { count: 'exact', head: true })
-          .in('division', scope)
-          .gte('distributed_at', `${today}T00:00:00+09:00`),
+        withDivisionFallback(
+          () =>
+            db
+              .from('students')
+              .select('id')
+              .in('division', scope)
+              .eq('status', ACTIVE_STUDENT_STATUS),
+          () =>
+            db
+              .from('students')
+              .select('id')
+              .eq('status', ACTIVE_STUDENT_STATUS),
+        ),
       () =>
-        db
-          .from('distribution_logs')
-          .select('*', { count: 'exact', head: true })
-          .gte('distributed_at', `${today}T00:00:00+09:00`),
+        withDivisionFallback(
+          () =>
+            db
+              .from('students')
+              .select('id')
+              .in('division', scope),
+          () =>
+            db
+              .from('students')
+              .select('id'),
+        ),
     ),
     withDivisionFallback(
       () => db.from('materials').select('id,name,is_active').in('division', scope).order('sort_order'),
       () => db.from('materials').select('id,name,is_active').order('sort_order'),
     ),
     withDivisionFallback(
-      () => db.from('distribution_logs').select('material_id, student_id').in('division', scope),
-      () => db.from('distribution_logs').select('material_id, student_id'),
+      () => db.from('distribution_logs').select('material_id, student_id, distributed_at').in('division', scope),
+      () => db.from('distribution_logs').select('material_id, student_id, distributed_at'),
     ),
     withDivisionFallback(
       () =>
         db
           .from('distribution_logs')
-          .select('distributed_at')
+          .select('student_id, distributed_at')
           .in('division', scope)
           .gte('distributed_at', `${today}T00:00:00+09:00`),
       () =>
         db
           .from('distribution_logs')
-          .select('distributed_at')
+          .select('student_id, distributed_at')
           .gte('distributed_at', `${today}T00:00:00+09:00`),
     ),
   ])) as Array<{
@@ -66,18 +74,14 @@ async function getStats() {
   }>
 
   const [
-    { count: totalStudents, error: totalStudentsError },
-    { count: totalLogs, error: totalLogsError },
-    { count: todayLogs, error: todayLogsError },
+    { data: activeStudents, error: activeStudentsError },
     { data: materials, error: materialsError },
     { data: allDistLogs, error: allDistLogsError },
     { data: todayLogsDetailed, error: todayLogsDetailedError },
   ] = results
 
   if (
-    totalStudentsError ||
-    totalLogsError ||
-    todayLogsError ||
+    activeStudentsError ||
     materialsError ||
     allDistLogsError ||
     todayLogsDetailedError
@@ -86,11 +90,18 @@ async function getStats() {
   }
 
   const materialRows = (materials ?? []) as Array<{ id: number; name: string; is_active: boolean }>
-  const distributionRows = (allDistLogs ?? []) as Array<{ material_id: number; student_id: string }>
-  const todayDistributionRows = (todayLogsDetailed ?? []) as Array<{ distributed_at: string }>
+  const distributionRows = (allDistLogs ?? []) as Array<{ material_id: number; student_id: string; distributed_at: string }>
+  const todayDistributionRows = (todayLogsDetailed ?? []) as Array<{ student_id: string; distributed_at: string }>
+  const activeStudentIds = new Set(
+    ((activeStudents ?? []) as Array<{ id: string }>).map((student) => student.id),
+  )
+  const totalStudents = activeStudentIds.size
 
   const materialStudentMap: Record<number, Set<string>> = {}
   for (const row of distributionRows) {
+    if (!activeStudentIds.has(row.student_id)) {
+      continue
+    }
     if (!materialStudentMap[row.material_id]) materialStudentMap[row.material_id] = new Set()
     materialStudentMap[row.material_id].add(row.student_id)
   }
@@ -105,6 +116,9 @@ async function getStats() {
     .map((material) => material.id)
   const studentReceivedMap: Record<string, Set<number>> = {}
   for (const row of distributionRows) {
+    if (!activeStudentIds.has(row.student_id)) {
+      continue
+    }
     if (activeMaterialIds.includes(row.material_id)) {
       if (!studentReceivedMap[row.student_id]) studentReceivedMap[row.student_id] = new Set()
       studentReceivedMap[row.student_id].add(row.material_id)
@@ -117,7 +131,11 @@ async function getStats() {
       : 0
 
   const hourMap: Record<number, number> = {}
-  for (const log of todayDistributionRows) {
+  const filteredDistributionRows = distributionRows.filter((row) => activeStudentIds.has(row.student_id))
+  const filteredTodayDistributionRows = todayDistributionRows.filter((row) => activeStudentIds.has(row.student_id))
+  const todayLogs = filteredTodayDistributionRows.length
+
+  for (const log of filteredTodayDistributionRows) {
     const hour = Number(
       new Date(log.distributed_at).toLocaleString('en-US', {
         timeZone: 'Asia/Seoul',
@@ -127,6 +145,8 @@ async function getStats() {
     )
     hourMap[hour] = (hourMap[hour] ?? 0) + 1
   }
+
+  const totalLogs = filteredDistributionRows.length
 
   return { totalStudents, totalLogs, todayLogs, materials: materialRows, matCountMap, completedCount, hourMap }
 }

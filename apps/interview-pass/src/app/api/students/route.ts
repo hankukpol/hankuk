@@ -2,12 +2,18 @@ import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createServerClient } from '@/lib/supabase/server'
-import { normalizePhone, normalizeName } from '@/lib/utils'
+import { normalizeName, normalizePhone } from '@/lib/utils'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import {
+  ACTIVE_STUDENT_STATUS,
+  REFUNDED_STUDENT_STATUS,
+  applyLegacyStudentStatus,
+  applyLegacyStudentStatusList,
+} from '@/lib/student-status'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const studentSchema = z.object({
@@ -18,6 +24,124 @@ const studentSchema = z.object({
   region: z.string().optional().default(''),
   series: z.string().optional().default(''),
 })
+
+type StudentPayload = {
+  id: string
+  name: string
+  phone: string
+  exam_number: string | null
+  gender: string | null
+  region: string | null
+  series: string | null
+}
+
+type ExistingStudent = {
+  id: string
+  status: 'active' | 'refunded'
+}
+
+function buildStudentPayload(input: z.infer<typeof studentSchema>): StudentPayload {
+  return {
+    id: randomUUID(),
+    name: normalizeName(input.name),
+    phone: normalizePhone(input.phone),
+    exam_number: input.exam_number || null,
+    gender: input.gender || null,
+    region: input.region || null,
+    series: input.series || null,
+  }
+}
+
+async function findStudentByIdentity(
+  payload: Pick<StudentPayload, 'name' | 'phone'>,
+  division: Awaited<ReturnType<typeof getServerTenantType>>,
+) {
+  const db = createServerClient()
+  const scope = getScopedDivisionValues(division)
+
+  return withStudentStatusFallback(
+    () =>
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id,status')
+            .in('division', scope)
+            .eq('name', payload.name)
+            .eq('phone', payload.phone)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id,status')
+            .eq('name', payload.name)
+            .eq('phone', payload.phone)
+            .maybeSingle(),
+      ),
+    async () => {
+      const result = await withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .in('division', scope)
+            .eq('name', payload.name)
+            .eq('phone', payload.phone)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('name', payload.name)
+            .eq('phone', payload.phone)
+            .maybeSingle(),
+      )
+
+      return {
+        ...result,
+        data: result.data ? ({ ...result.data, status: ACTIVE_STUDENT_STATUS } as ExistingStudent) : null,
+      }
+    },
+  ) as Promise<{ data: ExistingStudent | null; error: { code?: string; message?: string; details?: string; hint?: string } | null }>
+}
+
+async function restoreRefundedStudent(
+  studentId: string,
+  payload: StudentPayload,
+  division: Awaited<ReturnType<typeof getServerTenantType>>,
+) {
+  const db = createServerClient()
+  const update = {
+    name: payload.name,
+    phone: payload.phone,
+    exam_number: payload.exam_number,
+    gender: payload.gender,
+    region: payload.region,
+    series: payload.series,
+    status: ACTIVE_STUDENT_STATUS,
+    refunded_at: null,
+    refund_note: null,
+    updated_at: new Date().toISOString(),
+  }
+
+  return withDivisionFallback(
+    () =>
+      db
+        .from('students')
+        .update(update)
+        .eq('id', studentId)
+        .in('division', getScopedDivisionValues(division))
+        .select()
+        .single(),
+    () =>
+      db
+        .from('students')
+        .update(update)
+        .eq('id', studentId)
+        .select()
+        .single(),
+  )
+}
 
 export async function GET(req: NextRequest) {
   const authError = await requireAdminApi(req)
@@ -39,28 +163,49 @@ export async function GET(req: NextRequest) {
   const db = createServerClient()
   const division = await getServerTenantType()
 
-  const buildQuery = (scoped: boolean) => {
-    let query = db.from('students').select('*', { count: 'exact' }).order('name')
+  const buildQuery = (scoped: boolean, filterByStatus: boolean) => {
+    let query = db
+      .from('students')
+      .select('*', { count: 'exact' })
+      .order('name')
+
     if (scoped) {
       query = query.in('division', getScopedDivisionValues(division))
     }
+
+    if (filterByStatus) {
+      query = query.eq('status', ACTIVE_STUDENT_STATUS)
+    }
+
     if (search) {
       const escaped = search.replace(/[%_\\]/g, '\\$&')
       query = query.or(`name.ilike.%${escaped}%,phone.ilike.%${escaped}%,exam_number.ilike.%${escaped}%`)
     }
+
     return query.range(offset, offset + limit - 1)
   }
 
-  const { data, count, error } = await withDivisionFallback(
-    () => buildQuery(true),
-    () => buildQuery(false),
+  const { data, count, error } = await withStudentStatusFallback(
+    () =>
+      withDivisionFallback(
+        () => buildQuery(true, true),
+        () => buildQuery(false, true),
+      ),
+    () =>
+      withDivisionFallback(
+        () => buildQuery(true, false),
+        () => buildQuery(false, false),
+      ),
   )
 
   if (error) {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 
-  return NextResponse.json({ students: data, total: count })
+  return NextResponse.json({
+    students: applyLegacyStudentStatusList(data as Array<Record<string, unknown>> | null | undefined),
+    total: count,
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -82,29 +227,62 @@ export async function POST(req: NextRequest) {
 
   const db = createServerClient()
   const division = await getServerTenantType()
-  const payload = {
-    id: randomUUID(),
-    name: normalizeName(parsed.data.name),
-    phone: normalizePhone(parsed.data.phone),
-    exam_number: parsed.data.exam_number || null,
-    gender: parsed.data.gender || null,
-    region: parsed.data.region || null,
-    series: parsed.data.series || null,
+  const payload = buildStudentPayload(parsed.data)
+  const existing = await findStudentByIdentity(payload, division)
+
+  if (existing.error) {
+    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 
-  const { data, error } = await withDivisionFallback(
+  if (existing.data?.status === ACTIVE_STUDENT_STATUS) {
+    return NextResponse.json(
+      { error: '같은 학생 정보가 이미 등록되어 있습니다. 기존 학생 목록을 먼저 확인해 주세요.' },
+      { status: 409 },
+    )
+  }
+
+  if (existing.data?.status === REFUNDED_STUDENT_STATUS) {
+    const { data, error } = await restoreRefundedStudent(existing.data.id, payload, division)
+
+    if (error) {
+      return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
+    }
+
+    await invalidateCache('students')
+    return NextResponse.json({ student: data, created: 0, restored: 1 })
+  }
+
+  const { data, error } = await withStudentStatusFallback(
     () =>
-      db
-        .from('students')
-        .insert({ ...payload, division })
-        .select()
-        .single(),
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .insert({ ...payload, division, status: ACTIVE_STUDENT_STATUS })
+            .select()
+            .single(),
+        () =>
+          db
+            .from('students')
+            .insert({ ...payload, status: ACTIVE_STUDENT_STATUS })
+            .select()
+            .single(),
+      ),
     () =>
-      db
-        .from('students')
-        .insert(payload)
-        .select()
-        .single(),
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .insert({ ...payload, division })
+            .select()
+            .single(),
+        () =>
+          db
+            .from('students')
+            .insert(payload)
+            .select()
+            .single(),
+      ),
   )
 
   if (error) {
@@ -114,6 +292,7 @@ export async function POST(req: NextRequest) {
       details: error.details,
       hint: error.hint,
     })
+
     if (error.code === '23505') {
       return NextResponse.json(
         { error: '같은 학생 정보가 이미 등록되어 있습니다. 기존 학생 목록을 먼저 확인해 주세요.' },
@@ -125,5 +304,5 @@ export async function POST(req: NextRequest) {
   }
 
   await invalidateCache('students')
-  return NextResponse.json({ student: data }, { status: 201 })
+  return NextResponse.json({ student: applyLegacyStudentStatus(data), created: 1, restored: 0 }, { status: 201 })
 }

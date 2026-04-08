@@ -187,12 +187,16 @@ export default function StudentsPage() {
   }
 
   async function handleDelete(id: string) {
-    const res = await fetch(`/api/students/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/students/${id}/refund`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
     setConfirmDeleteStudentId(null)
     if (res.ok) load()
     else {
       const data = await res.json().catch(() => ({}))
-      alert(data.error ?? '삭제에 실패했습니다.')
+      alert(data.error ?? '환불 처리에 실패했습니다.')
     }
   }
 
@@ -220,7 +224,15 @@ export default function StudentsPage() {
     const data = await res.json()
     setBulkLoading(false)
     if (!res.ok) { setBulkMsg(data.error ?? '등록 실패'); return }
-    setBulkMsg(`완료: ${data.inserted}명 신규 등록${data.skipped > 0 ? `, ${data.skipped}명 중복 건너뜀` : ''} (전체 ${data.total}명)`)
+    const created = Number(data.created ?? data.inserted ?? 0)
+    const restored = Number(data.restored ?? 0)
+    const skipped = Number(data.skipped ?? 0)
+    const summary = [
+      created > 0 ? `${created}명 신규 등록` : null,
+      restored > 0 ? `${restored}명 복구` : null,
+      skipped > 0 ? `${skipped}명 건너뜀` : null,
+    ].filter(Boolean).join(', ')
+    setBulkMsg(`완료: ${summary || '변경 없음'} (전체 ${data.total ?? preview.length}명)`)
     load()
   }
 
@@ -386,11 +398,11 @@ export default function StudentsPage() {
                         <button onClick={() => startEdit(s)} className="text-xs text-blue-600 hover:underline">수정</button>
                         {confirmDeleteStudentId === s.id ? (
                           <>
-                            <button onClick={() => handleDelete(s.id)} className="text-xs text-red-600 font-semibold hover:underline">확인</button>
+                            <button onClick={() => handleDelete(s.id)} className="text-xs text-red-600 font-semibold hover:underline">환불 처리</button>
                             <button onClick={() => setConfirmDeleteStudentId(null)} className="text-xs text-gray-400 hover:underline">취소</button>
                           </>
                         ) : (
-                          <button onClick={() => setConfirmDeleteStudentId(s.id)} className="text-xs text-red-500 hover:underline">삭제</button>
+                          <button onClick={() => setConfirmDeleteStudentId(s.id)} className="text-xs text-red-500 hover:underline">환불</button>
                         )}
                       </div>
                     </td>

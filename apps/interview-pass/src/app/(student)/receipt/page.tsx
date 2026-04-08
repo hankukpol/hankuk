@@ -111,6 +111,10 @@ export default function ReceiptPage() {
       })
 
       if (!response.ok) {
+        if (response.status === 403 || response.status === 404) {
+          sessionStorage.clear()
+          router.replace('/')
+        }
         return
       }
 
@@ -144,7 +148,7 @@ export default function ReceiptPage() {
     } finally {
       isPollingRef.current = false
     }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     let cancelled = false
@@ -207,6 +211,12 @@ export default function ReceiptPage() {
           fetch(`/api/students/${student.id}/receipts`, { cache: 'no-store' }),
           fetch('/api/config/popups', { cache: 'no-store' }),
         ])
+
+        if (receiptsResponse.status === 403 || receiptsResponse.status === 404) {
+          sessionStorage.clear()
+          router.replace('/')
+          return
+        }
 
         if (!materialsResponse.ok || !receiptsResponse.ok || !popupsResponse.ok) {
           throw new Error('수령 데이터를 불러오지 못했습니다.')

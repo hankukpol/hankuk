@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isAppFeatureEnabled } from '@/lib/app-config'
 import { getClientIp, checkRateLimit } from '@/lib/auth/rateLimiter'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { generateQrToken } from '@/lib/qr/token'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { normalizeName, normalizePhone } from '@/lib/utils'
@@ -18,22 +19,45 @@ async function getStudentByNamePhone(name: string, phone: string) {
   const db = createServerClient()
   const division = await getServerTenantType()
 
-  const { data } = await withDivisionFallback(
+  const { data } = await withStudentStatusFallback(
     () =>
-      db
-        .from('students')
-        .select('id,name,phone,exam_number,gender,region,series')
-        .in('division', getScopedDivisionValues(division))
-        .eq('name', name)
-        .eq('phone', phone)
-        .maybeSingle(),
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id,name,phone,exam_number,gender,region,series')
+            .in('division', getScopedDivisionValues(division))
+            .eq('status', ACTIVE_STUDENT_STATUS)
+            .eq('name', name)
+            .eq('phone', phone)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id,name,phone,exam_number,gender,region,series')
+            .eq('status', ACTIVE_STUDENT_STATUS)
+            .eq('name', name)
+            .eq('phone', phone)
+            .maybeSingle(),
+      ),
     () =>
-      db
-        .from('students')
-        .select('id,name,phone,exam_number,gender,region,series')
-        .eq('name', name)
-        .eq('phone', phone)
-        .maybeSingle(),
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id,name,phone,exam_number,gender,region,series')
+            .in('division', getScopedDivisionValues(division))
+            .eq('name', name)
+            .eq('phone', phone)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id,name,phone,exam_number,gender,region,series')
+            .eq('name', name)
+            .eq('phone', phone)
+            .maybeSingle(),
+      ),
   )
 
   return data

@@ -69,9 +69,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-where npm >nul 2>&1
+where corepack >nul 2>&1
 if errorlevel 1 (
-  echo [deploy] npm is not installed or not available on PATH.
+  echo [deploy] corepack is not installed or not available on PATH.
   exit /b 1
 )
 
@@ -135,7 +135,7 @@ if "%CHECK_ONLY%"=="1" (
 
 if "%RUN_BUILD%"=="1" (
   echo [deploy] Running production build before push...
-  call npm run build
+  call corepack pnpm build
   if errorlevel 1 (
     echo [deploy] Build failed. Push and deploy were skipped.
     exit /b 1

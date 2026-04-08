@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -30,13 +31,56 @@ export async function GET(
   const { id } = await params
   const division = await getServerTenantType()
   const db = createServerClient()
+  const scope = getScopedDivisionValues(division)
+
+  const { data: student } = await withStudentStatusFallback(
+    () =>
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .in('division', scope)
+            .eq('status', ACTIVE_STUDENT_STATUS)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .eq('status', ACTIVE_STUDENT_STATUS)
+            .maybeSingle(),
+      ),
+    () =>
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .in('division', scope)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle(),
+      ),
+  )
+
+  if (!student) {
+    return NextResponse.json({ error: '?숈깮 ?뺣낫瑜?李얠쓣 ???놁뒿?덈떎.' }, { status: 404 })
+  }
+
   const { data } = await withDivisionFallback(
     () =>
       db
         .from('distribution_logs')
         .select('material_id, distributed_at')
         .eq('student_id', id)
-        .in('division', getScopedDivisionValues(division)),
+        .in('division', scope),
     () =>
       db
         .from('distribution_logs')

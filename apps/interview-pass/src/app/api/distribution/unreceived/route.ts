@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 export async function GET(req: NextRequest) {
@@ -43,18 +44,37 @@ export async function GET(req: NextRequest) {
           .select('student_id')
           .eq('material_id', Number(materialId)),
     ),
-    withDivisionFallback(
+    withStudentStatusFallback(
       () =>
-        db
-          .from('students')
-          .select('id,name,phone,exam_number,series,region', { count: 'exact' })
-          .in('division', scope)
-          .order('name'),
+        withDivisionFallback(
+          () =>
+            db
+              .from('students')
+              .select('id,name,phone,exam_number,series,region', { count: 'exact' })
+              .in('division', scope)
+              .eq('status', ACTIVE_STUDENT_STATUS)
+              .order('name'),
+          () =>
+            db
+              .from('students')
+              .select('id,name,phone,exam_number,series,region', { count: 'exact' })
+              .eq('status', ACTIVE_STUDENT_STATUS)
+              .order('name'),
+        ),
       () =>
-        db
-          .from('students')
-          .select('id,name,phone,exam_number,series,region', { count: 'exact' })
-          .order('name'),
+        withDivisionFallback(
+          () =>
+            db
+              .from('students')
+              .select('id,name,phone,exam_number,series,region', { count: 'exact' })
+              .in('division', scope)
+              .order('name'),
+          () =>
+            db
+              .from('students')
+              .select('id,name,phone,exam_number,series,region', { count: 'exact' })
+              .order('name'),
+        ),
     ),
   ])
 

@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     if (!result.success) {
       const messages: Record<string, string> = {
         already_distributed: '이미 배부된 자료입니다.',
-        student_not_found: '학생을 찾을 수 없습니다.',
+        student_not_found: '학생을 찾을 수 없거나 환불 처리되었습니다.',
         material_inactive: '비활성 자료입니다.',
       }
 

@@ -3,10 +3,11 @@ import { z } from 'zod'
 import { isAppFeatureEnabled } from '@/lib/app-config'
 import { verifyJwt, ADMIN_COOKIE, STAFF_COOKIE } from '@/lib/auth/jwt'
 import { getDistributionActorLabel } from '@/lib/auth/session-actor'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import { distributeMaterial } from '@/lib/distribution/materials'
 import { verifyQrToken } from '@/lib/qr/token'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -17,10 +18,12 @@ const schema = z.object({
   material_id: z.number().int().positive().optional(),
 })
 
+const REFUNDED_REASON = '환불 처리되었거나 존재하지 않는 학생입니다.'
+
 export async function POST(req: NextRequest) {
   if (!(await isAppFeatureEnabled('staff_scan_enabled'))) {
     return NextResponse.json(
-      { success: false, reason: '직원 QR 스캔 기능이 현재 비활성화되어 있습니다.' },
+      { success: false, reason: '吏곸썝 QR ?ㅼ틪 湲곕뒫???꾩옱 鍮꾪솢?깊솕?섏뼱 ?덉뒿?덈떎.' },
       { status: 403 },
     )
   }
@@ -48,6 +51,47 @@ export async function POST(req: NextRequest) {
   const db = createServerClient()
   const division = await getServerTenantType()
   const scope = getScopedDivisionValues(division)
+
+  const { data: student } = await withStudentStatusFallback(
+    () =>
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select(studentSelect)
+            .eq('id', qrPayload.sid)
+            .in('division', scope)
+            .eq('status', ACTIVE_STUDENT_STATUS)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select(studentSelect)
+            .eq('id', qrPayload.sid)
+            .eq('status', ACTIVE_STUDENT_STATUS)
+            .maybeSingle(),
+      ),
+    () =>
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select(studentSelect)
+            .eq('id', qrPayload.sid)
+            .in('division', scope)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select(studentSelect)
+            .eq('id', qrPayload.sid)
+            .maybeSingle(),
+      ),
+  )
+
+  if (!student) {
+    return NextResponse.json({ success: false, reason: REFUNDED_REASON }, { status: 404 })
+  }
 
   const { data: materials } = await withDivisionFallback(
     () =>
@@ -89,28 +133,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, reason: 'ALL_RECEIVED' })
   }
 
-  const loadStudent = () =>
-    withDivisionFallback(
-      () =>
-        db
-          .from('students')
-          .select(studentSelect)
-          .eq('id', qrPayload.sid)
-          .in('division', scope)
-          .maybeSingle(),
-      () =>
-        db
-          .from('students')
-          .select(studentSelect)
-          .eq('id', qrPayload.sid)
-          .maybeSingle(),
-    )
-
   if (parsed.data.material_id) {
     const targetMaterial = materials.find((material) => material.id === parsed.data.material_id)
     if (!targetMaterial) {
       return NextResponse.json({ success: false, reason: 'INVALID_MATERIAL' }, { status: 400 })
     }
+
     if (receivedIds.has(parsed.data.material_id)) {
       return NextResponse.json({
         success: false,
@@ -125,22 +153,25 @@ export async function POST(req: NextRequest) {
         materialId: parsed.data.material_id,
         distributedBy: actorLabel,
       })
+
       if (!result.success) {
         return NextResponse.json({
           success: false,
-          reason: result.reason === 'already_distributed' ? 'ALREADY_RECEIVED' : 'DB_ERROR',
+          reason: result.reason === 'already_distributed'
+            ? 'ALREADY_RECEIVED'
+            : result.reason === 'student_not_found'
+              ? REFUNDED_REASON
+              : 'DB_ERROR',
         })
       }
-
-      const { data: student } = await loadStudent()
 
       return NextResponse.json({
         success: true,
         materialName: targetMaterial.name,
-        studentName: student?.name ?? '',
-        examNumber: student?.exam_number ?? '',
-        series: student?.series ?? '',
-        region: student?.region ?? '',
+        studentName: student.name ?? '',
+        examNumber: student.exam_number ?? '',
+        series: student.series ?? '',
+        region: student.region ?? '',
         distributedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
       })
     } catch {
@@ -150,28 +181,32 @@ export async function POST(req: NextRequest) {
 
   if (unreceived.length === 1) {
     const nextMaterial = unreceived[0]
+
     try {
       const result = await distributeMaterial({
         studentId: qrPayload.sid,
         materialId: nextMaterial.id,
         distributedBy: actorLabel,
       })
+
       if (!result.success) {
         return NextResponse.json({
           success: false,
-          reason: result.reason === 'already_distributed' ? 'ALREADY_RECEIVED' : 'DB_ERROR',
+          reason: result.reason === 'already_distributed'
+            ? 'ALREADY_RECEIVED'
+            : result.reason === 'student_not_found'
+              ? REFUNDED_REASON
+              : 'DB_ERROR',
         })
       }
-
-      const { data: student } = await loadStudent()
 
       return NextResponse.json({
         success: true,
         materialName: nextMaterial.name,
-        studentName: student?.name ?? '',
-        examNumber: student?.exam_number ?? '',
-        series: student?.series ?? '',
-        region: student?.region ?? '',
+        studentName: student.name ?? '',
+        examNumber: student.exam_number ?? '',
+        series: student.series ?? '',
+        region: student.region ?? '',
         distributedAt: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
       })
     } catch {
@@ -179,16 +214,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: student } = await loadStudent()
-
   return NextResponse.json({
     success: false,
     reason: 'NEEDS_SELECTION',
     needsSelection: true,
     unreceived,
-    studentName: student?.name ?? '',
-    examNumber: student?.exam_number ?? '',
-    series: student?.series ?? '',
-    region: student?.region ?? '',
+    studentName: student.name ?? '',
+    examNumber: student.exam_number ?? '',
+    series: student.series ?? '',
+    region: student.region ?? '',
   })
 }

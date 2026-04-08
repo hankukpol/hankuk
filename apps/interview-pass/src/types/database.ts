@@ -1,3 +1,5 @@
+import type { StudentStatus } from '@/lib/student-status'
+
 export interface Student {
   id: string
   name: string
@@ -6,6 +8,9 @@ export interface Student {
   gender: string | null
   region: string | null
   series: string | null
+  status: StudentStatus
+  refunded_at: string | null
+  refund_note: string | null
   created_at: string
   updated_at: string
 }

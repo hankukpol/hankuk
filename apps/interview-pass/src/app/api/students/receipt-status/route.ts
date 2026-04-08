@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { withDivisionFallback } from '@/lib/division-compat'
+import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { ACTIVE_STUDENT_STATUS } from '@/lib/student-status'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 export async function GET(req: NextRequest) {
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
         .order('sort_order'),
   )
 
-  const buildStudentsQuery = (scoped: boolean) => {
+  const buildStudentsQuery = (scoped: boolean, filterByStatus: boolean) => {
     let query = db
       .from('students')
       .select('id, name, exam_number, series, region', { count: 'exact' })
@@ -51,6 +52,10 @@ export async function GET(req: NextRequest) {
 
     if (scoped) {
       query = query.in('division', scope)
+    }
+
+    if (filterByStatus) {
+      query = query.eq('status', ACTIVE_STUDENT_STATUS)
     }
 
     if (search) {
@@ -63,9 +68,17 @@ export async function GET(req: NextRequest) {
     return query.range(offset, offset + limit - 1)
   }
 
-  const { data: students, count, error: studentsError } = await withDivisionFallback(
-    () => buildStudentsQuery(true),
-    () => buildStudentsQuery(false),
+  const { data: students, count, error: studentsError } = await withStudentStatusFallback(
+    () =>
+      withDivisionFallback(
+        () => buildStudentsQuery(true, true),
+        () => buildStudentsQuery(false, true),
+      ),
+    () =>
+      withDivisionFallback(
+        () => buildStudentsQuery(true, false),
+        () => buildStudentsQuery(false, false),
+      ),
   )
   if (materialsError || studentsError) {
     return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })

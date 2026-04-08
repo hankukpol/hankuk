@@ -14,9 +14,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-where npm >nul 2>&1
+where corepack >nul 2>&1
 if errorlevel 1 (
-  echo [local-dev] npm is not installed or not available on PATH.
+  echo [local-dev] corepack is not installed or not available on PATH.
   exit /b 1
 )
 
@@ -38,9 +38,9 @@ if not exist .env.local (
 
 if not exist node_modules\.bin\next.cmd (
   echo [local-dev] Installing dependencies...
-  call npm install
+  call corepack pnpm install
   if errorlevel 1 (
-    echo [local-dev] npm install failed.
+    echo [local-dev] pnpm install failed.
     exit /b 1
   )
 )
@@ -54,7 +54,7 @@ echo [local-dev] Starting Next.js dev server...
 echo [local-dev] Open http://localhost:3000 after the server is ready.
 echo [local-dev] Press Ctrl+C to stop.
 
-call npm run dev
+call corepack pnpm dev
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (

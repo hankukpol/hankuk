@@ -256,7 +256,7 @@ export async function DELETE(
   }
 
   const db = createServerClient()
-  let { error } = await withDivisionFallback(
+  const { error } = await withDivisionFallback(
     () =>
       db
         .from('students')
@@ -270,49 +270,14 @@ export async function DELETE(
         .eq('id', id),
   )
 
-  if (error?.code === '23503') {
-    return NextResponse.json(
-      { error: '배부 이력이 있는 학생은 삭제할 수 없습니다. 먼저 배부 이력을 정리해 주세요.' },
-      { status: 409 },
-    )
-
-    const { error: logDeleteError } = await withDivisionFallback(
-      () =>
-        db
-          .from('distribution_logs')
-          .delete()
-          .eq('student_id', id)
-          .in('division', getScopedDivisionValues(division)),
-      () =>
-        db
-          .from('distribution_logs')
-          .delete()
-          .eq('student_id', id),
-    )
-
-    if (logDeleteError) {
-      logStudentRouteError('DELETE', id, logDeleteError)
-      return NextResponse.json({ error: '학생 배부 이력을 정리하지 못했습니다.' }, { status: 500 })
+  if (error) {
+    if (error.code === '23503') {
+      return NextResponse.json(
+        { error: '배부 이력이 있는 학생은 삭제할 수 없습니다. 먼저 배부 이력을 정리해 주세요.' },
+        { status: 409 },
+      )
     }
 
-    const retry = await withDivisionFallback(
-      () =>
-        db
-          .from('students')
-          .delete()
-          .eq('id', id)
-          .in('division', getScopedDivisionValues(division)),
-      () =>
-        db
-          .from('students')
-          .delete()
-          .eq('id', id),
-    )
-
-    error = retry.error
-  }
-
-  if (error) {
     logStudentRouteError('DELETE', id, error)
     return NextResponse.json({ error: '학생을 삭제하지 못했습니다.' }, { status: 500 })
   }

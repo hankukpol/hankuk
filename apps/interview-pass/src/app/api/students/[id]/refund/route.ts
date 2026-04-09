@@ -6,8 +6,11 @@ import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   isMissingStudentStatusColumnError,
   withDivisionFallback,
+  withStudentStatusFallback,
 } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import { saveLegacyRefundArchive } from '@/lib/students/refund-archive'
+import { removeStudentForDivision, type SupabaseErrorLike } from '@/lib/students/remove'
 import { ACTIVE_STUDENT_STATUS, REFUNDED_STUDENT_STATUS } from '@/lib/student-status'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -21,7 +24,54 @@ type ExistingStudent = {
   status: 'active' | 'refunded'
 }
 
-const MIGRATION_REQUIRED_MESSAGE = '환불 기능을 사용하려면 학생 상태 컬럼 마이그레이션을 먼저 적용해 주세요.'
+type StudentLookupResult = {
+  data: ExistingStudent | null
+  error: SupabaseErrorLike
+}
+
+type LegacyStudentLookupResult = {
+  data: { id: string } | null
+  error: SupabaseErrorLike
+}
+
+function logRefundRouteError(
+  stage: 'lookup' | 'update' | 'legacy-archive' | 'legacy-delete',
+  studentId: string,
+  error: SupabaseErrorLike,
+) {
+  if (!error) {
+    return
+  }
+
+  console.error(`[students:refund:${stage}] failed`, {
+    studentId,
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  })
+}
+
+async function archiveThenDeleteLegacyStudent(
+  studentId: string,
+  division: Awaited<ReturnType<typeof getServerTenantType>>,
+  note: string | null,
+) {
+  const archiveResult = await saveLegacyRefundArchive(studentId, division, note)
+  if (archiveResult.error) {
+    return { error: archiveResult.error as SupabaseErrorLike }
+  }
+
+  const deleteResult = await removeStudentForDivision(studentId, division)
+  if (deleteResult.error) {
+    return { error: deleteResult.error as SupabaseErrorLike }
+  }
+
+  return {
+    error: null as SupabaseErrorLike,
+    removedDistributionLogs: deleteResult.removedDistributionLogs,
+  }
+}
 
 export async function POST(
   req: NextRequest,
@@ -47,28 +97,54 @@ export async function POST(
   const division = await getServerTenantType()
   const scope = getScopedDivisionValues(division)
   const db = createServerClient()
+  const note = parsed.data.note || null
+  let usedLegacySchema = false
 
-  const existing = await withDivisionFallback(
+  const existing = await withStudentStatusFallback(
     () =>
-      db
-        .from('students')
-        .select('id,status')
-        .eq('id', id)
-        .in('division', scope)
-        .maybeSingle(),
-    () =>
-      db
-        .from('students')
-        .select('id,status')
-        .eq('id', id)
-        .maybeSingle(),
-  ) as { data: ExistingStudent | null; error: { code?: string; message?: string; details?: string; hint?: string } | null }
+      withDivisionFallback(
+        () =>
+          db
+            .from('students')
+            .select('id,status')
+            .eq('id', id)
+            .in('division', scope)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id,status')
+            .eq('id', id)
+            .maybeSingle(),
+      ),
+    async () => {
+      usedLegacySchema = true
+
+      const result = await withDivisionFallback<LegacyStudentLookupResult>(
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .in('division', scope)
+            .maybeSingle(),
+        () =>
+          db
+            .from('students')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle(),
+      )
+
+      return {
+        ...result,
+        data: result.data ? ({ ...result.data, status: ACTIVE_STUDENT_STATUS } as ExistingStudent) : null,
+      }
+    },
+  ) as StudentLookupResult
 
   if (existing.error) {
-    if (isMissingStudentStatusColumnError(existing.error)) {
-      return NextResponse.json({ error: MIGRATION_REQUIRED_MESSAGE }, { status: 503 })
-    }
-
+    logRefundRouteError('lookup', id, existing.error)
     return NextResponse.json({ error: '학생 정보를 확인하지 못했습니다.' }, { status: 500 })
   }
 
@@ -80,7 +156,22 @@ export async function POST(
     return NextResponse.json({ success: true, alreadyRefunded: true })
   }
 
-  const note = parsed.data.note || null
+  if (usedLegacySchema) {
+    const legacyResult = await archiveThenDeleteLegacyStudent(id, division, note)
+
+    if (legacyResult.error) {
+      logRefundRouteError('legacy-delete', id, legacyResult.error)
+      return NextResponse.json({ error: '학생을 환불 처리하지 못했습니다.' }, { status: 500 })
+    }
+
+    await invalidateCache('students')
+    return NextResponse.json({
+      success: true,
+      legacyDeleted: true,
+      removedDistributionLogs: legacyResult.removedDistributionLogs,
+    })
+  }
+
   const { error } = await withDivisionFallback(
     () =>
       db
@@ -109,9 +200,22 @@ export async function POST(
 
   if (error) {
     if (isMissingStudentStatusColumnError(error)) {
-      return NextResponse.json({ error: MIGRATION_REQUIRED_MESSAGE }, { status: 503 })
+      const legacyResult = await archiveThenDeleteLegacyStudent(id, division, note)
+
+      if (legacyResult.error) {
+        logRefundRouteError('legacy-delete', id, legacyResult.error)
+        return NextResponse.json({ error: '학생을 환불 처리하지 못했습니다.' }, { status: 500 })
+      }
+
+      await invalidateCache('students')
+      return NextResponse.json({
+        success: true,
+        legacyDeleted: true,
+        removedDistributionLogs: legacyResult.removedDistributionLogs,
+      })
     }
 
+    logRefundRouteError('update', id, error)
     return NextResponse.json({ error: '학생을 환불 처리하지 못했습니다.' }, { status: 500 })
   }
 

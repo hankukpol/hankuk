@@ -9,6 +9,10 @@ import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
 import {
+  findLegacyRefundArchiveByIdentity,
+  restoreLegacyRefundArchive,
+} from '@/lib/students/refund-archive'
+import {
   ACTIVE_STUDENT_STATUS,
   REFUNDED_STUDENT_STATUS,
   applyLegacyStudentStatus,
@@ -250,6 +254,32 @@ export async function POST(req: NextRequest) {
 
     await invalidateCache('students')
     return NextResponse.json({ student: data, created: 0, restored: 1 })
+  }
+
+  const legacyArchive = await findLegacyRefundArchiveByIdentity(payload.name, payload.phone, division)
+  if (legacyArchive.error) {
+    return NextResponse.json({ error: '?쒕쾭 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.' }, { status: 500 })
+  }
+
+  if (legacyArchive.data) {
+    const restoredArchive = await restoreLegacyRefundArchive(
+      legacyArchive.data.archiveKey,
+      legacyArchive.data.snapshot,
+      payload,
+      division,
+    )
+
+    if (restoredArchive.error || !restoredArchive.data) {
+      return NextResponse.json({ error: '?쒕쾭 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.' }, { status: 500 })
+    }
+
+    await invalidateCache('students')
+    return NextResponse.json({
+      student: restoredArchive.data.student,
+      created: 0,
+      restored: 1,
+      restoredMaterials: restoredArchive.data.restoredMaterials,
+    })
   }
 
   const { data, error } = await withStudentStatusFallback(

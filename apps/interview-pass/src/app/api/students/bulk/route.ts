@@ -8,6 +8,11 @@ import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { withDivisionFallback, withStudentStatusFallback } from '@/lib/division-compat'
 import { getScopedDivisionValues } from '@/lib/division-scope'
+import {
+  findLegacyRefundArchivesByIdentities,
+  restoreLegacyRefundArchive,
+  type LegacyRefundArchiveSnapshot,
+} from '@/lib/students/refund-archive'
 import { ACTIVE_STUDENT_STATUS, REFUNDED_STUDENT_STATUS } from '@/lib/student-status'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -165,8 +170,16 @@ export async function POST(req: NextRequest) {
     existingMap.set(buildStudentKey(student.name, student.phone), student)
   }
 
+  const archiveResult = await findLegacyRefundArchivesByIdentities(uniqueRows, division)
+  if (archiveResult.error) {
+    return NextResponse.json({ error: '?쒕쾭 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.' }, { status: 500 })
+  }
+
   const createRows: NormalizedStudentRow[] = []
   const restoreRows: Array<NormalizedStudentRow & { id: string }> = []
+  const legacyArchiveRestoreRows: Array<
+    NormalizedStudentRow & { archiveKey: string; snapshot: LegacyRefundArchiveSnapshot }
+  > = []
   let skipped = duplicateInputCount
 
   for (const row of uniqueRows) {
@@ -183,6 +196,21 @@ export async function POST(req: NextRequest) {
     }
 
     skipped += 1
+  }
+
+  for (let index = createRows.length - 1; index >= 0; index -= 1) {
+    const row = createRows[index]
+    const archived = archiveResult.data.get(buildStudentKey(row.name, row.phone))
+    if (!archived) {
+      continue
+    }
+
+    legacyArchiveRestoreRows.push({
+      ...row,
+      archiveKey: archived.archiveKey,
+      snapshot: archived.snapshot,
+    })
+    createRows.splice(index, 1)
   }
 
   let created = 0
@@ -253,6 +281,21 @@ export async function POST(req: NextRequest) {
     }
 
     restored = results.length
+  }
+
+  if (legacyArchiveRestoreRows.length > 0) {
+    const results = await Promise.all(
+      legacyArchiveRestoreRows.map((row) =>
+        restoreLegacyRefundArchive(row.archiveKey, row.snapshot, row, division),
+      ),
+    )
+
+    const failedRestore = results.find((result) => result.error || !result.data)
+    if (failedRestore) {
+      return NextResponse.json({ error: '?쒕쾭 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.' }, { status: 500 })
+    }
+
+    restored += results.length
   }
 
   if (created > 0 || restored > 0) {

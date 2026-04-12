@@ -15,21 +15,33 @@ export function LaunchAutoSubmit(props: {
   }, [])
 
   return (
-    <div className="portal-page">
-      <div className="portal-card" style={{ maxWidth: 520, margin: '80px auto', padding: 32 }}>
-        <span className="portal-badge">자동 로그인 연결 중</span>
-        <h1 style={{ marginTop: 20, fontSize: 30 }}>{props.title}</h1>
-        <p className="portal-muted" style={{ lineHeight: 1.7 }}>
-          {props.description}
-        </p>
-        <p className="portal-muted" style={{ marginTop: 16, fontSize: 14 }}>
-          잠시만 기다리면 대상 앱으로 자동 이동합니다. 자동 제출이 막힌 경우 아래 버튼을 눌러 계속 진행해 주세요.
+    <div className="portal-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80dvh' }}>
+      <div className="portal-card" style={{ maxWidth: 400, width: '100%', padding: 28, textAlign: 'center' }}>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            background: 'var(--brand-soft)',
+            marginBottom: 16,
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </div>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{props.title}</h2>
+        <p className="portal-muted" style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5 }}>
+          {props.description} 화면으로 연결 중...
         </p>
 
-        <form ref={formRef} method="POST" action={props.action} style={{ marginTop: 24 }}>
+        <form ref={formRef} method="POST" action={props.action} style={{ marginTop: 20 }}>
           <input type="hidden" name="launchToken" value={props.launchToken} />
           <button type="submit" className="portal-button" style={{ width: '100%' }}>
-            계속 진행
+            수동으로 이동
           </button>
         </form>
       </div>

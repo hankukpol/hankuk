@@ -1,12 +1,32 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+
+declare global {
+  interface Window {
+    PasswordCredential?: new (data: { id: string; password: string }) => Credential
+  }
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (window.PasswordCredential && navigator.credentials) {
+      navigator.credentials
+        .get({ password: true, mediation: 'optional' } as unknown as CredentialRequestOptions)
+        .then((cred) => {
+          if (cred && 'password' in cred) {
+            setEmail(cred.id)
+            setPassword((cred as unknown as { password: string }).password)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -25,6 +45,10 @@ export default function LoginPage() {
         return
       }
 
+      if (window.PasswordCredential) {
+        const cred = new window.PasswordCredential({ id: email, password })
+        navigator.credentials.store(cred).catch(() => {})
+      }
       window.location.href = '/'
     } catch {
       setError('로그인 요청 중 문제가 발생했습니다.')
@@ -34,91 +58,80 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="portal-page">
-      <div
-        className="portal-card"
-        style={{
-          maxWidth: 960,
-          margin: '32px auto',
-          overflow: 'hidden',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(320px, 1.1fr)',
-        }}
-      >
-        <section
-          style={{
-            background: 'linear-gradient(160deg, #10214d 0%, #1f4be3 100%)',
-            color: '#fff',
-            padding: 40,
-          }}
-        >
-          <span style={{ opacity: 0.72, fontSize: 13, letterSpacing: '0.22em' }}>UNIFIED ADMIN PORTAL</span>
-          <h1 style={{ marginTop: 20, fontSize: 36, lineHeight: 1.25 }}>
-            여러 운영 앱을
-            <br />
-            한 번 로그인으로
-            <br />
-            이어서 관리합니다.
-          </h1>
-          <p style={{ marginTop: 20, opacity: 0.82, lineHeight: 1.8 }}>
-            포털은 통합 진입만 맡고, 각 앱의 기존 관리자 로그인 방식은 그대로 유지합니다. 필요하면 언제든 각 앱의
-            로컬 로그인으로 바로 들어갈 수도 있습니다.
-          </p>
-        </section>
-
-        <section style={{ padding: 40 }}>
-          <div>
-            <span className="portal-badge">공통 관리자 계정</span>
-            <h2 style={{ marginTop: 18, fontSize: 28 }}>포털 로그인</h2>
-            <p className="portal-muted" style={{ lineHeight: 1.7 }}>
-              Supabase 공통 관리자 계정으로 로그인한 뒤, 권한이 있는 앱과 지점으로 바로 이동할 수 있습니다.
-            </p>
+    <main className="portal-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '20px' }}>
+      <div className="portal-card" style={{ width: '100%', maxWidth: 400, padding: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 48,
+              height: 48,
+              borderRadius: 10,
+              background: 'var(--brand)',
+              color: '#fff',
+              fontSize: 20,
+              fontWeight: 700,
+              marginBottom: 16,
+            }}
+          >
+            H
           </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>관리자 포털</h1>
+          <p className="portal-muted" style={{ marginTop: 6, fontSize: 14, lineHeight: 1.6 }}>
+            통합 계정으로 로그인하세요
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit} style={{ marginTop: 28, display: 'grid', gap: 16 }}>
-            <label className="portal-label">
-              이메일
-              <input
-                className="portal-input"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@example.com"
-                required
-              />
-            </label>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
+          <label className="portal-label">
+            이메일
+            <input
+              className="portal-input"
+              name="email"
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="admin@example.com"
+              required
+            />
+          </label>
 
-            <label className="portal-label">
-              비밀번호
-              <input
-                className="portal-input"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="비밀번호를 입력해 주세요"
-                required
-              />
-            </label>
+          <label className="portal-label">
+            비밀번호
+            <input
+              className="portal-input"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="비밀번호"
+              required
+            />
+          </label>
 
-            {error ? (
-              <div
-                className="portal-danger"
-                style={{
-                  border: '1px solid rgba(198,40,40,0.2)',
-                  background: '#fff4f4',
-                  borderRadius: 16,
-                  padding: '14px 16px',
-                }}
-              >
-                {error}
-              </div>
-            ) : null}
+          {error ? (
+            <div
+              style={{
+                fontSize: 13,
+                color: 'var(--danger)',
+                background: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: 10,
+                padding: '10px 14px',
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
 
-            <button className="portal-button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? '로그인 중...' : '로그인'}
-            </button>
-          </form>
-        </section>
+          <button className="portal-button" type="submit" disabled={isSubmitting} style={{ width: '100%', marginTop: 4 }}>
+            {isSubmitting ? '로그인 중...' : '로그인'}
+          </button>
+        </form>
       </div>
     </main>
   )

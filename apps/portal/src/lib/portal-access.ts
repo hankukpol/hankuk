@@ -10,7 +10,9 @@ import { createServiceSupabaseClient } from '@/lib/supabase'
 import type { PortalTargetRole } from '@/lib/launch-tokens'
 
 const SUPPORTED_PORTAL_APPS = [
+  HANKUK_APP_KEYS.ACADEMY_OPS,
   HANKUK_APP_KEYS.CLASS_PASS,
+  HANKUK_APP_KEYS.SCORE_PREDICT,
   HANKUK_APP_KEYS.STUDY_HALL,
   HANKUK_APP_KEYS.INTERVIEW_PASS,
 ] as const
@@ -54,8 +56,12 @@ function roleLabel(role: PortalTargetRole) {
 
 function getAppOrigin(appKey: SupportedPortalAppKey, config: HankukServiceConfig) {
   const envKey =
-    appKey === HANKUK_APP_KEYS.CLASS_PASS
+    appKey === HANKUK_APP_KEYS.ACADEMY_OPS
+      ? process.env.PORTAL_TARGET_ACADEMY_OPS_URL
+      : appKey === HANKUK_APP_KEYS.CLASS_PASS
       ? process.env.PORTAL_TARGET_CLASS_PASS_URL
+      : appKey === HANKUK_APP_KEYS.SCORE_PREDICT
+        ? process.env.PORTAL_TARGET_SCORE_PREDICT_URL
       : appKey === HANKUK_APP_KEYS.STUDY_HALL
         ? process.env.PORTAL_TARGET_STUDY_HALL_URL
         : process.env.PORTAL_TARGET_INTERVIEW_PASS_URL
@@ -144,15 +150,24 @@ export async function loadPortalLaunchCards(userId: string) {
   const seen = new Set<string>()
 
   for (const row of (appMemberships.data ?? []) as MembershipRow[]) {
-    if (!SUPPORTED_PORTAL_APPS.includes(row.app_key as SupportedPortalAppKey)) {
+    const appKey = row.app_key as SupportedPortalAppKey
+    if (!SUPPORTED_PORTAL_APPS.includes(appKey)) {
       continue
     }
 
-    if (row.role_key !== 'super_admin') {
+    const config = HANKUK_SERVICE_CONFIG[appKey]
+    const appLevelRole =
+      row.role_key === 'super_admin'
+        ? 'super_admin'
+        : !config.portalLaunch?.requiresDivision && row.role_key === 'admin'
+          ? 'admin'
+          : null
+
+    if (!appLevelRole) {
       continue
     }
 
-    const card = createCard(row.app_key as SupportedPortalAppKey, 'super_admin', null)
+    const card = createCard(appKey, appLevelRole, null)
     if (card && !seen.has(card.key)) {
       cards.push(card)
       seen.add(card.key)

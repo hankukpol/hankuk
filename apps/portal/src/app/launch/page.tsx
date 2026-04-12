@@ -35,14 +35,14 @@ function ErrorCard(props: { title: string; message: string }) {
 }
 
 export default async function LaunchPage(props: {
-  searchParams?: Promise<LaunchSearchParams> | LaunchSearchParams
+  searchParams?: Promise<LaunchSearchParams>
 }) {
   const session = await getPortalSession()
   if (!session) {
     redirect('/login')
   }
 
-  const searchParams = await Promise.resolve(props.searchParams ?? {})
+  const searchParams = (await props.searchParams) ?? {}
   const appKey = readString(searchParams.app)
   const role = readString(searchParams.role) as PortalTargetRole
   const divisionSlug = readString(searchParams.division) || null

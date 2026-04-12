@@ -45,27 +45,33 @@ const nextAuthSecret = process.env.NEXTAUTH_SECRET ?? "";
 const isProduction = process.env.NODE_ENV === "production";
 const isNextBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 const cookieDomain = getCookieDomain();
+export const NEXTAUTH_SESSION_MAX_AGE = 60 * 60 * 24;
+
+export function getSharedNextAuthSessionCookie() {
+  const securePrefix = isProduction ? "__Secure-" : "";
+
+  return {
+    name: `${securePrefix}next-auth.session-token`,
+    options: withConfiguredCookieDomain({
+      httpOnly: true,
+      sameSite: "lax" as const,
+      path: "/",
+      secure: isProduction,
+    }),
+  };
+}
 
 function buildSharedNextAuthCookies() {
   if (!cookieDomain) {
     return undefined;
   }
 
-  const securePrefix = isProduction ? "__Secure-" : "";
   const csrfPrefix = isProduction ? "__Secure-" : "";
 
   return {
-    sessionToken: {
-      name: `${securePrefix}next-auth.session-token`,
-      options: withConfiguredCookieDomain({
-        httpOnly: true,
-        sameSite: "lax" as const,
-        path: "/",
-        secure: isProduction,
-      }),
-    },
+    sessionToken: getSharedNextAuthSessionCookie(),
     callbackUrl: {
-      name: `${securePrefix}next-auth.callback-url`,
+      name: `${isProduction ? "__Secure-" : ""}next-auth.callback-url`,
       options: withConfiguredCookieDomain({
         sameSite: "lax" as const,
         path: "/",
@@ -82,7 +88,7 @@ function buildSharedNextAuthCookies() {
       }),
     },
     pkceCodeVerifier: {
-      name: `${securePrefix}next-auth.pkce.code_verifier`,
+      name: `${isProduction ? "__Secure-" : ""}next-auth.pkce.code_verifier`,
       options: withConfiguredCookieDomain({
         httpOnly: true,
         sameSite: "lax" as const,
@@ -92,7 +98,7 @@ function buildSharedNextAuthCookies() {
       }),
     },
     state: {
-      name: `${securePrefix}next-auth.state`,
+      name: `${isProduction ? "__Secure-" : ""}next-auth.state`,
       options: withConfiguredCookieDomain({
         httpOnly: true,
         sameSite: "lax" as const,
@@ -102,7 +108,7 @@ function buildSharedNextAuthCookies() {
       }),
     },
     nonce: {
-      name: `${securePrefix}next-auth.nonce`,
+      name: `${isProduction ? "__Secure-" : ""}next-auth.nonce`,
       options: withConfiguredCookieDomain({
         httpOnly: true,
         sameSite: "lax" as const,
@@ -530,7 +536,7 @@ async function authorizePoliceUser(
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
-    maxAge: 60 * 60 * 24,
+    maxAge: NEXTAUTH_SESSION_MAX_AGE,
   },
   cookies: buildSharedNextAuthCookies(),
   pages: {

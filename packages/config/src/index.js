@@ -1,5 +1,6 @@
 export const HANKUK_APP_KEYS = Object.freeze({
   PORTAL: "portal",
+  ACADEMY_OPS: "academy-ops",
   SCORE_PREDICT: "score-predict",
   STUDY_HALL: "study-hall",
   INTERVIEW_PASS: "interview-pass",
@@ -20,6 +21,19 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
       requiresDivision: false,
     }),
   }),
+  [HANKUK_APP_KEYS.ACADEMY_OPS]: Object.freeze({
+    appKey: HANKUK_APP_KEYS.ACADEMY_OPS,
+    displayName: "Academy Ops",
+    schemaName: "academy_ops",
+    domainAlias: "academy",
+    rootDirectory: "apps/academy-ops",
+    productionUrl: "https://academy-ops.vercel.app",
+    portalLaunch: Object.freeze({
+      superAdminPath: "/admin",
+      adminPath: "/admin",
+      requiresDivision: false,
+    }),
+  }),
   [HANKUK_APP_KEYS.SCORE_PREDICT]: Object.freeze({
     appKey: HANKUK_APP_KEYS.SCORE_PREDICT,
     displayName: "Score Predict",
@@ -28,6 +42,7 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
     rootDirectory: "apps/score-predict",
     productionUrl: "https://score-predict.vercel.app",
     portalLaunch: Object.freeze({
+      adminPath: "/{division}/admin",
       requiresDivision: true,
     }),
   }),

@@ -1,5 +1,6 @@
 export type HankukAppKey =
   | "portal"
+  | "academy-ops"
   | "score-predict"
   | "study-hall"
   | "interview-pass"
@@ -8,6 +9,7 @@ export type HankukAppKey =
 
 export type HankukSchemaName =
   | "portal"
+  | "academy_ops"
   | "score_predict"
   | "study_hall"
   | "interview"
@@ -34,6 +36,7 @@ export type HankukServiceConfig = {
 
 export const HANKUK_APP_KEYS: {
   readonly PORTAL: "portal";
+  readonly ACADEMY_OPS: "academy-ops";
   readonly SCORE_PREDICT: "score-predict";
   readonly STUDY_HALL: "study-hall";
   readonly INTERVIEW_PASS: "interview-pass";

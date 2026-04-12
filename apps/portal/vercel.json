@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "corepack enable && pnpm install",
+  "buildCommand": "pnpm build",
+  "ignoreCommand": "node ../../scripts/vercel-ignore.mjs portal",
+  "regions": ["icn1"]
+}

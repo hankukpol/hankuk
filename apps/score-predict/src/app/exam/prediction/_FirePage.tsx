@@ -162,7 +162,7 @@ function buildPageNumbers(page: number, totalPages: number): number[] {
     .sort((a, b) => a - b);
 }
 
-export default function ExamPredictionPage({ embedded = false }: ExamPredictionPageProps = {}) {
+export default function ExamPredictionPage({ embedded = false }: ExamPredictionPageProps) {
   const tenantType = "fire";
   const router = useRouter();
   const { showErrorToast } = useToast();

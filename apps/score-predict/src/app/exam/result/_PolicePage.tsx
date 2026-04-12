@@ -13,7 +13,7 @@ interface ExamResultPageProps {
   embedded?: boolean;
 }
 
-export default function ExamResultPage({ embedded = false }: ExamResultPageProps = {}) {
+export default function ExamResultPage({ embedded = false }: ExamResultPageProps) {
   const tenantType = "police";
   const router = useRouter();
   const searchParams = useSearchParams();

@@ -236,7 +236,7 @@ function formatStageDate(value: string): string {
   }).format(parsed);
 }
 
-export default function ExamPredictionPage({ embedded = false }: ExamPredictionPageProps = {}) {
+export default function ExamPredictionPage({ embedded = false }: ExamPredictionPageProps) {
   const tenantType = "police";
   const router = useRouter();
   const { showErrorToast } = useToast();

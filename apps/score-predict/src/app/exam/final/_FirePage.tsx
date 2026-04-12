@@ -85,7 +85,7 @@ function formatSavedAt(value: string): string {
   return parsed.toLocaleString("ko-KR");
 }
 
-export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps = {}) {
+export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) {
   const tenantType = "fire";
   const router = useRouter();
   const { showErrorToast, showToast } = useToast();

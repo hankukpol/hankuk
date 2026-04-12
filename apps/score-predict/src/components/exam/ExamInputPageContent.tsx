@@ -14,7 +14,7 @@ const PolicePage = dynamic(() => import("@/app/exam/input/_PolicePage"));
 export default function ExamInputPageContent({
   embedded = false,
   onSubmitted,
-}: ExamInputPageContentProps = {}) {
+}: ExamInputPageContentProps) {
   const tenant = useTenantConfig();
   const Page = tenant.type === "police" ? PolicePage : FirePage;
 

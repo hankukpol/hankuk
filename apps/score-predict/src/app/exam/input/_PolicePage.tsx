@@ -213,7 +213,7 @@ function collectSelectedAnswers(
 export default function ExamInputPage({
   embedded = false,
   onSubmitted,
-}: ExamInputPageProps = {}) {
+}: ExamInputPageProps) {
   const tenantType = "police";
   const router = useRouter();
   const searchParams = useSearchParams();

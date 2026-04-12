@@ -12,7 +12,7 @@ const PolicePage = dynamic(() => import("@/app/exam/final/_PolicePage"));
 
 export default function ExamFinalPageContent({
   embedded = false,
-}: ExamFinalPageContentProps = {}) {
+}: ExamFinalPageContentProps) {
   const tenant = useTenantConfig();
   const Page = tenant.type === "police" ? PolicePage : FirePage;
 

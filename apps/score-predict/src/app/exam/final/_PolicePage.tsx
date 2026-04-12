@@ -90,7 +90,7 @@ function fmt(value: number | null | undefined): string {
   return value.toFixed(2);
 }
 
-export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps = {}) {
+export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) {
   const tenantType = "police";
   const router = useRouter();
   const { showErrorToast, showToast } = useToast();

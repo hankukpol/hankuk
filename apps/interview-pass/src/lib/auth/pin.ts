@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+import type { TenantType } from '@/lib/tenant'
 
 type PinConfigKey = 'staff_pin_hash' | 'admin_pin_hash'
 
@@ -13,8 +14,7 @@ function getSharedConfigKey(key: PinConfigKey) {
   return key
 }
 
-async function getScopedAdminIdKeys() {
-  const division = await getServerTenantType()
+function getScopedAdminIdKeys(division: TenantType) {
   return [`${division}::admin_id`, 'admin_id'] as const
 }
 
@@ -60,8 +60,13 @@ export async function setPinHash(key: PinConfigKey, hash: string): Promise<void>
 }
 
 export async function getAdminId(): Promise<string> {
+  const division = await getServerTenantType()
+  return getAdminIdForDivision(division)
+}
+
+export async function getAdminIdForDivision(division: TenantType): Promise<string> {
   const db = createServerClient()
-  const configKeys = await getScopedAdminIdKeys()
+  const configKeys = getScopedAdminIdKeys(division)
   const { data } = await db
     .from('app_config')
     .select('config_key, config_value')
@@ -76,7 +81,7 @@ export async function getAdminId(): Promise<string> {
 
 export async function setAdminId(id: string): Promise<void> {
   const db = createServerClient()
-  const [scopedKey] = await getScopedAdminIdKeys()
+  const [scopedKey] = getScopedAdminIdKeys(await getServerTenantType())
   const { error } = await db
     .from('app_config')
     .upsert({

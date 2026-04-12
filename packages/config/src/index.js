@@ -1,11 +1,25 @@
 export const HANKUK_APP_KEYS = Object.freeze({
+  PORTAL: "portal",
   SCORE_PREDICT: "score-predict",
   STUDY_HALL: "study-hall",
   INTERVIEW_PASS: "interview-pass",
+  CLASS_PASS: "class-pass",
   INTERVIEW_MATE: "interview-mate",
 });
 
 export const HANKUK_SERVICE_CONFIG = Object.freeze({
+  [HANKUK_APP_KEYS.PORTAL]: Object.freeze({
+    appKey: HANKUK_APP_KEYS.PORTAL,
+    displayName: "Unified Portal",
+    schemaName: "portal",
+    domainAlias: "portal",
+    rootDirectory: "apps/portal",
+    productionUrl: "https://portal-hankuk.vercel.app",
+    portalLaunch: Object.freeze({
+      superAdminPath: "/",
+      requiresDivision: false,
+    }),
+  }),
   [HANKUK_APP_KEYS.SCORE_PREDICT]: Object.freeze({
     appKey: HANKUK_APP_KEYS.SCORE_PREDICT,
     displayName: "Score Predict",
@@ -13,6 +27,9 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
     domainAlias: "score",
     rootDirectory: "apps/score-predict",
     productionUrl: "https://score-predict.vercel.app",
+    portalLaunch: Object.freeze({
+      requiresDivision: true,
+    }),
   }),
   [HANKUK_APP_KEYS.STUDY_HALL]: Object.freeze({
     appKey: HANKUK_APP_KEYS.STUDY_HALL,
@@ -21,6 +38,12 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
     domainAlias: "studyhall",
     rootDirectory: "apps/study-hall",
     productionUrl: "https://study-hall-six.vercel.app",
+    portalLaunch: Object.freeze({
+      superAdminPath: "/super-admin",
+      adminPath: "/{division}/admin",
+      assistantPath: "/{division}/assistant",
+      requiresDivision: true,
+    }),
   }),
   [HANKUK_APP_KEYS.INTERVIEW_PASS]: Object.freeze({
     appKey: HANKUK_APP_KEYS.INTERVIEW_PASS,
@@ -29,6 +52,24 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
     domainAlias: "interview",
     rootDirectory: "apps/interview-pass",
     productionUrl: "https://interview-pass.vercel.app",
+    portalLaunch: Object.freeze({
+      adminPath: "/{division}/dashboard",
+      requiresDivision: true,
+    }),
+  }),
+  [HANKUK_APP_KEYS.CLASS_PASS]: Object.freeze({
+    appKey: HANKUK_APP_KEYS.CLASS_PASS,
+    displayName: "Class Pass",
+    schemaName: "class_pass",
+    domainAlias: "classpass",
+    rootDirectory: "apps/class-pass",
+    productionUrl: "https://class-pass.vercel.app",
+    portalLaunch: Object.freeze({
+      superAdminPath: "/super-admin",
+      adminPath: "/{division}/dashboard",
+      staffPath: "/{division}/scan",
+      requiresDivision: true,
+    }),
   }),
   [HANKUK_APP_KEYS.INTERVIEW_MATE]: Object.freeze({
     appKey: HANKUK_APP_KEYS.INTERVIEW_MATE,
@@ -37,6 +78,9 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
     domainAlias: "interview-mate",
     rootDirectory: "interview-mate",
     productionUrl: "https://interview-mate-lime.vercel.app",
+    portalLaunch: Object.freeze({
+      requiresDivision: true,
+    }),
   }),
 });
 

@@ -1,7 +1,10 @@
 packages:
   - "apps/academy-ops"
+  - "apps/class-pass"
+  - "apps/portal"
   - "apps/score-predict"
   - "apps/study-hall"
   - "apps/interview-pass"
   - "apps/interview-mate"
+  - "apps/police-exam-bank"
   - "packages/*"

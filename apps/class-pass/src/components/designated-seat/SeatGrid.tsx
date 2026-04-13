@@ -75,7 +75,8 @@ export function SeatGrid({
     return parts.join(' ')
   }, [columns, aisles, mode])
 
-  const items: Array<JSX.Element> = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items: any[] = []
 
   for (let y = 1; y <= rows; y += 1) {
     for (let x = 1; x <= columns; x += 1) {

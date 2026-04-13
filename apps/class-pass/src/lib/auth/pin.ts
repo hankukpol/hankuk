@@ -46,7 +46,8 @@ export async function getPinHash(key: PinConfigKey): Promise<string> {
     .maybeSingle()
 
   if (error) {
-    throw new Error(`Failed to load ${key}.`)
+    console.error(`[getPinHash] key=${configKey} error:`, error.message, error.code, error.details)
+    throw new Error(`Failed to load ${key}: ${error.message}`)
   }
 
   return typeof data?.value === 'string' ? data.value : ''

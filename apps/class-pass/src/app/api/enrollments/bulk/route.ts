@@ -6,14 +6,14 @@ import { parseEnrollmentBulkText } from '@/lib/bulk'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
 import {
-  ensureStudentProfile,
-  initializeStudentAuth,
-  syncStudentEnrollmentSnapshots,
+  ensureStudentProfilesBatch,
+  initializeStudentAuthBatch,
+  syncStudentEnrollmentSnapshotsBatch,
   type EnsureStudentProfileResult,
 } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
-import { normalizeExamNumber, normalizePhone } from '@/lib/utils'
+import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 
 const schema = z.object({
   courseId: z.number().int().positive(),
@@ -95,49 +95,73 @@ export async function POST(req: NextRequest) {
     }
 
     const phone = normalizePhone(enrollment.phone)
-    const phoneNameKey = `${phone}::${enrollment.name}`
+    const phoneNameKey = `${phone}::${normalizeName(enrollment.name)}`
     if (phone && !existingByPhoneName.has(phoneNameKey)) {
       existingByPhoneName.set(phoneNameKey, enrollment)
     }
   }
 
-  const cachedStudents = new Map<string, EnsureStudentProfileResult>()
-  const latestRowByStudentId = new Map<number, (typeof rows)[number] & { student: EnsureStudentProfileResult['student'] }>()
+  const latestRowByKey = new Map<string, (typeof rows)[number]>()
   const generatedPins: Array<{ name: string; phone: string; pin: string }> = []
 
   for (const row of rows) {
     const key = row.exam_number?.trim()
       ? `exam:${normalizeExamNumber(row.exam_number)}`
-      : `phone:${normalizePhone(row.phone)}::${row.name}`
+      : `phone:${normalizePhone(row.phone)}::${normalizeName(row.name)}`
 
-    let student = cachedStudents.get(key)
-    if (!student) {
-      student = await ensureStudentProfile(db, {
-        division,
-        name: row.name,
-        phone: row.phone,
-        exam_number: row.exam_number,
-        photo_url: row.photo_url,
-      })
-      cachedStudents.set(key, student)
-    }
-
-    const authSetup = await initializeStudentAuth(db, student.student, row.birth_date ?? null)
-    if (authSetup.generatedPin) {
-      generatedPins.push({
-        name: authSetup.student.name,
-        phone: authSetup.student.phone,
-        pin: authSetup.generatedPin,
-      })
-    }
-
-    latestRowByStudentId.set(authSetup.student.id, { ...row, student: authSetup.student })
+    latestRowByKey.set(key, row)
   }
 
-  for (const student of cachedStudents.values()) {
-    if (student.changed || student.created) {
-      await syncStudentEnrollmentSnapshots(db, student.student)
+  const studentResults = await ensureStudentProfilesBatch(
+    db,
+    Array.from(latestRowByKey.entries()).map(([key, row]) => ({
+      key,
+      division,
+      name: row.name,
+      phone: row.phone,
+      exam_number: row.exam_number,
+      photo_url: row.photo_url,
+    })),
+  )
+
+  const authSetup = await initializeStudentAuthBatch(
+    db,
+    Array.from(latestRowByKey.entries()).map(([key, row]) => {
+      const student = studentResults.get(key)?.student
+      if (!student) {
+        throw new Error('enrollments.bulk: student resolution failed')
+      }
+
+      return {
+        key,
+        student,
+        birthDate: row.birth_date ?? null,
+      }
+    }),
+  )
+
+  for (const entry of authSetup.generatedPins) {
+    generatedPins.push({
+      name: entry.name,
+      phone: entry.phone,
+      pin: entry.pin,
+    })
+  }
+
+  const changedStudents = Array.from(studentResults.values())
+    .filter((result) => result.changed || result.created)
+    .map((result) => result.student)
+
+  await syncStudentEnrollmentSnapshotsBatch(db, changedStudents)
+
+  const latestRowByStudentId = new Map<number, (typeof rows)[number] & { student: EnsureStudentProfileResult['student'] }>()
+  for (const [key, row] of latestRowByKey.entries()) {
+    const resolvedStudent = authSetup.results.get(key)?.student ?? studentResults.get(key)?.student
+    if (!resolvedStudent) {
+      throw new Error('enrollments.bulk: auth setup failed')
     }
+
+    latestRowByStudentId.set(resolvedStudent.id, { ...row, student: resolvedStudent })
   }
 
   const updates: Array<Record<string, unknown>> = []
@@ -150,7 +174,7 @@ export async function POST(req: NextRequest) {
     const current =
       existingByStudentId.get(student.id)
       ?? (examNumber ? existingByExamNumber.get(examNumber) : null)
-      ?? existingByPhoneName.get(`${phone}::${student.name}`)
+      ?? existingByPhoneName.get(`${phone}::${normalizeName(student.name)}`)
 
     const payload = {
       student_id: student.id,
@@ -167,6 +191,10 @@ export async function POST(req: NextRequest) {
     if (current) {
       updates.push({
         id: current.id,
+        course_id: current.course_id,
+        status: current.status,
+        memo: current.memo,
+        refunded_at: current.refunded_at,
         ...payload,
       })
       continue
@@ -178,14 +206,16 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  for (const update of updates) {
-    const { id, ...payload } = update
+  if (updates.length > 0) {
     const { error } = await db
       .from('enrollments')
-      .update(payload)
-      .eq('id', Number(id))
+      .upsert(updates, { onConflict: 'id' })
 
     if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: '중복된 수강생이 하나 이상 포함되어 있습니다.' }, { status: 409 })
+      }
+
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }
   }

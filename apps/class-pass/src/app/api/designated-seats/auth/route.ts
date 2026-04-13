@@ -3,9 +3,9 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { attachStudentDeviceCookie, resolveStudentDevice } from '@/lib/designated-seat/device'
 import {
-  getDesignatedSeatStudentState,
   getActiveDisplaySessionById,
   getActiveDisplaySessionForCourse,
+  getDesignatedSeatStudentState,
   logDesignatedSeatEvent,
   verifyStudentSeatAccess,
 } from '@/lib/designated-seat/service'
@@ -60,11 +60,11 @@ export async function POST(req: NextRequest) {
     })
 
     if (!access) {
-      return authFailure('학생 정보를 다시 확인해주세요.', 404)
+      return authFailure('학생 정보를 다시 확인해 주세요.', 404)
     }
 
     if (!access.course.feature_designated_seat) {
-      return authFailure('이 강좌는 지정좌석 기능을 사용하지 않습니다.', 403)
+      return authFailure('이 강의는 지정좌석 기능을 사용하지 않습니다.', 403)
     }
 
     if (!access.course.designated_seat_open) {
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     if (!device.ok) {
       return authFailure(
         device.reason === 'DEVICE_MISMATCH'
-          ? '기기 정보가 일치하지 않습니다. 같은 브라우저에서 다시 시도해주세요.'
+          ? '기기 정보가 일치하지 않습니다. 같은 브라우저에서 다시 시도해 주세요.'
           : '기기 식별 정보가 올바르지 않습니다.',
         409,
       )
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     if (parsed.data.verificationMethod === 'qr') {
       if (!parsed.data.rotationToken) {
-        return authFailure('QR 토큰이 누락되었습니다.')
+        return authFailure('QR 토큰이 필요합니다.')
       }
 
       const tokenPayload = await verifyRotationToken(parsed.data.rotationToken)
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
       const currentRotation = getRotationBucket()
       if (tokenPayload.rotation < currentRotation - 1 || tokenPayload.rotation > currentRotation) {
-        return authFailure('QR ?몄쬆 ?뺣낫媛 留뚮즺?섏뿀嫄곕굹 ?щ컮瑜댁? ?딆뒿?덈떎.')
+        return authFailure('QR 인증 시간이 맞지 않습니다. 화면에 표시된 최신 QR로 다시 인증해 주세요.')
       }
 
       const displaySession = await getActiveDisplaySessionById(access.course.id, tokenPayload.displaySessionId)
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       displaySessionId = displaySession.id
     } else {
       if (!parsed.data.rotationCode) {
-        return authFailure('현장 인증 코드를 입력해주세요.')
+        return authFailure('현장 인증 코드를 입력해 주세요.')
       }
 
       const displaySession = await getActiveDisplaySessionForCourse(access.course.id)

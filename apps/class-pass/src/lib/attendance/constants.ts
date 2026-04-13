@@ -1,0 +1,1 @@
+export const ATTENDANCE_ROTATION_MS = 30_000

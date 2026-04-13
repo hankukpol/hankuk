@@ -2,18 +2,34 @@
 
 import Link from 'next/link'
 import type { FormEvent } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
+
+const ADMIN_SAVED_ID_KEY = 'class_pass_admin_saved_id'
+const ADMIN_REMEMBER_KEY = 'class_pass_admin_remember'
 
 export default function AdminLoginPage() {
   const router = useRouter()
   const tenant = useTenantConfig()
   const [id, setId] = useState('')
   const [pin, setPin] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    try {
+      const remembered = localStorage.getItem(ADMIN_REMEMBER_KEY) === '1'
+      setRememberMe(remembered)
+      if (remembered) {
+        setId(localStorage.getItem(ADMIN_SAVED_ID_KEY) ?? '')
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  }, [])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -31,6 +47,18 @@ export default function AdminLoginPage() {
     if (!response.ok) {
       setError(payload?.error ?? '관리자 로그인에 실패했습니다.')
       return
+    }
+
+    try {
+      if (rememberMe) {
+        localStorage.setItem(ADMIN_REMEMBER_KEY, '1')
+        localStorage.setItem(ADMIN_SAVED_ID_KEY, id)
+      } else {
+        localStorage.removeItem(ADMIN_REMEMBER_KEY)
+        localStorage.removeItem(ADMIN_SAVED_ID_KEY)
+      }
+    } catch {
+      // localStorage unavailable
     }
 
     router.push(withTenantPrefix('/dashboard', tenant.type))
@@ -70,6 +98,16 @@ export default function AdminLoginPage() {
               className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
             />
           </div>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(event) => setRememberMe(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+            />
+            <span className="text-sm text-gray-500">ID 저장</span>
+          </label>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
 

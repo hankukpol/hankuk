@@ -10,9 +10,14 @@ import {
   getStaffCookieCandidates,
   verifyJwt,
 } from '@/lib/auth/jwt'
+import { validateOperatorSession } from '@/lib/auth/operator-sessions'
 import { validateSameOriginRequest } from '@/lib/auth/request-origin'
 import { DEFAULT_SESSION_VERSION, getSessionVersion } from '@/lib/auth/session-version'
-import { validateOperatorSession } from '@/lib/auth/operator-sessions'
+import {
+  readVerifiedAdminPayload,
+  readVerifiedStaffPayload,
+  readVerifiedSuperAdminPayload,
+} from '@/lib/auth/verified-auth'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 type AdminAuthResult = {
@@ -67,7 +72,7 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
 
   const division = await getServerTenantType()
   const token = getCookieValue(req, getAdminCookieCandidates(division))
-  const payload = token ? await verifyJwt(token) : null
+  const payload = readVerifiedAdminPayload(req) ?? (token ? await verifyJwt(token) : null)
 
   if (!payload) {
     return {
@@ -100,7 +105,7 @@ export async function authenticateSuperAdminRequest(req: NextRequest): Promise<A
   }
 
   const token = req.cookies.get(SUPER_ADMIN_COOKIE)?.value
-  const payload = token ? await verifyJwt(token) : null
+  const payload = readVerifiedSuperAdminPayload(req) ?? (token ? await verifyJwt(token) : null)
 
   if (!payload || payload.role !== 'admin' || payload.sessionScope !== 'super_admin') {
     return {
@@ -127,11 +132,21 @@ export async function authenticateStaffRequest(req: NextRequest): Promise<StaffA
   }
 
   const division = await getServerTenantType()
+  const verifiedStaffPayload = readVerifiedStaffPayload(req)
+  const verifiedAdminPayload = readVerifiedAdminPayload(req)
   const staffToken = getCookieValue(req, getStaffCookieCandidates(division))
   const adminToken = getCookieValue(req, getAdminCookieCandidates(division))
   const [staffPayload, adminPayload] = await Promise.all([
-    staffToken ? verifyJwt(staffToken) : Promise.resolve(null),
-    adminToken ? verifyJwt(adminToken) : Promise.resolve(null),
+    verifiedStaffPayload
+      ? Promise.resolve(verifiedStaffPayload)
+      : staffToken
+        ? verifyJwt(staffToken)
+        : Promise.resolve(null),
+    verifiedAdminPayload
+      ? Promise.resolve(verifiedAdminPayload)
+      : adminToken
+        ? verifyJwt(adminToken)
+        : Promise.resolve(null),
   ])
 
   if (staffPayload?.accountId && staffPayload.membershipId && staffPayload.sessionScope === 'staff') {

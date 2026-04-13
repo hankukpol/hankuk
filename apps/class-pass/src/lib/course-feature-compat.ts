@@ -9,11 +9,19 @@ const DESIGNATED_SEAT_FEATURE_KEYS = [
   'designated_seat_open',
 ] as const
 
+const ATTENDANCE_FEATURE_KEYS = [
+  'feature_attendance',
+  'attendance_open',
+] as const
+
 export const EXAM_DELIVERY_FEATURE_WARNING =
-  '시험 배부 모드 관련 DB 컬럼이 아직 없어 기본 강좌 정보만 저장했습니다. supabase/migrations/202604100001_exam_delivery_mode.sql 을 적용한 뒤 다시 저장해 주세요.'
+  'Exam delivery mode columns are not available yet. Apply supabase/migrations/202604100001_exam_delivery_mode.sql and save again.'
 
 export const DESIGNATED_SEAT_FEATURE_WARNING =
-  '지정좌석 관련 DB 컬럼이 아직 없어 기본 강좌 정보만 저장했습니다. supabase/migrations/202604110002_designated_seats.sql 을 적용한 뒤 다시 저장해 주세요.'
+  'Designated seat columns are not available yet. Apply supabase/migrations/202604110002_designated_seats.sql and save again.'
+
+export const ATTENDANCE_FEATURE_WARNING =
+  'Attendance columns are not available yet. Apply supabase/migrations/202604140001_attendance.sql and save again.'
 
 function stripKeys<T extends Record<string, unknown>, K extends readonly string[]>(payload: T, keys: K) {
   const next = { ...payload }
@@ -55,6 +63,18 @@ export function hasDesignatedSeatFeatureColumns(record: Record<string, unknown>)
 
 export function containsDesignatedSeatFeatureFields(record: Record<string, unknown>) {
   return containsColumns(record, DESIGNATED_SEAT_FEATURE_KEYS)
+}
+
+export function stripAttendanceFeatureFields<T extends Record<string, unknown>>(payload: T) {
+  return stripKeys(payload, ATTENDANCE_FEATURE_KEYS)
+}
+
+export function hasAttendanceFeatureColumns(record: Record<string, unknown>) {
+  return hasColumns(record, ATTENDANCE_FEATURE_KEYS)
+}
+
+export function containsAttendanceFeatureFields(record: Record<string, unknown>) {
+  return containsColumns(record, ATTENDANCE_FEATURE_KEYS)
 }
 
 export function isExamDeliveryFeatureColumnError(error: unknown) {
@@ -103,6 +123,31 @@ export function isDesignatedSeatFeatureColumnError(error: unknown) {
   return (
     text.includes('feature_designated_seat')
     || text.includes('designated_seat_open')
+    || candidate.code === '42703'
+    || candidate.code === 'PGRST204'
+  )
+}
+
+export function isAttendanceFeatureColumnError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const candidate = error as {
+    code?: string
+    message?: string
+    details?: string | null
+    hint?: string | null
+  }
+
+  const text = [candidate.code, candidate.message, candidate.details, candidate.hint]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  return (
+    text.includes('feature_attendance')
+    || text.includes('attendance_open')
     || candidate.code === '42703'
     || candidate.code === 'PGRST204'
   )

@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { unwrapSupabaseResult } from '@/lib/supabase/result'
+import { invalidateCache } from '@/lib/cache/revalidate'
+import { listPopupsByDivision, type PopupRow } from '@/lib/popups'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
-
-type PopupRow = {
-  id: number
-  division: string
-  type: string
-  title: string | null
-  content: string | null
-  is_active: boolean
-  updated_at: string | null
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,17 +12,7 @@ export async function GET(req: NextRequest) {
     if (authError) return authError
 
     const division = await getServerTenantType()
-    const db = createServerClient()
-    const data = unwrapSupabaseResult(
-      'popups.GET',
-      await db
-        .from('popup_content')
-        .select('*')
-        .eq('division', division)
-        .order('type'),
-    )
-
-    return NextResponse.json({ popups: (data ?? []) as PopupRow[] })
+    return NextResponse.json({ popups: await listPopupsByDivision(division) })
   } catch (error) {
     return handleRouteError('popups.GET', '팝업 목록을 불러오지 못했습니다.', error)
   }
@@ -52,7 +33,7 @@ export async function POST(req: NextRequest) {
     const is_active = body?.is_active !== false
 
     if (!type) {
-      return NextResponse.json({ error: '팝업 유형을 입력해주세요.' }, { status: 400 })
+      return NextResponse.json({ error: '팝업 유형을 입력해 주세요.' }, { status: 400 })
     }
 
     const { data, error } = await db
@@ -72,6 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '팝업을 생성하지 못했습니다.' }, { status: 500 })
     }
 
+    await invalidateCache('popups')
     return NextResponse.json({ popup: data as PopupRow })
   } catch (error) {
     return handleRouteError('popups.POST', '팝업을 생성하지 못했습니다.', error)
@@ -113,6 +95,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: '팝업을 수정하지 못했습니다.' }, { status: 500 })
     }
 
+    await invalidateCache('popups')
     return NextResponse.json({ popup: data as PopupRow })
   } catch (error) {
     return handleRouteError('popups.PATCH', '팝업을 수정하지 못했습니다.', error)
@@ -143,6 +126,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: '팝업을 삭제하지 못했습니다.' }, { status: 500 })
     }
 
+    await invalidateCache('popups')
     return NextResponse.json({ success: true })
   } catch (error) {
     return handleRouteError('popups.DELETE', '팝업을 삭제하지 못했습니다.', error)

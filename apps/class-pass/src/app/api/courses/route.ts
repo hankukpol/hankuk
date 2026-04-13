@@ -4,8 +4,11 @@ import { requireAppFeature } from '@/lib/app-feature-guard'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { listCoursesByDivision } from '@/lib/class-pass-data'
 import {
+  ATTENDANCE_FEATURE_WARNING,
   DESIGNATED_SEAT_FEATURE_WARNING,
   EXAM_DELIVERY_FEATURE_WARNING,
+  isAttendanceFeatureColumnError,
+  stripAttendanceFeatureFields,
   isDesignatedSeatFeatureColumnError,
   mergeFeatureWarnings,
   stripDesignatedSeatFeatureFields,
@@ -27,6 +30,7 @@ const courseSchema = z.object({
   feature_qr_distribution: z.boolean().default(false),
   feature_seat_assignment: z.boolean().default(false),
   feature_designated_seat: z.boolean().default(false),
+  feature_attendance: z.boolean().default(false),
   feature_time_window: z.boolean().default(false),
   feature_photo: z.boolean().default(false),
   feature_dday: z.boolean().default(false),
@@ -44,6 +48,7 @@ const courseSchema = z.object({
   notice_visible: z.boolean().default(false),
   refund_policy: z.string().optional().nullable(),
   designated_seat_open: z.boolean().default(false),
+  attendance_open: z.boolean().default(false),
   sort_order: z.number().int().min(0).max(999).default(0),
 })
 
@@ -82,6 +87,7 @@ export async function POST(req: NextRequest) {
     division,
     slug: parsed.data.slug || slugifyCourseName(parsed.data.name),
     designated_seat_open: parsed.data.feature_designated_seat ? parsed.data.designated_seat_open : false,
+    attendance_open: parsed.data.feature_attendance ? parsed.data.attendance_open : false,
     updated_at: new Date().toISOString(),
   }
 
@@ -96,9 +102,20 @@ export async function POST(req: NextRequest) {
   const warnings: string[] = []
   let strippedExamDeliveryFeatures = false
   let strippedDesignatedSeatFeatures = false
+  let strippedAttendanceFeatures = false
   let { data, error } = await runInsert(insertPayload)
 
-  for (let attempt = 0; attempt < 2 && error; attempt += 1) {
+  for (let attempt = 0; attempt < 3 && error; attempt += 1) {
+    if (isAttendanceFeatureColumnError(error) && !strippedAttendanceFeatures) {
+      insertPayload = stripAttendanceFeatureFields(insertPayload)
+      strippedAttendanceFeatures = true
+      warnings.push(ATTENDANCE_FEATURE_WARNING)
+      const retry = await runInsert(insertPayload)
+      data = retry.data
+      error = retry.error
+      continue
+    }
+
     if (isDesignatedSeatFeatureColumnError(error) && !strippedDesignatedSeatFeatures) {
       insertPayload = stripDesignatedSeatFeatureFields(insertPayload)
       strippedDesignatedSeatFeatures = true

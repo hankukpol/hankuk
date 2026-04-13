@@ -5,6 +5,7 @@ export const APP_FEATURE_KEYS = [
   'student_courses_enabled',
   'student_pass_enabled',
   'staff_scan_enabled',
+  'attendance_enabled',
   'admin_course_management_enabled',
   'admin_student_management_enabled',
   'admin_seat_management_enabled',
@@ -13,10 +14,28 @@ export const APP_FEATURE_KEYS = [
   'admin_config_enabled',
 ] as const
 
+export const APP_TEXT_CONFIG_KEYS = [
+  'branch_name',
+  'branch_track_type',
+  'branch_description',
+  'branch_admin_title',
+  'branch_series_label',
+  'branch_region_label',
+  'app_name',
+  'theme_color',
+] as const
+
+export const APP_CONFIG_KEYS = [
+  ...APP_TEXT_CONFIG_KEYS,
+  ...APP_FEATURE_KEYS,
+] as const
+
 export type AppFeatureKey = (typeof APP_FEATURE_KEYS)[number]
+export type AppTextConfigKey = (typeof APP_TEXT_CONFIG_KEYS)[number]
+export type AppConfigKey = (typeof APP_CONFIG_KEYS)[number]
 export type AppFeatureScope = 'student' | 'staff' | 'admin'
 
-export type AppConfigSnapshot = {
+type AppTextConfigSnapshot = {
   branch_name: string
   branch_track_type: TrackType
   branch_description: string
@@ -25,7 +44,18 @@ export type AppConfigSnapshot = {
   branch_region_label: string
   app_name: string
   theme_color: string
-} & Record<AppFeatureKey, boolean>
+}
+
+export type AppConfigSnapshot = AppTextConfigSnapshot & Record<AppFeatureKey, boolean>
+
+export const APP_FEATURE_GROUPS = [
+  { scope: 'student', label: '학생' },
+  { scope: 'staff', label: '직원' },
+  { scope: 'admin', label: '관리자' },
+] as const satisfies ReadonlyArray<{
+  scope: AppFeatureScope
+  label: string
+}>
 
 export const APP_FEATURE_META: Record<
   AppFeatureKey,
@@ -54,6 +84,11 @@ export const APP_FEATURE_META: Record<
     label: '직원 스캔',
     scope: 'staff',
     disabledMessage: '직원 스캔 기능이 현재 비활성화되어 있습니다.',
+  },
+  attendance_enabled: {
+    label: '출석 체크',
+    scope: 'admin',
+    disabledMessage: '출석 체크 기능이 현재 비활성화되어 있습니다.',
   },
   admin_course_management_enabled: {
     label: '강좌 관리',
@@ -100,6 +135,7 @@ export const APP_CONFIG_DEFAULTS: AppConfigSnapshot = {
   student_courses_enabled: true,
   student_pass_enabled: true,
   staff_scan_enabled: true,
+  attendance_enabled: true,
   admin_course_management_enabled: true,
   admin_student_management_enabled: true,
   admin_seat_management_enabled: true,
@@ -108,7 +144,7 @@ export const APP_CONFIG_DEFAULTS: AppConfigSnapshot = {
   admin_config_enabled: true,
 }
 
-export const APP_CONFIG_DESCRIPTIONS: Record<keyof AppConfigSnapshot, string> = {
+export const APP_CONFIG_DESCRIPTIONS: Record<AppConfigKey, string> = {
   branch_name: '지점명',
   branch_track_type: '계열',
   branch_description: '지점 설명',
@@ -121,6 +157,7 @@ export const APP_CONFIG_DESCRIPTIONS: Record<keyof AppConfigSnapshot, string> = 
   student_courses_enabled: '강좌 목록 사용',
   student_pass_enabled: '수강증 화면 사용',
   staff_scan_enabled: '직원 스캔 사용',
+  attendance_enabled: '출석 체크 사용',
   admin_course_management_enabled: '강좌 관리 사용',
   admin_student_management_enabled: '수강생 관리 사용',
   admin_seat_management_enabled: '좌석 관리 사용',

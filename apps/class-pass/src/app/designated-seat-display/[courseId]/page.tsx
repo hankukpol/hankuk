@@ -38,7 +38,7 @@ export default function DesignatedSeatDisplayPage() {
 
   useEffect(() => {
     if (!Number.isInteger(courseId) || courseId <= 0 || !token) {
-      setError('?쒖떆 ?몄뀡???щ컮瑜댁? ?딆뒿?덈떎.')
+      setError('표시 세션 정보가 올바르지 않습니다.')
       return
     }
 
@@ -52,7 +52,7 @@ export default function DesignatedSeatDisplayPage() {
       const result = await response.json().catch(() => null)
 
       if (!response.ok) {
-        throw new Error((result as { error?: string } | null)?.error ?? '?꾩옣 QR ?뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??')
+        throw new Error((result as { error?: string } | null)?.error ?? '현장 QR 정보를 불러오지 못했습니다.')
       }
 
       return result as DisplayPayload
@@ -79,7 +79,7 @@ export default function DesignatedSeatDisplayPage() {
           return
         }
 
-        setError(reason instanceof Error ? reason.message : '?꾩옣 QR ?뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??')
+        setError(reason instanceof Error ? reason.message : '현장 QR 정보를 불러오지 못했습니다.')
         scheduleNextLoad(DESIGNATED_SEAT_DISPLAY_RETRY_MS)
       }
     }
@@ -124,14 +124,14 @@ export default function DesignatedSeatDisplayPage() {
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">Designated Seat</p>
           <h1 className="mt-3 text-4xl font-black">{payload.course.name}</h1>
-          <p className="mt-3 text-lg text-slate-300">?꾨옒 QR???ㅼ틪????醫뚯꽍???좏깮?섏꽭??</p>
+          <p className="mt-3 text-lg text-slate-300">학생들에게 보여줄 지정좌석 인증용 QR입니다.</p>
           <p className="mt-2 text-sm text-slate-500">
-            QR? 15珥덈쭏??諛붾뚮ŉ, 醫뚯꽍??蹂寃쏀븷 ?뚮쭏???ㅼ떆 ?몄쬆?댁빞 ?⑸땲??
+            QR은 15초마다 바뀌며, 좌석을 변경할 때마다 다시 인증해야 합니다.
           </p>
         </div>
 
         <div className="rounded-[10px] border border-slate-800 bg-slate-900 px-6 py-5 text-right">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">?⑥? ?쒓컙</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">남은 시간</p>
           <p className="mt-3 text-5xl font-black text-emerald-300">{remainingSeconds}</p>
         </div>
       </div>
@@ -149,8 +149,8 @@ export default function DesignatedSeatDisplayPage() {
         </div>
 
         <div className="rounded-[10px] bg-slate-950/70 px-5 py-4 text-center text-sm text-slate-400">
-          <p>?몄뀡 留뚮즺: {new Date(payload.session.expires_at).toLocaleString('ko-KR')}</p>
-          <p className="mt-1">???섏씠吏 URL???몃?濡??좎텧?섎㈃ 利됱떆 愿由ъ옄 ?붾㈃?먯꽌 ?쒖떆瑜?醫낅즺?댁＜?몄슂.</p>
+          <p>세션 만료: {new Date(payload.session.expires_at).toLocaleString('ko-KR')}</p>
+          <p className="mt-1">페이지 URL이 외부로 노출되면 즉시 관리자 화면에서 표시를 종료해 주세요.</p>
         </div>
       </div>
     </div>

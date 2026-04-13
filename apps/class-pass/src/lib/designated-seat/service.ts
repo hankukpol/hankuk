@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import type {
@@ -129,50 +130,121 @@ export function getDesignatedSeatRestrictionMessage(state: {
   return null
 }
 
-export async function getDesignatedSeatLayout(courseId: number) {
-  const db = createServerClient()
-  const row = unwrapSupabaseResult(
-    'designatedSeat.layout',
-    await db
-      .from('course_seat_layouts')
-      .select('*')
-      .eq('course_id', courseId)
-      .maybeSingle(),
-  ) as Record<string, unknown> | null
+const getCachedDesignatedSeatLayout = unstable_cache(
+  async (courseId: number) => {
+    const db = createServerClient()
+    const row = unwrapSupabaseResult(
+      'designatedSeat.layout',
+      await db
+        .from('course_seat_layouts')
+        .select('*')
+        .eq('course_id', courseId)
+        .maybeSingle(),
+    ) as Record<string, unknown> | null
 
-  return mapLayoutRow(row)
+    return mapLayoutRow(row)
+  },
+  ['designated-seat-layout'],
+  {
+    revalidate: 15,
+    tags: ['designated-seats'],
+  },
+)
+
+const getCachedDesignatedSeats = unstable_cache(
+  async (courseId: number) => {
+    const db = createServerClient()
+    const rows = unwrapSupabaseResult(
+      'designatedSeat.seats',
+      await db
+        .from('course_seats')
+        .select('*')
+        .eq('course_id', courseId)
+        .order('position_y')
+        .order('position_x'),
+    ) as Array<Record<string, unknown>> | null
+
+    return (rows ?? []).map(mapSeatRow)
+  },
+  ['designated-seat-seats'],
+  {
+    revalidate: 15,
+    tags: ['designated-seats'],
+  },
+)
+
+const getCachedDesignatedSeatReservations = unstable_cache(
+  async (courseId: number) => {
+    const db = createServerClient()
+    const todayStart = getTodayStartKST()
+    const rows = unwrapSupabaseResult(
+      'designatedSeat.reservations',
+      await db
+        .from('course_seat_reservations')
+        .select('*,course_seats(id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
+        .eq('course_id', courseId)
+        .gte('updated_at', todayStart)
+        .order('updated_at', { ascending: false }),
+    ) as Array<Record<string, unknown>> | null
+
+    return (rows ?? []).map(mapReservationRow)
+  },
+  ['designated-seat-reservations'],
+  {
+    revalidate: 10,
+    tags: ['designated-seats'],
+  },
+)
+
+const getCachedDesignatedSeatAdminData = unstable_cache(
+  async (courseId: number) => {
+    const [layout, seats, reservations] = await Promise.all([
+      getCachedDesignatedSeatLayout(courseId),
+      getCachedDesignatedSeats(courseId),
+      getCachedDesignatedSeatReservations(courseId),
+    ])
+
+    const db = createServerClient()
+    const enrollments = unwrapSupabaseResult(
+      'designatedSeat.adminEnrollments',
+      await db
+        .from('enrollments')
+        .select('id,course_id,name,phone,exam_number,status,created_at')
+        .eq('course_id', courseId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false }),
+    ) as Enrollment[] | null
+
+    return {
+      layout,
+      seats,
+      reservations,
+      enrollments: enrollments ?? [],
+    }
+  },
+  ['designated-seat-admin-data'],
+  {
+    revalidate: 10,
+    tags: ['designated-seats', 'enrollments'],
+  },
+)
+
+export async function getDesignatedSeatLayout(courseId: number) {
+  return getCachedDesignatedSeatLayout(courseId)
 }
 
 export async function listDesignatedSeats(courseId: number) {
-  const db = createServerClient()
-  const rows = unwrapSupabaseResult(
-    'designatedSeat.seats',
-    await db
-      .from('course_seats')
-      .select('*')
-      .eq('course_id', courseId)
-      .order('position_y')
-      .order('position_x'),
-  ) as Array<Record<string, unknown>> | null
-
-  return (rows ?? []).map(mapSeatRow)
+  return getCachedDesignatedSeats(courseId)
 }
 
 export async function listDesignatedSeatReservations(courseId: number) {
-  const db = createServerClient()
-  const todayStart = getTodayStartKST()
-  const rows = unwrapSupabaseResult(
-    'designatedSeat.reservations',
-    await db
-      .from('course_seat_reservations')
-      .select('*,course_seats(id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
-      .eq('course_id', courseId)
-      .gte('updated_at', todayStart)
-      .order('updated_at', { ascending: false }),
-  ) as Array<Record<string, unknown>> | null
-
-  return (rows ?? []).map(mapReservationRow)
+  return getCachedDesignatedSeatReservations(courseId)
 }
+
+export async function getDesignatedSeatAdminData(courseId: number) {
+  return getCachedDesignatedSeatAdminData(courseId)
+}
+
 
 export async function getDesignatedSeatStudentState(params: {
   course: Course
@@ -289,31 +361,6 @@ export async function getDesignatedSeatStudentState(params: {
   }
 }
 
-export async function getDesignatedSeatAdminData(courseId: number) {
-  const [layout, seats, reservations] = await Promise.all([
-    getDesignatedSeatLayout(courseId),
-    listDesignatedSeats(courseId),
-    listDesignatedSeatReservations(courseId),
-  ])
-
-  const db = createServerClient()
-  const enrollments = unwrapSupabaseResult(
-    'designatedSeat.adminEnrollments',
-    await db
-      .from('enrollments')
-      .select('id,course_id,name,phone,exam_number,status,created_at')
-      .eq('course_id', courseId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false }),
-  ) as Enrollment[] | null
-
-  return {
-    layout,
-    seats,
-    reservations,
-    enrollments: enrollments ?? [],
-  }
-}
 
 export async function verifyStudentSeatAccess(params: {
   courseId: number

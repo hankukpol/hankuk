@@ -25,6 +25,7 @@ export interface Course {
   feature_qr_distribution: boolean
   feature_seat_assignment: boolean
   feature_designated_seat: boolean
+  feature_attendance: boolean
   feature_time_window: boolean
   feature_photo: boolean
   feature_dday: boolean
@@ -46,6 +47,7 @@ export interface Course {
   enrolled_until: string | null
   enrollment_fields: EnrollmentFieldDef[]
   designated_seat_open: boolean
+  attendance_open: boolean
   copied_from_course_id: number | null
   copied_from_course_name: string | null
   copied_at: string | null
@@ -189,6 +191,43 @@ export interface DesignatedSeatStudentState {
   reservation: DesignatedSeatReservation | null
 }
 
+export interface AttendanceDisplaySession {
+  id: number
+  course_id: number
+  display_token_hash: string
+  created_by: string
+  expires_at: string
+  revoked_at: string | null
+  last_seen_at: string
+  created_at: string
+}
+
+export interface AttendanceRecord {
+  id: number
+  course_id: number
+  enrollment_id: number
+  display_session_id: number | null
+  device_key_hash: string
+  attended_date: string
+  attended_at: string
+  created_at: string
+}
+
+export interface AttendanceEvent {
+  id: number
+  course_id: number
+  event_type: string
+  details: Record<string, unknown>
+  created_at: string
+}
+
+export interface AttendanceStudentState {
+  enabled: boolean
+  open: boolean
+  attended_today: boolean
+  attended_at: string | null
+}
+
 export interface Material {
   id: number
   course_id: number
@@ -228,12 +267,14 @@ export interface PassCourseSummary {
     | 'feature_qr_distribution'
     | 'feature_seat_assignment'
     | 'feature_designated_seat'
+    | 'feature_attendance'
     | 'feature_time_window'
     | 'feature_dday'
     | 'feature_exam_delivery_mode'
     | 'feature_weekday_color'
     | 'feature_anti_forgery_motion'
   >
+  attendance: Pick<AttendanceStudentState, 'enabled' | 'open' | 'attended_today' | 'attended_at'>
 }
 
 export interface PassPayload {
@@ -243,6 +284,7 @@ export interface PassPayload {
   subjects: CourseSubject[]
   seatAssignments: SeatAssignment[]
   designatedSeat: DesignatedSeatStudentState
+  attendance: AttendanceStudentState
   materials: Material[]
   receipts: Record<number, string>
   qrToken: string

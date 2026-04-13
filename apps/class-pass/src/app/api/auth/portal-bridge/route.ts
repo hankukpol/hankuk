@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { HANKUK_APP_KEYS, HANKUK_SERVICE_CONFIG } from '@hankuk/config'
-import { getOperatorAccountBySharedUser } from '@/lib/branch-ops'
 import { handleRouteError } from '@/lib/api/error-response'
 import { signJwt } from '@/lib/auth/jwt'
 import { createOperatorSession } from '@/lib/auth/operator-sessions'
@@ -9,6 +8,7 @@ import {
   setBranchStaffSessionCookie,
   setSuperAdminSessionCookie,
 } from '@/lib/auth/session-cookies'
+import { getOperatorAccountBySharedUser } from '@/lib/branch-ops'
 import { consumePortalLaunchToken } from '@/lib/portal-launch'
 import { withTenantPrefix } from '@/lib/tenant'
 
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData().catch(() => null)
   const launchToken = String(formData?.get('launchToken') || '').trim()
   if (!launchToken) {
-    return NextResponse.json({ error: '?ы꽭 ?ㅽ뻾 ?좏겙???꾩슂?⑸땲??' }, { status: 400 })
+    return NextResponse.json({ error: '포털 실행 토큰이 필요합니다.' }, { status: 400 })
   }
 
   if (!isAllowedPortalOrigin(req)) {
@@ -100,14 +100,14 @@ export async function POST(req: NextRequest) {
     const consumed = await consumePortalLaunchToken(launchToken)
     if (!consumed) {
       return NextResponse.json(
-        { error: '?ы꽭 ?ㅽ뻾 ?좏겙???좏슚?섏? ?딄굅???대? ?ъ슜?섏뿀嫄곕굹 留뚮즺?섏뿀?듬땲??' },
+        { error: '포털 실행 토큰이 유효하지 않거나 이미 사용되었거나 만료되었습니다.' },
         { status: 401 },
       )
     }
 
     if (consumed.target_role === 'assistant') {
       return NextResponse.json(
-        { error: 'class-pass ?ы꽭 釉뚮┸吏??assistant ??븷??吏?먰븯吏 ?딆뒿?덈떎.' },
+        { error: 'class-pass 포털 이동은 assistant 역할을 지원하지 않습니다.' },
         { status: 403 },
       )
     }
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     const account = await getOperatorAccountBySharedUser(consumed.user_id)
     if (!account || !account.is_active) {
       return NextResponse.json(
-        { error: '?곌껐???댁쁺??怨꾩젙??李얠쓣 ???놁뒿?덈떎.' },
+        { error: '연결된 운영 계정을 찾을 수 없습니다.' },
         { status: 403 },
       )
     }
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
 
     if (!membership) {
       return NextResponse.json(
-        { error: '?대떦 吏?먯뿉 ?묎렐??沅뚰븳???놁뒿?덈떎.' },
+        { error: '요청한 역할에 맞는 권한을 찾을 수 없습니다.' },
         { status: 403 },
       )
     }
@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return handleRouteError(
       'auth.portalBridge.POST',
-      '?ы꽭 ?곕룞 濡쒓렇??泥섎━ 以?臾몄젣媛 諛쒖깮?덉뒿?덈떎. ?ㅼ떆 ?쒕룄??二쇱꽭??',
+      '포털 이동 로그인 처리 중 문제가 발생했습니다. 다시 시도해 주세요.',
       error,
     )
   }

@@ -10,7 +10,7 @@ export function useAppConfig() {
   useEffect(() => {
     let cancelled = false
 
-    fetch('/api/config/app', { cache: 'no-store' })
+    fetch('/api/config/app')
       .then((response) => response.json())
       .then((payload) => {
         if (!cancelled) {

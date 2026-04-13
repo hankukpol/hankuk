@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
+import { getStrictMainRearCamera } from '@/lib/camera/main-rear-camera'
 import { fetchDesignatedSeatState } from '@/lib/designated-seat/client-state'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { DesignatedSeatStudentState, PassPayload } from '@/types/database'
@@ -122,7 +123,7 @@ export default function DesignatedSeatPage() {
   }, [loadData])
 
   const state = data?.designatedSeat
-  const courseTheme = data?.course.theme_color || '#1e40af'
+  const courseTheme = data?.course.theme_color || '#0071e3'
 
   const applyDesignatedSeatState = useCallback((nextState: DesignatedSeatStudentState) => {
     setData((current) => {
@@ -177,7 +178,7 @@ export default function DesignatedSeatPage() {
 
   const handleVerify = useCallback(async (payload: { verificationMethod: 'qr' | 'code'; rotationToken?: string; rotationCode?: string }) => {
     if (!data || !deviceKey) {
-      setError('기기 정보를 준비하고 있습니다. 잠시 후 다시 시도해주세요.')
+      setError('기기 정보를 준비하고 있습니다. 잠시 후 다시 시도해 주세요.')
       return
     }
 
@@ -213,7 +214,7 @@ export default function DesignatedSeatPage() {
       await refreshDesignatedSeatState().catch(() => null)
     }
 
-    setMessage('현장 인증이 완료되었습니다. 원하는 좌석을 선택해주세요.')
+    setMessage('현장 인증이 완료되었습니다. 원하시는 좌석을 선택해 주세요.')
   }, [applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
 
   useEffect(() => {
@@ -223,30 +224,6 @@ export default function DesignatedSeatPage() {
     }
 
     let cancelled = false
-
-    async function findMainCamera(): Promise<string | null> {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const videoDevices = devices.filter((device) => device.kind === 'videoinput')
-        const backCameras = videoDevices.filter((device) => {
-          const label = device.label.toLowerCase()
-          return label.includes('back') || label.includes('rear') || label.includes('후면') || label.includes('환경')
-        })
-
-        if (backCameras.length === 0) {
-          return null
-        }
-
-        const mainCamera = backCameras.find((device) => {
-          const label = device.label.toLowerCase()
-          return !label.includes('wide') && !label.includes('ultra') && !label.includes('광각')
-        })
-
-        return (mainCamera ?? backCameras[0]).deviceId || null
-      } catch {
-        return null
-      }
-    }
 
     async function startScanner() {
       if (typeof window === 'undefined') {
@@ -267,8 +244,19 @@ export default function DesignatedSeatPage() {
       }
 
       try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        tempStream.getTracks().forEach((track) => track.stop())
+        const cameraSelection = await getStrictMainRearCamera()
+        if (!cameraSelection.ok) {
+          if (!cancelled) {
+            setScannerLoading(false)
+            setError(
+              cameraSelection.reason === 'rear-camera-not-found'
+                ? '후면 카메라를 찾지 못했습니다. 카메라 권한을 확인한 뒤 다시 시도해 주세요.'
+                : '기본 1배 후면 카메라를 확인하지 못했습니다. 광각·망원 렌즈는 허용하지 않으므로 아이폰은 Safari, 갤럭시는 Chrome에서 다시 시도해 주세요.',
+            )
+            setScannerOpen(false)
+          }
+          return
+        }
 
         const qrModule = await import('html5-qrcode')
         const scanner = new qrModule.Html5Qrcode('designated-seat-qr-reader') as unknown as ScannerInstance
@@ -285,24 +273,11 @@ export default function DesignatedSeatPage() {
         }
 
         const qrBoxSize = Math.max(220, Math.min(window.innerWidth - 80, 320))
-        const mainCameraId = await findMainCamera()
-        try {
-          const cameraConfig = mainCameraId
-            ? mainCameraId
-            : { facingMode: { exact: 'environment' as const } }
-
-          await scanner.start(
-            cameraConfig as string | { facingMode: string | { exact: string } },
-            { fps: 10, qrbox: { width: qrBoxSize, height: qrBoxSize } },
-            onSuccess,
-          )
-        } catch {
-          await scanner.start(
-            { facingMode: 'environment' },
-            { fps: 10, qrbox: { width: qrBoxSize, height: qrBoxSize } },
-            onSuccess,
-          )
-        }
+        await scanner.start(
+          cameraSelection.deviceId,
+          { fps: 10, qrbox: { width: qrBoxSize, height: qrBoxSize } },
+          onSuccess,
+        )
 
         if (!cancelled) {
           setScannerLoading(false)
@@ -377,7 +352,7 @@ export default function DesignatedSeatPage() {
     }
 
     const action = successResult?.action ?? 'reserved'
-    setMessage(action === 'changed' ? '좌석이 변경되었습니다.' : '좌석이 확정되었습니다.')
+    setMessage(action === 'changed' ? '좌석이 변경되었습니다.' : '좌석을 확정했습니다.')
   }
 
   const goBack = useCallback(() => {
@@ -398,151 +373,151 @@ export default function DesignatedSeatPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <p className="text-sm text-gray-400">로딩 중...</p>
+      <div className="student-page flex min-h-dvh items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--student-blue)] border-t-transparent" />
       </div>
     )
   }
 
   if (!data || !state?.enabled) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6">
-        <p className="text-sm text-gray-500">{error || '지정좌석 기능을 사용할 수 없습니다.'}</p>
-        <button onClick={goBack} className="px-6 py-2 text-sm font-medium text-white" style={{ background: courseTheme }}>
-          돌아가기
-        </button>
+      <div className="student-page flex min-h-dvh items-center justify-center px-6">
+        <div className="student-card max-w-md px-6 py-7 text-center">
+          <p className="text-[15px] text-[var(--student-text-muted)]">{error || '지정좌석 기능을 사용할 수 없습니다.'}</p>
+          <button onClick={goBack} className="student-pill-button student-pill-primary mt-6 w-full">
+            돌아가기
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-gray-50">
-      <div className="text-white" style={{ background: courseTheme }}>
-        <div className="flex items-center justify-between px-4 py-4">
-          <button onClick={goBack} className="text-sm text-white/80 hover:text-white">
+    <div className="student-page student-safe-bottom">
+      <section className="student-hero px-4 pb-6 pt-4 sm:px-5">
+        <div className="flex items-center justify-between gap-3">
+          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-opacity hover:text-white">
             수강증으로
           </button>
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${state.open ? 'bg-white/20' : 'bg-white/10 text-white/60'}`}>
-            {state.open ? '신청 가능' : '신청 마감'}
+          <span className={`student-chip student-chip-dark ${state.open ? '' : 'opacity-70'}`}>
+            {state.open ? '좌석 선택 가능' : '좌석 선택 마감'}
           </span>
         </div>
-        <div className="px-4 pb-5">
-          <h1 className="text-lg font-bold">지정좌석</h1>
-          <p className="mt-1 text-sm text-white/80">{data.course.name}</p>
-        </div>
-      </div>
+        <p className="student-eyebrow student-eyebrow-dark mt-4">지정좌석</p>
+        <h1 className="student-display mt-2">지정좌석</h1>
+        <p className="student-body student-body-dark mt-2">{data.course.name}</p>
+      </section>
 
-      <div className="bg-white px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-500">현재 좌석</p>
-            <p className="mt-0.5 text-2xl font-black text-gray-900">{currentSeatLabel ?? '미지정'}</p>
+      <div className="flex flex-col gap-3 px-4 pt-4 sm:px-5">
+        <section className="student-card px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="student-eyebrow student-eyebrow-light">현재 좌석</p>
+              <p className="mt-2 text-[26px] font-semibold leading-[1.07] tracking-[-0.02em] text-[var(--student-text)]">
+                {currentSeatLabel ?? '미정'}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="student-eyebrow student-eyebrow-light">상태</p>
+              <p className="mt-1.5 text-[12px] text-[var(--student-text-muted)]">
+                {state.verified
+                  ? '인증 완료'
+                  : state.requires_reauth
+                    ? 'QR 재인증 필요'
+                    : state.restriction_reason ?? 'QR 인증 대기'}
+              </p>
+            </div>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">상태</p>
-            <p className="mt-0.5 text-sm font-medium text-gray-700">
-              {state.verified
-                ? '인증 완료'
-                : state.requires_reauth
-                  ? 'QR 재인증 필요'
-                  : state.restriction_reason ?? 'QR 인증 대기'}
+        </section>
+
+        {(error || message) ? (
+          <section className="student-card px-4 py-3">
+            {error ? <p className="text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
+            {message ? <p className="text-[14px] font-medium text-[#19703a]">{message}</p> : null}
+          </section>
+        ) : null}
+
+        {state.open && !state.verified ? (
+          <section className="student-card px-4 py-4">
+            <p className="text-[14px] leading-[1.47] text-[var(--student-text)]">
+              {state.requires_reauth
+                ? '좌석을 변경하려면 다시 현장 QR 인증이 필요합니다.'
+                : '현장 QR 인증 후 빈 좌석을 직접 선택할 수 있습니다.'}
             </p>
-          </div>
-        </div>
-      </div>
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              disabled={working}
+              className="student-pill-button student-pill-primary mt-3 w-full disabled:opacity-40"
+              style={{ backgroundColor: courseTheme, borderColor: courseTheme }}
+            >
+              QR 스캔으로 현장 인증
+            </button>
+          </section>
+        ) : null}
 
-      {(error || message) ? (
-        <div className="px-4 pt-3">
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
-        </div>
-      ) : null}
+        {state.layout && state.seats.length > 0 ? (
+          <section className="student-card px-4 py-4">
+            <div className="overflow-x-auto rounded-[12px] bg-[var(--student-surface-soft)] p-3">
+              <SeatGrid
+                columns={state.layout.columns}
+                rows={state.layout.rows}
+                aisleColumns={state.layout.aisle_columns}
+                seats={state.seats}
+                occupiedSeatIds={state.occupied_seat_ids}
+                currentSeatId={currentSeatId}
+                onSeatClick={(seat) => {
+                  if (!state.writable || working) {
+                    return
+                  }
 
-      {state.open && !state.verified ? (
-        <div className="border-t border-gray-100 bg-white px-4 py-4">
-          <p className="text-sm font-medium text-gray-800">
-            {state.requires_reauth
-              ? '좌석을 변경하려면 다시 현장 QR 인증이 필요합니다.'
-              : '현장 QR 인증 후 좌석을 선택할 수 있습니다.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => setScannerOpen(true)}
-            disabled={working}
-            className="mt-3 w-full py-3 text-sm font-medium text-white disabled:opacity-60"
-            style={{ background: courseTheme }}
-          >
-            QR 스캔으로 현장 인증
-          </button>
-        </div>
-      ) : null}
+                  const confirmed = window.confirm(
+                    currentSeatLabel
+                      ? `${seat.label} 좌석으로 변경할까요?`
+                      : `${seat.label} 좌석을 확정할까요?`,
+                  )
+                  if (!confirmed) {
+                    return
+                  }
 
-      {state.layout && state.seats.length > 0 ? (
-        <div className="flex-1 px-4 py-4">
-          <div className="overflow-x-auto bg-white p-3">
-            <SeatGrid
-              columns={state.layout.columns}
-              rows={state.layout.rows}
-              aisleColumns={state.layout.aisle_columns}
-              seats={state.seats}
-              occupiedSeatIds={state.occupied_seat_ids}
-              currentSeatId={currentSeatId}
-              onSeatClick={(seat) => {
-                if (!state.writable || working) {
-                  return
-                }
+                  void handleReserve(seat.id)
+                }}
+                mode="student"
+              />
+            </div>
 
-                const confirmed = window.confirm(
-                  currentSeatLabel
-                    ? `${seat.label} 좌석으로 변경할까요?`
-                    : `${seat.label} 좌석을 확정할까요?`,
-                )
-                if (!confirmed) {
-                  return
-                }
+            <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-[var(--student-text-muted)]">
+              {legend.map((item) => (
+                <span key={item.label} className="flex items-center gap-1.5">
+                  <span className={`inline-block h-3 w-3 rounded-full ${item.color}`} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="student-card px-4 py-6 text-center">
+            <p className="student-body">관리자가 아직 좌석 배치를 준비하지 않았습니다.</p>
+          </section>
+        )}
 
-                void handleReserve(seat.id)
-              }}
-              mode="student"
-            />
-          </div>
-
-          <div className="mt-3 flex justify-center gap-4 text-xs text-gray-500">
-            {legend.map((item) => (
-              <span key={item.label} className="flex items-center gap-1.5">
-                <span className={`inline-block h-3 w-3 rounded-full ${item.color}`} />
-                {item.label}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 px-4 py-8">
-          <p className="text-center text-sm text-gray-500">관리자가 아직 좌석 배치를 준비하지 않았습니다.</p>
-        </div>
-      )}
-
-      <div className="px-4 pb-6">
-        <button
-          onClick={goBack}
-          className="w-full border border-gray-200 py-3 text-sm text-gray-500"
-        >
+        <button onClick={goBack} className="student-pill-button student-pill-outline w-full">
           수강증으로 돌아가기
         </button>
       </div>
 
       {scannerOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={() => setScannerOpen(false)}>
-          <div className="w-full max-w-md bg-white p-5" onClick={(event) => event.stopPropagation()}>
+        <div className="student-modal-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setScannerOpen(false)}>
+          <div className="student-card w-full max-w-md bg-white p-4" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900">현장 QR 스캔</h3>
-              <button type="button" onClick={() => setScannerOpen(false)} className="text-sm text-gray-400">
+              <h3 className="text-[15px] font-semibold text-[var(--student-text)]">현장 QR 스캔</h3>
+              <button type="button" onClick={() => setScannerOpen(false)} className="text-[13px] text-[var(--student-link)]">
                 닫기
               </button>
             </div>
-            <p className="mt-2 text-sm text-gray-500">강의실 모니터에 표시된 QR을 카메라로 비춰주세요.</p>
-            <div id="designated-seat-qr-reader" className="mt-4 overflow-hidden bg-black/90" style={{ minHeight: 320 }} />
-            {scannerLoading ? <p className="mt-3 text-sm text-gray-500">카메라를 준비하고 있습니다...</p> : null}
+            <p className="student-body mt-1.5">강의실 모니터에 표시된 QR을 카메라로 비춰주세요.</p>
+            <div id="designated-seat-qr-reader" className="mt-3 overflow-hidden rounded-[12px] bg-black/90" style={{ minHeight: 280 }} />
+            {scannerLoading ? <p className="student-body mt-3">카메라를 준비하고 있습니다...</p> : null}
           </div>
         </div>
       ) : null}

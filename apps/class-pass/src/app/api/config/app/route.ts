@@ -17,6 +17,7 @@ const patchSchema = z.object({
   student_courses_enabled: z.boolean().optional(),
   student_pass_enabled: z.boolean().optional(),
   staff_scan_enabled: z.boolean().optional(),
+  attendance_enabled: z.boolean().optional(),
   admin_course_management_enabled: z.boolean().optional(),
   admin_student_management_enabled: z.boolean().optional(),
   admin_seat_management_enabled: z.boolean().optional(),
@@ -28,7 +29,9 @@ const patchSchema = z.object({
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  return NextResponse.json(await getAppConfig())
+  const response = NextResponse.json(await getAppConfig())
+  response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=300')
+  return response
 }
 
 export async function PATCH(req: NextRequest) {
@@ -44,6 +47,7 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json().catch(() => null)
   const parsed = patchSchema.safeParse(body)
+
   if (!parsed.success) {
     return NextResponse.json({ error: '지점 설정 요청 형식이 올바르지 않습니다.' }, { status: 400 })
   }

@@ -36,22 +36,27 @@ function normalizeHeaderLabel(value: string) {
 
 function isEnrollmentExamHeader(value: string) {
   const normalized = normalizeHeaderLabel(value)
-  return normalized === '?숇쾲' || normalized === '?섑뿕踰덊샇' || normalized === '?묒떆踰덊샇' || normalized === '?쒕쾲'
+  return (
+    normalized === '번호'
+    || normalized === '수험번호'
+    || normalized === '응시번호'
+    || normalized === '학번'
+  )
 }
 
 function isEnrollmentNameHeader(value: string) {
   const normalized = normalizeHeaderLabel(value)
-  return normalized === '?대쫫' || normalized === '?깅챸'
+  return normalized === '이름' || normalized === '성명'
 }
 
 function isEnrollmentPhoneHeader(value: string) {
   const normalized = normalizeHeaderLabel(value)
   return (
-    normalized === '?곕씫泥?'
-    || normalized === '?꾪솕踰덊샇'
-    || normalized === '?대???'
-    || normalized === '?대??곕쾲??'
-    || normalized === '?꾪솕'
+    normalized === '연락처'
+    || normalized === '휴대폰번호'
+    || normalized === '전화번호'
+    || normalized === '휴대폰'
+    || normalized === '전화'
   )
 }
 
@@ -111,7 +116,7 @@ function isEnrollmentHeaderRow(cells: string[]) {
 
 /**
  * Parse bulk enrollment text.
- * Column order: 학번, 이름, 연락처, ...customFieldKeys
+ * Column order: 수험번호, 이름, 연락처, ...customFieldKeys
  */
 export function parseEnrollmentBulkText(
   input: string,
@@ -175,7 +180,9 @@ export function parseEnrollmentBulkText(
         const customData: Record<string, string> = {}
         customFieldKeys.forEach((key, index) => {
           const value = cells[customValueStartIndex + index]
-          if (value) customData[key] = value
+          if (value) {
+            customData[key] = value
+          }
         })
         if (Object.keys(customData).length > 0) {
           row.custom_data = customData
@@ -204,7 +211,7 @@ function parseSeatLines(input: string): TabularSeatLine[] {
 
 function isExamNumberHeader(value: string) {
   const normalized = normalizeHeaderLabel(value)
-  return normalized === '학번' || normalized === '수험번호' || normalized === '응시번호'
+  return normalized === '번호' || normalized === '수험번호' || normalized === '응시번호'
 }
 
 function isNameHeader(value: string) {
@@ -224,7 +231,7 @@ function isPhoneHeader(value: string) {
 
 function isSeatNumberHeader(value: string) {
   const normalized = normalizeHeaderLabel(value)
-  return normalized === '좌석번호' || normalized.toLowerCase() === 'seat'
+  return normalized === '좌석번호' || normalized === 'seat'
 }
 
 function isLikelyPhoneCell(value: string) {

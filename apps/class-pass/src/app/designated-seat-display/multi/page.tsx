@@ -60,7 +60,7 @@ export default function MultiDisplayPage() {
     )
     const result = await response.json().catch(() => null)
     if (!response.ok) {
-      throw new Error((result as { error?: string } | null)?.error ?? 'QR ?뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??')
+      throw new Error((result as { error?: string } | null)?.error ?? 'QR 정보를 불러오지 못했습니다.')
     }
     return result as DisplayPayload
   }, [])
@@ -122,7 +122,7 @@ export default function MultiDisplayPage() {
   if (parsed.length === 0) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-slate-950 text-white">
-        <p className="text-lg">?쒖떆??媛뺤쥖 ?몄뀡???놁뒿?덈떎.</p>
+        <p className="text-lg">표시할 세션 정보가 없습니다.</p>
       </div>
     )
   }
@@ -138,11 +138,11 @@ export default function MultiDisplayPage() {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">Designated Seat</p>
             <p className="mt-1 text-sm text-slate-500">
-              QR? 15珥덈쭏??諛붾뚮ŉ, ?먯떊??媛뺤쥖 QR???ㅼ틪?섏꽭??
+              QR은 15초마다 바뀌며, 여러 강의의 QR을 동시에 보여줍니다.
             </p>
           </div>
           <div className="rounded-[10px] border border-slate-800 bg-slate-900 px-5 py-3 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">?⑥? ?쒓컙</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">남은 시간</p>
             <p className="mt-1 text-3xl font-black text-emerald-300">
               {entries[0]?.payload
                 ? Math.max(0, Math.ceil((new Date(entries[0].payload.rotationExpiresAt).getTime() - now) / 1000))
@@ -160,7 +160,7 @@ export default function MultiDisplayPage() {
           <div key={entry.courseId} className="flex flex-col items-center gap-4">
             <div className="rounded-[10px] border border-slate-700 bg-slate-900 px-4 py-3 text-center">
               <h2 className={`${count <= 2 ? 'text-lg' : 'text-base'} font-bold text-white`}>
-                {entry.payload?.course.name ?? `媛뺤쥖 #${entry.courseId}`}
+                {entry.payload?.course.name ?? `강의 #${entry.courseId}`}
               </h2>
             </div>
 
@@ -191,9 +191,9 @@ export default function MultiDisplayPage() {
       <div className="mx-auto mt-6 w-full max-w-7xl">
         <div className="rounded-[10px] bg-slate-950/70 px-5 py-3 text-center text-xs text-slate-500">
           {entries
-            .filter((e) => e.payload)
-            .map((e) => `${e.payload!.course.name}: ${new Date(e.payload!.session.expires_at).toLocaleString('ko-KR')}源뚯?`)
-            .join(' 쨌 ')}
+            .filter((entry) => entry.payload)
+            .map((entry) => `${entry.payload!.course.name}: ${new Date(entry.payload!.session.expires_at).toLocaleString('ko-KR')} 만료`)
+            .join(' | ')}
         </div>
       </div>
     </div>

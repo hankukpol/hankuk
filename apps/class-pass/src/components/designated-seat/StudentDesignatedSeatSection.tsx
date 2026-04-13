@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { getCameraReadinessError } from '@/lib/camera/access'
+import { getStrictMainRearCamera } from '@/lib/camera/main-rear-camera'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { PassPayload } from '@/types/database'
 
@@ -158,6 +160,30 @@ export function StudentDesignatedSeatSection({
 
       setScannerLoading(true)
       try {
+        const readinessError = await getCameraReadinessError()
+        if (readinessError) {
+          if (!cancelled) {
+            setScannerLoading(false)
+            setError(readinessError)
+            setScannerOpen(false)
+          }
+          return
+        }
+
+        const cameraSelection = await getStrictMainRearCamera()
+        if (!cameraSelection.ok) {
+          if (!cancelled) {
+            setScannerLoading(false)
+            setError(
+              cameraSelection.reason === 'rear-camera-not-found'
+                ? '후면 카메라를 찾지 못했습니다. 카메라 권한을 확인한 뒤 다시 시도해 주세요.'
+                : '기본 1배 후면 카메라를 확인하지 못했습니다. 광각·망원 렌즈는 허용하지 않으므로 아이폰은 Safari, 갤럭시는 Chrome에서 다시 시도해 주세요.',
+            )
+            setScannerOpen(false)
+          }
+          return
+        }
+
         const qrModule = await import('html5-qrcode')
         const scanner = new qrModule.Html5Qrcode('designated-seat-qr-reader') as unknown as ScannerInstance
         scannerRef.current = scanner
@@ -174,7 +200,7 @@ export function StudentDesignatedSeatSection({
 
         const qrBoxSize = Math.max(220, Math.min(window.innerWidth - 80, 320))
         await scanner.start(
-          { facingMode: 'environment' },
+          cameraSelection.deviceId,
           { fps: 10, qrbox: { width: qrBoxSize, height: qrBoxSize } },
           onSuccess,
         )

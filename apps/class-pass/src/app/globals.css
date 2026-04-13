@@ -1,18 +1,46 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
-  --radius-lg: 0.625rem;
-  --radius-xl: 0.625rem;
-  --radius-2xl: 0.625rem;
-  --radius-3xl: 0.625rem;
-  --radius-4xl: 0.625rem;
+  --font-sans: var(--font-app-sans), 'Apple SD Gothic Neo', sans-serif;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.5rem;
+  --radius-3xl: 0.5rem;
+  --radius-4xl: 0.5rem;
 }
 
 :root {
-  --theme: #1a237e;
+  --theme: #000000;
   --background: #ffffff;
-  --foreground: #212121;
+  --foreground: #1d1d1f;
+
+  /* Apple palette (student pages) */
+  --apple-black: #000000;
+  --apple-gray: #f5f5f7;
+  --apple-text: #1d1d1f;
+  --apple-blue: #0071e3;
+  --apple-link: #0066cc;
+  --apple-link-dark: #2997ff;
+  --apple-text-secondary: rgba(0, 0, 0, 0.56);
+  --apple-nav-bg: rgba(0, 0, 0, 0.8);
+
+  /* Student design tokens (Apple-based) */
+  --student-blue: #0071e3;
+  --student-blue-hover: #0077ed;
+  --student-link: #0066cc;
+  --student-dark: #000000;
+  --student-dark-soft: #1d1d1f;
+  --student-surface: #ffffff;
+  --student-surface-muted: #f5f5f7;
+  --student-surface-soft: #f5f5f7;
+  --student-text: #1d1d1f;
+  --student-text-muted: rgba(0, 0, 0, 0.56);
+  --student-line: rgba(0, 0, 0, 0.08);
+  --student-line-strong: rgba(0, 0, 0, 0.16);
+
+  --font-student-display: var(--font-app-sans), 'Pretendard Variable', 'Pretendard', 'SF Pro Display', 'Apple SD Gothic Neo', sans-serif;
+  --font-student-ui: var(--font-app-sans), 'Pretendard Variable', 'Pretendard', 'SF Pro Text', 'Apple SD Gothic Neo', sans-serif;
+  --font-student-body: var(--font-app-sans), 'Pretendard Variable', 'Pretendard', 'SF Pro Text', 'Apple SD Gothic Neo', sans-serif;
 }
 
 * {
@@ -23,11 +51,13 @@ html,
 body {
   width: 100%;
   min-height: 100dvh;
-  font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif;
+  font-family: var(--font-app-sans), 'Apple SD Gothic Neo', sans-serif;
   background: var(--background);
   color: var(--foreground);
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -35,4 +65,313 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+
+/* Apple glass navigation (admin pages) */
+.apple-nav-glass {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--apple-nav-bg);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* Apple modal backdrop */
+.apple-modal-backdrop {
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ─── Student Design System (Apple-inspired) ─── */
+
+.student-shell {
+  min-height: 100dvh;
+  background: var(--apple-gray);
+  color: var(--student-text);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+.student-frame {
+  width: 100%;
+  max-width: 768px;
+  margin: 0 auto;
+}
+
+.student-page {
+  min-height: 100dvh;
+  background: var(--apple-gray);
+  color: var(--student-text);
+}
+
+.student-hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--apple-black);
+  color: #ffffff;
+}
+
+.student-hero::after {
+  content: '';
+  position: absolute;
+  right: -72px;
+  bottom: -84px;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--exam-accent-glow, rgba(0,113,227,0.22)) 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.student-section-dark {
+  background: var(--apple-black);
+  color: #ffffff;
+}
+
+.student-card {
+  background: var(--student-surface);
+  border-radius: 12px;
+}
+
+.student-card-muted {
+  background: var(--student-surface-muted);
+  border-radius: 12px;
+}
+
+.student-card-dark {
+  background: var(--student-dark-soft);
+  color: #ffffff;
+  border-radius: 12px;
+}
+
+/* Typography */
+
+.student-eyebrow {
+  font-family: var(--font-student-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.student-eyebrow-light {
+  color: var(--student-blue);
+}
+
+.student-eyebrow-dark {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.student-display {
+  font-family: var(--font-student-display);
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  font-weight: 600;
+  line-height: 1.07;
+  letter-spacing: -0.02em;
+}
+
+.student-display-compact {
+  font-family: var(--font-student-display);
+  font-size: clamp(1.25rem, 4vw, 1.5rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.student-body {
+  font-family: var(--font-student-body);
+  font-size: 14px;
+  line-height: 1.47;
+  letter-spacing: -0.01em;
+  color: var(--student-text-muted);
+}
+
+.student-body-dark {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* Buttons */
+
+.student-pill-button {
+  min-height: 44px;
+  border-radius: 980px;
+  padding-inline: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-student-ui);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  transition:
+    background-color 160ms ease,
+    opacity 160ms ease;
+  cursor: pointer;
+}
+
+.student-pill-button:active {
+  opacity: 0.72;
+}
+
+.student-pill-button:focus-visible {
+  outline: 2px solid var(--student-blue);
+  outline-offset: 2px;
+}
+
+.student-pill-primary {
+  border: none;
+  background: var(--student-blue);
+  color: #ffffff;
+}
+
+.student-pill-primary:hover {
+  background: var(--student-blue-hover);
+}
+
+.student-pill-secondary {
+  border: none;
+  background: var(--student-surface-muted);
+  color: var(--student-text);
+}
+
+.student-pill-dark {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.student-pill-ghost {
+  border: none;
+  background: transparent;
+  color: var(--student-link);
+}
+
+.student-pill-outline {
+  border: 1px solid var(--student-link);
+  background: transparent;
+  color: var(--student-link);
+}
+
+/* Inputs */
+
+.student-input {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border: none;
+  background: var(--student-surface-muted);
+  padding: 0 14px;
+  font-family: var(--font-student-ui);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--student-text);
+  letter-spacing: -0.01em;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.student-input::placeholder {
+  color: rgba(0, 0, 0, 0.36);
+}
+
+.student-input:focus {
+  outline: none;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.3);
+}
+
+/* Chips / Tags */
+
+.student-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 980px;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 3px 8px;
+  font-family: var(--font-student-ui);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--student-text-muted);
+}
+
+.student-chip-dark {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* Dividers & Utilities */
+
+.student-divider {
+  border-color: var(--student-line);
+}
+
+.student-modal-backdrop {
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.student-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.student-status-dot-active {
+  background: #34c759;
+  box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.2);
+  animation: student-pulse-dot 2s ease-in-out infinite;
+}
+
+.student-status-dot-idle {
+  background: var(--student-text-muted);
+}
+
+@keyframes student-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.student-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+}
+
+.student-scroll-snap {
+  scroll-snap-type: y proximity;
+}
+
+.student-scroll-snap > * {
+  scroll-snap-align: start;
+}
+
+/* Compact spacing on very small screens */
+@media (max-width: 374px) {
+  .student-display {
+    font-size: 1.3rem;
+  }
+
+  .student-display-compact {
+    font-size: 1.1rem;
+  }
+
+  .student-pill-button {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .student-input {
+    min-height: 40px;
+    font-size: 14px;
+  }
 }

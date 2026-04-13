@@ -42,6 +42,9 @@ type SessionResponse = {
 }
 
 type BootstrapResponse = {
+  session: SessionResponse
+  staffScanEnabled: boolean
+  selectedCourseId: number | null
   courses: CourseItem[]
   materials: MaterialItem[]
 }
@@ -76,27 +79,11 @@ async function fetchBootstrapData(courseId?: number | null): Promise<BootstrapRe
   }
 
   return {
+    session: payload?.session ?? { role: 'staff' },
+    staffScanEnabled: payload?.staffScanEnabled !== false,
+    selectedCourseId: payload?.selectedCourseId ?? null,
     courses: payload?.courses ?? [],
     materials: payload?.materials ?? [],
-  }
-}
-
-async function fetchSessionAndConfigData() {
-  const [configResponse, sessionResponse] = await Promise.all([
-    fetch('/api/config/app', { cache: 'no-store' }),
-    fetch('/api/auth/staff/session', { cache: 'no-store' }),
-  ])
-
-  const configPayload = await configResponse.json().catch(() => null)
-  const sessionPayload = await sessionResponse.json().catch(() => null)
-
-  if (!sessionResponse.ok) {
-    throw new Error(sessionPayload?.error ?? '직원 세션을 확인하지 못했습니다.')
-  }
-
-  return {
-    session: sessionPayload as SessionResponse,
-    staffScanEnabled: configPayload?.staff_scan_enabled !== false,
   }
 }
 
@@ -135,6 +122,7 @@ export default function StaffScanPage() {
   const processingRef = useRef(false)
   const lastScanRef = useRef<LastScanState>({ token: '', at: 0 })
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const bootstrappedCourseIdRef = useRef<number | null>(null)
 
   const [isFeatureLoading, setIsFeatureLoading] = useState(true)
   const [staffScanEnabled, setStaffScanEnabled] = useState(true)
@@ -451,8 +439,8 @@ export default function StaffScanPage() {
   useEffect(() => {
     let cancelled = false
 
-    fetchSessionAndConfigData()
-      .then(async (data) => {
+    fetchBootstrapData()
+      .then((data) => {
         if (cancelled) {
           return
         }
@@ -460,20 +448,11 @@ export default function StaffScanPage() {
         setSession(data.session)
         setStaffScanEnabled(data.staffScanEnabled)
         setTab(data.staffScanEnabled ? 'qr' : 'quick')
-
-        const bootstrap = await fetchBootstrapData()
-        if (cancelled) {
-          return
-        }
-
-        setCourses(bootstrap.courses)
-        if (bootstrap.courses.length > 0) {
-          setSelectedCourseId(bootstrap.courses[0].id)
-        } else {
-          setSelectedCourseId(null)
-          setMaterials([])
-          setSelectedMaterialId(null)
-        }
+        setCourses(data.courses)
+        setMaterials(data.materials)
+        bootstrappedCourseIdRef.current = data.selectedCourseId
+        setSelectedCourseId(data.selectedCourseId)
+        setSelectedMaterialId(data.materials[0]?.id ?? null)
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -494,8 +473,14 @@ export default function StaffScanPage() {
 
   useEffect(() => {
     if (!selectedCourseId) {
+      bootstrappedCourseIdRef.current = null
       setMaterials([])
       setSelectedMaterialId(null)
+      return
+    }
+
+    if (bootstrappedCourseIdRef.current === selectedCourseId) {
+      bootstrappedCourseIdRef.current = null
       return
     }
 

@@ -148,7 +148,6 @@ export default function StudentAuthSetupPage() {
       <div>
         <Link
           href={withTenantPrefix('/dashboard', tenant.type)}
-          prefetch={false}
           className="text-xs font-semibold text-slate-400 hover:text-slate-600"
         >
           대시보드

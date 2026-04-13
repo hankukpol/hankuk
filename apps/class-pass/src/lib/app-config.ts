@@ -1,20 +1,33 @@
 import { revalidateTag } from 'next/cache'
-import { upsertBranch } from '@/lib/branch-ops'
-import { invalidateServerTenantConfigCache, getServerTenantConfig, getServerTenantType } from '@/lib/tenant.server'
-import { normalizeTrackType } from '@/lib/tenant'
-import { createServerClient } from '@/lib/supabase/server'
 import {
   APP_CONFIG_DEFAULTS,
+  APP_CONFIG_KEYS,
+  APP_FEATURE_KEYS,
+  APP_TEXT_CONFIG_KEYS,
+  type AppConfigKey,
   type AppConfigSnapshot,
   type AppFeatureKey,
+  type AppTextConfigKey,
 } from '@/lib/app-config.shared'
+import { upsertBranch } from '@/lib/branch-ops'
+import { createServerClient } from '@/lib/supabase/server'
+import { normalizeTrackType } from '@/lib/tenant'
+import {
+  getServerTenantConfig,
+  getServerTenantType,
+  invalidateServerTenantConfigCache,
+} from '@/lib/tenant.server'
 
 export const APP_CONFIG_TAG = 'app-config'
 
 const configCache = new Map<string, { data: AppConfigSnapshot; ts: number }>()
 const CONFIG_CACHE_TTL_MS = 5_000
 
-function getScopedConfigKey(division: string, key: keyof AppConfigSnapshot) {
+const STRING_CONFIG_KEYS = APP_TEXT_CONFIG_KEYS.filter(
+  (key): key is Exclude<AppTextConfigKey, 'branch_track_type'> => key !== 'branch_track_type',
+)
+
+function getScopedConfigKey(division: string, key: AppConfigKey) {
   return `${division}::${key}`
 }
 
@@ -48,16 +61,8 @@ function normalizeStoredTrack(value: unknown, fallback: AppConfigSnapshot['branc
   return fallback
 }
 
-export async function getAppConfig(): Promise<AppConfigSnapshot> {
-  const division = await getServerTenantType()
-  const cached = configCache.get(division)
-  if (cached && Date.now() - cached.ts < CONFIG_CACHE_TTL_MS) {
-    return cached.data
-  }
-
-  const tenant = await getServerTenantConfig()
-  const db = createServerClient()
-  const defaults: AppConfigSnapshot = {
+function buildDefaultConfig(tenant: Awaited<ReturnType<typeof getServerTenantConfig>>): AppConfigSnapshot {
+  return {
     ...APP_CONFIG_DEFAULTS,
     branch_name: tenant.branchName,
     branch_track_type: tenant.trackType,
@@ -68,13 +73,50 @@ export async function getAppConfig(): Promise<AppConfigSnapshot> {
     app_name: tenant.defaultAppName,
     theme_color: tenant.defaultThemeColor,
   }
+}
 
+function hydrateConfig(
+  defaults: AppConfigSnapshot,
+  valueMap: Record<string, unknown>,
+  division: string,
+): AppConfigSnapshot {
+  const result: AppConfigSnapshot = { ...defaults }
+
+  const getValue = (key: AppConfigKey) =>
+    valueMap[getScopedConfigKey(division, key)] ?? valueMap[key]
+
+  for (const key of STRING_CONFIG_KEYS) {
+    result[key] = normalizeStoredString(getValue(key), defaults[key])
+  }
+
+  result.branch_track_type = normalizeStoredTrack(
+    getValue('branch_track_type'),
+    defaults.branch_track_type,
+  )
+
+  for (const key of APP_FEATURE_KEYS) {
+    result[key] = normalizeStoredBoolean(getValue(key), defaults[key])
+  }
+
+  return result
+}
+
+export async function getAppConfig(): Promise<AppConfigSnapshot> {
+  const division = await getServerTenantType()
+  const cached = configCache.get(division)
+  if (cached && Date.now() - cached.ts < CONFIG_CACHE_TTL_MS) {
+    return cached.data
+  }
+
+  const tenant = await getServerTenantConfig()
+  const db = createServerClient()
+  const defaults = buildDefaultConfig(tenant)
   const { data } = await db
     .from('app_config')
     .select('key,value')
     .in('key', [
-      ...Object.keys(defaults),
-      ...Object.keys(defaults).map((key) => getScopedConfigKey(division, key as keyof AppConfigSnapshot)),
+      ...APP_CONFIG_KEYS,
+      ...APP_CONFIG_KEYS.map((key) => getScopedConfigKey(division, key)),
     ])
 
   const valueMap: Record<string, unknown> = {}
@@ -82,45 +124,7 @@ export async function getAppConfig(): Promise<AppConfigSnapshot> {
     valueMap[row.key] = row.value
   }
 
-  const getValue = <K extends keyof AppConfigSnapshot>(key: K) =>
-    valueMap[getScopedConfigKey(division, key)] ?? valueMap[key]
-
-  const result: AppConfigSnapshot = {
-    branch_name: normalizeStoredString(getValue('branch_name'), defaults.branch_name),
-    branch_track_type: normalizeStoredTrack(getValue('branch_track_type'), defaults.branch_track_type),
-    branch_description: normalizeStoredString(getValue('branch_description'), defaults.branch_description),
-    branch_admin_title: normalizeStoredString(getValue('branch_admin_title'), defaults.branch_admin_title),
-    branch_series_label: normalizeStoredString(getValue('branch_series_label'), defaults.branch_series_label),
-    branch_region_label: normalizeStoredString(getValue('branch_region_label'), defaults.branch_region_label),
-    app_name: normalizeStoredString(getValue('app_name'), defaults.app_name),
-    theme_color: normalizeStoredString(getValue('theme_color'), defaults.theme_color),
-    student_login_enabled: normalizeStoredBoolean(getValue('student_login_enabled'), defaults.student_login_enabled),
-    student_courses_enabled: normalizeStoredBoolean(getValue('student_courses_enabled'), defaults.student_courses_enabled),
-    student_pass_enabled: normalizeStoredBoolean(getValue('student_pass_enabled'), defaults.student_pass_enabled),
-    staff_scan_enabled: normalizeStoredBoolean(getValue('staff_scan_enabled'), defaults.staff_scan_enabled),
-    admin_course_management_enabled: normalizeStoredBoolean(
-      getValue('admin_course_management_enabled'),
-      defaults.admin_course_management_enabled,
-    ),
-    admin_student_management_enabled: normalizeStoredBoolean(
-      getValue('admin_student_management_enabled'),
-      defaults.admin_student_management_enabled,
-    ),
-    admin_seat_management_enabled: normalizeStoredBoolean(
-      getValue('admin_seat_management_enabled'),
-      defaults.admin_seat_management_enabled,
-    ),
-    admin_material_management_enabled: normalizeStoredBoolean(
-      getValue('admin_material_management_enabled'),
-      defaults.admin_material_management_enabled,
-    ),
-    admin_log_view_enabled: normalizeStoredBoolean(
-      getValue('admin_log_view_enabled'),
-      defaults.admin_log_view_enabled,
-    ),
-    admin_config_enabled: normalizeStoredBoolean(getValue('admin_config_enabled'), defaults.admin_config_enabled),
-  }
-
+  const result = hydrateConfig(defaults, valueMap, division)
   configCache.set(division, { data: result, ts: Date.now() })
   return result
 }
@@ -132,7 +136,7 @@ export async function isAppFeatureEnabled(feature: AppFeatureKey) {
 
 export async function upsertAppConfig(values: Partial<AppConfigSnapshot>) {
   const entries = Object.entries(values).filter(([, value]) => value !== undefined) as Array<
-    [keyof AppConfigSnapshot, AppConfigSnapshot[keyof AppConfigSnapshot]]
+    [AppConfigKey, AppConfigSnapshot[AppConfigKey]]
   >
 
   if (entries.length === 0) {

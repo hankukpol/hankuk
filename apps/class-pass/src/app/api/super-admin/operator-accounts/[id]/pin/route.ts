@@ -25,7 +25,7 @@ export async function PATCH(
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: '새 PIN이 올바르지 않습니다.' }, { status: 400 })
+    return NextResponse.json({ error: 'PIN 값이 올바르지 않습니다.' }, { status: 400 })
   }
 
   await setOperatorAccountPin(accountId, parsed.data.pin)

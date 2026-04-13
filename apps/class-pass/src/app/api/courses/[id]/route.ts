@@ -4,8 +4,13 @@ import { requireAppFeature } from '@/lib/app-feature-guard'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
 import {
+  ATTENDANCE_FEATURE_WARNING,
   DESIGNATED_SEAT_FEATURE_WARNING,
   EXAM_DELIVERY_FEATURE_WARNING,
+  containsAttendanceFeatureFields,
+  hasAttendanceFeatureColumns,
+  isAttendanceFeatureColumnError,
+  stripAttendanceFeatureFields,
   containsDesignatedSeatFeatureFields,
   containsExamDeliveryFeatureFields,
   hasDesignatedSeatFeatureColumns,
@@ -38,6 +43,7 @@ const patchSchema = z.object({
   feature_qr_distribution: z.boolean().optional(),
   feature_seat_assignment: z.boolean().optional(),
   feature_designated_seat: z.boolean().optional(),
+  feature_attendance: z.boolean().optional(),
   feature_time_window: z.boolean().optional(),
   feature_photo: z.boolean().optional(),
   feature_dday: z.boolean().optional(),
@@ -55,6 +61,7 @@ const patchSchema = z.object({
   notice_visible: z.boolean().optional(),
   refund_policy: z.string().optional().nullable(),
   designated_seat_open: z.boolean().optional(),
+  attendance_open: z.boolean().optional(),
   kakao_chat_url: z.string().url().optional().nullable(),
   enrolled_from: z.string().optional().nullable(),
   enrolled_until: z.string().optional().nullable(),
@@ -120,6 +127,7 @@ export async function PATCH(
 
   const nextName = parsed.data.name ?? existingCourse.name
   const featureDesignatedSeat = parsed.data.feature_designated_seat ?? existingCourse.feature_designated_seat
+  const featureAttendance = parsed.data.feature_attendance ?? existingCourse.feature_attendance
   const rawUpdatePayload = {
     ...parsed.data,
     slug: parsed.data.slug === undefined
@@ -128,16 +136,22 @@ export async function PATCH(
     designated_seat_open: featureDesignatedSeat
       ? (parsed.data.designated_seat_open ?? existingCourse.designated_seat_open)
       : false,
+    attendance_open: featureAttendance
+      ? (parsed.data.attendance_open ?? existingCourse.attendance_open)
+      : false,
     updated_at: new Date().toISOString(),
   }
   const supportsExamDeliveryFeatures = hasExamDeliveryFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsDesignatedSeatFeatures = hasDesignatedSeatFeatureColumns(existingCourse as unknown as Record<string, unknown>)
+  const supportsAttendanceFeatures = hasAttendanceFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const requestedExamDeliveryFeatures = containsExamDeliveryFeatureFields(parsed.data as Record<string, unknown>)
   const requestedDesignatedSeatFeatures = containsDesignatedSeatFeatureFields(parsed.data as Record<string, unknown>)
+  const requestedAttendanceFeatures = containsAttendanceFeatureFields(parsed.data as Record<string, unknown>)
   let updatePayload: Record<string, unknown> = { ...rawUpdatePayload }
   const warnings: string[] = []
   let strippedExamDeliveryFeatures = false
   let strippedDesignatedSeatFeatures = false
+  let strippedAttendanceFeatures = false
 
   if (!supportsExamDeliveryFeatures && requestedExamDeliveryFeatures) {
     updatePayload = stripExamDeliveryFeatureFields(updatePayload)
@@ -151,6 +165,12 @@ export async function PATCH(
     warnings.push(DESIGNATED_SEAT_FEATURE_WARNING)
   }
 
+  if (!supportsAttendanceFeatures && requestedAttendanceFeatures) {
+    updatePayload = stripAttendanceFeatureFields(updatePayload)
+    strippedAttendanceFeatures = true
+    warnings.push(ATTENDANCE_FEATURE_WARNING)
+  }
+
   const db = createServerClient()
   const runUpdate = (payload: Record<string, unknown>) => db
     .from('courses')
@@ -162,7 +182,17 @@ export async function PATCH(
 
   let { data, error } = await runUpdate(updatePayload)
 
-  for (let attempt = 0; attempt < 2 && error; attempt += 1) {
+  for (let attempt = 0; attempt < 3 && error; attempt += 1) {
+    if (isAttendanceFeatureColumnError(error) && !strippedAttendanceFeatures) {
+      updatePayload = stripAttendanceFeatureFields(updatePayload)
+      strippedAttendanceFeatures = true
+      warnings.push(ATTENDANCE_FEATURE_WARNING)
+      const retry = await runUpdate(updatePayload)
+      data = retry.data
+      error = retry.error
+      continue
+    }
+
     if (isDesignatedSeatFeatureColumnError(error) && !strippedDesignatedSeatFeatures) {
       updatePayload = stripDesignatedSeatFeatureFields(updatePayload)
       strippedDesignatedSeatFeatures = true

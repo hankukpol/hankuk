@@ -1,6 +1,7 @@
 import 'server-only'
 
 import bcrypt from 'bcryptjs'
+import { revalidateTag, unstable_cache } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
 import { createRootServerClient } from '@/lib/supabase/root'
 import { buildFallbackTenantConfig, normalizeTenantType, type TrackType } from '@/lib/tenant'
@@ -53,6 +54,9 @@ export type OperatorMembershipRecord = {
 export type OperatorAccountWithMemberships = OperatorAccountRecord & {
   memberships: OperatorMembershipRecord[]
 }
+
+const BRANCH_CACHE_TTL_MS = 5_000
+const branchBySlugCache = new Map<string, { data: BranchRecord | null; ts: number }>()
 
 function getErrorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'message' in error) {
@@ -140,6 +144,18 @@ function mapOperatorMembershipRecord(
   }
 }
 
+function serializeMemberships(
+  memberships: Array<{ role: BranchRole; branch_slug?: string | null; is_active?: boolean }>,
+) {
+  return memberships
+    .map((membership) => {
+      const branchSlug = membership.role === 'SUPER_ADMIN' ? '' : membership.branch_slug ?? ''
+      return `${membership.role}:${branchSlug}:${membership.is_active === false ? '0' : '1'}`
+    })
+    .sort()
+    .join('|')
+}
+
 export async function isBranchOpsReady() {
   const db = createServerClient()
   const { error } = await db.from('branches').select('id').limit(1)
@@ -152,19 +168,28 @@ export async function getBranchBySlug(slug: string): Promise<BranchRecord | null
     return null
   }
 
+  const cached = branchBySlugCache.get(normalized)
+  if (cached && Date.now() - cached.ts < BRANCH_CACHE_TTL_MS) {
+    return cached.data
+  }
+
   const db = createServerClient()
   const { data, error } = await db.from('branches').select('*').eq('slug', normalized).maybeSingle()
   if (isMissingRelationError(error)) {
+    branchBySlugCache.set(normalized, { data: null, ts: Date.now() })
     return null
   }
   if (error || !data) {
+    branchBySlugCache.set(normalized, { data: null, ts: Date.now() })
     return null
   }
 
-  return mapBranchRecord(data as unknown as Record<string, unknown>)
+  const branch = mapBranchRecord(data as unknown as Record<string, unknown>)
+  branchBySlugCache.set(normalized, { data: branch, ts: Date.now() })
+  return branch
 }
 
-export async function listBranches(): Promise<BranchRecord[]> {
+async function listBranchesUncached(): Promise<BranchRecord[]> {
   const db = createServerClient()
   const { data, error } = await db
     .from('branches')
@@ -180,6 +205,19 @@ export async function listBranches(): Promise<BranchRecord[]> {
   }
 
   return (data as Array<Record<string, unknown>>).map(mapBranchRecord)
+}
+
+const getCachedBranches = unstable_cache(
+  async () => listBranchesUncached(),
+  ['branch-records'],
+  {
+    revalidate: 15,
+    tags: ['branches'],
+  },
+)
+
+export async function listBranches(): Promise<BranchRecord[]> {
+  return getCachedBranches()
 }
 
 export async function upsertBranch(input: {
@@ -222,10 +260,14 @@ export async function upsertBranch(input: {
     throw new Error(`Failed to save branch: ${getErrorMessage(error)}`)
   }
 
-  return mapBranchRecord(data as unknown as Record<string, unknown>)
+  const branch = mapBranchRecord(data as unknown as Record<string, unknown>)
+  branchBySlugCache.set(branch.slug, { data: branch, ts: Date.now() })
+  revalidateTag('branches')
+  revalidateTag('operator-accounts')
+  return branch
 }
 
-export async function listOperatorAccounts(): Promise<OperatorAccountWithMemberships[]> {
+async function listOperatorAccountsUncached(): Promise<OperatorAccountWithMemberships[]> {
   const db = createServerClient()
   const [accountsResult, membershipsResult, branches] = await Promise.all([
     db.from('operator_accounts').select('*').order('created_at', { ascending: true }),
@@ -262,6 +304,19 @@ export async function listOperatorAccounts(): Promise<OperatorAccountWithMembers
       memberships: membershipMap.get(account.id) ?? [],
     }
   })
+}
+
+const getCachedOperatorAccounts = unstable_cache(
+  async () => listOperatorAccountsUncached(),
+  ['operator-accounts'],
+  {
+    revalidate: 15,
+    tags: ['operator-accounts'],
+  },
+)
+
+export async function listOperatorAccounts(): Promise<OperatorAccountWithMemberships[]> {
+  return getCachedOperatorAccounts()
 }
 
 async function getOperatorMembershipsForAccount(
@@ -431,13 +486,32 @@ export async function upsertOperatorAccount(input: {
 }) {
   const db = createServerClient()
   let nextCredentialVersion: number | undefined
+  let shouldRevokeSessions = false
 
-  if (input.id && input.pin) {
-    const current = await getOperatorAccountById(input.id)
+  if (input.id) {
+    const current = await getOperatorAccountWithMembershipsById(input.id)
     if (!current) {
       throw new Error('Operator account not found.')
     }
-    nextCredentialVersion = current.credential_version + 1
+
+    if (input.pin) {
+      nextCredentialVersion = current.credential_version + 1
+      shouldRevokeSessions = true
+    }
+
+    const nextIsActive = input.is_active ?? true
+    const currentMemberships = current.memberships.map((membership) => ({
+      role: membership.role,
+      branch_slug: membership.branch?.slug ?? null,
+      is_active: membership.is_active,
+    }))
+
+    if (
+      current.is_active !== nextIsActive
+      || serializeMemberships(currentMemberships) !== serializeMemberships(input.memberships)
+    ) {
+      shouldRevokeSessions = true
+    }
   }
 
   const payload: Record<string, unknown> = {
@@ -469,12 +543,13 @@ export async function upsertOperatorAccount(input: {
 
   const account = mapOperatorAccountRecord(data as unknown as Record<string, unknown>)
   await replaceMemberships(account.id, input.memberships)
-  if (input.id && input.pin) {
+  if (input.id && shouldRevokeSessions) {
     await revokeOperatorSessionsForAccount(account.id)
   }
+  revalidateTag('operator-accounts')
   await refreshSharedMembershipsForUser(account.shared_user_id)
 
-  const updatedAccounts = await listOperatorAccounts()
+  const updatedAccounts = await listOperatorAccountsUncached()
   return updatedAccounts.find((item) => item.id === account.id) ?? { ...account, memberships: [] }
 }
 
@@ -497,6 +572,8 @@ export async function setOperatorAccountPin(accountId: number, pin: string) {
   if (error) {
     throw new Error(`Failed to update operator PIN: ${getErrorMessage(error)}`)
   }
+
+  revalidateTag('operator-accounts')
 }
 
 export async function revokeOperatorSessionsForAccount(accountId: number) {
@@ -517,7 +594,7 @@ export async function refreshSharedMembershipsForUser(sharedUserId: string | nul
     return
   }
 
-  const accounts = (await listOperatorAccounts()).filter(
+  const accounts = (await listOperatorAccountsUncached()).filter(
     (account) => account.shared_user_id === sharedUserId && account.is_active,
   )
   const root = createRootServerClient()
@@ -628,12 +705,15 @@ export async function deleteOperatorAccount(accountId: number) {
     return false
   }
 
+  await revokeOperatorSessionsForAccount(accountId)
+
   const db = createServerClient()
   const { error } = await db.from('operator_accounts').delete().eq('id', accountId)
   if (error) {
     throw new Error(`Failed to delete operator account: ${getErrorMessage(error)}`)
   }
 
+  revalidateTag('operator-accounts')
   await refreshSharedMembershipsForUser(account.shared_user_id)
   return true
 }

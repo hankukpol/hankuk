@@ -7,6 +7,7 @@ export const TENANT_COOKIE = 'hankuk_division'
 const RESERVED_TOP_LEVEL_SEGMENTS = new Set([
   'admin',
   'api',
+  'attendance-display',
   'courses',
   'dashboard',
   'designated-seat-display',

@@ -64,7 +64,6 @@ export default function AdminLayout({
               <Link
                 key={item.href}
                 href={withTenantPrefix(item.href, tenant.type)}
-                prefetch={false}
                 className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
                   active
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/20'
@@ -81,7 +80,6 @@ export default function AdminLayout({
         <div className="border-t border-white/10 px-3 py-4">
           <Link
             href={withTenantPrefix('/staff/login', tenant.type)}
-            prefetch={false}
             className="mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
             <Users className="h-4 w-4 shrink-0 text-slate-500" />
@@ -126,7 +124,6 @@ export default function AdminLayout({
               <Link
                 key={item.href}
                 href={withTenantPrefix(item.href, tenant.type)}
-                prefetch={false}
                 className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold transition ${
                   active
                     ? 'bg-blue-600 text-white'

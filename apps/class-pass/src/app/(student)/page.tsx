@@ -4,12 +4,19 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
+import {
+  STUDENT_SESSION_NAME_KEY,
+  STUDENT_SESSION_PHONE_KEY,
+  STUDENT_SESSION_VERIFICATION_KEY,
+  clearStudentSession,
+  clearSavedStudentCredentials,
+  getSavedStudentCredentials,
+  isStudentRemembered,
+  saveStudentCredentials,
+  writeStudentCourseCache,
+} from '@/lib/student-session'
 import { withTenantPrefix } from '@/lib/tenant'
 import { maskPhone, normalizeName, normalizePhone } from '@/lib/utils'
-
-const LS_NAME = 'class_pass_student_name'
-const LS_PHONE = 'class_pass_student_phone'
-const LS_VERIFICATION = 'class_pass_student_verification'
 
 export default function StudentLoginPage() {
   const tenant = useTenantConfig()
@@ -21,6 +28,7 @@ export default function StudentLoginPage() {
   const [savedName, setSavedName] = useState('')
   const [savedPhone, setSavedPhone] = useState('')
   const [savedVerificationCode, setSavedVerificationCode] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,24 +40,30 @@ export default function StudentLoginPage() {
   useEffect(() => {
     quickLoginTriggeredRef.current = false
 
-    const storedName = sessionStorage.getItem(LS_NAME) ?? ''
-    const storedPhone = sessionStorage.getItem(LS_PHONE) ?? ''
-    const storedVerificationCode = sessionStorage.getItem(LS_VERIFICATION) ?? ''
+    const storedName = sessionStorage.getItem(STUDENT_SESSION_NAME_KEY) ?? ''
+    const storedPhone = sessionStorage.getItem(STUDENT_SESSION_PHONE_KEY) ?? ''
+    const storedVerificationCode = sessionStorage.getItem(STUDENT_SESSION_VERIFICATION_KEY) ?? ''
 
-    setName(storedName)
-    setPhone(storedPhone)
-    setVerificationCode(storedVerificationCode)
+    const saved = getSavedStudentCredentials()
+    const effectiveName = storedName || saved?.name || ''
+    const effectivePhone = storedPhone || saved?.phone || ''
+    const effectiveVerification = storedVerificationCode || saved?.verificationCode || ''
 
-    if (storedName && storedPhone && storedVerificationCode) {
-      setSavedName(storedName)
-      setSavedPhone(storedPhone)
-      setSavedVerificationCode(storedVerificationCode)
+    setName(effectiveName)
+    setPhone(effectivePhone)
+    setVerificationCode(effectiveVerification)
+    setRememberMe(isStudentRemembered())
+
+    if (effectiveName && effectivePhone && effectiveVerification) {
+      setSavedName(effectiveName)
+      setSavedPhone(effectivePhone)
+      setSavedVerificationCode(effectiveVerification)
       setShowForm(false)
     } else {
       setShowForm(true)
     }
 
-    fetch(withTenantPrefix('/api/config/app', tenant.type), { cache: 'no-store' })
+    fetch(withTenantPrefix('/api/config/app', tenant.type))
       .then((response) => response.json())
       .then((config: { app_name?: string; student_login_enabled?: boolean; student_courses_enabled?: boolean }) => {
         if (config.app_name) {
@@ -112,16 +126,31 @@ export default function StudentLoginPage() {
         return
       }
 
-      sessionStorage.setItem(LS_NAME, loginName)
-      sessionStorage.setItem(LS_PHONE, loginPhone)
-      sessionStorage.setItem(LS_VERIFICATION, normalizedVerificationCode)
+      sessionStorage.setItem(STUDENT_SESSION_NAME_KEY, loginName)
+      sessionStorage.setItem(STUDENT_SESSION_PHONE_KEY, loginPhone)
+      sessionStorage.setItem(STUDENT_SESSION_VERIFICATION_KEY, normalizedVerificationCode)
+
+      if (rememberMe) {
+        saveStudentCredentials(loginName, loginPhone, normalizedVerificationCode)
+      } else {
+        clearSavedStudentCredentials()
+      }
+
+      writeStudentCourseCache(sessionStorage, {
+        tenant: tenant.type,
+        name: loginName,
+        phone: loginPhone,
+        verificationCode: normalizedVerificationCode,
+        courses: payload?.courses ?? [],
+      })
+
       router.replace(withTenantPrefix('/courses', tenant.type))
     } catch {
       setError('잠시 후 다시 시도해 주세요.')
     } finally {
       setLoading(false)
     }
-  }, [router, studentCoursesEnabled, studentLoginEnabled, tenant.type])
+  }, [rememberMe, router, studentCoursesEnabled, studentLoginEnabled, tenant.type])
 
   useEffect(() => {
     if (!configReady) {
@@ -165,9 +194,8 @@ export default function StudentLoginPage() {
   }
 
   function handleReset() {
-    sessionStorage.removeItem(LS_NAME)
-    sessionStorage.removeItem(LS_PHONE)
-    sessionStorage.removeItem(LS_VERIFICATION)
+    clearStudentSession(sessionStorage)
+    clearSavedStudentCredentials()
     quickLoginTriggeredRef.current = false
     setSavedName('')
     setSavedPhone('')
@@ -175,6 +203,7 @@ export default function StudentLoginPage() {
     setName('')
     setPhone('')
     setVerificationCode('')
+    setRememberMe(false)
     setShowForm(true)
     setError('')
   }
@@ -182,69 +211,86 @@ export default function StudentLoginPage() {
   const studentSurfaceEnabled = studentLoginEnabled && studentCoursesEnabled
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-white p-6">
-      <div className="flex w-full max-w-[320px] flex-col gap-10">
-        <h1 className="break-keep whitespace-pre-wrap text-center text-2xl font-extrabold tracking-tight text-gray-900">
-          {(appName || tenant.defaultAppName).split(/<br\s*\/?>/i).map((line, index, array) => (
-            <span key={index}>
-              {line}
-              {index < array.length - 1 && <br />}
-            </span>
-          ))}
-        </h1>
+    <div className="student-page student-safe-bottom px-4 pt-4 sm:px-5">
+      <div className="flex flex-col gap-5">
+        <section className="student-hero student-card-dark px-5 pb-6 pt-5">
+          <p className="student-eyebrow student-eyebrow-dark">학생 로그인</p>
+          <h1 className="student-display mt-3 break-keep whitespace-pre-wrap">
+            {(appName || tenant.defaultAppName).split(/<br\s*\/?>/i).map((line, index, array) => (
+              <span key={index}>
+                {line}
+                {index < array.length - 1 && <br />}
+              </span>
+            ))}
+          </h1>
+          <p className="student-body student-body-dark mt-2 break-keep">
+            수강 조회, 출석 확인, 모바일 수강증 확인을 한 흐름으로 이어줍니다.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <span className="student-chip student-chip-dark">모바일 수강증</span>
+            <span className="student-chip student-chip-dark">본인 인증</span>
+            <span className="student-chip student-chip-dark">QR 지원</span>
+          </div>
+        </section>
 
-        <div className="flex w-full flex-col">
+        <section className="student-card px-4 py-5 sm:px-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="student-eyebrow student-eyebrow-light">학생 확인</p>
+              <h2 className="student-display-compact mt-2">모바일 학생 확인</h2>
+            </div>
+            <div className="student-chip hidden sm:inline-flex">보안 인증</div>
+          </div>
+
           {configReady && !studentLoginEnabled ? (
-            <div className="bg-[#f0f4ff] p-5 text-center">
-              <p className="text-base font-bold text-gray-900">학생 로그인이 닫혀 있습니다.</p>
-              <p className="mt-2 text-sm leading-6 text-gray-600">
-                현재 학생 로그인 기능이 비활성화되어 있습니다.
-              </p>
+            <div className="student-card-muted px-4 py-3 text-center">
+              <p className="text-[15px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">학생 로그인이 현재 닫혀 있습니다.</p>
+              <p className="student-body mt-2">관리자가 학생 로그인 기능을 일시적으로 비활성화했습니다.</p>
             </div>
           ) : null}
 
           {configReady && studentLoginEnabled && !studentCoursesEnabled ? (
-            <div className="bg-[#f0f4ff] p-5 text-center">
-              <p className="text-base font-bold text-gray-900">수강 조회가 닫혀 있습니다.</p>
-              <p className="mt-2 text-sm leading-6 text-gray-600">
-                현재 학생 수강 조회 기능이 비활성화되어 있습니다.
-              </p>
+            <div className="student-card-muted px-4 py-3 text-center">
+              <p className="text-[15px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">수강 조회가 현재 닫혀 있습니다.</p>
+              <p className="student-body mt-2">관리자가 학생 수강 조회 기능을 일시적으로 비활성화했습니다.</p>
             </div>
           ) : null}
 
           {studentSurfaceEnabled && savedName && !showForm ? (
-            <div className="flex flex-col gap-6">
-              <div className="flex items-center justify-between bg-[#f0f4ff] p-5">
-                <div>
-                  <p className="text-lg font-bold text-gray-900">{savedName}</p>
-                  <p className="mt-1 text-sm text-gray-600">{maskPhone(savedPhone)}</p>
+            <div className="flex flex-col gap-3">
+              <div className="student-card-muted px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="student-eyebrow student-eyebrow-light">저장된 정보</p>
+                    <p className="mt-2 text-[16px] font-semibold tracking-[-0.04em] text-[var(--student-text)]">{savedName}</p>
+                    <p className="mt-1 text-[14px] text-[var(--student-text-muted)]">{maskPhone(savedPhone)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="text-[14px] font-semibold text-[var(--student-link)] transition-opacity hover:opacity-70"
+                  >
+                    정보 변경
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="text-sm text-gray-500 underline transition-colors hover:text-gray-800"
-                >
-                  다른 학생으로 로그인
-                </button>
               </div>
 
-              {error ? <p className="text-center text-sm text-red-600">{error}</p> : null}
+              {error ? <p className="text-center text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
 
               <button
                 type="button"
                 onClick={handleQuickLogin}
                 disabled={loading}
-                className="w-full py-4 text-lg font-bold text-white transition-opacity disabled:opacity-60"
-                style={{ background: 'var(--theme)' }}
+                className="student-pill-button student-pill-primary w-full disabled:translate-y-0 disabled:opacity-40"
               >
-                {loading ? '로그인 중...' : '저장된 정보로 다시 로그인'}
+                {loading ? '로그인 중...' : '저장된 정보로 계속하기'}
               </button>
             </div>
           ) : null}
 
           {studentSurfaceEnabled && showForm ? (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-              <div className="flex flex-col gap-0.5 bg-white">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2.5">
                 <input
                   type="text"
                   value={name}
@@ -252,7 +298,7 @@ export default function StudentLoginPage() {
                   placeholder="이름"
                   autoComplete="name"
                   autoFocus
-                  className="w-full border-none bg-[#f0f4ff] px-4 py-4 text-base text-gray-900 transition-colors placeholder:text-gray-500 focus:bg-[#e4ebff] focus:outline-none"
+                  className="student-input"
                 />
                 <input
                   type="tel"
@@ -261,7 +307,7 @@ export default function StudentLoginPage() {
                   placeholder="휴대폰 번호"
                   autoComplete="tel"
                   inputMode="numeric"
-                  className="w-full border-none bg-[#f0f4ff] px-4 py-4 text-base text-gray-900 transition-colors placeholder:text-gray-500 focus:bg-[#e4ebff] focus:outline-none"
+                  className="student-input"
                 />
                 <input
                   type="tel"
@@ -272,23 +318,32 @@ export default function StudentLoginPage() {
                   inputMode="numeric"
                   minLength={4}
                   maxLength={6}
-                  className="w-full border-none bg-[#f0f4ff] px-4 py-4 text-base text-gray-900 transition-colors placeholder:text-gray-500 focus:bg-[#e4ebff] focus:outline-none"
+                  className="student-input"
                 />
               </div>
 
-              {error ? <p className="text-center text-sm text-red-600">{error}</p> : null}
+              <label className="flex items-center gap-2.5 rounded-full border border-[var(--student-line)] bg-white px-3.5 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  className="h-4 w-4 rounded border-[#cbd5e1] accent-[var(--student-blue)]"
+                />
+                <span className="text-[14px] font-medium text-[var(--student-text-muted)]">로그인 정보 저장</span>
+              </label>
+
+              {error ? <p className="text-center text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 text-lg font-bold text-white transition-opacity disabled:opacity-60"
-                style={{ background: 'var(--theme)' }}
+                className="student-pill-button student-pill-primary w-full disabled:translate-y-0 disabled:opacity-40"
               >
                 {loading ? '로그인 중...' : '로그인'}
               </button>
             </form>
           ) : null}
-        </div>
+        </section>
       </div>
     </div>
   )

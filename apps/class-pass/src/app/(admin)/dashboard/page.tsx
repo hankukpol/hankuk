@@ -75,7 +75,6 @@ export default function AdminDashboardPage() {
         </div>
         <Link
           href={withTenantPrefix('/dashboard/students/auth-setup', tenant.type)}
-          prefetch={false}
           className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
         >
           학생 인증 일괄 설정
@@ -173,7 +172,6 @@ export default function AdminDashboardPage() {
           </h3>
           <Link
             href={withTenantPrefix('/dashboard/courses', tenant.type)}
-            prefetch={false}
             className="text-xs font-semibold text-blue-600 hover:underline"
           >
             전체 강좌 관리 →
@@ -247,14 +245,12 @@ export default function AdminDashboardPage() {
                         <div className="flex items-center justify-end gap-2">
                           <Link
                             href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
-                            prefetch={false}
                             className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
                           >
                             수강생
                           </Link>
                           <Link
                             href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-                            prefetch={false}
                             className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
                           >
                             설정

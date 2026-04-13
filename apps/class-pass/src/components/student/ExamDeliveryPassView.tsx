@@ -1,5 +1,6 @@
 'use client'
 
+import type * as React from 'react'
 import type { PassPayload } from '@/types/database'
 import { formatCourseTypeLabel } from '@/lib/utils'
 
@@ -12,6 +13,8 @@ type ThemeTone = {
   soft: string
   line: string
 }
+
+const DEFAULT_ACCENT = '#0071e3'
 
 const WEEKDAY_PALETTE = [
   { bg: '#f97316', text: '#111827' }, // 일
@@ -44,10 +47,15 @@ function hexToRgb(value: string) {
 function toRgba(hex: string, alpha: number) {
   const rgb = hexToRgb(hex)
   if (!rgb) {
-    return `rgba(26,35,126,${alpha})`
+    return `rgba(0,113,227,${alpha})`
   }
 
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`
+}
+
+function normalizeThemeColor(value: string) {
+  const trimmed = value.trim()
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : DEFAULT_ACCENT
 }
 
 function getContrastText(background: string) {
@@ -94,7 +102,8 @@ function resolveTheme({
     return buildTone(palette.bg, palette.text)
   }
 
-  return buildTone(courseTheme, getContrastText(courseTheme))
+  const accent = normalizeThemeColor(courseTheme)
+  return buildTone(accent, getContrastText(accent))
 }
 
 function formatLiveDateTime(currentTime: Date) {
@@ -122,11 +131,159 @@ function calculateDday(targetDate: string | null) {
   return diff > 0 ? `D-${diff}` : `D+${Math.abs(diff)}`
 }
 
+function StatusCard({
+  accent,
+  badge,
+  message,
+}: {
+  accent: ThemeTone
+  badge: string
+  message: string
+}) {
+  return (
+    <section className="student-card exam-delivery-signal overflow-hidden rounded-[12px] px-4 py-4">
+      <div
+        className="h-1 w-full rounded-full"
+        style={{ background: `linear-gradient(90deg, ${accent.bg} 0%, ${toRgba(accent.bg, 0.2)} 100%)` }}
+      />
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="student-eyebrow student-eyebrow-light">인증 상태</p>
+          <h2 className="student-display-compact mt-2">현장 확인 상태</h2>
+          <p className="student-body mt-2">{message}</p>
+        </div>
+        <span
+          className="student-chip shrink-0 border-0 px-4 py-2 text-[13px]"
+          style={{ backgroundColor: accent.bg, color: accent.text }}
+        >
+          {badge}
+        </span>
+      </div>
+    </section>
+  )
+}
+
+function StudentInfoTable({ rows }: { rows: Array<{ label: string; value: string }> }) {
+  return (
+    <section className="student-card px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="student-eyebrow student-eyebrow-light">수강생 정보</p>
+          <h2 className="student-display-compact mt-2">응시 정보</h2>
+        </div>
+        <span className="student-chip">본인 확인</span>
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-[12px] bg-[var(--student-surface-soft)]">
+        <table className="w-full text-[14px]">
+          <tbody>
+            {rows.map(({ label, value }) => (
+              <tr key={`${label}-${value}`} className="border-b border-[var(--student-line)] last:border-b-0">
+                <td className="w-[80px] px-3 py-2.5 text-[var(--student-text-muted)]">{label}</td>
+                <td className="px-3 py-2.5 text-right font-semibold tracking-[-0.02em] text-[var(--student-text)]">
+                  {value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function SeatAssignments({
+  subjects,
+  seatMap,
+}: {
+  subjects: PassPayload['subjects']
+  seatMap: Map<number, string | null>
+}) {
+  return (
+    <section className="student-card px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="student-eyebrow student-eyebrow-light">좌석 배정</p>
+          <h2 className="student-display-compact mt-2">좌석 배정</h2>
+        </div>
+        <span className="student-chip">{subjects.length}과목</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {subjects.map((subject) => (
+          <div key={subject.id} className="student-card-muted px-3 py-3 text-center">
+            <p className="text-[11px] text-[var(--student-text-muted)]">{subject.name}</p>
+            <p className="mt-1.5 text-[24px] font-semibold leading-[1] tracking-[-0.05em] text-[var(--student-text)]">
+              {seatMap.get(subject.id) ?? '-'}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function BottomActions({
+  hasChatLink,
+  chatUrl,
+  hasNotice,
+  hasRefund,
+  onBack,
+  onOpenNotice,
+  onOpenRefund,
+}: {
+  hasChatLink: boolean
+  chatUrl?: string | null
+  hasNotice: boolean
+  hasRefund: boolean
+  onBack: () => void
+  onOpenNotice: () => void
+  onOpenRefund: () => void
+}) {
+  return (
+    <div className="mt-auto px-4 pt-4 sm:px-5">
+      {hasChatLink && chatUrl ? (
+        <a
+          href={chatUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="student-pill-button mb-2 flex w-full gap-2 text-[#191919]"
+          style={{ backgroundColor: '#FEE500' }}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="#191919" aria-hidden="true">
+            <path d="M12 3C6.477 3 2 6.463 2 10.691c0 2.734 1.811 5.126 4.535 6.482-.145.53-.93 3.408-.965 3.627 0 0-.02.164.087.227.106.063.231.03.231.03.305-.043 3.535-2.313 4.094-2.71.655.098 1.33.15 2.018.15 5.523 0 10-3.463 10-7.806C22 6.463 17.523 3 12 3" />
+          </svg>
+          카카오톡 단톡방 참여
+        </a>
+      ) : null}
+
+      {hasNotice || hasRefund ? (
+        <div className="mb-2 flex gap-2">
+          {hasNotice ? (
+            <button type="button" onClick={onOpenNotice} className="student-pill-button student-pill-secondary flex-1">
+              공지사항
+            </button>
+          ) : null}
+          {hasRefund ? (
+            <button type="button" onClick={onOpenRefund} className="student-pill-button student-pill-secondary flex-1">
+              환불 규정
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <button type="button" onClick={onBack} className="student-pill-button student-pill-outline w-full">
+        강좌 목록으로 돌아가기
+      </button>
+    </div>
+  )
+}
+
 export function ExamDeliveryPassView({
   data,
   currentTime,
   courseTheme,
-  tenantAppName: _tenantAppName,
+  tenantAppName,
   status,
   extraContent,
   onBack,
@@ -144,7 +301,6 @@ export function ExamDeliveryPassView({
   onOpenRefund: () => void
 }) {
   const motionEnabled = status === 'eligible' && data.course.feature_anti_forgery_motion
-  void _tenantAppName
   const theme = resolveTheme({
     currentTime,
     courseTheme,
@@ -192,151 +348,176 @@ export function ExamDeliveryPassView({
 
   return (
     <div
-      className={`flex min-h-dvh flex-col ${motionEnabled ? 'exam-delivery-breathe' : 'bg-white'}`}
+      className={`student-page student-safe-bottom relative isolate min-h-dvh overflow-hidden ${motionEnabled ? 'exam-delivery-breathe' : ''}`}
       style={{
-        '--breathe-bg': theme.bg,
-        '--breathe-text': theme.text,
-        ...(!motionEnabled ? {} : { backgroundColor: theme.bg, color: theme.text }),
+        '--exam-accent': theme.bg,
+        '--exam-accent-soft': theme.soft,
+        '--exam-accent-line': theme.line,
+        '--exam-accent-glow': toRgba(theme.bg, 0.42),
+        '--exam-accent-glow-strong': toRgba(theme.bg, 0.72),
+        '--exam-accent-tint': toRgba(theme.bg, 0.1),
+        '--exam-accent-tint-mid': toRgba(theme.bg, 0.16),
+        '--exam-accent-tint-peak': toRgba(theme.bg, 0.26),
       } as React.CSSProperties}
     >
       <style>{`
-        @keyframes exam-delivery-breathe {
-          0%, 100% { background-color: var(--breathe-bg); color: var(--breathe-text); }
-          50% { background-color: #ffffff; color: #111111; }
+        @keyframes exam-page-breathe {
+          0%, 100% {
+            opacity: 0.52;
+            transform: scale(1);
+            filter: saturate(1) brightness(1);
+            box-shadow:
+              inset 0 0 0 0 transparent,
+              inset 0 0 120px 12px transparent;
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.02);
+            filter: saturate(1.28) brightness(1.05);
+            box-shadow:
+              inset 0 0 220px 54px var(--exam-accent-glow),
+              inset 0 0 340px 96px var(--exam-accent-soft, transparent);
+          }
         }
         .exam-delivery-breathe {
-          animation: exam-delivery-breathe 1.5s ease-in-out infinite;
+          background: var(--apple-gray) !important;
         }
-        .exam-delivery-breathe *:not(.breathe-keep) {
-          color: inherit !important;
+        .exam-delivery-page-glow {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background:
+            radial-gradient(circle at 50% 14%, var(--exam-accent-tint-mid) 0%, transparent 34%),
+            radial-gradient(circle at 22% 58%, var(--exam-accent-tint) 0%, transparent 38%),
+            radial-gradient(circle at 82% 84%, var(--exam-accent-tint-peak) 0%, transparent 40%),
+            linear-gradient(180deg, var(--exam-accent-tint) 0%, transparent 42%, var(--exam-accent-tint-mid) 100%);
+          animation: exam-page-breathe 1.5s ease-in-out infinite;
+          transform-origin: center;
         }
-        .exam-delivery-breathe [class*="border-gray"] {
-          border-color: rgba(128,128,128,0.25) !important;
+        .exam-delivery-page-glow::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(circle at center, transparent 0%, transparent 52%, var(--exam-accent-glow) 100%);
+          opacity: 0.42;
+          animation: exam-page-breathe 1.5s ease-in-out infinite;
+          animation-delay: 0.08s;
+        }
+        @keyframes exam-hero-breathe {
+          0%, 100% {
+            opacity: 0.44;
+            transform: scale(0.96);
+            filter: blur(0px) saturate(1);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.22);
+            filter: blur(2px) saturate(1.25);
+          }
+        }
+        .exam-delivery-hero-glow {
+          position: absolute;
+          inset: -18% -10% -12% 44%;
+          z-index: 0;
+          pointer-events: none;
+          background:
+            radial-gradient(circle at 48% 54%, var(--exam-accent-glow-strong) 0%, var(--exam-accent-glow) 26%, transparent 68%);
+          mix-blend-mode: screen;
+          animation: exam-hero-breathe 1.5s ease-in-out infinite;
+        }
+        @keyframes exam-card-breathe {
+          0%, 100% {
+            box-shadow:
+              0 0 0 0 transparent,
+              0 0 0 0 transparent;
+            border-color: transparent;
+          }
+          50% {
+            box-shadow:
+              0 0 0 2px var(--exam-accent),
+              0 0 48px 10px var(--exam-accent-glow-strong);
+            border-color: var(--exam-accent);
+          }
+        }
+        .exam-delivery-signal {
+          border: 1px solid transparent;
+        }
+        .exam-delivery-breathe .exam-delivery-signal {
+          animation: exam-card-breathe 1.5s ease-in-out infinite;
+        }
+        .exam-delivery-breathe .student-hero,
+        .exam-delivery-breathe .student-card,
+        .exam-delivery-breathe .student-card-muted {
+          position: relative;
+          z-index: 1;
         }
       `}</style>
 
-      <div
-        style={motionEnabled ? { color: 'inherit' } : { backgroundColor: theme.bg, color: theme.text }}
-      >
-        <div className="px-4 py-5">
-          <div className="flex items-center justify-between">
-            <button type="button" onClick={onBack} className="text-sm font-medium" style={{ color: motionEnabled ? 'inherit' : theme.text }}>
-              ← 목록
-            </button>
-            <span className="text-xs font-semibold" style={{ color: motionEnabled ? 'inherit' : theme.muted, opacity: motionEnabled ? 0.82 : 1 }}>
-              {formatCourseTypeLabel(data.course.course_type)}
-            </span>
-          </div>
+      {motionEnabled ? <div className="exam-delivery-page-glow" aria-hidden="true" /> : null}
 
-          <div className="mt-5 text-center">
-            <h1 className="break-keep text-[28px] font-black leading-tight">{data.course.name}</h1>
-            <p className="mt-2 text-base font-semibold" style={{ color: motionEnabled ? 'inherit' : theme.muted, opacity: motionEnabled ? 0.82 : 1 }}>
-              {formatLiveDateTime(currentTime)}
-            </p>
-            {dday ? (
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full px-4 py-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
-                <span className="text-2xl font-black">{dday}</span>
-                <span className="text-sm font-semibold" style={{ opacity: 0.85 }}>{ddayLabel}까지 파이팅!</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <section className="border-t border-gray-100 p-4">
-        <div
-          className="mb-3 rounded-xl px-4 py-3 text-sm font-semibold"
-          style={{ backgroundColor: theme.soft, color: '#111827', border: `1px solid ${theme.line}` }}
+      <div className="relative z-[1] flex min-h-dvh flex-col">
+        <section
+          className="student-hero px-4 pb-6 pt-4 sm:px-5"
+          style={{
+            background: '#000000',
+          }}
         >
-          <div className="flex items-center justify-between gap-3">
-            <span>{statusConfig.message}</span>
-            <span className="breathe-keep shrink-0 rounded-full px-3 py-1 text-xs font-bold" style={{ backgroundColor: theme.bg, color: theme.text }}>
+          {motionEnabled ? <div className="exam-delivery-hero-glow" aria-hidden="true" /> : null}
+
+          <div className="relative z-[1] flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-opacity hover:text-white"
+            >
+              목록으로
+            </button>
+            <span className="student-chip student-chip-dark">{formatCourseTypeLabel(data.course.course_type)}</span>
+          </div>
+
+          <div className="relative z-[1] mt-5">
+            <p className="student-eyebrow student-eyebrow-dark">{tenantAppName}</p>
+            <h1 className="student-display mt-2">모바일 수강증</h1>
+            <p className="student-body student-body-dark mt-2 break-keep">{data.course.name}</p>
+            <p className="student-body student-body-dark mt-1">{formatLiveDateTime(currentTime)}</p>
+          </div>
+
+          <div className="relative z-[1] mt-4 flex flex-wrap gap-1.5">
+            <span
+              className="student-chip student-chip-dark"
+              style={{ backgroundColor: theme.bg, color: theme.text }}
+            >
               {statusConfig.badge}
             </span>
-          </div>
-        </div>
-
-        <h2 className="mb-3 text-sm font-bold" style={{ color: courseTheme }}>학생 정보</h2>
-        <table className="w-full text-sm">
-          <tbody>
-            {studentFields.map(({ label, value }) => (
-              <tr key={`${label}-${value}`} className="border-b border-gray-100 last:border-0">
-                <td className="w-20 py-3 pr-3 text-gray-500">{label}</td>
-                <td className="py-3 font-semibold text-gray-900">{value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      {showSeatAssignments ? (
-        <section className="border-t border-gray-100 p-4">
-          <h2 className="mb-3 text-sm font-bold" style={{ color: courseTheme }}>
-            좌석 배정 <span className="ml-1 text-xs font-normal text-gray-400">{data.subjects.length}과목</span>
-          </h2>
-          <div className="grid grid-cols-2 gap-2">
-            {data.subjects.map((subject) => (
-              <div key={subject.id} className="border border-gray-100 px-4 py-4 text-center">
-                <p className="text-xs font-medium text-gray-500">{subject.name}</p>
-                <p className="mt-3 text-[28px] font-black text-gray-900">{seatMap.get(subject.id) ?? '-'}</p>
-              </div>
-            ))}
+            {dday ? (
+              <span className="student-chip student-chip-dark">
+                {dday} · {ddayLabel}
+              </span>
+            ) : null}
+            <span className="student-chip student-chip-dark">현장 확인</span>
           </div>
         </section>
-      ) : null}
 
-      {extraContent}
+        <div className="flex flex-col gap-3 px-4 pt-4 sm:px-5">
+          <StatusCard accent={theme} badge={statusConfig.badge} message={statusConfig.message} />
+          <StudentInfoTable rows={studentFields} />
 
-      {hasChatLink ? (
-        <div className="mt-auto px-4 pb-2">
-          <a
-            href={data.course.kakao_chat_url!}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="breathe-keep flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold"
-            style={{ backgroundColor: '#FEE500', color: '#191919' }}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="#191919">
-              <path d="M12 3C6.477 3 2 6.463 2 10.691c0 2.734 1.811 5.126 4.535 6.482-.145.53-.93 3.408-.965 3.627 0 0-.02.164.087.227.106.063.231.03.231.03.305-.043 3.535-2.313 4.094-2.71.655.098 1.33.15 2.018.15 5.523 0 10-3.463 10-7.806C22 6.463 17.523 3 12 3" />
-            </svg>
-            카카오톡 단톡방 참여
-          </a>
+          {showSeatAssignments ? <SeatAssignments subjects={data.subjects} seatMap={seatMap} /> : null}
         </div>
-      ) : null}
 
-      {hasNotice || hasRefund ? (
-        <div className={`flex gap-3 px-4 pb-2 ${hasChatLink ? '' : 'mt-auto'}`}>
-          {hasNotice ? (
-            <button
-              type="button"
-              onClick={onOpenNotice}
-              className="breathe-keep flex-1 py-3 text-sm font-medium"
-              style={{ backgroundColor: theme.soft, color: '#111827', border: `1px solid ${theme.line}` }}
-            >
-              공지사항
-            </button>
-          ) : null}
-          {hasRefund ? (
-            <button
-              type="button"
-              onClick={onOpenRefund}
-              className="breathe-keep flex-1 py-3 text-sm font-medium"
-              style={{ backgroundColor: theme.soft, color: '#111827', border: `1px solid ${theme.line}` }}
-            >
-              환불 규정
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        {extraContent}
 
-      <div className="px-4 pb-6 pt-4">
-        <button
-          type="button"
-          onClick={onBack}
-          className="breathe-keep w-full border border-gray-200 py-3 text-sm text-gray-500"
-        >
-          강좌 목록으로 돌아가기
-        </button>
+        <BottomActions
+          hasChatLink={hasChatLink}
+          chatUrl={data.course.kakao_chat_url}
+          hasNotice={hasNotice}
+          hasRefund={hasRefund}
+          onBack={onBack}
+          onOpenNotice={onOpenNotice}
+          onOpenRefund={onOpenRefund}
+        />
       </div>
     </div>
   )

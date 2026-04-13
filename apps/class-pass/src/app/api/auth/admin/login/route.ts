@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({ success: true, division, adminId })
     response.cookies.set(getBranchAdminCookieName(division), token, cookieOptions(ADMIN_TTL_SEC))
     return response
-  } catch {
+  } catch (err) {
+    console.error('[admin/login] error:', err)
     return NextResponse.json({ error: 'Authentication failed.' }, { status: 500 })
   }
 }

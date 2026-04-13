@@ -77,7 +77,8 @@ export async function getAdminId(): Promise<string> {
     .maybeSingle()
 
   if (error) {
-    throw new Error('Failed to load admin ID.')
+    console.error(`[getAdminId] key=${configKey} error:`, error.message, error.code, error.details, error.hint)
+    throw new Error(`Failed to load admin ID: ${error.message}`)
   }
 
   return typeof data?.value === 'string' ? data.value : ''

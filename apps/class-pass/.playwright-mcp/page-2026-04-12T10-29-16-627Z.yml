@@ -1,0 +1,44 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e8] [cursor=pointer]:
+    - img [ref=e9]
+  - alert [ref=e12]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - paragraph [ref=e18]: 직원 배부
+          - heading "현장 스캔 및 배부" [level=1] [ref=e19]
+          - paragraph [ref=e20]: 현장에서 QR 스캔과 수동 배부를 한 곳에서 처리합니다.
+        - generic [ref=e21]:
+          - generic [ref=e22]: 직원 세션
+          - button "로그아웃" [ref=e23]
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]: 강좌
+          - combobox "강좌" [ref=e27]:
+            - option "강좌를 선택하세요"
+            - option "한국경찰학원 종합반 수강증" [selected]
+            - option "알짜 문제풀이"
+            - option "5월 아침모의고사"
+            - option "26년 하반기 대비 테마특강"
+            - option "최준 면접반"
+        - generic [ref=e28]:
+          - button "QR 스캔" [ref=e29]
+          - button "수동 배부" [ref=e30]
+    - generic [ref=e31]:
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - heading "QR 스캐너" [level=2] [ref=e35]
+          - paragraph [ref=e36]: 수강생 QR 코드를 스캔하면 다음 필요한 자료를 즉시 배부합니다.
+        - button "다시 시작" [ref=e37]
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - heading "선택된 강좌" [level=2] [ref=e42]
+          - paragraph [ref=e43]: QR 토큰에 강좌 정보가 포함되어 있지만, 현장 직원이 세션을 확인할 수 있도록 현재 강좌를 표시합니다.
+          - generic [ref=e44]:
+            - paragraph [ref=e45]: 현재 강좌
+            - paragraph [ref=e46]: 한국경찰학원 종합반 수강증
+            - paragraph [ref=e47]: 활성 자료 0
+        - generic [ref=e48]:
+          - heading "안내" [level=2] [ref=e49]
+          - paragraph [ref=e50]: 수강생이 수강증 페이지 URL을 직접 열면 토큰이 자동으로 처리됩니다. 카메라 접근이 차단된 경우 전화번호로 수동 배부를 이용해 주세요.

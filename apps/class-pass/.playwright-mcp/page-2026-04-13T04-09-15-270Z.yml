@@ -1,0 +1,11 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e5]:
+      - heading "한국경찰학원 모바일 수강증" [level=1] [ref=e6]
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - textbox "이름" [active] [ref=e10]
+          - textbox "휴대폰 번호" [ref=e11]
+          - textbox "생년월일 6자리 또는 PIN" [ref=e12]
+        - button "로그인" [ref=e13]
+  - alert [ref=e14]

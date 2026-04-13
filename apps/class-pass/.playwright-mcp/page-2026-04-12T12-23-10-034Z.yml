@@ -1,0 +1,66 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "내 수강 강좌" [level=1] [ref=e6]
+        - paragraph [ref=e7]: 김철수 · 010-****-1234
+      - generic [ref=e9]:
+        - link "1 최준 면접반 강의 QR 배부 D-day →" [active] [ref=e10] [cursor=pointer]:
+          - /url: /police/courses/police-interview-1?enrollmentId=1
+          - generic [ref=e11]:
+            - generic [ref=e12]:
+              - generic [ref=e13]: "1"
+              - paragraph [ref=e14]: 최준 면접반
+            - generic [ref=e15]:
+              - generic [ref=e16]: 강의
+              - generic [ref=e17]: QR
+              - generic [ref=e18]: 배부
+              - generic [ref=e19]: D-day
+          - generic [ref=e20]: →
+        - link "2 26년 하반기 대비 테마특강 강의 좌석 D-day →" [ref=e21] [cursor=pointer]:
+          - /url: /police/courses/26년-하반기-대비-테마특강?enrollmentId=18
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - generic [ref=e24]: "2"
+              - paragraph [ref=e25]: 26년 하반기 대비 테마특강
+            - generic [ref=e26]:
+              - generic [ref=e27]: 강의
+              - generic [ref=e28]: 좌석
+              - generic [ref=e29]: D-day
+          - generic [ref=e30]: →
+        - link "3 5월 아침모의고사 모의고사 →" [ref=e31] [cursor=pointer]:
+          - /url: /police/courses/5월-아침모의고사?enrollmentId=17
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - generic [ref=e34]: "3"
+              - paragraph [ref=e35]: 5월 아침모의고사
+            - generic [ref=e37]: 모의고사
+          - generic [ref=e38]: →
+        - link "4 알짜 문제풀이 강의 QR 좌석 배부 D-day →" [ref=e39] [cursor=pointer]:
+          - /url: /police/courses/알짜-문제풀이?enrollmentId=19
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - generic [ref=e42]: "4"
+              - paragraph [ref=e43]: 알짜 문제풀이
+            - generic [ref=e44]:
+              - generic [ref=e45]: 강의
+              - generic [ref=e46]: QR
+              - generic [ref=e47]: 좌석
+              - generic [ref=e48]: 배부
+              - generic [ref=e49]: D-day
+          - generic [ref=e50]: →
+        - link "5 한국경찰학원 종합반 수강증 일반 배부 D-day →" [ref=e51] [cursor=pointer]:
+          - /url: /police/courses/한국경찰학원-종합반-수강증?enrollmentId=20
+          - generic [ref=e52]:
+            - generic [ref=e53]:
+              - generic [ref=e54]: "5"
+              - paragraph [ref=e55]: 한국경찰학원 종합반 수강증
+            - generic [ref=e56]:
+              - generic [ref=e57]: 일반
+              - generic [ref=e58]: 배부
+              - generic [ref=e59]: D-day
+          - generic [ref=e60]: →
+      - button "처음 화면으로 돌아가기" [ref=e62]
+  - button "Open Next.js Dev Tools" [ref=e68] [cursor=pointer]:
+    - img [ref=e69]
+  - alert [ref=e72]

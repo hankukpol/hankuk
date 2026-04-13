@@ -1,0 +1,67 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: 경찰 · police
+          - paragraph [ref=e14]: 경찰 Class Pass 관리자
+      - navigation [ref=e15]:
+        - generic [ref=e16]: 관리자 메뉴
+        - link "대시보드" [ref=e17] [cursor=pointer]:
+          - /url: /police/dashboard
+          - img [ref=e18]
+          - generic [ref=e23]: 대시보드
+        - link "강좌 관리" [ref=e24] [cursor=pointer]:
+          - /url: /police/dashboard/courses
+          - img [ref=e25]
+          - generic [ref=e27]: 강좌 관리
+        - link "학생 인증" [ref=e28] [cursor=pointer]:
+          - /url: /police/dashboard/students/auth-setup
+          - img [ref=e29]
+          - generic [ref=e32]: 학생 인증
+        - link "직원 관리" [ref=e33] [cursor=pointer]:
+          - /url: /police/dashboard/staff
+          - img [ref=e34]
+          - generic [ref=e39]: 직원 관리
+        - link "팝업 관리" [ref=e40] [cursor=pointer]:
+          - /url: /police/dashboard/popups
+          - img [ref=e41]
+          - generic [ref=e44]: 팝업 관리
+        - link "지점 설정" [ref=e45] [cursor=pointer]:
+          - /url: /police/dashboard/config
+          - img [ref=e46]
+          - generic [ref=e49]: 지점 설정
+      - generic [ref=e50]:
+        - link "직원 화면" [ref=e51] [cursor=pointer]:
+          - /url: /police/staff/login
+          - img [ref=e52]
+          - generic [ref=e57]: 직원 화면
+        - button "로그아웃" [ref=e58]:
+          - img [ref=e59]
+          - generic [ref=e62]: 로그아웃
+    - main [ref=e64]:
+      - generic [ref=e68]:
+        - generic [ref=e69]:
+          - link "대시보드" [ref=e70] [cursor=pointer]:
+            - /url: /police/dashboard
+          - heading "학생 인증 일괄 설정" [level=2] [ref=e71]
+          - paragraph [ref=e72]: 기존 학생 중 인증 방식이 비어 있는 학생에게 생년월일 인증 또는 PIN 인증을 한 번에 설정합니다.
+        - generic [ref=e74]:
+          - generic [ref=e75]:
+            - paragraph [ref=e76]: Pending Students
+            - paragraph [ref=e77]: "인증 미설정 학생: 282명"
+            - paragraph [ref=e78]: 생년월일 등록 학생 0명, PIN 발급 필요 학생 282명
+          - button "일괄 설정 실행" [ref=e79]
+        - generic [ref=e80]:
+          - heading "실행 기준" [level=3] [ref=e81]
+          - list [ref=e82]:
+            - listitem [ref=e83]: 이미 인증 방식이 설정된 학생은 건너뜁니다.
+            - listitem [ref=e84]: 생년월일이 있으면 생년월일 인증으로 설정합니다.
+            - listitem [ref=e85]: 생년월일이 없으면 4자리 PIN을 새로 발급합니다.
+        - generic [ref=e86]:
+          - generic [ref=e88]:
+            - heading "실행 결과" [level=3] [ref=e89]
+            - paragraph [ref=e90]: PIN은 이 화면에서만 확인 가능하므로 필요 시 바로 CSV로 다운로드하세요.
+          - paragraph [ref=e91]: 아직 실행한 내역이 없습니다.
+  - alert [ref=e67]

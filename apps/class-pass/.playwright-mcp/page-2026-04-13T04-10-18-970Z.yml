@@ -1,0 +1,66 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: 경찰 · police
+          - paragraph [ref=e14]: 경찰 Class Pass 관리자
+      - navigation [ref=e15]:
+        - generic [ref=e16]: 관리자 메뉴
+        - link "대시보드" [ref=e17] [cursor=pointer]:
+          - /url: /police/dashboard
+          - img [ref=e18]
+          - generic [ref=e23]: 대시보드
+        - link "강좌 관리" [ref=e24] [cursor=pointer]:
+          - /url: /police/dashboard/courses
+          - img [ref=e25]
+          - generic [ref=e27]: 강좌 관리
+        - link "학생 인증" [ref=e28] [cursor=pointer]:
+          - /url: /police/dashboard/students/auth-setup
+          - img [ref=e29]
+          - generic [ref=e32]: 학생 인증
+        - link "직원 관리" [ref=e33] [cursor=pointer]:
+          - /url: /police/dashboard/staff
+          - img [ref=e34]
+          - generic [ref=e39]: 직원 관리
+        - link "팝업 관리" [ref=e40] [cursor=pointer]:
+          - /url: /police/dashboard/popups
+          - img [ref=e41]
+          - generic [ref=e44]: 팝업 관리
+        - link "지점 설정" [ref=e45] [cursor=pointer]:
+          - /url: /police/dashboard/config
+          - img [ref=e46]
+          - generic [ref=e49]: 지점 설정
+      - generic [ref=e50]:
+        - link "직원 화면" [ref=e51] [cursor=pointer]:
+          - /url: /police/staff/login
+          - img [ref=e52]
+          - generic [ref=e57]: 직원 화면
+        - button "로그아웃" [ref=e58]:
+          - img [ref=e59]
+          - generic [ref=e62]: 로그아웃
+    - main [ref=e64]:
+      - generic [ref=e68]:
+        - generic [ref=e69]:
+          - generic [ref=e70]:
+            - link "← 3-4월 아침모의고사" [ref=e71] [cursor=pointer]:
+              - /url: /police/dashboard/courses/3
+            - heading "수강생 관리" [level=2] [ref=e72]
+            - paragraph [ref=e73]: 전체 268 · 활성 268 · 환불 0
+          - generic [ref=e74]:
+            - button "+ 수강생 등록" [ref=e75]
+            - button "명단 붙여넣기" [ref=e76]
+        - paragraph [ref=e4404]: 삭제 완료
+        - generic [ref=e77]:
+          - button "수강생 목록" [ref=e78]
+          - button "수령 현황" [ref=e79]
+        - generic [ref=e80]:
+          - generic [ref=e81]:
+            - textbox "이름, 연락처, 학번 검색..." [ref=e82]: 코덱스테스트
+            - generic [ref=e83]:
+              - button "전체" [ref=e84]
+              - button "활성" [ref=e85]
+              - button "환불" [ref=e86]
+          - paragraph [ref=e4405]: 검색 결과 없음
+  - alert [ref=e67]

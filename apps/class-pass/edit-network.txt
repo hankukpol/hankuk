@@ -1,0 +1,2 @@
+[PATCH] http://127.0.0.1:3100/api/enrollments/312 => [200] OK
+  Request body: {"name":"코덱스테스트","phone":"01055550413","exam_number":"990413","birth_date":"900102","custom_data":{"field_1776045141622":"테스트","field_1776045146486":"테스트"}}

@@ -1,0 +1,16 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - heading "내 수강 강좌" [level=1] [ref=e17]
+        - paragraph [ref=e18]: 코덱스테스트 · 010-****-0413
+      - link "3 3-4월 아침모의고사 모의고사 열기" [ref=e21] [cursor=pointer]:
+        - /url: /police/courses/5월-아침모의고사?enrollmentId=312
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]: "3"
+            - paragraph [ref=e25]: 3-4월 아침모의고사
+          - generic [ref=e27]: 모의고사
+        - generic [ref=e28]: 열기
+      - button "처음 화면으로 돌아가기" [ref=e30]
+  - alert [ref=e14]

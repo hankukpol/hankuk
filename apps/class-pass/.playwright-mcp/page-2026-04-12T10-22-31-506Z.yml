@@ -1,0 +1,49 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - generic [ref=e12]:
+        - paragraph [ref=e13]: 경찰 · police
+        - paragraph [ref=e14]: 경찰 Class Pass 관리자
+    - navigation [ref=e15]:
+      - generic [ref=e16]: 관리자 메뉴
+      - link "대시보드" [ref=e17] [cursor=pointer]:
+        - /url: /police/dashboard
+        - img [ref=e18]
+        - generic [ref=e23]: 대시보드
+      - link "강좌 관리" [ref=e24] [cursor=pointer]:
+        - /url: /police/dashboard/courses
+        - img [ref=e25]
+        - generic [ref=e27]: 강좌 관리
+      - link "직원 관리" [ref=e28] [cursor=pointer]:
+        - /url: /police/dashboard/staff
+        - img [ref=e29]
+        - generic [ref=e34]: 직원 관리
+      - link "팝업 관리" [ref=e35] [cursor=pointer]:
+        - /url: /police/dashboard/popups
+        - img [ref=e36]
+        - generic [ref=e39]: 팝업 관리
+      - link "지점 설정" [ref=e40] [cursor=pointer]:
+        - /url: /police/dashboard/config
+        - img [ref=e41]
+        - generic [ref=e44]: 지점 설정
+    - generic [ref=e45]:
+      - link "직원 화면" [ref=e46] [cursor=pointer]:
+        - /url: /police/staff/login
+        - img [ref=e47]
+        - generic [ref=e52]: 직원 화면
+      - button "로그아웃" [ref=e53]:
+        - img [ref=e54]
+        - generic [ref=e57]: 로그아웃
+  - main [ref=e59]:
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - heading "강좌 관리" [level=2] [ref=e64]
+          - paragraph [ref=e65]: 전체 0개 · 운영중 0개
+        - button "+ 새 강좌" [ref=e66]
+      - generic [ref=e67]:
+        - button "전체" [ref=e68]
+        - button "운영중" [ref=e69]
+        - button "보관됨" [ref=e70]
+      - paragraph [ref=e72]: 불러오는 중...

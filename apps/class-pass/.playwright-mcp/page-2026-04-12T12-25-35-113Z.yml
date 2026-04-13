@@ -1,0 +1,173 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: 경찰 · police
+          - paragraph [ref=e14]: 경찰 Class Pass 관리자
+      - navigation [ref=e15]:
+        - generic [ref=e16]: 관리자 메뉴
+        - link "대시보드" [ref=e17] [cursor=pointer]:
+          - /url: /police/dashboard
+          - img [ref=e18]
+          - generic [ref=e23]: 대시보드
+        - link "강좌 관리" [active] [ref=e24] [cursor=pointer]:
+          - /url: /police/dashboard/courses
+          - img [ref=e25]
+          - generic [ref=e27]: 강좌 관리
+        - link "직원 관리" [ref=e28] [cursor=pointer]:
+          - /url: /police/dashboard/staff
+          - img [ref=e29]
+          - generic [ref=e34]: 직원 관리
+        - link "팝업 관리" [ref=e35] [cursor=pointer]:
+          - /url: /police/dashboard/popups
+          - img [ref=e36]
+          - generic [ref=e39]: 팝업 관리
+        - link "지점 설정" [ref=e40] [cursor=pointer]:
+          - /url: /police/dashboard/config
+          - img [ref=e41]
+          - generic [ref=e44]: 지점 설정
+      - generic [ref=e45]:
+        - link "직원 화면" [ref=e46] [cursor=pointer]:
+          - /url: /police/staff/login
+          - img [ref=e47]
+          - generic [ref=e52]: 직원 화면
+        - button "로그아웃" [ref=e53]:
+          - img [ref=e54]
+          - generic [ref=e57]: 로그아웃
+    - main [ref=e59]:
+      - generic [ref=e265]:
+        - generic [ref=e266]:
+          - generic [ref=e267]:
+            - heading "강좌 관리" [level=2] [ref=e268]
+            - paragraph [ref=e269]: 전체 5개 · 운영중 5개
+          - button "+ 새 강좌" [ref=e270]
+        - generic [ref=e271]:
+          - button "전체" [ref=e272]
+          - button "운영중" [ref=e273]
+          - button "보관됨" [ref=e274]
+        - table [ref=e277]:
+          - rowgroup [ref=e278]:
+            - row "강좌 유형 상태 기능 관리" [ref=e279]:
+              - columnheader "강좌" [ref=e280]
+              - columnheader "유형" [ref=e281]
+              - columnheader "상태" [ref=e282]
+              - columnheader "기능" [ref=e283]
+              - columnheader "관리" [ref=e284]
+          - rowgroup [ref=e285]:
+            - row "5 한국경찰학원 종합반 수강증 한국경찰학원-종합반-수강증 일반 운영중 배부 사진 D-day 수강생 설정 보관" [ref=e286]:
+              - cell "5 한국경찰학원 종합반 수강증 한국경찰학원-종합반-수강증" [ref=e287]:
+                - generic [ref=e288]:
+                  - generic [ref=e289]: "5"
+                  - generic [ref=e290]:
+                    - paragraph [ref=e291]: 한국경찰학원 종합반 수강증
+                    - paragraph [ref=e292]: 한국경찰학원-종합반-수강증
+              - cell "일반" [ref=e293]
+              - cell "운영중" [ref=e294]:
+                - generic [ref=e295]: 운영중
+              - cell "배부 사진 D-day" [ref=e296]:
+                - generic [ref=e297]:
+                  - generic [ref=e298]: 배부
+                  - generic [ref=e299]: 사진
+                  - generic [ref=e300]: D-day
+              - cell "수강생 설정 보관" [ref=e301]:
+                - generic [ref=e302]:
+                  - link "수강생" [ref=e303] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/5/students
+                  - link "설정" [ref=e304] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/5
+                  - button "보관" [ref=e305]
+            - row "4 알짜 문제풀이 알짜-문제풀이 강의 운영중 QR 배부 좌석 D-day 요일색 보안효과 수강생 설정 보관" [ref=e306]:
+              - cell "4 알짜 문제풀이 알짜-문제풀이" [ref=e307]:
+                - generic [ref=e308]:
+                  - generic [ref=e309]: "4"
+                  - generic [ref=e310]:
+                    - paragraph [ref=e311]: 알짜 문제풀이
+                    - paragraph [ref=e312]: 알짜-문제풀이
+              - cell "강의" [ref=e313]
+              - cell "운영중" [ref=e314]:
+                - generic [ref=e315]: 운영중
+              - cell "QR 배부 좌석 D-day 요일색 보안효과" [ref=e316]:
+                - generic [ref=e317]:
+                  - generic [ref=e318]: QR
+                  - generic [ref=e319]: 배부
+                  - generic [ref=e320]: 좌석
+                  - generic [ref=e321]: D-day
+                  - generic [ref=e322]: 요일색
+                  - generic [ref=e323]: 보안효과
+              - cell "수강생 설정 보관" [ref=e324]:
+                - generic [ref=e325]:
+                  - link "수강생" [ref=e326] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/4/students
+                  - link "설정" [ref=e327] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/4
+                  - button "보관" [ref=e328]
+            - row "3 5월 아침모의고사 5월-아침모의고사 모의고사 운영중 시간 배부모드 요일색 보안효과 수강생 설정 보관" [ref=e329]:
+              - cell "3 5월 아침모의고사 5월-아침모의고사" [ref=e330]:
+                - generic [ref=e331]:
+                  - generic [ref=e332]: "3"
+                  - generic [ref=e333]:
+                    - paragraph [ref=e334]: 5월 아침모의고사
+                    - paragraph [ref=e335]: 5월-아침모의고사
+              - cell "모의고사" [ref=e336]
+              - cell "운영중" [ref=e337]:
+                - generic [ref=e338]: 운영중
+              - cell "시간 배부모드 요일색 보안효과" [ref=e339]:
+                - generic [ref=e340]:
+                  - generic [ref=e341]: 시간
+                  - generic [ref=e342]: 배부모드
+                  - generic [ref=e343]: 요일색
+                  - generic [ref=e344]: 보안효과
+              - cell "수강생 설정 보관" [ref=e345]:
+                - generic [ref=e346]:
+                  - link "수강생" [ref=e347] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/3/students
+                  - link "설정" [ref=e348] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/3
+                  - button "보관" [ref=e349]
+            - row "2 26년 하반기 대비 테마특강 26년-하반기-대비-테마특강 강의 운영중 좌석 사진 D-day 수강생 설정 보관" [ref=e350]:
+              - cell "2 26년 하반기 대비 테마특강 26년-하반기-대비-테마특강" [ref=e351]:
+                - generic [ref=e352]:
+                  - generic [ref=e353]: "2"
+                  - generic [ref=e354]:
+                    - paragraph [ref=e355]: 26년 하반기 대비 테마특강
+                    - paragraph [ref=e356]: 26년-하반기-대비-테마특강
+              - cell "강의" [ref=e357]
+              - cell "운영중" [ref=e358]:
+                - generic [ref=e359]: 운영중
+              - cell "좌석 사진 D-day" [ref=e360]:
+                - generic [ref=e361]:
+                  - generic [ref=e362]: 좌석
+                  - generic [ref=e363]: 사진
+                  - generic [ref=e364]: D-day
+              - cell "수강생 설정 보관" [ref=e365]:
+                - generic [ref=e366]:
+                  - link "수강생" [ref=e367] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/2/students
+                  - link "설정" [ref=e368] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/2
+                  - button "보관" [ref=e369]
+            - row "1 최준 면접반 police-interview-1 강의 운영중 QR 배부 D-day 수강생 설정 보관" [ref=e370]:
+              - cell "1 최준 면접반 police-interview-1" [ref=e371]:
+                - generic [ref=e372]:
+                  - generic [ref=e373]: "1"
+                  - generic [ref=e374]:
+                    - paragraph [ref=e375]: 최준 면접반
+                    - paragraph [ref=e376]: police-interview-1
+              - cell "강의" [ref=e377]
+              - cell "운영중" [ref=e378]:
+                - generic [ref=e379]: 운영중
+              - cell "QR 배부 D-day" [ref=e380]:
+                - generic [ref=e381]:
+                  - generic [ref=e382]: QR
+                  - generic [ref=e383]: 배부
+                  - generic [ref=e384]: D-day
+              - cell "수강생 설정 보관" [ref=e385]:
+                - generic [ref=e386]:
+                  - link "수강생" [ref=e387] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/1/students
+                  - link "설정" [ref=e388] [cursor=pointer]:
+                    - /url: /police/dashboard/courses/1
+                  - button "보관" [ref=e389]
+  - alert [ref=e62]

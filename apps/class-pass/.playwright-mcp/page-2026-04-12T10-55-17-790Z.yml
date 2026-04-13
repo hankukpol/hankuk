@@ -1,0 +1,12 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e5]:
+      - heading "한국경찰학원 모바일 수강증" [level=1] [ref=e6]
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - textbox "이름" [active] [ref=e10]
+          - textbox "휴대전화 번호" [ref=e11]
+        - button "로그인" [ref=e12]
+  - button "Open Next.js Dev Tools" [ref=e18] [cursor=pointer]:
+    - img [ref=e19]
+  - alert [ref=e22]

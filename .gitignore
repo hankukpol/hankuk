@@ -15,6 +15,7 @@
 
 # Next.js and build artifacts
 **/.next/
+**/.next-dev/
 **/out/
 **/build/
 **/artifacts/

@@ -14,7 +14,7 @@ export const LEAVE_TYPE_OPTIONS = [
 export const LEAVE_STATUS_OPTIONS = [
   { value: "PENDING", label: "대기" },
   { value: "APPROVED", label: "승인" },
-  { value: "REJECTED", label: "반려" },
+  { value: "REJECTED", label: "승인 취소" },
   { value: "USED", label: "사용 완료" },
 ] as const satisfies ReadonlyArray<{ value: LeaveStatusValue; label: string }>;
 
@@ -33,7 +33,7 @@ export function getLeaveStatusClasses(status: string | null | undefined) {
     case "USED":
       return "border-emerald-200 bg-emerald-50 text-emerald-700";
     case "REJECTED":
-      return "border-rose-200 bg-rose-50 text-rose-700";
+      return "border-slate-300 bg-slate-100 text-slate-600";
     default:
       return "border-amber-200 bg-amber-50 text-amber-700";
   }

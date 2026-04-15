@@ -86,6 +86,10 @@ function getLimit(type: LeaveTypeValue, settings: LeaveManagerProps["settings"])
   }
 }
 
+function canCancelPermission(permission: LeavePermissionItem) {
+  return permission.status === "APPROVED" || permission.status === "USED";
+}
+
 export const LeaveManager = memo(function LeaveManager({
   divisionSlug,
   students,
@@ -111,6 +115,7 @@ export const LeaveManager = memo(function LeaveManager({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
+  const [cancellingPermissionId, setCancellingPermissionId] = useState<string | null>(null);
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
     description: string;
@@ -334,6 +339,46 @@ export const LeaveManager = memo(function LeaveManager({
       toast.error(error instanceof Error ? error.message : "외출/휴가 등록에 실패했습니다.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleCancelPermission(permission: LeavePermissionItem) {
+    const confirmed = await confirm({
+      title: "외출/휴가 승인 취소",
+      description: `${permission.studentName} 학생의 ${formatDate(permission.date)} ${getLeaveTypeLabel(permission.type)} 승인을 취소하시겠습니까? 휴가 계열은 연결된 출결도 함께 되돌립니다.`,
+      confirmLabel: "승인 취소",
+      cancelLabel: "닫기",
+      variant: "warning",
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCancellingPermissionId(permission.id);
+
+    try {
+      const response = await fetch(`/api/${divisionSlug}/leave/${permission.id}/cancel`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "외출/휴가 승인 취소 처리에 실패했습니다.");
+      }
+
+      const targetMonth = permission.date.slice(0, 7);
+      await refreshPermissions(false, [summaryMonth, historyMonth, targetMonth]);
+
+      if (settlementPreview?.month === targetMonth) {
+        await loadSettlementPreview();
+      }
+
+      toast.success("외출/휴가 승인 취소를 완료했습니다.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "외출/휴가 승인 취소 처리에 실패했습니다.");
+    } finally {
+      setCancellingPermissionId(null);
     }
   }
 
@@ -595,6 +640,7 @@ export const LeaveManager = memo(function LeaveManager({
                   <th className="px-3 py-3 font-medium">날짜</th>
                   <th className="px-3 py-3 font-medium">상태</th>
                   <th className="px-3 py-3 font-medium">사유</th>
+                  <th className="px-3 py-3 text-right font-medium">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -613,11 +659,25 @@ export const LeaveManager = memo(function LeaveManager({
                         </span>
                       </td>
                       <td className="px-3 py-4 text-slate-600">{permission.reason || "-"}</td>
+                      <td className="px-3 py-4 text-right">
+                        {canCancelPermission(permission) ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleCancelPermission(permission)}
+                            disabled={cancellingPermissionId === permission.id}
+                            className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center text-sm text-slate-500">
+                    <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500">
                       조건에 맞는 이력이 없습니다.
                     </td>
                   </tr>

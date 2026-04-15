@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { Prisma } from "@prisma/client";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
@@ -16,7 +17,7 @@ import type {
   LeavePermissionSchemaInput,
   LeaveSettlementSchemaInput,
 } from "@/lib/leave-schemas";
-import type { LeaveTypeValue } from "@/lib/leave-meta";
+import type { LeaveStatusValue, LeaveTypeValue } from "@/lib/leave-meta";
 import { getPrismaClient, normalizeOptionalText } from "@/lib/service-helpers";
 import { syncAttendanceDerivedPoints } from "@/lib/services/attendance.service";
 import { getPeriods } from "@/lib/services/period.service";
@@ -27,6 +28,8 @@ type LeaveActor = {
   role: "SUPER_ADMIN" | "ADMIN" | "ASSISTANT";
   name?: string;
 };
+
+type LeavePrismaClient = Awaited<ReturnType<typeof getPrismaClient>> | Prisma.TransactionClient;
 
 type AttendanceStatus =
   | "PRESENT"
@@ -47,7 +50,7 @@ export type LeavePermissionItem = {
   reason: string | null;
   approvedById: string;
   approvedByName: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "USED";
+  status: LeaveStatusValue;
   createdAt: string;
 };
 
@@ -119,6 +122,29 @@ function getLeaveStatus(type: LeaveTypeValue, date: string) {
   return date < today ? "USED" : "APPROVED";
 }
 
+function normalizeLeaveStatus(status: string | null | undefined): LeaveStatusValue {
+  switch (status) {
+    case "APPROVED":
+    case "USED":
+    case "REJECTED":
+    case "PENDING":
+      return status;
+    case "CANCELLED":
+      return "REJECTED";
+    default:
+      return "PENDING";
+  }
+}
+
+function isInactiveLeaveStatus(status: string | null | undefined) {
+  return normalizeLeaveStatus(status) === "REJECTED";
+}
+
+function isCancelableLeaveStatus(status: string | null | undefined) {
+  const normalizedStatus = normalizeLeaveStatus(status);
+  return normalizedStatus === "APPROVED" || normalizedStatus === "USED";
+}
+
 function getAttendanceStatusForLeaveType(type: LeaveTypeValue): AttendanceStatus | null {
   switch (type) {
     case "HOLIDAY":
@@ -141,6 +167,29 @@ function buildAttendanceReason(type: LeaveTypeValue, reason: string | null) {
   return reason ? `${prefix} · ${reason}` : prefix;
 }
 
+async function getTargetDbPeriods(
+  tx: LeavePrismaClient,
+  divisionId: string,
+  type: LeaveTypeValue,
+) {
+  const allPeriods = await tx.period.findMany({
+    where: {
+      divisionId,
+      isActive: true,
+      isMandatory: true,
+    },
+    select: {
+      id: true,
+      displayOrder: true,
+    },
+    orderBy: {
+      displayOrder: "asc",
+    },
+  });
+
+  return type === "HALF_DAY" ? allPeriods.slice(0, 3) : allPeriods;
+}
+
 function buildSettlementNote(month: string) {
   return `[자동정산][휴가정산:${month}] ${month} 미사용 휴가/반차 정산`;
 }
@@ -159,7 +208,7 @@ function serializeLeaveRecord(
     date: string | Date;
     reason: string | null;
     approvedById: string;
-    status: "PENDING" | "APPROVED" | "REJECTED" | "USED";
+    status: string;
     createdAt: string | Date;
   },
   student: {
@@ -179,7 +228,7 @@ function serializeLeaveRecord(
     reason: record.reason,
     approvedById: record.approvedById,
     approvedByName,
-    status: record.status,
+    status: normalizeLeaveStatus(record.status),
     createdAt:
       typeof record.createdAt === "string" ? record.createdAt : record.createdAt.toISOString(),
   } satisfies LeavePermissionItem;
@@ -302,6 +351,81 @@ async function applyDbLeaveAttendance(
   );
 }
 
+async function revertMockLeaveAttendance(
+  divisionSlug: string,
+  state: Awaited<ReturnType<typeof readMockState>>,
+  input: {
+    studentId: string;
+    type: LeaveTypeValue;
+    date: string;
+    reason: string | null;
+  },
+) {
+  const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
+
+  if (!attendanceStatus) {
+    return;
+  }
+
+  const allPeriods = (state.periodsByDivision[divisionSlug] ?? [])
+    .filter((period) => period.isActive && period.isMandatory)
+    .sort((left, right) => left.displayOrder - right.displayOrder);
+  const targetPeriods = input.type === "HALF_DAY" ? allPeriods.slice(0, 3) : allPeriods;
+
+  if (targetPeriods.length === 0) {
+    return;
+  }
+
+  const targetPeriodIds = new Set(targetPeriods.map((period) => period.id));
+  const attendanceReason = buildAttendanceReason(input.type, input.reason);
+
+  state.attendanceByDivision[divisionSlug] = (state.attendanceByDivision[divisionSlug] ?? []).filter(
+    (record) =>
+      !(
+        record.studentId === input.studentId &&
+        record.date === input.date &&
+        targetPeriodIds.has(record.periodId) &&
+        record.status === attendanceStatus &&
+        record.reason === attendanceReason
+      ),
+  );
+}
+
+async function revertDbLeaveAttendance(
+  tx: LeavePrismaClient,
+  divisionId: string,
+  input: {
+    studentId: string;
+    type: LeaveTypeValue;
+    date: string;
+    reason: string | null;
+  },
+) {
+  const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
+
+  if (!attendanceStatus) {
+    return;
+  }
+
+  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input.type);
+
+  if (targetPeriods.length === 0) {
+    return;
+  }
+
+  await tx.attendance.deleteMany({
+    where: {
+      studentId: input.studentId,
+      date: parseDateString(input.date),
+      periodId: {
+        in: targetPeriods.map((period) => period.id),
+      },
+      status: attendanceStatus,
+      reason: buildAttendanceReason(input.type, input.reason),
+    },
+  });
+}
+
 function buildLeaveSettlementPreviewItems(args: {
   students: Array<{
     id: string;
@@ -313,7 +437,7 @@ function buildLeaveSettlementPreviewItems(args: {
   permissions: Array<{
     studentId: string;
     type: LeaveTypeValue;
-    status: "PENDING" | "APPROVED" | "REJECTED" | "USED";
+    status: string;
   }>;
   settledStudentIds: Set<string>;
   holidayLimit: number;
@@ -325,7 +449,7 @@ function buildLeaveSettlementPreviewItems(args: {
     .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")
     .map((student) => {
       const records = args.permissions.filter(
-        (permission) => permission.studentId === student.id && permission.status !== "REJECTED",
+        (permission) => permission.studentId === student.id && !isInactiveLeaveStatus(permission.status),
       );
       const holidayUsed = records.filter((permission) => permission.type === "HOLIDAY").length;
       const halfDayUsed = records.filter((permission) => permission.type === "HALF_DAY").length;
@@ -457,7 +581,10 @@ export async function createLeavePermission(
       }
 
       const duplicated = (state.leavePermissionsByDivision[divisionSlug] ?? []).some(
-        (saved) => saved.studentId === input.studentId && saved.date === input.date,
+        (saved) =>
+          saved.studentId === input.studentId &&
+          saved.date === input.date &&
+          !isInactiveLeaveStatus(saved.status),
       );
 
       if (duplicated) {
@@ -527,6 +654,9 @@ export async function createLeavePermission(
         divisionId: division.id,
       },
       date: parseDateString(input.date),
+      status: {
+        notIn: ["REJECTED"],
+      },
     },
     select: {
       id: true,
@@ -567,6 +697,146 @@ export async function createLeavePermission(
   if (!createdPermission) return null;
   revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
   return serializeLeaveRecord(createdPermission, createdPermission.student, createdPermission.approvedBy.name);
+}
+
+export async function cancelLeavePermission(
+  divisionSlug: string,
+  leavePermissionId: string,
+  actor: LeaveActor,
+) {
+  if (isMockMode()) {
+    const result = await updateMockState(async (state) => {
+      const records = state.leavePermissionsByDivision[divisionSlug] ?? [];
+      const record = records.find((item) => item.id === leavePermissionId);
+
+      if (!record) {
+        throw notFound("외출/휴가 승인 내역을 찾을 수 없습니다.");
+      }
+
+      if (isInactiveLeaveStatus(record.status)) {
+        throw badRequest("이미 취소 처리된 외출/휴가입니다.");
+      }
+
+      if (!isCancelableLeaveStatus(record.status)) {
+        throw badRequest("승인된 외출/휴가만 취소할 수 있습니다.");
+      }
+
+      await revertMockLeaveAttendance(divisionSlug, state, {
+        studentId: record.studentId,
+        type: record.type,
+        date: record.date,
+        reason: record.reason,
+      });
+
+      record.status = "REJECTED";
+
+      const student = (state.studentsByDivision[divisionSlug] ?? []).find(
+        (item) => item.id === record.studentId,
+      );
+
+      if (!student) {
+        throw notFound("학생 정보를 찾을 수 없습니다.");
+      }
+
+      return {
+        record,
+        student,
+      };
+    });
+
+    if (getAttendanceStatusForLeaveType(result.record.type)) {
+      await syncAttendanceDerivedPoints(divisionSlug, result.record.date, actor.id);
+    }
+
+    revalidateDivisionOperationalViews(divisionSlug, { studentId: result.record.studentId });
+    return serializeLeaveRecord(result.record, result.student, getMockAdminSession(divisionSlug).name);
+  }
+
+  const division = await getDivisionOrThrow(divisionSlug);
+  const prisma = await getPrismaClient();
+  const updatedPermission = await prisma.$transaction(async (tx) => {
+    const permission = await tx.leavePermission.findFirst({
+      where: {
+        id: leavePermissionId,
+        student: {
+          divisionId: division.id,
+        },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            studentNumber: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!permission) {
+      throw notFound("외출/휴가 승인 내역을 찾을 수 없습니다.");
+    }
+
+    if (isInactiveLeaveStatus(permission.status)) {
+      throw badRequest("이미 취소 처리된 외출/휴가입니다.");
+    }
+
+    if (!isCancelableLeaveStatus(permission.status)) {
+      throw badRequest("승인된 외출/휴가만 취소할 수 있습니다.");
+    }
+
+    await revertDbLeaveAttendance(tx, division.id, {
+      studentId: permission.studentId,
+      type: permission.type,
+      date: toDateString(permission.date),
+      reason: permission.reason,
+    });
+
+    return tx.leavePermission.update({
+      where: {
+        id: permission.id,
+      },
+      data: {
+        status: "REJECTED",
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            studentNumber: true,
+          },
+        },
+        approvedBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+  });
+
+  if (getAttendanceStatusForLeaveType(updatedPermission.type)) {
+    await syncAttendanceDerivedPoints(
+      divisionSlug,
+      toDateString(updatedPermission.date),
+      actor.id,
+    );
+  }
+
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: updatedPermission.studentId });
+  return serializeLeaveRecord(
+    updatedPermission,
+    updatedPermission.student,
+    updatedPermission.approvedBy.name,
+  );
 }
 
 export async function previewLeaveSettlement(

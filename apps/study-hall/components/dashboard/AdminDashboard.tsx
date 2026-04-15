@@ -91,6 +91,7 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 const LEAVE_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   PENDING: { label: "대기", cls: "bg-slate-100 text-slate-600" },
   APPROVED: { label: "승인", cls: "bg-emerald-50 text-emerald-700" },
+  REJECTED: { label: "승인 취소", cls: "bg-slate-100 text-slate-600" },
   USED: { label: "사용됨", cls: "bg-slate-100 text-slate-500" },
 };
 

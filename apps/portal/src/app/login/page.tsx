@@ -75,7 +75,7 @@ export default function LoginPage() {
         <div className="login-header">
           <div className="login-logo">H</div>
           <h1>관리자 포털</h1>
-          <p>브라우저의 일반 로그인 저장 기능으로 다음 로그인도 더 편하게 진행할 수 있습니다.</p>
+          <p>브라우저의 일반 로그인 저장 기능으로 다음 로그인도 편하게 진행할 수 있습니다.</p>
         </div>
 
         <form

@@ -270,7 +270,9 @@ export async function POST(request: NextRequest) {
     });
 
     const destination = normalizeTargetPath(consumed.target_path, withTenantPrefix("/admin", division));
-    const response = NextResponse.redirect(new URL(destination, request.url));
+    // Cross-site portal launch starts as a POST, so the final navigation
+    // must switch to GET before entering protected dashboard pages.
+    const response = NextResponse.redirect(new URL(destination, request.url), 303);
     const sessionCookie = getSharedNextAuthSessionCookie();
 
     response.cookies.set(sessionCookie.name, sessionToken, {

@@ -188,8 +188,11 @@ export async function POST(request: NextRequest) {
           ? `/${divisionSlug}/assistant`
           : `/${divisionSlug}/admin`;
 
+    // Cross-site portal launch starts as a POST, so the final navigation
+    // must switch to GET before entering protected dashboard pages.
     const response = NextResponse.redirect(
       new URL(normalizeTargetPath(consumed.target_path, fallbackPath), request.url),
+      303,
     );
 
     await applyAdminContextCookies(response, {

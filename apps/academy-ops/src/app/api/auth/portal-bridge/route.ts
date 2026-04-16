@@ -227,7 +227,9 @@ export async function POST(request: NextRequest) {
       throw new Error("Supabase did not return a magic-link token hash.");
     }
 
-    const response = NextResponse.redirect(redirectUrl);
+    // Cross-site portal launch starts as a POST, so the final navigation
+    // must switch to GET before entering protected dashboard pages.
+    const response = NextResponse.redirect(redirectUrl, 303);
     const supabase = createRouteSupabaseClient(request, response);
     const verification = await supabase.auth.verifyOtp({
       token_hash: tokenHash,

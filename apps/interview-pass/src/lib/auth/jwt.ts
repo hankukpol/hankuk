@@ -38,7 +38,10 @@ export function cookieOptions(ttlSec: number) {
   return withConfiguredCookieDomain({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
+    // Portal launch uses a cross-site form POST followed by a redirect
+    // into protected interview-pass pages, so the admin cookie must
+    // survive that navigation.
+    sameSite: 'lax' as const,
     path: '/',
     maxAge: ttlSec,
   })
@@ -48,7 +51,7 @@ export function clearCookieOptions() {
   return withConfiguredCookieDomain({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
+    sameSite: 'lax' as const,
     path: '/',
     maxAge: 0,
   })

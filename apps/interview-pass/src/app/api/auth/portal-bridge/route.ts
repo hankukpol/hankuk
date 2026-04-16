@@ -235,11 +235,14 @@ export async function POST(req: NextRequest) {
       sharedLinked: true,
     })
 
+    // Cross-site portal launch starts as a POST, so the final navigation
+    // must switch to GET before entering protected dashboard pages.
     const response = NextResponse.redirect(
       new URL(
         normalizeTargetPath(consumed.target_path, withTenantPrefix('/dashboard', division)),
         req.url,
       ),
+      303,
     )
     response.cookies.set(ADMIN_COOKIE, token, cookieOptions(ADMIN_TTL_SEC))
     response.cookies.set(TENANT_COOKIE, division, withConfiguredCookieDomain({

@@ -182,7 +182,9 @@ export async function POST(req: NextRequest) {
           : withTenantPrefix('/dashboard', branchSlug ?? 'police')
     const destination = normalizeTargetPath(consumed.target_path, fallbackPath)
     const redirectUrl = new URL(destination, req.nextUrl.origin)
-    const response = NextResponse.redirect(redirectUrl)
+    // Cross-site portal launch starts as a POST, so the final navigation
+    // must switch to GET before entering protected dashboard pages.
+    const response = NextResponse.redirect(redirectUrl, 303)
 
     if (membership.role === 'SUPER_ADMIN') {
       setSuperAdminSessionCookie(response, token)

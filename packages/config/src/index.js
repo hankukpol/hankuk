@@ -140,6 +140,12 @@ export const HANKUK_SERVICE_CONFIG = Object.freeze({
 });
 
 export const HANKUK_DIVISION_SLUGS = Object.freeze(["police", "fire"]);
+export const HANKUK_PORTAL_QUICK_SWITCH_APP_KEYS = Object.freeze([
+  HANKUK_APP_KEYS.CLASS_PASS,
+  HANKUK_APP_KEYS.STUDY_HALL,
+  HANKUK_APP_KEYS.INTERVIEW_PASS,
+  HANKUK_APP_KEYS.SCORE_PREDICT,
+]);
 
 export const HANKUK_PLACEHOLDER_EMAIL_DOMAIN = "identity.hankukpol.local";
 
@@ -200,4 +206,100 @@ export function getHankukServiceOrigins(appKey) {
         .filter(Boolean),
     ),
   );
+}
+
+export function getHankukPortalLaunchPath(input) {
+  const params = new URLSearchParams({
+    app: input.appKey,
+    role: input.role,
+  });
+
+  if (input.divisionSlug) {
+    params.set("division", input.divisionSlug);
+  }
+
+  return `/launch?${params.toString()}`;
+}
+
+export function getHankukPortalLaunchUrl(input) {
+  const portalOrigin =
+    normalizeServiceUrl(input.portalUrl) ??
+    getHankukServiceCanonicalUrl(HANKUK_APP_KEYS.PORTAL) ??
+    "";
+
+  return `${portalOrigin}${getHankukPortalLaunchPath(input)}`;
+}
+
+export function getHankukPortalQuickSwitchTargets(input) {
+  const includeAppKeys = Array.isArray(input.includeAppKeys) && input.includeAppKeys.length > 0
+    ? input.includeAppKeys
+    : HANKUK_PORTAL_QUICK_SWITCH_APP_KEYS;
+  const normalizedDivision = HANKUK_DIVISION_SLUGS.includes(input.divisionSlug)
+    ? input.divisionSlug
+    : null;
+
+  return Array.from(new Set(includeAppKeys))
+    .filter((appKey) => appKey !== HANKUK_APP_KEYS.PORTAL && appKey !== input.currentAppKey)
+    .flatMap((appKey) => {
+      const config = getHankukServiceConfig(appKey);
+      const launch = config?.portalLaunch;
+
+      if (!config || !launch) {
+        return [];
+      }
+
+      if (input.role === "super_admin") {
+        if (!launch.superAdminPath) {
+          return [];
+        }
+
+        return [{
+          appKey,
+          displayName: config.displayName,
+          role: input.role,
+          divisionSlug: null,
+        }];
+      }
+
+      if (input.role === "admin") {
+        if (!launch.adminPath) {
+          return [];
+        }
+
+        if (launch.requiresDivision && !normalizedDivision) {
+          return [];
+        }
+
+        return [{
+          appKey,
+          displayName: config.displayName,
+          role: input.role,
+          divisionSlug: launch.requiresDivision ? normalizedDivision : null,
+        }];
+      }
+
+      if (input.role === "assistant") {
+        if (!launch.assistantPath || !normalizedDivision) {
+          return [];
+        }
+
+        return [{
+          appKey,
+          displayName: config.displayName,
+          role: input.role,
+          divisionSlug: normalizedDivision,
+        }];
+      }
+
+      if (!launch.staffPath || !normalizedDivision) {
+        return [];
+      }
+
+      return [{
+        appKey,
+        displayName: config.displayName,
+        role: input.role,
+        divisionSlug: normalizedDivision,
+      }];
+    });
 }

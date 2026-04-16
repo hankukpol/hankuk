@@ -19,6 +19,18 @@ function isJsonRequest(request: NextRequest) {
   return request.headers.get('content-type')?.includes('application/json') ?? false
 }
 
+function normalizeRedirectTarget(value: unknown) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  if (!value.startsWith('/') || value.startsWith('//')) {
+    return null
+  }
+
+  return value
+}
+
 async function readLoginBody(request: NextRequest) {
   if (isJsonRequest(request)) {
     return request.json().catch(() => null)
@@ -32,14 +44,20 @@ async function readLoginBody(request: NextRequest) {
   return {
     email: typeof formData.get('email') === 'string' ? formData.get('email') : '',
     password: typeof formData.get('password') === 'string' ? formData.get('password') : '',
+    redirect: typeof formData.get('redirect') === 'string' ? formData.get('redirect') : '',
   }
 }
 
-function buildLoginRedirect(request: NextRequest, error?: string) {
+function buildLoginRedirect(request: NextRequest, error?: string, redirectTarget?: string | null) {
   const url = new URL('/login', request.url)
   if (error) {
     url.searchParams.set('error', error)
   }
+
+  if (redirectTarget) {
+    url.searchParams.set('redirect', redirectTarget)
+  }
+
   return url
 }
 
@@ -50,6 +68,7 @@ function jsonOrRedirect(
     error?: string
     retryAfterSec?: number
     success?: boolean
+    redirectTarget?: string | null
   },
 ) {
   if (isJsonRequest(request)) {
@@ -65,7 +84,7 @@ function jsonOrRedirect(
   }
 
   if (input.success) {
-    return NextResponse.redirect(new URL('/', request.url), 303)
+    return NextResponse.redirect(new URL(input.redirectTarget ?? '/', request.url), 303)
   }
 
   const response = NextResponse.redirect(
@@ -76,6 +95,7 @@ function jsonOrRedirect(
         : input.status === 401
           ? 'invalid_credentials'
           : 'invalid_input',
+      input.redirectTarget,
     ),
     303,
   )
@@ -89,6 +109,7 @@ function jsonOrRedirect(
 
 export async function POST(request: NextRequest) {
   const body = await readLoginBody(request)
+  const redirectTarget = normalizeRedirectTarget(body?.redirect)
   const rateLimitKey = getPortalLoginRateLimitKey(
     typeof body?.email === 'string' ? body.email : '',
     getPortalLoginClientIp(request.headers),
@@ -100,6 +121,7 @@ export async function POST(request: NextRequest) {
       status: 429,
       error: '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.',
       retryAfterSec: rateLimitState.retryAfterSec,
+      redirectTarget,
     })
   }
 
@@ -109,6 +131,7 @@ export async function POST(request: NextRequest) {
     return jsonOrRedirect(request, {
       status: 400,
       error: parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.',
+      redirectTarget,
     })
   }
 
@@ -118,7 +141,8 @@ export async function POST(request: NextRequest) {
     recordPortalLoginFailure(rateLimitKey)
     return jsonOrRedirect(request, {
       status: 401,
-      error: '이메일 또는 비밀번호를 확인해 주세요.',
+      error: '이메일과 비밀번호를 확인해 주세요.',
+      redirectTarget,
     })
   }
 
@@ -133,7 +157,7 @@ export async function POST(request: NextRequest) {
         : null,
   })
 
-  const response = jsonOrRedirect(request, { status: 200, success: true })
+  const response = jsonOrRedirect(request, { status: 200, success: true, redirectTarget })
   response.cookies.set(PORTAL_SESSION_COOKIE, token, portalCookieOptions())
   return response
 }

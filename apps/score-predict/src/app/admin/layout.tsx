@@ -1,8 +1,9 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import AppSwitchMenu from "@/components/admin/AppSwitchMenu";
 import { authOptions } from "@/lib/auth";
-import { withTenantPrefix } from "@/lib/tenant";
+import { getPortalLoginUrl } from "@/lib/portal";
 import { getServerTenantType } from "@/lib/tenant.server";
 
 export default async function AdminLayout({
@@ -10,19 +11,17 @@ export default async function AdminLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getServerSession(authOptions);
-  const tenantType = await getServerTenantType();
+  const [session, tenantType] = await Promise.all([
+    getServerSession(authOptions),
+    getServerTenantType(),
+  ]);
 
   if (!session?.user) {
-    redirect(
-      `${withTenantPrefix("/login", tenantType)}?callbackUrl=${encodeURIComponent(
-        withTenantPrefix("/admin", tenantType)
-      )}`
-    );
+    redirect(getPortalLoginUrl());
   }
 
   if (session.user.role !== "ADMIN") {
-    redirect(withTenantPrefix("/", tenantType));
+    redirect(getPortalLoginUrl());
   }
 
   return (
@@ -30,6 +29,9 @@ export default async function AdminLayout({
       <AdminSidebar />
       <main className="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
+          <div className="mb-4 flex justify-end">
+            <AppSwitchMenu role="admin" divisionSlug={tenantType} />
+          </div>
           {children}
         </div>
       </main>

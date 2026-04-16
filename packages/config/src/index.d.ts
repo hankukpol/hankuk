@@ -58,6 +58,7 @@ export const HANKUK_SERVICE_CONFIG: Readonly<Record<HankukAppKey, HankukServiceC
 export const HANKUK_PORTAL_BRIDGE_ROLE_POLICY: Readonly<Record<HankukAppKey, HankukPortalBridgeRolePolicy>>;
 
 export const HANKUK_DIVISION_SLUGS: readonly HankukDivisionSlug[];
+export const HANKUK_PORTAL_QUICK_SWITCH_APP_KEYS: readonly HankukAppKey[];
 
 export const HANKUK_PUBLIC_BASE_DOMAIN: "hankukpol.co.kr";
 
@@ -73,3 +74,25 @@ export function getHankukPortalBridgeRolePolicy(appKey: HankukAppKey): HankukPor
 export function isHankukPortalBridgeRoleAllowed(appKey: HankukAppKey, role: HankukPortalTargetRole): boolean;
 export function getHankukServiceCanonicalUrl(appKey: HankukAppKey): string | null;
 export function getHankukServiceOrigins(appKey: HankukAppKey): string[];
+export function getHankukPortalLaunchPath(input: {
+  appKey: HankukAppKey;
+  role: HankukPortalTargetRole;
+  divisionSlug?: HankukDivisionSlug | null;
+}): string;
+export function getHankukPortalLaunchUrl(input: {
+  portalUrl?: string | null;
+  appKey: HankukAppKey;
+  role: HankukPortalTargetRole;
+  divisionSlug?: HankukDivisionSlug | null;
+}): string;
+export function getHankukPortalQuickSwitchTargets(input: {
+  currentAppKey: HankukAppKey;
+  role: HankukPortalTargetRole;
+  divisionSlug?: string | null;
+  includeAppKeys?: readonly HankukAppKey[];
+}): Array<{
+  appKey: HankukAppKey;
+  displayName: string;
+  role: HankukPortalTargetRole;
+  divisionSlug: HankukDivisionSlug | null;
+}>;

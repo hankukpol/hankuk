@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import { AppSwitchMenu } from '@/components/AppSwitchMenu'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { stripTenantPrefix, withTenantPrefix } from '@/lib/tenant'
 
@@ -125,9 +126,7 @@ export default function AdminLayout({
                 key={item.href}
                 href={withTenantPrefix(item.href, tenant.type)}
                 className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                  active
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 {item.label}
@@ -137,6 +136,9 @@ export default function AdminLayout({
         </nav>
 
         <main className="flex-1 overflow-auto p-4 md:p-8 xl:p-10">
+          <div className="mx-auto mb-4 flex w-full max-w-[1480px] justify-end">
+            <AppSwitchMenu role="admin" divisionSlug={tenant.type} />
+          </div>
           <div className="mx-auto w-full max-w-[1480px]">{children}</div>
         </main>
       </div>

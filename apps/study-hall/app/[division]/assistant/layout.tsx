@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
+import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 import { requireDivisionAssistantAccess } from "@/lib/auth";
 import { getDivisionBySlug } from "@/lib/services/division.service";
 
@@ -32,14 +33,17 @@ export default async function AssistantLayout({ children, params }: AssistantLay
               <p className="text-xs text-slate-500">{session.name}</p>
             </div>
 
-            <form action="/api/auth/logout" method="post" className="shrink-0">
-              <button
-                type="submit"
-                className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                로그아웃
-              </button>
-            </form>
+            <div className="flex items-center gap-2">
+              <AppSwitchMenu role="assistant" divisionSlug={params.division} />
+              <form action="/api/auth/logout" method="post" className="shrink-0">
+                <button
+                  type="submit"
+                  className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  로그아웃
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </header>

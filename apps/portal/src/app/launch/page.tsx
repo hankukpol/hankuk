@@ -18,6 +18,25 @@ function readString(value: string | string[] | undefined) {
   return typeof value === 'string' ? value : Array.isArray(value) ? value[0] : ''
 }
 
+function toQueryString(searchParams: LaunchSearchParams) {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (typeof value === 'string') {
+      params.set(key, value)
+      continue
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        params.append(key, item)
+      }
+    }
+  }
+
+  return params.toString()
+}
+
 function isPortalTargetRole(value: string): value is PortalTargetRole {
   return HANKUK_PORTAL_TARGET_ROLES.includes(value as PortalTargetRole)
 }
@@ -81,12 +100,15 @@ function ErrorCard(props: { title: string; message: string }) {
 export default async function LaunchPage(props: {
   searchParams?: Promise<LaunchSearchParams>
 }) {
+  const searchParams = (await props.searchParams) ?? {}
+  const queryString = toQueryString(searchParams)
   const session = await getPortalSession()
+
   if (!session) {
-    redirect('/login')
+    const redirectTarget = queryString ? `/launch?${queryString}` : '/launch'
+    redirect(`/login?redirect=${encodeURIComponent(redirectTarget)}`)
   }
 
-  const searchParams = (await props.searchParams) ?? {}
   const appKey = readString(searchParams.app)
   const roleValue = readString(searchParams.role)
   const divisionSlug = readString(searchParams.division) || null
@@ -94,7 +116,7 @@ export default async function LaunchPage(props: {
   if (!isPortalTargetRole(roleValue)) {
     return (
       <ErrorCard
-        title="유효하지 않은 이동 요청입니다."
+        title="유효하지 않은 이동 요청입니다"
         message="포털 대시보드에서 다시 앱을 선택해 주세요."
       />
     )
@@ -109,7 +131,7 @@ export default async function LaunchPage(props: {
     if (error instanceof PortalAccessError) {
       return (
         <ErrorCard
-          title="권한 정보를 불러오지 못했습니다."
+          title="권한 정보를 불러오지 못했습니다"
           message="잠시 후 다시 시도해 주세요."
         />
       )
@@ -125,7 +147,7 @@ export default async function LaunchPage(props: {
   if (!selected) {
     return (
       <ErrorCard
-        title="이동 권한을 찾지 못했습니다."
+        title="이동 권한을 찾지 못했습니다"
         message="포털 대시보드에서 다시 선택해 주세요. 권한이나 지점 연결이 아직 완료되지 않았을 수 있습니다."
       />
     )
@@ -152,7 +174,7 @@ export default async function LaunchPage(props: {
     if (error instanceof PortalLaunchInfraError) {
       return (
         <ErrorCard
-          title="실행 토큰 테이블이 준비되지 않았습니다."
+          title="실행 토큰 테이블이 준비되지 않았습니다"
           message={error.message}
         />
       )

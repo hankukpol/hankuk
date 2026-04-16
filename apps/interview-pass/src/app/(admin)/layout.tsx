@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { AppSwitchMenu } from '@/components/AppSwitchMenu'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useAppConfig } from '@/hooks/use-app-config'
 import type { AppFeatureKey } from '@/lib/app-config.shared'
@@ -14,7 +15,7 @@ const NAV: Array<{ href: string; label: string; feature?: AppFeatureKey }> = [
   { href: '/dashboard', label: '대시보드', feature: 'admin_dashboard_overview_enabled' },
   { href: '/dashboard/students', label: '학생 명단', feature: 'admin_student_management_enabled' },
   { href: '/dashboard/materials', label: '자료 설정', feature: 'admin_materials_enabled' },
-  { href: '/dashboard/logs', label: '배부 로그', feature: 'admin_distribution_logs_enabled' },
+  { href: '/dashboard/logs', label: '발송 로그', feature: 'admin_distribution_logs_enabled' },
   { href: '/dashboard/config', label: '설정' },
 ]
 
@@ -26,7 +27,7 @@ export default function AdminLayout({ children }: { children: LayoutChildren }) 
 
   return (
     <div className="flex min-h-dvh bg-[#f4f6f8]">
-      <aside className="hidden md:flex w-64 shrink-0 flex-col bg-[#0f172a] xl:w-72">
+      <aside className="hidden w-64 shrink-0 flex-col bg-[#0f172a] md:flex xl:w-72">
         <div className="border-b border-white/5 px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-blue-600 text-sm font-bold text-white">
@@ -128,9 +129,7 @@ export default function AdminLayout({ children }: { children: LayoutChildren }) 
                 key={item.href}
                 href={withTenantPrefix(item.href, tenant.type)}
                 className={`shrink-0 px-3 py-2 text-[12px] font-medium transition-colors ${
-                  active
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                  active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
                 }`}
               >
                 {item.label}
@@ -140,6 +139,9 @@ export default function AdminLayout({ children }: { children: LayoutChildren }) 
         </nav>
 
         <main className="flex-1 overflow-auto p-5 md:p-8 xl:p-10">
+          <div className="mx-auto mb-4 flex max-w-[1600px] justify-end">
+            <AppSwitchMenu role="admin" divisionSlug={tenant.type} />
+          </div>
           <div className="mx-auto max-w-[1600px]">{children}</div>
         </main>
       </div>

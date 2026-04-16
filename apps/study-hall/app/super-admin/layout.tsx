@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode } from "react";
+import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 
 type SuperAdminLayoutProps = {
   children: ReactNode;
@@ -10,7 +11,7 @@ type SuperAdminLayoutProps = {
 
 const tabs = [
   { href: "/super-admin", label: "전체 현황", exact: true },
-  { href: "/super-admin/manage", label: "지점·계정 관리", exact: false },
+  { href: "/super-admin/manage", label: "지점별 계정 관리", exact: false },
   { href: "/super-admin/announcements", label: "전체 공지", exact: false },
 ];
 
@@ -19,24 +20,23 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#F7F7F5]">
-      {/* 상단 헤더 */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-screen-2xl px-6 md:px-10">
-          <div className="flex items-center justify-between py-4">
+          <div className="flex items-center justify-between gap-4 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-slate-900 text-white text-sm font-bold">
+              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-slate-900 text-sm font-bold text-white">
                 SA
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-                  최고관리
+                  최고관리자
                 </p>
                 <h1 className="text-lg font-extrabold leading-tight text-slate-950">최고관리자</h1>
               </div>
             </div>
+            <AppSwitchMenu role="super_admin" />
           </div>
 
-          {/* 탭 네비게이션 */}
           <nav className="flex gap-1 border-t border-slate-100">
             {tabs.map((tab) => {
               const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);

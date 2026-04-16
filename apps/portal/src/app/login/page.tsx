@@ -4,10 +4,18 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 
 const SAVED_EMAIL_KEY = 'portal.saved-email'
 
+function normalizeRedirectTarget(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return ''
+  }
+
+  return value
+}
+
 function getLoginErrorMessage(searchParams: URLSearchParams) {
   switch (searchParams.get('error')) {
     case 'invalid_credentials':
-      return '이메일 또는 비밀번호를 확인해 주세요.'
+      return '이메일과 비밀번호를 확인해 주세요.'
     case 'invalid_input':
       return '입력값을 확인해 주세요.'
     case 'rate_limited':
@@ -21,14 +29,21 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberEmail, setRememberEmail] = useState(false)
+  const [redirectTarget, setRedirectTarget] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
     const initialError = getLoginErrorMessage(searchParams)
+    const initialRedirect = normalizeRedirectTarget(searchParams.get('redirect'))
+
     if (initialError) {
       setError(initialError)
+    }
+
+    if (initialRedirect) {
+      setRedirectTarget(initialRedirect)
     }
 
     const savedEmail = window.localStorage.getItem(SAVED_EMAIL_KEY)
@@ -61,10 +76,6 @@ export default function LoginPage() {
     }
   }
 
-  function handleFormError() {
-    setIsSubmitting(false)
-  }
-
   function handleRememberEmailChange(event: ChangeEvent<HTMLInputElement>) {
     setRememberEmail(event.target.checked)
   }
@@ -82,9 +93,10 @@ export default function LoginPage() {
           action="/api/auth/login"
           method="post"
           onSubmit={handleSubmit}
-          onError={handleFormError}
           className="login-form"
         >
+          <input type="hidden" name="redirect" value={redirectTarget} />
+
           <label className="portal-label">
             이메일
             <input

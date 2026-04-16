@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { HANKUK_APP_KEYS, HANKUK_SERVICE_CONFIG } from '@hankuk/config'
+import { HANKUK_APP_KEYS, getHankukServiceOrigins, isHankukPortalBridgeRoleAllowed } from '@hankuk/config'
 import { handleRouteError } from '@/lib/api/error-response'
 import { signJwt } from '@/lib/auth/jwt'
 import { createOperatorSession } from '@/lib/auth/operator-sessions'
@@ -11,6 +11,9 @@ import {
 import { getOperatorAccountBySharedUser } from '@/lib/branch-ops'
 import { consumePortalLaunchToken } from '@/lib/portal-launch'
 import { withTenantPrefix } from '@/lib/tenant'
+
+const LOCAL_DEVELOPMENT_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'])
+const APP_KEY = HANKUK_APP_KEYS.CLASS_PASS
 
 function toClaims(payload: Awaited<ReturnType<typeof createOperatorSession>>) {
   const { role, sub, iat, exp, ...claims } = payload
@@ -33,7 +36,7 @@ function getAllowedPortalOrigins() {
     process.env.PORTAL_ALLOWED_ORIGINS,
     process.env.PORTAL_URL,
     process.env.PORTAL_ORIGIN,
-    HANKUK_SERVICE_CONFIG[HANKUK_APP_KEYS.PORTAL].productionUrl,
+    ...getHankukServiceOrigins(HANKUK_APP_KEYS.PORTAL),
   ]
     .filter(Boolean)
     .flatMap((value) => String(value).split(','))
@@ -76,13 +79,28 @@ function getRequestOrigin(request: NextRequest) {
   }
 }
 
+function isLocalDevelopmentOrigin(origin: string) {
+  try {
+    return LOCAL_DEVELOPMENT_HOSTS.has(new URL(origin).hostname)
+  } catch {
+    return false
+  }
+}
+
 function isAllowedPortalOrigin(request: NextRequest) {
   const requestOrigin = getRequestOrigin(request)
   if (!requestOrigin) {
-    return process.env.NODE_ENV !== 'production'
+    // Mobile browsers and in-app webviews may omit both Origin and Referer
+    // on cross-site form POSTs. The one-time launch token remains the
+    // primary authorization boundary for this route.
+    return true
   }
 
-  return getAllowedPortalOrigins().has(requestOrigin)
+  if (getAllowedPortalOrigins().has(requestOrigin)) {
+    return true
+  }
+
+  return process.env.NODE_ENV !== 'production' && isLocalDevelopmentOrigin(requestOrigin)
 }
 
 export async function POST(req: NextRequest) {
@@ -93,7 +111,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!isAllowedPortalOrigin(req)) {
-    return NextResponse.json({ error: 'Portal origin is not allowed.' }, { status: 403 })
+    return NextResponse.json({ error: '포털 출처가 허용되지 않습니다.' }, { status: 403 })
   }
 
   try {
@@ -105,9 +123,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (consumed.target_role === 'assistant') {
+    if (!isHankukPortalBridgeRoleAllowed(APP_KEY, consumed.target_role)) {
       return NextResponse.json(
-        { error: 'class-pass 포털 이동은 assistant 역할을 지원하지 않습니다.' },
+        { error: 'class-pass 포털 이동은 조교 역할을 지원하지 않습니다.' },
         { status: 403 },
       )
     }
@@ -122,6 +140,7 @@ export async function POST(req: NextRequest) {
 
     const membership = account.memberships.find((item) => {
       if (!item.is_active) return false
+      if (item.role !== 'SUPER_ADMIN' && item.branch?.is_active === false) return false
       if (consumed.target_role === 'super_admin') {
         return item.role === 'SUPER_ADMIN'
       }

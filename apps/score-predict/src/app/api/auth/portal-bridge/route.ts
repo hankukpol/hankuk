@@ -1,13 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { encode } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
-import { HANKUK_APP_KEYS } from "@hankuk/config";
+import { HANKUK_APP_KEYS, getHankukServiceOrigins, isHankukPortalBridgeRoleAllowed } from "@hankuk/config";
 import { getSharedNextAuthSessionCookie, NEXTAUTH_SESSION_MAX_AGE } from "@/lib/auth";
 import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
 import { getPrismaClientForTenant } from "@/lib/prisma";
 import { TENANT_COOKIE, normalizeTenantType, withTenantPrefix, type TenantType } from "@/lib/tenant";
 
 export const runtime = "nodejs";
+const APP_KEY = HANKUK_APP_KEYS.SCORE_PREDICT;
 
 type ConsumedPortalLaunch = {
   user_id: string;
@@ -15,6 +16,8 @@ type ConsumedPortalLaunch = {
   target_path: string;
   target_role: "super_admin" | "admin" | "assistant" | "staff";
 };
+
+const LOCAL_DEVELOPMENT_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
 
 function createRootServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -32,7 +35,7 @@ async function consumePortalLaunchToken(token: string) {
   const root = createRootServiceClient();
   const { data, error } = await root.rpc("consume_portal_launch_token", {
     p_plain_token: token,
-    p_app_key: HANKUK_APP_KEYS.SCORE_PREDICT,
+    p_app_key: APP_KEY,
   });
 
   if (error) {
@@ -53,6 +56,79 @@ function normalizeTargetPath(targetPath: string | null | undefined, fallback: st
 
 function expectedAliasType(division: TenantType) {
   return division === "fire" ? "phone" : "username";
+}
+
+function getAllowedPortalOrigins() {
+  const allowedOrigins = new Set<string>();
+  const candidates = [
+    process.env.PORTAL_ALLOWED_ORIGINS,
+    process.env.PORTAL_URL,
+    process.env.PORTAL_ORIGIN,
+    ...getHankukServiceOrigins(HANKUK_APP_KEYS.PORTAL),
+  ]
+    .filter(Boolean)
+    .flatMap((value) => String(value).split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      allowedOrigins.add(new URL(candidate).origin);
+    } catch {
+      continue;
+    }
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    allowedOrigins.add("http://localhost:3000");
+    allowedOrigins.add("http://127.0.0.1:3000");
+    allowedOrigins.add("http://localhost:3001");
+    allowedOrigins.add("http://127.0.0.1:3001");
+  }
+
+  return allowedOrigins;
+}
+
+function getRequestOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    return origin;
+  }
+
+  const referer = request.headers.get("referer");
+  if (!referer) {
+    return null;
+  }
+
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalDevelopmentOrigin(origin: string) {
+  try {
+    return LOCAL_DEVELOPMENT_HOSTS.has(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedPortalOrigin(request: NextRequest) {
+  const requestOrigin = getRequestOrigin(request);
+  if (!requestOrigin) {
+    // Mobile browsers and in-app webviews may omit both Origin and Referer
+    // on cross-site form POSTs. The one-time launch token remains the
+    // primary authorization boundary for this route.
+    return true;
+  }
+
+  if (getAllowedPortalOrigins().has(requestOrigin)) {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== "production" && isLocalDevelopmentOrigin(requestOrigin);
 }
 
 async function findLegacyLoginIdentifier(userId: string, division: TenantType) {
@@ -100,12 +176,20 @@ async function findLegacyLoginIdentifier(userId: string, division: TenantType) {
 
 async function findLegacyAdmin(loginIdentifier: string, division: TenantType) {
   const prisma = getPrismaClientForTenant(division);
-  const adminUser = await prisma.user.findUnique({
-    where: { phone: loginIdentifier },
+  const adminUser = await prisma.user.findFirst({
+    where: {
+      role: "ADMIN",
+      ...(division === "police"
+        ? {
+            OR: [{ phone: loginIdentifier }, { contactPhone: loginIdentifier }],
+          }
+        : { phone: loginIdentifier }),
+    },
     select: {
       id: true,
       name: true,
       phone: true,
+      contactPhone: true,
       role: true,
     },
   });
@@ -123,30 +207,42 @@ export async function POST(request: NextRequest) {
     const launchToken = String(formData?.get("launchToken") || "").trim();
 
     if (!launchToken) {
-      return NextResponse.json({ error: "Portal launch token is required." }, { status: 400 });
+      return NextResponse.json({ error: "?ы꽭 ?ㅽ뻾 ?좏겙???꾩슂?⑸땲??" }, { status: 400 });
+    }
+
+    if (!isAllowedPortalOrigin(request)) {
+      return NextResponse.json({ error: "?ы꽭 異쒖쿂媛 ?덉슜?섏? ?딆뒿?덈떎." }, { status: 403 });
+    }
+
+    const secret = process.env.NEXTAUTH_SECRET?.trim();
+    if (!secret) {
+      throw new Error("NEXTAUTH_SECRET is not configured.");
     }
 
     const consumed = await consumePortalLaunchToken(launchToken);
     if (!consumed) {
-      return NextResponse.json({ error: "Portal launch token is invalid or expired." }, { status: 401 });
+      return NextResponse.json(
+        { error: "?ы꽭 ?ㅽ뻾 ?좏겙???좏슚?섏? ?딄굅???대? ?ъ슜?섏뿀嫄곕굹 留뚮즺?섏뿀?듬땲??" },
+        { status: 401 },
+      );
     }
 
-    if (consumed.target_role !== "admin") {
+    if (!isHankukPortalBridgeRoleAllowed(APP_KEY, consumed.target_role)) {
       return NextResponse.json(
-        { error: "Score Predict portal bridge only supports admin launches." },
+        { error: "Score Predict ?ы꽭 ?대룞? 愿由ъ옄 沅뚰븳留?吏?먰빀?덈떎." },
         { status: 403 },
       );
     }
 
     const division = normalizeTenantType(consumed.division_slug);
     if (!division) {
-      return NextResponse.json({ error: "A valid score-predict division is required." }, { status: 400 });
+      return NextResponse.json({ error: "?좏슚??吏곷젹 ?뺣낫媛 ?꾩슂?⑸땲??" }, { status: 400 });
     }
 
     const legacyLoginIdentifier = await findLegacyLoginIdentifier(consumed.user_id, division);
     if (!legacyLoginIdentifier) {
       return NextResponse.json(
-        { error: "No linked score-predict admin identity was found for this shared account." },
+        { error: "공통 계정과 연결된 Score Predict 관리자 계정을 찾을 수 없습니다." },
         { status: 403 },
       );
     }
@@ -154,14 +250,9 @@ export async function POST(request: NextRequest) {
     const legacyAdmin = await findLegacyAdmin(legacyLoginIdentifier, division);
     if (!legacyAdmin) {
       return NextResponse.json(
-        { error: "The linked score-predict account is missing or no longer has admin access." },
+        { error: "연결된 Score Predict 계정이 없거나 더 이상 관리자 권한이 없습니다." },
         { status: 403 },
       );
-    }
-
-    const secret = process.env.NEXTAUTH_SECRET?.trim();
-    if (!secret) {
-      throw new Error("NEXTAUTH_SECRET is not configured.");
     }
 
     const sessionToken = await encode({
@@ -173,7 +264,7 @@ export async function POST(request: NextRequest) {
         name: legacyAdmin.name,
         role: legacyAdmin.role,
         phone: legacyAdmin.phone,
-        username: division === "police" ? legacyAdmin.phone : undefined,
+        username: division === "police" ? legacyLoginIdentifier : undefined,
         sharedUserId: consumed.user_id,
       },
     });
@@ -204,8 +295,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Failed to complete the score-predict portal launch.",
+        error: "Score Predict ?ы꽭 ?대룞 泥섎━ 以?臾몄젣媛 諛쒖깮?덉뒿?덈떎.",
       },
       { status: 500 },
     );

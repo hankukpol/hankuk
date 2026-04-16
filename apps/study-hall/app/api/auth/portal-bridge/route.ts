@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { HANKUK_APP_KEYS, getHankukServiceOrigins, isHankukPortalBridgeRoleAllowed } from "@hankuk/config";
 import { applyAdminContextCookies } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const APP_KEY = "study-hall";
+const APP_KEY = HANKUK_APP_KEYS.STUDY_HALL;
 
 type ConsumedPortalLaunch = {
   user_id: string;
@@ -11,6 +12,8 @@ type ConsumedPortalLaunch = {
   target_path: string;
   target_role: "super_admin" | "admin" | "assistant" | "staff";
 };
+
+const LOCAL_DEVELOPMENT_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
 
 function createRootServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -53,7 +56,7 @@ function getAllowedPortalOrigins() {
     process.env.PORTAL_ALLOWED_ORIGINS,
     process.env.PORTAL_URL,
     process.env.PORTAL_ORIGIN,
-    "https://portal-hankuk.vercel.app",
+    ...getHankukServiceOrigins(HANKUK_APP_KEYS.PORTAL),
   ]
     .filter(Boolean)
     .flatMap((value) => String(value).split(","))
@@ -96,13 +99,28 @@ function getRequestOrigin(request: NextRequest) {
   }
 }
 
+function isLocalDevelopmentOrigin(origin: string) {
+  try {
+    return LOCAL_DEVELOPMENT_HOSTS.has(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedPortalOrigin(request: NextRequest) {
   const requestOrigin = getRequestOrigin(request);
   if (!requestOrigin) {
-    return process.env.NODE_ENV !== "production";
+    // Mobile browsers and in-app webviews may omit both Origin and Referer
+    // on cross-site form POSTs. The one-time launch token remains the
+    // primary authorization boundary for this route.
+    return true;
   }
 
-  return getAllowedPortalOrigins().has(requestOrigin);
+  if (getAllowedPortalOrigins().has(requestOrigin)) {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== "production" && isLocalDevelopmentOrigin(requestOrigin);
 }
 
 export async function POST(request: NextRequest) {
@@ -110,20 +128,23 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData().catch(() => null);
     const launchToken = String(formData?.get("launchToken") || "").trim();
     if (!launchToken) {
-      return NextResponse.json({ error: "?ы꽭 ?ㅽ뻾 ?좏겙???꾩슂?⑸땲??" }, { status: 400 });
+      return NextResponse.json({ error: "포털 실행 토큰이 필요합니다." }, { status: 400 });
     }
 
     if (!isAllowedPortalOrigin(request)) {
-      return NextResponse.json({ error: "Portal origin is not allowed." }, { status: 403 });
+      return NextResponse.json({ error: "포털 출처가 허용되지 않습니다." }, { status: 403 });
     }
 
     const consumed = await consumePortalLaunchToken(launchToken);
     if (!consumed) {
-      return NextResponse.json({ error: "?ㅽ뻾 ?좏겙???좏슚?섏? ?딄굅??留뚮즺?섏뿀?듬땲??" }, { status: 401 });
+      return NextResponse.json(
+        { error: "포털 실행 토큰이 유효하지 않거나 이미 사용되었거나 만료되었습니다." },
+        { status: 401 },
+      );
     }
 
-    if (consumed.target_role === "staff") {
-      return NextResponse.json({ error: "Study Hall? staff 釉뚮━吏瑜?吏?먰븯吏 ?딆뒿?덈떎." }, { status: 403 });
+    if (!isHankukPortalBridgeRoleAllowed(APP_KEY, consumed.target_role)) {
+      return NextResponse.json({ error: "Study Hall 포털 이동은 직원 권한을 지원하지 않습니다." }, { status: 403 });
     }
 
     const admin = await prisma.admin.findUnique({
@@ -139,7 +160,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!admin || !admin.isActive) {
-      return NextResponse.json({ error: "?곌껐???댁쁺??怨꾩젙??李얠쓣 ???놁뒿?덈떎." }, { status: 403 });
+      return NextResponse.json({ error: "연결된 운영 계정을 찾을 수 없습니다." }, { status: 403 });
     }
 
     const roleAllowed =
@@ -149,14 +170,14 @@ export async function POST(request: NextRequest) {
         (admin.role === "ASSISTANT" || admin.role === "ADMIN" || admin.role === "SUPER_ADMIN"));
 
     if (!roleAllowed) {
-      return NextResponse.json({ error: "?대떦 沅뚰븳?쇰줈 吏꾩엯?????놁뒿?덈떎." }, { status: 403 });
+      return NextResponse.json({ error: "요청한 권한으로 진입할 수 없습니다." }, { status: 403 });
     }
 
     if (
       consumed.target_role !== "super_admin" &&
       (!consumed.division_slug || (admin.role !== "SUPER_ADMIN" && admin.division?.slug !== consumed.division_slug))
     ) {
-      return NextResponse.json({ error: "吏??沅뚰븳???쇱튂?섏? ?딆뒿?덈떎." }, { status: 403 });
+      return NextResponse.json({ error: "지점 권한이 일치하지 않습니다." }, { status: 403 });
     }
 
     const divisionSlug = consumed.target_role === "super_admin" ? null : consumed.division_slug;
@@ -184,7 +205,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[portal-bridge] study-hall bridge failed.", error);
     return NextResponse.json(
-      { error: "Failed to complete the study-hall portal launch." },
+      { error: "Study Hall 포털 이동 처리 중 문제가 발생했습니다." },
       { status: 500 },
     );
   }

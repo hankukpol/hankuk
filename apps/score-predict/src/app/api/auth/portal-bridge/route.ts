@@ -207,11 +207,11 @@ export async function POST(request: NextRequest) {
     const launchToken = String(formData?.get("launchToken") || "").trim();
 
     if (!launchToken) {
-      return NextResponse.json({ error: "?ы꽭 ?ㅽ뻾 ?좏겙???꾩슂?⑸땲??" }, { status: 400 });
+      return NextResponse.json({ error: "포털 실행 토큰이 필요합니다." }, { status: 400 });
     }
 
     if (!isAllowedPortalOrigin(request)) {
-      return NextResponse.json({ error: "?ы꽭 異쒖쿂媛 ?덉슜?섏? ?딆뒿?덈떎." }, { status: 403 });
+      return NextResponse.json({ error: "포털 출처가 허용되지 않습니다." }, { status: 403 });
     }
 
     const secret = process.env.NEXTAUTH_SECRET?.trim();
@@ -222,21 +222,21 @@ export async function POST(request: NextRequest) {
     const consumed = await consumePortalLaunchToken(launchToken);
     if (!consumed) {
       return NextResponse.json(
-        { error: "?ы꽭 ?ㅽ뻾 ?좏겙???좏슚?섏? ?딄굅???대? ?ъ슜?섏뿀嫄곕굹 留뚮즺?섏뿀?듬땲??" },
+        { error: "포털 실행 토큰이 유효하지 않거나 이미 사용되었거나 만료되었습니다." },
         { status: 401 },
       );
     }
 
     if (!isHankukPortalBridgeRoleAllowed(APP_KEY, consumed.target_role)) {
       return NextResponse.json(
-        { error: "Score Predict ?ы꽭 ?대룞? 愿由ъ옄 沅뚰븳留?吏?먰빀?덈떎." },
+        { error: "Score Predict 포털 이동은 관리자 권한만 지원합니다." },
         { status: 403 },
       );
     }
 
     const division = normalizeTenantType(consumed.division_slug);
     if (!division) {
-      return NextResponse.json({ error: "?좏슚??吏곷젹 ?뺣낫媛 ?꾩슂?⑸땲??" }, { status: 400 });
+      return NextResponse.json({ error: "유효한 직렬 정보가 필요합니다." }, { status: 400 });
     }
 
     const legacyLoginIdentifier = await findLegacyLoginIdentifier(consumed.user_id, division);
@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: "Score Predict ?ы꽭 ?대룞 泥섎━ 以?臾몄젣媛 諛쒖깮?덉뒿?덈떎.",
+        error: "Score Predict 포털 이동 처리 중 문제가 발생했습니다.",
       },
       { status: 500 },
     );

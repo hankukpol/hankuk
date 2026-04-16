@@ -1,43 +1,139 @@
-import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { signPortalSession, portalCookieOptions, PORTAL_SESSION_COOKIE } from "@/lib/portal-session";
-import { createAnonSupabaseClient } from "@/lib/supabase";
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import {
+  clearPortalLoginFailures,
+  getPortalLoginClientIp,
+  getPortalLoginRateLimitKey,
+  getPortalLoginRateLimitState,
+  recordPortalLoginFailure,
+} from '@/lib/login-rate-limit'
+import { signPortalSession, portalCookieOptions, PORTAL_SESSION_COOKIE } from '@/lib/portal-session'
+import { createAnonSupabaseClient } from '@/lib/supabase'
 
 const loginSchema = z.object({
-  email: z.string().email("올바른 이메일 형식이 아닙니다."),
-  password: z.string().min(1, "비밀번호를 입력해 주세요."),
-});
+  email: z.string().email('올바른 이메일 형식이 아닙니다.'),
+  password: z.string().min(1, '비밀번호를 입력해 주세요.'),
+})
+
+function isJsonRequest(request: NextRequest) {
+  return request.headers.get('content-type')?.includes('application/json') ?? false
+}
+
+async function readLoginBody(request: NextRequest) {
+  if (isJsonRequest(request)) {
+    return request.json().catch(() => null)
+  }
+
+  const formData = await request.formData().catch(() => null)
+  if (!formData) {
+    return null
+  }
+
+  return {
+    email: typeof formData.get('email') === 'string' ? formData.get('email') : '',
+    password: typeof formData.get('password') === 'string' ? formData.get('password') : '',
+  }
+}
+
+function buildLoginRedirect(request: NextRequest, error?: string) {
+  const url = new URL('/login', request.url)
+  if (error) {
+    url.searchParams.set('error', error)
+  }
+  return url
+}
+
+function jsonOrRedirect(
+  request: NextRequest,
+  input: {
+    status: number
+    error?: string
+    retryAfterSec?: number
+    success?: boolean
+  },
+) {
+  if (isJsonRequest(request)) {
+    const headers: HeadersInit = {}
+    if (input.retryAfterSec) {
+      headers['Retry-After'] = String(input.retryAfterSec)
+    }
+
+    return NextResponse.json(
+      input.success ? { success: true } : { error: input.error ?? '로그인에 실패했습니다.' },
+      { status: input.status, headers },
+    )
+  }
+
+  if (input.success) {
+    return NextResponse.redirect(new URL('/', request.url), 303)
+  }
+
+  const response = NextResponse.redirect(
+    buildLoginRedirect(
+      request,
+      input.status === 429
+        ? 'rate_limited'
+        : input.status === 401
+          ? 'invalid_credentials'
+          : 'invalid_input',
+    ),
+    303,
+  )
+
+  if (input.retryAfterSec) {
+    response.headers.set('Retry-After', String(input.retryAfterSec))
+  }
+
+  return response
+}
 
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
-  const parsed = loginSchema.safeParse(body);
+  const body = await readLoginBody(request)
+  const rateLimitKey = getPortalLoginRateLimitKey(
+    typeof body?.email === 'string' ? body.email : '',
+    getPortalLoginClientIp(request.headers),
+  )
+  const rateLimitState = getPortalLoginRateLimitState(rateLimitKey)
+
+  if (!rateLimitState.allowed) {
+    return jsonOrRedirect(request, {
+      status: 429,
+      error: '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+      retryAfterSec: rateLimitState.retryAfterSec,
+    })
+  }
+
+  const parsed = loginSchema.safeParse(body)
 
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "입력값을 확인해 주세요." },
-      { status: 400 },
-    );
+    return jsonOrRedirect(request, {
+      status: 400,
+      error: parsed.error.issues[0]?.message ?? '입력값을 확인해 주세요.',
+    })
   }
 
-  const supabase = createAnonSupabaseClient();
-  const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
+  const supabase = createAnonSupabaseClient()
+  const { data, error } = await supabase.auth.signInWithPassword(parsed.data)
   if (error || !data.user) {
-    return NextResponse.json(
-      { error: "이메일 또는 비밀번호를 확인해 주세요." },
-      { status: 401 },
-    );
+    recordPortalLoginFailure(rateLimitKey)
+    return jsonOrRedirect(request, {
+      status: 401,
+      error: '이메일 또는 비밀번호를 확인해 주세요.',
+    })
   }
+
+  clearPortalLoginFailures(rateLimitKey)
 
   const token = await signPortalSession({
     userId: data.user.id,
     email: data.user.email ?? parsed.data.email,
     fullName:
-      typeof data.user.user_metadata?.full_name === "string"
+      typeof data.user.user_metadata?.full_name === 'string'
         ? data.user.user_metadata.full_name
         : null,
-  });
+  })
 
-  const response = NextResponse.json({ success: true });
-  response.cookies.set(PORTAL_SESSION_COOKIE, token, portalCookieOptions());
-  return response;
+  const response = jsonOrRedirect(request, { status: 200, success: true })
+  response.cookies.set(PORTAL_SESSION_COOKIE, token, portalCookieOptions())
+  return response
 }

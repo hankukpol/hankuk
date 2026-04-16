@@ -1,90 +1,90 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 
-declare global {
-  interface Window {
-    PasswordCredential?: new (data: { id: string; password: string }) => Credential
+const SAVED_EMAIL_KEY = 'portal.saved-email'
+
+function getLoginErrorMessage(searchParams: URLSearchParams) {
+  switch (searchParams.get('error')) {
+    case 'invalid_credentials':
+      return '이메일 또는 비밀번호를 확인해 주세요.'
+    case 'invalid_input':
+      return '입력값을 확인해 주세요.'
+    case 'rate_limited':
+      return '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.'
+    default:
+      return ''
   }
 }
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberEmail, setRememberEmail] = useState(false)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    if (window.PasswordCredential && navigator.credentials) {
-      navigator.credentials
-        .get({ password: true, mediation: 'optional' } as unknown as CredentialRequestOptions)
-        .then((cred) => {
-          if (cred && 'password' in cred) {
-            setEmail(cred.id)
-            setPassword((cred as unknown as { password: string }).password)
-          }
-        })
-        .catch(() => {})
+    const searchParams = new URLSearchParams(window.location.search)
+    const initialError = getLoginErrorMessage(searchParams)
+    if (initialError) {
+      setError(initialError)
+    }
+
+    const savedEmail = window.localStorage.getItem(SAVED_EMAIL_KEY)
+    if (savedEmail) {
+      setEmail(savedEmail)
+      setRememberEmail(true)
     }
   }, [])
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function handleEmailChange(event: ChangeEvent<HTMLInputElement>) {
+    setEmail(event.target.value)
+  }
+
+  function handlePasswordChange(event: ChangeEvent<HTMLInputElement>) {
+    setPassword(event.target.value)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     setIsSubmitting(true)
     setError('')
 
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        setError(data.error ?? '로그인에 실패했습니다.')
-        return
-      }
+    const formData = new FormData(event.currentTarget)
+    const rawEmail = formData.get('email')
+    const submittedEmail = typeof rawEmail === 'string' ? rawEmail : ''
 
-      if (window.PasswordCredential) {
-        const cred = new window.PasswordCredential({ id: email, password })
-        navigator.credentials.store(cred).catch(() => {})
-      }
-      window.location.href = '/'
-    } catch {
-      setError('로그인 요청 중 문제가 발생했습니다.')
-    } finally {
-      setIsSubmitting(false)
+    if (rememberEmail) {
+      window.localStorage.setItem(SAVED_EMAIL_KEY, submittedEmail.trim())
+    } else {
+      window.localStorage.removeItem(SAVED_EMAIL_KEY)
     }
   }
 
+  function handleFormError() {
+    setIsSubmitting(false)
+  }
+
+  function handleRememberEmailChange(event: ChangeEvent<HTMLInputElement>) {
+    setRememberEmail(event.target.checked)
+  }
+
   return (
-    <main className="portal-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '20px' }}>
-      <div className="portal-card" style={{ width: '100%', maxWidth: 400, padding: 32 }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 48,
-              height: 48,
-              borderRadius: 10,
-              background: 'var(--brand)',
-              color: '#fff',
-              fontSize: 20,
-              fontWeight: 700,
-              marginBottom: 16,
-            }}
-          >
-            H
-          </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>관리자 포털</h1>
-          <p className="portal-muted" style={{ marginTop: 6, fontSize: 14, lineHeight: 1.6 }}>
-            통합 계정으로 로그인하세요
-          </p>
+    <main className="login-page">
+      <div className="login-card">
+        <div className="login-header">
+          <div className="login-logo">H</div>
+          <h1>관리자 포털</h1>
+          <p>브라우저의 일반 로그인 저장 기능으로 다음 로그인도 더 편하게 진행할 수 있습니다.</p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
+        <form
+          action="/api/auth/login"
+          method="post"
+          onSubmit={handleSubmit}
+          onError={handleFormError}
+          className="login-form"
+        >
           <label className="portal-label">
             이메일
             <input
@@ -92,8 +92,11 @@ export default function LoginPage() {
               name="email"
               type="email"
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              inputMode="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={handleEmailChange}
               placeholder="admin@example.com"
               required
             />
@@ -107,28 +110,32 @@ export default function LoginPage() {
               type="password"
               autoComplete="current-password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={handlePasswordChange}
               placeholder="비밀번호"
               required
             />
           </label>
 
-          {error ? (
-            <div
-              style={{
-                fontSize: 13,
-                color: 'var(--danger)',
-                background: '#FEF2F2',
-                border: '1px solid #FECACA',
-                borderRadius: 10,
-                padding: '10px 14px',
-              }}
-            >
-              {error}
-            </div>
-          ) : null}
+          <label className="login-remember">
+            <input
+              name="rememberEmail"
+              type="checkbox"
+              checked={rememberEmail}
+              onChange={handleRememberEmailChange}
+            />
+            <span>아이디 저장</span>
+          </label>
 
-          <button className="portal-button" type="submit" disabled={isSubmitting} style={{ width: '100%', marginTop: 4 }}>
+          <p className="login-help">비밀번호 저장과 자동완성은 브라우저 기본 기능을 사용합니다.</p>
+
+          {error ? <div className="login-error">{error}</div> : null}
+
+          <button
+            className="portal-button"
+            type="submit"
+            disabled={isSubmitting}
+            style={{ width: '100%', marginTop: 8 }}
+          >
             {isSubmitting ? '로그인 중...' : '로그인'}
           </button>
         </form>

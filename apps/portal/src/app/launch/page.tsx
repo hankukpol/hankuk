@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
+import { HANKUK_PORTAL_TARGET_ROLES } from '@hankuk/config'
 import { LaunchAutoSubmit } from '@/components/LaunchAutoSubmit'
 import {
   issuePortalLaunchToken,
   PortalLaunchInfraError,
   type PortalTargetRole,
 } from '@/lib/launch-tokens'
-import { loadPortalLaunchCards } from '@/lib/portal-access'
+import { loadPortalLaunchCards, PortalAccessError } from '@/lib/portal-access'
 import { getPortalSession } from '@/lib/portal-session'
 
 export const runtime = 'nodejs'
@@ -17,16 +18,59 @@ function readString(value: string | string[] | undefined) {
   return typeof value === 'string' ? value : Array.isArray(value) ? value[0] : ''
 }
 
+function isPortalTargetRole(value: string): value is PortalTargetRole {
+  return HANKUK_PORTAL_TARGET_ROLES.includes(value as PortalTargetRole)
+}
+
+function getRoleLabel(role: PortalTargetRole) {
+  switch (role) {
+    case 'super_admin':
+      return '슈퍼 관리자'
+    case 'assistant':
+      return '조교'
+    case 'staff':
+      return '직원'
+    default:
+      return '관리자'
+  }
+}
+
+function buildLaunchDescription(role: PortalTargetRole, divisionSlug: string | null) {
+  const roleLabel = getRoleLabel(role)
+  return divisionSlug ? `${roleLabel} 권한 · ${divisionSlug}` : `${roleLabel} 권한`
+}
+
 function ErrorCard(props: { title: string; message: string }) {
   return (
-    <main className="portal-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80dvh' }}>
-      <div className="portal-card" style={{ maxWidth: 440, width: '100%', padding: 28 }}>
-        <span className="portal-badge" style={{ background: '#FEF2F2', color: 'var(--danger)' }}>오류</span>
-        <h1 style={{ marginTop: 14, fontSize: 20, fontWeight: 700 }}>{props.title}</h1>
-        <p className="portal-muted" style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6 }}>
+    <main className="portal-transition">
+      <div className="portal-transition-card">
+        <span className="portal-error-badge">오류</span>
+        <h1
+          style={{
+            marginTop: 16,
+            fontFamily: '"SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif',
+            fontSize: 21,
+            fontWeight: 700,
+            lineHeight: 1.19,
+            letterSpacing: '0.231px',
+            color: '#1d1d1f',
+          }}
+        >
+          {props.title}
+        </h1>
+        <p
+          style={{
+            marginTop: 8,
+            fontSize: 14,
+            fontWeight: 400,
+            lineHeight: 1.43,
+            letterSpacing: '-0.224px',
+            color: 'rgba(0, 0, 0, 0.8)',
+          }}
+        >
           {props.message}
         </p>
-        <a href="/" className="portal-button secondary" style={{ display: 'inline-flex', marginTop: 20 }}>
+        <a href="/" className="portal-button secondary" style={{ display: 'inline-flex', marginTop: 24 }}>
           돌아가기
         </a>
       </div>
@@ -44,10 +88,36 @@ export default async function LaunchPage(props: {
 
   const searchParams = (await props.searchParams) ?? {}
   const appKey = readString(searchParams.app)
-  const role = readString(searchParams.role) as PortalTargetRole
+  const roleValue = readString(searchParams.role)
   const divisionSlug = readString(searchParams.division) || null
 
-  const cards = await loadPortalLaunchCards(session.userId)
+  if (!isPortalTargetRole(roleValue)) {
+    return (
+      <ErrorCard
+        title="유효하지 않은 이동 요청입니다."
+        message="포털 대시보드에서 다시 앱을 선택해 주세요."
+      />
+    )
+  }
+
+  const role = roleValue
+
+  let cards
+  try {
+    cards = await loadPortalLaunchCards(session.userId)
+  } catch (error) {
+    if (error instanceof PortalAccessError) {
+      return (
+        <ErrorCard
+          title="권한 정보를 불러오지 못했습니다."
+          message="잠시 후 다시 시도해 주세요."
+        />
+      )
+    }
+
+    throw error
+  }
+
   const selected = cards.find(
     (card) => card.appKey === appKey && card.role === role && (card.divisionSlug ?? null) === divisionSlug,
   )
@@ -55,8 +125,8 @@ export default async function LaunchPage(props: {
   if (!selected) {
     return (
       <ErrorCard
-        title="이동 권한을 찾지 못했습니다"
-        message="포털 대시보드에서 다시 선택해 주세요. 권한이나 지점 매핑이 아직 연결되지 않았을 수 있습니다."
+        title="이동 권한을 찾지 못했습니다."
+        message="포털 대시보드에서 다시 선택해 주세요. 권한이나 지점 연결이 아직 완료되지 않았을 수 있습니다."
       />
     )
   }
@@ -75,14 +145,14 @@ export default async function LaunchPage(props: {
         action={`${selected.origin}/api/auth/portal-bridge`}
         launchToken={launchToken}
         title={selected.appName}
-        description={selected.description}
+        description={buildLaunchDescription(selected.role, selected.divisionSlug)}
       />
     )
   } catch (error) {
     if (error instanceof PortalLaunchInfraError) {
       return (
         <ErrorCard
-          title="실행 토큰 테이블이 준비되지 않았습니다"
+          title="실행 토큰 테이블이 준비되지 않았습니다."
           message={error.message}
         />
       )

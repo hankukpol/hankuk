@@ -15,8 +15,6 @@ export type PortalSessionPayload = {
 function getSecret() {
   const secret =
     process.env.PORTAL_JWT_SECRET ||
-    process.env.JWT_SECRET ||
-    process.env.APP_SESSION_SECRET ||
     (process.env.NODE_ENV !== "production" ? "portal-dev-secret" : undefined);
 
   if (!secret) {

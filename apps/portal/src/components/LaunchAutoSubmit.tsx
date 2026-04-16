@@ -15,30 +15,36 @@ export function LaunchAutoSubmit(props: {
   }, [])
 
   return (
-    <div className="portal-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80dvh' }}>
-      <div className="portal-card" style={{ maxWidth: 400, width: '100%', padding: 28, textAlign: 'center' }}>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            background: 'var(--brand-soft)',
-            marginBottom: 16,
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <div className="portal-transition">
+      <div className="portal-transition-card">
+        <div className="portal-transition-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0071e3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12h14M12 5l7 7-7 7" />
           </svg>
         </div>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{props.title}</h2>
-        <p className="portal-muted" style={{ marginTop: 6, fontSize: 13, lineHeight: 1.5 }}>
+        <h2 style={{
+          margin: 0,
+          fontFamily: '"SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif',
+          fontSize: 21,
+          fontWeight: 700,
+          lineHeight: 1.19,
+          letterSpacing: '0.231px',
+          color: '#1d1d1f',
+        }}>
+          {props.title}
+        </h2>
+        <p style={{
+          marginTop: 8,
+          fontSize: 14,
+          fontWeight: 400,
+          lineHeight: 1.43,
+          letterSpacing: '-0.224px',
+          color: 'rgba(0, 0, 0, 0.8)',
+        }}>
           {props.description} 화면으로 연결 중...
         </p>
 
-        <form ref={formRef} method="POST" action={props.action} style={{ marginTop: 20 }}>
+        <form ref={formRef} method="POST" action={props.action} style={{ marginTop: 24 }}>
           <input type="hidden" name="launchToken" value={props.launchToken} />
           <button type="submit" className="portal-button" style={{ width: '100%' }}>
             수동으로 이동

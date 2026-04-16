@@ -1,12 +1,14 @@
 import 'server-only'
 
 import { createHash, randomBytes } from 'crypto'
-import type { HankukAppKey } from '@hankuk/config'
+import type { HankukAppKey, HankukPortalTargetRole } from '@hankuk/config'
 import { createServiceSupabaseClient } from '@/lib/supabase'
 
-export type PortalTargetRole = 'super_admin' | 'admin' | 'assistant' | 'staff'
+export type PortalTargetRole = HankukPortalTargetRole
 
 const LAUNCH_TOKEN_TTL_SEC = 60
+const EXPIRED_TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000
+let lastExpiredTokenCleanupAt = 0
 
 export class PortalLaunchInfraError extends Error {
   constructor(message: string) {
@@ -28,6 +30,25 @@ function isMissingPortalLaunchInfra(message: string) {
   )
 }
 
+async function cleanupExpiredLaunchTokens() {
+  const now = Date.now()
+  if (now - lastExpiredTokenCleanupAt < EXPIRED_TOKEN_CLEANUP_INTERVAL_MS) {
+    return
+  }
+
+  lastExpiredTokenCleanupAt = now
+
+  const db = createServiceSupabaseClient()
+  const { error } = await db
+    .from('portal_launch_tokens')
+    .delete()
+    .lt('expires_at', new Date(now).toISOString())
+
+  if (error) {
+    console.warn('[portal-launch] Failed to cleanup expired launch tokens.', error.message)
+  }
+}
+
 export async function issuePortalLaunchToken(input: {
   userId: string
   appKey: HankukAppKey
@@ -38,6 +59,8 @@ export async function issuePortalLaunchToken(input: {
   const plainToken = randomBytes(32).toString('base64url')
   const db = createServiceSupabaseClient()
   const expiresAt = new Date(Date.now() + LAUNCH_TOKEN_TTL_SEC * 1000).toISOString()
+
+  await cleanupExpiredLaunchTokens()
 
   const { error } = await db.from('portal_launch_tokens').insert({
     token_hash: hashToken(plainToken),

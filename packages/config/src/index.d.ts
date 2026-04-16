@@ -18,6 +18,13 @@ export type HankukSchemaName =
 
 export type HankukDivisionSlug = "police" | "fire";
 
+export type HankukPortalTargetRole = "super_admin" | "admin" | "assistant" | "staff";
+
+export type HankukPortalBridgeRolePolicy = {
+  appRoles: readonly HankukPortalTargetRole[];
+  divisionRoles: readonly HankukPortalTargetRole[];
+};
+
 export type HankukServiceConfig = {
   appKey: HankukAppKey;
   displayName: string;
@@ -44,9 +51,15 @@ export const HANKUK_APP_KEYS: {
   readonly INTERVIEW_MATE: "interview-mate";
 };
 
+export const HANKUK_PORTAL_TARGET_ROLES: readonly HankukPortalTargetRole[];
+
 export const HANKUK_SERVICE_CONFIG: Readonly<Record<HankukAppKey, HankukServiceConfig>>;
 
+export const HANKUK_PORTAL_BRIDGE_ROLE_POLICY: Readonly<Record<HankukAppKey, HankukPortalBridgeRolePolicy>>;
+
 export const HANKUK_DIVISION_SLUGS: readonly HankukDivisionSlug[];
+
+export const HANKUK_PUBLIC_BASE_DOMAIN: "hankukpol.co.kr";
 
 export const HANKUK_PLACEHOLDER_EMAIL_DOMAIN: "identity.hankukpol.local";
 
@@ -55,4 +68,8 @@ export const SCORE_PREDICT_RUNTIME_SCHEMAS: {
   readonly police: "score_predict_police";
 };
 
-export function getHankukServiceConfig(appKey: HankukAppKey): HankukServiceConfig;
+export function getHankukServiceConfig(appKey: HankukAppKey): HankukServiceConfig | null;
+export function getHankukPortalBridgeRolePolicy(appKey: HankukAppKey): HankukPortalBridgeRolePolicy | null;
+export function isHankukPortalBridgeRoleAllowed(appKey: HankukAppKey, role: HankukPortalTargetRole): boolean;
+export function getHankukServiceCanonicalUrl(appKey: HankukAppKey): string | null;
+export function getHankukServiceOrigins(appKey: HankukAppKey): string[];

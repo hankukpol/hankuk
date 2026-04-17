@@ -864,9 +864,7 @@ export async function buildPassPayload(params: {
   }
 
   if (!isPassRequestMatch({
-    course,
     enrollment: mergedEnrollment,
-    courseSlug: params.courseSlug,
     name: params.name,
     phone: params.phone,
   })) {

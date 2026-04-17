@@ -221,14 +221,11 @@ export async function buildPassCourseSummaries(
 }
 
 export function isPassRequestMatch(params: {
-  course: Course
   enrollment: Enrollment
-  courseSlug: string
   name: string
   phone: string
 }) {
-  return params.course.slug === params.courseSlug
-    && normalizeName(params.enrollment.name) === normalizeName(params.name)
+  return normalizeName(params.enrollment.name) === normalizeName(params.name)
     && normalizePhone(params.enrollment.phone) === normalizePhone(params.phone)
 }
 

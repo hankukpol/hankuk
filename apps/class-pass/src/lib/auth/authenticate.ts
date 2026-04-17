@@ -77,7 +77,7 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
   if (!payload) {
     return {
       payload: null,
-      error: NextResponse.json({ error: 'Admin authentication required.' }, { status: 403 }),
+      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 403 }),
     }
   }
 
@@ -91,7 +91,7 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
   if (!(await validateLegacyAdmin(payload, division))) {
     return {
       payload: null,
-      error: NextResponse.json({ error: 'Admin authentication required.' }, { status: 403 }),
+      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 403 }),
     }
   }
 
@@ -110,7 +110,7 @@ export async function authenticateSuperAdminRequest(req: NextRequest): Promise<A
   if (!payload || payload.role !== 'admin' || payload.sessionScope !== 'super_admin') {
     return {
       payload: null,
-      error: NextResponse.json({ error: 'Super admin authentication required.' }, { status: 401 }),
+      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 401 }),
     }
   }
 
@@ -118,7 +118,7 @@ export async function authenticateSuperAdminRequest(req: NextRequest): Promise<A
   if (!session) {
     return {
       payload: null,
-      error: NextResponse.json({ error: 'Session expired. Please sign in again.' }, { status: 401 }),
+      error: NextResponse.json({ error: '세션이 만료되었습니다. 다시 로그인해 주세요.' }, { status: 401 }),
     }
   }
 
@@ -174,7 +174,7 @@ export async function authenticateStaffRequest(req: NextRequest): Promise<StaffA
   return {
     payload: null,
     actingRole: null,
-    error: NextResponse.json({ error: 'Staff authentication required.' }, { status: 401 }),
+    error: NextResponse.json({ error: '직원 인증이 필요합니다.' }, { status: 401 }),
   }
 }
 

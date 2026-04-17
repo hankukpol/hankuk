@@ -16,6 +16,8 @@ const RESERVED_TOP_LEVEL_SEGMENTS = new Set([
   'super-admin',
 ])
 
+export type TenantSlugValidationError = 'missing' | 'invalid' | 'reserved'
+
 function readBrowserCookie(name: string) {
   if (typeof document === 'undefined') {
     return null
@@ -26,7 +28,7 @@ function readBrowserCookie(name: string) {
   return entry ? decodeURIComponent(entry.slice(prefix.length)) : null
 }
 
-function normalizeSlug(value: string | null | undefined) {
+function normalizeSlugSyntax(value: string | null | undefined) {
   if (!value) {
     return null
   }
@@ -36,11 +38,32 @@ function normalizeSlug(value: string | null | undefined) {
     return null
   }
 
-  if (RESERVED_TOP_LEVEL_SEGMENTS.has(normalized)) {
-    return null
+  return normalized
+}
+
+export function isReservedTenantSlug(value: string | null | undefined) {
+  const normalized = normalizeSlugSyntax(value)
+  return normalized ? RESERVED_TOP_LEVEL_SEGMENTS.has(normalized) : false
+}
+
+export function validateTenantSlug(value: string | null | undefined): {
+  normalized: TenantType | null
+  error: TenantSlugValidationError | null
+} {
+  if (!value || !value.trim()) {
+    return { normalized: null, error: 'missing' }
   }
 
-  return normalized
+  const normalized = normalizeSlugSyntax(value)
+  if (!normalized) {
+    return { normalized: null, error: 'invalid' }
+  }
+
+  if (RESERVED_TOP_LEVEL_SEGMENTS.has(normalized)) {
+    return { normalized: null, error: 'reserved' }
+  }
+
+  return { normalized, error: null }
 }
 
 function humanizeTenantSlug(slug: string) {
@@ -84,10 +107,10 @@ export interface TenantConfig {
 }
 
 export const DEFAULT_TENANT_TYPE: TenantType =
-  normalizeSlug(process.env.NEXT_PUBLIC_TENANT_TYPE) ?? 'police'
+  validateTenantSlug(process.env.NEXT_PUBLIC_TENANT_TYPE).normalized ?? 'police'
 
 export function normalizeTenantType(value: string | null | undefined): TenantType | null {
-  return normalizeSlug(value)
+  return validateTenantSlug(value).normalized
 }
 
 export function parseTenantTypeFromPathname(pathname: string | null | undefined): TenantType | null {

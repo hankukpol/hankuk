@@ -5,6 +5,7 @@ export type CourseType = 'interview' | 'mock_exam' | 'lecture' | 'general'
 export type CourseStatus = 'active' | 'archived'
 export type EnrollmentStatus = 'active' | 'refunded'
 export type StudentAuthMethod = 'birth_date' | 'pin'
+export type MaterialType = 'handout' | 'textbook'
 
 export interface EnrollmentFieldDef {
   key: string
@@ -44,6 +45,7 @@ export interface Course {
   refund_policy: string | null
   kakao_chat_url: string | null
   extra_site_url: string | null
+  extra_site_label: string | null
   enrolled_from: string | null
   enrolled_until: string | null
   enrollment_fields: EnrollmentFieldDef[]
@@ -236,6 +238,15 @@ export interface Material {
   description: string | null
   is_active: boolean
   sort_order: number
+  material_type: MaterialType
+}
+
+export interface TextbookAssignment {
+  id: number
+  enrollment_id: number
+  material_id: number
+  assigned_at: string
+  assigned_by: string | null
 }
 
 export interface DistributionLog {
@@ -288,6 +299,8 @@ export interface PassPayload {
   attendance: AttendanceStudentState
   materials: Material[]
   receipts: Record<number, string>
+  textbooks: Material[]
+  textbookReceipts: Record<number, string>
   qrToken: string
 }
 

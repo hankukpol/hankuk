@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
@@ -21,6 +21,7 @@ import { maskPhone, normalizeName, normalizePhone } from '@/lib/utils'
 export default function StudentLoginPage() {
   const tenant = useTenantConfig()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const quickLoginTriggeredRef = useRef(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -36,6 +37,7 @@ export default function StudentLoginPage() {
   const [studentLoginEnabled, setStudentLoginEnabled] = useState(true)
   const [studentCoursesEnabled, setStudentCoursesEnabled] = useState(true)
   const [configReady, setConfigReady] = useState(false)
+  const skipAutoLogin = searchParams.get('loggedOut') === '1'
 
   useEffect(() => {
     quickLoginTriggeredRef.current = false
@@ -165,6 +167,10 @@ export default function StudentLoginPage() {
       return
     }
 
+    if (skipAutoLogin) {
+      return
+    }
+
     if (quickLoginTriggeredRef.current) {
       return
     }
@@ -178,6 +184,7 @@ export default function StudentLoginPage() {
     savedPhone,
     savedVerificationCode,
     showForm,
+    skipAutoLogin,
     studentCoursesEnabled,
     studentLoginEnabled,
   ])

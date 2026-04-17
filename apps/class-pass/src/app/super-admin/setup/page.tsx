@@ -8,24 +8,19 @@ export default function SuperAdminSetupPage() {
   const router = useRouter()
   const [loginId, setLoginId] = useState('')
   const [displayName, setDisplayName] = useState('Class Pass Super Admin')
-  const [pin, setPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
+  const [sharedUserId, setSharedUserId] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (pin !== confirmPin) {
-      setError('PIN 확인 값이 일치하지 않습니다.')
-      return
-    }
-
     setError('')
     setLoading(true)
+
     const response = await fetch('/api/auth/super-admin/bootstrap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ loginId, displayName, pin }),
+      body: JSON.stringify({ loginId, displayName, sharedUserId }),
     })
     const payload = await response.json().catch(() => null)
     setLoading(false)
@@ -35,7 +30,7 @@ export default function SuperAdminSetupPage() {
       return
     }
 
-    router.push('/super-admin/manage')
+    router.push('/super-admin/login?setup=done')
   }
 
   return (
@@ -44,11 +39,15 @@ export default function SuperAdminSetupPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
           Bootstrap
         </p>
-        <h2 className="mt-3 text-3xl font-extrabold text-slate-900">
+        <h1 className="mt-3 text-3xl font-extrabold text-slate-900">
           슈퍼 관리자 초기 설정
-        </h2>
+        </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          최초 한 번만 전역 관리자 계정을 생성합니다.
+          최초 1회만 Class Pass 슈퍼 관리자 계정을 만들 수 있습니다. 설정이 끝나면 로컬
+          로그인 없이 포털을 통해서만 접속합니다.
+        </p>
+        <p className="mt-3 text-xs leading-5 text-slate-500">
+          포털 로그인 연동을 위해 포털 사용자 ID(shared user id)를 반드시 입력해 주세요.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
@@ -65,17 +64,9 @@ export default function SuperAdminSetupPage() {
             className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-900 outline-none focus:border-slate-400"
           />
           <input
-            type="password"
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
-            placeholder="PIN"
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-900 outline-none focus:border-slate-400"
-          />
-          <input
-            type="password"
-            value={confirmPin}
-            onChange={(event) => setConfirmPin(event.target.value)}
-            placeholder="PIN 확인"
+            value={sharedUserId}
+            onChange={(event) => setSharedUserId(event.target.value)}
+            placeholder="포털 사용자 ID (UUID)"
             className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-900 outline-none focus:border-slate-400"
           />
           {error ? <p className="text-sm text-red-600">{error}</p> : null}

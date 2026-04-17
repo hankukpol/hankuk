@@ -70,7 +70,7 @@ export default function StaffAccountsPageClient({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-[#1d1d1f]">직원 관리</h2>
+          <h2 className="text-xl font-semibold text-[#1d1d1f]">직원 로그인 계정 관리</h2>
           <p className="mt-1 text-sm text-[#86868b]">{accounts.length}명 등록</p>
         </div>
         <button type="button" onClick={() => setShowForm((v) => !v)} className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700">
@@ -80,11 +80,11 @@ export default function StaffAccountsPageClient({
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-[8px] border border-[#d2d2d7] bg-white p-5">
-          <h3 className="text-sm font-bold text-[#1d1d1f]">새 직원 등록</h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="직원 이름" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
-            <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="PIN (최소 4자리)" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
-          </div>
+            <h3 className="text-sm font-bold text-[#1d1d1f]">새 직원 로그인 계정 등록</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="직원 로그인 ID" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
+              <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="PIN (최소 4자리)" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
+            </div>
           <div className="mt-3 flex items-center gap-3">
             <button type="submit" disabled={saving} className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? '등록 중...' : '등록'}</button>
             {error && <span className="text-xs text-red-500">{error}</span>}
@@ -96,11 +96,11 @@ export default function StaffAccountsPageClient({
       {editingId && (
         <form onSubmit={handleSaveEdit} className="rounded-[8px] border border-blue-200 bg-blue-50/30 p-5">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#1d1d1f]">직원 편집</h3>
+            <h3 className="text-sm font-bold text-[#1d1d1f]">직원 로그인 계정 수정</h3>
             <button type="button" onClick={() => setEditingId(null)} className="text-xs text-[#86868b] hover:underline">닫기</button>
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="직원 이름" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
+              <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="직원 로그인 ID" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
             <input type="password" value={editPin} onChange={(e) => setEditPin(e.target.value)} placeholder="새 PIN (변경 시에만)" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
           </div>
           <div className="mt-3">
@@ -120,7 +120,7 @@ export default function StaffAccountsPageClient({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#f5f5f7] text-left text-xs font-medium text-[#86868b]">
-                <th className="px-5 py-3">이름</th>
+                <th className="px-5 py-3">로그인 ID</th>
                 <th className="px-3 py-3">등록일</th>
                 <th className="px-5 py-3 text-right">관리</th>
               </tr>

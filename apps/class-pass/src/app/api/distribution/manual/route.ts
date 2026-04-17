@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireAppFeature } from '@/lib/app-feature-guard'
 import { handleRouteError } from '@/lib/api/error-response'
-import { verifyEnrollmentOwnership } from '@/lib/class-pass-data'
+import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { invalidateCache } from '@/lib/cache/revalidate'
+import { verifyEnrollmentOwnership } from '@/lib/class-pass-data'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -52,6 +52,13 @@ export async function POST(req: NextRequest) {
 
     const result = rpcResult.data as DistributionResult | null
     if (!result?.success) {
+      if (result?.reason === 'NOT_ASSIGNED') {
+        return NextResponse.json(
+          { error: '해당 학생에게 배정되지 않은 교재입니다.' },
+          { status: 400 },
+        )
+      }
+
       return NextResponse.json({ error: result?.reason ?? '자료 배부 처리에 실패했습니다.' }, { status: 400 })
     }
 

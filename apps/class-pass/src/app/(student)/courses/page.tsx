@@ -86,7 +86,7 @@ export default function StudentCoursesPage() {
 
   function handleReset() {
     clearStudentSession(sessionStorage)
-    router.push(withTenantPrefix('/', tenant.type))
+    router.push(`${withTenantPrefix('/', tenant.type)}?loggedOut=1`)
   }
 
   if (loading) {

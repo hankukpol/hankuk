@@ -10,6 +10,7 @@ export default function StaffLoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tenant = useTenantConfig()
+  const [loginId, setLoginId] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -28,7 +29,7 @@ export default function StaffLoginPage() {
     const response = await fetch('/api/auth/staff/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }),
+      body: JSON.stringify({ loginId, pin }),
     })
     const payload = await response.json().catch(() => null)
     setLoading(false)
@@ -47,10 +48,23 @@ export default function StaffLoginPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">직원 로그인</p>
         <h1 className="mt-3 text-3xl font-extrabold text-gray-900">직원 로그인</h1>
         <p className="mt-2 text-sm leading-6 text-gray-500">
-          자료 배부와 QR 스캔을 위해 직원 PIN으로 로그인합니다.
+          지점 직원 운영계정 ID와 PIN으로 로그인합니다. 기존 공용 직원 PIN만 쓰는 지점은 ID를 비워도 됩니다.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-gray-700">직원 ID</label>
+            <input
+              type="text"
+              value={loginId}
+              onChange={(event) => setLoginId(event.target.value)}
+              placeholder="운영계정 ID 또는 기존 직원 로그인 이름"
+              autoComplete="username"
+              autoFocus
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
+            />
+          </div>
+
           <div className="flex flex-col gap-2">
             <label className="text-sm font-semibold text-gray-700">직원 PIN</label>
             <input
@@ -60,7 +74,6 @@ export default function StaffLoginPage() {
               placeholder="PIN 입력"
               inputMode="numeric"
               autoComplete="current-password"
-              autoFocus
               className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
             />
           </div>

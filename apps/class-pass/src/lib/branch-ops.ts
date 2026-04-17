@@ -4,7 +4,12 @@ import bcrypt from 'bcryptjs'
 import { revalidateTag, unstable_cache } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
 import { createRootServerClient } from '@/lib/supabase/root'
-import { buildFallbackTenantConfig, normalizeTenantType, type TrackType } from '@/lib/tenant'
+import {
+  buildFallbackTenantConfig,
+  validateTenantSlug,
+  type TenantSlugValidationError,
+  type TrackType,
+} from '@/lib/tenant'
 
 export const CLASS_PASS_APP_KEY = 'class-pass'
 
@@ -144,6 +149,24 @@ function mapOperatorMembershipRecord(
   }
 }
 
+function createBranchSlugError(reason: TenantSlugValidationError) {
+  const error = new Error(`BRANCH_SLUG_${reason.toUpperCase()}`)
+  error.name = 'BranchSlugError'
+  return error
+}
+
+export function isBranchSlugError(error: unknown, reason?: TenantSlugValidationError) {
+  if (!(error instanceof Error) || !error.message.startsWith('BRANCH_SLUG_')) {
+    return false
+  }
+
+  if (!reason) {
+    return true
+  }
+
+  return error.message === `BRANCH_SLUG_${reason.toUpperCase()}`
+}
+
 function serializeMemberships(
   memberships: Array<{ role: BranchRole; branch_slug?: string | null; is_active?: boolean }>,
 ) {
@@ -163,7 +186,7 @@ export async function isBranchOpsReady() {
 }
 
 export async function getBranchBySlug(slug: string): Promise<BranchRecord | null> {
-  const normalized = normalizeTenantType(slug)
+  const normalized = validateTenantSlug(slug).normalized
   if (!normalized) {
     return null
   }
@@ -233,10 +256,15 @@ export async function upsertBranch(input: {
   is_active?: boolean
   display_order?: number
 }) {
-  const fallback = buildFallbackTenantConfig(input.slug)
+  const { normalized, error: slugError } = validateTenantSlug(input.slug)
+  if (!normalized || slugError) {
+    throw createBranchSlugError(slugError ?? 'invalid')
+  }
+
+  const fallback = buildFallbackTenantConfig(normalized)
   const db = createServerClient()
   const payload = {
-    slug: input.slug,
+    slug: normalized,
     name: input.name,
     track_type: input.track_type,
     description: input.description ?? fallback.defaultDescription,

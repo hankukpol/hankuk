@@ -44,6 +44,7 @@ type CoursePatchForm = {
   refund_policy: string
   kakao_chat_url: string
   extra_site_url: string
+  extra_site_label: string
   designated_seat_open: boolean
   attendance_open: boolean
   enrolled_from: string
@@ -112,6 +113,7 @@ function toPatchForm(course: Course): CoursePatchForm {
     refund_policy: course.refund_policy ?? '',
     kakao_chat_url: course.kakao_chat_url ?? '',
     extra_site_url: course.extra_site_url ?? '',
+    extra_site_label: course.extra_site_label ?? '',
     designated_seat_open: course.designated_seat_open,
     attendance_open: course.attendance_open,
     enrolled_from: course.enrolled_from ?? '',
@@ -239,6 +241,7 @@ export default function CourseDetailPage({
         refund_policy: form.refund_policy || null,
         kakao_chat_url: form.kakao_chat_url || null,
         extra_site_url: form.extra_site_url || null,
+        extra_site_label: form.extra_site_label.trim() || null,
         designated_seat_open: form.feature_designated_seat ? form.designated_seat_open : false,
         attendance_open: form.feature_attendance ? form.attendance_open : false,
         enrolled_from: form.enrolled_from || null,
@@ -249,10 +252,16 @@ export default function CourseDetailPage({
     setSaving(false)
     if (!response.ok) { setError(payload?.error ?? '강좌를 저장하지 못했습니다.'); return }
     const updated = payload.course as Course
+    const nextWarning = payload?.warning ?? ''
+    const partialSave = Boolean(payload?.partialSave ?? nextWarning)
     setCourse(updated)
     setForm(toPatchForm(updated))
-    setWarning(payload?.warning ?? '')
-    setMessage('강좌 설정을 저장했습니다.')
+    setWarning(nextWarning)
+    setMessage(
+      partialSave
+        ? '강좌 기본 설정은 저장됐지만 일부 기능 설정은 아직 반영되지 않았습니다.'
+        : '강좌 설정을 저장했습니다.',
+    )
   }
 
   async function handleCreateSubject(event: FormEvent) {
@@ -699,6 +708,19 @@ export default function CourseDetailPage({
               {form.extra_site_url ? (
                 <p className="text-xs text-gray-400">학생 강좌 화면에 추가 사이트 이동 버튼이 표시됩니다.</p>
               ) : null}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-500">추가 사이트 버튼 문구</label>
+              <input
+                value={form.extra_site_label}
+                onChange={(e) => setForm((c) => c && { ...c, extra_site_label: e.target.value })}
+                placeholder="추가 사이트 이동"
+                maxLength={40}
+                className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              />
+              <p className="text-xs text-gray-400">
+                비워두면 기본 문구인 &apos;추가 사이트 이동&apos;이 표시됩니다.
+              </p>
             </div>
           </div>
 

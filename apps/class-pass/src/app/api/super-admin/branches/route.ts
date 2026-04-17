@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { authenticateSuperAdminRequest } from '@/lib/auth/authenticate'
-import { listBranches, upsertBranch } from '@/lib/branch-ops'
+import { isBranchSlugError, listBranches, upsertBranch } from '@/lib/branch-ops'
 
 const schema = z.object({
   slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
@@ -39,6 +39,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '지점 정보가 올바르지 않습니다.' }, { status: 400 })
   }
 
-  const branch = await upsertBranch(parsed.data)
-  return NextResponse.json({ branch }, { status: 201 })
+  try {
+    const branch = await upsertBranch(parsed.data)
+    return NextResponse.json({ branch }, { status: 201 })
+  } catch (error) {
+    if (isBranchSlugError(error, 'missing') || isBranchSlugError(error, 'invalid')) {
+      return NextResponse.json(
+        { error: '지점 slug는 영문 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.' },
+        { status: 400 },
+      )
+    }
+
+    if (isBranchSlugError(error, 'reserved')) {
+      return NextResponse.json(
+        { error: '해당 slug는 시스템 경로로 예약되어 있어 지점 slug로 사용할 수 없습니다.' },
+        { status: 400 },
+      )
+    }
+
+    throw error
+  }
 }

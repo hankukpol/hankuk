@@ -92,6 +92,39 @@ export async function DELETE(
   }
 
   const db = createServerClient()
+  const [distributionLogResult, textbookAssignmentResult] = await Promise.all([
+    db
+      .from('distribution_logs')
+      .select('id')
+      .eq('material_id', materialId)
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from('textbook_assignments')
+      .select('id')
+      .eq('material_id', materialId)
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  if (distributionLogResult.error || textbookAssignmentResult.error) {
+    return NextResponse.json({ error: '자료 삭제 전 이력을 확인하지 못했습니다.' }, { status: 500 })
+  }
+
+  if (distributionLogResult.data) {
+    return NextResponse.json(
+      { error: '이미 배부 이력이 있는 자료는 삭제할 수 없습니다. 비활성 상태로 변경해 주세요.' },
+      { status: 400 },
+    )
+  }
+
+  if (textbookAssignmentResult.data) {
+    return NextResponse.json(
+      { error: '이미 학생 배정 이력이 있는 교재는 삭제할 수 없습니다. 배정을 해제하거나 비활성 상태로 변경해 주세요.' },
+      { status: 400 },
+    )
+  }
+
   const { error } = await db
     .from('materials')
     .delete()

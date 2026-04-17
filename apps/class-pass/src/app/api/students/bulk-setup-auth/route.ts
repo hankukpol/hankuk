@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   getPendingStudentAuthStats,
   initializeStudentAuthBatch,
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    await invalidateCache('enrollments')
     return NextResponse.json({
       total,
       birth_date_count: birthDateCount,

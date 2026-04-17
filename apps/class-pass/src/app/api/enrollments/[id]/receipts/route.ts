@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { toReceiptMap } from '@/lib/bulk'
 import { handleRouteError } from '@/lib/api/error-response'
-import { getReceiptRows, verifyEnrollmentOwnership } from '@/lib/class-pass-data'
+import {
+  getAssignedTextbooksForEnrollment,
+  getReceiptRows,
+  listMaterialsForCourse,
+  verifyEnrollmentOwnership,
+} from '@/lib/class-pass-data'
 import { checkRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
 import { createServerClient } from '@/lib/supabase/server'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
@@ -18,7 +23,7 @@ export async function GET(
     if (!rateLimit.allowed) {
       const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
       return NextResponse.json(
-        { error: `요청 횟수를 초과했습니다. ${retryAfterSec}초 후에 다시 시도해주세요.` },
+        { error: `요청 횟수를 초과했습니다. ${retryAfterSec}초 후에 다시 시도해 주세요.` },
         { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
       )
     }
@@ -40,13 +45,13 @@ export async function GET(
       'enrollmentReceipts.enrollment',
       await db
         .from('enrollments')
-        .select('id')
+        .select('id,course_id')
         .eq('id', enrollmentId)
         .eq('name', normalizeName(name))
         .eq('phone', normalizePhone(phone))
         .eq('status', 'active')
         .maybeSingle(),
-    )
+    ) as { id: number; course_id: number } | null
 
     if (!enrollment) {
       return NextResponse.json({ error: '수강생 정보를 확인하지 못했습니다.' }, { status: 403 })
@@ -58,7 +63,19 @@ export async function GET(
       return NextResponse.json({ error: '수강생 정보를 확인하지 못했습니다.' }, { status: 403 })
     }
 
-    return NextResponse.json({ receipts: toReceiptMap(await getReceiptRows(enrollmentId)) })
+    const [handouts, textbooks, receiptRows] = await Promise.all([
+      listMaterialsForCourse(enrollment.course_id, { activeOnly: true, materialType: 'handout' }),
+      getAssignedTextbooksForEnrollment(enrollmentId, { activeOnly: true }),
+      getReceiptRows(enrollmentId),
+    ])
+
+    const handoutIdSet = new Set(handouts.map((material) => material.id))
+    const textbookIdSet = new Set(textbooks.map((material) => material.id))
+
+    return NextResponse.json({
+      receipts: toReceiptMap((receiptRows ?? []).filter((row) => handoutIdSet.has(row.material_id))),
+      textbookReceipts: toReceiptMap((receiptRows ?? []).filter((row) => textbookIdSet.has(row.material_id))),
+    })
   } catch (error) {
     return handleRouteError('enrollments.receipts.GET', '수령 정보를 불러오지 못했습니다.', error)
   }

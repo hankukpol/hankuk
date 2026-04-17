@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { invalidateCache } from '@/lib/cache/revalidate'
 import { getStudentProfileById, resetStudentPin } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'PIN을 생성하지 못했습니다.' }, { status: 500 })
     }
 
+    await invalidateCache('enrollments')
     return NextResponse.json({ pin: result.generatedPin })
   } catch (error) {
     return handleRouteError('students.reset-pin.POST', '학생 PIN을 재설정하지 못했습니다.', error)

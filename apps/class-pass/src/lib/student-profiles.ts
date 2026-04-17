@@ -1065,6 +1065,7 @@ export function mergeEnrollmentStudentSnapshot(row: EnrollmentWithStudentRow): E
   return {
     ...enrollment,
     student_id: enrollment.student_id ?? student.id,
+    student_profile: getStudentAuthProfile(student),
     name: student.name,
     phone: student.phone,
     exam_number: student.exam_number,

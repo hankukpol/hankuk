@@ -111,7 +111,10 @@ export default function StudentCoursePassPage() {
       const payload = await response.json().catch(() => null)
       if (response.ok && !cancelled) {
         const newReceipts = payload.receipts ?? {}
-        const nextReceiptCount = Object.keys(newReceipts).length
+        const newTextbookReceipts = payload.textbookReceipts ?? {}
+        const nextReceiptCount =
+          Object.keys(newReceipts).length
+          + Object.keys(newTextbookReceipts).length
 
         if (nextReceiptCount > prevReceiptCountRef.current && prevReceiptCountRef.current > 0) {
           try {
@@ -127,7 +130,15 @@ export default function StudentCoursePassPage() {
         }
 
         prevReceiptCountRef.current = nextReceiptCount
-        setData((current) => (current ? { ...current, receipts: newReceipts } : current))
+        setData((current) => (
+          current
+            ? {
+              ...current,
+              receipts: newReceipts,
+              textbookReceipts: newTextbookReceipts,
+            }
+            : current
+        ))
       }
     }
 
@@ -135,8 +146,10 @@ export default function StudentCoursePassPage() {
       .then((passData) => {
         if (!cancelled) {
           setLoading(false)
-          prevReceiptCountRef.current = Object.keys(passData.receipts).length
-          receiptMaterialCount = passData.materials.length
+          prevReceiptCountRef.current =
+            Object.keys(passData.receipts).length
+            + Object.keys(passData.textbookReceipts).length
+          receiptMaterialCount = passData.materials.length + passData.textbooks.length
 
           const shouldPollReceipts =
             passData.course.feature_qr_distribution &&
@@ -314,6 +327,10 @@ export default function StudentCoursePassPage() {
   const materialCount = data.materials.length
   const allReceived = materialCount > 0 && receiptCount === materialCount
   const nextMaterialId = data.materials.find((material) => !data.receipts[material.id])?.id
+  const textbookReceiptCount = Object.keys(data.textbookReceipts).length
+  const textbookCount = data.textbooks.length
+  const allTextbooksReceived = textbookCount > 0 && textbookReceiptCount === textbookCount
+  const nextTextbookId = data.textbooks.find((material) => !data.textbookReceipts[material.id])?.id
 
   const studentFields = [
     { label: '수험번호', value: data.enrollment.exam_number || '-' },
@@ -501,7 +518,7 @@ export default function StudentCoursePassPage() {
         </section>
       ) : null}
 
-      {data.course.feature_qr_distribution ? (
+      {data.course.feature_qr_distribution && materialCount > 0 ? (
         <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="student-eyebrow student-eyebrow-light">배부 자료</h2>
@@ -562,6 +579,61 @@ export default function StudentCoursePassPage() {
         </section>
       ) : null}
 
+      {data.course.feature_qr_distribution && textbookCount > 0 ? (
+        <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="student-eyebrow student-eyebrow-light">교재 수령</h2>
+            <span className={`student-chip ${allTextbooksReceived ? 'bg-[#eefaf1] text-[#19703a]' : 'bg-[rgba(0,113,227,0.08)] text-[var(--student-blue)]'}`}>
+              {textbookReceiptCount} / {textbookCount} 수령
+            </span>
+          </div>
+
+          {allTextbooksReceived ? (
+            <div className="mb-3 rounded-[12px] bg-[#eefaf1] px-4 py-3 text-center">
+              <span className="text-[14px] font-semibold text-[#19703a]">모든 교재를 수령했습니다.</span>
+            </div>
+          ) : null}
+
+          <ul className="flex flex-col gap-2">
+            {data.textbooks.map((material) => {
+              const receiptAt = data.textbookReceipts[material.id]
+              const isNext = material.id === nextTextbookId
+
+              return (
+                <li
+                  key={material.id}
+                  className={`flex items-center gap-3 rounded-[24px] px-4 py-3 ${
+                    isNext
+                      ? 'bg-[rgba(0,113,227,0.08)]'
+                      : 'bg-[var(--student-surface-soft)]'
+                  }`}
+                >
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                      receiptAt ? 'bg-[#19703a] text-white' : 'border-2 border-[var(--student-line-strong)] text-transparent'
+                    }`}
+                  >
+                    {receiptAt ? '완' : '·'}
+                  </span>
+                  <span className={`text-[14px] ${isNext ? 'font-semibold text-[var(--student-blue)]' : 'font-medium text-[var(--student-text)]'}`}>
+                    {material.name}
+                  </span>
+                  <span className="ml-auto text-[12px]">
+                    {receiptAt ? (
+                      <span className="font-medium text-[#19703a]">{formatReceiptTime(receiptAt)}</span>
+                    ) : isNext ? (
+                      <span className="text-[var(--student-text-muted)]">다음 수령 대상</span>
+                    ) : (
+                      <span className="text-[#98a0ad]">대기 중</span>
+                    )}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {data.course.kakao_chat_url || data.course.extra_site_url ? (
         <div className="mt-4 px-4 sm:px-5">
           {data.course.kakao_chat_url ? (
@@ -590,7 +662,7 @@ export default function StudentCoursePassPage() {
                 <path d="M10 14 19 5" />
                 <path d="M19 14v5h-14v-14h5" />
               </svg>
-              추가 사이트 이동
+              {data.course.extra_site_label?.trim() || '추가 사이트 이동'}
             </a>
           ) : null}
         </div>

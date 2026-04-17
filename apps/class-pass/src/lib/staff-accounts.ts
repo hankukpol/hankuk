@@ -65,6 +65,16 @@ export async function listStaffAccounts(): Promise<StaffAccountSummary[]> {
   }))
 }
 
+export async function findStoredStaffAccount(loginId: string): Promise<StoredStaffAccount | null> {
+  const normalized = loginId.trim()
+  if (!normalized) {
+    return null
+  }
+
+  const accounts = await loadStoredStaffAccounts()
+  return accounts.find((account) => account.id === normalized || account.name === normalized) ?? null
+}
+
 export async function saveStoredStaffAccounts(accounts: StoredStaffAccount[]) {
   const db = createServerClient()
   const key = await getStaffAccountsKey()

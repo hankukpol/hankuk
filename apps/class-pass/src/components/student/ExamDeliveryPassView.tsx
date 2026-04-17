@@ -228,6 +228,7 @@ function BottomActions({
   chatUrl,
   hasExtraSiteLink,
   extraSiteUrl,
+  extraSiteLabel,
   hasNotice,
   hasRefund,
   onBack,
@@ -238,12 +239,15 @@ function BottomActions({
   chatUrl?: string | null
   hasExtraSiteLink: boolean
   extraSiteUrl?: string | null
+  extraSiteLabel?: string | null
   hasNotice: boolean
   hasRefund: boolean
   onBack: () => void
   onOpenNotice: () => void
   onOpenRefund: () => void
 }) {
+  const resolvedExtraSiteLabel = extraSiteLabel?.trim() || '추가 사이트 이동'
+
   return (
     <div className="mt-auto px-4 pt-4 sm:px-5">
       {hasChatLink && chatUrl ? (
@@ -273,7 +277,7 @@ function BottomActions({
             <path d="M10 14 19 5" />
             <path d="M19 14v5h-14v-14h5" />
           </svg>
-          추가 사이트 이동
+          {resolvedExtraSiteLabel}
         </a>
       ) : null}
 
@@ -535,6 +539,7 @@ export function ExamDeliveryPassView({
           chatUrl={data.course.kakao_chat_url}
           hasExtraSiteLink={hasExtraSiteLink}
           extraSiteUrl={data.course.extra_site_url}
+          extraSiteLabel={data.course.extra_site_label}
           hasNotice={hasNotice}
           hasRefund={hasRefund}
           onBack={onBack}

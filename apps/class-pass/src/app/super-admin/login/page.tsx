@@ -1,79 +1,56 @@
-'use client'
+const portalUrl = (
+  process.env.NEXT_PUBLIC_PORTAL_URL ??
+  process.env.PORTAL_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://portal.hankukpol.co.kr')
+).replace(/\/+$/, '')
 
-import type { FormEvent } from 'react'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+type SuperAdminLoginPageProps = {
+  searchParams?: Promise<{
+    setup?: string
+  }>
+}
 
-export default function SuperAdminLoginPage() {
-  const router = useRouter()
-  const [loginId, setLoginId] = useState('')
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    setError('')
-    setLoading(true)
-
-    const response = await fetch('/api/auth/super-admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ loginId, pin }),
-    })
-    const payload = await response.json().catch(() => null)
-    setLoading(false)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '슈퍼 관리자 로그인에 실패했습니다.')
-      return
-    }
-
-    router.push('/super-admin/manage')
-  }
+export default async function SuperAdminLoginPage({ searchParams }: SuperAdminLoginPageProps) {
+  const resolvedSearchParams = await searchParams
+  const setupCompleted = resolvedSearchParams?.setup === 'done'
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-73px)] w-full max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm">
+      <div className="w-full max-w-lg rounded-3xl bg-white p-8 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-          Super Admin
+          Super Admin Portal
         </p>
-        <h2 className="mt-3 text-3xl font-extrabold text-slate-900">
-          전역 관리자 로그인
-        </h2>
+        <h1 className="mt-3 text-3xl font-extrabold text-slate-900">
+          슈퍼 관리자 로그인
+        </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          지점과 운영자 계정을 관리하는 전역 관리자 화면입니다.
+          슈퍼 관리자 계정은 이제 포털에서만 로그인할 수 있습니다. 최초 설정이 끝났다면 포털로
+          이동해 로그인해 주세요.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700">로그인 ID</label>
-            <input
-              value={loginId}
-              onChange={(event) => setLoginId(event.target.value)}
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-900 outline-none focus:border-slate-400"
-              autoComplete="username"
-            />
+        {setupCompleted ? (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            초기 설정이 완료되었습니다. 포털에서 로그인하면 Class Pass 슈퍼 관리자 화면으로
+            이동할 수 있습니다.
           </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700">PIN</label>
-            <input
-              type="password"
-              value={pin}
-              onChange={(event) => setPin(event.target.value)}
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-slate-900 outline-none focus:border-slate-400"
-              autoComplete="current-password"
-            />
-          </div>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-2xl bg-slate-900 px-5 py-4 text-lg font-bold text-white disabled:opacity-60"
+        ) : null}
+
+        <div className="mt-6 flex flex-col gap-3">
+          <a
+            href={`${portalUrl}/login`}
+            className="rounded-2xl bg-slate-900 px-5 py-4 text-center text-lg font-bold text-white transition hover:bg-slate-800"
           >
-            {loading ? '로그인 중...' : '로그인'}
-          </button>
-        </form>
+            포털로 이동
+          </a>
+          <a
+            href="/super-admin/setup"
+            className="rounded-2xl border border-slate-200 px-5 py-4 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            최초 설정이 필요하면 초기 설정으로 이동
+          </a>
+        </div>
       </div>
     </div>
   )

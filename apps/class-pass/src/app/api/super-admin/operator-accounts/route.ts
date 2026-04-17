@@ -18,6 +18,23 @@ const schema = z.object({
   memberships: z.array(membershipSchema).min(1),
 })
 
+function requiresPortalLinkedUser(memberships: Array<z.infer<typeof membershipSchema>>) {
+  return memberships.some(
+    (membership) => membership.role === 'SUPER_ADMIN' || membership.role === 'BRANCH_ADMIN',
+  )
+}
+
+function getPortalLinkedUserError(
+  sharedUserId: string | null | undefined,
+  memberships: Array<z.infer<typeof membershipSchema>>,
+) {
+  if (!requiresPortalLinkedUser(memberships) || sharedUserId) {
+    return null
+  }
+
+  return '슈퍼 관리자와 지점 관리자 계정은 포털 사용자 ID가 필요합니다.'
+}
+
 export async function GET(req: NextRequest) {
   const { error } = await authenticateSuperAdminRequest(req)
   if (error) {
@@ -38,6 +55,14 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: '운영자 계정 정보가 올바르지 않습니다.' }, { status: 400 })
+  }
+
+  const portalLinkError = getPortalLinkedUserError(
+    parsed.data.shared_user_id ?? null,
+    parsed.data.memberships,
+  )
+  if (portalLinkError) {
+    return NextResponse.json({ error: portalLinkError }, { status: 400 })
   }
 
   const account = await upsertOperatorAccount(parsed.data)

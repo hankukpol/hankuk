@@ -86,6 +86,7 @@ export async function PATCH(
     || parsed.data.name !== undefined
     || parsed.data.phone !== undefined
     || parsed.data.exam_number !== undefined
+    || parsed.data.birth_date !== undefined
     || parsed.data.photo_url !== undefined
 
   if (shouldSyncStudent) {

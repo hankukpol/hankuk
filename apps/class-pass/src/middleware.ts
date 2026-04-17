@@ -24,6 +24,15 @@ import {
 } from '@/lib/tenant'
 
 const PUBLIC_FILE = /\.[^/]+$/
+const PORTAL_LOGIN_URL = `${
+  (
+    process.env.PORTAL_URL ??
+    process.env.NEXT_PUBLIC_PORTAL_URL ??
+    (process.env.NODE_ENV === 'development'
+      ? 'http://localhost:3000'
+      : 'https://portal.hankukpol.co.kr')
+  ).replace(/\/+$/, '')
+}/login`
 
 function withDivisionCookie(response: NextResponse, division: TenantType) {
   response.cookies.set(
@@ -120,7 +129,6 @@ function isStaffApiRoute(pathname: string) {
 function isPublicSuperAdminRoute(pathname: string) {
   return pathname === '/super-admin/login'
     || pathname === '/super-admin/setup'
-    || pathname === '/api/auth/super-admin/login'
     || pathname === '/api/auth/super-admin/bootstrap'
 }
 
@@ -181,7 +189,7 @@ export async function middleware(req: NextRequest) {
 
     if (!payload || payload.role !== 'admin' || payload.sessionScope !== 'super_admin') {
       if (pathname.startsWith('/api/')) {
-        return jsonAuthError('Super admin authentication required.')
+        return jsonAuthError('포털에서 인증이 필요합니다.')
       }
 
       const url = req.nextUrl.clone()
@@ -198,13 +206,10 @@ export async function middleware(req: NextRequest) {
 
     if (!payload || payload.role !== 'admin' || payload.division !== division) {
       if (pathname.startsWith('/api/')) {
-        return jsonAuthError('관리자 인증이 필요합니다.')
+        return jsonAuthError('포털에서 인증이 필요합니다.')
       }
 
-      return withDivisionCookie(
-        NextResponse.redirect(prefixedUrl(req, division, '/admin/login')),
-        division,
-      )
+      return withDivisionCookie(NextResponse.redirect(new URL(PORTAL_LOGIN_URL)), division)
     }
 
     requestHeaders.set(VERIFIED_ADMIN_HEADER, encodeVerifiedPayload(payload))

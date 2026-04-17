@@ -1,117 +1,34 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
 import { withTenantPrefix } from '@/lib/tenant'
-
-type TabMode = 'qr' | 'quick'
-type ScanState = 'idle' | 'scanning' | 'processing' | 'selecting'
-
-type CourseItem = {
-  id: number
-  name: string
-}
-
-type MaterialItem = {
-  id: number
-  name: string
-}
-
-type ScanResponse = {
-  success: boolean
-  reason?: string
-  studentName?: string
-  materialName?: string
-  needsSelection?: boolean
-  unreceived?: MaterialItem[]
-}
-
-type OverlayState = {
-  success: boolean
-  title: string
-  description?: string
-}
-
-type SessionResponse = {
-  role: 'staff' | 'admin'
-  division?: string
-  adminId?: string
-}
-
-type BootstrapResponse = {
-  session: SessionResponse
-  staffScanEnabled: boolean
-  selectedCourseId: number | null
-  courses: CourseItem[]
-  materials: MaterialItem[]
-}
-
-type ScannerInstance = {
-  start: (
-    cameraIdOrConfig: string | { facingMode: 'environment' | { exact: 'environment' } },
-    config: { fps: number; qrbox: { width: number; height: number } },
-    successCallback: (decodedText: string) => void | Promise<void>,
-    errorCallback?: (errorMessage: string) => void,
-  ) => Promise<unknown>
-  stop: () => Promise<void>
-  clear: () => void
-}
-
-type LastScanState = {
-  token: string
-  at: number
-}
-
-const OVERLAY_TIMEOUT_MS = 1800
-const ERROR_OVERLAY_TIMEOUT_MS = 2200
-const SCAN_COOLDOWN_MS = 2500
-
-async function fetchBootstrapData(courseId?: number | null): Promise<BootstrapResponse> {
-  const query = courseId ? `?courseId=${courseId}` : ''
-  const response = await fetch(`/api/distribution/staff-bootstrap${query}`, { cache: 'no-store' })
-  const payload = (await response.json().catch(() => null)) as BootstrapResponse | null
-
-  if (!response.ok) {
-    throw new Error((payload as { error?: string } | null)?.error ?? '직원 배부 데이터를 불러오지 못했습니다.')
-  }
-
-  return {
-    session: payload?.session ?? { role: 'staff' },
-    staffScanEnabled: payload?.staffScanEnabled !== false,
-    selectedCourseId: payload?.selectedCourseId ?? null,
-    courses: payload?.courses ?? [],
-    materials: payload?.materials ?? [],
-  }
-}
-
-function normalizeToken(rawValue: string) {
-  try {
-    const url = new URL(rawValue)
-    return url.searchParams.get('token') ?? rawValue
-  } catch {
-    return rawValue
-  }
-}
-
-function describeScanReason(reason?: string) {
-  switch (reason) {
-    case 'INVALID_TOKEN':
-      return '유효하지 않은 QR 코드입니다.'
-    case 'ENROLLMENT_NOT_FOUND':
-      return '수강생 정보를 찾을 수 없습니다.'
-    case 'ALL_RECEIVED':
-      return '모든 자료를 이미 수령했습니다.'
-    case 'SELECT_MATERIAL':
-      return '배부할 자료를 선택해 주세요.'
-    case 'DISTRIBUTION_FAILED':
-      return '배부에 실패했습니다. 다시 시도해 주세요.'
-    default:
-      return reason || '스캔을 처리하지 못했습니다.'
-  }
-}
+import { QuickDistributionPanel } from './quick-distribution-panel'
+import { QrDistributionPanel } from './qr-distribution-panel'
+import {
+  ERROR_OVERLAY_TIMEOUT_MS,
+  OVERLAY_TIMEOUT_MS,
+  SCAN_COOLDOWN_MS,
+  fetchBootstrapData,
+  formatMaterialLabel,
+  getScanReasonMessage,
+  normalizeToken,
+} from './scan-page-utils'
+import type {
+  CourseItem,
+  LastScanState,
+  MaterialItem,
+  OverlayState,
+  QuickDistributionResponse,
+  ScanResponse,
+  ScanState,
+  ScannerInstance,
+  SessionResponse,
+  TabMode,
+} from './scan-page-types'
 
 export default function StaffScanPage() {
   const tenant = useTenantConfig()
@@ -130,10 +47,12 @@ export default function StaffScanPage() {
   const [scanState, setScanState] = useState<ScanState>('idle')
   const [session, setSession] = useState<SessionResponse | null>(null)
   const [courses, setCourses] = useState<CourseItem[]>([])
-  const [materials, setMaterials] = useState<MaterialItem[]>([])
+  const [courseMaterials, setCourseMaterials] = useState<MaterialItem[]>([])
+  const [quickMaterials, setQuickMaterials] = useState<MaterialItem[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
   const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(null)
   const [quickPhone, setQuickPhone] = useState('')
+  const [quickStudentName, setQuickStudentName] = useState('')
   const [quickLoading, setQuickLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -147,6 +66,8 @@ export default function StaffScanPage() {
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
     [courses, selectedCourseId],
   )
+  const selectedCourseName = selectedCourse?.name ?? null
+  const materialsCount = courseMaterials.length
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current
@@ -235,7 +156,7 @@ export default function StaffScanPage() {
           showOverlay(
             {
               success: true,
-              title: `${payload.materialName ?? '자료'} 배부 완료`,
+              title: `${formatMaterialLabel(payload.materialName ?? '자료', payload.materialType)} 배부 완료`,
               description: studentName || undefined,
             },
             OVERLAY_TIMEOUT_MS,
@@ -254,7 +175,7 @@ export default function StaffScanPage() {
           {
             success: false,
             title: '스캔을 완료하지 못했습니다.',
-            description: payload?.studentName || describeScanReason(payload?.reason),
+            description: payload?.studentName || getScanReasonMessage(payload?.reason),
           },
           ERROR_OVERLAY_TIMEOUT_MS,
         )
@@ -370,7 +291,7 @@ export default function StaffScanPage() {
           showOverlay(
             {
               success: true,
-              title: `${payload.materialName ?? '자료'} 배부 완료`,
+              title: `${formatMaterialLabel(payload.materialName ?? '자료', payload.materialType)} 배부 완료`,
               description: payload.studentName || undefined,
             },
             OVERLAY_TIMEOUT_MS,
@@ -382,7 +303,7 @@ export default function StaffScanPage() {
           {
             success: false,
             title: '자료 선택을 완료하지 못했습니다.',
-            description: payload?.studentName || describeScanReason(payload?.reason),
+            description: payload?.studentName || getScanReasonMessage(payload?.reason),
           },
           ERROR_OVERLAY_TIMEOUT_MS,
         )
@@ -401,6 +322,11 @@ export default function StaffScanPage() {
       return
     }
 
+    if (quickMaterials.length > 1 && !selectedMaterialId) {
+      setError('배부할 자료를 선택해 주세요.')
+      return
+    }
+
     setQuickLoading(true)
     setError('')
     setMessage('')
@@ -412,18 +338,33 @@ export default function StaffScanPage() {
         body: JSON.stringify({
           courseId: selectedCourseId,
           phone: quickPhone.replace(/\D/g, ''),
-          materialId: selectedMaterialId ?? undefined,
+          materialId: quickMaterials.length > 0 ? (selectedMaterialId ?? undefined) : undefined,
         }),
       })
-      const payload = await response.json().catch(() => null)
+      const payload = (await response.json().catch(() => null)) as QuickDistributionResponse | null
 
       if (!response.ok) {
         setError(payload?.error ?? '수동 배부에 실패했습니다.')
         return
       }
 
-      setMessage(`${payload?.student_name ?? '수강생'} - ${payload?.material_name ?? '자료'} 배부 완료`)
+      if (payload?.needsSelection && payload.available_materials?.length) {
+        setQuickStudentName(payload.student_name ?? '')
+        setQuickMaterials(payload.available_materials)
+        setSelectedMaterialId(
+          payload.available_materials.length === 1 ? payload.available_materials[0]?.id ?? null : null,
+        )
+        setMessage(`${payload.student_name ?? '수강생'} 수강생을 찾았습니다. 배부할 자료를 선택해 주세요.`)
+        return
+      }
+
+      setMessage(
+        `${payload?.student_name ?? '수강생'} - ${formatMaterialLabel(payload?.material_name ?? '자료', payload?.material_type)} 배부 완료`,
+      )
       setQuickPhone('')
+      setQuickStudentName('')
+      setQuickMaterials([])
+      setSelectedMaterialId(null)
     } catch {
       setError('수동 배부 요청에 실패했습니다. 다시 시도해 주세요.')
     } finally {
@@ -449,10 +390,12 @@ export default function StaffScanPage() {
         setStaffScanEnabled(data.staffScanEnabled)
         setTab(data.staffScanEnabled ? 'qr' : 'quick')
         setCourses(data.courses)
-        setMaterials(data.materials)
+        setCourseMaterials(data.materials)
+        setQuickMaterials([])
         bootstrappedCourseIdRef.current = data.selectedCourseId
         setSelectedCourseId(data.selectedCourseId)
-        setSelectedMaterialId(data.materials[0]?.id ?? null)
+        setSelectedMaterialId(null)
+        setQuickStudentName('')
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -474,8 +417,10 @@ export default function StaffScanPage() {
   useEffect(() => {
     if (!selectedCourseId) {
       bootstrappedCourseIdRef.current = null
-      setMaterials([])
+      setCourseMaterials([])
+      setQuickMaterials([])
       setSelectedMaterialId(null)
+      setQuickStudentName('')
       return
     }
 
@@ -493,12 +438,10 @@ export default function StaffScanPage() {
         }
 
         setCourses(data.courses)
-        setMaterials(data.materials)
-        setSelectedMaterialId((current) =>
-          data.materials.some((material) => material.id === current)
-            ? current
-            : (data.materials[0]?.id ?? null),
-        )
+        setCourseMaterials(data.materials)
+        setQuickMaterials([])
+        setSelectedMaterialId(null)
+        setQuickStudentName('')
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -620,179 +563,43 @@ export default function StaffScanPage() {
         ) : null}
 
         {tab === 'qr' ? (
-          <section className="grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-extrabold text-gray-900">QR 스캐너</h2>
-                  <p className="mt-2 text-sm text-gray-500">
-                    {staffScanEnabled
-                      ? '수강생 QR 코드를 스캔하면 다음 필요한 자료를 즉시 배부합니다.'
-                      : 'QR 스캔 기능이 현재 비활성화되어 있습니다.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError('')
-                    void stopScanner().then(() => startScanner())
-                  }}
-                  disabled={!staffScanEnabled}
-                  className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                >
-                  다시 시작
-                </button>
-              </div>
-
-              <div ref={containerRef} className="relative mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950">
-                <div id="class-pass-qr-reader" className="min-h-[320px] w-full" />
-
-                {scanState === 'processing' ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/65">
-                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-white border-t-transparent" />
-                  </div>
-                ) : null}
-
-                {overlay ? (
-                  <div
-                    className={`absolute inset-0 flex flex-col items-center justify-center px-5 text-center ${
-                      overlay.success ? 'bg-emerald-700/90' : 'bg-red-700/90'
-                    }`}
-                  >
-                    <p className="text-2xl font-bold text-white">{overlay.title}</p>
-                    {overlay.description ? (
-                      <p className="mt-2 text-sm text-white/80">{overlay.description}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              {lastStudentName ? (
-                <p className="mt-4 text-sm text-gray-500">
-                  마지막 수강생: <span className="font-semibold text-gray-900">{lastStudentName}</span>
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-6">
-              <section className="rounded-2xl bg-white p-6 shadow-sm">
-                <h2 className="text-2xl font-extrabold text-gray-900">선택된 강좌</h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  QR 토큰에 강좌 정보가 포함되어 있지만, 현장 직원이 세션을 확인할 수 있도록 현재 강좌를 표시합니다.
-                </p>
-
-                <div className="mt-5 rounded-2xl bg-slate-50 p-5">
-                  <p className="text-sm font-semibold text-gray-500">현재 강좌</p>
-                  <p className="mt-2 text-xl font-bold text-gray-900">{selectedCourse?.name ?? '선택된 강좌 없음'}</p>
-                  <p className="mt-2 text-sm text-gray-500">활성 자료 {materials.length}</p>
-                </div>
-              </section>
-
-              {selectOptions.length > 0 ? (
-                <section className="rounded-2xl bg-white p-6 shadow-sm">
-                  <h2 className="text-2xl font-extrabold text-gray-900">자료 선택</h2>
-                  <p className="mt-2 text-sm text-gray-500">
-                    이 수강생은 아직 수령하지 않은 자료가 여러 개 있습니다. 지금 배부할 자료를 선택해 주세요.
-                  </p>
-
-                  <div className="mt-5 grid gap-3">
-                    {selectOptions.map((material) => (
-                      <button
-                        key={material.id}
-                        type="button"
-                        onClick={() => void handleSelectMaterial(material.id)}
-                        className="rounded-2xl bg-slate-900 px-4 py-4 text-left text-sm font-semibold text-white"
-                      >
-                        {material.name}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <section className="rounded-2xl bg-white p-6 shadow-sm">
-                  <h2 className="text-2xl font-extrabold text-gray-900">안내</h2>
-                  <p className="mt-3 text-sm leading-6 text-gray-500">
-                    수강생이 수강증 페이지 URL을 직접 열면 토큰이 자동으로 처리됩니다. 카메라 접근이 차단된 경우 전화번호로 수동 배부를 이용해 주세요.
-                  </p>
-                </section>
-              )}
-            </div>
-          </section>
+          <QrDistributionPanel
+            staffScanEnabled={staffScanEnabled}
+            scanState={scanState}
+            overlay={overlay}
+            lastStudentName={lastStudentName}
+            selectedCourseName={selectedCourseName}
+            materialsCount={materialsCount}
+            selectOptions={selectOptions}
+            containerRef={containerRef}
+            onRestartScanner={() => {
+              setError('')
+              void stopScanner().then(() => startScanner())
+            }}
+            onSelectMaterial={(materialId) => {
+              void handleSelectMaterial(materialId)
+            }}
+          />
         ) : (
-          <section className="grid gap-6 lg:grid-cols-[0.95fr,1.05fr]">
-            <form
-              onSubmit={(event: FormEvent) => {
-                event.preventDefault()
-                void handleQuickDistribute()
-              }}
-              className="rounded-2xl bg-white p-6 shadow-sm"
-            >
-              <h2 className="text-2xl font-extrabold text-gray-900">수동 배부</h2>
-              <p className="mt-2 text-sm text-gray-500">
-                현장에서 QR 스캔이 어려운 경우, 전화번호로 수강생을 찾아 수동으로 자료를 배부합니다.
-              </p>
-
-              <div className="mt-6 grid gap-4">
-                <label className="flex flex-col gap-2">
-                  <span className="text-sm font-semibold text-gray-700">전화번호</span>
-                  <input
-                    value={quickPhone}
-                    onChange={(event) => setQuickPhone(event.target.value.replace(/\D/g, ''))}
-                    placeholder="01012345678"
-                    inputMode="numeric"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <label className="flex flex-col gap-2">
-                  <span className="text-sm font-semibold text-gray-700">자료</span>
-                  <select
-                    value={selectedMaterialId ?? ''}
-                    onChange={(event) =>
-                      setSelectedMaterialId(event.target.value ? Number(event.target.value) : null)
-                    }
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-                  >
-                    <option value="">자동 선택 또는 직접 선택</option>
-                    {materials.map((material) => (
-                      <option key={material.id} value={material.id}>
-                        {material.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={quickLoading}
-                className="mt-6 rounded-2xl px-5 py-4 text-lg font-bold text-white disabled:opacity-60"
-                style={{ background: 'var(--theme)' }}
-              >
-                {quickLoading ? '처리 중...' : '배부 실행'}
-              </button>
-            </form>
-
-            <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-2xl font-extrabold text-gray-900">현장 메모</h2>
-              <div className="mt-5 grid gap-4">
-                <article className="rounded-2xl bg-slate-50 p-5">
-                  <p className="text-sm font-semibold text-gray-500">현재 강좌</p>
-                  <p className="mt-2 text-xl font-bold text-gray-900">{selectedCourse?.name ?? '선택된 강좌 없음'}</p>
-                </article>
-                <article className="rounded-2xl bg-slate-50 p-5">
-                  <p className="text-sm font-semibold text-gray-500">활성 자료</p>
-                  <p className="mt-2 text-xl font-bold text-gray-900">{materials.length}</p>
-                </article>
-                <article className="rounded-2xl bg-slate-50 p-5">
-                  <p className="text-sm font-semibold text-gray-500">팁</p>
-                  <p className="mt-2 text-sm leading-6 text-gray-600">
-                    전화번호 배부는 선택된 강좌 내에서 수강생을 검색합니다. 강좌를 먼저 확인하면 가장 빠르게 조회할 수 있습니다.
-                  </p>
-                </article>
-              </div>
-            </section>
-          </section>
+          <QuickDistributionPanel
+            quickPhone={quickPhone}
+            quickStudentName={quickStudentName}
+            quickLoading={quickLoading}
+            quickMaterials={quickMaterials}
+            selectedMaterialId={selectedMaterialId}
+            selectedCourseName={selectedCourseName}
+            materialsCount={materialsCount}
+            onQuickPhoneChange={(nextPhone) => {
+              setQuickPhone(nextPhone)
+              setQuickStudentName('')
+              setQuickMaterials([])
+              setSelectedMaterialId(null)
+            }}
+            onSelectedMaterialChange={setSelectedMaterialId}
+            onSubmit={() => {
+              void handleQuickDistribute()
+            }}
+          />
         )}
       </div>
     </div>

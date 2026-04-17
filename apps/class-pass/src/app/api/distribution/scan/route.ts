@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
-import { listMaterialsForCourse } from '@/lib/class-pass-data'
 import { requireStaffApi } from '@/lib/auth/require-staff-api'
+import {
+  distributeMaterialToEnrollment,
+  resolvePendingDistributionSelection,
+} from '@/lib/distribution/service'
 import { verifyQrToken } from '@/lib/qr/token'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
@@ -13,13 +16,6 @@ const schema = z.object({
   token: z.string().min(1),
   materialId: z.number().int().positive().optional(),
 })
-
-type DistributionResult = {
-  success: boolean
-  reason?: string
-  material_name?: string
-  student_name?: string
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -78,19 +74,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const materials = await listMaterialsForCourse(course.id, { activeOnly: true })
-    const receiptRows = unwrapSupabaseResult(
-      'distributionScan.receipts',
-      await db
-        .from('distribution_logs')
-        .select('material_id')
-        .eq('enrollment_id', enrollment.id),
-    ) as Array<{ material_id: number }> | null
+    const selection = await resolvePendingDistributionSelection({
+      enrollmentId: enrollment.id,
+      courseId: course.id,
+      materialId: parsed.data.materialId,
+    })
 
-    const receivedIds = new Set((receiptRows ?? []).map((row) => row.material_id))
-    const unreceivedMaterials = materials.filter((material) => !receivedIds.has(material.id))
-
-    if (unreceivedMaterials.length === 0) {
+    if (selection.kind === 'all_received') {
       return NextResponse.json({
         success: false,
         reason: 'ALL_RECEIVED',
@@ -98,46 +88,35 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const targetMaterial =
-      parsed.data.materialId === undefined && unreceivedMaterials.length === 1
-        ? unreceivedMaterials[0]
-        : unreceivedMaterials.find((material) => material.id === parsed.data.materialId)
-
-    if (!targetMaterial) {
+    if (selection.kind === 'needs_selection' || selection.kind === 'invalid_selection') {
       return NextResponse.json({
         success: false,
         reason: 'SELECT_MATERIAL',
         studentName: enrollment.name,
         needsSelection: true,
-        unreceived: unreceivedMaterials.map((material) => ({
-          id: material.id,
-          name: material.name,
-        })),
+        unreceived: selection.materials,
       }, { status: 400 })
     }
 
-    const rpcResult = await db.rpc('distribute_material', {
-      p_enrollment_id: enrollment.id,
-      p_material_id: targetMaterial.id,
+    const distribution = await distributeMaterialToEnrollment({
+      enrollmentId: enrollment.id,
+      studentName: enrollment.name,
+      material: selection.material,
     })
 
-    if (rpcResult.error) {
-      return NextResponse.json({ success: false, reason: 'DISTRIBUTION_FAILED' }, { status: 500 })
-    }
-
-    const result = rpcResult.data as DistributionResult | null
-    if (!result?.success) {
+    if (distribution.kind === 'failed') {
       return NextResponse.json({
         success: false,
-        reason: result?.reason ?? 'DISTRIBUTION_FAILED',
+        reason: distribution.reason,
         studentName: enrollment.name,
-      })
+      }, { status: distribution.reason === 'DISTRIBUTION_FAILED' ? 500 : 400 })
     }
 
     return NextResponse.json({
       success: true,
-      materialName: result.material_name ?? targetMaterial.name,
-      studentName: result.student_name ?? enrollment.name,
+      materialName: distribution.materialName,
+      materialType: distribution.materialType,
+      studentName: distribution.studentName,
     })
   } catch (error) {
     return handleRouteError('distribution.scan.POST', 'QR 배부 처리에 실패했습니다.', error)

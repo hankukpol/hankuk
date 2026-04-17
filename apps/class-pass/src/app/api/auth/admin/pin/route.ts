@@ -17,13 +17,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (!payload) {
-    return NextResponse.json({ error: 'Admin authentication required.' }, { status: 403 })
+    return NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 403 })
   }
 
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Admin PIN must be 4-20 characters.' }, { status: 400 })
+    return NextResponse.json({ error: '관리자 PIN은 4자 이상 20자 이하로 입력해 주세요.' }, { status: 400 })
   }
 
   await setPinHash('admin_pin_hash', await hashPin(parsed.data.pin))

@@ -64,6 +64,7 @@ const patchSchema = z.object({
   attendance_open: z.boolean().optional(),
   kakao_chat_url: z.string().url().optional().nullable(),
   extra_site_url: z.string().url().optional().nullable(),
+  extra_site_label: z.string().trim().max(40).optional().nullable(),
   enrolled_from: z.string().optional().nullable(),
   enrolled_until: z.string().optional().nullable(),
   sort_order: z.number().int().min(0).max(999).optional(),
@@ -218,6 +219,7 @@ export async function PATCH(
   }
 
   const warning = mergeFeatureWarnings(warnings)
+  const partialSave = warnings.length > 0
 
   if (error) {
     if (error.code === '23505') {
@@ -228,7 +230,7 @@ export async function PATCH(
   }
 
   await invalidateCache('courses')
-  return NextResponse.json({ course: data, warning })
+  return NextResponse.json({ course: data, warning, partialSave })
 }
 
 export async function DELETE(

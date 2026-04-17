@@ -1,7 +1,8 @@
-import { getCourseById, listCourseEnrollments } from '@/lib/class-pass-data'
+import { getCourseById, listCourseEnrollments, listMaterialsForCourse } from '@/lib/class-pass-data'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
-import CourseStudentsPageClient, { type StudentsPageData } from './course-students-page-client'
+import CourseStudentsPageClient from './course-students-page-client'
+import type { StudentsPageData } from './students-page-types'
 
 type CourseStudentsPageProps = {
   params: Promise<{ id: string }>
@@ -14,8 +15,12 @@ async function loadInitialData(courseId: number): Promise<StudentsPageData | nul
     return null
   }
 
-  const enrollments = await listCourseEnrollments(courseId)
-  return { course, enrollments }
+  const [enrollments, textbooks] = await Promise.all([
+    listCourseEnrollments(courseId),
+    listMaterialsForCourse(courseId, { materialType: 'textbook' }),
+  ])
+
+  return { course, enrollments, textbooks }
 }
 
 export default async function CourseStudentsPage({ params }: CourseStudentsPageProps) {

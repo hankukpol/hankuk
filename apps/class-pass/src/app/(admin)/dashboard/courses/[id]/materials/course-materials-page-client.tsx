@@ -6,7 +6,7 @@ import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
-import type { Course, Material } from '@/types/database'
+import type { Course, Material, MaterialType } from '@/types/database'
 
 type MaterialForm = {
   name: string
@@ -42,6 +42,10 @@ function toForm(material: Material): MaterialForm {
   }
 }
 
+function getTabLabel(materialType: MaterialType) {
+  return materialType === 'textbook' ? '교재' : '배부자료'
+}
+
 async function fetchMaterialsPageData(courseId: number): Promise<MaterialsPageData> {
   const [courseResponse, materialsResponse] = await Promise.all([
     fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
@@ -52,7 +56,7 @@ async function fetchMaterialsPageData(courseId: number): Promise<MaterialsPageDa
   const materialsPayload = await materialsResponse.json().catch(() => null)
 
   if (!courseResponse.ok) {
-    throw new Error(coursePayload?.error ?? '강좌 정보를 불러오지 못했습니다.')
+    throw new Error(coursePayload?.error ?? '과정 정보를 불러오지 못했습니다.')
   }
 
   if (!materialsResponse.ok) {
@@ -73,8 +77,10 @@ export default function CourseMaterialsPage({
   const params = useParams<{ id: string }>()
   const tenant = useTenantConfig()
   const courseId = Number(params.id)
+
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
   const [materials, setMaterials] = useState<Material[]>(initialData?.materials ?? [])
+  const [activeTab, setActiveTab] = useState<MaterialType>('handout')
   const [createForm, setCreateForm] = useState<MaterialForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<MaterialForm>(EMPTY_FORM)
@@ -91,7 +97,7 @@ export default function CourseMaterialsPage({
 
   useEffect(() => {
     if (!Number.isInteger(courseId) || courseId <= 0) {
-      setError('잘못된 강좌 ID입니다.')
+      setError('잘못된 과정 ID입니다.')
       setLoading(false)
       return
     }
@@ -106,19 +112,28 @@ export default function CourseMaterialsPage({
         setMaterials(data.materials)
       })
       .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : '자료 페이지를 열지 못했습니다.')
+        setError(reason instanceof Error ? reason.message : '자료 페이지를 불러오지 못했습니다.')
       })
       .finally(() => setLoading(false))
   }, [courseId, initialLoaded])
 
   const summary = useMemo(() => {
-    const active = materials.filter((material) => material.is_active).length
+    const currentMaterials = materials.filter((material) => material.material_type === activeTab)
+    const active = currentMaterials.filter((material) => material.is_active).length
+
     return {
-      total: materials.length,
+      total: currentMaterials.length,
       active,
-      inactive: materials.length - active,
+      inactive: currentMaterials.length - active,
     }
-  }, [materials])
+  }, [activeTab, materials])
+
+  const filteredMaterials = useMemo(
+    () => materials
+      .filter((material) => material.material_type === activeTab)
+      .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id),
+    [activeTab, materials],
+  )
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
@@ -132,6 +147,7 @@ export default function CourseMaterialsPage({
       body: JSON.stringify({
         courseId,
         ...createForm,
+        material_type: activeTab,
       }),
     })
     const payload = await response.json().catch(() => null)
@@ -143,10 +159,8 @@ export default function CourseMaterialsPage({
     }
 
     setCreateForm(EMPTY_FORM)
-    setMaterials((current) =>
-      [...current, payload.material as Material].sort((left, right) => left.sort_order - right.sort_order),
-    )
-    setMessage('자료를 생성했습니다.')
+    setMaterials((current) => [...current, payload.material as Material])
+    setMessage(`${getTabLabel(activeTab)}를 생성했습니다.`)
   }
 
   function startEdit(material: Material) {
@@ -180,17 +194,13 @@ export default function CourseMaterialsPage({
     }
 
     const updated = payload.material as Material
-    setMaterials((current) =>
-      current
-        .map((entry) => (entry.id === updated.id ? updated : entry))
-        .sort((left, right) => left.sort_order - right.sort_order),
-    )
+    setMaterials((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)))
     setEditingId(null)
     setMessage('자료를 수정했습니다.')
   }
 
   async function handleDelete(material: Material) {
-    const confirmed = window.confirm(`"${material.name}" 자료를 삭제할까요?`)
+    const confirmed = window.confirm(`"${material.name}" 항목을 삭제할까요?`)
     if (!confirmed) {
       return
     }
@@ -216,11 +226,11 @@ export default function CourseMaterialsPage({
   }
 
   if (loading) {
-    return <p className="text-sm text-gray-500">자료 목록을 불러오는 중...</p>
+    return <p className="text-sm text-gray-500">자료 목록을 불러오는 중입니다.</p>
   }
 
   if (!course) {
-    return <p className="text-sm text-red-600">{error || '강좌를 찾지 못했습니다.'}</p>
+    return <p className="text-sm text-red-600">{error || '과정을 찾을 수 없습니다.'}</p>
   }
 
   return (
@@ -233,7 +243,7 @@ export default function CourseMaterialsPage({
             </p>
             <h2 className="mt-3 text-3xl font-extrabold text-gray-900">{course.name}</h2>
             <p className="mt-2 text-sm text-gray-500">
-              현장 QR 배부에 사용할 교재·자료 목록을 관리합니다.
+              배부자료와 교재를 분리해 관리하고, 현재 탭 기준으로 생성과 편집을 진행합니다.
             </p>
           </div>
 
@@ -242,7 +252,7 @@ export default function CourseMaterialsPage({
               href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
               className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
             >
-              강좌 설정
+              과정 설정
             </Link>
             <Link
               href={withTenantPrefix(`/dashboard/courses/${courseId}/students`, tenant.type)}
@@ -253,9 +263,29 @@ export default function CourseMaterialsPage({
           </div>
         </div>
 
+        <div className="mt-6 flex gap-2 rounded-2xl bg-slate-100 p-1">
+          {(['handout', 'textbook'] as const).map((materialType) => (
+            <button
+              key={materialType}
+              type="button"
+              onClick={() => {
+                setActiveTab(materialType)
+                setEditingId(null)
+                setMessage('')
+                setError('')
+              }}
+              className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                activeTab === materialType ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+              }`}
+            >
+              {getTabLabel(materialType)}
+            </button>
+          ))}
+        </div>
+
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
-            { label: '전체 자료', value: summary.total },
+            { label: `${getTabLabel(activeTab)} 전체`, value: summary.total },
             { label: '활성', value: summary.active },
             { label: '비활성', value: summary.inactive },
           ].map((item) => (
@@ -270,15 +300,17 @@ export default function CourseMaterialsPage({
       <div className="grid gap-6 xl:grid-cols-[0.92fr,1.08fr]">
         <form onSubmit={handleCreate} className="rounded-2xl bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-            자료 추가
+            {getTabLabel(activeTab)} 추가
           </p>
-          <h3 className="mt-3 text-2xl font-extrabold text-gray-900">새 자료 만들기</h3>
+          <h3 className="mt-3 text-2xl font-extrabold text-gray-900">
+            새 {getTabLabel(activeTab)} 만들기
+          </h3>
 
           <div className="mt-6 grid gap-4">
             <input
               value={createForm.name}
               onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="자료명"
+              placeholder={`${getTabLabel(activeTab)} 이름`}
               className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
             />
             <textarea
@@ -287,7 +319,7 @@ export default function CourseMaterialsPage({
                 setCreateForm((current) => ({ ...current, description: event.target.value }))
               }
               rows={4}
-              placeholder="자료 설명"
+              placeholder="설명"
               className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
             />
             <div className="grid gap-4 md:grid-cols-2">
@@ -300,7 +332,7 @@ export default function CourseMaterialsPage({
                     sort_order: Number(event.target.value || 0),
                   }))
                 }
-                placeholder="정렬순서"
+                placeholder="정렬 순서"
                 className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
               />
               <label className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-gray-700">
@@ -325,14 +357,16 @@ export default function CourseMaterialsPage({
             className="mt-5 rounded-2xl px-5 py-4 text-lg font-bold text-white disabled:opacity-60"
             style={{ background: 'var(--theme)' }}
           >
-            {saving ? '저장 중...' : '자료 생성'}
+            {saving ? '저장 중...' : `${getTabLabel(activeTab)} 생성`}
           </button>
         </form>
 
         <div className="flex flex-col gap-6">
           <section className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
-              <h3 className="text-2xl font-extrabold text-gray-900">자료 목록</h3>
+              <h3 className="text-2xl font-extrabold text-gray-900">
+                {getTabLabel(activeTab)} 목록
+              </h3>
               <button
                 type="button"
                 onClick={() => {
@@ -351,12 +385,12 @@ export default function CourseMaterialsPage({
             </div>
 
             <div className="mt-6 grid gap-3">
-              {materials.length === 0 ? (
+              {filteredMaterials.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center text-sm text-gray-500">
-                  아직 등록된 자료가 없습니다.
+                  아직 등록된 {getTabLabel(activeTab)}가 없습니다.
                 </div>
               ) : (
-                materials.map((material) => (
+                filteredMaterials.map((material) => (
                   <article key={material.id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div>
@@ -375,7 +409,7 @@ export default function CourseMaterialsPage({
                         {material.description ? (
                           <p className="mt-2 text-sm leading-6 text-gray-500">{material.description}</p>
                         ) : null}
-                        <p className="mt-2 text-xs text-gray-400">정렬순서 {material.sort_order}</p>
+                        <p className="mt-2 text-xs text-gray-400">정렬 순서 {material.sort_order}</p>
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -418,7 +452,7 @@ export default function CourseMaterialsPage({
                 <input
                   value={editForm.name}
                   onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="자료명"
+                  placeholder="이름"
                   className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
                 />
                 <textarea
@@ -427,7 +461,7 @@ export default function CourseMaterialsPage({
                     setEditForm((current) => ({ ...current, description: event.target.value }))
                   }
                   rows={4}
-                  placeholder="자료 설명"
+                  placeholder="설명"
                   className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
                 />
                 <div className="grid gap-4 md:grid-cols-2">
@@ -440,7 +474,7 @@ export default function CourseMaterialsPage({
                         sort_order: Number(event.target.value || 0),
                       }))
                     }
-                    placeholder="정렬순서"
+                    placeholder="정렬 순서"
                     className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
                   />
                   <label className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-gray-700">

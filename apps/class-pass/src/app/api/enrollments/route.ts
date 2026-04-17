@@ -4,7 +4,13 @@ import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { invalidateCache } from '@/lib/cache/revalidate'
-import { getCourseById, listCourseEnrollments, verifyCourseOwnership } from '@/lib/class-pass-data'
+import {
+  bulkAssignTextbooks,
+  getCourseById,
+  listCourseEnrollments,
+  listMaterialsForCourse,
+  verifyCourseOwnership,
+} from '@/lib/class-pass-data'
 import {
   ensureStudentProfile,
   findMatchingStudentProfile,
@@ -29,6 +35,7 @@ const createSchema = z.object({
   photo_url: z.string().optional().nullable(),
   birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
   custom_data: z.record(z.string()).optional(),
+  textbookIds: z.array(z.number().int().positive()).optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -47,7 +54,7 @@ export async function GET(req: NextRequest) {
     const offset = parsePositiveInt(req.nextUrl.searchParams.get('offset'))
     const division = await getServerTenantType()
     if (!(await verifyCourseOwnership(courseId, division))) {
-      return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
+      return NextResponse.json({ error: '과정을 찾을 수 없습니다.' }, { status: 404 })
     }
 
     const enrollments = await listCourseEnrollments(courseId, {
@@ -119,7 +126,16 @@ export async function POST(req: NextRequest) {
     const division = await getServerTenantType()
     const course = await getCourseById(parsed.data.courseId, division)
     if (!course) {
-      return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
+      return NextResponse.json({ error: '과정을 찾을 수 없습니다.' }, { status: 404 })
+    }
+
+    const textbookIds = Array.from(new Set(parsed.data.textbookIds ?? []))
+    if (textbookIds.length > 0) {
+      const textbooks = await listMaterialsForCourse(parsed.data.courseId, { materialType: 'textbook' })
+      const textbookIdSet = new Set(textbooks.map((textbook) => textbook.id))
+      if (textbookIds.some((textbookId) => !textbookIdSet.has(textbookId))) {
+        return NextResponse.json({ error: '유효하지 않은 교재가 포함되어 있습니다.' }, { status: 400 })
+      }
     }
 
     const db = createServerClient()
@@ -144,7 +160,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (existingByStudent) {
-        return NextResponse.json({ error: '같은 강좌에 동일한 수강생이 이미 존재합니다.' }, { status: 409 })
+        return NextResponse.json({ error: '같은 과정에 동일한 수강생이 이미 존재합니다.' }, { status: 409 })
       }
     }
 
@@ -188,13 +204,33 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       if (error.code === '23505') {
-        return NextResponse.json({ error: '같은 강좌에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
+        return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
       }
 
       return NextResponse.json({ error: '수강생을 생성하지 못했습니다.' }, { status: 500 })
     }
 
+    if (textbookIds.length > 0) {
+      try {
+        await bulkAssignTextbooks(data.id, textbookIds, 'admin')
+      } catch (assignmentError) {
+        const rollbackResult = await db
+          .from('enrollments')
+          .delete()
+          .eq('id', data.id)
+
+        if (rollbackResult.error) {
+          throw new Error('ENROLLMENT_TEXTBOOK_ASSIGNMENT_ROLLBACK_FAILED', { cause: assignmentError })
+        }
+
+        throw assignmentError
+      }
+    }
+
     await invalidateCache('enrollments')
+    if (textbookIds.length > 0) {
+      await invalidateCache('materials')
+    }
     return NextResponse.json({
       enrollment: {
         ...data,

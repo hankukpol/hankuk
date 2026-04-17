@@ -261,6 +261,11 @@ export async function validateOperatorSession(
       return null
     }
 
+    const membershipBranch = membership.branch as { is_active?: boolean } | undefined
+    if (expectedRole !== 'SUPER_ADMIN' && membershipBranch?.is_active === false) {
+      return null
+    }
+
     if (membership.role !== expectedRole) {
       return null
     }

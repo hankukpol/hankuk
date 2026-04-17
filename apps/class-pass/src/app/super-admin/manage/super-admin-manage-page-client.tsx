@@ -325,6 +325,10 @@ export default function SuperAdminManagePageClient({
           <p className="mt-1 text-[11px] text-[#86868b]">
             현재 지점 slug: {branchSlugOptions || '아직 없음'}
           </p>
+          <p className="mt-1 text-[11px] text-[#86868b]">
+            SUPER_ADMIN, BRANCH_ADMIN 계정은 포털 사용자 ID가 필요합니다. STAFF 계정만 PIN
+            로그인 정보를 선택적으로 비워 둘 수 있습니다.
+          </p>
           <form onSubmit={handleAccountCreate} className="mt-4 grid gap-3">
             <input
               value={accountForm.login_id}
@@ -350,7 +354,7 @@ export default function SuperAdminManagePageClient({
                   shared_user_id: event.target.value,
                 }))
               }
-              placeholder="Supabase shared user id (선택)"
+              placeholder="포털 사용자 ID (관리자 계정 필수)"
               className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <input
@@ -358,7 +362,7 @@ export default function SuperAdminManagePageClient({
               onChange={(event) =>
                 setAccountForm((current) => ({ ...current, pin: event.target.value }))
               }
-              placeholder="로컬 비상 로그인 PIN (선택)"
+              placeholder="직원 로그인 PIN (선택)"
               className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <textarea

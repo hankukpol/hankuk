@@ -23,6 +23,7 @@ import {
 } from '@/lib/course-feature-compat'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
+import { deleteStudentIfOrphaned } from '@/lib/student-profiles'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt, slugifyCourseName } from '@/lib/utils'
 
@@ -69,6 +70,11 @@ const patchSchema = z.object({
   enrolled_until: z.string().optional().nullable(),
   sort_order: z.number().int().min(0).max(999).optional(),
   enrollment_fields: z.array(enrollmentFieldSchema).optional(),
+})
+
+const destroyCourseSchema = z.object({
+  mode: z.literal('destroy'),
+  confirmCourseName: z.string().trim().min(1).max(100),
 })
 
 export async function GET(
@@ -259,7 +265,84 @@ export async function DELETE(
     return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
   }
 
+  const rawBody = await req.text().catch(() => '')
+  let body: unknown = null
+
+  if (rawBody) {
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      return NextResponse.json({ error: '강좌 삭제 요청 형식이 올바르지 않습니다.' }, { status: 400 })
+    }
+  }
+
+  const destroyRequest = body && typeof body === 'object'
+    ? body as { mode?: unknown }
+    : null
+  const wantsDestroy = destroyRequest?.mode === 'destroy'
+
   const db = createServerClient()
+  if (wantsDestroy) {
+    const parsedDestroy = destroyCourseSchema.safeParse(body)
+    if (!parsedDestroy.success) {
+      return NextResponse.json({ error: '강좌 삭제 요청 형식이 올바르지 않습니다.' }, { status: 400 })
+    }
+
+    if (parsedDestroy.data.confirmCourseName !== existingCourse.name) {
+      return NextResponse.json({ error: '삭제 확인용 강좌명이 일치하지 않습니다.' }, { status: 400 })
+    }
+
+    const { data: enrollmentRows, error: enrollmentError } = await db
+      .from('enrollments')
+      .select('student_id')
+      .eq('course_id', courseId)
+
+    if (enrollmentError) {
+      return NextResponse.json({ error: '강좌 삭제 전 수강생 정보를 불러오지 못했습니다.' }, { status: 500 })
+    }
+
+    const studentIds = [...new Set(
+      (enrollmentRows ?? [])
+        .map((row) => row.student_id)
+        .filter((studentId): studentId is number => typeof studentId === 'number' && Number.isFinite(studentId)),
+    )]
+
+    const { error } = await db
+      .from('courses')
+      .delete()
+      .eq('id', courseId)
+      .eq('division', division)
+
+    if (error) {
+      return NextResponse.json({ error: '강좌를 삭제하지 못했습니다.' }, { status: 500 })
+    }
+
+    const cleanupFailures: number[] = []
+    for (const studentId of studentIds) {
+      try {
+        await deleteStudentIfOrphaned(db, studentId)
+      } catch {
+        cleanupFailures.push(studentId)
+      }
+    }
+
+    await invalidateCache('courses')
+    await invalidateCache('enrollments')
+    await invalidateCache('seats')
+    await invalidateCache('designated-seats')
+    await invalidateCache('attendance')
+    await invalidateCache('materials')
+    await invalidateCache('distribution-logs')
+
+    return NextResponse.json({
+      success: true,
+      destroyed: true,
+      warning: cleanupFailures.length > 0
+        ? '강좌는 삭제됐지만 일부 고아 학생 프로필 정리를 완료하지 못했습니다.'
+        : null,
+    })
+  }
+
   const { data, error } = await db
     .from('courses')
     .update({ status: 'archived', updated_at: new Date().toISOString() })

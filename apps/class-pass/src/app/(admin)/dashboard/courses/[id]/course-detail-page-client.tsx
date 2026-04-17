@@ -5,6 +5,7 @@ import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { confirmPermanentCourseDeletion } from '@/lib/course-delete-confirm'
 import type { Course, CourseSubject, CourseType, EnrollmentFieldDef } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { formatCourseTypeLabel } from '@/lib/utils'
@@ -148,6 +149,7 @@ export default function CourseDetailPage({
   const [loading, setLoading] = useState(!initialLoaded)
   const [saving, setSaving] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
+  const [destroying, setDestroying] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [warning, setWarning] = useState('')
@@ -368,6 +370,46 @@ export default function CourseDetailPage({
   if (loading) return <p className="py-12 text-center text-sm text-gray-400">불러오는 중...</p>
   if (error && !course) return <p className="py-12 text-center text-sm text-red-500">{error}</p>
   if (!course || !form) return <p className="py-12 text-center text-sm text-gray-400">강좌 정보를 찾지 못했습니다.</p>
+
+  async function handleDestroyCourse() {
+    if (!course) return
+
+    const confirmation = confirmPermanentCourseDeletion(course.name)
+    if (!confirmation.confirmed) {
+      if (confirmation.reason === 'mismatch') {
+        setError('강좌명을 정확하게 입력해야 강좌를 삭제할 수 있습니다.')
+      }
+      return
+    }
+
+    setDestroying(true)
+    setError('')
+    setWarning('')
+    setMessage('')
+
+    const response = await fetch(`/api/courses/${course.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'destroy',
+        confirmCourseName: course.name,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    setDestroying(false)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '강좌를 삭제하지 못했습니다.')
+      return
+    }
+
+    if (payload?.warning) {
+      setWarning(payload.warning)
+    }
+
+    router.push(withTenantPrefix('/dashboard/courses', tenant.type))
+    router.refresh()
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -912,6 +954,24 @@ export default function CourseDetailPage({
             {fieldsSaving ? '저장 중...' : '필드 설정 저장'}
           </button>
           {fieldsMessage && <span className="text-xs text-emerald-600">{fieldsMessage}</span>}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-red-200 bg-red-50/60 p-5 shadow-sm">
+        <h3 className="text-sm font-bold text-red-700">위험 작업</h3>
+        <p className="mt-1 text-xs text-red-600">
+          완전 삭제를 실행하면 강좌, 수강생, 좌석, 출석, 교재, 배부 이력이 함께 삭제되며 복구할 수 없습니다.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void handleDestroyCourse()}
+            disabled={destroying}
+            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {destroying ? '삭제 중..' : '강좌 완전 삭제'}
+          </button>
+          <span className="text-xs text-red-500">1차 경고 후 강좌명 재입력 확인까지 거칩니다.</span>
         </div>
       </section>
     </div>

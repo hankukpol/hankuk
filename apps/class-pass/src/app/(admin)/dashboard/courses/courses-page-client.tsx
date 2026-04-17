@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { confirmPermanentCourseDeletion } from '@/lib/course-delete-confirm'
 import type { Course, CourseType } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { formatCourseTypeLabel } from '@/lib/utils'
@@ -84,6 +85,7 @@ export default function CoursesPageClient({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicatingCourseId, setDuplicatingCourseId] = useState<number | null>(null)
+  const [deletingCourseId, setDeletingCourseId] = useState<number | null>(null)
   const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
 
@@ -176,6 +178,40 @@ export default function CoursesPageClient({
     router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
   }
 
+  async function handleDestroy(course: Course) {
+    const confirmation = confirmPermanentCourseDeletion(course.name)
+    if (!confirmation.confirmed) {
+      if (confirmation.reason === 'mismatch') {
+        setError('강좌명을 정확하게 입력해야 강좌를 삭제할 수 있습니다.')
+      }
+      return
+    }
+
+    setDeletingCourseId(course.id)
+    setError('')
+    setMessage('')
+
+    const response = await fetch(`/api/courses/${course.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'destroy',
+        confirmCourseName: course.name,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    setDeletingCourseId(null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '강좌를 삭제하지 못했습니다.')
+      return
+    }
+
+    setCourses((current) => current.filter((item) => item.id !== course.id))
+    setError(payload?.warning ?? '')
+    setMessage('강좌를 완전 삭제했습니다.')
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* ── Header + actions ── */}
@@ -246,6 +282,13 @@ export default function CoursesPageClient({
           </div>
         </form>
       )}
+
+      {(error || message) && !showForm ? (
+        <div className="flex flex-col gap-1">
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          {message && <p className="text-xs text-[#1b7a1b]">{message}</p>}
+        </div>
+      ) : null}
 
       {/* ── Filter tabs ── */}
       <div className="flex gap-1 rounded-[8px] bg-[#f5f5f7] p-1">
@@ -372,6 +415,14 @@ export default function CoursesPageClient({
                               보관
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => void handleDestroy(course)}
+                            disabled={deletingCourseId === course.id}
+                            className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingCourseId === course.id ? '삭제중..' : '삭제'}
+                          </button>
                         </div>
                       </td>
                     </tr>

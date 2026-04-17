@@ -283,6 +283,7 @@ export default function CoursesPageClient({
         </form>
       )}
 
+      {/* ── Filter tabs ── */}
       {(error || message) && !showForm ? (
         <div className="flex flex-col gap-1">
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -290,7 +291,6 @@ export default function CoursesPageClient({
         </div>
       ) : null}
 
-      {/* ── Filter tabs ── */}
       <div className="flex gap-1 rounded-[8px] bg-[#f5f5f7] p-1">
         {(['all', 'active', 'archived'] as const).map((f) => (
           <button
@@ -363,6 +363,14 @@ export default function CoursesPageClient({
                               {course.copied_from_course_name ? ` · 원본 ${course.copied_from_course_name}` : ''}
                             </p>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleDestroy(course)}
+                            disabled={deletingCourseId === course.id}
+                            className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingCourseId === course.id ? '삭제중..' : '삭제'}
+                          </button>
                         </div>
                       </td>
                       <td className="px-3 py-3.5 text-[#86868b]">{courseTypeLabel(course.course_type)}</td>
@@ -415,14 +423,6 @@ export default function CoursesPageClient({
                               보관
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => void handleDestroy(course)}
-                            disabled={deletingCourseId === course.id}
-                            className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingCourseId === course.id ? '삭제중..' : '삭제'}
-                          </button>
                         </div>
                       </td>
                     </tr>

@@ -726,7 +726,7 @@ function AttendanceSummary({ data }: { data: PassPayload }) {
   const searchParams = useSearchParams()
   const enrollmentId = Number(searchParams.get('enrollmentId'))
   const state = data.attendance
-  const href = withTenantPrefix(`/courses/${params.courseSlug}/출석?enrollmentId=${enrollmentId}`, tenant.type)
+  const href = withTenantPrefix(`/courses/${params.courseSlug}/attendance?enrollmentId=${enrollmentId}`, tenant.type)
 
   return (
     <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">

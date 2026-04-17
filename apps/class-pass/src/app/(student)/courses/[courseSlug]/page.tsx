@@ -17,6 +17,8 @@ const LS_PHONE = 'class_pass_student_phone'
 function formatReceiptTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
+    month: '2-digit',
+    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
@@ -255,6 +257,7 @@ export default function StudentCoursePassPage() {
     : isOutsideTimeWindow
       ? 'closed'
       : 'eligible'
+  const examInteractionOpen = noticeOpen || refundOpen || backConfirmOpen
 
   if (data.course.feature_exam_delivery_mode) {
     return (
@@ -265,6 +268,7 @@ export default function StudentCoursePassPage() {
           courseTheme={courseTheme}
           tenantAppName={data.appConfig.app_name || tenant.defaultAppName}
           status={examDeliveryStatus}
+          motionPaused={examInteractionOpen}
           extraContent={
             data.attendance.enabled || data.designatedSeat.enabled ? (
               <>
@@ -273,10 +277,27 @@ export default function StudentCoursePassPage() {
               </>
             ) : undefined
           }
-          onBack={goBack}
+          onBack={() => setBackConfirmOpen(true)}
           onOpenNotice={() => setNoticeOpen(true)}
           onOpenRefund={() => setRefundOpen(true)}
         />
+        {backConfirmOpen ? (
+          <div className="student-modal-backdrop fixed inset-0 z-[80] flex items-center justify-center px-6" onClick={() => setBackConfirmOpen(false)}>
+            <div className="student-card w-full max-w-[320px] overflow-hidden bg-white" onClick={(event) => event.stopPropagation()}>
+              <div className="px-5 pb-4 pt-5 text-center">
+                <p className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">강좌 목록으로 돌아가시겠습니까?</p>
+              </div>
+              <div className="flex border-t border-[var(--student-line)]">
+                <button onClick={() => setBackConfirmOpen(false)} className="flex-1 border-r border-[var(--student-line)] py-[14px] text-[17px] text-[var(--student-link)]">
+                  취소
+                </button>
+                <button onClick={goBack} className="flex-1 py-[14px] text-[17px] font-semibold text-[var(--student-link)]">
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {noticeOpen && data.course.notice_content ? (
           <Modal title={data.course.notice_title || '공지사항'} onClose={() => setNoticeOpen(false)}>
             <p className="whitespace-pre-wrap">{data.course.notice_content}</p>
@@ -688,7 +709,7 @@ export default function StudentCoursePassPage() {
       </div>
 
       {backConfirmOpen ? (
-        <div className="student-modal-backdrop fixed inset-0 z-50 flex items-center justify-center px-6" onClick={() => setBackConfirmOpen(false)}>
+        <div className="student-modal-backdrop fixed inset-0 z-[80] flex items-center justify-center px-6" onClick={() => setBackConfirmOpen(false)}>
           <div className="student-card w-full max-w-[320px] overflow-hidden bg-white" onClick={(event) => event.stopPropagation()}>
             <div className="px-5 pb-4 pt-5 text-center">
               <p className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">강좌 목록으로 돌아가시겠습니까?</p>
@@ -798,7 +819,7 @@ function Modal({
   children: React.ReactNode
 }) {
   return (
-    <div className="student-modal-backdrop fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:px-6" onClick={onClose}>
+    <div className="student-modal-backdrop fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:px-6" onClick={onClose}>
       <div
         className="student-card flex w-full max-w-sm flex-col overflow-hidden rounded-t-[16px] bg-white sm:rounded-[16px]"
         style={{ maxHeight: '80dvh' }}

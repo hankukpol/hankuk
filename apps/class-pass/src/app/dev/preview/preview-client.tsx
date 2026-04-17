@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 
 type Device = {
   name: string
@@ -10,6 +10,14 @@ type Device = {
   cornerRadius: number
 }
 
+type QuickLink = {
+  label: string
+  path: string
+  group: 'student' | 'staff' | 'admin'
+}
+
+type FrameStatus = 'loading' | 'slow' | 'ready'
+
 const DEVICES: Device[] = [
   { name: 'iPhone SE', width: 375, height: 667, hasNotch: false, cornerRadius: 20 },
   { name: 'iPhone 13 mini', width: 375, height: 812, hasNotch: true, cornerRadius: 36 },
@@ -18,12 +26,6 @@ const DEVICES: Device[] = [
   { name: 'Galaxy S21', width: 360, height: 800, hasNotch: false, cornerRadius: 28 },
   { name: 'iPad mini', width: 744, height: 1133, hasNotch: false, cornerRadius: 18 },
 ]
-
-type QuickLink = {
-  label: string
-  path: string
-  group: 'student' | 'staff' | 'admin'
-}
 
 const QUICK_LINKS: QuickLink[] = [
   { label: '경찰 · 홈', path: '/police', group: 'student' },
@@ -64,8 +66,8 @@ export function PreviewClient() {
     setPath(normalized.startsWith('/') ? normalized : `/${normalized}`)
   }
 
-  function openInNewTab() {
-    window.open(path, '_blank', 'noopener,noreferrer')
+  function openInNewTab(targetPath: string) {
+    window.open(targetPath, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -79,6 +81,7 @@ export function PreviewClient() {
       }}
     >
       <style>{'@keyframes preview-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }'}</style>
+
       <div style={{ maxWidth: 1600, margin: '0 auto' }}>
         <header style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 11, letterSpacing: 3, color: '#fbbf24', fontWeight: 700, margin: 0 }}>
@@ -86,7 +89,7 @@ export function PreviewClient() {
           </p>
           <h1 style={{ fontSize: 24, fontWeight: 700, margin: '4px 0 0' }}>모바일 프리뷰</h1>
           <p style={{ fontSize: 13, color: '#94a3b8', margin: '6px 0 0' }}>
-            학생/스태프 페이지를 가상 iPhone 프레임으로 확인합니다. 개발 환경에서만 접근 가능합니다.
+            학생/스태프 페이지를 가상 기기 프레임으로 빠르게 확인합니다. 개발 환경에서만 접근 가능합니다.
           </p>
         </header>
 
@@ -119,7 +122,7 @@ export function PreviewClient() {
             새로고침
           </button>
 
-          <button type="button" onClick={openInNewTab} style={buttonStyle}>
+          <button type="button" onClick={() => openInNewTab(path)} style={buttonStyle}>
             새 탭에서 열기
           </button>
 
@@ -206,6 +209,7 @@ export function PreviewClient() {
             src={path}
             reloadKey={reloadKey}
             label={`주 화면 · ${path}`}
+            onOpenInNewTab={openInNewTab}
           />
 
           {dualView ? (
@@ -224,6 +228,7 @@ export function PreviewClient() {
                 src={secondPath}
                 reloadKey={reloadKey}
                 label={`보조 화면 · ${secondPath}`}
+                onOpenInNewTab={openInNewTab}
               />
             </div>
           ) : null}
@@ -235,8 +240,8 @@ export function PreviewClient() {
             <code style={{ background: '#1e293b', padding: '2px 6px', borderRadius: 4 }}>{path}</code>
           </p>
           <p style={{ margin: '8px 0 0' }}>
-            iframe은 쿠키·세션을 공유하므로 먼저 학생/스태프 로그인을 해두면 상태가 유지됩니다.
-            카메라 QR 스캐너는 iframe에서 제한될 수 있으니 실제 테스트는 새 탭에서 여세요.
+            iframe은 쿠키와 세션을 공유합니다. 로그인 상태를 유지한 채 학생/스태프 화면을 빠르게 넘겨볼 때 사용하세요.
+            카메라나 QR 스캐너처럼 브라우저 권한이 필요한 기능은 새 탭에서 확인하는 편이 안정적입니다.
           </p>
         </footer>
       </div>
@@ -252,15 +257,58 @@ function DeviceFrame(props: {
   src: string
   reloadKey: number
   label: string
+  onOpenInNewTab: (targetPath: string) => void
 }) {
-  const { device, width, height, rotated, src, reloadKey, label } = props
+  const { device, width, height, rotated, src, reloadKey, label, onOpenInNewTab } = props
   const framePadding = 12
   const outerRadius = device.cornerRadius + framePadding
-  const [loading, setLoading] = useState(true)
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const [status, setStatus] = useState<FrameStatus>('loading')
 
   useEffect(() => {
-    setLoading(true)
+    setStatus('loading')
   }, [reloadKey, src])
+
+  useEffect(() => {
+    if (status === 'ready') {
+      return
+    }
+
+    const markReadyIfPossible = () => {
+      const iframe = iframeRef.current
+      if (!iframe) {
+        return
+      }
+
+      try {
+        const iframeDocument = iframe.contentDocument
+        const readyState = iframeDocument?.readyState
+        const hasVisibleContent = Boolean(iframeDocument?.body?.innerText?.trim())
+
+        if ((readyState === 'interactive' || readyState === 'complete') && hasVisibleContent) {
+          setStatus('ready')
+        }
+      } catch {
+        // The preview is same-origin, but guard against transient access timing.
+      }
+    }
+
+    const intervalId = window.setInterval(markReadyIfPossible, 200)
+    const slowTimerId = window.setTimeout(() => {
+      setStatus((current) => (current === 'loading' ? 'slow' : current))
+    }, 1800)
+    const fallbackTimerId = window.setTimeout(() => {
+      setStatus('ready')
+    }, 5000)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.clearTimeout(slowTimerId)
+      window.clearTimeout(fallbackTimerId)
+    }
+  }, [status, reloadKey, src])
+
+  const overlayVisible = status !== 'ready'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
@@ -299,7 +347,8 @@ function DeviceFrame(props: {
               }}
             />
           ) : null}
-          {loading ? (
+
+          {overlayVisible ? (
             <div
               style={{
                 position: 'absolute',
@@ -329,20 +378,40 @@ function DeviceFrame(props: {
                 }}
               />
               <div>
-                <div style={{ fontWeight: 700 }}>프리뷰 불러오는 중</div>
-                <div style={{ marginTop: 4, color: '#94a3b8', fontSize: 12 }}>
-                  개발 서버 첫 진입 시 2~5초 정도 걸릴 수 있습니다.
+                <div style={{ fontWeight: 700 }}>
+                  {status === 'slow' ? '응답이 늦습니다' : '프리뷰 불러오는 중'}
+                </div>
+                <div style={{ marginTop: 4, color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
+                  {status === 'slow'
+                    ? '개발 서버가 다시 빌드 중일 수 있습니다. 새 탭에서 열면 현재 상태를 바로 확인하기 쉽습니다.'
+                    : '개발 서버 첫 진입 시 1~3초 정도 걸릴 수 있습니다.'}
                 </div>
               </div>
+              {status === 'slow' ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenInNewTab(src)}
+                  style={{
+                    ...buttonStyle,
+                    background: '#0f172a',
+                    borderColor: '#475569',
+                    fontSize: 12,
+                  }}
+                >
+                  새 탭에서 바로 보기
+                </button>
+              ) : null}
             </div>
           ) : null}
+
           <iframe
             key={`${src}-${reloadKey}`}
+            ref={iframeRef}
             src={src}
             style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
             title={label}
             allow="camera; clipboard-write; clipboard-read"
-            onLoad={() => setLoading(false)}
+            onLoad={() => setStatus('ready')}
           />
         </div>
       </div>
@@ -351,7 +420,7 @@ function DeviceFrame(props: {
   )
 }
 
-const controlStyle: React.CSSProperties = {
+const controlStyle: CSSProperties = {
   padding: '8px 12px',
   borderRadius: 8,
   background: '#1e293b',
@@ -361,7 +430,7 @@ const controlStyle: React.CSSProperties = {
   outline: 'none',
 }
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   padding: '8px 14px',
   borderRadius: 8,
   background: '#1e293b',

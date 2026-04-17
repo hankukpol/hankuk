@@ -157,13 +157,13 @@ export default function CourseStudentsPage({
       setLoading(false)
       return
     }
-    if (initialLoaded) {
-      return
-    }
-
     refresh()
       .catch((r: unknown) => setError(r instanceof Error ? r.message : '불러오기 실패'))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!initialLoaded) {
+          setLoading(false)
+        }
+      })
   }, [courseId, refresh, initialLoaded])
 
   // Filter + search

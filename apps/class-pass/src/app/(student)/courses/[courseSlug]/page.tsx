@@ -562,6 +562,40 @@ export default function StudentCoursePassPage() {
         </section>
       ) : null}
 
+      {data.course.kakao_chat_url || data.course.extra_site_url ? (
+        <div className="mt-4 px-4 sm:px-5">
+          {data.course.kakao_chat_url ? (
+            <a
+              href={data.course.kakao_chat_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="student-pill-button mb-2 flex w-full items-center justify-center gap-2 text-[#191919]"
+              style={{ backgroundColor: '#FEE500' }}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="#191919" aria-hidden="true">
+                <path d="M12 3C6.477 3 2 6.463 2 10.691c0 2.734 1.811 5.126 4.535 6.482-.145.53-.93 3.408-.965 3.627 0 0-.02.164.087.227.106.063.231.03.231.03.305-.043 3.535-2.313 4.094-2.71.655.098 1.33.15 2.018.15 5.523 0 10-3.463 10-7.806C22 6.463 17.523 3 12 3" />
+              </svg>
+              카카오톡 단톡방 참여
+            </a>
+          ) : null}
+          {data.course.extra_site_url ? (
+            <a
+              href={data.course.extra_site_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="student-pill-button student-pill-primary flex w-full items-center justify-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M14 5h5v5" />
+                <path d="M10 14 19 5" />
+                <path d="M19 14v5h-14v-14h5" />
+              </svg>
+              추가 사이트 이동
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mt-4 flex gap-2 px-4 pb-2 sm:px-5">
         {data.course.feature_notices && data.course.notice_visible && data.course.notice_content ? (
           <button onClick={() => setNoticeOpen(true)} className="student-pill-button student-pill-secondary flex-1">

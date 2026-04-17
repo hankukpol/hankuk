@@ -43,6 +43,7 @@ type CoursePatchForm = {
   notice_visible: boolean
   refund_policy: string
   kakao_chat_url: string
+  extra_site_url: string
   designated_seat_open: boolean
   attendance_open: boolean
   enrolled_from: string
@@ -110,6 +111,7 @@ function toPatchForm(course: Course): CoursePatchForm {
     notice_visible: course.notice_visible,
     refund_policy: course.refund_policy ?? '',
     kakao_chat_url: course.kakao_chat_url ?? '',
+    extra_site_url: course.extra_site_url ?? '',
     designated_seat_open: course.designated_seat_open,
     attendance_open: course.attendance_open,
     enrolled_from: course.enrolled_from ?? '',
@@ -236,6 +238,7 @@ export default function CourseDetailPage({
         notice_content: form.notice_content || null,
         refund_policy: form.refund_policy || null,
         kakao_chat_url: form.kakao_chat_url || null,
+        extra_site_url: form.extra_site_url || null,
         designated_seat_open: form.feature_designated_seat ? form.designated_seat_open : false,
         attendance_open: form.feature_attendance ? form.attendance_open : false,
         enrolled_from: form.enrolled_from || null,
@@ -683,6 +686,18 @@ export default function CourseDetailPage({
               />
               {form.kakao_chat_url ? (
                 <p className="text-xs text-gray-400">학생 수강증 화면에 카카오톡 참여 버튼이 표시됩니다.</p>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-500">추가 사이트 링크</label>
+              <input
+                value={form.extra_site_url}
+                onChange={(e) => setForm((c) => c && { ...c, extra_site_url: e.target.value })}
+                placeholder="https://example.com"
+                className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              />
+              {form.extra_site_url ? (
+                <p className="text-xs text-gray-400">학생 강좌 화면에 추가 사이트 이동 버튼이 표시됩니다.</p>
               ) : null}
             </div>
           </div>

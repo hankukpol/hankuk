@@ -226,6 +226,8 @@ function SeatAssignments({
 function BottomActions({
   hasChatLink,
   chatUrl,
+  hasExtraSiteLink,
+  extraSiteUrl,
   hasNotice,
   hasRefund,
   onBack,
@@ -234,6 +236,8 @@ function BottomActions({
 }: {
   hasChatLink: boolean
   chatUrl?: string | null
+  hasExtraSiteLink: boolean
+  extraSiteUrl?: string | null
   hasNotice: boolean
   hasRefund: boolean
   onBack: () => void
@@ -254,6 +258,22 @@ function BottomActions({
             <path d="M12 3C6.477 3 2 6.463 2 10.691c0 2.734 1.811 5.126 4.535 6.482-.145.53-.93 3.408-.965 3.627 0 0-.02.164.087.227.106.063.231.03.231.03.305-.043 3.535-2.313 4.094-2.71.655.098 1.33.15 2.018.15 5.523 0 10-3.463 10-7.806C22 6.463 17.523 3 12 3" />
           </svg>
           카카오톡 단톡방 참여
+        </a>
+      ) : null}
+
+      {hasExtraSiteLink && extraSiteUrl ? (
+        <a
+          href={extraSiteUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="student-pill-button student-pill-primary mb-2 flex w-full items-center justify-center gap-2"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M14 5h5v5" />
+            <path d="M10 14 19 5" />
+            <path d="M19 14v5h-14v-14h5" />
+          </svg>
+          추가 사이트 이동
         </a>
       ) : null}
 
@@ -312,6 +332,7 @@ export function ExamDeliveryPassView({
   const hasNotice = Boolean(data.course.feature_notices && data.course.notice_visible && data.course.notice_content)
   const hasRefund = Boolean(data.course.feature_refund_policy && data.course.refund_policy)
   const hasChatLink = Boolean(data.course.kakao_chat_url)
+  const hasExtraSiteLink = Boolean(data.course.extra_site_url)
   const dday = data.course.feature_dday ? calculateDday(data.course.target_date) : null
   const ddayLabel = data.course.target_date_label || '시험일'
 
@@ -512,6 +533,8 @@ export function ExamDeliveryPassView({
         <BottomActions
           hasChatLink={hasChatLink}
           chatUrl={data.course.kakao_chat_url}
+          hasExtraSiteLink={hasExtraSiteLink}
+          extraSiteUrl={data.course.extra_site_url}
           hasNotice={hasNotice}
           hasRefund={hasRefund}
           onBack={onBack}

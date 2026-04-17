@@ -63,6 +63,7 @@ const patchSchema = z.object({
   designated_seat_open: z.boolean().optional(),
   attendance_open: z.boolean().optional(),
   kakao_chat_url: z.string().url().optional().nullable(),
+  extra_site_url: z.string().url().optional().nullable(),
   enrolled_from: z.string().optional().nullable(),
   enrolled_until: z.string().optional().nullable(),
   sort_order: z.number().int().min(0).max(999).optional(),

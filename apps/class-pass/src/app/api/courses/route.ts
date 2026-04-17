@@ -47,6 +47,8 @@ const courseSchema = z.object({
   notice_content: z.string().optional().nullable(),
   notice_visible: z.boolean().default(false),
   refund_policy: z.string().optional().nullable(),
+  kakao_chat_url: z.string().url().optional().nullable(),
+  extra_site_url: z.string().url().optional().nullable(),
   designated_seat_open: z.boolean().default(false),
   attendance_open: z.boolean().default(false),
   sort_order: z.number().int().min(0).max(999).default(0),

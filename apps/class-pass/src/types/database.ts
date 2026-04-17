@@ -43,6 +43,7 @@ export interface Course {
   notice_visible: boolean
   refund_policy: string | null
   kakao_chat_url: string | null
+  extra_site_url: string | null
   enrolled_from: string | null
   enrolled_until: string | null
   enrollment_fields: EnrollmentFieldDef[]

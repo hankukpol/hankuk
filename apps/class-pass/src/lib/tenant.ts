@@ -11,6 +11,7 @@ const RESERVED_TOP_LEVEL_SEGMENTS = new Set([
   'courses',
   'dashboard',
   'designated-seat-display',
+  'dev',
   'scan',
   'staff',
   'super-admin',

@@ -1,11 +1,17 @@
 import type { NextConfig } from 'next'
 
-const isDevelopment = process.env.NODE_ENV === 'development'
-
 const nextConfig: NextConfig = {
-  distDir: isDevelopment ? '.next-dev' : '.next',
   experimental: {
-    serverActions: { allowedOrigins: ['localhost:3000'] },
+    serverActions: {
+      allowedOrigins: [
+        'localhost:3000',
+        '127.0.0.1:3000',
+        'localhost:3001',
+        '127.0.0.1:3001',
+        'localhost:3002',
+        '127.0.0.1:3002',
+      ],
+    },
   },
   async headers() {
     return [
@@ -21,7 +27,10 @@ const nextConfig: NextConfig = {
         source: '/(.*)',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: isDevelopment ? 'SAMEORIGIN' : 'DENY' },
+          {
+            key: 'X-Frame-Options',
+            value: process.env.NODE_ENV === 'development' ? 'SAMEORIGIN' : 'DENY',
+          },
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },

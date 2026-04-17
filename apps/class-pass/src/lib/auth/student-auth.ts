@@ -13,7 +13,15 @@ export type VerifyStudentAuthResult =
 
 export function normalizeBirthDate(value: string | null | undefined): string | null {
   const normalized = (value ?? '').replace(/\D/g, '')
-  return /^\d{6}$/.test(normalized) ? normalized : null
+  if (/^\d{6}$/.test(normalized)) {
+    return normalized
+  }
+
+  if (/^\d{8}$/.test(normalized)) {
+    return normalized.slice(-6)
+  }
+
+  return null
 }
 
 export async function verifyStudentAuth(

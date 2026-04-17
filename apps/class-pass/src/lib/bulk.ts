@@ -1,3 +1,4 @@
+import { normalizeBirthDate } from '@/lib/auth/student-auth'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 
 export type ParsedEnrollmentRow = {
@@ -88,6 +89,10 @@ function splitEnrollmentLine(line: string) {
   return trimmed.split(/\s+/).map((cell) => cell.trim())
 }
 
+function findBirthDateCellIndex(cells: string[]) {
+  return cells.findIndex((cell) => normalizeBirthDate(cell) !== null)
+}
+
 function isEnrollmentHeaderRow(cells: string[]) {
   if (cells.length >= 3) {
     return (
@@ -134,38 +139,29 @@ export function parseEnrollmentBulkText(
       const nameIndex = hasLeadingExamNumber ? 1 : 0
       const phoneIndex = hasLeadingExamNumber ? 2 : 1
       const customStartIndex = hasLeadingExamNumber ? 3 : 2
-      const remainder = cells.slice(customStartIndex)
+      const trailingValues = cells.slice(customStartIndex)
       let examNumber = hasLeadingExamNumber
         ? normalizeExamNumber(cells[0] ?? '') || undefined
         : undefined
       let birthDate: string | undefined
-      let customValueStartIndex = customStartIndex
+      const customValues = [...trailingValues]
 
       if (!hasLeadingExamNumber && looksLikePhone(cells[1] ?? '')) {
-        const firstExtra = remainder[0]?.replace(/\D/g, '') ?? ''
-        const secondExtra = remainder[1]?.replace(/\D/g, '') ?? ''
-
-        if (/^\d{6}$/.test(firstExtra)) {
-          birthDate = firstExtra
-          customValueStartIndex += 1
-        } else {
-          examNumber = normalizeExamNumber(remainder[0] ?? '') || undefined
-          if (remainder[0]) {
-            customValueStartIndex += 1
-          }
-
-          if (/^\d{6}$/.test(secondExtra)) {
-            birthDate = secondExtra
-            customValueStartIndex += 1
-          }
+        const firstExtraBirthDate = normalizeBirthDate(customValues[0])
+        if (firstExtraBirthDate) {
+          birthDate = firstExtraBirthDate
+          customValues.shift()
+        } else if (customValues[0]) {
+          examNumber = normalizeExamNumber(customValues[0]) || undefined
+          customValues.shift()
         }
       }
 
-      if (hasLeadingExamNumber) {
-        const extraBirthDate = remainder[0]?.replace(/\D/g, '') ?? ''
-        if (/^\d{6}$/.test(extraBirthDate)) {
-          birthDate = extraBirthDate
-          customValueStartIndex += 1
+      if (!birthDate) {
+        const birthDateIndex = findBirthDateCellIndex(customValues)
+        if (birthDateIndex >= 0) {
+          birthDate = normalizeBirthDate(customValues[birthDateIndex]) ?? undefined
+          customValues.splice(birthDateIndex, 1)
         }
       }
 
@@ -179,7 +175,7 @@ export function parseEnrollmentBulkText(
       if (customFieldKeys?.length) {
         const customData: Record<string, string> = {}
         customFieldKeys.forEach((key, index) => {
-          const value = cells[customValueStartIndex + index]
+          const value = customValues[index]
           if (value) {
             customData[key] = value
           }

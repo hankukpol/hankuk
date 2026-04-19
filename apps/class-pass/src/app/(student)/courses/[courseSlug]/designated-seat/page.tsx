@@ -31,6 +31,7 @@ type ScannerInstance = {
   ) => Promise<void>
   stop: () => Promise<void>
   clear: () => void
+  applyVideoConstraints?: (constraints: MediaTrackConstraints) => Promise<void>
 }
 
 function ensureLocalDeviceKey() {
@@ -278,6 +279,16 @@ export default function DesignatedSeatPage() {
           { fps: 10, qrbox: { width: qrBoxSize, height: qrBoxSize } },
           onSuccess,
         )
+
+        // Force 1x main lens on multi-camera phones (iPhone 11+, Galaxy S-series, etc.).
+        // advanced[] is best-effort, so unsupported browsers silently skip it.
+        try {
+          await scanner.applyVideoConstraints?.({
+            advanced: [{ zoom: 1 } as unknown as MediaTrackConstraintSet],
+          })
+        } catch {
+          // ignore if the browser rejects the zoom constraint
+        }
 
         if (!cancelled) {
           setScannerLoading(false)

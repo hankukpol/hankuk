@@ -4,18 +4,19 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { getCameraReadinessError } from '@/lib/camera/access'
+import { getCameraAccessErrorMessage, getCameraReadinessError } from '@/lib/camera/access'
 import { withTenantPrefix } from '@/lib/tenant'
 import { QuickDistributionPanel } from './quick-distribution-panel'
 import { QrDistributionPanel } from './qr-distribution-panel'
 import {
+  describeDistributedMaterials,
   ERROR_OVERLAY_TIMEOUT_MS,
   OVERLAY_TIMEOUT_MS,
   SCAN_COOLDOWN_MS,
   fetchBootstrapData,
-  formatMaterialLabel,
   getScanReasonMessage,
   normalizeToken,
+  summarizeDistributedMaterials,
 } from './scan-page-utils'
 import type {
   CourseItem,
@@ -30,6 +31,18 @@ import type {
   TabMode,
 } from './scan-page-types'
 
+type CameraOption = {
+  id: string
+  label: string
+}
+
+type ExtendedConstraintSet = MediaTrackConstraintSet & {
+  focusMode?: string
+  zoom?: number
+}
+
+const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
+
 export default function StaffScanPage() {
   const tenant = useTenantConfig()
   const router = useRouter()
@@ -37,14 +50,17 @@ export default function StaffScanPage() {
   const scannerRef = useRef<ScannerInstance | null>(null)
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const processingRef = useRef(false)
+  const isStartingRef = useRef(false)
   const lastScanRef = useRef<LastScanState>({ token: '', at: 0 })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const bootstrappedCourseIdRef = useRef<number | null>(null)
 
   const [isFeatureLoading, setIsFeatureLoading] = useState(true)
   const [staffScanEnabled, setStaffScanEnabled] = useState(true)
+  const [staffQuickEnabled, setStaffQuickEnabled] = useState(true)
   const [tab, setTab] = useState<TabMode>('qr')
   const [scanState, setScanState] = useState<ScanState>('idle')
+  const [currentTime, setCurrentTime] = useState(new Date())
   const [session, setSession] = useState<SessionResponse | null>(null)
   const [courses, setCourses] = useState<CourseItem[]>([])
   const [courseMaterials, setCourseMaterials] = useState<MaterialItem[]>([])
@@ -58,6 +74,7 @@ export default function StaffScanPage() {
   const [error, setError] = useState('')
   const [overlay, setOverlay] = useState<OverlayState | null>(null)
   const [selectOptions, setSelectOptions] = useState<MaterialItem[]>([])
+  const [selectedSelectionMaterialIds, setSelectedSelectionMaterialIds] = useState<number[]>([])
   const [pendingToken, setPendingToken] = useState('')
   const [lastStudentName, setLastStudentName] = useState('')
 
@@ -68,10 +85,152 @@ export default function StaffScanPage() {
   )
   const selectedCourseName = selectedCourse?.name ?? null
   const materialsCount = courseMaterials.length
+  const formattedDate = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(currentTime).replace(/\s/g, '')
+  const formattedTime = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(currentTime)
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const clearScannerContainer = useCallback(() => {
+    const reader = document.getElementById('class-pass-qr-reader')
+    if (reader) {
+      reader.innerHTML = ''
+    }
+  }, [])
+
+  const clearPendingSelection = useCallback(() => {
+    setSelectOptions([])
+    setSelectedSelectionMaterialIds([])
+    setPendingToken('')
+  }, [])
+
+  const parseCameraZoom = useCallback((label: string) => {
+    const match = label.toLowerCase().match(/(\d+(?:\.\d+)?)\s*x\b/)
+    if (!match) {
+      return null
+    }
+
+    const zoom = Number(match[1])
+    return Number.isFinite(zoom) ? zoom : null
+  }, [])
+
+  const getCameraPriority = useCallback((camera: CameraOption) => {
+    const label = camera.label.trim().toLowerCase()
+    const zoom = parseCameraZoom(label)
+    let score = 0
+
+    if (!label) {
+      return -50
+    }
+
+    if (/(front|user|selfie|face|전면)/i.test(label)) score -= 600
+    if (/(back|rear|environment|후면)/i.test(label)) score += 400
+    if (/(main|standard|default|기본)/i.test(label)) score += 160
+    if (/\b1x\b/.test(label)) score += 220
+    if (/wide/.test(label) && !/ultra[\s-]?wide/.test(label)) score += 40
+    if (/(ultra[\s-]?wide|0\.5x|macro|depth|tof|virtual)/i.test(label)) score -= 260
+    if (/(tele|telephoto|periscope)/i.test(label)) score -= 120
+
+    if (zoom !== null) {
+      score += 180 - Math.round(Math.abs(zoom - 1) * 140)
+    }
+
+    return score
+  }, [parseCameraZoom])
+
+  const getRankedCameraTargets = useCallback((cameras: CameraOption[]) => {
+    const withLabels = cameras.filter((camera) => camera.label.trim())
+    const ranked = [...withLabels].sort((left, right) => {
+      const priorityDiff = getCameraPriority(right) - getCameraPriority(left)
+      if (priorityDiff !== 0) {
+        return priorityDiff
+      }
+
+      return left.label.localeCompare(right.label)
+    })
+
+    return ranked.map((camera) => camera.id)
+  }, [getCameraPriority])
+
+  const optimizeRunningCamera = useCallback(async (scanner: ScannerInstance) => {
+    if (!scanner.applyVideoConstraints) {
+      return
+    }
+
+    try {
+      const capabilities = scanner.getRunningTrackCapabilities?.()
+      const settings = scanner.getRunningTrackSettings?.()
+      const advanced: ExtendedConstraintSet[] = []
+
+      if (Array.isArray(capabilities?.focusMode)) {
+        if (capabilities.focusMode.includes('continuous')) {
+          advanced.push({ focusMode: 'continuous' })
+        } else if (capabilities.focusMode.includes('single-shot')) {
+          advanced.push({ focusMode: 'single-shot' })
+        }
+      }
+
+      if (capabilities?.zoom) {
+        const { min, max } = capabilities.zoom
+        const canResetToOneX = typeof min === 'number' && typeof max === 'number' && min <= 1 && max >= 1
+        const currentZoom = typeof settings?.zoom === 'number' ? settings.zoom : null
+
+        if (canResetToOneX && (currentZoom === null || currentZoom < 0.95 || currentZoom > 1.25)) {
+          advanced.push({ zoom: 1 })
+        }
+      }
+
+      if (advanced.length > 0) {
+        await scanner.applyVideoConstraints({ advanced })
+      }
+    } catch {
+      // Camera tuning failures are non-fatal.
+    }
+  }, [])
+
+  const optimizeScannerVideo = useCallback(() => {
+    const video = document.querySelector('#class-pass-qr-reader video') as HTMLVideoElement | null
+    if (!video) {
+      return
+    }
+
+    video.muted = true
+    video.setAttribute('muted', 'true')
+    video.setAttribute('autoplay', 'true')
+    video.setAttribute('playsinline', 'true')
+    void video.play().catch(() => {})
+  }, [])
+
+  const isPermissionDeniedError = useCallback((error: unknown) => {
+    const message = typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : ''
+
+    return (error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'SecurityError'))
+      || message.includes('Permission denied')
+      || message.includes('NotAllowedError')
+      || message.includes('SecurityError')
+  }, [])
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current
     scannerRef.current = null
+    isStartingRef.current = false
 
     if (overlayTimerRef.current) {
       clearTimeout(overlayTimerRef.current)
@@ -81,6 +240,7 @@ export default function StaffScanPage() {
     processingRef.current = false
 
     if (!scanner) {
+      clearScannerContainer()
       return
     }
 
@@ -95,7 +255,9 @@ export default function StaffScanPage() {
     } catch {
       // ignore clear failures
     }
-  }, [])
+
+    clearScannerContainer()
+  }, [clearScannerContainer])
 
   const showOverlay = useCallback((nextOverlay: OverlayState, timeoutMs = OVERLAY_TIMEOUT_MS) => {
     setOverlay(nextOverlay)
@@ -135,6 +297,7 @@ export default function StaffScanPage() {
       processingRef.current = true
       setScanState('processing')
       setSelectOptions([])
+      setSelectedSelectionMaterialIds([])
       setPendingToken(token)
       setMessage('')
       setError('')
@@ -153,11 +316,20 @@ export default function StaffScanPage() {
         }
 
         if (response.ok && payload?.success) {
+          const distributedMaterials = payload.distributedMaterials ?? []
+          const distributedSummary = describeDistributedMaterials(distributedMaterials)
+
           showOverlay(
             {
               success: true,
-              title: `${formatMaterialLabel(payload.materialName ?? '자료', payload.materialType)} 배부 완료`,
-              description: studentName || undefined,
+              title: summarizeDistributedMaterials(distributedMaterials.length > 0
+                ? distributedMaterials
+                : payload?.materialName
+                  ? [{ name: payload.materialName, material_type: payload.materialType }]
+                  : []),
+              description: studentName
+                ? [studentName, distributedSummary].filter(Boolean).join(' · ')
+                : distributedSummary,
             },
             OVERLAY_TIMEOUT_MS,
           )
@@ -166,8 +338,23 @@ export default function StaffScanPage() {
 
         if (payload?.needsSelection && payload.unreceived?.length) {
           setSelectOptions(payload.unreceived)
+          setSelectedSelectionMaterialIds(payload.unreceived.map((material) => material.id))
           setScanState('selecting')
-          processingRef.current = false
+          processingRef.current = true
+          return
+        }
+
+        if (payload?.distributedMaterials?.length) {
+          showOverlay(
+            {
+              success: false,
+              title: '일부 자료만 배부되었습니다.',
+              description: [payload.studentName, describeDistributedMaterials(payload.distributedMaterials)]
+                .filter(Boolean)
+                .join(' · '),
+            },
+            ERROR_OVERLAY_TIMEOUT_MS,
+          )
           return
         }
 
@@ -197,6 +384,10 @@ export default function StaffScanPage() {
       return
     }
 
+    if (isStartingRef.current) {
+      return
+    }
+
     const readinessError = await getCameraReadinessError()
     if (readinessError) {
       setScanState('idle')
@@ -204,117 +395,240 @@ export default function StaffScanPage() {
       return
     }
 
+    isStartingRef.current = true
+    setScanState('scanning')
+    processingRef.current = false
+    setError('')
+
     try {
       const qrModule = (await import('html5-qrcode')) as {
-        Html5Qrcode: new (elementId: string) => ScannerInstance
-      }
-
-      const boxSize = Math.max(180, Math.min(containerRef.current?.offsetWidth ?? 260, 260))
-      const scanner = new qrModule.Html5Qrcode('class-pass-qr-reader')
-      const onSuccess = (decodedText: string) => {
-        void handleScan(decodedText)
-      }
-
-      // Camera priority: prefer back camera with 1x zoom
-      let bestCameraId: string | null = null
-      try {
-        const Html5QrcodeClass = qrModule.Html5Qrcode as unknown as {
-          getCameras: () => Promise<{ id: string; label: string }[]>
+        Html5Qrcode: {
+          new (
+            elementId: string,
+            config?: {
+              verbose?: boolean
+              formatsToSupport?: number[]
+            },
+          ): ScannerInstance
+          getCameras: () => Promise<CameraOption[]>
         }
-        if (typeof Html5QrcodeClass.getCameras === 'function') {
-          const devices = await Html5QrcodeClass.getCameras()
-          if (devices.length > 0) {
-            const backCameras = devices.filter((d) => /back|rear|environment/i.test(d.label))
-            const preferred = backCameras.find((d) => !/wide|ultra/i.test(d.label)) ?? backCameras[0]
-            bestCameraId = preferred?.id ?? null
+        Html5QrcodeSupportedFormats: {
+          QR_CODE: number
+        }
+      }
+
+      const boxSize = Math.max(180, Math.min((containerRef.current?.offsetWidth ?? 300) - 40, 260))
+      const config = {
+        fps: 10,
+        qrbox: { width: boxSize, height: boxSize },
+        aspectRatio: 1,
+      }
+      const onSuccess = (decodedText: string) => void handleScan(decodedText)
+      const createScanner = () =>
+        new qrModule.Html5Qrcode('class-pass-qr-reader', {
+          verbose: false,
+          formatsToSupport: [qrModule.Html5QrcodeSupportedFormats.QR_CODE],
+        })
+
+      const targets: Array<string | { facingMode: 'environment' | { exact: 'environment' } }> = []
+
+      try {
+        const cameras = await qrModule.Html5Qrcode.getCameras()
+        targets.push(...getRankedCameraTargets(cameras))
+      } catch (cameraListError) {
+        if (isPermissionDeniedError(cameraListError)) {
+          throw cameraListError
+        }
+      }
+
+      targets.push({ facingMode: { exact: 'environment' } })
+      targets.push({ facingMode: 'environment' })
+
+      let lastError: unknown = null
+
+      for (const target of targets) {
+        clearScannerContainer()
+        const scanner = createScanner()
+
+        try {
+          await scanner.start(target, config, onSuccess)
+          scannerRef.current = scanner
+          await optimizeRunningCamera(scanner)
+          optimizeScannerVideo()
+          return
+        } catch (startError) {
+          lastError = startError
+
+          try {
+            await scanner.stop()
+          } catch {
+            // ignore
+          }
+
+          try {
+            scanner.clear()
+          } catch {
+            // ignore
           }
         }
-      } catch {
-        // Fall back to facingMode constraint
       }
 
-      try {
-        if (bestCameraId) {
-          await scanner.start(
-            bestCameraId,
-            { fps: 10, qrbox: { width: boxSize, height: boxSize } },
-            onSuccess,
-          )
-        } else {
-          await scanner.start(
-            { facingMode: { exact: 'environment' } },
-            { fps: 10, qrbox: { width: boxSize, height: boxSize } },
-            onSuccess,
-          )
+      if (!isPermissionDeniedError(lastError)) {
+        try {
+          const cameras = await qrModule.Html5Qrcode.getCameras()
+          const fallbackTargets = cameras.map((camera) => camera.id).filter(Boolean)
+
+          for (const target of fallbackTargets) {
+            clearScannerContainer()
+            const scanner = createScanner()
+
+            try {
+              await scanner.start(target, config, onSuccess)
+              scannerRef.current = scanner
+              await optimizeRunningCamera(scanner)
+              optimizeScannerVideo()
+              return
+            } catch (startError) {
+              lastError = startError
+
+              try {
+                await scanner.stop()
+              } catch {
+                // ignore
+              }
+
+              try {
+                scanner.clear()
+              } catch {
+                // ignore
+              }
+            }
+          }
+        } catch (cameraListError) {
+          lastError = cameraListError
         }
-      } catch {
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: boxSize, height: boxSize } },
-          onSuccess,
-        )
       }
 
-      scannerRef.current = scanner
-      setScanState('scanning')
-    } catch {
+      throw lastError ?? new Error('camera-start-failed')
+    } catch (cameraError) {
+      clearScannerContainer()
+      scannerRef.current = null
       setScanState('idle')
-      setError('카메라에 접근할 수 없습니다. HTTPS 및 브라우저 권한을 확인해 주세요.')
+      setError(getCameraAccessErrorMessage(cameraError))
+    } finally {
+      isStartingRef.current = false
     }
-  }, [handleScan])
+  }, [
+    clearScannerContainer,
+    getRankedCameraTargets,
+    handleScan,
+    isPermissionDeniedError,
+    optimizeRunningCamera,
+    optimizeScannerVideo,
+  ])
 
-  const handleSelectMaterial = useCallback(
-    async (materialId: number) => {
-      if (!pendingToken) {
-        return
-      }
+  const handleToggleSelectionMaterial = useCallback((materialId: number) => {
+    setSelectedSelectionMaterialIds((current) => (
+      current.includes(materialId)
+        ? current.filter((id) => id !== materialId)
+        : [...current, materialId]
+    ))
+  }, [])
 
-      processingRef.current = true
-      setScanState('processing')
-      setError('')
+  const handleSelectAllSelectionMaterials = useCallback(() => {
+    setSelectedSelectionMaterialIds(selectOptions.map((material) => material.id))
+  }, [selectOptions])
 
-      try {
-        const response = await fetch('/api/distribution/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: pendingToken,
-            materialId,
-          }),
-        })
-        const payload = (await response.json().catch(() => null)) as ScanResponse | null
+  const handleClearSelectionMaterials = useCallback(() => {
+    setSelectedSelectionMaterialIds([])
+  }, [])
 
-        setSelectOptions([])
-        setPendingToken('')
+  const handleConfirmSelection = useCallback(async () => {
+    if (!pendingToken) {
+      return
+    }
 
-        if (response.ok && payload?.success) {
-          showOverlay(
-            {
-              success: true,
-              title: `${formatMaterialLabel(payload.materialName ?? '자료', payload.materialType)} 배부 완료`,
-              description: payload.studentName || undefined,
-            },
-            OVERLAY_TIMEOUT_MS,
-          )
-          return
-        }
+    if (selectedSelectionMaterialIds.length === 0) {
+      setError('배부할 자료를 하나 이상 선택해 주세요.')
+      return
+    }
+
+    processingRef.current = true
+    setScanState('processing')
+    setError('')
+
+    try {
+      const response = await fetch('/api/distribution/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: pendingToken,
+          materialIds: selectedSelectionMaterialIds,
+        }),
+      })
+      const payload = (await response.json().catch(() => null)) as ScanResponse | null
+
+      setSelectOptions([])
+      setSelectedSelectionMaterialIds([])
+      setPendingToken('')
+
+      if (response.ok && payload?.success) {
+        const distributedMaterials = payload.distributedMaterials ?? []
 
         showOverlay(
           {
+            success: true,
+            title: summarizeDistributedMaterials(distributedMaterials.length > 0
+              ? distributedMaterials
+              : payload?.materialName
+                ? [{ name: payload.materialName, material_type: payload.materialType }]
+                : []),
+            description: [payload.studentName, describeDistributedMaterials(distributedMaterials)]
+              .filter(Boolean)
+              .join(' · '),
+          },
+          OVERLAY_TIMEOUT_MS,
+        )
+        return
+      }
+
+      if (payload?.needsSelection && payload.unreceived?.length) {
+        setSelectOptions(payload.unreceived)
+        setSelectedSelectionMaterialIds(payload.unreceived.map((material) => material.id))
+        setPendingToken(pendingToken)
+        setScanState('selecting')
+        processingRef.current = true
+        return
+      }
+
+      if (payload?.distributedMaterials?.length) {
+        showOverlay(
+          {
             success: false,
-            title: '자료 선택을 완료하지 못했습니다.',
-            description: payload?.studentName || getScanReasonMessage(payload?.reason),
+            title: '일부 자료만 배부되었습니다.',
+            description: [payload.studentName, describeDistributedMaterials(payload.distributedMaterials)]
+              .filter(Boolean)
+              .join(' · '),
           },
           ERROR_OVERLAY_TIMEOUT_MS,
         )
-      } catch {
-        processingRef.current = false
-        setScanState('selecting')
-        setError('자료 선택 요청에 실패했습니다. 다시 시도해 주세요.')
+        return
       }
-    },
-    [pendingToken, showOverlay],
-  )
+
+      showOverlay(
+        {
+          success: false,
+          title: '자료 선택을 완료하지 못했습니다.',
+          description: payload?.studentName || getScanReasonMessage(payload?.reason),
+        },
+        ERROR_OVERLAY_TIMEOUT_MS,
+      )
+    } catch {
+      processingRef.current = false
+      setScanState('selecting')
+      setError('자료 선택 요청에 실패했습니다. 다시 시도해 주세요.')
+    }
+  }, [pendingToken, selectedSelectionMaterialIds, showOverlay])
 
   async function handleQuickDistribute() {
     if (!selectedCourseId || !quickPhone.trim()) {
@@ -344,6 +658,13 @@ export default function StaffScanPage() {
       const payload = (await response.json().catch(() => null)) as QuickDistributionResponse | null
 
       if (!response.ok) {
+        if (payload?.distributed_materials?.length) {
+          setError(
+            `일부 자료만 배부되었습니다. ${describeDistributedMaterials(payload.distributed_materials) ?? ''}`.trim(),
+          )
+          return
+        }
+
         setError(payload?.error ?? '수동 배부에 실패했습니다.')
         return
       }
@@ -358,9 +679,15 @@ export default function StaffScanPage() {
         return
       }
 
-      setMessage(
-        `${payload?.student_name ?? '수강생'} - ${formatMaterialLabel(payload?.material_name ?? '자료', payload?.material_type)} 배부 완료`,
-      )
+      const distributedMaterials = payload?.distributed_materials ?? []
+      setMessage([
+        payload?.student_name ?? '수강생',
+        summarizeDistributedMaterials(distributedMaterials.length > 0
+          ? distributedMaterials
+          : payload?.material_name
+            ? [{ name: payload.material_name, material_type: payload.material_type }]
+            : []),
+      ].join(' · '))
       setQuickPhone('')
       setQuickStudentName('')
       setQuickMaterials([])
@@ -388,14 +715,17 @@ export default function StaffScanPage() {
 
         setSession(data.session)
         setStaffScanEnabled(data.staffScanEnabled)
-        setTab(data.staffScanEnabled ? 'qr' : 'quick')
+        setStaffQuickEnabled(data.staffQuickEnabled)
+        setTab(data.staffScanEnabled ? 'qr' : data.staffQuickEnabled ? 'quick' : 'qr')
         setCourses(data.courses)
         setCourseMaterials(data.materials)
         setQuickMaterials([])
         bootstrappedCourseIdRef.current = data.selectedCourseId
         setSelectedCourseId(data.selectedCourseId)
         setSelectedMaterialId(null)
+        clearPendingSelection()
         setQuickStudentName('')
+        setLastStudentName('')
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -412,7 +742,7 @@ export default function StaffScanPage() {
       cancelled = true
       void stopScanner()
     }
-  }, [stopScanner])
+  }, [clearPendingSelection, stopScanner])
 
   useEffect(() => {
     if (!selectedCourseId) {
@@ -420,7 +750,9 @@ export default function StaffScanPage() {
       setCourseMaterials([])
       setQuickMaterials([])
       setSelectedMaterialId(null)
+      clearPendingSelection()
       setQuickStudentName('')
+      setLastStudentName('')
       return
     }
 
@@ -437,11 +769,15 @@ export default function StaffScanPage() {
           return
         }
 
+        setStaffScanEnabled(data.staffScanEnabled)
+        setStaffQuickEnabled(data.staffQuickEnabled)
         setCourses(data.courses)
         setCourseMaterials(data.materials)
         setQuickMaterials([])
         setSelectedMaterialId(null)
+        clearPendingSelection()
         setQuickStudentName('')
+        setLastStudentName('')
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -452,7 +788,7 @@ export default function StaffScanPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedCourseId])
+  }, [clearPendingSelection, selectedCourseId])
 
   useEffect(() => {
     if (!staffScanEnabled || tab !== 'qr' || isFeatureLoading) {
@@ -472,136 +808,204 @@ export default function StaffScanPage() {
     }
   }, [handleScan, isFeatureLoading, router, staffScanEnabled, startScanner, stopScanner, tab, tenant.type, tokenFromUrl])
 
+  useEffect(() => {
+    if (tab === 'qr' && !staffScanEnabled && staffQuickEnabled) {
+      setTab('quick')
+      return
+    }
+
+    if (tab === 'quick' && !staffQuickEnabled && staffScanEnabled) {
+      setTab('qr')
+    }
+  }, [staffQuickEnabled, staffScanEnabled, tab])
+
+  const sessionLabel = session
+    ? session.role === 'admin'
+      ? `관리자 ${session.adminId ?? ''}`.trim()
+      : '직원 세션'
+    : '직원 도구'
+
   if (isFeatureLoading) {
-    return <p className="px-5 py-10 text-sm text-gray-500">직원 화면을 준비하는 중...</p>
+    return (
+      <div className="student-page flex min-h-dvh items-center justify-center px-6">
+        <div className="student-card max-w-md px-6 py-7 text-center">
+          <p className="text-[22px] font-semibold tracking-[-0.04em] text-[var(--student-text)]">직원 화면을 준비하는 중입니다.</p>
+          <p className="student-body mt-3">강좌와 배부 설정을 불러오고 있습니다.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!staffScanEnabled && !staffQuickEnabled) {
+    return (
+      <div className="student-page flex min-h-dvh items-center justify-center px-6">
+        <div className="student-card max-w-md px-6 py-7 text-center">
+          <p className="text-[22px] font-semibold tracking-[-0.04em] text-[var(--student-text)]">직원 배부 기능이 현재 비활성화되어 있습니다.</p>
+          <p className="student-body mt-3">관리자 설정에서 QR 스캔과 수동 배부가 모두 꺼져 있습니다. 설정을 확인한 뒤 다시 접속해 주세요.</p>
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="student-pill-button student-pill-primary mt-6 w-full"
+          >
+            로그아웃
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-dvh bg-[#f8fafc] px-5 py-6">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <section className="rounded-2xl bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                직원 배부
-              </p>
-              <h1 className="mt-3 text-3xl font-extrabold text-gray-900">현장 스캔 및 배부</h1>
-              <p className="mt-2 text-sm leading-6 text-gray-500">
-                현장에서 QR 스캔과 수동 배부를 한 곳에서 처리합니다.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {session ? (
-                <span className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
-                  {session.role === 'admin' ? `관리자 ${session.adminId ?? ''}` : '직원 세션'}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void handleLogout()}
-                className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-              >
-                로그아웃
-              </button>
-            </div>
+    <div className="student-page student-safe-bottom flex min-h-dvh flex-col">
+      <section className="student-hero px-4 pb-6 pt-4 sm:px-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className={`student-status-dot ${tab === 'qr' ? 'student-status-dot-active' : 'student-status-dot-idle'}`} />
+            <span className="text-[13px] font-semibold tracking-[-0.02em] text-white/72">{sessionLabel}</span>
           </div>
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="text-[13px] font-semibold tracking-[-0.02em] text-white/72 transition-opacity hover:text-white"
+          >
+            로그아웃
+          </button>
+        </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-[1fr,220px]">
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-semibold text-gray-700">강좌</span>
-              <select
-                value={selectedCourseId ?? ''}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                  setSelectedCourseId(event.target.value ? Number(event.target.value) : null)
-                }
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-              >
-                <option value="">강좌를 선택하세요</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+        <div className="mt-5 text-center">
+          <p className="student-eyebrow student-eyebrow-dark">
+            {tab === 'qr' ? '현장 QR 스캔' : '수동 배부'}
+          </p>
+          <h1 className="student-display mt-2 break-keep">{selectedCourseName ?? '현장 배부 센터'}</h1>
+          <p className="student-body student-body-dark mt-2">
+            {formattedDate} ({DAY_NAMES[currentTime.getDay()]}) {formattedTime}
+          </p>
+        </div>
 
-            <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-              <button
-                type="button"
-                onClick={() => setTab('qr')}
-                disabled={!staffScanEnabled}
-                className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold ${
-                  tab === 'qr' ? 'bg-slate-900 text-white' : 'text-slate-600'
-                } disabled:cursor-not-allowed disabled:opacity-40`}
-              >
-                QR 스캔
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab('quick')}
-                className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold ${
-                  tab === 'quick' ? 'bg-slate-900 text-white' : 'text-slate-600'
-                }`}
-              >
-                수동 배부
-              </button>
-            </div>
-          </div>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+          <span className="student-chip student-chip-dark">{tab === 'qr' ? 'QR 스캔' : '수동 배부'}</span>
+          <span className="student-chip student-chip-dark">{materialsCount}건 자료</span>
+          {selectedCourseName ? (
+            <span className="student-chip student-chip-dark">강좌 선택됨</span>
+          ) : null}
+        </div>
+      </section>
+
+      {error ? (
+        <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
+          <p className="student-eyebrow student-eyebrow-light">오류</p>
+          <p className="mt-2 text-[14px] font-medium text-[#b42318]">{error}</p>
         </section>
+      ) : null}
 
-        {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
+      {message ? (
+        <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
+          <p className="student-eyebrow student-eyebrow-light">안내</p>
+          <p className="mt-2 text-[14px] font-medium text-[#19703a]">{message}</p>
+        </section>
+      ) : null}
 
-        {message ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
-            {message}
-          </div>
-        ) : null}
-
-        {tab === 'qr' ? (
-          <QrDistributionPanel
-            staffScanEnabled={staffScanEnabled}
-            scanState={scanState}
-            overlay={overlay}
-            lastStudentName={lastStudentName}
-            selectedCourseName={selectedCourseName}
-            materialsCount={materialsCount}
-            selectOptions={selectOptions}
-            containerRef={containerRef}
-            onRestartScanner={() => {
-              setError('')
-              void stopScanner().then(() => startScanner())
-            }}
-            onSelectMaterial={(materialId) => {
-              void handleSelectMaterial(materialId)
-            }}
-          />
-        ) : (
-          <QuickDistributionPanel
-            quickPhone={quickPhone}
-            quickStudentName={quickStudentName}
-            quickLoading={quickLoading}
-            quickMaterials={quickMaterials}
-            selectedMaterialId={selectedMaterialId}
-            selectedCourseName={selectedCourseName}
-            materialsCount={materialsCount}
-            onQuickPhoneChange={(nextPhone) => {
-              setQuickPhone(nextPhone)
-              setQuickStudentName('')
+      <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
+        <h2 className="student-eyebrow student-eyebrow-light mb-3">운영 설정</h2>
+        <label className="block">
+          <span className="mb-2 block text-[13px] font-medium text-[var(--student-text-muted)]">강좌 선택</span>
+          <select
+            value={selectedCourseId ?? ''}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+              const nextCourseId = event.target.value ? Number(event.target.value) : null
+              setCourseMaterials([])
               setQuickMaterials([])
               setSelectedMaterialId(null)
+              clearPendingSelection()
+              setQuickStudentName('')
+              setLastStudentName('')
+              setSelectedCourseId(nextCourseId)
             }}
-            onSelectedMaterialChange={setSelectedMaterialId}
-            onSubmit={() => {
-              void handleQuickDistribute()
+            className="student-input appearance-none"
+          >
+            <option value="">강좌를 선택하세요</option>
+            {courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setTab('qr')
+              clearPendingSelection()
             }}
-          />
-        )}
-      </div>
+            disabled={!staffScanEnabled}
+            className={`student-pill-button flex-1 ${
+              tab === 'qr' ? 'student-pill-primary' : 'student-pill-secondary'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            QR 스캔
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab('quick')
+              clearPendingSelection()
+            }}
+            disabled={!staffQuickEnabled}
+            className={`student-pill-button flex-1 ${
+              tab === 'quick' ? 'student-pill-primary' : 'student-pill-secondary'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            수동 배부
+          </button>
+        </div>
+      </section>
+
+      {tab === 'qr' ? (
+        <QrDistributionPanel
+          staffScanEnabled={staffScanEnabled}
+          scanState={scanState}
+          overlay={overlay}
+          lastStudentName={lastStudentName}
+          selectedCourseName={selectedCourseName}
+          courseMaterials={courseMaterials}
+          materialsCount={materialsCount}
+          selectOptions={selectOptions}
+          selectedMaterialIds={selectedSelectionMaterialIds}
+          containerRef={containerRef}
+          onRestartScanner={() => {
+            setError('')
+            void stopScanner().then(() => startScanner())
+          }}
+          onToggleMaterial={handleToggleSelectionMaterial}
+          onSelectAllMaterials={handleSelectAllSelectionMaterials}
+          onClearSelection={handleClearSelectionMaterials}
+          onConfirmSelection={() => {
+            void handleConfirmSelection()
+          }}
+        />
+      ) : (
+        <QuickDistributionPanel
+          quickPhone={quickPhone}
+          quickStudentName={quickStudentName}
+          quickLoading={quickLoading}
+          quickMaterials={quickMaterials}
+          selectedMaterialId={selectedMaterialId}
+          selectedCourseName={selectedCourseName}
+          courseMaterials={courseMaterials}
+          materialsCount={materialsCount}
+          onQuickPhoneChange={(nextPhone) => {
+            setQuickPhone(nextPhone)
+            setQuickStudentName('')
+            setQuickMaterials([])
+            setSelectedMaterialId(null)
+          }}
+          onSelectedMaterialChange={setSelectedMaterialId}
+          onSubmit={() => {
+            void handleQuickDistribute()
+          }}
+        />
+      )}
     </div>
   )
 }

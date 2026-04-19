@@ -52,6 +52,12 @@ export async function getCameraReadinessError(): Promise<string | null> {
 }
 
 export function getCameraAccessErrorMessage(error: unknown): string {
+  const message = typeof error === 'string'
+    ? error
+    : error instanceof Error
+      ? error.message
+      : ''
+
   if (error instanceof DOMException) {
     switch (error.name) {
       case 'NotAllowedError':
@@ -71,8 +77,29 @@ export function getCameraAccessErrorMessage(error: unknown): string {
     }
   }
 
-  if (error instanceof Error && error.message) {
-    return error.message
+  if (message.includes('Permission denied') || message.includes('NotAllowedError') || message.includes('SecurityError')) {
+    return '카메라 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용한 뒤 다시 시도해 주세요.'
+  }
+
+  if (
+    message.includes('Requested device not found')
+    || message.includes('NotFoundError')
+    || message.includes('DevicesNotFoundError')
+    || message.includes('no-camera')
+  ) {
+    return '사용 가능한 카메라를 찾지 못했습니다.'
+  }
+
+  if (message.includes('NotReadableError') || message.includes('TrackStartError')) {
+    return '다른 앱이 카메라를 사용 중입니다. 카메라를 점유한 앱을 종료한 뒤 다시 시도해 주세요.'
+  }
+
+  if (message.includes('OverconstrainedError') || message.includes('ConstraintNotSatisfiedError')) {
+    return '후면 카메라를 찾지 못해 기본 카메라로 전환하지 못했습니다. 브라우저를 다시 열고 시도해 주세요.'
+  }
+
+  if (message.includes('secure context') || message.includes('Only secure origins are allowed')) {
+    return '카메라는 HTTPS 환경에서만 사용할 수 있습니다.'
   }
 
   return '카메라를 시작하지 못했습니다. 브라우저 권한과 기기 상태를 확인해 주세요.'

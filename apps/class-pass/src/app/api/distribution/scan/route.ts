@@ -4,7 +4,7 @@ import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireStaffApi } from '@/lib/auth/require-staff-api'
 import {
-  distributeMaterialToEnrollment,
+  distributeMaterialsToEnrollment,
   resolvePendingDistributionSelection,
 } from '@/lib/distribution/service'
 import { verifyQrToken } from '@/lib/qr/token'
@@ -15,6 +15,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 const schema = z.object({
   token: z.string().min(1),
   materialId: z.number().int().positive().optional(),
+  materialIds: z.array(z.number().int().positive()).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
       enrollmentId: enrollment.id,
       courseId: course.id,
       materialId: parsed.data.materialId,
+      materialIds: parsed.data.materialIds,
     })
 
     if (selection.kind === 'all_received') {
@@ -98,25 +100,39 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    const distribution = await distributeMaterialToEnrollment({
+    const distribution = await distributeMaterialsToEnrollment({
       enrollmentId: enrollment.id,
       studentName: enrollment.name,
-      material: selection.material,
+      materials: selection.materials,
     })
 
-    if (distribution.kind === 'failed') {
+    if (distribution.kind === 'failed' || distribution.kind === 'partial') {
       return NextResponse.json({
         success: false,
         reason: distribution.reason,
         studentName: enrollment.name,
+        distributedMaterials: distribution.kind === 'partial'
+          ? distribution.materials.map((material) => ({
+            id: material.id,
+            name: material.name,
+            material_type: material.materialType,
+          }))
+          : [],
       }, { status: distribution.reason === 'DISTRIBUTION_FAILED' ? 500 : 400 })
     }
 
+    const firstMaterial = distribution.materials[0]
+
     return NextResponse.json({
       success: true,
-      materialName: distribution.materialName,
-      materialType: distribution.materialType,
+      materialName: distribution.materials.length === 1 ? firstMaterial?.name : `${distribution.materials.length}건`,
+      materialType: distribution.materials.length === 1 ? firstMaterial?.materialType : undefined,
       studentName: distribution.studentName,
+      distributedMaterials: distribution.materials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        material_type: material.materialType,
+      })),
     })
   } catch (error) {
     return handleRouteError('distribution.scan.POST', 'QR 배부 처리에 실패했습니다.', error)

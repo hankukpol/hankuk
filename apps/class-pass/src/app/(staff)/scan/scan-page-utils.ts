@@ -16,6 +16,7 @@ export async function fetchBootstrapData(courseId?: number | null): Promise<Boot
   return {
     session: payload?.session ?? { role: 'staff' },
     staffScanEnabled: payload?.staffScanEnabled !== false,
+    staffQuickEnabled: payload?.staffQuickEnabled !== false,
     selectedCourseId: payload?.selectedCourseId ?? null,
     courses: payload?.courses ?? [],
     materials: payload?.materials ?? [],
@@ -60,4 +61,32 @@ export function formatMaterialLabel(name: string, materialType?: 'handout' | 'te
   }
 
   return name
+}
+
+export function summarizeDistributedMaterials(
+  materials: Array<{ name: string; material_type?: 'handout' | 'textbook' }> | undefined,
+) {
+  if (!materials || materials.length === 0) {
+    return '자료 배부 완료'
+  }
+
+  if (materials.length === 1) {
+    return `${formatMaterialLabel(materials[0].name, materials[0].material_type)} 배부 완료`
+  }
+
+  return `${materials.length}건 배부 완료`
+}
+
+export function describeDistributedMaterials(
+  materials: Array<{ name: string; material_type?: 'handout' | 'textbook' }> | undefined,
+) {
+  if (!materials || materials.length === 0) {
+    return undefined
+  }
+
+  if (materials.length <= 2) {
+    return materials.map((material) => formatMaterialLabel(material.name, material.material_type)).join(', ')
+  }
+
+  return `${formatMaterialLabel(materials[0].name, materials[0].material_type)} 외 ${materials.length - 1}건`
 }

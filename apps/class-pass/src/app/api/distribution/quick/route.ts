@@ -7,7 +7,7 @@ import {
   getCourseById,
 } from '@/lib/class-pass-data'
 import {
-  distributeMaterialToEnrollment,
+  distributeMaterialsToEnrollment,
   resolvePendingDistributionSelection,
 } from '@/lib/distribution/service'
 import { requireStaffApi } from '@/lib/auth/require-staff-api'
@@ -18,6 +18,7 @@ const schema = z.object({
   courseId: z.number().int().positive(),
   phone: z.string().min(10),
   materialId: z.number().int().positive().optional(),
+  materialIds: z.array(z.number().int().positive()).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
       return authError
     }
 
-    const featureError = await requireAppFeature('staff_scan_enabled')
+    const featureError = await requireAppFeature('staff_quick_distribution_enabled')
     if (featureError) {
       return featureError
     }
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
       enrollmentId: enrollment.id,
       courseId: course.id,
       materialId: parsed.data.materialId,
+      materialIds: parsed.data.materialIds,
     })
 
     if (selection.kind === 'all_received') {
@@ -78,13 +80,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const distribution = await distributeMaterialToEnrollment({
+    const distribution = await distributeMaterialsToEnrollment({
       enrollmentId: enrollment.id,
       studentName: enrollment.name,
-      material: selection.material,
+      materials: selection.materials,
     })
 
-    if (distribution.kind === 'failed') {
+    if (distribution.kind === 'failed' || distribution.kind === 'partial') {
       if (distribution.reason === 'NOT_ASSIGNED') {
         return NextResponse.json({ error: '해당 수강생에게 배정되지 않은 교재입니다.' }, { status: 400 })
       }
@@ -94,16 +96,30 @@ export async function POST(req: NextRequest) {
           error: distribution.reason === 'DISTRIBUTION_FAILED'
             ? '자료 배부 처리에 실패했습니다.'
             : distribution.reason,
+          distributed_materials: distribution.kind === 'partial'
+            ? distribution.materials.map((material) => ({
+              id: material.id,
+              name: material.name,
+              material_type: material.materialType,
+            }))
+            : [],
         },
         { status: distribution.reason === 'DISTRIBUTION_FAILED' ? 500 : 400 },
       )
     }
 
+    const firstMaterial = distribution.materials[0]
+
     return NextResponse.json({
       success: true,
       student_name: distribution.studentName,
-      material_name: distribution.materialName,
-      material_type: distribution.materialType,
+      material_name: distribution.materials.length === 1 ? firstMaterial?.name : `${distribution.materials.length}건`,
+      material_type: distribution.materials.length === 1 ? firstMaterial?.materialType : undefined,
+      distributed_materials: distribution.materials.map((material) => ({
+        id: material.id,
+        name: material.name,
+        material_type: material.materialType,
+      })),
     })
   } catch (error) {
     return handleRouteError('distribution.quick.POST', '빠른 배부 처리에 실패했습니다.', error)

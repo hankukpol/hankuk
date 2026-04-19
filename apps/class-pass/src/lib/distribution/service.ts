@@ -20,14 +20,25 @@ export type PendingDistributionSelection =
   | { kind: 'all_received' }
   | { kind: 'needs_selection'; materials: DistributionMaterialOption[] }
   | { kind: 'invalid_selection'; materials: DistributionMaterialOption[] }
-  | { kind: 'selected'; material: DistributionMaterialOption }
+  | { kind: 'selected'; materials: DistributionMaterialOption[] }
+
+export type DistributedMaterialSummary = {
+  id: number
+  name: string
+  materialType: MaterialType
+}
 
 export type DistributionExecutionResult =
   | {
     kind: 'distributed'
     studentName: string
-    materialName: string
-    materialType: MaterialType
+    materials: DistributedMaterialSummary[]
+  }
+  | {
+    kind: 'partial'
+    studentName: string
+    materials: DistributedMaterialSummary[]
+    reason: string
   }
   | {
     kind: 'failed'
@@ -38,6 +49,7 @@ export async function resolvePendingDistributionSelection(params: {
   enrollmentId: number
   courseId: number
   materialId?: number
+  materialIds?: number[]
 }): Promise<PendingDistributionSelection> {
   const unreceivedMaterials = await getUnreceivedMaterialsForEnrollment(params.enrollmentId, params.courseId)
   const materials = unreceivedMaterials.map((material) => ({
@@ -50,48 +62,96 @@ export async function resolvePendingDistributionSelection(params: {
     return { kind: 'all_received' }
   }
 
-  if (params.materialId === undefined && materials.length === 1) {
-    return { kind: 'selected', material: materials[0] }
+  const requestedIds = Array.from(
+    new Set(
+      [params.materialId, ...(params.materialIds ?? [])]
+        .filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0),
+    ),
+  )
+
+  if (requestedIds.length === 0 && materials.length === 1) {
+    return { kind: 'selected', materials: [materials[0]] }
   }
 
-  const targetMaterial = materials.find((material) => material.id === params.materialId)
-  if (!targetMaterial) {
-    if (params.materialId === undefined) {
+  if (requestedIds.length === 0) {
+    return { kind: 'needs_selection', materials }
+  }
+
+  const materialMap = new Map(materials.map((material) => [material.id, material]))
+  const selectedMaterials = requestedIds
+    .map((materialId) => materialMap.get(materialId))
+    .filter((material): material is DistributionMaterialOption => Boolean(material))
+
+  if (selectedMaterials.length !== requestedIds.length) {
+    if (params.materialId === undefined && (!params.materialIds || params.materialIds.length === 0)) {
       return { kind: 'needs_selection', materials }
     }
 
     return { kind: 'invalid_selection', materials }
   }
 
-  return { kind: 'selected', material: targetMaterial }
+  return { kind: 'selected', materials: selectedMaterials }
 }
 
-export async function distributeMaterialToEnrollment(params: {
+export async function distributeMaterialsToEnrollment(params: {
   enrollmentId: number
   studentName: string
-  material: DistributionMaterialOption
+  materials: DistributionMaterialOption[]
 }): Promise<DistributionExecutionResult> {
   const db = createServerClient()
-  const rpcResult = await db.rpc('distribute_material', {
-    p_enrollment_id: params.enrollmentId,
-    p_material_id: params.material.id,
-  })
+  const distributedMaterials: DistributedMaterialSummary[] = []
 
-  if (rpcResult.error) {
-    return { kind: 'failed', reason: 'DISTRIBUTION_FAILED' }
+  for (const material of params.materials) {
+    const rpcResult = await db.rpc('distribute_material', {
+      p_enrollment_id: params.enrollmentId,
+      p_material_id: material.id,
+    })
+
+    if (rpcResult.error) {
+      if (distributedMaterials.length > 0) {
+        await invalidateCache('distribution-logs')
+        return {
+          kind: 'partial',
+          studentName: params.studentName,
+          materials: distributedMaterials,
+          reason: 'DISTRIBUTION_FAILED',
+        }
+      }
+
+      return { kind: 'failed', reason: 'DISTRIBUTION_FAILED' }
+    }
+
+    const result = rpcResult.data as DistributionResult | null
+    if (!result?.success) {
+      const reason = result?.reason ?? 'DISTRIBUTION_FAILED'
+
+      if (distributedMaterials.length > 0) {
+        await invalidateCache('distribution-logs')
+        return {
+          kind: 'partial',
+          studentName: result?.student_name ?? params.studentName,
+          materials: distributedMaterials,
+          reason,
+        }
+      }
+
+      return { kind: 'failed', reason }
+    }
+
+    distributedMaterials.push({
+      id: material.id,
+      name: result.material_name ?? material.name,
+      materialType: material.material_type,
+    })
   }
 
-  const result = rpcResult.data as DistributionResult | null
-  if (!result?.success) {
-    return { kind: 'failed', reason: result?.reason ?? 'DISTRIBUTION_FAILED' }
+  if (distributedMaterials.length > 0) {
+    await invalidateCache('distribution-logs')
   }
-
-  await invalidateCache('distribution-logs')
 
   return {
     kind: 'distributed',
-    studentName: result.student_name ?? params.studentName,
-    materialName: result.material_name ?? params.material.name,
-    materialType: params.material.material_type,
+    studentName: params.studentName,
+    materials: distributedMaterials,
   }
 }

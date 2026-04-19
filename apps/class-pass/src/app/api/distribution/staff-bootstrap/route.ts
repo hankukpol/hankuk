@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
         adminId: actingRole === 'admin' ? payload?.adminId ?? '' : undefined,
       },
       staffScanEnabled: appConfig.staff_scan_enabled,
+      staffQuickEnabled: appConfig.staff_quick_distribution_enabled,
       selectedCourseId,
       courses,
       materials,

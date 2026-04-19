@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
 import {
@@ -8,23 +9,23 @@ import {
   DESIGNATED_SEAT_FEATURE_WARNING,
   EXAM_DELIVERY_FEATURE_WARNING,
   containsAttendanceFeatureFields,
-  hasAttendanceFeatureColumns,
-  isAttendanceFeatureColumnError,
-  stripAttendanceFeatureFields,
   containsDesignatedSeatFeatureFields,
   containsExamDeliveryFeatureFields,
+  hasAttendanceFeatureColumns,
   hasDesignatedSeatFeatureColumns,
   hasExamDeliveryFeatureColumns,
+  isAttendanceFeatureColumnError,
   isDesignatedSeatFeatureColumnError,
   isExamDeliveryFeatureColumnError,
   mergeFeatureWarnings,
+  stripAttendanceFeatureFields,
   stripDesignatedSeatFeatureFields,
   stripExamDeliveryFeatureFields,
 } from '@/lib/course-feature-compat'
-import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
 import { deleteStudentIfOrphaned } from '@/lib/student-profiles'
 import { getServerTenantType } from '@/lib/tenant.server'
+import type { Course } from '@/types/database'
 import { parsePositiveInt, slugifyCourseName } from '@/lib/utils'
 
 const enrollmentFieldSchema = z.object({
@@ -76,6 +77,72 @@ const destroyCourseSchema = z.object({
   mode: z.literal('destroy'),
   confirmCourseName: z.string().trim().min(1).max(100),
 })
+
+async function invalidateCourseLifecycleCaches() {
+  await invalidateCache('courses')
+  await invalidateCache('enrollments')
+  await invalidateCache('seats')
+  await invalidateCache('designated-seats')
+  await invalidateCache('attendance')
+  await invalidateCache('materials')
+  await invalidateCache('distribution-logs')
+}
+
+async function revokeArchivedCourseLiveSessions(
+  db: ReturnType<typeof createServerClient>,
+  courseId: number,
+  nowIso: string,
+) {
+  const results = await Promise.all([
+    db
+      .from('attendance_display_sessions')
+      .update({ revoked_at: nowIso, last_seen_at: nowIso })
+      .eq('course_id', courseId)
+      .is('revoked_at', null),
+    db
+      .from('course_seat_display_sessions')
+      .update({ revoked_at: nowIso, last_seen_at: nowIso })
+      .eq('course_id', courseId)
+      .is('revoked_at', null),
+    db
+      .from('course_seat_auth_sessions')
+      .update({
+        is_active: false,
+        expires_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('course_id', courseId)
+      .eq('is_active', true),
+  ])
+
+  const failed = results.find((result) => result.error)
+  if (failed?.error) {
+    throw failed.error
+  }
+}
+
+async function finalizeCourseStatusUpdate(params: {
+  db: ReturnType<typeof createServerClient>
+  courseId: number
+  existingCourse: Course
+  nextStatus: Course['status']
+  nowIso: string
+}) {
+  if (params.nextStatus === 'archived') {
+    if (params.existingCourse.status !== 'archived') {
+      await revokeArchivedCourseLiveSessions(params.db, params.courseId, params.nowIso)
+    }
+    await invalidateCourseLifecycleCaches()
+    return
+  }
+
+  if (params.nextStatus !== params.existingCourse.status) {
+    await invalidateCourseLifecycleCaches()
+    return
+  }
+
+  await invalidateCache('courses')
+}
 
 export async function GET(
   req: NextRequest,
@@ -133,7 +200,9 @@ export async function PATCH(
     return NextResponse.json({ error: '강좌 수정 요청 형식이 올바르지 않습니다.' }, { status: 400 })
   }
 
+  const nowIso = new Date().toISOString()
   const nextName = parsed.data.name ?? existingCourse.name
+  const nextStatus = parsed.data.status ?? existingCourse.status
   const featureDesignatedSeat = parsed.data.feature_designated_seat ?? existingCourse.feature_designated_seat
   const featureAttendance = parsed.data.feature_attendance ?? existingCourse.feature_attendance
   const rawUpdatePayload = {
@@ -141,20 +210,26 @@ export async function PATCH(
     slug: parsed.data.slug === undefined
       ? existingCourse.slug
       : parsed.data.slug || slugifyCourseName(nextName),
-    designated_seat_open: featureDesignatedSeat
-      ? (parsed.data.designated_seat_open ?? existingCourse.designated_seat_open)
-      : false,
-    attendance_open: featureAttendance
-      ? (parsed.data.attendance_open ?? existingCourse.attendance_open)
-      : false,
-    updated_at: new Date().toISOString(),
+    designated_seat_open: nextStatus === 'archived'
+      ? false
+      : featureDesignatedSeat
+        ? (parsed.data.designated_seat_open ?? existingCourse.designated_seat_open)
+        : false,
+    attendance_open: nextStatus === 'archived'
+      ? false
+      : featureAttendance
+        ? (parsed.data.attendance_open ?? existingCourse.attendance_open)
+        : false,
+    updated_at: nowIso,
   }
+
   const supportsExamDeliveryFeatures = hasExamDeliveryFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsDesignatedSeatFeatures = hasDesignatedSeatFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsAttendanceFeatures = hasAttendanceFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const requestedExamDeliveryFeatures = containsExamDeliveryFeatureFields(parsed.data as Record<string, unknown>)
   const requestedDesignatedSeatFeatures = containsDesignatedSeatFeatureFields(parsed.data as Record<string, unknown>)
   const requestedAttendanceFeatures = containsAttendanceFeatureFields(parsed.data as Record<string, unknown>)
+
   let updatePayload: Record<string, unknown> = { ...rawUpdatePayload }
   const warnings: string[] = []
   let strippedExamDeliveryFeatures = false
@@ -227,15 +302,26 @@ export async function PATCH(
   const warning = mergeFeatureWarnings(warnings)
   const partialSave = warnings.length > 0
 
-  if (error) {
-    if (error.code === '23505') {
+  if (error || !data) {
+    if (error?.code === '23505') {
       return NextResponse.json({ error: '같은 division 안에 동일한 강좌 slug가 이미 존재합니다.' }, { status: 409 })
     }
 
     return NextResponse.json({ error: '강좌를 수정하지 못했습니다.' }, { status: 500 })
   }
 
-  await invalidateCache('courses')
+  try {
+    await finalizeCourseStatusUpdate({
+      db,
+      courseId,
+      existingCourse,
+      nextStatus,
+      nowIso,
+    })
+  } catch {
+    return NextResponse.json({ error: '강좌 상태 전환 후 후속 정리를 완료하지 못했습니다.' }, { status: 500 })
+  }
+
   return NextResponse.json({ course: data, warning, partialSave })
 }
 
@@ -326,13 +412,7 @@ export async function DELETE(
       }
     }
 
-    await invalidateCache('courses')
-    await invalidateCache('enrollments')
-    await invalidateCache('seats')
-    await invalidateCache('designated-seats')
-    await invalidateCache('attendance')
-    await invalidateCache('materials')
-    await invalidateCache('distribution-logs')
+    await invalidateCourseLifecycleCaches()
 
     return NextResponse.json({
       success: true,
@@ -343,18 +423,35 @@ export async function DELETE(
     })
   }
 
+  const nowIso = new Date().toISOString()
   const { data, error } = await db
     .from('courses')
-    .update({ status: 'archived', updated_at: new Date().toISOString() })
+    .update({
+      status: 'archived',
+      attendance_open: false,
+      designated_seat_open: false,
+      updated_at: nowIso,
+    })
     .eq('id', courseId)
     .eq('division', division)
     .select('*')
     .maybeSingle()
 
-  if (error) {
+  if (error || !data) {
     return NextResponse.json({ error: '강좌를 아카이브하지 못했습니다.' }, { status: 500 })
   }
 
-  await invalidateCache('courses')
+  try {
+    await finalizeCourseStatusUpdate({
+      db,
+      courseId,
+      existingCourse,
+      nextStatus: 'archived',
+      nowIso,
+    })
+  } catch {
+    return NextResponse.json({ error: '강좌 보관 후 세션 정리를 완료하지 못했습니다.' }, { status: 500 })
+  }
+
   return NextResponse.json({ course: data })
 }

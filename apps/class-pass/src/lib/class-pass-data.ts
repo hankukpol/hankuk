@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache'
 import { getAppConfig } from '@/lib/app-config'
 import { getAttendanceStudentState } from '@/lib/attendance/service'
+import { toReceiptMap } from '@/lib/bulk'
 import {
   buildPassCourseSummaries,
   buildPassPayloadResult,
@@ -11,23 +12,39 @@ import { mergeEnrollmentStudentSnapshot } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import type {
+  AttendanceHistoryEntry,
   Course,
   CourseSubject,
   Enrollment,
   Material,
   MaterialType,
+  ArchivedPassPayload,
   PassCourseSummary,
   PassPayload,
   SeatAssignment,
   Student,
   TextbookAssignment,
 } from '@/types/database'
-import type { TenantType } from '@/lib/tenant'
+import { withTenantPrefix, type TenantType } from '@/lib/tenant'
 import { normalizeName, normalizePhone } from '@/lib/utils'
 
 type EnrollmentWithStudentRow = Enrollment & { students?: Student | null }
 type MaterialQueryOptions = { activeOnly?: boolean; materialType?: MaterialType }
 type MaterialSnapshot = Pick<Material, 'id' | 'course_id' | 'material_type'>
+type AttendanceSummaryRow = AttendanceHistoryEntry
+type StudentCourseAccessContext = { course: Course; enrollment: Enrollment }
+
+export type StudentPassLookupResult =
+  | { kind: 'ok'; payload: PassPayload }
+  | { kind: 'archived'; redirectTo: string }
+  | { kind: 'redirect'; redirectTo: string }
+  | { kind: 'not_found' }
+
+export type ArchivedPassLookupResult =
+  | { kind: 'ok'; payload: ArchivedPassPayload }
+  | { kind: 'active'; redirectTo: string }
+  | { kind: 'redirect'; redirectTo: string }
+  | { kind: 'not_found' }
 
 function createTextbookAssignmentError(code: string) {
   return new Error(`TEXTBOOK_ASSIGNMENT:${code}`)
@@ -729,6 +746,83 @@ export async function getReceiptRows(enrollmentId: number) {
   return rows.length > 0 ? rows : null
 }
 
+function getKstDateKey(value: string | number | Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+  }).format(new Date(value))
+}
+
+function normalizeRequestedCourseSlug(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+function getStudentCourseRedirects(course: Course, enrollmentId: number, division: TenantType) {
+  return {
+    live: withTenantPrefix(`/courses/${course.slug}?enrollmentId=${enrollmentId}`, division),
+    archived: withTenantPrefix(`/courses/${course.slug}/archived?enrollmentId=${enrollmentId}`, division),
+  }
+}
+
+async function loadStudentCourseAccessContext(params: {
+  division: TenantType
+  enrollmentId: number
+  courseSlug: string
+  name: string
+  phone: string
+}): Promise<StudentCourseAccessContext | null> {
+  const db = createServerClient()
+  const enrollment = unwrapSupabaseResult(
+    'loadStudentCourseAccessContext.enrollment',
+    await db
+      .from('enrollments')
+      .select('*,students(*)')
+      .eq('id', params.enrollmentId)
+      .maybeSingle(),
+  ) as EnrollmentWithStudentRow | null
+
+  if (!enrollment) {
+    return null
+  }
+
+  const mergedEnrollment = mergeEnrollmentStudentSnapshot(enrollment)
+  const course = await getCourseById(mergedEnrollment.course_id, params.division)
+  if (!course) {
+    return null
+  }
+
+  if (!isPassRequestMatch({
+    enrollment: mergedEnrollment,
+    name: params.name,
+    phone: params.phone,
+  })) {
+    return null
+  }
+
+  return {
+    course,
+    enrollment: mergedEnrollment,
+  }
+}
+
+async function listAttendanceSummaryRows(courseId: number, enrollmentId: number) {
+  const db = createServerClient()
+  const rows = unwrapSupabaseResult(
+    'listAttendanceSummaryRows',
+    await db
+      .from('attendance_records')
+      .select('attended_at,attended_date')
+      .eq('course_id', courseId)
+      .eq('enrollment_id', enrollmentId)
+      .order('attended_at', { ascending: false }),
+  ) as AttendanceSummaryRow[] | null
+
+  return rows ?? []
+}
+
 export async function listStudentCourses(
   division: TenantType,
   name: string,
@@ -824,7 +918,7 @@ export async function listStudentCoursesForStudent(
   )
 
   const enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status'>>
-  const courseIds = enrollmentRows.map((row) => row.course_id)
+  const courseIds = Array.from(new Set(enrollmentRows.map((row) => row.course_id)))
 
   if (courseIds.length === 0) {
     return []
@@ -840,67 +934,117 @@ export async function buildPassPayload(params: {
   name: string
   phone: string
   deviceKeyHash?: string | null
-}): Promise<PassPayload | null> {
-  const db = createServerClient()
-
-  const enrollment = unwrapSupabaseResult(
-    'buildPassPayload.enrollment',
-    await db
-      .from('enrollments')
-      .select('*,students(*)')
-      .eq('id', params.enrollmentId)
-      .maybeSingle(),
-  ) as EnrollmentWithStudentRow | null
-
-  if (!enrollment) {
-    return null
+}): Promise<StudentPassLookupResult> {
+  const access = await loadStudentCourseAccessContext(params)
+  if (!access) {
+    return { kind: 'not_found' }
   }
 
-  const mergedEnrollment = mergeEnrollmentStudentSnapshot(enrollment)
-
-  const course = await getCourseById(mergedEnrollment.course_id, params.division)
-  if (!course || course.status !== 'active') {
-    return null
+  const { course, enrollment } = access
+  const redirects = getStudentCourseRedirects(course, enrollment.id, params.division)
+  const requestedCourseSlug = normalizeRequestedCourseSlug(params.courseSlug)
+  if (course.slug !== requestedCourseSlug) {
+    return {
+      kind: 'redirect',
+      redirectTo: course.status === 'archived' ? redirects.archived : redirects.live,
+    }
+  }
+  if (course.status === 'archived') {
+    return { kind: 'archived', redirectTo: redirects.archived }
   }
 
-  if (!isPassRequestMatch({
-    enrollment: mergedEnrollment,
-    name: params.name,
-    phone: params.phone,
-  })) {
-    return null
-  }
-
-  const [subjects, seatAssignments, designatedSeat, attendance, materials, textbooks, receiptRows, appConfig] = await Promise.all([
+  const [subjects, seatAssignments, designatedSeat, attendance, attendanceHistory, materials, textbooks, receiptRows, appConfig] = await Promise.all([
     listCourseSubjects(course.id),
-    listSeatAssignmentsForEnrollment(mergedEnrollment.id),
+    listSeatAssignmentsForEnrollment(enrollment.id),
     getDesignatedSeatStudentState({
       course,
-      enrollmentId: mergedEnrollment.id,
+      enrollmentId: enrollment.id,
       deviceKeyHash: params.deviceKeyHash ?? null,
     }),
     getAttendanceStudentState({
       course,
-      enrollmentId: mergedEnrollment.id,
+      enrollmentId: enrollment.id,
     }),
+    listAttendanceSummaryRows(course.id, enrollment.id),
     listMaterialsForCourse(course.id, { activeOnly: true, materialType: 'handout' }),
-    getAssignedTextbooksForEnrollment(mergedEnrollment.id, { activeOnly: true }),
-    getReceiptRows(mergedEnrollment.id),
+    getAssignedTextbooksForEnrollment(enrollment.id, { activeOnly: true }),
+    getReceiptRows(enrollment.id),
     getAppConfig(),
   ])
 
-  return buildPassPayloadResult({
-    appConfig,
-    course,
-    enrollment: mergedEnrollment,
-    subjects,
-    seatAssignments,
-    designatedSeat,
-    attendance,
-    materials,
-    textbooks,
-    receiptRows,
-  })
+  return {
+    kind: 'ok',
+    payload: await buildPassPayloadResult({
+      appConfig,
+      course,
+      enrollment,
+      subjects,
+      seatAssignments,
+      designatedSeat,
+      attendance,
+      attendanceHistory,
+      materials,
+      textbooks,
+      receiptRows,
+    }),
+  }
+}
+
+export async function buildArchivedPassPayload(params: {
+  division: TenantType
+  enrollmentId: number
+  courseSlug: string
+  name: string
+  phone: string
+}): Promise<ArchivedPassLookupResult> {
+  const access = await loadStudentCourseAccessContext(params)
+  if (!access) {
+    return { kind: 'not_found' }
+  }
+
+  const { course, enrollment } = access
+  const redirects = getStudentCourseRedirects(course, enrollment.id, params.division)
+  const requestedCourseSlug = normalizeRequestedCourseSlug(params.courseSlug)
+  if (course.slug !== requestedCourseSlug) {
+    return {
+      kind: 'redirect',
+      redirectTo: course.status === 'archived' ? redirects.archived : redirects.live,
+    }
+  }
+  if (course.status === 'active') {
+    return { kind: 'active', redirectTo: redirects.live }
+  }
+
+  const [attendanceRows, materials, textbooks, receiptRows] = await Promise.all([
+    listAttendanceSummaryRows(course.id, enrollment.id),
+    listMaterialsForCourse(course.id, { activeOnly: false, materialType: 'handout' }),
+    getAssignedTextbooksForEnrollment(enrollment.id, { activeOnly: false }),
+    getReceiptRows(enrollment.id),
+  ])
+
+  const todayKey = getKstDateKey()
+  const todayAttendance = attendanceRows.find((row) => row.attended_date === todayKey) ?? null
+  const handoutIdSet = new Set(materials.map((material) => material.id))
+  const textbookIdSet = new Set(textbooks.map((material) => material.id))
+
+  return {
+    kind: 'ok',
+    payload: {
+      course,
+      enrollment,
+      attendanceSummary: {
+        enabled: course.feature_attendance,
+        total_count: attendanceRows.length,
+        latest_attended_at: attendanceRows[0]?.attended_at ?? null,
+        attended_today: Boolean(todayAttendance),
+        attended_at: todayAttendance?.attended_at ?? null,
+      },
+      materials,
+      receipts: toReceiptMap((receiptRows ?? []).filter((row) => handoutIdSet.has(row.material_id))),
+      textbooks,
+      textbookReceipts: toReceiptMap((receiptRows ?? []).filter((row) => textbookIdSet.has(row.material_id))),
+    },
+  }
 }
 
 export async function findEnrollmentForQuickDistribution(courseId: number, phone: string) {

@@ -5,7 +5,11 @@ import {
   ATTENDANCE_ERROR_MESSAGES,
   requireAttendanceAdminCourseRequest,
 } from '@/lib/attendance/route-helpers'
-import { getAttendanceTodayKey, logAttendanceEvent } from '@/lib/attendance/service'
+import {
+  getAttendanceTodayKey,
+  hasEnrollmentAttendanceStarted,
+  logAttendanceEvent,
+} from '@/lib/attendance/service'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { createServerClient } from '@/lib/supabase/server'
 
@@ -34,7 +38,7 @@ export async function POST(req: NextRequest) {
     const db = createServerClient()
     const enrollment = await db
       .from('enrollments')
-      .select('id')
+      .select('id,created_at')
       .eq('id', parsed.data.enrollmentId)
       .eq('course_id', course.id)
       .maybeSingle()
@@ -43,11 +47,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
     }
 
+    if (!hasEnrollmentAttendanceStarted({
+      course,
+      enrollment: { created_at: enrollment.data.created_at },
+      targetDate: parsed.data.date,
+    })) {
+      return NextResponse.json(
+        { error: '해당 수강생은 등록일 이후부터 출석 체크를 진행할 수 있습니다.' },
+        { status: 409 },
+      )
+    }
+
     if (parsed.data.status === 'present') {
       const activeDisplaySession = parsed.data.date === getAttendanceTodayKey()
         ? await db
           .from('attendance_display_sessions')
-          .select('id')
+          .select('id,subject_id')
           .eq('course_id', course.id)
           .is('revoked_at', null)
           .gt('expires_at', new Date().toISOString())
@@ -61,6 +76,7 @@ export async function POST(req: NextRequest) {
           course_id: course.id,
           enrollment_id: parsed.data.enrollmentId,
           display_session_id: activeDisplaySession.data?.id ?? null,
+          subject_id: activeDisplaySession.data?.subject_id ?? null,
           device_key_hash: 'admin_override',
           attended_date: parsed.data.date,
           attended_at: new Date().toISOString(),

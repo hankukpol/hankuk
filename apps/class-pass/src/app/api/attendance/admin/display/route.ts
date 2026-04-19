@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import {
   ATTENDANCE_ERROR_MESSAGES,
+  hasCourseAttendanceStarted,
   requireAttendanceAdminCourseRequest,
 } from '@/lib/attendance/route-helpers'
 import { logAttendanceEvent } from '@/lib/attendance/service'
@@ -17,6 +18,7 @@ import { withTenantPrefix } from '@/lib/tenant'
 const postSchema = z.object({
   courseId: z.number().int().positive(),
   durationMinutes: z.number().int().min(1).max(720).default(10),
+  subjectId: z.number().int().positive().optional().nullable(),
 })
 
 const deleteSchema = z.object({
@@ -38,8 +40,44 @@ export async function POST(req: NextRequest) {
     }
 
     const { course, division, payload } = guard.context
+    if (!hasCourseAttendanceStarted(course)) {
+      return NextResponse.json({ error: ATTENDANCE_ERROR_MESSAGES.attendanceNotStarted }, { status: 409 })
+    }
+
     const db = createServerClient()
     const nowIso = new Date().toISOString()
+
+    if (parsed.data.subjectId == null) {
+      const existingSubjects = await db
+        .from('course_subjects')
+        .select('id')
+        .eq('course_id', course.id)
+        .limit(1)
+
+      if (existingSubjects.error) {
+        return NextResponse.json({ error: ATTENDANCE_ERROR_MESSAGES.startSessionFailed }, { status: 500 })
+      }
+
+      if ((existingSubjects.data ?? []).length > 0) {
+        return NextResponse.json(
+          { error: '과목이 있는 강좌는 과목을 선택한 뒤 출석을 시작할 수 있습니다.' },
+          { status: 409 },
+        )
+      }
+    }
+
+    if (parsed.data.subjectId != null) {
+      const subject = await db
+        .from('course_subjects')
+        .select('id')
+        .eq('id', parsed.data.subjectId)
+        .eq('course_id', course.id)
+        .maybeSingle()
+
+      if (subject.error || !subject.data) {
+        return NextResponse.json({ error: '선택한 과목을 찾을 수 없습니다.' }, { status: 404 })
+      }
+    }
 
     await db
       .from('attendance_display_sessions')
@@ -53,6 +91,7 @@ export async function POST(req: NextRequest) {
       .from('attendance_display_sessions')
       .insert({
         course_id: course.id,
+        subject_id: parsed.data.subjectId ?? null,
         display_token_hash: hashToken(rawToken),
         created_by: payload?.adminId ?? payload?.staffName ?? 'admin',
         expires_at: expiresAt,
@@ -81,6 +120,7 @@ export async function POST(req: NextRequest) {
         display_session_id: insertResult.data.id,
         actor: payload?.adminId ?? payload?.staffName ?? 'admin',
         duration_minutes: parsed.data.durationMinutes,
+        subject_id: parsed.data.subjectId ?? null,
       },
     })
 

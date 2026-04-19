@@ -4,32 +4,38 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
-import type { Course } from '@/types/database'
+import type { Course, CourseSubject } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
+
+type DashboardRecord = {
+  enrollmentId: number
+  studentName: string
+  examNumber: string | null
+  phone: string
+}
 
 type DashboardPayload = {
   date: string
+  attendanceStarted: boolean
+  attendanceStartDate: string | null
   totalEnrolled: number
   presentCount: number
   absentCount: number
   attendanceRate: number
-  absentees: Array<{
-    enrollmentId: number
-    studentName: string
-    examNumber: string | null
+  absentees: Array<DashboardRecord & {
     consecutiveAbsences: number
+    attendanceStartDate: string | null
     seatLabel?: string | null
   }>
-  recentRecords: Array<{
-    enrollmentId: number
-    studentName: string
-    examNumber: string | null
+  recentRecords: Array<DashboardRecord & {
     attendedAt: string
   }>
   displaySession: {
     id: number | null
     isActive: boolean
     expiresAt: string | null
+    subjectId: number | null
+    subjectName: string | null
   }
 }
 
@@ -41,7 +47,10 @@ type AbsenceReportPayload = {
     examNumber: string | null
     consecutiveAbsences: number
     lastAttendedDate: string | null
+    attendanceStartDate: string | null
     seatLabel: string | null
+    subjectId: number | null
+    subjectName: string | null
   }>
 }
 
@@ -63,6 +72,26 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value))
 }
 
+function normalizeAttendanceSearchValue(value: string | null | undefined) {
+  return (value ?? '').replace(/\s+/g, '').replace(/-/g, '').toLowerCase()
+}
+
+function matchesAttendanceSearch(
+  keyword: string,
+  record: { studentName: string; examNumber: string | null; phone: string },
+) {
+  const normalizedKeyword = normalizeAttendanceSearchValue(keyword)
+  if (!normalizedKeyword) {
+    return true
+  }
+
+  return [
+    normalizeAttendanceSearchValue(record.studentName),
+    normalizeAttendanceSearchValue(record.examNumber),
+    normalizeAttendanceSearchValue(record.phone),
+  ].some((value) => value.includes(normalizedKeyword))
+}
+
 async function readJson<T>(response: Response) {
   return response.json().catch(() => null) as Promise<T | null>
 }
@@ -82,9 +111,12 @@ export default function AdminAttendancePage() {
   const courseId = Number(params.id)
 
   const [course, setCourse] = useState<Course | null>(null)
+  const [subjects, setSubjects] = useState<CourseSubject[]>([])
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null)
   const [absenceReport, setAbsenceReport] = useState<AbsenceReportPayload | null>(null)
   const [date, setDate] = useState(getToday())
+  const [attendanceSearch, setAttendanceSearch] = useState('')
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('')
   const [durationMinutes, setDurationMinutes] = useState(10)
   const [displayUrl, setDisplayUrl] = useState('')
   const [loading, setLoading] = useState(true)
@@ -96,18 +128,30 @@ export default function AdminAttendancePage() {
   useEffect(() => {
     courseLoadedRef.current = false
     setCourse(null)
+    setSubjects([])
+    setSelectedSubjectId('')
   }, [courseId])
 
   const loadData = useCallback(async () => {
-    const [courseResponse, dashboardResponse, reportResponse] = await Promise.all([
+    const reportQuery = new URLSearchParams({
+      courseId: String(courseId),
+      threshold: '2',
+    })
+    if (selectedSubjectId) {
+      reportQuery.set('subjectId', selectedSubjectId)
+    }
+
+    const [courseResponse, subjectsResponse, dashboardResponse, reportResponse] = await Promise.all([
       courseLoadedRef.current
         ? Promise.resolve(null)
         : fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
+      fetch(`/api/courses/${courseId}/subjects`, { cache: 'no-store' }),
       fetch(`/api/attendance/admin/dashboard?courseId=${courseId}&date=${date}`, { cache: 'no-store' }),
-      fetch(`/api/attendance/admin/absence-report?courseId=${courseId}&threshold=2`, { cache: 'no-store' }),
+      fetch(`/api/attendance/admin/absence-report?${reportQuery.toString()}`, { cache: 'no-store' }),
     ])
 
     const coursePayload = courseResponse ? await readJson<{ course?: Course; error?: string }>(courseResponse) : null
+    const subjectsPayload = await readJson<{ subjects?: CourseSubject[]; error?: string }>(subjectsResponse)
     const dashboardPayload = await readJson<DashboardPayload & { error?: string }>(dashboardResponse)
     const reportPayload = await readJson<AbsenceReportPayload & { error?: string }>(reportResponse)
 
@@ -119,6 +163,10 @@ export default function AdminAttendancePage() {
       throw new Error(dashboardPayload?.error ?? '출석 현황을 불러오지 못했습니다.')
     }
 
+    if (!subjectsResponse.ok) {
+      throw new Error(subjectsPayload?.error ?? '과목 정보를 불러오지 못했습니다.')
+    }
+
     if (!reportResponse.ok) {
       throw new Error(reportPayload?.error ?? '결석 리포트를 불러오지 못했습니다.')
     }
@@ -128,9 +176,10 @@ export default function AdminAttendancePage() {
       courseLoadedRef.current = true
     }
 
+    setSubjects(subjectsPayload?.subjects ?? [])
     setDashboard(dashboardPayload as DashboardPayload)
     setAbsenceReport(reportPayload as AbsenceReportPayload)
-  }, [courseId, date])
+  }, [courseId, date, selectedSubjectId])
 
   useEffect(() => {
     let cancelled = false
@@ -173,8 +222,33 @@ export default function AdminAttendancePage() {
   }, [dashboard?.displaySession.isActive, loadData])
 
   const progressWidth = useMemo(() => `${dashboard?.attendanceRate ?? 0}%`, [dashboard?.attendanceRate])
+  const filteredRecentRecords = useMemo(
+    () => (dashboard?.recentRecords ?? []).filter((record) => matchesAttendanceSearch(attendanceSearch, record)),
+    [attendanceSearch, dashboard?.recentRecords],
+  )
+  const filteredAbsentees = useMemo(
+    () => (dashboard?.absentees ?? []).filter((student) => matchesAttendanceSearch(attendanceSearch, student)),
+    [attendanceSearch, dashboard?.absentees],
+  )
+  const isBeforeAttendanceStartForSelectedDate = Boolean(
+    dashboard?.attendanceStartDate && !dashboard.attendanceStarted,
+  )
+  const isBeforeAttendanceStartToday = Boolean(
+    course?.enrolled_from && getToday() < course.enrolled_from,
+  )
+  const selectedSubjectName = useMemo(() => (
+    subjects.find((subject) => String(subject.id) === selectedSubjectId)?.name ?? null
+  ), [selectedSubjectId, subjects])
+  const requiresSubjectSelection = subjects.length > 0
+  const startBlockedBySubjectSelection = requiresSubjectSelection && !selectedSubjectId
 
   async function handleStart() {
+    if (startBlockedBySubjectSelection) {
+      setError('과목이 있는 강좌는 과목을 선택한 뒤 출석을 시작할 수 있습니다.')
+      setMessage('')
+      return
+    }
+
     setWorking(true)
     setError('')
     setMessage('')
@@ -182,7 +256,11 @@ export default function AdminAttendancePage() {
     const response = await fetch('/api/attendance/admin/display', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId, durationMinutes }),
+      body: JSON.stringify({
+        courseId,
+        durationMinutes,
+        subjectId: selectedSubjectId ? Number(selectedSubjectId) : null,
+      }),
     })
     const payload = await readJson<{ displayUrl?: string; error?: string }>(response)
     setWorking(false)
@@ -193,7 +271,7 @@ export default function AdminAttendancePage() {
     }
 
     setDisplayUrl(payload?.displayUrl ?? '')
-    setMessage('출석 세션을 시작했습니다.')
+    setMessage(selectedSubjectName ? `${selectedSubjectName} 출석 세션을 시작했습니다.` : '출석 세션을 시작했습니다.')
     await loadData().catch(() => null)
   }
 
@@ -286,6 +364,20 @@ export default function AdminAttendancePage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {subjects.length > 0 ? (
+              <select
+                value={selectedSubjectId}
+                onChange={(event) => setSelectedSubjectId(event.target.value)}
+                className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none"
+              >
+                <option value="">과목 선택</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <select
               value={durationMinutes}
               onChange={(event) => setDurationMinutes(Number(event.target.value))}
@@ -299,7 +391,7 @@ export default function AdminAttendancePage() {
             <button
               type="button"
               onClick={() => void handleStart()}
-              disabled={working}
+              disabled={working || startBlockedBySubjectSelection}
               className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
             >
               출석 시작
@@ -315,6 +407,20 @@ export default function AdminAttendancePage() {
           </div>
         </div>
 
+        <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-4">
+          <p className="text-sm font-semibold text-sky-900">운영 가이드</p>
+          <div className="mt-2 space-y-1 text-sm text-sky-800">
+            <p>1. 과목이 있는 강좌는 먼저 과목을 선택합니다.</p>
+            <p>2. 선택한 과목으로 `출석 시작`을 눌러 교실 화면을 엽니다.</p>
+            <p>3. 수업이 끝나면 `출석 종료` 후 다음 과목으로 다시 시작합니다.</p>
+          </div>
+          {requiresSubjectSelection ? (
+            <p className="mt-3 text-xs font-medium text-sky-700">
+              이 강좌는 과목별 출석 경고를 사용하므로 `전체 강좌`로는 시작할 수 없습니다.
+            </p>
+          ) : null}
+        </div>
+
         {(error || message) ? (
           <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -323,20 +429,27 @@ export default function AdminAttendancePage() {
         ) : null}
 
         <div className="mt-5 grid gap-4 md:grid-cols-4">
-          <StatCard label="총 수강생" value={dashboard.totalEnrolled} />
+          <StatCard label="출석 대상" value={dashboard.totalEnrolled} />
           <StatCard label="출석" value={dashboard.presentCount} valueClassName="text-emerald-600" />
           <StatCard label="결석" value={dashboard.absentCount} valueClassName="text-rose-600" />
           <StatCard label="출석률" value={`${dashboard.attendanceRate}%`} valueClassName="text-blue-600" />
         </div>
 
         <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-4">
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-semibold text-slate-700">{dashboard.date}</span>
-            <span className={dashboard.displaySession.isActive ? 'text-emerald-700' : 'text-slate-500'}>
-              {dashboard.displaySession.isActive
-                ? `세션 진행 중 / ${formatDateTime(dashboard.displaySession.expiresAt)} 종료`
-                : '진행 중인 세션 없음'}
-            </span>
+            <div className="text-right">
+              <span className={dashboard.displaySession.isActive ? 'text-emerald-700' : 'text-slate-500'}>
+                {dashboard.displaySession.isActive
+                  ? `세션 진행 중 / ${formatDateTime(dashboard.displaySession.expiresAt)} 종료`
+                  : '진행 중인 세션 없음'}
+              </span>
+              {dashboard.displaySession.isActive && dashboard.displaySession.subjectName ? (
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  과목 {dashboard.displaySession.subjectName}
+                </p>
+              ) : null}
+            </div>
           </div>
           <div className="mt-3 h-3 overflow-hidden rounded-full bg-white">
             <div className="h-full rounded-full bg-[#0071e3]" style={{ width: progressWidth }} />
@@ -376,8 +489,17 @@ export default function AdminAttendancePage() {
       </section>
 
       <section className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-extrabold text-gray-900">오늘 출석</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+            <h3 className="text-lg font-extrabold text-gray-900">오늘 출석</h3>
+            <input
+              type="text"
+              value={attendanceSearch}
+              onChange={(event) => setAttendanceSearch(event.target.value)}
+              placeholder="이름, 연락처, 수험번호 검색"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 sm:w-64"
+            />
+          </div>
           <input
             type="date"
             value={date}
@@ -386,18 +508,26 @@ export default function AdminAttendancePage() {
           />
         </div>
 
+        {isBeforeAttendanceStartForSelectedDate ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            수강 시작일 {dashboard.attendanceStartDate} 이전 날짜라서 결석 집계와 출석 목록은 표시하지 않습니다.
+          </div>
+        ) : null}
+
         <div className="mt-5 grid gap-6 lg:grid-cols-[0.95fr,1.05fr]">
           <div>
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-slate-700">최근 출석</h4>
-              <span className="text-xs text-slate-400">{dashboard.recentRecords.length}건</span>
+              <span className="text-xs text-slate-400">{filteredRecentRecords.length}건</span>
             </div>
             <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-              {dashboard.recentRecords.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-slate-400">아직 출석 기록이 없습니다.</p>
+              {filteredRecentRecords.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-slate-400">
+                  {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '아직 출석 기록이 없습니다.'}
+                </p>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {dashboard.recentRecords.map((record) => (
+                  {filteredRecentRecords.map((record) => (
                     <div key={record.enrollmentId} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-900">
@@ -429,25 +559,28 @@ export default function AdminAttendancePage() {
           <div>
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-slate-700">결석 수강생</h4>
-              <span className="text-xs text-slate-400">{dashboard.absentees.length}명</span>
+              <span className="text-xs text-slate-400">{filteredAbsentees.length}명</span>
             </div>
             <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-              {dashboard.absentees.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-slate-400">모든 수강생이 출석했습니다.</p>
+              {filteredAbsentees.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-slate-400">
+                  {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '모든 수강생이 출석했습니다.'}
+                </p>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {dashboard.absentees.map((student) => (
+                  {filteredAbsentees.map((student) => (
                     <div key={student.enrollmentId} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-900">
                           {student.examNumber ? `[${student.examNumber}] ` : ''}
                           {student.studentName}
                         </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span>{student.consecutiveAbsences}일 연속 결석</span>
-                          {student.seatLabel ? <span>좌석 {student.seatLabel}</span> : null}
-                          {student.consecutiveAbsences >= 2 ? (
-                            <span className="rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">주의</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>{student.consecutiveAbsences}일 연속 결석</span>
+                      {student.attendanceStartDate ? <span>기준일 {student.attendanceStartDate}</span> : null}
+                      {student.seatLabel ? <span>좌석 {student.seatLabel}</span> : null}
+                      {student.consecutiveAbsences >= 2 ? (
+                        <span className="rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">주의</span>
                           ) : null}
                         </div>
                       </div>
@@ -470,24 +603,42 @@ export default function AdminAttendancePage() {
 
       <section className="rounded-2xl bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-extrabold text-gray-900">누적 결석 경고</h3>
+          <div>
+            <h3 className="text-lg font-extrabold text-gray-900">누적 결석 경고</h3>
+            {selectedSubjectName ? (
+              <p className="mt-1 text-xs font-medium text-slate-500">{selectedSubjectName}만 보는 중</p>
+            ) : null}
+          </div>
           <span className="text-xs text-slate-400">기준 2회</span>
         </div>
+        <p className="mt-2 text-sm text-slate-500">
+          연속 불참은 강좌 시작일과 학생 등록일 중 더 늦은 날짜부터, 과목별 출석 기록 기준으로 계산합니다.
+        </p>
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
           {!absenceReport || absenceReport.flaggedStudents.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-slate-400">현재 기준을 넘는 결석 수강생이 없습니다.</p>
+            <p className="px-4 py-8 text-center text-sm text-slate-400">
+              {isBeforeAttendanceStartToday
+                ? `수강 시작일 ${course.enrolled_from} 전이라 누적 결석 경고가 아직 없습니다.`
+                : '현재 기준을 넘는 결석 수강생이 없습니다.'}
+            </p>
           ) : (
             <div className="divide-y divide-slate-100">
               {absenceReport.flaggedStudents.map((student) => (
-                <div key={student.enrollmentId} className="flex items-center justify-between gap-4 px-4 py-3">
+                <div key={`${student.enrollmentId}:${student.subjectId ?? 'course'}`} className="flex items-center justify-between gap-4 px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-900">
                       {student.examNumber ? `[${student.examNumber}] ` : ''}
                       {student.studentName}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span>{student.consecutiveAbsences}일 연속 결석</span>
+                      <span>{student.consecutiveAbsences}회 연속 불참</span>
+                      {student.subjectName ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                          {student.subjectName}
+                        </span>
+                      ) : null}
                       {student.lastAttendedDate ? <span>마지막 출석 {student.lastAttendedDate}</span> : null}
+                      {student.attendanceStartDate ? <span>기준일 {student.attendanceStartDate}</span> : null}
                       {student.seatLabel ? <span>좌석 {student.seatLabel}</span> : null}
                     </div>
                   </div>

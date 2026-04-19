@@ -39,6 +39,32 @@ function formatTime(value: string | null) {
   }).format(new Date(value))
 }
 
+function formatAttendanceDate(value: string | null) {
+  if (!value) {
+    return ''
+  }
+
+  return getKstDateKey(value).replace(/-/g, '.')
+}
+
+function formatAttendanceDateKey(value: string) {
+  return value.replace(/-/g, '.')
+}
+
+function getKstDateKey(value: string | number | Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+  }).format(new Date(value))
+}
+
+function isCourseAttendanceNotStarted(enrolledFrom: string | null) {
+  if (!enrolledFrom) {
+    return false
+  }
+
+  return getKstDateKey() < enrolledFrom.slice(0, 10)
+}
+
 function getInitialDigits() {
   return Array.from({ length: DIGIT_COUNT }, () => '')
 }
@@ -232,6 +258,8 @@ export default function StudentAttendancePage() {
     return null
   }
 
+  const attendanceNotStarted = isCourseAttendanceNotStarted(data.course.enrolled_from)
+
   if (!data.attendance.enabled) {
     return (
       <div className="student-page flex min-h-dvh items-center justify-center px-6">
@@ -256,11 +284,14 @@ export default function StudentAttendancePage() {
     : data.attendance.open
       ? '입력 가능'
       : '대기 중'
-
-  const statusDescription = data.attendance.attended_today
-    ? `오늘 출석이 완료되었습니다.${data.attendance.attended_at ? ` (${formatTime(data.attendance.attended_at)})` : ''}`
-    : data.attendance.open
-      ? '교실 화면에 표시된 6자리 코드를 입력해 주세요.'
+  const attendedDateLabel = data.attendance.attended_at
+    ? formatAttendanceDate(data.attendance.attended_at)
+    : ''
+  const attendanceHistory = data.attendanceHistory ?? []
+  const statusDescription = data.attendance.open
+    ? '교실 화면에 표시된 6자리 코드를 입력해 주세요.'
+    : attendanceNotStarted
+      ? `수강 시작일 ${data.course.enrolled_from} 이후부터 출석 체크를 할 수 있습니다.`
       : '현재 출석 체크가 열려 있지 않습니다.'
 
   return (
@@ -286,7 +317,19 @@ export default function StudentAttendancePage() {
               <p className="mt-2 text-[20px] font-semibold leading-[1.07] tracking-[-0.02em] text-[var(--student-text)]">
                 {statusLabel}
               </p>
-              <p className="student-body mt-2">{statusDescription}</p>
+              {data.attendance.attended_today ? (
+                <div className="student-body mt-2">
+                  <span className="block">오늘의 출석 완료</span>
+                  {attendedDateLabel ? <span className="block">({attendedDateLabel})</span> : null}
+                  {data.attendance.attended_at ? (
+                    <span className="mt-1 block text-[12px] text-[var(--student-text-muted)]">
+                      출석 시간 {formatTime(data.attendance.attended_at)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="student-body mt-2">{statusDescription}</p>
+              )}
             </div>
             <span
               className={`student-chip ${
@@ -340,8 +383,63 @@ export default function StudentAttendancePage() {
             disabled={submitting || !data.attendance.open || data.attendance.attended_today}
             className="student-pill-button student-pill-primary mt-6 w-full disabled:translate-y-0 disabled:opacity-50"
           >
-            {data.attendance.attended_today ? '오늘 출석 완료' : submitting ? '처리 중...' : '출석하기'}
+            {data.attendance.attended_today ? (
+              <span className="flex flex-col items-center leading-tight">
+                <span>오늘의 출석 완료</span>
+                {attendedDateLabel ? <span className="mt-0.5 text-[13px] font-medium">({attendedDateLabel})</span> : null}
+              </span>
+            ) : submitting ? '처리 중...' : '출석하기'}
           </button>
+
+          <div className="mt-5 border-t border-[var(--student-line)] pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="student-eyebrow student-eyebrow-light">출석 기록</p>
+                <p className="mt-1 text-[13px] text-[var(--student-text-muted)]">
+                  본인 출석 날짜를 최근 순서대로 확인할 수 있습니다.
+                </p>
+              </div>
+              <span className="student-chip shrink-0">{attendanceHistory.length}회</span>
+            </div>
+
+            {attendanceHistory.length > 0 ? (
+              <ul className="mt-3 flex flex-col gap-2">
+                {attendanceHistory.map((entry, index) => {
+                  const isToday = entry.attended_date === getKstDateKey()
+
+                  return (
+                    <li
+                      key={`${entry.attended_date}:${entry.attended_at}:${index}`}
+                      className="student-card-muted flex items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--student-text)]">
+                          {formatAttendanceDateKey(entry.attended_date)}
+                        </p>
+                        <p className="mt-1 text-[12px] text-[var(--student-text-muted)]">
+                          {isToday ? '오늘 출석' : '출석 완료'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[14px] font-semibold text-[var(--student-blue)]">
+                          {formatTime(entry.attended_at)}
+                        </p>
+                        {isToday ? (
+                          <span className="mt-1 inline-flex rounded-full bg-[rgba(0,113,227,0.08)] px-2 py-0.5 text-[11px] font-semibold text-[var(--student-blue)]">
+                            오늘
+                          </span>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <div className="student-card-muted mt-3 px-4 py-3">
+                <p className="text-[14px] text-[var(--student-text-muted)]">아직 확인할 출석 기록이 없습니다.</p>
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>

@@ -197,6 +197,7 @@ export interface DesignatedSeatStudentState {
 export interface AttendanceDisplaySession {
   id: number
   course_id: number
+  subject_id: number | null
   display_token_hash: string
   created_by: string
   expires_at: string
@@ -210,10 +211,16 @@ export interface AttendanceRecord {
   course_id: number
   enrollment_id: number
   display_session_id: number | null
+  subject_id: number | null
   device_key_hash: string
   attended_date: string
   attended_at: string
   created_at: string
+}
+
+export interface AttendanceHistoryEntry {
+  attended_date: string
+  attended_at: string
 }
 
 export interface AttendanceEvent {
@@ -273,6 +280,7 @@ export interface PassCourseSummary {
     | 'id'
     | 'name'
     | 'slug'
+    | 'status'
     | 'course_type'
     | 'theme_color'
     | 'feature_qr_pass'
@@ -297,11 +305,30 @@ export interface PassPayload {
   seatAssignments: SeatAssignment[]
   designatedSeat: DesignatedSeatStudentState
   attendance: AttendanceStudentState
+  attendanceHistory: AttendanceHistoryEntry[]
   materials: Material[]
   receipts: Record<number, string>
   textbooks: Material[]
   textbookReceipts: Record<number, string>
   qrToken: string
+}
+
+export interface ArchivedAttendanceSummary {
+  enabled: boolean
+  total_count: number
+  latest_attended_at: string | null
+  attended_today: boolean
+  attended_at: string | null
+}
+
+export interface ArchivedPassPayload {
+  course: Course
+  enrollment: Enrollment
+  attendanceSummary: ArchivedAttendanceSummary
+  materials: Material[]
+  receipts: Record<number, string>
+  textbooks: Material[]
+  textbookReceipts: Record<number, string>
 }
 
 export interface Branch {

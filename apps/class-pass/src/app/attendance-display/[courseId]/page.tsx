@@ -16,6 +16,10 @@ type DisplayPayload = {
     id: number
     expires_at: string
   }
+  subject: {
+    id: number
+    name: string
+  } | null
   rotationCode: string
   rotationExpiresAt: string
 }
@@ -127,6 +131,11 @@ export default function AttendanceDisplayPage() {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-300">Attendance Check</p>
             <h1 className="mt-3 text-4xl font-black tracking-tight">{payload.course.name}</h1>
+            {payload.subject ? (
+              <p className="mt-3 inline-flex rounded-full border border-white/12 bg-white/6 px-3 py-1 text-sm font-semibold text-slate-200">
+                {payload.subject.name}
+              </p>
+            ) : null}
             <p className="mt-3 text-lg text-slate-300">학생은 휴대폰에서 출석 페이지를 열고 아래 6자리 숫자를 입력하면 됩니다.</p>
             <p className="mt-2 text-sm text-slate-500">코드는 30초마다 바뀌며, 출석 세션이 끝나면 자동으로 더 이상 제출되지 않습니다.</p>
           </div>

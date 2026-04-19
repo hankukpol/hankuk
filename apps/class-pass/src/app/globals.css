@@ -293,6 +293,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   border-radius: 980px;
   border: none;
   background: rgba(0, 0, 0, 0.06);

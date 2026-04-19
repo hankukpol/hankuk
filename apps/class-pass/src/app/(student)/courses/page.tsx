@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
@@ -63,7 +63,7 @@ export default function StudentCoursesPage() {
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
-          throw new Error(payload?.error ?? '수강 중인 강의를 찾지 못했습니다.')
+          throw new Error(payload?.error ?? '수강 중인 강좌를 찾지 못했습니다.')
         }
 
         const nextCourses = payload?.courses ?? []
@@ -78,11 +78,20 @@ export default function StudentCoursesPage() {
       })
       .catch((reason: unknown) => {
         if (!hasCachedCourses) {
-          setError(reason instanceof Error ? reason.message : '강의 목록을 불러오지 못했습니다.')
+          setError(reason instanceof Error ? reason.message : '강좌 목록을 불러오지 못했습니다.')
         }
       })
       .finally(() => setLoading(false))
   }, [router, tenant.type])
+
+  const activeCourses = useMemo(
+    () => courses.filter((entry) => entry.course.status === 'active'),
+    [courses],
+  )
+  const archivedCourses = useMemo(
+    () => courses.filter((entry) => entry.course.status === 'archived'),
+    [courses],
+  )
 
   function handleReset() {
     clearStudentSession(sessionStorage)
@@ -102,18 +111,17 @@ export default function StudentCoursesPage() {
       <section className="student-hero px-4 pb-6 pt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="student-eyebrow student-eyebrow-dark">내 강좌</p>
+            <p className="student-eyebrow student-eyebrow-dark">My Courses</p>
             <h1 className="student-display mt-2">내 강좌</h1>
           </div>
-          <span className="student-chip student-chip-dark">{courses.length}개 강좌</span>
+          <span className="student-chip student-chip-dark shrink-0 whitespace-nowrap">{courses.length}개</span>
         </div>
         <p className="student-body student-body-dark mt-2">
           {studentName} · {maskPhone(studentPhone)}
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className="student-chip student-chip-dark">QR 수강증</span>
-          <span className="student-chip student-chip-dark">출석 체크</span>
-          <span className="student-chip student-chip-dark">실시간 확인</span>
+          <span className="student-chip student-chip-dark whitespace-nowrap">운영 중 {activeCourses.length}</span>
+          <span className="student-chip student-chip-dark whitespace-nowrap">보관 {archivedCourses.length}</span>
         </div>
       </section>
 
@@ -131,9 +139,11 @@ export default function StudentCoursesPage() {
           </div>
         ) : courses.length === 0 ? (
           <div className="student-card px-5 py-5 text-center">
-            <p className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">현재 수강 중인 강좌가 없습니다.</p>
+            <p className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">
+              현재 확인 가능한 강좌가 없습니다.
+            </p>
             <p className="student-body mt-2">
-              등록된 강좌가 없거나 환불 처리 상태일 수 있습니다.
+              등록된 강좌가 없거나 환불 처리된 상태일 수 있습니다.
             </p>
             <button
               type="button"
@@ -144,66 +154,51 @@ export default function StudentCoursesPage() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {courses.map((entry) => {
-              const features = [
-                entry.course.feature_qr_pass && 'QR',
-                entry.course.feature_seat_assignment && '좌석',
-                entry.course.feature_qr_distribution && '배부',
-                entry.course.feature_dday && 'D-day',
-              ].filter(Boolean)
+          <div className="flex flex-col gap-5">
+            <CourseSection
+              title="운영 중"
+              description="실시간 출석, 수강증, 좌석 기능을 사용할 수 있는 강좌입니다."
+              count={activeCourses.length}
+            >
+              {activeCourses.length > 0 ? (
+                <div className="flex flex-col gap-2.5">
+                  {activeCourses.map((entry) => (
+                    <StudentCourseCard
+                      key={entry.enrollment_id}
+                      entry={entry}
+                      archived={false}
+                      tenantType={tenant.type}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="student-card-muted px-4 py-4">
+                  <p className="text-[15px] font-semibold text-[var(--student-text)]">운영 중인 강좌가 없습니다.</p>
+                  <p className="student-body mt-1">
+                    아래 보관 강좌에서 지난 수강 이력을 확인할 수 있습니다.
+                  </p>
+                </div>
+              )}
+            </CourseSection>
 
-              return (
-                <Link
-                  key={entry.enrollment_id}
-                  href={withTenantPrefix(`/courses/${entry.course.slug}?enrollmentId=${entry.enrollment_id}`, tenant.type)}
-                  className="student-card block px-4 py-3.5 transition-transform active:scale-[0.98]"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--student-surface-muted)] text-[11px] font-semibold text-[var(--student-blue)]">
-                      {String(entry.course.id).padStart(2, '0')}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <p className="truncate text-[15px] font-semibold leading-tight tracking-[-0.02em] text-[var(--student-text)]">
-                          {entry.course.name}
-                        </p>
-                        {entry.attendance.attended_today ? (
-                          <span className="student-chip bg-[#eefaf1] text-[#19703a]">
-                            <span className="student-status-dot" style={{ background: '#19703a' }} />
-                            출석
-                          </span>
-                        ) : entry.attendance.open ? (
-                          <span className="student-chip bg-[rgba(0,113,227,0.08)] text-[var(--student-blue)]">
-                            <span className="student-status-dot student-status-dot-active" />
-                            출석중
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <p className="mt-0.5 text-[12px] text-[var(--student-text-muted)]">
-                        {formatCourseTypeLabel(entry.course.course_type)}
-                      </p>
-
-                      {features.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {features.map((feature) => (
-                            <span key={feature as string} className="student-chip">
-                              {feature}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true" className="shrink-0 text-[var(--student-text-muted)]">
-                      <path d="M4 2.5L9 7l-5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                </Link>
-              )
-            })}
+            {archivedCourses.length > 0 ? (
+              <CourseSection
+                title="보관"
+                description="관리자가 보관 처리한 강좌입니다. 기록만 읽기 전용으로 확인할 수 있습니다."
+                count={archivedCourses.length}
+              >
+                <div className="flex flex-col gap-2.5">
+                  {archivedCourses.map((entry) => (
+                    <StudentCourseCard
+                      key={entry.enrollment_id}
+                      entry={entry}
+                      archived
+                      tenantType={tenant.type}
+                    />
+                  ))}
+                </div>
+              </CourseSection>
+            ) : null}
           </div>
         )}
       </section>
@@ -218,5 +213,112 @@ export default function StudentCoursesPage() {
         </button>
       </div>
     </div>
+  )
+}
+
+function CourseSection({
+  title,
+  description,
+  count,
+  children,
+}: {
+  title: string
+  description: string
+  count: number
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="student-eyebrow student-eyebrow-light">{title}</p>
+          <p className="mt-1 text-[13px] leading-[1.5] text-[var(--student-text-muted)]">{description}</p>
+        </div>
+        <span className="student-chip shrink-0 whitespace-nowrap">{count}개</span>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function StudentCourseCard({
+  entry,
+  archived,
+  tenantType,
+}: {
+  entry: PassCourseSummary
+  archived: boolean
+  tenantType: string
+}) {
+  const href = archived
+    ? withTenantPrefix(`/courses/${entry.course.slug}/archived?enrollmentId=${entry.enrollment_id}`, tenantType)
+    : withTenantPrefix(`/courses/${entry.course.slug}?enrollmentId=${entry.enrollment_id}`, tenantType)
+
+  const features = [
+    entry.course.feature_qr_pass && 'QR',
+    entry.course.feature_seat_assignment && '좌석',
+    entry.course.feature_qr_distribution && '배부',
+    entry.course.feature_dday && 'D-day',
+  ].filter(Boolean)
+
+  return (
+    <Link
+      href={href}
+      className={`student-card block overflow-hidden px-4 py-3.5 transition-transform active:scale-[0.98] ${
+        archived ? 'border border-[var(--student-line)] bg-[var(--student-surface-muted)]' : ''
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-[11px] font-semibold tracking-[0.08em] text-[var(--student-text-muted)]">
+              {formatCourseTypeLabel(entry.course.course_type)}
+            </p>
+            {archived ? (
+              <span className="student-chip bg-white text-[var(--student-text-muted)]">보관됨</span>
+            ) : entry.attendance.attended_today ? (
+              <span className="student-chip bg-[#eefaf1] text-[#19703a]">
+                <span className="student-status-dot" style={{ background: '#19703a' }} />
+                출석 완료
+              </span>
+            ) : entry.attendance.open ? (
+              <span className="student-chip bg-[rgba(0,113,227,0.08)] text-[var(--student-blue)]">
+                <span className="student-status-dot student-status-dot-active" />
+                출석 진행 중
+              </span>
+            ) : null}
+          </div>
+
+          <p className="mt-1 break-keep text-[16px] font-semibold leading-[1.35] tracking-[-0.03em] text-[var(--student-text)]">
+            {entry.course.name}
+          </p>
+
+          {archived ? (
+            <p className="mt-2 text-[12px] leading-[1.5] text-[var(--student-text-muted)]">
+              실시간 기능은 종료되었고 보관된 안내와 수강 기록만 확인할 수 있습니다.
+            </p>
+          ) : features.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {features.map((feature) => (
+                <span key={feature as string} className="student-chip">
+                  {feature}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 14 14"
+          fill="none"
+          aria-hidden="true"
+          className="mt-1 shrink-0 text-[var(--student-text-muted)]"
+        >
+          <path d="M4 2.5L9 7l-5 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </Link>
   )
 }

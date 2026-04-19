@@ -28,7 +28,10 @@ export async function GET(req: NextRequest) {
       return guard.response
     }
 
-    return NextResponse.json(await getAttendanceDashboardData(parsed.data))
+    return NextResponse.json(await getAttendanceDashboardData({
+      ...parsed.data,
+      attendanceStartDate: guard.context.course.enrolled_from,
+    }))
   } catch (error) {
     return handleRouteError(
       'attendance.admin.dashboard.GET',

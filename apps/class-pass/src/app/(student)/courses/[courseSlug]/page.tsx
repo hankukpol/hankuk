@@ -14,6 +14,29 @@ import { formatCourseTypeLabel } from '@/lib/utils'
 const LS_NAME = 'class_pass_student_name'
 const LS_PHONE = 'class_pass_student_phone'
 
+function replaceStudentLocation(target: string, router: ReturnType<typeof useRouter>) {
+  if (typeof window !== 'undefined') {
+    window.location.replace(target)
+    return
+  }
+
+  router.replace(target)
+}
+
+function isCurrentStudentLocation(target: string) {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    const currentUrl = new URL(window.location.href)
+    const targetUrl = new URL(target, window.location.origin)
+    return currentUrl.pathname === targetUrl.pathname && currentUrl.search === targetUrl.search
+  } catch {
+    return false
+  }
+}
+
 function formatReceiptTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
@@ -22,6 +45,29 @@ function formatReceiptTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function formatAttendanceDate(value: string) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(value)).replace(/-/g, '.')
+}
+
+function getKstDateKey(value: string | number | Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+  }).format(new Date(value))
+}
+
+function isCourseAttendanceNotStarted(enrolledFrom: string | null) {
+  if (!enrolledFrom) {
+    return false
+  }
+
+  return getKstDateKey() < enrolledFrom.slice(0, 10)
 }
 
 function calculateDday(targetDate: string | null) {
@@ -73,7 +119,7 @@ export default function StudentCoursePassPage() {
     const phone = sessionStorage.getItem(LS_PHONE) ?? ''
 
     if (!name || !phone || !Number.isInteger(enrollmentId) || enrollmentId <= 0) {
-      router.replace(withTenantPrefix('/', tenant.type))
+      replaceStudentLocation(withTenantPrefix('/', tenant.type), router)
       return
     }
 
@@ -89,6 +135,23 @@ export default function StudentCoursePassPage() {
         body: JSON.stringify({ enrollmentId, courseSlug: params.courseSlug, name, phone }),
       })
       const payload = await response.json().catch(() => null)
+      if (!response.ok && !cancelled && typeof payload?.redirectTo === 'string') {
+        if (isCurrentStudentLocation(payload.redirectTo)) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('[student-pass] blocked same-location redirect', {
+              current: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : null,
+              redirectTo: payload.redirectTo,
+              reason: payload?.reason ?? null,
+              courseSlug: params.courseSlug,
+              enrollmentId,
+            })
+          }
+          throw new Error(payload?.error ?? '수강증 정보를 불러오지 못했습니다.')
+        }
+        cancelled = true
+        replaceStudentLocation(payload.redirectTo, router)
+        throw new Error('redirected')
+      }
       if (!response.ok) {
         throw new Error(payload?.error ?? '수강증 정보를 불러오지 못했습니다.')
       }
@@ -747,7 +810,9 @@ function AttendanceSummary({ data }: { data: PassPayload }) {
   const searchParams = useSearchParams()
   const enrollmentId = Number(searchParams.get('enrollmentId'))
   const state = data.attendance
+  const attendanceNotStarted = isCourseAttendanceNotStarted(data.course.enrolled_from)
   const href = withTenantPrefix(`/courses/${params.courseSlug}/attendance?enrollmentId=${enrollmentId}`, tenant.type)
+  const attendedDateLabel = state.attended_at ? formatAttendanceDate(state.attended_at) : null
 
   return (
     <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
@@ -757,19 +822,26 @@ function AttendanceSummary({ data }: { data: PassPayload }) {
           <p className="text-[20px] font-semibold leading-[1.07] tracking-[-0.02em] text-[var(--student-text)]">
             {state.attended_today ? '완료' : state.open ? '진행 중' : '대기'}
           </p>
-          <p className="mt-1.5 text-[12px] leading-[1.47] text-[var(--student-text-muted)]">
-            {state.attended_today
-              ? `오늘 출석 완료${state.attended_at ? ` (${formatReceiptTime(state.attended_at)})` : ''}`
-              : state.open
-                ? '교실 화면의 6자리 코드를 입력해 출석해 주세요.'
-                : '현재 출석 체크가 열려 있지 않습니다.'}
-          </p>
+          <div className="mt-1.5 text-[12px] leading-[1.47] text-[var(--student-text-muted)]">
+            {state.attended_today ? (
+              <>
+                <span className="block">오늘의 출석 완료</span>
+                {attendedDateLabel ? <span className="block">({attendedDateLabel})</span> : null}
+              </>
+            ) : state.open ? (
+              '교실 화면의 6자리 코드를 입력해 출석해 주세요.'
+            ) : attendanceNotStarted ? (
+              `수강 시작일 ${data.course.enrolled_from} 이후부터 출석 체크가 열립니다.`
+            ) : (
+              '현재 출석 체크가 열려 있지 않습니다.'
+            )}
+          </div>
         </div>
         <Link
           href={href}
-          className={`student-pill-button shrink-0 px-5 ${state.attended_today ? 'student-pill-secondary bg-[#eefaf1] text-[#19703a]' : 'student-pill-primary'}`}
+          className="student-pill-button student-pill-primary shrink-0 px-5"
         >
-          {state.attended_today ? '상세 보기' : '출석하기'}
+          {state.attended_today ? '출석 확인' : '출석하기'}
         </Link>
       </div>
     </section>

@@ -1,4 +1,5 @@
 import { getAppConfig } from '@/lib/app-config'
+import { hasCourseAttendanceStarted } from '@/lib/attendance/service'
 import { toReceiptMap } from '@/lib/bulk'
 import { generateQrToken } from '@/lib/qr/token'
 import { createServerClient } from '@/lib/supabase/server'
@@ -32,7 +33,6 @@ async function listOrderedActiveCoursesForPass(
       .select('*')
       .in('id', courseIds)
       .eq('division', division)
-      .eq('status', 'active')
       .order('sort_order')
       .order('id'),
   )
@@ -40,9 +40,18 @@ async function listOrderedActiveCoursesForPass(
   return (courses ?? []) as Course[]
 }
 
-function getPassAttendanceCourseIds(orderedCourses: Course[], attendanceEnabled: boolean) {
+function getPassAttendanceCourseIds(
+  orderedCourses: Course[],
+  attendanceEnabled: boolean,
+  todayKey: string,
+) {
   return orderedCourses
-    .filter((course) => Boolean(attendanceEnabled && course.feature_attendance))
+    .filter((course) => Boolean(
+      attendanceEnabled
+        && course.status === 'active'
+        && course.feature_attendance
+        && hasCourseAttendanceStarted(course, todayKey),
+    ))
     .map((course) => course.id)
 }
 
@@ -110,6 +119,7 @@ function createPassSummaryCourse(course: Course): PassCourseSummary['course'] {
     id: course.id,
     name: course.name,
     slug: course.slug,
+    status: course.status,
     course_type: course.course_type,
     theme_color: course.theme_color,
     feature_qr_pass: course.feature_qr_pass,
@@ -190,7 +200,7 @@ export async function buildPassCourseSummaries(
   const appConfig = await getAppConfig()
   const attendanceEnabled = appConfig.attendance_enabled
   const orderedCourses = await listOrderedActiveCoursesForPass(db, division, courseIds)
-  const attendanceCourseIds = getPassAttendanceCourseIds(orderedCourses, attendanceEnabled)
+  const attendanceCourseIds = getPassAttendanceCourseIds(orderedCourses, attendanceEnabled, todayKey)
   const enrollmentIds = enrollmentRows.map((row) => row.id)
   const { attendanceRecordMap, activeAttendanceSessions } = await loadPassAttendanceContext({
     db,
@@ -237,6 +247,7 @@ export async function buildPassPayloadResult(params: {
   seatAssignments: SeatAssignment[]
   designatedSeat: PassPayload['designatedSeat']
   attendance: PassPayload['attendance']
+  attendanceHistory: PassPayload['attendanceHistory']
   materials: Material[]
   textbooks: Material[]
   receiptRows: ReceiptRow[] | null
@@ -259,6 +270,7 @@ export async function buildPassPayloadResult(params: {
     seatAssignments: params.seatAssignments,
     designatedSeat: params.designatedSeat,
     attendance: effectiveAttendance,
+    attendanceHistory: params.attendanceHistory,
     materials: params.materials,
     receipts: toReceiptMap(
       filterReceiptRowsByMaterialIds(receiptRows, params.materials.map((material) => material.id)),

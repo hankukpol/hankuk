@@ -20,10 +20,66 @@ export function getAttendanceTodayKey() {
   return getKstDateKey()
 }
 
+function hasAttendanceStartedForDate(targetDate: string, attendanceStartDate?: string | null) {
+  if (!attendanceStartDate) {
+    return true
+  }
+
+  return targetDate >= attendanceStartDate.slice(0, 10)
+}
+
+export function hasCourseAttendanceStarted(
+  course: Pick<Course, 'enrolled_from'>,
+  targetDate = getAttendanceTodayKey(),
+) {
+  return hasAttendanceStartedForDate(targetDate, course.enrolled_from)
+}
+
+function getEffectiveAttendanceStartDate(
+  courseAttendanceStartDate?: string | null,
+  enrollmentCreatedAt?: string | null,
+) {
+  const normalizedCourseDate = courseAttendanceStartDate?.slice(0, 10) ?? null
+  const normalizedEnrollmentDate = enrollmentCreatedAt
+    ? getKstDateKey(enrollmentCreatedAt)
+    : null
+
+  if (!normalizedCourseDate) {
+    return normalizedEnrollmentDate
+  }
+
+  if (!normalizedEnrollmentDate) {
+    return normalizedCourseDate
+  }
+
+  return normalizedEnrollmentDate > normalizedCourseDate
+    ? normalizedEnrollmentDate
+    : normalizedCourseDate
+}
+
+export function getEnrollmentAttendanceStartDate(
+  course: Pick<Course, 'enrolled_from'>,
+  enrollment: Pick<Enrollment, 'created_at'>,
+) {
+  return getEffectiveAttendanceStartDate(course.enrolled_from, enrollment.created_at)
+}
+
+export function hasEnrollmentAttendanceStarted(params: {
+  course: Pick<Course, 'enrolled_from'>
+  enrollment: Pick<Enrollment, 'created_at'>
+  targetDate?: string
+}) {
+  return hasAttendanceStartedForDate(
+    params.targetDate ?? getAttendanceTodayKey(),
+    getEnrollmentAttendanceStartDate(params.course, params.enrollment),
+  )
+}
+
 function mapAttendanceDisplaySessionRow(row: Record<string, unknown>): AttendanceDisplaySession {
   return {
     id: Number(row.id),
     course_id: Number(row.course_id),
+    subject_id: row.subject_id == null ? null : Number(row.subject_id),
     display_token_hash: String(row.display_token_hash ?? ''),
     created_by: String(row.created_by ?? 'admin'),
     expires_at: String(row.expires_at ?? ''),
@@ -39,6 +95,7 @@ function mapAttendanceRecordRow(row: Record<string, unknown>): AttendanceRecord 
     course_id: Number(row.course_id),
     enrollment_id: Number(row.enrollment_id),
     display_session_id: row.display_session_id == null ? null : Number(row.display_session_id),
+    subject_id: row.subject_id == null ? null : Number(row.subject_id),
     device_key_hash: String(row.device_key_hash ?? ''),
     attended_date: String(row.attended_date ?? ''),
     attended_at: String(row.attended_at ?? ''),
@@ -92,16 +149,40 @@ async function listSeatLabelsByEnrollment(courseId: number) {
   return seatLabelMap
 }
 
-async function listAttendanceRecordsForCourse(courseId: number, options?: { attendedDate?: string }) {
+async function listAttendanceSubjects(courseId: number) {
+  const db = createServerClient()
+  const rows = unwrapSupabaseResult(
+    'attendance.subjects',
+    await db
+      .from('course_subjects')
+      .select('id,name,sort_order')
+      .eq('course_id', courseId)
+      .order('sort_order')
+      .order('id'),
+  ) as Array<{ id: number; name: string; sort_order: number }> | null
+
+  return rows ?? []
+}
+
+async function listAttendanceRecordsForCourse(
+  courseId: number,
+  options?: { attendedDate?: string; subjectId?: number | null },
+) {
   const db = createServerClient()
   let query = db
     .from('attendance_records')
-    .select('id,course_id,enrollment_id,display_session_id,device_key_hash,attended_date,attended_at,created_at')
+    .select('id,course_id,enrollment_id,display_session_id,subject_id,device_key_hash,attended_date,attended_at,created_at')
     .eq('course_id', courseId)
     .order('attended_at', { ascending: false })
 
   if (options?.attendedDate) {
     query = query.eq('attended_date', options.attendedDate)
+  }
+
+  if (options?.subjectId !== undefined) {
+    query = options.subjectId == null
+      ? query.is('subject_id', null)
+      : query.eq('subject_id', options.subjectId)
   }
 
   const rows = unwrapSupabaseResult(
@@ -118,7 +199,7 @@ async function getAttendanceRecordForToday(courseId: number, enrollmentId: numbe
     'attendance.recordForToday',
     await db
       .from('attendance_records')
-      .select('id,course_id,enrollment_id,display_session_id,device_key_hash,attended_date,attended_at,created_at')
+      .select('id,course_id,enrollment_id,display_session_id,subject_id,device_key_hash,attended_date,attended_at,created_at')
       .eq('course_id', courseId)
       .eq('enrollment_id', enrollmentId)
       .eq('attended_date', getAttendanceTodayKey())
@@ -128,33 +209,123 @@ async function getAttendanceRecordForToday(courseId: number, enrollmentId: numbe
   return row ? mapAttendanceRecordRow(row) : null
 }
 
-async function getAttendanceAbsenceMetrics(courseId: number, enrollmentIds: number[]) {
-  const result = new Map<number, { consecutiveAbsences: number; lastAttendedDate: string | null }>()
-  for (const enrollmentId of enrollmentIds) {
-    result.set(enrollmentId, { consecutiveAbsences: 0, lastAttendedDate: null })
+async function listAttendanceSessionDates(
+  courseId: number,
+  attendanceStartDate?: string | null,
+  subjectId?: number | null,
+) {
+  const db = createServerClient()
+  let query = db
+    .from('attendance_display_sessions')
+    .select('created_at')
+    .eq('course_id', courseId)
+    .order('created_at')
+
+  if (subjectId !== undefined) {
+    query = subjectId == null
+      ? query.is('subject_id', null)
+      : query.eq('subject_id', subjectId)
   }
 
-  if (enrollmentIds.length === 0) {
+  const rows = unwrapSupabaseResult(
+    'attendance.sessionDates',
+    await query,
+  ) as Array<{ created_at: string }> | null
+
+  return Array.from(new Set(
+    (rows ?? [])
+      .map((row) => getKstDateKey(row.created_at))
+      .filter((sessionDate) => hasAttendanceStartedForDate(sessionDate, attendanceStartDate)),
+  )).sort((left, right) => left.localeCompare(right))
+}
+
+async function getAttendanceAbsenceMetrics(
+  courseId: number,
+  enrollments: Array<Pick<Enrollment, 'id' | 'created_at'>>,
+  attendanceStartDate?: string | null,
+  subjectId?: number | null,
+) {
+  const result = new Map<number, {
+    consecutiveAbsences: number
+    lastAttendedDate: string | null
+    attendanceStartDate: string | null
+  }>()
+  for (const enrollment of enrollments) {
+    result.set(enrollment.id, {
+      consecutiveAbsences: 0,
+      lastAttendedDate: null,
+      attendanceStartDate: getEffectiveAttendanceStartDate(attendanceStartDate, enrollment.created_at),
+    })
+  }
+
+  if (enrollments.length === 0) {
     return result
   }
 
   const db = createServerClient()
-  const rows = unwrapSupabaseResult(
-    'attendance.absenceMetrics',
-    await db.rpc('get_attendance_absence_metrics', {
-      p_course_id: courseId,
-      p_enrollment_ids: enrollmentIds,
-    }),
-  ) as Array<{
-    enrollment_id: number
-    consecutive_absences: number | null
-    last_attended_date: string | null
-  }> | null
+  const enrollmentIds = enrollments.map((enrollment) => enrollment.id)
+  const attendanceQuery = db
+    .from('attendance_records')
+    .select('enrollment_id,attended_date')
+    .eq('course_id', courseId)
+    .in('enrollment_id', enrollmentIds)
+    .order('attended_date', { ascending: false })
 
-  for (const row of rows ?? []) {
-    result.set(Number(row.enrollment_id), {
-      consecutiveAbsences: Number(row.consecutive_absences ?? 0),
-      lastAttendedDate: row.last_attended_date ? String(row.last_attended_date) : null,
+  const filteredAttendanceQuery = subjectId === undefined
+    ? attendanceQuery
+    : subjectId == null
+      ? attendanceQuery.is('subject_id', null)
+      : attendanceQuery.eq('subject_id', subjectId)
+
+  const [sessionDates, attendanceRowsResult] = await Promise.all([
+    listAttendanceSessionDates(courseId, attendanceStartDate, subjectId),
+    filteredAttendanceQuery,
+  ])
+  const attendanceRows = unwrapSupabaseResult(
+    'attendance.absenceMetrics.records',
+    attendanceRowsResult,
+  ) as Array<{ enrollment_id: number; attended_date: string }> | null
+
+  if (sessionDates.length === 0) {
+    return result
+  }
+
+  const sessionDateSet = new Set(sessionDates)
+  const enrollmentStartDateMap = new Map(
+    enrollments.map((enrollment) => [
+      enrollment.id,
+      getEffectiveAttendanceStartDate(attendanceStartDate, enrollment.created_at),
+    ]),
+  )
+  const attendanceDateMap = new Map<number, Set<string>>()
+  for (const row of attendanceRows ?? []) {
+    const enrollmentId = Number(row.enrollment_id)
+    if (!attendanceDateMap.has(enrollmentId)) {
+      attendanceDateMap.set(enrollmentId, new Set<string>())
+    }
+
+    if (sessionDateSet.has(row.attended_date)) {
+      attendanceDateMap.get(enrollmentId)?.add(row.attended_date)
+    }
+  }
+
+  for (const enrollment of enrollments) {
+    const enrollmentId = enrollment.id
+    const enrollmentAttendanceStartDate = enrollmentStartDateMap.get(enrollmentId) ?? null
+    const relevantSessionDates = sessionDates.filter((sessionDate) => (
+      hasAttendanceStartedForDate(sessionDate, enrollmentAttendanceStartDate)
+    ))
+    const attendedDates = attendanceDateMap.get(enrollmentId) ?? new Set<string>()
+    const lastAttendedDate = [...relevantSessionDates]
+      .reverse()
+      .find((sessionDate) => attendedDates.has(sessionDate)) ?? null
+
+    result.set(enrollmentId, {
+      consecutiveAbsences: lastAttendedDate === null
+        ? relevantSessionDates.length
+        : relevantSessionDates.filter((sessionDate) => sessionDate > lastAttendedDate).length,
+      lastAttendedDate,
+      attendanceStartDate: enrollmentAttendanceStartDate,
     })
   }
 
@@ -282,6 +453,15 @@ export async function getAttendanceStudentState(params: {
     }
   }
 
+  if (!hasCourseAttendanceStarted(params.course)) {
+    return {
+      enabled: true,
+      open: false,
+      attended_today: false,
+      attended_at: null,
+    }
+  }
+
   const [attendanceRecord, activeDisplaySession] = await Promise.all([
     getAttendanceRecordForToday(params.course.id, params.enrollmentId),
     params.course.attendance_open
@@ -297,9 +477,14 @@ export async function getAttendanceStudentState(params: {
   }
 }
 
-export async function getConsecutiveAbsenceMap(courseId: number, enrollmentIds: number[]) {
+export async function getConsecutiveAbsenceMap(
+  courseId: number,
+  enrollments: Array<Pick<Enrollment, 'id' | 'created_at'>>,
+  attendanceStartDate?: string | null,
+  subjectId?: number | null,
+) {
   const result = new Map<number, number>()
-  const metrics = await getAttendanceAbsenceMetrics(courseId, enrollmentIds)
+  const metrics = await getAttendanceAbsenceMetrics(courseId, enrollments, attendanceStartDate, subjectId)
   for (const [enrollmentId, metric] of metrics.entries()) {
     result.set(enrollmentId, metric.consecutiveAbsences)
   }
@@ -310,44 +495,71 @@ export async function getConsecutiveAbsenceMap(courseId: number, enrollmentIds: 
 export async function getAttendanceDashboardData(params: {
   courseId: number
   date?: string
+  attendanceStartDate?: string | null
 }) {
   const targetDate = params.date ?? getAttendanceTodayKey()
-  const [enrollments, records, activeDisplaySession, seatLabelMap] = await Promise.all([
+  const attendanceStarted = hasAttendanceStartedForDate(targetDate, params.attendanceStartDate)
+  const [enrollments, records, activeDisplaySession, seatLabelMap, subjects] = await Promise.all([
     listActiveEnrollments(params.courseId),
-    listAttendanceRecordsForCourse(params.courseId, { attendedDate: targetDate }),
+    attendanceStarted
+      ? listAttendanceRecordsForCourse(params.courseId, { attendedDate: targetDate })
+      : Promise.resolve([] as AttendanceRecord[]),
     getActiveAttendanceDisplaySessionForCourse(params.courseId),
     listSeatLabelsByEnrollment(params.courseId),
+    listAttendanceSubjects(params.courseId),
   ])
 
-  const enrollmentMap = new Map(enrollments.map((enrollment) => [enrollment.id, enrollment]))
-  const presentEnrollmentIds = new Set(records.map((record) => record.enrollment_id))
-  const absentEnrollments = enrollments.filter((enrollment) => !presentEnrollmentIds.has(enrollment.id))
-  const consecutiveAbsenceMap = await getConsecutiveAbsenceMap(
-    params.courseId,
-    absentEnrollments.map((enrollment) => enrollment.id),
-  )
+  const eligibleEnrollments = enrollments.filter((enrollment) => (
+    hasAttendanceStartedForDate(
+      targetDate,
+      getEffectiveAttendanceStartDate(params.attendanceStartDate, enrollment.created_at),
+    )
+  ))
+  const eligibleEnrollmentIds = new Set(eligibleEnrollments.map((enrollment) => enrollment.id))
+  const filteredRecords = records.filter((record) => eligibleEnrollmentIds.has(record.enrollment_id))
+  const enrollmentMap = new Map(eligibleEnrollments.map((enrollment) => [enrollment.id, enrollment]))
+  const presentEnrollmentIds = new Set(filteredRecords.map((record) => record.enrollment_id))
+  const absentEnrollments = attendanceStarted
+    ? eligibleEnrollments.filter((enrollment) => !presentEnrollmentIds.has(enrollment.id))
+    : []
+  const consecutiveAbsenceMap = attendanceStarted
+    ? await getConsecutiveAbsenceMap(
+      params.courseId,
+      absentEnrollments.map((enrollment) => ({
+        id: enrollment.id,
+        created_at: enrollment.created_at,
+      })),
+      params.attendanceStartDate,
+    )
+    : new Map<number, number>()
+
+  const subjectMap = new Map(subjects.map((subject) => [subject.id, subject.name]))
 
   return {
     date: targetDate,
-    totalEnrolled: enrollments.length,
-    presentCount: records.length,
-    absentCount: Math.max(enrollments.length - records.length, 0),
-    attendanceRate: enrollments.length === 0
+    attendanceStarted,
+    attendanceStartDate: params.attendanceStartDate ?? null,
+    totalEnrolled: attendanceStarted ? eligibleEnrollments.length : 0,
+    presentCount: filteredRecords.length,
+    absentCount: attendanceStarted ? Math.max(eligibleEnrollments.length - filteredRecords.length, 0) : 0,
+    attendanceRate: !attendanceStarted || eligibleEnrollments.length === 0
       ? 0
-      : Number(((records.length / enrollments.length) * 100).toFixed(1)),
+      : Number(((filteredRecords.length / eligibleEnrollments.length) * 100).toFixed(1)),
     absentees: absentEnrollments
       .map((enrollment) => ({
         enrollmentId: enrollment.id,
         studentName: enrollment.name,
         examNumber: enrollment.exam_number,
+        phone: enrollment.phone,
         consecutiveAbsences: consecutiveAbsenceMap.get(enrollment.id) ?? 0,
+        attendanceStartDate: getEffectiveAttendanceStartDate(params.attendanceStartDate, enrollment.created_at),
         seatLabel: seatLabelMap.get(enrollment.id) ?? null,
       }))
       .sort((left, right) => (
         right.consecutiveAbsences - left.consecutiveAbsences
         || left.studentName.localeCompare(right.studentName, 'ko-KR')
       )),
-    recentRecords: records
+    recentRecords: filteredRecords
       .map((record) => {
         const enrollment = enrollmentMap.get(record.enrollment_id)
         if (!enrollment) {
@@ -358,6 +570,7 @@ export async function getAttendanceDashboardData(params: {
           enrollmentId: record.enrollment_id,
           studentName: enrollment.name,
           examNumber: enrollment.exam_number,
+          phone: enrollment.phone,
           attendedAt: record.attended_at,
         }
       })
@@ -365,12 +578,17 @@ export async function getAttendanceDashboardData(params: {
         enrollmentId: number
         studentName: string
         examNumber: string | null
+        phone: string
         attendedAt: string
       } => Boolean(value)),
     displaySession: {
       id: activeDisplaySession?.id ?? null,
       isActive: Boolean(activeDisplaySession),
       expiresAt: activeDisplaySession?.expires_at ?? null,
+      subjectId: activeDisplaySession?.subject_id ?? null,
+      subjectName: activeDisplaySession?.subject_id != null
+        ? subjectMap.get(activeDisplaySession.subject_id) ?? null
+        : null,
     },
   }
 }
@@ -378,30 +596,120 @@ export async function getAttendanceDashboardData(params: {
 export async function getAttendanceAbsenceReport(params: {
   courseId: number
   threshold: number
+  attendanceStartDate?: string | null
+  subjectId?: number | null
 }) {
-  const [enrollments, seatLabelMap] = await Promise.all([
+  const attendanceStarted = hasAttendanceStartedForDate(getAttendanceTodayKey(), params.attendanceStartDate)
+  if (!attendanceStarted) {
+    return {
+      threshold: params.threshold,
+      flaggedStudents: [],
+    }
+  }
+
+  const [enrollments, seatLabelMap, subjects] = await Promise.all([
     listActiveEnrollments(params.courseId),
     listSeatLabelsByEnrollment(params.courseId),
+    listAttendanceSubjects(params.courseId),
   ])
-  const absenceMetrics = await getAttendanceAbsenceMetrics(
-    params.courseId,
-    enrollments.map((enrollment) => enrollment.id),
-  )
+  const eligibleEnrollments = enrollments.filter((enrollment) => (
+    hasAttendanceStartedForDate(
+      getAttendanceTodayKey(),
+      getEffectiveAttendanceStartDate(params.attendanceStartDate, enrollment.created_at),
+    )
+  ))
+  const enrollmentMetricTargets = eligibleEnrollments.map((enrollment) => ({
+    id: enrollment.id,
+    created_at: enrollment.created_at,
+  }))
 
-  const flaggedStudents = enrollments
-    .map((enrollment) => ({
-      enrollmentId: enrollment.id,
-      studentName: enrollment.name,
-      examNumber: enrollment.exam_number,
-      consecutiveAbsences: absenceMetrics.get(enrollment.id)?.consecutiveAbsences ?? 0,
-      lastAttendedDate: absenceMetrics.get(enrollment.id)?.lastAttendedDate ?? null,
-      seatLabel: seatLabelMap.get(enrollment.id) ?? null,
-    }))
-    .filter((student) => student.consecutiveAbsences >= params.threshold)
-    .sort((left, right) => (
-      right.consecutiveAbsences - left.consecutiveAbsences
-      || left.studentName.localeCompare(right.studentName, 'ko-KR')
-    ))
+  let flaggedStudents: Array<{
+    enrollmentId: number
+    studentName: string
+    examNumber: string | null
+    consecutiveAbsences: number
+    lastAttendedDate: string | null
+    attendanceStartDate: string | null
+    seatLabel: string | null
+    subjectId: number | null
+    subjectName: string | null
+  }> = []
+
+  if (params.subjectId !== undefined) {
+    const targetSubject = params.subjectId == null
+      ? null
+      : subjects.find((subject) => subject.id === params.subjectId) ?? null
+    const absenceMetrics = await getAttendanceAbsenceMetrics(
+      params.courseId,
+      enrollmentMetricTargets,
+      params.attendanceStartDate,
+      params.subjectId,
+    )
+
+    flaggedStudents = eligibleEnrollments
+      .map((enrollment) => ({
+        enrollmentId: enrollment.id,
+        studentName: enrollment.name,
+        examNumber: enrollment.exam_number,
+        consecutiveAbsences: absenceMetrics.get(enrollment.id)?.consecutiveAbsences ?? 0,
+        lastAttendedDate: absenceMetrics.get(enrollment.id)?.lastAttendedDate ?? null,
+        attendanceStartDate: absenceMetrics.get(enrollment.id)?.attendanceStartDate ?? null,
+        seatLabel: seatLabelMap.get(enrollment.id) ?? null,
+        subjectId: targetSubject?.id ?? null,
+        subjectName: targetSubject?.name ?? null,
+      }))
+      .filter((student) => student.consecutiveAbsences >= params.threshold)
+  } else if (subjects.length > 0) {
+    const perSubjectMetrics = await Promise.all(subjects.map(async (subject) => ({
+      subject,
+      metrics: await getAttendanceAbsenceMetrics(
+        params.courseId,
+        enrollmentMetricTargets,
+        params.attendanceStartDate,
+        subject.id,
+      ),
+    })))
+
+    flaggedStudents = perSubjectMetrics.flatMap(({ subject, metrics }) => eligibleEnrollments
+      .map((enrollment) => ({
+        enrollmentId: enrollment.id,
+        studentName: enrollment.name,
+        examNumber: enrollment.exam_number,
+        consecutiveAbsences: metrics.get(enrollment.id)?.consecutiveAbsences ?? 0,
+        lastAttendedDate: metrics.get(enrollment.id)?.lastAttendedDate ?? null,
+        attendanceStartDate: metrics.get(enrollment.id)?.attendanceStartDate ?? null,
+        seatLabel: seatLabelMap.get(enrollment.id) ?? null,
+        subjectId: subject.id,
+        subjectName: subject.name,
+      }))
+      .filter((student) => student.consecutiveAbsences >= params.threshold))
+  } else {
+    const absenceMetrics = await getAttendanceAbsenceMetrics(
+      params.courseId,
+      enrollmentMetricTargets,
+      params.attendanceStartDate,
+    )
+
+    flaggedStudents = eligibleEnrollments
+      .map((enrollment) => ({
+        enrollmentId: enrollment.id,
+        studentName: enrollment.name,
+        examNumber: enrollment.exam_number,
+        consecutiveAbsences: absenceMetrics.get(enrollment.id)?.consecutiveAbsences ?? 0,
+        lastAttendedDate: absenceMetrics.get(enrollment.id)?.lastAttendedDate ?? null,
+        attendanceStartDate: absenceMetrics.get(enrollment.id)?.attendanceStartDate ?? null,
+        seatLabel: seatLabelMap.get(enrollment.id) ?? null,
+        subjectId: null,
+        subjectName: null,
+      }))
+      .filter((student) => student.consecutiveAbsences >= params.threshold)
+  }
+
+  flaggedStudents.sort((left, right) => (
+    right.consecutiveAbsences - left.consecutiveAbsences
+    || (left.subjectName ?? '').localeCompare(right.subjectName ?? '', 'ko-KR')
+    || left.studentName.localeCompare(right.studentName, 'ko-KR')
+  ))
 
   return {
     threshold: params.threshold,

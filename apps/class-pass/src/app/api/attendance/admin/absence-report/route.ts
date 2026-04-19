@@ -10,6 +10,7 @@ import {
 const schema = z.object({
   courseId: z.coerce.number().int().positive(),
   threshold: z.coerce.number().int().min(1).max(30).default(2),
+  subjectId: z.coerce.number().int().positive().optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     const parsed = schema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
       threshold: req.nextUrl.searchParams.get('threshold') ?? 2,
+      subjectId: req.nextUrl.searchParams.get('subjectId') ?? undefined,
     })
 
     if (!parsed.success) {
@@ -28,7 +30,10 @@ export async function GET(req: NextRequest) {
       return guard.response
     }
 
-    return NextResponse.json(await getAttendanceAbsenceReport(parsed.data))
+    return NextResponse.json(await getAttendanceAbsenceReport({
+      ...parsed.data,
+      attendanceStartDate: guard.context.course.enrolled_from,
+    }))
   } catch (error) {
     return handleRouteError(
       'attendance.admin.absenceReport.GET',

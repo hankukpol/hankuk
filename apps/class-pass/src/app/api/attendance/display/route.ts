@@ -60,6 +60,14 @@ export async function GET(req: NextRequest) {
       displaySessionId: session.id,
       rotation,
     })
+    const subject = session.subject_id == null
+      ? null
+      : await createServerClient()
+        .from('course_subjects')
+        .select('id,name')
+        .eq('id', session.subject_id)
+        .eq('course_id', course.id)
+        .maybeSingle()
 
     return NextResponse.json({
       course: {
@@ -70,6 +78,12 @@ export async function GET(req: NextRequest) {
         id: session.id,
         expires_at: session.expires_at,
       },
+      subject: subject?.data
+        ? {
+          id: subject.data.id,
+          name: subject.data.name,
+        }
+        : null,
       rotationCode,
       rotationExpiresAt: getAttendanceRotationExpiresAt(rotation),
     })

@@ -16,6 +16,7 @@ export const ATTENDANCE_ERROR_MESSAGES = {
   invalidOverrideRequest: '수동 출석 요청 형식이 올바르지 않습니다.',
   courseNotFound: '강의를 찾을 수 없습니다.',
   attendanceNotEnabledForCourse: '이 강의는 출석 기능을 사용하지 않습니다.',
+  attendanceNotStarted: '수강 시작일 이후부터 출석 체크를 진행할 수 있습니다.',
   loadDisplayFailed: '출석 화면 정보를 불러오지 못했습니다.',
   loadDashboardFailed: '출석 현황을 불러오지 못했습니다.',
   loadAbsenceReportFailed: '결석 리포트를 불러오지 못했습니다.',
@@ -36,6 +37,20 @@ type AttendanceAdminCourseContext = AttendanceCourseContext & {
 type GuardResult<T> =
   | { response: NextResponse; context: null }
   | { response: null; context: T }
+
+function getAttendanceDateKey(value: Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+  }).format(value)
+}
+
+export function hasCourseAttendanceStarted(course: Pick<Course, 'enrolled_from'>, targetDate = getAttendanceDateKey()) {
+  if (!course.enrolled_from) {
+    return true
+  }
+
+  return targetDate >= course.enrolled_from.slice(0, 10)
+}
 
 export async function requireAttendanceCourse(courseId: number): Promise<GuardResult<AttendanceCourseContext>> {
   const featureError = await requireAppFeature('attendance_enabled')

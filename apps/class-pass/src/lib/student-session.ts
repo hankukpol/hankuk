@@ -6,8 +6,10 @@ export const STUDENT_SESSION_NAME_KEY = 'class_pass_student_name'
 export const STUDENT_SESSION_PHONE_KEY = 'class_pass_student_phone'
 export const STUDENT_SESSION_VERIFICATION_KEY = 'class_pass_student_verification'
 export const STUDENT_SESSION_COURSES_KEY = 'class_pass_student_courses'
+const STUDENT_COURSE_CACHE_VERSION = 2
 
 type StudentCourseCachePayload = {
+  version: number
   tenant: TenantType
   name: string
   phone: string
@@ -15,13 +17,15 @@ type StudentCourseCachePayload = {
   courses: PassCourseSummary[]
 }
 
+type StudentCourseCacheIdentity = Omit<StudentCourseCachePayload, 'courses' | 'version'>
+
 function normalizeVerificationCode(value: string) {
   return value.replace(/\D/g, '')
 }
 
 function matchesCachedIdentity(
   cached: StudentCourseCachePayload,
-  params: Omit<StudentCourseCachePayload, 'courses'>,
+  params: StudentCourseCacheIdentity,
 ) {
   return (
     cached.tenant === params.tenant
@@ -33,14 +37,17 @@ function matchesCachedIdentity(
 
 export function writeStudentCourseCache(
   storage: Pick<Storage, 'setItem'>,
-  payload: StudentCourseCachePayload,
+  payload: StudentCourseCacheIdentity & Pick<StudentCourseCachePayload, 'courses'>,
 ) {
-  storage.setItem(STUDENT_SESSION_COURSES_KEY, JSON.stringify(payload))
+  storage.setItem(STUDENT_SESSION_COURSES_KEY, JSON.stringify({
+    ...payload,
+    version: STUDENT_COURSE_CACHE_VERSION,
+  }))
 }
 
 export function readStudentCourseCache(
   storage: Pick<Storage, 'getItem'>,
-  params: Omit<StudentCourseCachePayload, 'courses'>,
+  params: StudentCourseCacheIdentity,
 ) {
   const raw = storage.getItem(STUDENT_SESSION_COURSES_KEY)
   if (!raw) {
@@ -49,6 +56,9 @@ export function readStudentCourseCache(
 
   try {
     const parsed = JSON.parse(raw) as StudentCourseCachePayload
+    if (parsed.version !== STUDENT_COURSE_CACHE_VERSION) {
+      return null
+    }
     return matchesCachedIdentity(parsed, params) ? parsed.courses : null
   } catch {
     return null

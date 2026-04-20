@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -9,7 +10,7 @@ import { formatCourseTypeLabel } from '@/lib/utils'
 import type { Course } from '@/types/database'
 
 type CourseLayoutProps = {
-  children: any
+  children: ReactNode
 }
 
 type CourseRouteTab = {

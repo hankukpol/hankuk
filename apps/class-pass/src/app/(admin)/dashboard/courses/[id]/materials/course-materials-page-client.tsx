@@ -1,11 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { useTenantConfig } from '@/components/TenantProvider'
-import { withTenantPrefix } from '@/lib/tenant'
 import type { Course, Material, MaterialType } from '@/types/database'
 
 type MaterialForm = {
@@ -75,7 +72,6 @@ export default function CourseMaterialsPage({
   initialLoaded = Boolean(initialData),
 }: CourseMaterialsPageProps) {
   const params = useParams<{ id: string }>()
-  const tenant = useTenantConfig()
   const courseId = Number(params.id)
 
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
@@ -236,34 +232,7 @@ export default function CourseMaterialsPage({
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-              자료 관리
-            </p>
-            <h2 className="mt-3 text-3xl font-extrabold text-gray-900">{course.name}</h2>
-            <p className="mt-2 text-sm text-gray-500">
-              배부자료와 교재를 분리해 관리하고, 현재 탭 기준으로 생성과 편집을 진행합니다.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-              className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
-            >
-              과정 설정
-            </Link>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}/students`, tenant.type)}
-              className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
-            >
-              수강생
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-6 flex gap-2 rounded-2xl bg-slate-100 p-1">
+        <div className="flex gap-6 border-b border-slate-200 overflow-x-auto">
           {(['handout', 'textbook'] as const).map((materialType) => (
             <button
               key={materialType}
@@ -274,8 +243,10 @@ export default function CourseMaterialsPage({
                 setMessage('')
                 setError('')
               }}
-              className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                activeTab === materialType ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+              className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+                activeTab === materialType
+                  ? 'border-[#1d1d1f] text-[#1d1d1f]'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
               }`}
             >
               {getTabLabel(materialType)}

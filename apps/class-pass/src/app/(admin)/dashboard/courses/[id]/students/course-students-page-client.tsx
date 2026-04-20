@@ -600,19 +600,21 @@ export default function CourseStudentsPage({
   return (
     <div className="flex flex-col gap-6">
       {/* ── Header ── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-            className="text-xs font-medium text-gray-400 hover:underline"
-          >
-            ← {course.name}
-          </Link>
-          <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
-          <p className="mt-1 text-sm text-gray-400">
-            전체 {summary.total} · 활성 {summary.active} · 환불 {summary.refunded}
-          </p>
-        </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        {false ? (
+          <div>
+            <Link
+              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
+              className="text-xs font-medium text-gray-400 hover:underline"
+            >
+              ← {course!.name}
+            </Link>
+            <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              전체 {summary.total} · 활성 {summary.active} · 환불 {summary.refunded}
+            </p>
+          </div>
+        ) : null}
         <div className="flex gap-2">
           <button
             type="button"

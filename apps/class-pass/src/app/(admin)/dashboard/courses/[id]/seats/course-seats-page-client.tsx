@@ -1,11 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { useTenantConfig } from '@/components/TenantProvider'
-import { withTenantPrefix } from '@/lib/tenant'
 import type { Course, CourseSubject, Enrollment, SeatAssignment } from '@/types/database'
 
 type SeatResponse = {
@@ -97,7 +94,6 @@ export default function CourseSeatsPage({
   initialLoaded = Boolean(initialData),
 }: CourseSeatsPageProps) {
   const params = useParams<{ id: string }>()
-  const tenant = useTenantConfig()
   const courseId = Number(params.id)
 
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
@@ -434,39 +430,7 @@ export default function CourseSeatsPage({
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-              className="text-xs font-medium text-gray-400 hover:underline"
-            >
-              ← {course.name}
-            </Link>
-            <h2 className="mt-2 text-2xl font-extrabold text-gray-900">좌석 배정</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-500">
-              강좌마다 과목 구성과 정렬 순서가 다를 수 있습니다. 과목을 먼저 정리한 뒤
-              탭 구분 텍스트를 <span className="font-semibold text-gray-900">수험번호, 수강생 이름, 과목명, 좌석번호</span>
-              순서로 붙여넣어 주세요.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-            >
-              강좌 설정
-            </Link>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}/students`, tenant.type)}
-              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-            >
-              수강생 관리
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-3">
           {[
             { label: '과목 수', value: summary.subjectCount },
             { label: '좌석 배정 수', value: summary.seatRows },

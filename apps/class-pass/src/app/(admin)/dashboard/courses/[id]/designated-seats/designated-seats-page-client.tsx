@@ -490,38 +490,38 @@ export default function CourseDesignatedSeatsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <section className="rounded-[8px] bg-white p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-              className="text-xs font-medium text-[#86868b] hover:underline"
-            >
-              &larr; {course.name}
-            </Link>
-            <h2 className="mt-2 text-2xl font-semibold text-[#1d1d1f]">지정좌석</h2>
-            <p className="mt-2 text-sm leading-6 text-[#86868b]">
-              학생이 직접 좌석을 선착순으로 선택할 수 있는 기능입니다. 기존 과목별 좌석 배정과는 독립적으로 운영됩니다.
-            </p>
+      {false ? (
+        <section className="rounded-[8px] bg-white p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <Link
+                href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
+                className="text-xs font-medium text-[#86868b] hover:underline"
+              >
+                &larr; {course!.name}
+              </Link>
+              <h2 className="mt-2 text-2xl font-semibold text-[#1d1d1f]">지정좌석</h2>
+              <p className="mt-2 text-sm leading-6 text-[#86868b]">
+                학생이 직접 좌석을 선착순으로 선택할 수 있는 기능입니다. 기존 과목별 좌석 배정과는 독립적으로 운영됩니다.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
+                className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+              >
+                강좌 설정
+              </Link>
+              <Link
+                href={withTenantPrefix(`/dashboard/courses/${course!.id}/seats`, tenant.type)}
+                className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+              >
+                기존 좌석 배정
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
-            >
-              강좌 설정
-            </Link>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${course.id}/seats`, tenant.type)}
-              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
-            >
-              기존 좌석 배정
-            </Link>
-          </div>
-        </div>
-
-      </section>
+        </section>
+      ) : null}
 
       {/* Tab switcher */}
       <div className="flex gap-2">

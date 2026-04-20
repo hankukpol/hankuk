@@ -8,7 +8,6 @@ import { useTenantConfig } from '@/components/TenantProvider'
 import { confirmPermanentCourseDeletion } from '@/lib/course-delete-confirm'
 import type { Course, CourseSubject, CourseType, EnrollmentFieldDef } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
-import { formatCourseTypeLabel } from '@/lib/utils'
 
 export type CourseDetailData = {
   course: Course
@@ -122,10 +121,6 @@ function toPatchForm(course: Course): CoursePatchForm {
   }
 }
 
-function courseTypeLabel(value: CourseType) {
-  return formatCourseTypeLabel(value)
-}
-
 export default function CourseDetailPage({
   initialData = null,
   initialError = '',
@@ -148,7 +143,6 @@ export default function CourseDetailPage({
   const [fieldsMessage, setFieldsMessage] = useState('')
   const [loading, setLoading] = useState(!initialLoaded)
   const [saving, setSaving] = useState(false)
-  const [duplicating, setDuplicating] = useState(false)
   const [destroying, setDestroying] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
@@ -189,39 +183,6 @@ export default function CourseDetailPage({
     }),
     [course, subjects.length],
   )
-
-  async function handleDuplicate() {
-    if (!course) return
-
-    const confirmed = window.confirm(
-      `"${course.name}" 강좌를 복사할까요?\n\n강좌 설정, 과목, 수강생 추가 필드만 복사되고 학생/자료/좌석 데이터는 복사되지 않습니다.`,
-    )
-    if (!confirmed) return
-
-    setDuplicating(true)
-    setError('')
-    setWarning('')
-    setMessage('')
-
-    const response = await fetch(`/api/courses/${course.id}/duplicate`, {
-      method: 'POST',
-    })
-    const payload = await response.json().catch(() => null)
-    setDuplicating(false)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '강좌 복사본을 만들지 못했습니다.')
-      return
-    }
-
-    const duplicated = payload?.course as Course | undefined
-    if (!duplicated?.id) {
-      setError('복사된 강좌 정보를 확인하지 못했습니다.')
-      return
-    }
-
-    router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
-  }
 
   async function handleSave(event: FormEvent) {
     event.preventDefault()
@@ -413,74 +374,6 @@ export default function CourseDetailPage({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Header ── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <Link
-            href={withTenantPrefix('/dashboard/courses', tenant.type)}
-            className="text-xs font-medium text-gray-400 hover:underline"
-          >
-            ← 강좌 관리
-          </Link>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-extrabold text-gray-900">{course.name}</h2>
-            {course.copied_from_course_id ? (
-              <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                복사본
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-1 text-sm text-gray-400">
-            {courseTypeLabel(course.course_type)} · slug {course.slug}
-          </p>
-          {course.copied_from_course_name ? (
-            <p className="mt-1 text-xs font-medium text-indigo-600">
-              원본 강좌: {course.copied_from_course_name}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void handleDuplicate()}
-            disabled={duplicating}
-            className="rounded-xl bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {duplicating ? '복사중' : '복사'}
-          </button>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}/students`, tenant.type)}
-            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
-          >
-            수강생 관리
-          </Link>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}/seats`, tenant.type)}
-            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-          >
-            좌석 배정
-          </Link>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}/designated-seats`, tenant.type)}
-            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-          >
-            지정좌석
-          </Link>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}/attendance`, tenant.type)}
-            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-          >
-            출결 관리
-          </Link>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}/materials`, tenant.type)}
-            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-          >
-            자료 관리
-          </Link>
-        </div>
-      </div>
-
       {/* ── KPI strip ── */}
       <div className="grid gap-4 md:grid-cols-5">
         <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">

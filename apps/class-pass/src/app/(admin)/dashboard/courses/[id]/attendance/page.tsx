@@ -350,19 +350,21 @@ export default function AdminAttendancePage() {
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-              className="text-xs font-medium text-gray-400 hover:underline"
-            >
-              &larr; {course.name}
-            </Link>
-            <h2 className="mt-2 text-2xl font-extrabold text-gray-900">출석 관리</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-500">
-              교실 화면 코드 기반 출석과 결석 누적 현황을 한곳에서 관리합니다.
-            </p>
-          </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          {false ? (
+            <div>
+              <Link
+                href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
+                className="text-xs font-medium text-gray-400 hover:underline"
+              >
+                &larr; {course!.name}
+              </Link>
+              <h2 className="mt-2 text-2xl font-extrabold text-gray-900">출석 관리</h2>
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                교실 화면 코드 기반 출석과 결석 누적 현황을 한곳에서 관리합니다.
+              </p>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {subjects.length > 0 ? (
               <select

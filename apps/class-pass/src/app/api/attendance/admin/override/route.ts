@@ -6,7 +6,9 @@ import {
   requireAttendanceAdminCourseRequest,
 } from '@/lib/attendance/route-helpers'
 import {
+  getActiveAttendanceDisplaySessionForCourse,
   getAttendanceTodayKey,
+  hasValidSeatAssignmentForSubject,
   hasEnrollmentAttendanceStarted,
   logAttendanceEvent,
 } from '@/lib/attendance/service'
@@ -18,6 +20,7 @@ const schema = z.object({
   enrollmentId: z.number().int().positive(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   status: z.enum(['present', 'absent']),
+  subjectId: z.number().int().positive().nullable().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -59,33 +62,71 @@ export async function POST(req: NextRequest) {
     }
 
     if (parsed.data.status === 'present') {
-      const activeDisplaySession = parsed.data.date === getAttendanceTodayKey()
-        ? await db
-          .from('attendance_display_sessions')
-          .select('id,subject_id')
-          .eq('course_id', course.id)
-          .is('revoked_at', null)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .maybeSingle()
-        : { data: null, error: null }
-
-      const upsertResult = await db
-        .from('attendance_records')
-        .upsert({
-          course_id: course.id,
-          enrollment_id: parsed.data.enrollmentId,
-          display_session_id: activeDisplaySession.data?.id ?? null,
-          subject_id: activeDisplaySession.data?.subject_id ?? null,
-          device_key_hash: 'admin_override',
-          attended_date: parsed.data.date,
-          attended_at: new Date().toISOString(),
-        }, {
-          onConflict: 'course_id,enrollment_id,attended_date',
+      if (parsed.data.subjectId != null) {
+        const hasValidSeatAssignment = await hasValidSeatAssignmentForSubject({
+          enrollmentId: parsed.data.enrollmentId,
+          subjectId: parsed.data.subjectId,
         })
 
-      if (upsertResult.error) {
+        if (!hasValidSeatAssignment) {
+          return NextResponse.json(
+            { error: '이 과목은 좌석 번호가 있는 수강생만 출석 대상입니다.' },
+            { status: 409 },
+          )
+        }
+      }
+
+      const activeDisplaySession = parsed.data.date === getAttendanceTodayKey()
+        ? await getActiveAttendanceDisplaySessionForCourse(course.id, parsed.data.subjectId ?? undefined)
+        : null
+      const targetSubjectId = parsed.data.subjectId ?? activeDisplaySession?.subject_id ?? null
+
+      let existingRecordQuery = db
+        .from('attendance_records')
+        .select('id')
+        .eq('course_id', course.id)
+        .eq('enrollment_id', parsed.data.enrollmentId)
+        .eq('attended_date', parsed.data.date)
+
+      existingRecordQuery = targetSubjectId == null
+        ? existingRecordQuery.is('subject_id', null)
+        : existingRecordQuery.eq('subject_id', targetSubjectId)
+
+      const existingRecord = await existingRecordQuery.maybeSingle()
+
+      if (existingRecord.error) {
         return NextResponse.json({ error: ATTENDANCE_ERROR_MESSAGES.overrideFailed }, { status: 500 })
+      }
+
+      const recordPayload = {
+        display_session_id: activeDisplaySession?.id ?? null,
+        subject_id: targetSubjectId,
+        device_key_hash: 'admin_override',
+        attended_date: parsed.data.date,
+        attended_at: new Date().toISOString(),
+      }
+
+      if (existingRecord.data?.id) {
+        const updateResult = await db
+          .from('attendance_records')
+          .update(recordPayload)
+          .eq('id', existingRecord.data.id)
+
+        if (updateResult.error) {
+          return NextResponse.json({ error: ATTENDANCE_ERROR_MESSAGES.overrideFailed }, { status: 500 })
+        }
+      } else {
+        const insertResult = await db
+          .from('attendance_records')
+          .insert({
+            course_id: course.id,
+            enrollment_id: parsed.data.enrollmentId,
+            ...recordPayload,
+          })
+
+        if (insertResult.error) {
+          return NextResponse.json({ error: ATTENDANCE_ERROR_MESSAGES.overrideFailed }, { status: 500 })
+        }
       }
 
       await logAttendanceEvent({
@@ -95,15 +136,22 @@ export async function POST(req: NextRequest) {
           actor: payload?.adminId ?? payload?.staffName ?? 'admin',
           enrollment_id: parsed.data.enrollmentId,
           date: parsed.data.date,
+          subject_id: targetSubjectId,
         },
       })
     } else {
-      const deleteResult = await db
+      let deleteQuery = db
         .from('attendance_records')
         .delete()
         .eq('course_id', course.id)
         .eq('enrollment_id', parsed.data.enrollmentId)
         .eq('attended_date', parsed.data.date)
+
+      if (parsed.data.subjectId != null) {
+        deleteQuery = deleteQuery.eq('subject_id', parsed.data.subjectId)
+      }
+
+      const deleteResult = await deleteQuery
 
       if (deleteResult.error) {
         return NextResponse.json({ error: '결석 처리에 실패했습니다.' }, { status: 500 })
@@ -116,6 +164,7 @@ export async function POST(req: NextRequest) {
           actor: payload?.adminId ?? payload?.staffName ?? 'admin',
           enrollment_id: parsed.data.enrollmentId,
           date: parsed.data.date,
+          subject_id: parsed.data.subjectId ?? null,
         },
       })
     }

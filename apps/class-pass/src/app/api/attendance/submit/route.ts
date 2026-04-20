@@ -8,6 +8,7 @@ import {
 import {
   getActiveAttendanceDisplaySessionForCourse,
   getAttendanceTodayKey,
+  hasValidSeatAssignmentForSubject,
   logAttendanceEvent,
   verifyStudentAttendanceAccess,
 } from '@/lib/attendance/service'
@@ -116,6 +117,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (displaySession.subject_id != null) {
+      const hasValidSeatAssignment = await hasValidSeatAssignmentForSubject({
+        enrollmentId: access.enrollment.id,
+        subjectId: displaySession.subject_id,
+      })
+
+      if (!hasValidSeatAssignment) {
+        return NextResponse.json(
+          {
+            error: '이 과목은 좌석 번호가 있는 수강생만 출석 대상입니다.',
+            code: 'SUBJECT_SEAT_REQUIRED',
+          },
+          { status: 403 },
+        )
+      }
+    }
+
     const currentRotation = getAttendanceRotationBucket()
     const currentCode = generateAttendanceRotationCode({
       courseId: access.course.id,
@@ -137,14 +155,19 @@ export async function POST(req: NextRequest) {
 
     const db = createServerClient()
     const attendedDate = getAttendanceTodayKey()
+    const existingAttendanceQuery = db
+      .from('attendance_records')
+      .select('id')
+      .eq('course_id', access.course.id)
+      .eq('enrollment_id', access.enrollment.id)
+      .eq('attended_date', attendedDate)
+
+    const scopedExistingAttendanceQuery = displaySession.subject_id == null
+      ? existingAttendanceQuery.is('subject_id', null)
+      : existingAttendanceQuery.eq('subject_id', displaySession.subject_id)
+
     const [existingAttendance, existingDeviceAttendance] = await Promise.all([
-      db
-        .from('attendance_records')
-        .select('id')
-        .eq('course_id', access.course.id)
-        .eq('enrollment_id', access.enrollment.id)
-        .eq('attended_date', attendedDate)
-        .maybeSingle(),
+      scopedExistingAttendanceQuery.maybeSingle(),
       db
         .from('attendance_records')
         .select('id,enrollment_id')

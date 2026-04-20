@@ -421,6 +421,7 @@ export async function getActiveDisplaySessionForCourse(courseId: number) {
       .is('revoked_at', null)
       .gt('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle(),
   ) as DesignatedSeatDisplaySession | null
 

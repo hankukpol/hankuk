@@ -21,6 +21,7 @@ type StudentsMatrixPanelProps = {
   onDistribute: (enrollmentId: number, materialId: number) => void
   onUndo: (logId: number, studentName: string, materialName: string) => void
   onAssignTextbook: (enrollmentId: number, materialId: number, checked: boolean) => void
+  onAssignAllTextbooks?: (enrollmentId: number) => void
   onRunBulkAction: () => void
 }
 
@@ -125,8 +126,10 @@ export function StudentsMatrixPanel({
   onDistribute,
   onUndo,
   onAssignTextbook,
+  onAssignAllTextbooks,
   onRunBulkAction,
 }: StudentsMatrixPanelProps) {
+  const showAllAssignColumn = tab === 'textbook-assign' && typeof onAssignAllTextbooks === 'function'
   return (
     <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -185,6 +188,9 @@ export function StudentsMatrixPanel({
                   </th>
                 ) : null}
                 <th className="sticky left-0 bg-white px-5 py-3">수강생</th>
+                {showAllAssignColumn ? (
+                  <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
+                ) : null}
                 {matrixMaterials.map((material) => (
                   <th
                     key={material.id}
@@ -201,7 +207,7 @@ export function StudentsMatrixPanel({
             <tbody className="divide-y divide-slate-50">
               {filteredMatrixRows.length === 0 ? (
                 <tr>
-                  <td colSpan={matrixMaterials.length + 1 + (bulkActionEnabled ? 1 : 0)} className="px-5 py-8 text-center text-gray-400">
+                  <td colSpan={matrixMaterials.length + 1 + (bulkActionEnabled ? 1 : 0) + (showAllAssignColumn ? 1 : 0)} className="px-5 py-8 text-center text-gray-400">
                     {matrixSearch.trim() || filterMatId !== null ? '검색 결과가 없습니다.' : '데이터가 없습니다.'}
                   </td>
                 </tr>
@@ -221,6 +227,29 @@ export function StudentsMatrixPanel({
                     {row.enrollment.name}
                     <span className="ml-2 text-xs text-gray-400">{row.enrollment.exam_number || row.enrollment.phone}</span>
                   </td>
+                  {showAllAssignColumn ? (
+                    (() => {
+                      const allAssigned =
+                        matrixMaterials.length > 0 &&
+                        matrixMaterials.every((material) => Boolean(row.assignments[material.id]))
+                      return (
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            type="button"
+                            disabled={bulkProcessing || allAssigned}
+                            onClick={() => onAssignAllTextbooks?.(row.enrollment.id)}
+                            className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${
+                              allAssigned
+                                ? 'cursor-default bg-slate-100 text-slate-400'
+                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50'
+                            }`}
+                          >
+                            {allAssigned ? '✓ 완료' : '전체 배정'}
+                          </button>
+                        </td>
+                      )
+                    })()
+                  ) : null}
                   {matrixMaterials.map((material) => (
                     <td key={material.id} className="px-3 py-3 text-center">
                       {renderMatrixCell(

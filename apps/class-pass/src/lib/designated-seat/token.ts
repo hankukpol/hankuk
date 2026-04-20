@@ -5,6 +5,7 @@ import type { DesignatedSeatRotationTokenPayload } from '@/types/database'
 export const DESIGNATED_SEAT_ROTATION_MS = 15_000
 export const DESIGNATED_SEAT_AUTH_TTL_MS = 2 * 60 * 1000
 const DESIGNATED_SEAT_ROTATION_CLOCK_TOLERANCE_S = 5
+const DESIGNATED_SEAT_TOKEN_VALID_ROTATIONS = 2
 
 function getSecretValue() {
   const secret =
@@ -25,6 +26,10 @@ async function getSecretKey() {
 
 export function getRotationBucket(at = Date.now()) {
   return Math.floor(at / DESIGNATED_SEAT_ROTATION_MS)
+}
+
+export function getRotationTokenExpiresAt(rotation: number) {
+  return (rotation + DESIGNATED_SEAT_TOKEN_VALID_ROTATIONS) * DESIGNATED_SEAT_ROTATION_MS
 }
 
 export function createOpaqueDisplayToken() {
@@ -50,7 +55,7 @@ export async function generateRotationToken(params: {
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt(Math.floor(now / 1000))
-    .setExpirationTime(Math.floor((now + DESIGNATED_SEAT_ROTATION_MS) / 1000))
+    .setExpirationTime(Math.floor(getRotationTokenExpiresAt(rotation) / 1000))
     .sign(await getSecretKey())
 }
 

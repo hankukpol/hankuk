@@ -24,6 +24,7 @@ export default function StudentCoursesPage() {
   const [studentPhone, setStudentPhone] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active')
 
   useEffect(() => {
     const storedName = sessionStorage.getItem(STUDENT_SESSION_NAME_KEY) ?? ''
@@ -119,10 +120,6 @@ export default function StudentCoursesPage() {
         <p className="student-body student-body-dark mt-2">
           {studentName} · {maskPhone(studentPhone)}
         </p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className="student-chip student-chip-dark whitespace-nowrap">운영 중 {activeCourses.length}</span>
-          <span className="student-chip student-chip-dark whitespace-nowrap">보관 {archivedCourses.length}</span>
-        </div>
       </section>
 
       <section className="px-4 pt-4">
@@ -154,13 +151,42 @@ export default function StudentCoursesPage() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-5">
-            <CourseSection
-              title="운영 중"
-              description="실시간 출석, 수강증, 좌석 기능을 사용할 수 있는 강좌입니다."
-              count={activeCourses.length}
+          <div className="flex flex-col gap-4">
+            <div
+              role="tablist"
+              aria-label="강좌 탭"
+              className="flex gap-6 border-b border-[var(--student-line)]"
             >
-              {activeCourses.length > 0 ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'active'}
+                onClick={() => setActiveTab('active')}
+                className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
+                  activeTab === 'active'
+                    ? 'border-[var(--student-text)] text-[var(--student-text)]'
+                    : 'border-transparent text-[var(--student-text-muted)]'
+                }`}
+              >
+                운영 중 {activeCourses.length}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'archived'}
+                onClick={() => setActiveTab('archived')}
+                className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
+                  activeTab === 'archived'
+                    ? 'border-[var(--student-text)] text-[var(--student-text)]'
+                    : 'border-transparent text-[var(--student-text-muted)]'
+                }`}
+              >
+                보관 {archivedCourses.length}
+              </button>
+            </div>
+
+            {activeTab === 'active' ? (
+              activeCourses.length > 0 ? (
                 <div className="flex flex-col gap-2.5">
                   {activeCourses.map((entry) => (
                     <StudentCourseCard
@@ -175,30 +201,29 @@ export default function StudentCoursesPage() {
                 <div className="student-card-muted px-4 py-4">
                   <p className="text-[15px] font-semibold text-[var(--student-text)]">운영 중인 강좌가 없습니다.</p>
                   <p className="student-body mt-1">
-                    아래 보관 강좌에서 지난 수강 이력을 확인할 수 있습니다.
+                    보관 탭에서 지난 수강 이력을 확인할 수 있습니다.
                   </p>
                 </div>
-              )}
-            </CourseSection>
-
-            {archivedCourses.length > 0 ? (
-              <CourseSection
-                title="보관"
-                description="관리자가 보관 처리한 강좌입니다. 기록만 읽기 전용으로 확인할 수 있습니다."
-                count={archivedCourses.length}
-              >
-                <div className="flex flex-col gap-2.5">
-                  {archivedCourses.map((entry) => (
-                    <StudentCourseCard
-                      key={entry.enrollment_id}
-                      entry={entry}
-                      archived
-                      tenantType={tenant.type}
-                    />
-                  ))}
-                </div>
-              </CourseSection>
-            ) : null}
+              )
+            ) : archivedCourses.length > 0 ? (
+              <div className="flex flex-col gap-2.5">
+                {archivedCourses.map((entry) => (
+                  <StudentCourseCard
+                    key={entry.enrollment_id}
+                    entry={entry}
+                    archived
+                    tenantType={tenant.type}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="student-card-muted px-4 py-4">
+                <p className="text-[15px] font-semibold text-[var(--student-text)]">보관된 강좌가 없습니다.</p>
+                <p className="student-body mt-1">
+                  관리자가 강좌를 보관 처리하면 이 탭에 표시됩니다.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -213,31 +238,6 @@ export default function StudentCoursesPage() {
         </button>
       </div>
     </div>
-  )
-}
-
-function CourseSection({
-  title,
-  description,
-  count,
-  children,
-}: {
-  title: string
-  description: string
-  count: number
-  children: React.ReactNode
-}) {
-  return (
-    <section className="flex flex-col gap-2.5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="student-eyebrow student-eyebrow-light">{title}</p>
-          <p className="mt-1 text-[13px] leading-[1.5] text-[var(--student-text-muted)]">{description}</p>
-        </div>
-        <span className="student-chip shrink-0 whitespace-nowrap">{count}개</span>
-      </div>
-      {children}
-    </section>
   )
 }
 

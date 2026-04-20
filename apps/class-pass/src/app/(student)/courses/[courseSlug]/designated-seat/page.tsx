@@ -7,6 +7,10 @@ import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
 import { getStrictMainRearCamera } from '@/lib/camera/main-rear-camera'
 import { fetchDesignatedSeatState } from '@/lib/designated-seat/client-state'
+import {
+  parseDesignatedSeatScanValue,
+  type DesignatedSeatVerificationPayload,
+} from '@/lib/designated-seat/scan'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { DesignatedSeatStudentState, PassPayload } from '@/types/database'
 
@@ -59,18 +63,6 @@ function buildDeviceSignature() {
   }
 }
 
-function normalizeScannedToken(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return ''
-
-  try {
-    const url = new URL(trimmed)
-    return url.searchParams.get('token') ?? trimmed
-  } catch {
-    return trimmed
-  }
-}
-
 export default function DesignatedSeatPage() {
   const params = useParams<{ courseSlug: string }>()
   const searchParams = useSearchParams()
@@ -82,11 +74,13 @@ export default function DesignatedSeatPage() {
   const [data, setData] = useState<PassPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [deviceKey, setDeviceKey] = useState('')
+  const [codeInput, setCodeInput] = useState('')
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scannerLoading, setScannerLoading] = useState(false)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [lastScanDebug, setLastScanDebug] = useState('')
   const scannerRef = useRef<ScannerInstance | null>(null)
 
   useEffect(() => {
@@ -177,7 +171,7 @@ export default function DesignatedSeatPage() {
     }
   }, [])
 
-  const handleVerify = useCallback(async (payload: { verificationMethod: 'qr' | 'code'; rotationToken?: string; rotationCode?: string }) => {
+  const handleVerify = useCallback(async (payload: DesignatedSeatVerificationPayload) => {
     if (!data || !deviceKey) {
       setError('기기 정보를 준비하고 있습니다. 잠시 후 다시 시도해 주세요.')
       return
@@ -216,6 +210,7 @@ export default function DesignatedSeatPage() {
     }
 
     setMessage('현장 인증이 완료되었습니다. 원하시는 좌석을 선택해 주세요.')
+    setCodeInput('')
   }, [applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
 
   useEffect(() => {
@@ -264,13 +259,14 @@ export default function DesignatedSeatPage() {
         scannerRef.current = scanner
 
         const onSuccess = (decodedText: string) => {
-          const token = normalizeScannedToken(decodedText)
-          if (!token) {
+          setLastScanDebug(decodedText)
+          const verificationPayload = parseDesignatedSeatScanValue(decodedText)
+          if (!verificationPayload) {
             return
           }
 
           setScannerOpen(false)
-          void handleVerify({ verificationMethod: 'qr', rotationToken: token })
+          void handleVerify(verificationPayload)
         }
 
         const qrBoxSize = Math.max(220, Math.min(window.innerWidth - 80, 320))
@@ -464,6 +460,28 @@ export default function DesignatedSeatPage() {
             >
               QR 스캔으로 현장 인증
             </button>
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr,auto]">
+              <input
+                value={codeInput}
+                onChange={(event) => setCodeInput(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="현장 코드 6자리"
+                inputMode="numeric"
+                className="h-12 rounded-[999px] border border-[rgba(0,0,0,0.08)] bg-[var(--student-surface-soft)] px-4 text-center text-[15px] font-semibold tracking-[0.24em] text-[var(--student-text)] outline-none transition focus:border-[var(--student-blue)] focus:bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => void handleVerify({ verificationMethod: 'code', rotationCode: codeInput })}
+                disabled={working || codeInput.length < 4}
+                className="student-pill-button student-pill-outline w-full disabled:opacity-40 sm:w-auto"
+              >
+                코드 인증
+              </button>
+            </div>
+            {process.env.NODE_ENV !== 'production' && lastScanDebug ? (
+              <p className="mt-3 break-all text-[11px] leading-5 text-[var(--student-text-muted)]">
+                디버그 스캔값: {lastScanDebug}
+              </p>
+            ) : null}
           </section>
         ) : null}
 

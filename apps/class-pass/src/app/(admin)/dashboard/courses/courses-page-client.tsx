@@ -291,14 +291,16 @@ export default function CoursesPageClient({
         </div>
       ) : null}
 
-      <div className="flex gap-1 rounded-[8px] bg-[#f5f5f7] p-1">
+      <div className="flex gap-1 rounded-[10px] border border-slate-200 bg-slate-200/70 p-1">
         {(['all', 'active', 'archived'] as const).map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => setFilter(f)}
-            className={`flex-1 rounded-[8px] px-3 py-2 text-xs font-semibold transition ${
-              filter === f ? 'bg-white text-[#1d1d1f]' : 'text-[#86868b] hover:text-[#1d1d1f]'
+            className={`flex-1 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition ${
+              filter === f
+                ? 'bg-[#1d1d1f] text-white shadow-sm'
+                : 'text-slate-700 hover:bg-white hover:text-[#1d1d1f]'
             }`}
           >
             {f === 'all' ? '전체' : f === 'active' ? '운영중' : '보관됨'}
@@ -343,12 +345,6 @@ export default function CoursesPageClient({
                     <tr key={course.id} className="hover:bg-[#f5f5f7]/60">
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
-                          <span
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-xs font-bold text-white"
-                            style={{ background: '#1d1d1f' }}
-                          >
-                            {course.id}
-                          </span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <p className="truncate font-semibold text-[#1d1d1f]">{course.name}</p>

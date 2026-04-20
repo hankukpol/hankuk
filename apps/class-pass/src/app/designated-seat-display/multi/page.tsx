@@ -7,11 +7,12 @@ import {
   DESIGNATED_SEAT_DISPLAY_RETRY_MS,
   getDisplayRefreshDelay,
 } from '@/lib/designated-seat/display-runtime'
+import { buildDesignatedSeatQrValue } from '@/lib/designated-seat/scan'
 
 type DisplayPayload = {
   course: { id: number; name: string }
   session: { id: number; expires_at: string }
-  rotationToken: string
+  rotationCode: string
   rotationExpiresAt: string
 }
 
@@ -173,15 +174,23 @@ export default function MultiDisplayPage() {
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
               </div>
             ) : (
-              <div className="flex items-center justify-center rounded-[10px] bg-white p-6 shadow-2xl">
-                <QRCodeSVG
-                  value={entry.payload.rotationToken}
-                  size={qrSize}
-                  level="M"
-                  includeMargin
-                  bgColor="#ffffff"
-                  fgColor="#111827"
-                />
+              <div className="flex w-full flex-col items-center gap-4">
+                <div className="flex items-center justify-center rounded-[10px] bg-white p-6 shadow-2xl">
+                  <QRCodeSVG
+                    value={buildDesignatedSeatQrValue(entry.payload.rotationCode)}
+                    size={qrSize}
+                    level="M"
+                    includeMargin
+                    bgColor="#ffffff"
+                    fgColor="#111827"
+                  />
+                </div>
+                <div className="w-full rounded-[10px] border border-slate-800 bg-slate-900 px-4 py-3 text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Code</p>
+                  <p className={`${count <= 2 ? 'text-3xl' : 'text-2xl'} mt-2 font-mono font-black tracking-[0.28em] text-sky-300`}>
+                    {entry.payload.rotationCode}
+                  </p>
+                </div>
               </div>
             )}
           </div>

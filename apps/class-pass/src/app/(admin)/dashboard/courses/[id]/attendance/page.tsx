@@ -4,14 +4,22 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
-import type { Course, CourseSubject } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
+import type { Course, CourseSubject } from '@/types/database'
 
 type DashboardRecord = {
   enrollmentId: number
   studentName: string
   examNumber: string | null
   phone: string
+}
+
+type DashboardTargetRecord = DashboardRecord & {
+  seatLabel: string | null
+  status: 'present' | 'absent'
+  attendedAt: string | null
+  consecutiveAbsences: number
+  attendanceStartDate: string | null
 }
 
 type DashboardPayload = {
@@ -22,13 +30,22 @@ type DashboardPayload = {
   presentCount: number
   absentCount: number
   attendanceRate: number
+  targets: DashboardTargetRecord[]
   absentees: Array<DashboardRecord & {
     consecutiveAbsences: number
     attendanceStartDate: string | null
-    seatLabel?: string | null
+    seatLabel: string | null
   }>
   recentRecords: Array<DashboardRecord & {
+    seatLabel: string | null
     attendedAt: string
+  }>
+  checkedSubjects: Array<{
+    subjectId: number | null
+    subjectName: string
+    sessionCount: number
+    latestStartedAt: string
+    isActive: boolean
   }>
   displaySession: {
     id: number | null
@@ -39,20 +56,24 @@ type DashboardPayload = {
   }
 }
 
+type WarningRow = {
+  enrollmentId: number
+  studentName: string
+  examNumber: string | null
+  consecutiveAbsences: number
+  lastAttendedDate: string | null
+  attendanceStartDate: string | null
+  seatLabel: string | null
+  subjectId: number | null
+  subjectName: string | null
+}
+
 type AbsenceReportPayload = {
   threshold: number
-  flaggedStudents: Array<{
-    enrollmentId: number
-    studentName: string
-    examNumber: string | null
-    consecutiveAbsences: number
-    lastAttendedDate: string | null
-    attendanceStartDate: string | null
-    seatLabel: string | null
-    subjectId: number | null
-    subjectName: string | null
-  }>
+  flaggedStudents: WarningRow[]
 }
+
+type TabKey = 'targets' | 'attendees' | 'absentees' | 'warnings'
 
 function getToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
@@ -72,36 +93,143 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value))
 }
 
+function formatTime(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
 function normalizeAttendanceSearchValue(value: string | null | undefined) {
   return (value ?? '').replace(/\s+/g, '').replace(/-/g, '').toLowerCase()
 }
 
-function matchesAttendanceSearch(
-  keyword: string,
-  record: { studentName: string; examNumber: string | null; phone: string },
-) {
+function matchesFields(keyword: string, fields: Array<string | null | undefined>) {
   const normalizedKeyword = normalizeAttendanceSearchValue(keyword)
   if (!normalizedKeyword) {
     return true
   }
 
-  return [
-    normalizeAttendanceSearchValue(record.studentName),
-    normalizeAttendanceSearchValue(record.examNumber),
-    normalizeAttendanceSearchValue(record.phone),
-  ].some((value) => value.includes(normalizedKeyword))
+  return fields
+    .map((value) => normalizeAttendanceSearchValue(value))
+    .some((value) => value.includes(normalizedKeyword))
 }
 
 async function readJson<T>(response: Response) {
   return response.json().catch(() => null) as Promise<T | null>
 }
 
-function StatCard(props: { label: string; value: string | number; valueClassName?: string }) {
+function StatCard(props: {
+  label: string
+  value: string | number
+  hint?: string
+  valueClassName?: string
+}) {
   return (
-    <article className="rounded-2xl border border-slate-200 px-5 py-4">
+    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
       <p className="text-xs font-semibold text-slate-500">{props.label}</p>
-      <p className={`mt-2 text-3xl font-extrabold ${props.valueClassName ?? 'text-slate-900'}`}>{props.value}</p>
+      <p className={`mt-2 text-3xl font-extrabold ${props.valueClassName ?? 'text-slate-900'}`}>
+        {props.value}
+      </p>
+      {props.hint ? <p className="mt-1 text-xs text-slate-400">{props.hint}</p> : null}
     </article>
+  )
+}
+
+function TabButton(props: {
+  active: boolean
+  label: string
+  count: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+        props.active
+          ? 'border-[#1d1d1f] text-[#1d1d1f]'
+          : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+      }`}
+    >
+      <span>{props.label}</span>
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs ${
+          props.active ? 'bg-[#1d1d1f] text-white' : 'bg-slate-100 text-slate-500'
+        }`}
+      >
+        {props.count}
+      </span>
+    </button>
+  )
+}
+
+function StatusChip(props: { status: 'present' | 'absent' }) {
+  return props.status === 'present' ? (
+    <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+      출석
+    </span>
+  ) : (
+    <span className="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+      결석
+    </span>
+  )
+}
+
+function PaginationControls(props: {
+  currentPage: number
+  pageCount: number
+  pageSize: number
+  totalCount: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (pageSize: number) => void
+}) {
+  const start = props.totalCount === 0 ? 0 : ((props.currentPage - 1) * props.pageSize) + 1
+  const end = Math.min(props.currentPage * props.pageSize, props.totalCount)
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 text-sm text-slate-500">
+        <span>
+          {start}-{end} / {props.totalCount}
+        </span>
+        <select
+          value={props.pageSize}
+          onChange={(event) => props.onPageSizeChange(Number(event.target.value))}
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none"
+        >
+          <option value={20}>20개</option>
+          <option value={50}>50개</option>
+          <option value={100}>100개</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => props.onPageChange(props.currentPage - 1)}
+          disabled={props.currentPage <= 1}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+        >
+          이전
+        </button>
+        <span className="text-sm font-medium text-slate-600">
+          {props.currentPage} / {props.pageCount}
+        </span>
+        <button
+          type="button"
+          onClick={() => props.onPageChange(props.currentPage + 1)}
+          disabled={props.currentPage >= props.pageCount}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+        >
+          다음
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -116,9 +244,12 @@ export default function AdminAttendancePage() {
   const [absenceReport, setAbsenceReport] = useState<AbsenceReportPayload | null>(null)
   const [date, setDate] = useState(getToday())
   const [attendanceSearch, setAttendanceSearch] = useState('')
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('')
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
   const [durationMinutes, setDurationMinutes] = useState(10)
   const [displayUrl, setDisplayUrl] = useState('')
+  const [activeTab, setActiveTab] = useState<TabKey>('targets')
+  const [pageSize, setPageSize] = useState(20)
+  const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
@@ -133,11 +264,17 @@ export default function AdminAttendancePage() {
   }, [courseId])
 
   const loadData = useCallback(async () => {
+    const dashboardQuery = new URLSearchParams({
+      courseId: String(courseId),
+      date,
+    })
     const reportQuery = new URLSearchParams({
       courseId: String(courseId),
       threshold: '2',
     })
+
     if (selectedSubjectId) {
+      dashboardQuery.set('subjectId', selectedSubjectId)
       reportQuery.set('subjectId', selectedSubjectId)
     }
 
@@ -146,7 +283,7 @@ export default function AdminAttendancePage() {
         ? Promise.resolve(null)
         : fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
       fetch(`/api/courses/${courseId}/subjects`, { cache: 'no-store' }),
-      fetch(`/api/attendance/admin/dashboard?courseId=${courseId}&date=${date}`, { cache: 'no-store' }),
+      fetch(`/api/attendance/admin/dashboard?${dashboardQuery.toString()}`, { cache: 'no-store' }),
       fetch(`/api/attendance/admin/absence-report?${reportQuery.toString()}`, { cache: 'no-store' }),
     ])
 
@@ -168,7 +305,7 @@ export default function AdminAttendancePage() {
     }
 
     if (!reportResponse.ok) {
-      throw new Error(reportPayload?.error ?? '결석 리포트를 불러오지 못했습니다.')
+      throw new Error(reportPayload?.error ?? '결석 경고 정보를 불러오지 못했습니다.')
     }
 
     if (coursePayload?.course) {
@@ -221,26 +358,120 @@ export default function AdminAttendancePage() {
     }
   }, [dashboard?.displaySession.isActive, loadData])
 
+  useEffect(() => {
+    if (selectedSubjectId || !dashboard || subjects.length === 0) {
+      return
+    }
+
+    const today = getToday()
+    const autoSubjectId = date === today
+      ? dashboard.displaySession.subjectId
+      : dashboard.checkedSubjects.length === 1
+        ? dashboard.checkedSubjects[0]?.subjectId ?? null
+        : null
+
+    if (autoSubjectId != null) {
+      setSelectedSubjectId(String(autoSubjectId))
+    }
+  }, [dashboard, date, selectedSubjectId, subjects.length])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeTab, attendanceSearch, pageSize, date, selectedSubjectId])
+
   const progressWidth = useMemo(() => `${dashboard?.attendanceRate ?? 0}%`, [dashboard?.attendanceRate])
-  const filteredRecentRecords = useMemo(
-    () => (dashboard?.recentRecords ?? []).filter((record) => matchesAttendanceSearch(attendanceSearch, record)),
-    [attendanceSearch, dashboard?.recentRecords],
+  const selectedSubjectName = useMemo(
+    () => subjects.find((subject) => String(subject.id) === selectedSubjectId)?.name ?? null,
+    [selectedSubjectId, subjects],
   )
-  const filteredAbsentees = useMemo(
-    () => (dashboard?.absentees ?? []).filter((student) => matchesAttendanceSearch(attendanceSearch, student)),
-    [attendanceSearch, dashboard?.absentees],
-  )
+  const effectiveSubjectName = useMemo(() => {
+    if (selectedSubjectName) {
+      return selectedSubjectName
+    }
+
+    if (dashboard?.displaySession.subjectName) {
+      return dashboard.displaySession.subjectName
+    }
+
+    if (dashboard?.checkedSubjects.length === 1) {
+      return dashboard.checkedSubjects[0]?.subjectName ?? null
+    }
+
+    return null
+  }, [dashboard, selectedSubjectName])
+  const requiresSubjectSelection = subjects.length > 0
+  const startBlockedBySubjectSelection = requiresSubjectSelection && !selectedSubjectId
   const isBeforeAttendanceStartForSelectedDate = Boolean(
     dashboard?.attendanceStartDate && !dashboard.attendanceStarted,
   )
-  const isBeforeAttendanceStartToday = Boolean(
-    course?.enrolled_from && getToday() < course.enrolled_from,
-  )
-  const selectedSubjectName = useMemo(() => (
-    subjects.find((subject) => String(subject.id) === selectedSubjectId)?.name ?? null
-  ), [selectedSubjectId, subjects])
-  const requiresSubjectSelection = subjects.length > 0
-  const startBlockedBySubjectSelection = requiresSubjectSelection && !selectedSubjectId
+  const isBeforeAttendanceStartToday = Boolean(course?.enrolled_from && getToday() < course.enrolled_from)
+
+  const filteredTargets = useMemo(() => (
+    (dashboard?.targets ?? []).filter((row) => matchesFields(attendanceSearch, [
+      row.studentName,
+      row.examNumber,
+      row.phone,
+      row.seatLabel,
+      row.status === 'present' ? '출석' : '결석',
+    ]))
+  ), [attendanceSearch, dashboard?.targets])
+
+  const filteredAttendees = useMemo(() => (
+    [...(dashboard?.targets ?? [])]
+      .filter((row) => row.status === 'present')
+      .sort((left, right) => (
+        (right.attendedAt ?? '').localeCompare(left.attendedAt ?? '')
+        || left.studentName.localeCompare(right.studentName, 'ko-KR')
+      ))
+      .filter((row) => matchesFields(attendanceSearch, [
+        row.studentName,
+        row.examNumber,
+        row.phone,
+        row.seatLabel,
+        row.attendedAt,
+      ]))
+  ), [attendanceSearch, dashboard?.targets])
+
+  const filteredAbsentees = useMemo(() => (
+    (dashboard?.absentees ?? []).filter((row) => matchesFields(attendanceSearch, [
+      row.studentName,
+      row.examNumber,
+      row.phone,
+      row.seatLabel,
+    ]))
+  ), [attendanceSearch, dashboard?.absentees])
+
+  const filteredWarnings = useMemo(() => (
+    (absenceReport?.flaggedStudents ?? []).filter((row) => matchesFields(attendanceSearch, [
+      row.studentName,
+      row.examNumber,
+      row.seatLabel,
+      row.subjectName,
+    ]))
+  ), [absenceReport?.flaggedStudents, attendanceSearch])
+
+  const activeRowsCount = activeTab === 'targets'
+    ? filteredTargets.length
+    : activeTab === 'attendees'
+      ? filteredAttendees.length
+      : activeTab === 'absentees'
+        ? filteredAbsentees.length
+        : filteredWarnings.length
+
+  const pageCount = Math.max(1, Math.ceil(activeRowsCount / pageSize))
+
+  useEffect(() => {
+    if (currentPage > pageCount) {
+      setCurrentPage(pageCount)
+    }
+  }, [currentPage, pageCount])
+
+  const pageStart = (currentPage - 1) * pageSize
+  const pagedTargets = filteredTargets.slice(pageStart, pageStart + pageSize)
+  const pagedAttendees = filteredAttendees.slice(pageStart, pageStart + pageSize)
+  const pagedAbsentees = filteredAbsentees.slice(pageStart, pageStart + pageSize)
+  const pagedWarnings = filteredWarnings.slice(pageStart, pageStart + pageSize)
+  const latestRecentRecord = dashboard?.recentRecords[0] ?? null
 
   async function handleStart() {
     if (startBlockedBySubjectSelection) {
@@ -311,6 +542,7 @@ export default function AdminAttendancePage() {
         enrollmentId,
         date,
         status,
+        subjectId: selectedSubjectId ? Number(selectedSubjectId) : null,
       }),
     })
     const payload = await readJson<{ error?: string }>(response)
@@ -353,16 +585,16 @@ export default function AdminAttendancePage() {
         <div className="flex flex-wrap justify-end gap-2">
           {false ? (
             <div>
-              <Link
-                href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-                className="text-xs font-medium text-gray-400 hover:underline"
-              >
-                &larr; {course!.name}
-              </Link>
-              <h2 className="mt-2 text-2xl font-extrabold text-gray-900">출석 관리</h2>
-              <p className="mt-2 text-sm leading-6 text-gray-500">
-                교실 화면 코드 기반 출석과 결석 누적 현황을 한곳에서 관리합니다.
-              </p>
+            <Link
+              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
+              className="text-xs font-medium text-gray-400 hover:underline"
+            >
+              &larr; {course!.name}
+            </Link>
+            <h2 className="mt-2 text-2xl font-extrabold text-gray-900">출석 관리</h2>
+            <p className="mt-2 text-sm leading-6 text-gray-500">
+              교실 화면 코드 기반 출석과 결석 누적 현황을 한곳에서 관리합니다.
+            </p>
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
@@ -413,12 +645,12 @@ export default function AdminAttendancePage() {
           <p className="text-sm font-semibold text-sky-900">운영 가이드</p>
           <div className="mt-2 space-y-1 text-sm text-sky-800">
             <p>1. 과목이 있는 강좌는 먼저 과목을 선택합니다.</p>
-            <p>2. 선택한 과목으로 `출석 시작`을 눌러 교실 화면을 엽니다.</p>
-            <p>3. 수업이 끝나면 `출석 종료` 후 다음 과목으로 다시 시작합니다.</p>
+            <p>2. 과목을 선택한 뒤 출석 시작을 눌러 교실 화면을 엽니다.</p>
+            <p>3. 수업이 끝나면 출석 종료 후 다음 과목으로 다시 시작합니다.</p>
           </div>
           {requiresSubjectSelection ? (
             <p className="mt-3 text-xs font-medium text-sky-700">
-              이 강좌는 과목별 출석 경고를 사용하므로 `전체 강좌`로는 시작할 수 없습니다.
+              과목형 출석에서는 선택한 과목의 좌석이 있는 학생만 출석 대상에 포함됩니다.
             </p>
           ) : null}
         </div>
@@ -446,7 +678,7 @@ export default function AdminAttendancePage() {
                   ? `세션 진행 중 / ${formatDateTime(dashboard.displaySession.expiresAt)} 종료`
                   : '진행 중인 세션 없음'}
               </span>
-              {dashboard.displaySession.isActive && dashboard.displaySession.subjectName ? (
+              {dashboard.displaySession.subjectName ? (
                 <p className="mt-1 text-xs font-medium text-slate-500">
                   과목 {dashboard.displaySession.subjectName}
                 </p>
@@ -455,6 +687,32 @@ export default function AdminAttendancePage() {
           </div>
           <div className="mt-3 h-3 overflow-hidden rounded-full bg-white">
             <div className="h-full rounded-full bg-[#0071e3]" style={{ width: progressWidth }} />
+          </div>
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              선택 날짜 출석 과목
+            </p>
+            {dashboard.checkedSubjects.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {dashboard.checkedSubjects.map((subject) => (
+                  <span
+                    key={`${subject.subjectId ?? 'none'}:${subject.latestStartedAt}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                  >
+                    <span>{subject.subjectName}</span>
+                    <span className="text-slate-400">{formatTime(subject.latestStartedAt)} 시작</span>
+                    {subject.sessionCount > 1 ? <span className="text-slate-400">{subject.sessionCount}회</span> : null}
+                    {subject.isActive ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
+                        진행 중
+                      </span>
+                    ) : null}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-400">선택한 날짜에 시작된 출석 세션이 없습니다.</p>
+            )}
           </div>
         </div>
 
@@ -491,166 +749,390 @@ export default function AdminAttendancePage() {
       </section>
 
       <section className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-            <h3 className="text-lg font-extrabold text-gray-900">오늘 출석</h3>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 className="text-lg font-extrabold text-slate-900">출석 대상 관리</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              전체 대상, 출석자, 결석자, 연속 결석 경고를 분리해 필요한 학생만 빠르게 확인할 수 있습니다.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500">오늘 체크인</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{dashboard.recentRecords.length}건</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500">최근 처리</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">
+                {latestRecentRecord ? latestRecentRecord.studentName : '없음'}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {latestRecentRecord ? formatDateTime(latestRecentRecord.attendedAt) : '아직 처리 내역이 없습니다.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500">연속 결석 경고</p>
+              <p className="mt-1 text-lg font-bold text-rose-600">{absenceReport?.flaggedStudents.length ?? 0}명</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <TabButton
+            active={activeTab === 'targets'}
+            label="전체 대상"
+            count={dashboard.targets.length}
+            onClick={() => setActiveTab('targets')}
+          />
+          <TabButton
+            active={activeTab === 'attendees'}
+            label="출석자"
+            count={dashboard.presentCount}
+            onClick={() => setActiveTab('attendees')}
+          />
+          <TabButton
+            active={activeTab === 'absentees'}
+            label="결석자"
+            count={dashboard.absentCount}
+            onClick={() => setActiveTab('absentees')}
+          />
+          <TabButton
+            active={activeTab === 'warnings'}
+            label="연속 결석 경고"
+            count={absenceReport?.flaggedStudents.length ?? 0}
+            onClick={() => setActiveTab('warnings')}
+          />
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-semibold text-slate-800">
+              {activeTab === 'targets'
+                ? '전체 출석 대상'
+                : activeTab === 'attendees'
+                  ? '출석 완료 수강생'
+                  : activeTab === 'absentees'
+                    ? '오늘 결석 대상'
+                    : '연속 결석 경고 대상'}
+            </p>
+            <p className="text-xs text-slate-500">
+              {activeTab === 'warnings'
+                ? effectiveSubjectName
+                  ? `${effectiveSubjectName}에서 2회 이상 연속 결석한 학생만 표시합니다.`
+                  : '과목별 2회 이상 연속 결석한 학생만 표시합니다.'
+                : effectiveSubjectName
+                  ? `${effectiveSubjectName} 기준으로 집계 중이며, 좌석번호도 해당 과목 데이터로 표시됩니다.`
+                  : '과목 전체 기준으로 집계 중입니다.'}
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
               type="text"
               value={attendanceSearch}
               onChange={(event) => setAttendanceSearch(event.target.value)}
-              placeholder="이름, 연락처, 수험번호 검색"
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 sm:w-64"
+              placeholder={
+                activeTab === 'warnings'
+                  ? '이름, 수험번호, 좌석번호, 과목 검색'
+                  : '이름, 연락처, 수험번호, 좌석번호 검색'
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-80"
+            />
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
             />
           </div>
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
         </div>
+
+        {dashboard.checkedSubjects.length > 0 ? (
+          <p className="mt-3 text-xs text-slate-500">
+            {dashboard.date}에는 {dashboard.checkedSubjects.map((subject) => subject.subjectName).join(', ')} 출석 체크가 있었습니다.
+          </p>
+        ) : null}
 
         {isBeforeAttendanceStartForSelectedDate ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            수강 시작일 {dashboard.attendanceStartDate} 이전 날짜라서 결석 집계와 출석 목록은 표시하지 않습니다.
+            수강 시작일 {dashboard.attendanceStartDate} 이전 날짜에서는 결석 집계와 출석 대상 목록을 표시하지 않습니다.
           </div>
         ) : null}
 
-        <div className="mt-5 grid gap-6 lg:grid-cols-[0.95fr,1.05fr]">
-          <div>
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-700">최근 출석</h4>
-              <span className="text-xs text-slate-400">{filteredRecentRecords.length}건</span>
-            </div>
-            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-              {filteredRecentRecords.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-slate-400">
-                  {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '아직 출석 기록이 없습니다.'}
-                </p>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {filteredRecentRecords.map((record) => (
-                    <div key={record.enrollmentId} className="flex items-center justify-between gap-3 px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {record.examNumber ? `[${record.examNumber}] ` : ''}
-                          {record.studentName}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">{formatDateTime(record.attendedAt)}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!window.confirm(`${record.studentName} 수강생을 결석 처리할까요?`)) {
-                            return
-                          }
-                          void handleOverride(record.enrollmentId, 'absent')
-                        }}
-                        disabled={working}
-                        className="shrink-0 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                      >
-                        결석 처리
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+          {activeTab === 'targets' ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full table-fixed">
+                  <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">상태</th>
+                      <th className="px-4 py-3">수험번호</th>
+                      <th className="px-4 py-3">이름</th>
+                      <th className="px-4 py-3">좌석번호</th>
+                      <th className="px-4 py-3">연락처</th>
+                      <th className="px-4 py-3">최근 처리</th>
+                      <th className="px-4 py-3">연속 결석</th>
+                      <th className="px-4 py-3">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
+                    {pagedTargets.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">
+                          {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '출석 대상이 없습니다.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedTargets.map((row) => (
+                        <tr key={row.enrollmentId} className="bg-white">
+                          <td className="px-4 py-3 align-middle text-center">
+                            <StatusChip status={row.status} />
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <div className="font-semibold text-slate-900">{row.studentName}</div>
+                            {row.attendanceStartDate ? (
+                              <div className="mt-1 text-xs text-slate-400">기준일 {row.attendanceStartDate}</div>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.phone}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{formatDateTime(row.attendedAt)}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <span className={row.consecutiveAbsences >= 2 ? 'font-semibold text-rose-600' : 'text-slate-600'}>
+                              {row.consecutiveAbsences}회
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextStatus = row.status === 'present' ? 'absent' : 'present'
+                                if (nextStatus === 'absent' && !window.confirm(`${row.studentName} 수강생을 결석 처리할까요?`)) {
+                                  return
+                                }
 
-          <div>
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-700">결석 수강생</h4>
-              <span className="text-xs text-slate-400">{filteredAbsentees.length}명</span>
-            </div>
-            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-              {filteredAbsentees.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-slate-400">
-                  {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '모든 수강생이 출석했습니다.'}
-                </p>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {filteredAbsentees.map((student) => (
-                    <div key={student.enrollmentId} className="flex items-center justify-between gap-3 px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {student.examNumber ? `[${student.examNumber}] ` : ''}
-                          {student.studentName}
-                        </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span>{student.consecutiveAbsences}일 연속 결석</span>
-                      {student.attendanceStartDate ? <span>기준일 {student.attendanceStartDate}</span> : null}
-                      {student.seatLabel ? <span>좌석 {student.seatLabel}</span> : null}
-                      {student.consecutiveAbsences >= 2 ? (
-                        <span className="rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">주의</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleOverride(student.enrollmentId, 'present')}
-                        disabled={working}
-                        className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                      >
-                        출석 처리
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
+                                void handleOverride(row.enrollmentId, nextStatus)
+                              }}
+                              disabled={working}
+                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                                row.status === 'present'
+                                  ? 'bg-slate-100 text-slate-700'
+                                  : 'bg-blue-600 text-white'
+                              }`}
+                            >
+                              {row.status === 'present' ? '결석 처리' : '출석 처리'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                totalCount={filteredTargets.length}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
+            </>
+          ) : null}
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-extrabold text-gray-900">누적 결석 경고</h3>
-            {selectedSubjectName ? (
-              <p className="mt-1 text-xs font-medium text-slate-500">{selectedSubjectName}만 보는 중</p>
-            ) : null}
-          </div>
-          <span className="text-xs text-slate-400">기준 2회</span>
-        </div>
-        <p className="mt-2 text-sm text-slate-500">
-          연속 불참은 강좌 시작일과 학생 등록일 중 더 늦은 날짜부터, 과목별 출석 기록 기준으로 계산합니다.
-        </p>
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
-          {!absenceReport || absenceReport.flaggedStudents.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-slate-400">
-              {isBeforeAttendanceStartToday
-                ? `수강 시작일 ${course.enrolled_from} 전이라 누적 결석 경고가 아직 없습니다.`
-                : '현재 기준을 넘는 결석 수강생이 없습니다.'}
-            </p>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {absenceReport.flaggedStudents.map((student) => (
-                <div key={`${student.enrollmentId}:${student.subjectId ?? 'course'}`} className="flex items-center justify-between gap-4 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">
-                      {student.examNumber ? `[${student.examNumber}] ` : ''}
-                      {student.studentName}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span>{student.consecutiveAbsences}회 연속 불참</span>
-                      {student.subjectName ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                          {student.subjectName}
-                        </span>
-                      ) : null}
-                      {student.lastAttendedDate ? <span>마지막 출석 {student.lastAttendedDate}</span> : null}
-                      {student.attendanceStartDate ? <span>기준일 {student.attendanceStartDate}</span> : null}
-                      {student.seatLabel ? <span>좌석 {student.seatLabel}</span> : null}
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
-                    누적 결석
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          {activeTab === 'attendees' ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full table-fixed">
+                  <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">수험번호</th>
+                      <th className="px-4 py-3">이름</th>
+                      <th className="px-4 py-3">좌석번호</th>
+                      <th className="px-4 py-3">연락처</th>
+                      <th className="px-4 py-3">최근 처리</th>
+                      <th className="px-4 py-3">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
+                    {pagedAttendees.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                          {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '아직 출석 처리된 학생이 없습니다.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedAttendees.map((row) => (
+                        <tr key={row.enrollmentId} className="bg-white">
+                          <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <div className="font-semibold text-slate-900">{row.studentName}</div>
+                            <div className="mt-1 text-xs text-emerald-600">출석 완료</div>
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.phone}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{formatDateTime(row.attendedAt)}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!window.confirm(`${row.studentName} 수강생을 결석 처리할까요?`)) {
+                                  return
+                                }
+
+                                void handleOverride(row.enrollmentId, 'absent')
+                              }}
+                              disabled={working}
+                              className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                            >
+                              결석 처리
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                totalCount={filteredAttendees.length}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
+            </>
+          ) : null}
+
+          {activeTab === 'absentees' ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full table-fixed">
+                  <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">수험번호</th>
+                      <th className="px-4 py-3">이름</th>
+                      <th className="px-4 py-3">좌석번호</th>
+                      <th className="px-4 py-3">연락처</th>
+                      <th className="px-4 py-3">연속 결석</th>
+                      <th className="px-4 py-3">기준일</th>
+                      <th className="px-4 py-3">작업</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
+                    {pagedAbsentees.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
+                          {attendanceSearch.trim() ? '검색 결과가 없습니다.' : '모든 학생이 출석했습니다.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedAbsentees.map((row) => (
+                        <tr key={row.enrollmentId} className="bg-white">
+                          <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <div className="font-semibold text-slate-900">{row.studentName}</div>
+                            <div className="mt-1 text-xs text-slate-400">결석 대상</div>
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.phone}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <span className={row.consecutiveAbsences >= 2 ? 'font-semibold text-rose-600' : 'text-slate-600'}>
+                              {row.consecutiveAbsences}회
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.attendanceStartDate ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <button
+                              type="button"
+                              onClick={() => void handleOverride(row.enrollmentId, 'present')}
+                              disabled={working}
+                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                            >
+                              출석 처리
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                totalCount={filteredAbsentees.length}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
+            </>
+          ) : null}
+
+          {activeTab === 'warnings' ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full table-fixed">
+                  <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">과목</th>
+                      <th className="px-4 py-3">수험번호</th>
+                      <th className="px-4 py-3">이름</th>
+                      <th className="px-4 py-3">좌석번호</th>
+                      <th className="px-4 py-3">연속 결석</th>
+                      <th className="px-4 py-3">마지막 출석</th>
+                      <th className="px-4 py-3">기준일</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
+                    {pagedWarnings.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
+                          {isBeforeAttendanceStartToday
+                            ? `수강 시작일 ${course.enrolled_from} 이전이라 연속 결석 경고가 없습니다.`
+                            : attendanceSearch.trim()
+                              ? '검색 결과가 없습니다.'
+                              : '현재 기준에 맞는 연속 결석 경고 대상이 없습니다.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedWarnings.map((row) => (
+                        <tr key={`${row.enrollmentId}:${row.subjectId ?? 'course'}`} className="bg-white">
+                          <td className="px-4 py-3 align-middle text-center">
+                            {row.subjectName ? (
+                              <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                                {row.subjectName}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.studentName}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <span className="font-semibold text-rose-600">{row.consecutiveAbsences}회</span>
+                          </td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.lastAttendedDate ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center text-slate-600">{row.attendanceStartDate ?? '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                totalCount={filteredWarnings.length}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+              />
+            </>
+          ) : null}
         </div>
       </section>
     </div>

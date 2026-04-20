@@ -10,6 +10,7 @@ import {
 const schema = z.object({
   courseId: z.coerce.number().int().positive(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  subjectId: z.coerce.number().int().positive().optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     const parsed = schema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
       date: req.nextUrl.searchParams.get('date') ?? undefined,
+      subjectId: req.nextUrl.searchParams.get('subjectId') ?? undefined,
     })
 
     if (!parsed.success) {

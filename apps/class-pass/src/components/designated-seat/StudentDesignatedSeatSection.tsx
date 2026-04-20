@@ -5,6 +5,10 @@ import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
 import { getStrictMainRearCamera } from '@/lib/camera/main-rear-camera'
+import {
+  parseDesignatedSeatScanValue,
+  type DesignatedSeatVerificationPayload,
+} from '@/lib/designated-seat/scan'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { PassPayload } from '@/types/database'
 
@@ -49,20 +53,6 @@ function buildDeviceSignature() {
   }
 }
 
-function normalizeScannedToken(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return ''
-  }
-
-  try {
-    const url = new URL(trimmed)
-    return url.searchParams.get('token') ?? trimmed
-  } catch {
-    return trimmed
-  }
-}
-
 export function StudentDesignatedSeatSection({
   data,
   courseTheme,
@@ -80,6 +70,7 @@ export function StudentDesignatedSeatSection({
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [lastScanDebug, setLastScanDebug] = useState('')
   const tenant = useTenantConfig()
 
   const state = data.designatedSeat
@@ -109,7 +100,7 @@ export function StudentDesignatedSeatSection({
     }
   }, [])
 
-  const handleVerify = useCallback(async (payload: { verificationMethod: 'qr' | 'code'; rotationToken?: string; rotationCode?: string }) => {
+  const handleVerify = useCallback(async (payload: DesignatedSeatVerificationPayload) => {
     if (!deviceKey) {
       setError('기기 정보를 준비하는 중입니다. 잠시 후 다시 시도해주세요.')
       return
@@ -189,13 +180,14 @@ export function StudentDesignatedSeatSection({
         scannerRef.current = scanner
 
         const onSuccess = (decodedText: string) => {
-          const token = normalizeScannedToken(decodedText)
-          if (!token) {
+          setLastScanDebug(decodedText)
+          const verificationPayload = parseDesignatedSeatScanValue(decodedText)
+          if (!verificationPayload) {
             return
           }
 
           setScannerOpen(false)
-          void handleVerify({ verificationMethod: 'qr', rotationToken: token })
+          void handleVerify(verificationPayload)
         }
 
         const qrBoxSize = Math.max(220, Math.min(window.innerWidth - 80, 320))
@@ -347,6 +339,11 @@ export function StudentDesignatedSeatSection({
               >
                 카메라로 QR 스캔
               </button>
+              {process.env.NODE_ENV !== 'production' && lastScanDebug ? (
+                <p className="mt-3 break-all text-[11px] leading-5 text-blue-800/80">
+                  디버그 스캔값: {lastScanDebug}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

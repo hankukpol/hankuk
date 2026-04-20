@@ -1,6 +1,6 @@
 import type { DesignatedSeat } from '@/types/database'
 
-export function rowIndexToLetters(index: number) {
+export function indexToLetters(index: number) {
   let value = index
   let result = ''
 
@@ -13,8 +13,8 @@ export function rowIndexToLetters(index: number) {
   return result || 'A'
 }
 
-export function defaultSeatLabel(positionY: number, positionX: number) {
-  return `${rowIndexToLetters(positionY)}-${positionX}`
+export function defaultSeatLabel(positionX: number, positionY: number) {
+  return `${indexToLetters(positionX)}-${positionY}`
 }
 
 export function sortSeats<T extends Pick<DesignatedSeat, 'position_y' | 'position_x'>>(seats: T[]) {

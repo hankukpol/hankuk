@@ -388,6 +388,33 @@ export default function CourseStudentsPage({
     await reloadCurrentMatrix()
   }
 
+  async function handleAssignAllTextbooks(enrollmentId: number) {
+    if (matrixMaterials.length === 0) return
+
+    setBulkProcessing(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/textbook-assignments/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enrollmentId,
+        materialIds: matrixMaterials.map((material) => material.id),
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    setBulkProcessing(false)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '교재 전체 배정에 실패했습니다.')
+      return
+    }
+
+    setMessage('전체 교재를 배정했습니다.')
+    await reloadCurrentMatrix()
+  }
+
   async function handleBulkAssignSelected() {
     if (filterMatId === null || selectedIds.size === 0) return
 
@@ -603,16 +630,16 @@ export default function CourseStudentsPage({
       <div className="flex flex-wrap justify-end gap-2">
         {false ? (
           <div>
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-              className="text-xs font-medium text-gray-400 hover:underline"
-            >
-              ← {course!.name}
-            </Link>
-            <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
-            <p className="mt-1 text-sm text-gray-400">
-              전체 {summary.total} · 활성 {summary.active} · 환불 {summary.refunded}
-            </p>
+          <Link
+            href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
+            className="text-xs font-medium text-gray-400 hover:underline"
+          >
+            ← {course!.name}
+          </Link>
+          <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
+          <p className="mt-1 text-sm text-gray-400">
+            전체 {summary.total} · 활성 {summary.active} · 환불 {summary.refunded}
+          </p>
           </div>
         ) : null}
         <div className="flex gap-2">
@@ -762,11 +789,26 @@ export default function CourseStudentsPage({
       <PinRevealModal reveal={pinReveal} onClose={() => setPinReveal(null)} onCopyPin={copyPin} />
 
       {/* ── Tab toggle ── */}
-      <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-        <button type="button" onClick={() => setTab('manage')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${tab === 'manage' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>관리</button>
-        <button type="button" onClick={() => setTab('receipts')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${tab === 'receipts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>배부자료 수령현황</button>
-        <button type="button" onClick={() => setTab('textbook-assign')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${tab === 'textbook-assign' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>교재 배정</button>
-        <button type="button" onClick={() => setTab('textbook-receipts')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${tab === 'textbook-receipts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>교재 수령현황</button>
+      <div className="flex gap-6 overflow-x-auto border-b border-slate-200">
+        {([
+          ['manage', '관리'],
+          ['receipts', '배부자료 수령현황'],
+          ['textbook-assign', '교재 배정'],
+          ['textbook-receipts', '교재 수령현황'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+              tab === key
+                ? 'border-[#1d1d1f] text-[#1d1d1f]'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* ── Manage tab ── */}
@@ -829,6 +871,9 @@ export default function CourseStudentsPage({
           }}
           onAssignTextbook={(enrollmentId, materialId, checked) => {
             void handleAssignTextbook(enrollmentId, materialId, checked)
+          }}
+          onAssignAllTextbooks={(enrollmentId) => {
+            void handleAssignAllTextbooks(enrollmentId)
           }}
           onRunBulkAction={() => {
             void (tab === 'receipts' ? handleBulkDistributeSelected() : handleBulkAssignSelected())

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { defaultSeatLabel, sortSeats } from '@/lib/designated-seat/layout'
@@ -70,7 +71,7 @@ function buildSeatDrafts(columns: number, rows: number, seats: DesignatedSeat[])
         id: existingDbId ?? -(y * 100 + x),
         persistedId,
         course_id: existing?.course_id ?? 0,
-        label: existing?.label ?? defaultSeatLabel(y, x),
+        label: existing?.label ?? defaultSeatLabel(x, y),
         position_x: x,
         position_y: y,
         is_active: existing?.is_active ?? true,
@@ -160,6 +161,7 @@ export default function CourseDesignatedSeatsPage({
   const [displayDuration, setDisplayDuration] = useState(24)
   const [selectedSeatId, setSelectedSeatId] = useState<number | null>(null)
   const [selectedSeatIds, setSelectedSeatIds] = useState<Set<number>>(new Set())
+  const [editorModalSeatId, setEditorModalSeatId] = useState<number | null>(null)
   const [manualEnrollmentId, setManualEnrollmentId] = useState<number | null>(null)
   const [modalSeatId, setModalSeatId] = useState<number | null>(null)
   const [studentSearch, setStudentSearch] = useState('')
@@ -209,6 +211,9 @@ export default function CourseDesignatedSeatsPage({
     setReservations(payload.reservations)
     setEnrollments(payload.enrollments)
     setActiveDisplaySession(payload.activeDisplaySession)
+    setSelectedSeatId(null)
+    setSelectedSeatIds(new Set())
+    setEditorModalSeatId(null)
     markSnapshot(drafts, cols, rws, aisle, feat, open)
     setIsDirty(false)
   }, [])
@@ -263,9 +268,13 @@ export default function CourseDesignatedSeatsPage({
     return map
   }, [reservations, enrollmentMap])
 
-  const selectedSeat = useMemo(
-    () => seatDrafts.find((seat) => seat.id === selectedSeatId) ?? null,
-    [seatDrafts, selectedSeatId],
+  const editorSeat = useMemo(
+    () => seatDrafts.find((seat) => seat.id === editorModalSeatId) ?? null,
+    [seatDrafts, editorModalSeatId],
+  )
+  const editorSeatReservation = useMemo(
+    () => (editorSeat ? seatReservationMap.get(editorSeat.persistedId ?? editorSeat.id) ?? null : null),
+    [editorSeat, seatReservationMap],
   )
 
   const allSelectedIds = useMemo(() => {
@@ -293,6 +302,12 @@ export default function CourseDesignatedSeatsPage({
     }
   }, [reservations.length, seatDrafts])
 
+  useEffect(() => {
+    if (editorModalSeatId !== null && !editorSeat) {
+      setEditorModalSeatId(null)
+    }
+  }, [editorModalSeatId, editorSeat])
+
   function reshapeSeatDrafts(nextColumns: number, nextRows: number) {
     setSeatDrafts((current) => {
       const next = buildSeatDrafts(nextColumns, nextRows, current)
@@ -313,6 +328,7 @@ export default function CourseDesignatedSeatsPage({
 
   function handleSeatClick(seat: DesignatedSeat, shiftKey: boolean) {
     if (shiftKey) {
+      setEditorModalSeatId(null)
       setSelectedSeatIds((current) => {
         const next = new Set(current)
         if (next.has(seat.id)) next.delete(seat.id)
@@ -320,14 +336,20 @@ export default function CourseDesignatedSeatsPage({
         return next
       })
     } else {
-      setSelectedSeatId(seat.id === selectedSeatId ? null : seat.id)
+      setSelectedSeatId(seat.id)
       setSelectedSeatIds(new Set())
+      setEditorModalSeatId(seat.id)
     }
   }
 
   function clearSelection() {
     setSelectedSeatId(null)
     setSelectedSeatIds(new Set())
+    setEditorModalSeatId(null)
+  }
+
+  function closeEditorSeatModal() {
+    setEditorModalSeatId(null)
   }
 
   function handleTabChange(nextTab: TabMode) {
@@ -340,6 +362,7 @@ export default function CourseDesignatedSeatsPage({
     setTab(nextTab)
     setError('')
     setMessage('')
+    setEditorModalSeatId(null)
   }
 
   async function handleSaveLayout(event: FormEvent) {
@@ -490,50 +513,52 @@ export default function CourseDesignatedSeatsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Header */}
       {false ? (
         <section className="rounded-[8px] bg-white p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <Link
-                href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
-                className="text-xs font-medium text-[#86868b] hover:underline"
-              >
-                &larr; {course!.name}
-              </Link>
-              <h2 className="mt-2 text-2xl font-semibold text-[#1d1d1f]">지정좌석</h2>
-              <p className="mt-2 text-sm leading-6 text-[#86868b]">
-                학생이 직접 좌석을 선착순으로 선택할 수 있는 기능입니다. 기존 과목별 좌석 배정과는 독립적으로 운영됩니다.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
-                className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
-              >
-                강좌 설정
-              </Link>
-              <Link
-                href={withTenantPrefix(`/dashboard/courses/${course!.id}/seats`, tenant.type)}
-                className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
-              >
-                기존 좌석 배정
-              </Link>
-            </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <Link
+              href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
+              className="text-xs font-medium text-[#86868b] hover:underline"
+            >
+              &larr; {course!.name}
+            </Link>
+            <h2 className="mt-2 text-2xl font-semibold text-[#1d1d1f]">지정좌석</h2>
+            <p className="mt-2 text-sm leading-6 text-[#86868b]">
+              학생이 직접 좌석을 선착순으로 선택할 수 있는 기능입니다. 기존 과목별 좌석 배정과는 독립적으로 운영됩니다.
+            </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
+              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+            >
+              강좌 설정
+            </Link>
+            <Link
+              href={withTenantPrefix(`/dashboard/courses/${course!.id}/seats`, tenant.type)}
+              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+            >
+              기존 좌석 배정
+            </Link>
+          </div>
+        </div>
+
         </section>
       ) : null}
 
       {/* Tab switcher */}
-      <div className="flex gap-2">
+      <div className="flex gap-6 border-b border-slate-200">
         {TAB_ITEMS.map((item) => (
           <button
             key={item.key}
             type="button"
             onClick={() => handleTabChange(item.key)}
-            className={`flex-1 rounded-[8px] border px-3 py-3 text-sm font-semibold transition ${
+            className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
               tab === item.key
-                ? 'border-blue-600 bg-[#0071e3] text-white'
-                : 'border-[#d2d2d7] bg-white text-[#1d1d1f] hover:border-[#d2d2d7] hover:bg-[#f5f5f7]'
+                ? 'border-[#1d1d1f] text-[#1d1d1f]'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
             }`}
           >
             {item.label}
@@ -659,8 +684,9 @@ export default function CourseDesignatedSeatsPage({
                   <div>
                     <h3 className="text-base font-bold text-[#1d1d1f]">좌석 맵</h3>
                     <p className="text-xs text-[#86868b]">
-                      클릭으로 선택, <kbd className="rounded border border-[#d2d2d7] bg-[#f5f5f7] px-1 py-0.5 text-[10px] font-semibold">Shift</kbd>+클릭으로 다중 선택
+                      클릭으로 좌석 편집, <kbd className="rounded border border-[#d2d2d7] bg-[#f5f5f7] px-1 py-0.5 text-[10px] font-semibold">Shift</kbd>+클릭으로 다중 선택
                     </p>
+                    <p className="mt-1 text-xs text-[#86868b]">새 좌석 번호는 가로 A, B, C / 세로 1, 2, 3 순서로 자동 생성됩니다.</p>
                   </div>
                   {bulkCount > 1 ? (
                     <div className="flex items-center gap-2">
@@ -685,47 +711,8 @@ export default function CourseDesignatedSeatsPage({
                 />
               </div>
 
-              {/* Selected seat detail */}
-              {selectedSeat ? (
-                <div className="rounded-[8px] border border-[#d2d2d7] p-4">
-                  <h3 className="text-base font-bold text-[#1d1d1f]">선택 좌석</h3>
-                  <div className="mt-4 flex flex-col gap-3">
-                    <div className="rounded-[8px] bg-[#f5f5f7] px-4 py-3">
-                      <p className="text-xs font-semibold text-[#86868b]">현재 좌표</p>
-                      <p className="mt-1 text-lg font-black text-[#1d1d1f]">
-                        {selectedSeat.position_y}행 {selectedSeat.position_x}열
-                      </p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-[#86868b]">좌석 라벨</label>
-                        <input
-                          value={selectedSeat.label}
-                          onChange={(event) => updateSelectedSeats({ label: event.target.value })}
-                          className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-                        />
-                      </div>
-                      <div className="flex items-end pb-1">
-                        <label className="flex items-center gap-2 text-sm font-semibold text-[#1d1d1f]">
-                          <input
-                            type="checkbox"
-                            checked={selectedSeat.is_active}
-                            onChange={(event) => updateSelectedSeats({ is_active: event.target.checked })}
-                            className="rounded"
-                          />
-                          좌석 사용 가능
-                        </label>
-                      </div>
-                    </div>
-                    {seatReservationMap.get(selectedSeat.persistedId ?? selectedSeat.id) ? (
-                      <p className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#86868b]">
-                        현재 배정 중인 좌석은 비활성화하거나 삭제할 수 없습니다.
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              ) : bulkCount === 0 ? (
-                <p className="text-sm text-[#86868b]">좌석을 선택하면 상세 편집이 열립니다.</p>
+              {bulkCount <= 1 ? (
+                <p className="text-sm text-[#86868b]">좌석을 클릭하면 좌석 번호와 운영 좌석 상태를 모달에서 바로 수정할 수 있습니다.</p>
               ) : null}
 
               <button
@@ -737,6 +724,64 @@ export default function CourseDesignatedSeatsPage({
               </button>
             </div>
           </form>
+
+          <SeatEditModal
+            open={tab === 'editor' && editorSeat !== null}
+            onClose={closeEditorSeatModal}
+            title="좌석 편집"
+            badge={editorSeat ? `${editorSeat.position_x}열 ${editorSeat.position_y}행` : undefined}
+            description="좌석 번호와 운영 좌석 여부를 바로 수정할 수 있습니다."
+          >
+            {editorSeat ? (
+              <div className="space-y-5">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">좌석 번호</span>
+                  <input
+                    value={editorSeat.label}
+                    onChange={(event) => updateSelectedSeats({ label: event.target.value })}
+                    className="w-full rounded-[10px] border border-[#d2d2d7] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#0071e3]"
+                    placeholder="예: A-1"
+                    autoFocus
+                  />
+                </label>
+
+                <label className="flex items-center gap-3 rounded-[10px] border border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={editorSeat.is_active}
+                    onChange={(event) => updateSelectedSeats({ is_active: event.target.checked })}
+                    disabled={Boolean(editorSeatReservation)}
+                    className="h-5 w-5 rounded border-[#d2d2d7]"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-[#1d1d1f]">운영 좌석</span>
+                    <span className="block text-xs text-[#86868b]">
+                      {editorSeatReservation
+                        ? '현재 학생이 배정된 좌석은 비활성화할 수 없습니다.'
+                        : '비활성 시 학생 배정 대상에서 제외됩니다.'}
+                    </span>
+                  </span>
+                </label>
+
+                <div className="rounded-[10px] bg-[#f5f5f7] px-4 py-3">
+                  <p className="text-xs font-semibold text-[#86868b]">현재 좌표</p>
+                  <p className="mt-1 text-base font-semibold text-[#1d1d1f]">
+                    {editorSeat.position_y}행 {editorSeat.position_x}열
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end border-t border-[#f5f5f7] pt-4">
+                  <button
+                    type="button"
+                    onClick={closeEditorSeatModal}
+                    className="rounded-full bg-[#1d1d1f] px-5 py-2 text-sm font-medium text-white transition hover:bg-black"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </SeatEditModal>
         </>
       )}
 

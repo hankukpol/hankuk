@@ -15,6 +15,7 @@ import {
   getRotationBucket,
   verifyRotationToken,
 } from '@/lib/designated-seat/token'
+import { parseDesignatedSeatScanValue } from '@/lib/designated-seat/scan'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -83,13 +84,27 @@ export async function POST(req: NextRequest) {
 
     let verifiedRotation = 0
     let displaySessionId = 0
+    let verificationMethod = parsed.data.verificationMethod
+    let rotationToken = parsed.data.rotationToken
+    let rotationCode = parsed.data.rotationCode
 
-    if (parsed.data.verificationMethod === 'qr') {
-      if (!parsed.data.rotationToken) {
+    if (verificationMethod === 'qr' && rotationToken) {
+      const normalizedScan = parseDesignatedSeatScanValue(rotationToken)
+      if (normalizedScan?.verificationMethod === 'code') {
+        verificationMethod = 'code'
+        rotationCode = normalizedScan.rotationCode
+        rotationToken = undefined
+      } else if (normalizedScan?.verificationMethod === 'qr') {
+        rotationToken = normalizedScan.rotationToken
+      }
+    }
+
+    if (verificationMethod === 'qr') {
+      if (!rotationToken) {
         return authFailure('QR 토큰이 필요합니다.')
       }
 
-      const tokenPayload = await verifyRotationToken(parsed.data.rotationToken)
+      const tokenPayload = await verifyRotationToken(rotationToken)
       if (!tokenPayload || tokenPayload.courseId !== access.course.id) {
         return authFailure('QR 인증 정보가 만료되었거나 올바르지 않습니다.')
       }
@@ -107,7 +122,7 @@ export async function POST(req: NextRequest) {
       verifiedRotation = tokenPayload.rotation
       displaySessionId = displaySession.id
     } else {
-      if (!parsed.data.rotationCode) {
+      if (!rotationCode) {
         return authFailure('현장 인증 코드를 입력해 주세요.')
       }
 
@@ -128,11 +143,11 @@ export async function POST(req: NextRequest) {
         rotation: currentRotation - 1,
       })
 
-      if (parsed.data.rotationCode !== currentCode && parsed.data.rotationCode !== previousCode) {
+      if (rotationCode !== currentCode && rotationCode !== previousCode) {
         return authFailure('현장 인증 코드가 올바르지 않거나 만료되었습니다.')
       }
 
-      verifiedRotation = parsed.data.rotationCode === currentCode ? currentRotation : currentRotation - 1
+      verifiedRotation = rotationCode === currentCode ? currentRotation : currentRotation - 1
       displaySessionId = displaySession.id
     }
 
@@ -154,7 +169,7 @@ export async function POST(req: NextRequest) {
         details: {
           previous_device_hash: existingDeviceHash,
           next_device_hash: device.deviceHash,
-          verification_method: parsed.data.verificationMethod,
+          verification_method: verificationMethod,
         },
       })
     }
@@ -167,7 +182,7 @@ export async function POST(req: NextRequest) {
         enrollment_id: access.enrollment.id,
         device_key_hash: device.deviceHash,
         device_signature: parsed.data.deviceSignature ?? {},
-        verification_method: parsed.data.verificationMethod,
+        verification_method: verificationMethod,
         verified_at: new Date().toISOString(),
         expires_at: expiresAt,
         used_for_reservation_at: null,
@@ -188,7 +203,7 @@ export async function POST(req: NextRequest) {
       seat_id: null,
       event_type: 'student_auth_success',
       details: {
-        verification_method: parsed.data.verificationMethod,
+        verification_method: verificationMethod,
         display_session_id: displaySessionId,
         rotation: verifiedRotation,
       },

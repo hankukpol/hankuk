@@ -7,6 +7,7 @@ import {
   DESIGNATED_SEAT_DISPLAY_RETRY_MS,
   getDisplayRefreshDelay,
 } from '@/lib/designated-seat/display-runtime'
+import { buildDesignatedSeatQrValue } from '@/lib/designated-seat/scan'
 
 type DisplayPayload = {
   course: {
@@ -17,7 +18,7 @@ type DisplayPayload = {
     id: number
     expires_at: string
   }
-  rotationToken: string
+  rotationCode: string
   rotationExpiresAt: string
 }
 
@@ -102,6 +103,14 @@ export default function DesignatedSeatDisplayPage() {
     return Math.max(0, Math.ceil((new Date(payload.rotationExpiresAt).getTime() - now) / 1000))
   }, [now, payload])
 
+  const qrValue = useMemo(() => {
+    if (!payload) {
+      return ''
+    }
+
+    return buildDesignatedSeatQrValue(payload.rotationCode)
+  }, [payload])
+
   if (error) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-slate-950 px-8 text-center text-white">
@@ -139,13 +148,21 @@ export default function DesignatedSeatDisplayPage() {
       <div className="mx-auto mt-10 flex w-full max-w-6xl flex-1 flex-col items-center gap-8">
         <div className="flex items-center justify-center rounded-[10px] bg-white p-8 shadow-2xl">
           <QRCodeSVG
-            value={payload.rotationToken}
+            value={qrValue}
             size={520}
             level="M"
             includeMargin
             bgColor="#ffffff"
             fgColor="#111827"
           />
+        </div>
+
+        <div className="w-full max-w-2xl rounded-[10px] border border-slate-800 bg-slate-900 px-6 py-5 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Current Code</p>
+          <p className="mt-4 font-mono text-[clamp(2.5rem,8vw,4.5rem)] font-black tracking-[0.32em] text-sky-300">
+            {payload.rotationCode}
+          </p>
+          <p className="mt-3 text-sm text-slate-400">QR 스캔이 불안정하면 학생 화면에서 아래 코드를 입력해 주세요.</p>
         </div>
 
         <div className="rounded-[10px] bg-slate-950/70 px-5 py-4 text-center text-sm text-slate-400">

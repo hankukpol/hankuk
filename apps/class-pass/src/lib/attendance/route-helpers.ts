@@ -14,15 +14,20 @@ export const ATTENDANCE_ERROR_MESSAGES = {
   invalidDashboardRequest: '출석 대시보드 요청 형식이 올바르지 않습니다.',
   invalidAbsenceReportRequest: '결석 리포트 요청 형식이 올바르지 않습니다.',
   invalidOverrideRequest: '수동 출석 요청 형식이 올바르지 않습니다.',
+  invalidExcuseRequest: '사유서 요청 형식이 올바르지 않습니다.',
   courseNotFound: '강의를 찾을 수 없습니다.',
   attendanceNotEnabledForCourse: '이 강의는 출석 기능을 사용하지 않습니다.',
   attendanceNotStarted: '수강 시작일 이후부터 출석 체크를 진행할 수 있습니다.',
   loadDisplayFailed: '출석 화면 정보를 불러오지 못했습니다.',
   loadDashboardFailed: '출석 현황을 불러오지 못했습니다.',
   loadAbsenceReportFailed: '결석 리포트를 불러오지 못했습니다.',
+  loadExcusesFailed: '사유서 목록을 불러오지 못했습니다.',
   startSessionFailed: '출석 세션을 시작하지 못했습니다.',
   stopSessionFailed: '출석 세션을 종료하지 못했습니다.',
   overrideFailed: '수동 출석 처리에 실패했습니다.',
+  createExcuseFailed: '사유서를 등록하지 못했습니다.',
+  updateExcuseFailed: '사유서를 수정하지 못했습니다.',
+  deleteExcuseFailed: '사유서를 삭제하지 못했습니다.',
 } as const
 
 type AttendanceCourseContext = {

@@ -47,9 +47,8 @@ function normalizeRotationCodeCandidate(value: string) {
   return ROTATION_CODE_PATTERN.test(digitsOnly) ? digitsOnly : null
 }
 
-export function buildDesignatedSeatQrValue(rotationCode: string) {
-  const normalizedCode = normalizeRotationCodeCandidate(rotationCode) ?? rotationCode.trim()
-  return `https://designated-seat.local/verify?code=${encodeURIComponent(normalizedCode)}`
+export function buildDesignatedSeatQrValue(rotationToken: string) {
+  return `https://designated-seat.local/verify?token=${encodeURIComponent(rotationToken.trim())}`
 }
 
 export function parseDesignatedSeatScanValue(value: string): DesignatedSeatVerificationPayload | null {

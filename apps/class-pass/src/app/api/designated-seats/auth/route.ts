@@ -4,14 +4,12 @@ import { handleRouteError } from '@/lib/api/error-response'
 import { attachStudentDeviceCookie, resolveStudentDevice } from '@/lib/designated-seat/device'
 import {
   getActiveDisplaySessionById,
-  getActiveDisplaySessionForCourse,
   getDesignatedSeatStudentState,
   logDesignatedSeatEvent,
   verifyStudentSeatAccess,
 } from '@/lib/designated-seat/service'
 import {
   DESIGNATED_SEAT_AUTH_TTL_MS,
-  generateRotationCode,
   getRotationBucket,
   verifyRotationToken,
 } from '@/lib/designated-seat/token'
@@ -43,6 +41,8 @@ function authFailure(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status })
 }
 
+const QR_ONLY_MESSAGE = '현장 코드 입력은 더 이상 사용할 수 없습니다. 강의실 화면의 QR을 다시 스캔해 주세요.'
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null)
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!access.course.designated_seat_open) {
-      return authFailure('현재 좌석 신청이 닫혀 있습니다.', 403)
+      return authFailure('현재 좌석 요청이 닫혀 있습니다.', 403)
     }
 
     const device = await resolveStudentDevice(req, parsed.data.localDeviceKey)
@@ -77,79 +77,47 @@ export async function POST(req: NextRequest) {
       return authFailure(
         device.reason === 'DEVICE_MISMATCH'
           ? '기기 정보가 일치하지 않습니다. 같은 브라우저에서 다시 시도해 주세요.'
-          : '기기 식별 정보가 올바르지 않습니다.',
+          : '기기 연계 정보가 올바르지 않습니다.',
         409,
       )
     }
 
-    let verifiedRotation = 0
-    let displaySessionId = 0
-    let verificationMethod = parsed.data.verificationMethod
-    let rotationToken = parsed.data.rotationToken
-    let rotationCode = parsed.data.rotationCode
+    if (parsed.data.verificationMethod !== 'qr') {
+      return authFailure(QR_ONLY_MESSAGE)
+    }
 
-    if (verificationMethod === 'qr' && rotationToken) {
+    let rotationToken = parsed.data.rotationToken
+    if (rotationToken) {
       const normalizedScan = parseDesignatedSeatScanValue(rotationToken)
       if (normalizedScan?.verificationMethod === 'code') {
-        verificationMethod = 'code'
-        rotationCode = normalizedScan.rotationCode
-        rotationToken = undefined
-      } else if (normalizedScan?.verificationMethod === 'qr') {
+        return authFailure(QR_ONLY_MESSAGE)
+      }
+      if (normalizedScan?.verificationMethod === 'qr') {
         rotationToken = normalizedScan.rotationToken
       }
     }
 
-    if (verificationMethod === 'qr') {
-      if (!rotationToken) {
-        return authFailure('QR 토큰이 필요합니다.')
-      }
-
-      const tokenPayload = await verifyRotationToken(rotationToken)
-      if (!tokenPayload || tokenPayload.courseId !== access.course.id) {
-        return authFailure('QR 인증 정보가 만료되었거나 올바르지 않습니다.')
-      }
-
-      const currentRotation = getRotationBucket()
-      if (tokenPayload.rotation < currentRotation - 1 || tokenPayload.rotation > currentRotation) {
-        return authFailure('QR 인증 시간이 맞지 않습니다. 화면에 표시된 최신 QR로 다시 인증해 주세요.')
-      }
-
-      const displaySession = await getActiveDisplaySessionById(access.course.id, tokenPayload.displaySessionId)
-      if (!displaySession) {
-        return authFailure('현장 QR 표시 세션이 만료되었습니다.')
-      }
-
-      verifiedRotation = tokenPayload.rotation
-      displaySessionId = displaySession.id
-    } else {
-      if (!rotationCode) {
-        return authFailure('현장 인증 코드를 입력해 주세요.')
-      }
-
-      const displaySession = await getActiveDisplaySessionForCourse(access.course.id)
-      if (!displaySession) {
-        return authFailure('현재 활성화된 현장 QR이 없습니다.', 404)
-      }
-
-      const currentRotation = getRotationBucket()
-      const currentCode = generateRotationCode({
-        courseId: access.course.id,
-        displaySessionId: displaySession.id,
-        rotation: currentRotation,
-      })
-      const previousCode = generateRotationCode({
-        courseId: access.course.id,
-        displaySessionId: displaySession.id,
-        rotation: currentRotation - 1,
-      })
-
-      if (rotationCode !== currentCode && rotationCode !== previousCode) {
-        return authFailure('현장 인증 코드가 올바르지 않거나 만료되었습니다.')
-      }
-
-      verifiedRotation = rotationCode === currentCode ? currentRotation : currentRotation - 1
-      displaySessionId = displaySession.id
+    if (!rotationToken) {
+      return authFailure('QR 토큰이 필요합니다.')
     }
+
+    const tokenPayload = await verifyRotationToken(rotationToken)
+    if (!tokenPayload || tokenPayload.courseId !== access.course.id) {
+      return authFailure('QR 인증 정보가 만료되었거나 올바르지 않습니다.')
+    }
+
+    const currentRotation = getRotationBucket()
+    if (tokenPayload.rotation < currentRotation - 1 || tokenPayload.rotation > currentRotation) {
+      return authFailure('QR 인증 시간이 맞지 않습니다. 화면의 최신 QR로 다시 인증해 주세요.')
+    }
+
+    const displaySession = await getActiveDisplaySessionById(access.course.id, tokenPayload.displaySessionId)
+    if (!displaySession) {
+      return authFailure('현장 QR 표시 세션이 만료되었습니다.')
+    }
+
+    const verifiedRotation = tokenPayload.rotation
+    const displaySessionId = displaySession.id
 
     const db = createServerClient()
     const existingAuthResult = await db
@@ -169,7 +137,7 @@ export async function POST(req: NextRequest) {
         details: {
           previous_device_hash: existingDeviceHash,
           next_device_hash: device.deviceHash,
-          verification_method: verificationMethod,
+          verification_method: 'qr',
         },
       })
     }
@@ -182,7 +150,7 @@ export async function POST(req: NextRequest) {
         enrollment_id: access.enrollment.id,
         device_key_hash: device.deviceHash,
         device_signature: parsed.data.deviceSignature ?? {},
-        verification_method: verificationMethod,
+        verification_method: 'qr',
         verified_at: new Date().toISOString(),
         expires_at: expiresAt,
         used_for_reservation_at: null,
@@ -203,7 +171,7 @@ export async function POST(req: NextRequest) {
       seat_id: null,
       event_type: 'student_auth_success',
       details: {
-        verification_method: verificationMethod,
+        verification_method: 'qr',
         display_session_id: displaySessionId,
         rotation: verifiedRotation,
       },

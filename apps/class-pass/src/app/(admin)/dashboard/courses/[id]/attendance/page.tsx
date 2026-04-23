@@ -5,7 +5,13 @@ import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
-import type { Course, CourseSubject } from '@/types/database'
+import type { Course, CourseSubject, Enrollment } from '@/types/database'
+import {
+  AttendanceExcuseModal,
+  type AttendanceExcuseRecord,
+  type AttendanceExcuseStudentOption,
+} from './attendance-excuse-modal'
+import { AttendanceExcusesPanel } from './attendance-excuses-panel'
 
 type DashboardRecord = {
   enrollmentId: number
@@ -16,10 +22,14 @@ type DashboardRecord = {
 
 type DashboardTargetRecord = DashboardRecord & {
   seatLabel: string | null
-  status: 'present' | 'absent'
+  status: 'present' | 'absent' | 'excused'
   attendedAt: string | null
   consecutiveAbsences: number
   attendanceStartDate: string | null
+  excuseId: number | null
+  excuseReason: string | null
+  excuseSubjectId: number | null
+  excuseSubjectName: string | null
 }
 
 type DashboardPayload = {
@@ -29,6 +39,7 @@ type DashboardPayload = {
   totalEnrolled: number
   presentCount: number
   absentCount: number
+  excusedCount: number
   attendanceRate: number
   targets: DashboardTargetRecord[]
   absentees: Array<DashboardRecord & {
@@ -73,7 +84,15 @@ type AbsenceReportPayload = {
   flaggedStudents: WarningRow[]
 }
 
-type TabKey = 'targets' | 'attendees' | 'absentees' | 'warnings'
+type TabKey = 'targets' | 'attendees' | 'absentees' | 'warnings' | 'excuses'
+
+type ExcuseModalState = {
+  open: boolean
+  editingExcuse: AttendanceExcuseRecord | null
+  lockedEnrollmentId: number | null
+  defaultSubjectId: number | null
+  defaultDate: string
+}
 
 function getToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
@@ -169,15 +188,55 @@ function TabButton(props: {
   )
 }
 
-function StatusChip(props: { status: 'present' | 'absent' }) {
+function StatusChip(props: { status: 'present' | 'absent' | 'excused' }) {
   return props.status === 'present' ? (
     <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
       출석
+    </span>
+  ) : props.status === 'excused' ? (
+    <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+      사유
     </span>
   ) : (
     <span className="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
       결석
     </span>
+  )
+}
+
+function ExcuseActionButton(props: {
+  excuse: AttendanceExcuseRecord | null
+  onCreate: () => void
+  onEdit: () => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {props.excuse ? (
+        <>
+          <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+            사유
+          </span>
+          <button
+            type="button"
+            onClick={props.onEdit}
+            disabled={props.disabled}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+          >
+            수정
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={props.onCreate}
+          disabled={props.disabled}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+        >
+          사유 등록
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -240,8 +299,10 @@ export default function AdminAttendancePage() {
 
   const [course, setCourse] = useState<Course | null>(null)
   const [subjects, setSubjects] = useState<CourseSubject[]>([])
+  const [studentOptions, setStudentOptions] = useState<AttendanceExcuseStudentOption[]>([])
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null)
   const [absenceReport, setAbsenceReport] = useState<AbsenceReportPayload | null>(null)
+  const [dailyExcuses, setDailyExcuses] = useState<AttendanceExcuseRecord[]>([])
   const [date, setDate] = useState(getToday())
   const [attendanceSearch, setAttendanceSearch] = useState('')
   const [selectedSubjectId, setSelectedSubjectId] = useState('')
@@ -254,13 +315,32 @@ export default function AdminAttendancePage() {
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [excuseModalState, setExcuseModalState] = useState<ExcuseModalState>({
+    open: false,
+    editingExcuse: null,
+    lockedEnrollmentId: null,
+    defaultSubjectId: null,
+    defaultDate: getToday(),
+  })
+  const [excusesRefreshKey, setExcusesRefreshKey] = useState(0)
   const courseLoadedRef = useRef(false)
+  const studentsLoadedRef = useRef(false)
 
   useEffect(() => {
     courseLoadedRef.current = false
+    studentsLoadedRef.current = false
     setCourse(null)
     setSubjects([])
+    setStudentOptions([])
     setSelectedSubjectId('')
+    setDailyExcuses([])
+    setExcuseModalState({
+      open: false,
+      editingExcuse: null,
+      lockedEnrollmentId: null,
+      defaultSubjectId: null,
+      defaultDate: getToday(),
+    })
   }, [courseId])
 
   const loadData = useCallback(async () => {
@@ -272,28 +352,45 @@ export default function AdminAttendancePage() {
       courseId: String(courseId),
       threshold: '2',
     })
+    const excuseQuery = new URLSearchParams({
+      courseId: String(courseId),
+      fromDate: date,
+      toDate: date,
+    })
 
     if (selectedSubjectId) {
       dashboardQuery.set('subjectId', selectedSubjectId)
       reportQuery.set('subjectId', selectedSubjectId)
     }
 
-    const [courseResponse, subjectsResponse, dashboardResponse, reportResponse] = await Promise.all([
+    const [courseResponse, studentsResponse, subjectsResponse, dashboardResponse, reportResponse, excusesResponse] = await Promise.all([
       courseLoadedRef.current
         ? Promise.resolve(null)
         : fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
+      studentsLoadedRef.current
+        ? Promise.resolve(null)
+        : fetch(`/api/courses/${courseId}/bootstrap?view=students`, { cache: 'no-store' }),
       fetch(`/api/courses/${courseId}/subjects`, { cache: 'no-store' }),
       fetch(`/api/attendance/admin/dashboard?${dashboardQuery.toString()}`, { cache: 'no-store' }),
       fetch(`/api/attendance/admin/absence-report?${reportQuery.toString()}`, { cache: 'no-store' }),
+      fetch(`/api/attendance/admin/excuses?${excuseQuery.toString()}`, { cache: 'no-store' }),
     ])
 
     const coursePayload = courseResponse ? await readJson<{ course?: Course; error?: string }>(courseResponse) : null
+    const studentsPayload = studentsResponse
+      ? await readJson<{ enrollments?: Enrollment[]; course?: Course; error?: string }>(studentsResponse)
+      : null
     const subjectsPayload = await readJson<{ subjects?: CourseSubject[]; error?: string }>(subjectsResponse)
     const dashboardPayload = await readJson<DashboardPayload & { error?: string }>(dashboardResponse)
     const reportPayload = await readJson<AbsenceReportPayload & { error?: string }>(reportResponse)
+    const excusesPayload = await readJson<{ excuses?: AttendanceExcuseRecord[]; error?: string }>(excusesResponse)
 
     if (courseResponse && !courseResponse.ok) {
       throw new Error(coursePayload?.error ?? '강의 정보를 불러오지 못했습니다.')
+    }
+
+    if (studentsResponse && !studentsResponse.ok) {
+      throw new Error(studentsPayload?.error ?? '학생 목록을 불러오지 못했습니다.')
     }
 
     if (!dashboardResponse.ok) {
@@ -308,14 +405,38 @@ export default function AdminAttendancePage() {
       throw new Error(reportPayload?.error ?? '결석 경고 정보를 불러오지 못했습니다.')
     }
 
+    if (!excusesResponse.ok) {
+      throw new Error(excusesPayload?.error ?? '사유서 정보를 불러오지 못했습니다.')
+    }
+
     if (coursePayload?.course) {
       setCourse(coursePayload.course)
       courseLoadedRef.current = true
     }
 
+    if (studentsPayload?.course && !courseLoadedRef.current) {
+      setCourse(studentsPayload.course)
+      courseLoadedRef.current = true
+    }
+
+    if (studentsPayload?.enrollments) {
+      setStudentOptions(
+        studentsPayload.enrollments
+          .filter((enrollment) => enrollment.status === 'active')
+          .map((enrollment) => ({
+            id: enrollment.id,
+            name: enrollment.name,
+            examNumber: enrollment.exam_number,
+            phone: enrollment.phone,
+          })),
+      )
+      studentsLoadedRef.current = true
+    }
+
     setSubjects(subjectsPayload?.subjects ?? [])
     setDashboard(dashboardPayload as DashboardPayload)
     setAbsenceReport(reportPayload as AbsenceReportPayload)
+    setDailyExcuses(excusesPayload?.excuses ?? [])
   }, [courseId, date, selectedSubjectId])
 
   useEffect(() => {
@@ -384,6 +505,21 @@ export default function AdminAttendancePage() {
     () => subjects.find((subject) => String(subject.id) === selectedSubjectId)?.name ?? null,
     [selectedSubjectId, subjects],
   )
+  const effectiveSubjectId = useMemo(() => {
+    if (selectedSubjectId) {
+      return Number(selectedSubjectId)
+    }
+
+    if (dashboard?.displaySession.subjectId != null) {
+      return dashboard.displaySession.subjectId
+    }
+
+    if (dashboard?.checkedSubjects.length === 1) {
+      return dashboard.checkedSubjects[0]?.subjectId ?? null
+    }
+
+    return null
+  }, [dashboard, selectedSubjectId])
   const effectiveSubjectName = useMemo(() => {
     if (selectedSubjectName) {
       return selectedSubjectName
@@ -405,6 +541,30 @@ export default function AdminAttendancePage() {
     dashboard?.attendanceStartDate && !dashboard.attendanceStarted,
   )
   const isBeforeAttendanceStartToday = Boolean(course?.enrolled_from && getToday() < course.enrolled_from)
+  const dailyExcusesByEnrollment = useMemo(() => {
+    const nextMap = new Map<number, AttendanceExcuseRecord[]>()
+
+    for (const excuse of dailyExcuses) {
+      const entries = nextMap.get(excuse.enrollmentId) ?? []
+      entries.push(excuse)
+      nextMap.set(excuse.enrollmentId, entries)
+    }
+
+    return nextMap
+  }, [dailyExcuses])
+
+  const findDailyExcuse = useCallback((enrollmentId: number, subjectId?: number | null) => {
+    const excuses = dailyExcusesByEnrollment.get(enrollmentId) ?? []
+    if (excuses.length === 0) {
+      return null
+    }
+
+    if (subjectId != null) {
+      return excuses.find((excuse) => excuse.subjectId === subjectId) ?? null
+    }
+
+    return excuses.length === 1 ? excuses[0] : null
+  }, [dailyExcusesByEnrollment])
 
   const filteredTargets = useMemo(() => (
     (dashboard?.targets ?? []).filter((row) => matchesFields(attendanceSearch, [
@@ -412,7 +572,8 @@ export default function AdminAttendancePage() {
       row.examNumber,
       row.phone,
       row.seatLabel,
-      row.status === 'present' ? '출석' : '결석',
+      row.status === 'present' ? '출석' : row.status === 'excused' ? '사유' : '결석',
+      row.excuseReason,
     ]))
   ), [attendanceSearch, dashboard?.targets])
 
@@ -447,8 +608,9 @@ export default function AdminAttendancePage() {
       row.examNumber,
       row.seatLabel,
       row.subjectName,
+      findDailyExcuse(row.enrollmentId, row.subjectId)?.reason,
     ]))
-  ), [absenceReport?.flaggedStudents, attendanceSearch])
+  ), [absenceReport?.flaggedStudents, attendanceSearch, findDailyExcuse])
 
   const activeRowsCount = activeTab === 'targets'
     ? filteredTargets.length
@@ -456,9 +618,13 @@ export default function AdminAttendancePage() {
       ? filteredAttendees.length
       : activeTab === 'absentees'
         ? filteredAbsentees.length
-        : filteredWarnings.length
+        : activeTab === 'warnings'
+          ? filteredWarnings.length
+          : 0
 
-  const pageCount = Math.max(1, Math.ceil(activeRowsCount / pageSize))
+  const pageCount = activeTab === 'excuses'
+    ? 1
+    : Math.max(1, Math.ceil(activeRowsCount / pageSize))
 
   useEffect(() => {
     if (currentPage > pageCount) {
@@ -555,6 +721,54 @@ export default function AdminAttendancePage() {
 
     setMessage(status === 'present' ? '수동 출석 처리했습니다.' : '결석 처리했습니다.')
     await loadData().catch(() => null)
+  }
+
+  function openCreateExcuseModal(options?: {
+    enrollmentId?: number
+    subjectId?: number | null
+    date?: string
+  }) {
+    if (subjects.length === 0) {
+      setError('사유서를 등록할 과목이 없습니다.')
+      setMessage('')
+      return
+    }
+
+    setExcuseModalState({
+      open: true,
+      editingExcuse: null,
+      lockedEnrollmentId: options?.enrollmentId ?? null,
+      defaultSubjectId: options?.subjectId ?? effectiveSubjectId ?? null,
+      defaultDate: options?.date ?? date,
+    })
+  }
+
+  function openEditExcuseModal(excuse: AttendanceExcuseRecord) {
+    setExcuseModalState({
+      open: true,
+      editingExcuse: excuse,
+      lockedEnrollmentId: excuse.enrollmentId,
+      defaultSubjectId: excuse.subjectId,
+      defaultDate: excuse.excuseDate,
+    })
+  }
+
+  function closeExcuseModal() {
+    setExcuseModalState((current) => ({
+      ...current,
+      open: false,
+      editingExcuse: null,
+      lockedEnrollmentId: null,
+      defaultSubjectId: effectiveSubjectId ?? null,
+      defaultDate: date,
+    }))
+  }
+
+  function handleExcuseChanged(nextMessage: string) {
+    setError('')
+    setMessage(nextMessage)
+    setExcusesRefreshKey((current) => current + 1)
+    void loadData().catch(() => null)
   }
 
   if (loading) {
@@ -756,7 +970,7 @@ export default function AdminAttendancePage() {
               전체 대상, 출석자, 결석자, 연속 결석 경고를 분리해 필요한 학생만 빠르게 확인할 수 있습니다.
             </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
+          <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[640px] xl:grid-cols-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-semibold text-slate-500">오늘 체크인</p>
               <p className="mt-1 text-lg font-bold text-slate-900">{dashboard.recentRecords.length}건</p>
@@ -773,6 +987,13 @@ export default function AdminAttendancePage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-semibold text-slate-500">연속 결석 경고</p>
               <p className="mt-1 text-lg font-bold text-rose-600">{absenceReport?.flaggedStudents.length ?? 0}명</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500">사유(선택 날짜)</p>
+              <p className="mt-1 text-lg font-bold text-amber-600">{dailyExcuses.length}건</p>
+              <p className="mt-1 text-xs text-slate-400">
+                결석 집계 제외 {dashboard.excusedCount}명
+              </p>
             </div>
           </div>
         </div>
@@ -802,49 +1023,57 @@ export default function AdminAttendancePage() {
             count={absenceReport?.flaggedStudents.length ?? 0}
             onClick={() => setActiveTab('warnings')}
           />
+          <TabButton
+            active={activeTab === 'excuses'}
+            label="사유서"
+            count={dailyExcuses.length}
+            onClick={() => setActiveTab('excuses')}
+          />
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold text-slate-800">
-              {activeTab === 'targets'
-                ? '전체 출석 대상'
-                : activeTab === 'attendees'
-                  ? '출석 완료 수강생'
-                  : activeTab === 'absentees'
-                    ? '오늘 결석 대상'
-                    : '연속 결석 경고 대상'}
-            </p>
-            <p className="text-xs text-slate-500">
-              {activeTab === 'warnings'
-                ? effectiveSubjectName
-                  ? `${effectiveSubjectName}에서 2회 이상 연속 결석한 학생만 표시합니다.`
-                  : '과목별 2회 이상 연속 결석한 학생만 표시합니다.'
-                : effectiveSubjectName
-                  ? `${effectiveSubjectName} 기준으로 집계 중이며, 좌석번호도 해당 과목 데이터로 표시됩니다.`
-                  : '과목 전체 기준으로 집계 중입니다.'}
-            </p>
+        {activeTab !== 'excuses' ? (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-slate-800">
+                {activeTab === 'targets'
+                  ? '전체 출석 대상'
+                  : activeTab === 'attendees'
+                    ? '출석 완료 수강생'
+                    : activeTab === 'absentees'
+                      ? '오늘 결석 대상'
+                      : '연속 결석 경고 대상'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {activeTab === 'warnings'
+                  ? effectiveSubjectName
+                    ? `${effectiveSubjectName}에서 2회 이상 연속 결석한 학생만 표시합니다.`
+                    : '과목별 2회 이상 연속 결석한 학생만 표시합니다.'
+                  : effectiveSubjectName
+                    ? `${effectiveSubjectName} 기준으로 집계 중이며, 좌석번호도 해당 과목 데이터로 표시됩니다.`
+                    : '과목 전체 기준으로 집계 중입니다.'}
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                value={attendanceSearch}
+                onChange={(event) => setAttendanceSearch(event.target.value)}
+                placeholder={
+                  activeTab === 'warnings'
+                    ? '이름, 수험번호, 좌석번호, 과목 검색'
+                    : '이름, 연락처, 수험번호, 좌석번호 검색'
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-80"
+              />
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <input
-              type="text"
-              value={attendanceSearch}
-              onChange={(event) => setAttendanceSearch(event.target.value)}
-              placeholder={
-                activeTab === 'warnings'
-                  ? '이름, 수험번호, 좌석번호, 과목 검색'
-                  : '이름, 연락처, 수험번호, 좌석번호 검색'
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-80"
-            />
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
-            />
-          </div>
-        </div>
+        ) : null}
 
         {dashboard.checkedSubjects.length > 0 ? (
           <p className="mt-3 text-xs text-slate-500">
@@ -891,6 +1120,9 @@ export default function AdminAttendancePage() {
                           <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center">
                             <div className="font-semibold text-slate-900">{row.studentName}</div>
+                            {row.status === 'excused' && row.excuseReason ? (
+                              <div className="mt-1 text-xs text-amber-700">{row.excuseReason}</div>
+                            ) : null}
                             {row.attendanceStartDate ? (
                               <div className="mt-1 text-xs text-slate-400">기준일 {row.attendanceStartDate}</div>
                             ) : null}
@@ -1031,6 +1263,11 @@ export default function AdminAttendancePage() {
                     ) : (
                       pagedAbsentees.map((row) => (
                         <tr key={row.enrollmentId} className="bg-white">
+                          {(() => {
+                            const existingExcuse = findDailyExcuse(row.enrollmentId, effectiveSubjectId)
+
+                            return (
+                              <>
                           <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center">
                             <div className="font-semibold text-slate-900">{row.studentName}</div>
@@ -1045,15 +1282,34 @@ export default function AdminAttendancePage() {
                           </td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.attendanceStartDate ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center">
-                            <button
-                              type="button"
-                              onClick={() => void handleOverride(row.enrollmentId, 'present')}
-                              disabled={working}
-                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                            >
-                              출석 처리
-                            </button>
+                            <div className="flex flex-wrap items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleOverride(row.enrollmentId, 'present')}
+                                disabled={working}
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                              >
+                                출석 처리
+                              </button>
+                              <ExcuseActionButton
+                                excuse={existingExcuse}
+                                disabled={working}
+                                onCreate={() => openCreateExcuseModal({
+                                  enrollmentId: row.enrollmentId,
+                                  subjectId: effectiveSubjectId,
+                                  date,
+                                })}
+                                onEdit={() => {
+                                  if (existingExcuse) {
+                                    openEditExcuseModal(existingExcuse)
+                                  }
+                                }}
+                              />
+                            </div>
                           </td>
+                              </>
+                            )
+                          })()}
                         </tr>
                       ))
                     )}
@@ -1084,12 +1340,13 @@ export default function AdminAttendancePage() {
                       <th className="px-4 py-3">연속 결석</th>
                       <th className="px-4 py-3">마지막 출석</th>
                       <th className="px-4 py-3">기준일</th>
+                      <th className="px-4 py-3">작업</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
                     {pagedWarnings.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
+                        <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">
                           {isBeforeAttendanceStartToday
                             ? `수강 시작일 ${course.enrolled_from} 이전이라 연속 결석 경고가 없습니다.`
                             : attendanceSearch.trim()
@@ -1100,6 +1357,11 @@ export default function AdminAttendancePage() {
                     ) : (
                       pagedWarnings.map((row) => (
                         <tr key={`${row.enrollmentId}:${row.subjectId ?? 'course'}`} className="bg-white">
+                          {(() => {
+                            const existingExcuse = findDailyExcuse(row.enrollmentId, row.subjectId ?? effectiveSubjectId)
+
+                            return (
+                              <>
                           <td className="px-4 py-3 align-middle text-center">
                             {row.subjectName ? (
                               <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -1117,6 +1379,25 @@ export default function AdminAttendancePage() {
                           </td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.lastAttendedDate ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.attendanceStartDate ?? '-'}</td>
+                          <td className="px-4 py-3 align-middle text-center">
+                            <ExcuseActionButton
+                              excuse={existingExcuse}
+                              disabled={working}
+                              onCreate={() => openCreateExcuseModal({
+                                enrollmentId: row.enrollmentId,
+                                subjectId: row.subjectId ?? effectiveSubjectId,
+                                date,
+                              })}
+                              onEdit={() => {
+                                if (existingExcuse) {
+                                  openEditExcuseModal(existingExcuse)
+                                }
+                              }}
+                            />
+                          </td>
+                              </>
+                            )
+                          })()}
                         </tr>
                       ))
                     )}
@@ -1133,8 +1414,45 @@ export default function AdminAttendancePage() {
               />
             </>
           ) : null}
+
+          {activeTab === 'excuses' ? (
+            <div className="p-4 sm:p-5">
+              <AttendanceExcusesPanel
+                active={activeTab === 'excuses'}
+                courseId={courseId}
+                subjects={subjects}
+                students={studentOptions}
+                defaultDate={date}
+                defaultSubjectId={effectiveSubjectId}
+                refreshKey={excusesRefreshKey}
+                onCreateRequest={(defaults) => openCreateExcuseModal(defaults)}
+                onEditRequest={openEditExcuseModal}
+                onChanged={handleExcuseChanged}
+              />
+            </div>
+          ) : null}
         </div>
       </section>
+
+      <AttendanceExcuseModal
+        open={excuseModalState.open}
+        courseId={courseId}
+        subjects={subjects}
+        students={studentOptions}
+        defaultDate={excuseModalState.defaultDate}
+        defaultSubjectId={excuseModalState.defaultSubjectId}
+        lockedEnrollmentId={excuseModalState.lockedEnrollmentId}
+        editingExcuse={excuseModalState.editingExcuse}
+        onClose={closeExcuseModal}
+        onSaved={(excuse, nextMessage) => {
+          closeExcuseModal()
+          handleExcuseChanged(nextMessage)
+
+          if (excuse.excuseDate !== date) {
+            setDate(excuse.excuseDate)
+          }
+        }}
+      />
     </div>
   )
 }

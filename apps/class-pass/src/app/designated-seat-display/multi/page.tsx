@@ -12,7 +12,7 @@ import { buildDesignatedSeatQrValue } from '@/lib/designated-seat/scan'
 type DisplayPayload = {
   course: { id: number; name: string }
   session: { id: number; expires_at: string }
-  rotationCode: string
+  rotationToken: string
   rotationExpiresAt: string
 }
 
@@ -46,7 +46,12 @@ export default function MultiDisplayPage() {
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
-    setEntries(parsed.map((p) => ({ courseId: p.courseId, token: p.token, payload: null, error: '' })))
+    setEntries(parsed.map((session) => ({
+      courseId: session.courseId,
+      token: session.token,
+      payload: null,
+      error: '',
+    })))
   }, [parsed])
 
   useEffect(() => {
@@ -67,7 +72,9 @@ export default function MultiDisplayPage() {
   }, [])
 
   useEffect(() => {
-    if (parsed.length === 0) return
+    if (parsed.length === 0) {
+      return
+    }
 
     let cancelled = false
     let nextLoadTimer: ReturnType<typeof setTimeout> | null = null
@@ -79,16 +86,16 @@ export default function MultiDisplayPage() {
     }
 
     async function loadAll() {
-      const results = await Promise.allSettled(
-        parsed.map((p) => loadEntry(p.courseId, p.token)),
-      )
-      if (cancelled) return
+      const results = await Promise.allSettled(parsed.map((session) => loadEntry(session.courseId, session.token)))
+      if (cancelled) {
+        return
+      }
 
-      const nextEntries = parsed.map((p, i) => {
-        const result = results[i]
+      const nextEntries = parsed.map((session, index) => {
+        const result = results[index]
         return {
-          courseId: p.courseId,
-          token: p.token,
+          courseId: session.courseId,
+          token: session.token,
           payload: result.status === 'fulfilled' ? result.value : null,
           error: result.status === 'rejected' ? (result.reason as Error).message : '',
         }
@@ -174,22 +181,16 @@ export default function MultiDisplayPage() {
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
               </div>
             ) : (
-              <div className="flex w-full flex-col items-center gap-4">
+              <div className="flex w-full flex-col items-center">
                 <div className="flex items-center justify-center rounded-[10px] bg-white p-6 shadow-2xl">
                   <QRCodeSVG
-                    value={buildDesignatedSeatQrValue(entry.payload.rotationCode)}
+                    value={buildDesignatedSeatQrValue(entry.payload.rotationToken)}
                     size={qrSize}
                     level="M"
                     includeMargin
                     bgColor="#ffffff"
                     fgColor="#111827"
                   />
-                </div>
-                <div className="w-full rounded-[10px] border border-slate-800 bg-slate-900 px-4 py-3 text-center">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Code</p>
-                  <p className={`${count <= 2 ? 'text-3xl' : 'text-2xl'} mt-2 font-mono font-black tracking-[0.28em] text-sky-300`}>
-                    {entry.payload.rotationCode}
-                  </p>
                 </div>
               </div>
             )}

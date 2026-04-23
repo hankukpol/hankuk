@@ -180,6 +180,40 @@ export interface DesignatedSeatEvent {
   created_at: string
 }
 
+export type DesignatedSeatAttendanceStatus = 'present' | 'absent'
+
+export type DesignatedSeatAttendanceEventType =
+  | 'seat_reserved'
+  | 'seat_changed'
+  | 'seat_unchanged'
+  | 'admin_seat_reserved'
+  | 'admin_seat_changed'
+  | 'admin_seat_unchanged'
+
+export interface DesignatedSeatAttendanceRecord {
+  enrollmentId: number
+  studentName: string
+  examNumber: string | null
+  phone: string
+  status: DesignatedSeatAttendanceStatus
+  seatId: number | null
+  seatLabel: string | null
+  checkedInAt: string | null
+  eventType: DesignatedSeatAttendanceEventType | null
+}
+
+export interface DesignatedSeatAttendanceDashboard {
+  date: string
+  courseId: number
+  stats: {
+    targetCount: number
+    presentCount: number
+    absentCount: number
+    attendanceRate: number
+  }
+  records: DesignatedSeatAttendanceRecord[]
+}
+
 export interface DesignatedSeatStudentState {
   enabled: boolean
   open: boolean
@@ -216,6 +250,18 @@ export interface AttendanceRecord {
   attended_date: string
   attended_at: string
   created_at: string
+}
+
+export interface AttendanceExcuse {
+  id: number
+  course_id: number
+  enrollment_id: number
+  subject_id: number
+  excuse_date: string
+  reason: string
+  created_by: string
+  created_at: string
+  updated_at: string
 }
 
 export interface AttendanceHistoryEntry {

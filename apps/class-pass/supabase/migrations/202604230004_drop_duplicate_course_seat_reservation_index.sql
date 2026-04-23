@@ -1,0 +1,1 @@
+drop index if exists class_pass.idx_class_pass_course_seat_reservations_course_updated_at;

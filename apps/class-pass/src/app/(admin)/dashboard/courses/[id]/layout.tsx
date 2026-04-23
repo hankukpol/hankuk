@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
-import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -10,7 +9,7 @@ import { formatCourseTypeLabel } from '@/lib/utils'
 import type { Course } from '@/types/database'
 
 type CourseLayoutProps = {
-  children: ReactNode
+  children: React.ReactNode
 }
 
 type CourseRouteTab = {
@@ -42,11 +41,16 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
   const [loading, setLoading] = useState(true)
   const [duplicating, setDuplicating] = useState(false)
   const [error, setError] = useState('')
+  const [hasMounted, setHasMounted] = useState(false)
 
   const basePath = useMemo(
     () => withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type),
     [courseId, tenant.type],
   )
+
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!Number.isInteger(courseId) || courseId <= 0) {
@@ -200,7 +204,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
         <div className="mt-5 flex gap-6 border-b border-slate-200 overflow-x-auto">
           {tabs.map((tab) => {
-            const isActive = tab.match(pathname)
+            const isActive = hasMounted && tab.match(pathname)
 
             if (!tab.enabled) {
               return (

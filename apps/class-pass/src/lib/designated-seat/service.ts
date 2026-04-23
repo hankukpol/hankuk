@@ -3,6 +3,10 @@ import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import type {
   Course,
+  DesignatedSeatAttendanceDashboard,
+  DesignatedSeatAttendanceEventType,
+  DesignatedSeatAttendanceRecord,
+  DesignatedSeatAttendanceStatus,
   DesignatedSeat,
   DesignatedSeatAuthSession,
   DesignatedSeatDisplaySession,
@@ -471,4 +475,71 @@ export async function logDesignatedSeatEvent(input: Omit<DesignatedSeatEvent, 'i
     event_type: input.event_type,
     details: input.details ?? {},
   })
+}
+
+const DESIGNATED_SEAT_ATTENDANCE_EVENT_TYPES: DesignatedSeatAttendanceEventType[] = [
+  'seat_reserved',
+  'seat_changed',
+  'seat_unchanged',
+  'admin_seat_reserved',
+  'admin_seat_changed',
+  'admin_seat_unchanged',
+]
+
+const designatedSeatAttendanceEventTypeSet = new Set<DesignatedSeatAttendanceEventType>(
+  DESIGNATED_SEAT_ATTENDANCE_EVENT_TYPES,
+)
+
+function mapDesignatedSeatAttendanceRow(row: Record<string, unknown>): DesignatedSeatAttendanceRecord {
+  const statusValue = row.status === 'present' ? 'present' : 'absent'
+  const eventTypeValue = typeof row.event_type === 'string'
+    && designatedSeatAttendanceEventTypeSet.has(row.event_type as DesignatedSeatAttendanceEventType)
+    ? row.event_type as DesignatedSeatAttendanceEventType
+    : null
+
+  return {
+    enrollmentId: Number(row.enrollment_id),
+    studentName: String(row.student_name ?? ''),
+    examNumber: row.exam_number ? String(row.exam_number) : null,
+    phone: String(row.phone ?? ''),
+    status: statusValue as DesignatedSeatAttendanceStatus,
+    seatId: row.seat_id == null ? null : Number(row.seat_id),
+    seatLabel: row.seat_label ? String(row.seat_label) : null,
+    checkedInAt: row.checked_in_at ? String(row.checked_in_at) : null,
+    eventType: eventTypeValue,
+  }
+}
+
+export async function getDesignatedSeatAttendanceDashboardData(params: {
+  courseId: number
+  date: string
+}): Promise<DesignatedSeatAttendanceDashboard> {
+  const db = createServerClient()
+  const rows = unwrapSupabaseResult(
+    'designatedSeat.attendanceDashboard',
+    await db.rpc('get_designated_seat_attendance_dashboard', {
+      p_course_id: params.courseId,
+      p_date: params.date,
+    }),
+  ) as Array<Record<string, unknown>> | null
+
+  const records = (rows ?? []).map(mapDesignatedSeatAttendanceRow)
+  const targetCount = records.length
+  const presentCount = records.filter((row) => row.status === 'present').length
+  const absentCount = Math.max(targetCount - presentCount, 0)
+  const attendanceRate = targetCount > 0
+    ? Number(((presentCount / targetCount) * 100).toFixed(1))
+    : 0
+
+  return {
+    date: params.date,
+    courseId: params.courseId,
+    stats: {
+      targetCount,
+      presentCount,
+      absentCount,
+      attendanceRate,
+    },
+    records,
+  }
 }

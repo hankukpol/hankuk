@@ -210,7 +210,6 @@ export default function DesignatedSeatPage() {
     }
 
     setMessage('현장 인증이 완료되었습니다. 원하시는 좌석을 선택해 주세요.')
-    setCodeInput('')
   }, [applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
 
   useEffect(() => {
@@ -368,6 +367,7 @@ export default function DesignatedSeatPage() {
 
   const currentSeatId = state?.reservation?.seat_id ?? null
   const currentSeatLabel = state?.reservation?.seat?.label ?? null
+  const manualCodeEntryEnabled = false
 
   const legend = useMemo(
     () => [
@@ -460,7 +460,7 @@ export default function DesignatedSeatPage() {
             >
               QR 스캔으로 현장 인증
             </button>
-            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr,auto]">
+            <div className={`mt-3 grid gap-2 sm:grid-cols-[1fr,auto] ${manualCodeEntryEnabled ? '' : 'hidden'}`}>
               <input
                 value={codeInput}
                 onChange={(event) => setCodeInput(event.target.value.replace(/\D/g, '').slice(0, 6))}

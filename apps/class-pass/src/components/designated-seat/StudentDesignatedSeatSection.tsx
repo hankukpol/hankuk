@@ -203,7 +203,7 @@ export function StudentDesignatedSeatSection({
       } catch {
         if (!cancelled) {
           setScannerLoading(false)
-          setError('카메라를 시작하지 못했습니다. 숫자 코드 입력으로 인증해주세요.')
+          setError('카메라를 시작하지 못했습니다. QR 스캔을 다시 시도해 주세요.')
           setScannerOpen(false)
         }
       }
@@ -254,6 +254,7 @@ export function StudentDesignatedSeatSection({
 
   const currentSeatId = state.reservation?.seat_id ?? null
   const currentSeatLabel = state.reservation?.seat?.label ?? null
+  const manualCodeEntryEnabled = false
   const legend = useMemo(
     () => [
       { label: '내 좌석', className: 'bg-emerald-500' },
@@ -314,7 +315,7 @@ export function StudentDesignatedSeatSection({
                 {state.requires_reauth ? '좌석을 변경하려면 다시 현장 QR 인증이 필요합니다.' : '현장 QR 인증 후 좌석을 선택할 수 있습니다.'}
               </p>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr,auto]">
+              <div className={`mt-4 grid gap-3 sm:grid-cols-[1fr,auto] ${manualCodeEntryEnabled ? '' : 'hidden'}`}>
                 <input
                   value={codeInput}
                   onChange={(event) => setCodeInput(event.target.value.replace(/\D/g, '').slice(0, 6))}

@@ -16,8 +16,9 @@ import type {
   DesignatedSeatReservation,
   Enrollment,
 } from '@/types/database'
+import { DesignatedSeatAttendancePanel } from './designated-seat-attendance-panel'
 
-type TabMode = 'editor' | 'status'
+type TabMode = 'editor' | 'status' | 'attendance'
 
 export type AdminPayload = {
   course: Course
@@ -122,6 +123,7 @@ async function fetchAdminData(courseId: number) {
 const TAB_ITEMS: Array<{ key: TabMode; label: string }> = [
   { key: 'editor', label: '좌석 맵 편집' },
   { key: 'status', label: '배정 현황' },
+  { key: 'attendance', label: '출석 현황' },
 ]
 
 export default function CourseDesignatedSeatsPage({
@@ -363,6 +365,9 @@ export default function CourseDesignatedSeatsPage({
     setError('')
     setMessage('')
     setEditorModalSeatId(null)
+    setModalSeatId(null)
+    setManualEnrollmentId(null)
+    setStudentSearch('')
   }
 
   async function handleSaveLayout(event: FormEvent) {
@@ -570,19 +575,21 @@ export default function CourseDesignatedSeatsPage({
       </div>
 
       {/* Summary stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        {[
-          { label: '활성 좌석', value: summary.activeSeatCount },
-          { label: '배정 완료', value: summary.reservedCount },
-          { label: '잔여 좌석', value: summary.availableCount },
-          { label: '신청 상태', value: seatOpen ? 'OPEN' : 'CLOSED' },
-        ].map((item) => (
-          <article key={item.label} className="rounded-[8px] bg-white p-5">
-            <p className="text-sm font-semibold text-[#86868b]">{item.label}</p>
-            <p className="mt-3 text-3xl font-semibold text-[#1d1d1f]">{item.value}</p>
-          </article>
-        ))}
-      </div>
+      {tab !== 'attendance' ? (
+        <div className="grid gap-4 md:grid-cols-4">
+          {[
+            { label: '활성 좌석', value: summary.activeSeatCount },
+            { label: '배정 완료', value: summary.reservedCount },
+            { label: '잔여 좌석', value: summary.availableCount },
+            { label: '신청 상태', value: seatOpen ? 'OPEN' : 'CLOSED' },
+          ].map((item) => (
+            <article key={item.label} className="rounded-[8px] bg-white p-5">
+              <p className="text-sm font-semibold text-[#86868b]">{item.label}</p>
+              <p className="mt-3 text-3xl font-semibold text-[#1d1d1f]">{item.value}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
 
       {/* Feedback */}
       {(error || message) ? (
@@ -905,6 +912,10 @@ export default function CourseDesignatedSeatsPage({
           </section>
         </div>
       )}
+
+      {tab === 'attendance' && course ? (
+        <DesignatedSeatAttendancePanel courseId={course.id} />
+      ) : null}
 
       {/* ───── Seat Assignment Modal ───── */}
       {modalSeatId !== null && tab === 'status' && (() => {

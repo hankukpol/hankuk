@@ -113,6 +113,173 @@ function mapAttendanceRecordRow(row: Record<string, unknown>): AttendanceRecord 
   }
 }
 
+export class AttendanceServiceError extends Error {
+  status: number
+
+  constructor(message: string, status = 400) {
+    super(message)
+    this.name = 'AttendanceServiceError'
+    this.status = status
+  }
+}
+
+const ATTENDANCE_EXCUSE_MIGRATION_MESSAGE =
+  '출석 사유서 DB migration이 아직 적용되지 않았습니다. `202604220001_attendance_excuses.sql`을 먼저 적용해 주세요.'
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error && typeof error === 'object') {
+    const message = 'message' in error && typeof error.message === 'string' ? error.message : ''
+    const details = 'details' in error && typeof error.details === 'string' ? error.details : ''
+    const hint = 'hint' in error && typeof error.hint === 'string' ? error.hint : ''
+
+    return [message, details, hint].filter(Boolean).join(' | ')
+  }
+
+  return ''
+}
+
+function isMissingAttendanceExcuseDependencyError(error: unknown) {
+  const message = getErrorMessage(error)
+
+  return (
+    message.includes('relation "attendance_excuses" does not exist')
+    || message.includes('relation "class_pass.attendance_excuses" does not exist')
+    || message.includes("Could not find the table 'class_pass.attendance_excuses' in the schema cache")
+    || message.includes('Could not find the table')
+    || message.includes('Could not find the function class_pass.get_attendance_absence_metrics')
+    || (message.includes('get_attendance_absence_metrics') && message.includes('does not exist'))
+    || (
+      message.includes('attendance_events_type_check')
+      && (
+        message.includes('admin_created_excuse')
+        || message.includes('admin_updated_excuse')
+        || message.includes('admin_deleted_excuse')
+      )
+    )
+  )
+}
+
+export function normalizeAttendanceExcuseDependencyError(error: unknown) {
+  if (error instanceof AttendanceServiceError) {
+    return error
+  }
+
+  if (isMissingAttendanceExcuseDependencyError(error)) {
+    return new AttendanceServiceError(ATTENDANCE_EXCUSE_MIGRATION_MESSAGE, 503)
+  }
+
+  return error
+}
+
+type AttendanceExcuseRecord = {
+  id: number
+  courseId: number
+  enrollmentId: number
+  subjectId: number
+  excuseDate: string
+  reason: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+  studentName: string
+  examNumber: string | null
+  phone: string
+  subjectName: string
+  subjectSortOrder: number | null
+}
+
+function mapAttendanceExcuseRow(row: Record<string, unknown>): AttendanceExcuseRecord {
+  const enrollment = row.enrollments as Record<string, unknown> | null
+  const subject = row.course_subjects as Record<string, unknown> | null
+
+  return {
+    id: Number(row.id),
+    courseId: Number(row.course_id),
+    enrollmentId: Number(row.enrollment_id),
+    subjectId: Number(row.subject_id),
+    excuseDate: String(row.excuse_date ?? ''),
+    reason: String(row.reason ?? ''),
+    createdBy: String(row.created_by ?? 'admin'),
+    createdAt: String(row.created_at ?? ''),
+    updatedAt: String(row.updated_at ?? ''),
+    studentName: String(enrollment?.name ?? ''),
+    examNumber: enrollment?.exam_number == null ? null : String(enrollment.exam_number),
+    phone: String(enrollment?.phone ?? ''),
+    subjectName: String(subject?.name ?? ''),
+    subjectSortOrder: subject?.sort_order == null ? null : Number(subject.sort_order),
+  }
+}
+
+function normalizeAttendanceExcuseReason(reason: string) {
+  return reason.trim()
+}
+
+async function getAttendanceExcuseById(id: number) {
+  const db = createServerClient()
+  try {
+    const row = unwrapSupabaseResult(
+      'attendance.excuses.byId',
+      await db
+        .from('attendance_excuses')
+        .select(`
+          id,
+          course_id,
+          enrollment_id,
+          subject_id,
+          excuse_date,
+          reason,
+          created_by,
+          created_at,
+          updated_at,
+          enrollments!inner(id,name,exam_number,phone),
+          course_subjects!inner(id,name,sort_order)
+        `)
+        .eq('id', id)
+        .maybeSingle(),
+    ) as Record<string, unknown> | null
+
+    return row ? mapAttendanceExcuseRow(row) : null
+  } catch (error) {
+    throw normalizeAttendanceExcuseDependencyError(error)
+  }
+}
+
+async function getAttendanceExcuseEnrollment(enrollmentId: number) {
+  const db = createServerClient()
+  const row = unwrapSupabaseResult(
+    'attendance.excuses.enrollment',
+    await db
+      .from('enrollments')
+      .select('id,course_id,name,phone,exam_number,created_at,status')
+      .eq('id', enrollmentId)
+      .maybeSingle(),
+  ) as Enrollment | null
+
+  return row
+}
+
+async function getAttendanceExcuseSubject(subjectId: number) {
+  const db = createServerClient()
+  const row = unwrapSupabaseResult(
+    'attendance.excuses.subject',
+    await db
+      .from('course_subjects')
+      .select('id,course_id,name,sort_order')
+      .eq('id', subjectId)
+      .maybeSingle(),
+  ) as { id: number; course_id: number; name: string; sort_order: number } | null
+
+  return row
+}
+
 async function listActiveEnrollments(courseId: number) {
   const db = createServerClient()
   const rows = unwrapSupabaseResult(
@@ -355,6 +522,227 @@ async function getAttendanceRecordForToday(
   return row ? mapAttendanceRecordRow(row) : null
 }
 
+export async function listAttendanceExcuses(params: {
+  courseId: number
+  subjectId?: number
+  enrollmentId?: number
+  fromDate?: string
+  toDate?: string
+}) {
+  const db = createServerClient()
+  let query = db
+    .from('attendance_excuses')
+    .select(`
+      id,
+      course_id,
+      enrollment_id,
+      subject_id,
+      excuse_date,
+      reason,
+      created_by,
+      created_at,
+      updated_at,
+      enrollments!inner(id,name,exam_number,phone),
+      course_subjects!inner(id,name,sort_order)
+    `)
+    .eq('course_id', params.courseId)
+    .order('excuse_date', { ascending: false })
+    .order('updated_at', { ascending: false })
+    .order('id', { ascending: false })
+
+  if (params.subjectId !== undefined) {
+    query = query.eq('subject_id', params.subjectId)
+  }
+
+  if (params.enrollmentId !== undefined) {
+    query = query.eq('enrollment_id', params.enrollmentId)
+  }
+
+  if (params.fromDate) {
+    query = query.gte('excuse_date', params.fromDate)
+  }
+
+  if (params.toDate) {
+    query = query.lte('excuse_date', params.toDate)
+  }
+
+  let rows: Array<Record<string, unknown>> | null
+  try {
+    rows = unwrapSupabaseResult(
+      'attendance.excuses.list',
+      await query,
+  ) as Array<Record<string, unknown>> | null
+  } catch (error) {
+    if (isMissingAttendanceExcuseDependencyError(error)) {
+      return []
+    }
+
+    throw error
+  }
+
+  return (rows ?? [])
+    .map(mapAttendanceExcuseRow)
+    .sort((left, right) => (
+      right.excuseDate.localeCompare(left.excuseDate)
+      || (left.subjectSortOrder ?? Number.MAX_SAFE_INTEGER) - (right.subjectSortOrder ?? Number.MAX_SAFE_INTEGER)
+      || left.studentName.localeCompare(right.studentName, 'ko-KR')
+    ))
+}
+
+export async function createAttendanceExcuse(input: {
+  courseId: number
+  enrollmentId: number
+  subjectId: number
+  excuseDate: string
+  reason: string
+  createdBy: string
+}) {
+  const normalizedReason = normalizeAttendanceExcuseReason(input.reason)
+  if (!normalizedReason) {
+    throw new AttendanceServiceError('사유를 입력해 주세요.', 400)
+  }
+
+  const [enrollment, subject] = await Promise.all([
+    getAttendanceExcuseEnrollment(input.enrollmentId),
+    getAttendanceExcuseSubject(input.subjectId),
+  ])
+
+  if (!enrollment) {
+    throw new AttendanceServiceError('수강생을 찾을 수 없습니다.', 404)
+  }
+
+  if (enrollment.course_id !== input.courseId) {
+    throw new AttendanceServiceError('다른 강좌의 수강생은 사유서를 등록할 수 없습니다.', 403)
+  }
+
+  if (!subject) {
+    throw new AttendanceServiceError('과목을 찾을 수 없습니다.', 404)
+  }
+
+  if (subject.course_id !== input.courseId) {
+    throw new AttendanceServiceError('다른 강좌의 과목에는 사유서를 등록할 수 없습니다.', 403)
+  }
+
+  const db = createServerClient()
+  const nowIso = new Date().toISOString()
+  const insertResult = await db
+    .from('attendance_excuses')
+    .insert({
+      course_id: input.courseId,
+      enrollment_id: input.enrollmentId,
+      subject_id: input.subjectId,
+      excuse_date: input.excuseDate,
+      reason: normalizedReason,
+      created_by: input.createdBy,
+      updated_at: nowIso,
+    })
+    .select('id,course_id,enrollment_id,subject_id,excuse_date,reason,created_by,created_at,updated_at')
+    .single()
+
+  if (insertResult.error) {
+    if (insertResult.error.code === '23505') {
+      throw new AttendanceServiceError('같은 학생·과목·날짜에는 이미 사유서가 등록되어 있습니다.', 409)
+    }
+
+    throw normalizeAttendanceExcuseDependencyError(insertResult.error)
+  }
+
+  return {
+    id: Number(insertResult.data.id),
+    courseId: input.courseId,
+    enrollmentId: input.enrollmentId,
+    subjectId: input.subjectId,
+    excuseDate: String(insertResult.data.excuse_date),
+    reason: String(insertResult.data.reason),
+    createdBy: String(insertResult.data.created_by ?? input.createdBy),
+    createdAt: String(insertResult.data.created_at ?? nowIso),
+    updatedAt: String(insertResult.data.updated_at ?? nowIso),
+    studentName: enrollment.name,
+    examNumber: enrollment.exam_number,
+    phone: enrollment.phone,
+    subjectName: subject.name,
+    subjectSortOrder: subject.sort_order,
+  }
+}
+
+export async function updateAttendanceExcuse(input: {
+  id: number
+  courseId: number
+  excuseDate: string
+  reason: string
+}) {
+  const existingExcuse = await getAttendanceExcuseById(input.id)
+  if (!existingExcuse) {
+    throw new AttendanceServiceError('사유서를 찾을 수 없습니다.', 404)
+  }
+
+  if (existingExcuse.courseId !== input.courseId) {
+    throw new AttendanceServiceError('다른 강좌의 사유서는 수정할 수 없습니다.', 403)
+  }
+
+  const normalizedReason = normalizeAttendanceExcuseReason(input.reason)
+  if (!normalizedReason) {
+    throw new AttendanceServiceError('사유를 입력해 주세요.', 400)
+  }
+
+  const db = createServerClient()
+  const nowIso = new Date().toISOString()
+  const updateResult = await db
+    .from('attendance_excuses')
+    .update({
+      excuse_date: input.excuseDate,
+      reason: normalizedReason,
+      updated_at: nowIso,
+    })
+    .eq('id', input.id)
+    .select('id,course_id,enrollment_id,subject_id,excuse_date,reason,created_by,created_at,updated_at')
+    .single()
+
+  if (updateResult.error) {
+    if (updateResult.error.code === '23505') {
+      throw new AttendanceServiceError('같은 학생·과목·날짜에는 이미 사유서가 등록되어 있습니다.', 409)
+    }
+
+    throw normalizeAttendanceExcuseDependencyError(updateResult.error)
+  }
+
+  return {
+    ...existingExcuse,
+    id: Number(updateResult.data.id),
+    excuseDate: String(updateResult.data.excuse_date),
+    reason: String(updateResult.data.reason),
+    createdBy: String(updateResult.data.created_by ?? existingExcuse.createdBy),
+    createdAt: String(updateResult.data.created_at ?? existingExcuse.createdAt),
+    updatedAt: String(updateResult.data.updated_at ?? nowIso),
+  }
+}
+
+export async function deleteAttendanceExcuse(input: {
+  id: number
+  courseId: number
+}) {
+  const existingExcuse = await getAttendanceExcuseById(input.id)
+  if (!existingExcuse) {
+    throw new AttendanceServiceError('사유서를 찾을 수 없습니다.', 404)
+  }
+
+  if (existingExcuse.courseId !== input.courseId) {
+    throw new AttendanceServiceError('다른 강좌의 사유서는 삭제할 수 없습니다.', 403)
+  }
+
+  const db = createServerClient()
+  const deleteResult = await db
+    .from('attendance_excuses')
+    .delete()
+    .eq('id', input.id)
+
+  if (deleteResult.error) {
+    throw normalizeAttendanceExcuseDependencyError(deleteResult.error)
+  }
+
+  return existingExcuse
+}
+
 async function listAttendanceSessionDates(
   courseId: number,
   attendanceStartDate?: string | null,
@@ -385,7 +773,7 @@ async function listAttendanceSessionDates(
   )).sort((left, right) => left.localeCompare(right))
 }
 
-async function getAttendanceAbsenceMetrics(
+async function getAttendanceAbsenceMetricsLegacy(
   courseId: number,
   enrollments: Array<Pick<Enrollment, 'id' | 'created_at'>>,
   attendanceStartDate?: string | null,
@@ -472,6 +860,72 @@ async function getAttendanceAbsenceMetrics(
         : relevantSessionDates.filter((sessionDate) => sessionDate > lastAttendedDate).length,
       lastAttendedDate,
       attendanceStartDate: enrollmentAttendanceStartDate,
+    })
+  }
+
+  return result
+}
+
+async function getAttendanceAbsenceMetrics(
+  courseId: number,
+  enrollments: Array<Pick<Enrollment, 'id' | 'created_at'>>,
+  attendanceStartDate?: string | null,
+  subjectId?: number | null,
+) {
+  const result = new Map<number, {
+    consecutiveAbsences: number
+    lastAttendedDate: string | null
+    attendanceStartDate: string | null
+  }>()
+  for (const enrollment of enrollments) {
+    result.set(enrollment.id, {
+      consecutiveAbsences: 0,
+      lastAttendedDate: null,
+      attendanceStartDate: getEffectiveAttendanceStartDate(attendanceStartDate, enrollment.created_at),
+    })
+  }
+
+  if (enrollments.length === 0) {
+    return result
+  }
+
+  const db = createServerClient()
+  let rows: Array<{
+    enrollment_id: number
+    consecutive_absences: number | null
+    last_attended_date: string | null
+  }> | null
+  try {
+    rows = unwrapSupabaseResult(
+      'attendance.absenceMetrics.rpc',
+      await db.rpc('get_attendance_absence_metrics', {
+        p_course_id: courseId,
+        p_enrollment_ids: enrollments.map((enrollment) => enrollment.id),
+        p_subject_id: subjectId ?? null,
+      }),
+    ) as Array<{
+      enrollment_id: number
+      consecutive_absences: number | null
+      last_attended_date: string | null
+    }> | null
+  } catch (error) {
+    if (!isMissingAttendanceExcuseDependencyError(error)) {
+      throw error
+    }
+
+    return getAttendanceAbsenceMetricsLegacy(courseId, enrollments, attendanceStartDate, subjectId)
+  }
+
+  for (const row of rows ?? []) {
+    const existing = result.get(Number(row.enrollment_id))
+    if (!existing) {
+      continue
+    }
+
+    result.set(Number(row.enrollment_id), {
+      consecutiveAbsences: Number(row.consecutive_absences ?? 0),
+      lastAttendedDate: row.last_attended_date ? String(row.last_attended_date) : null,
+      attendanceStartDate: existing.attendanceStartDate,
     })
   }
 
@@ -584,11 +1038,18 @@ export async function getActiveAttendanceDisplaySessionById(courseId: number, di
 
 export async function logAttendanceEvent(input: Omit<AttendanceEvent, 'id' | 'created_at'>) {
   const db = createServerClient()
-  await db.from('attendance_events').insert({
-    course_id: input.course_id,
-    event_type: input.event_type,
-    details: input.details ?? {},
-  })
+  try {
+    unwrapSupabaseResult(
+      'attendance.events.insert',
+      await db.from('attendance_events').insert({
+        course_id: input.course_id,
+        event_type: input.event_type,
+        details: input.details ?? {},
+      }),
+    )
+  } catch (error) {
+    throw normalizeAttendanceExcuseDependencyError(error)
+  }
 }
 
 export async function getAttendanceStudentState(params: {
@@ -674,7 +1135,7 @@ export async function getAttendanceDashboardData(params: {
     : undefined
   const effectiveSubjectId = params.subjectId ?? activeDisplaySession?.subject_id ?? inferredSubjectId
   const attendanceStarted = hasAttendanceStartedForDate(targetDate, params.attendanceStartDate)
-  const [enrollments, records, seatLabelMap, subjects, subjectSeatEnrollmentIds] = await Promise.all([
+  const [enrollments, records, seatLabelMap, subjects, subjectSeatEnrollmentIds, dailyExcuses] = await Promise.all([
     listActiveEnrollments(params.courseId),
     attendanceStarted
       ? listAttendanceRecordsForCourse(params.courseId, {
@@ -687,6 +1148,14 @@ export async function getAttendanceDashboardData(params: {
     effectiveSubjectId
       ? listEligibleSubjectSeatEnrollmentIds([effectiveSubjectId])
       : Promise.resolve(new Map<number, Set<number>>()),
+    attendanceStarted
+      ? listAttendanceExcuses({
+        courseId: params.courseId,
+        fromDate: targetDate,
+        toDate: targetDate,
+        subjectId: effectiveSubjectId ?? undefined,
+      })
+      : Promise.resolve([] as AttendanceExcuseRecord[]),
   ])
 
   const eligibleEnrollments = filterAttendanceEligibleEnrollments({
@@ -702,9 +1171,23 @@ export async function getAttendanceDashboardData(params: {
   const recordMap = new Map(filteredRecords.map((record) => [record.enrollment_id, record]))
   const enrollmentMap = new Map(eligibleEnrollments.map((enrollment) => [enrollment.id, enrollment]))
   const presentEnrollmentIds = new Set(filteredRecords.map((record) => record.enrollment_id))
+  const dailyExcusesByEnrollment = new Map<number, AttendanceExcuseRecord[]>()
+  for (const excuse of dailyExcuses) {
+    const entries = dailyExcusesByEnrollment.get(excuse.enrollmentId) ?? []
+    entries.push(excuse)
+    dailyExcusesByEnrollment.set(excuse.enrollmentId, entries)
+  }
   const absentEnrollments = attendanceStarted
     ? eligibleEnrollments.filter((enrollment) => !presentEnrollmentIds.has(enrollment.id))
     : []
+  const excusedAbsentEnrollmentIds = new Set(
+    absentEnrollments
+      .filter((enrollment) => dailyExcusesByEnrollment.has(enrollment.id))
+      .map((enrollment) => enrollment.id),
+  )
+  const visibleAbsentEnrollments = absentEnrollments.filter(
+    (enrollment) => !excusedAbsentEnrollmentIds.has(enrollment.id),
+  )
   const consecutiveAbsenceMap = attendanceStarted
     ? await getConsecutiveAbsenceMap(
       params.courseId,
@@ -716,9 +1199,37 @@ export async function getAttendanceDashboardData(params: {
       effectiveSubjectId,
     )
     : new Map<number, number>()
+  const excuseSummaryByEnrollment = new Map<number, {
+    excuseId: number | null
+    excuseReason: string | null
+    excuseSubjectId: number | null
+    excuseSubjectName: string | null
+  }>()
+
+  for (const [enrollmentId, excuses] of dailyExcusesByEnrollment.entries()) {
+    const exactExcuse = effectiveSubjectId != null
+      ? excuses.find((excuse) => excuse.subjectId === effectiveSubjectId) ?? null
+      : excuses.length === 1
+        ? excuses[0]
+        : null
+    const fallbackExcuse = exactExcuse ?? (excuses.length === 1 ? excuses[0] : null)
+
+    excuseSummaryByEnrollment.set(enrollmentId, {
+      excuseId: fallbackExcuse?.id ?? null,
+      excuseReason: exactExcuse?.reason
+        ?? (excuses.length > 1 ? `사유 ${excuses.length}건 등록` : fallbackExcuse?.reason ?? null),
+      excuseSubjectId: fallbackExcuse?.subjectId ?? null,
+      excuseSubjectName: fallbackExcuse?.subjectName ?? null,
+    })
+  }
 
   const subjectMap = new Map(subjects.map((subject) => [subject.id, subject.name]))
   const nowIso = new Date().toISOString()
+  const statusPriority = {
+    absent: 0,
+    excused: 1,
+    present: 2,
+  } as const
   const checkedSubjectMap = new Map<string, {
     subjectId: number | null
     subjectName: string
@@ -759,11 +1270,12 @@ export async function getAttendanceDashboardData(params: {
     attendanceStartDate: params.attendanceStartDate ?? null,
     totalEnrolled: attendanceStarted ? eligibleEnrollments.length : 0,
     presentCount: filteredRecords.length,
-    absentCount: attendanceStarted ? Math.max(eligibleEnrollments.length - filteredRecords.length, 0) : 0,
+    absentCount: attendanceStarted ? visibleAbsentEnrollments.length : 0,
+    excusedCount: attendanceStarted ? excusedAbsentEnrollmentIds.size : 0,
     attendanceRate: !attendanceStarted || eligibleEnrollments.length === 0
       ? 0
       : Number(((filteredRecords.length / eligibleEnrollments.length) * 100).toFixed(1)),
-    absentees: absentEnrollments
+    absentees: visibleAbsentEnrollments
       .map((enrollment) => ({
         enrollmentId: enrollment.id,
         studentName: enrollment.name,
@@ -781,6 +1293,12 @@ export async function getAttendanceDashboardData(params: {
       .map((enrollment) => {
         const record = recordMap.get(enrollment.id) ?? null
         const isPresent = Boolean(record)
+        const excuseSummary = excuseSummaryByEnrollment.get(enrollment.id)
+        const status = isPresent
+          ? 'present'
+          : excuseSummary
+            ? 'excused'
+            : 'absent'
 
         return {
           enrollmentId: enrollment.id,
@@ -788,14 +1306,19 @@ export async function getAttendanceDashboardData(params: {
           examNumber: enrollment.exam_number,
           phone: enrollment.phone,
           seatLabel: seatLabelMap.get(enrollment.id) ?? null,
-          status: isPresent ? 'present' : 'absent',
+          status,
           attendedAt: record?.attended_at ?? null,
           consecutiveAbsences: isPresent ? 0 : (consecutiveAbsenceMap.get(enrollment.id) ?? 0),
           attendanceStartDate: getEffectiveAttendanceStartDate(params.attendanceStartDate, enrollment.created_at),
+          excuseId: excuseSummary?.excuseId ?? null,
+          excuseReason: excuseSummary?.excuseReason ?? null,
+          excuseSubjectId: excuseSummary?.excuseSubjectId ?? null,
+          excuseSubjectName: excuseSummary?.excuseSubjectName ?? null,
         }
       })
       .sort((left, right) => (
-        Number(left.status === 'present') - Number(right.status === 'present')
+        statusPriority[left.status as keyof typeof statusPriority]
+        - statusPriority[right.status as keyof typeof statusPriority]
         || right.consecutiveAbsences - left.consecutiveAbsences
         || left.studentName.localeCompare(right.studentName, 'ko-KR')
       )),

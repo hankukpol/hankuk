@@ -36,8 +36,11 @@
 **/_*.log
 **/.codex-temp/
 **/.codex-temp-*
+**/.codex-admin-token.txt
+**/.codex-cookies.txt
 **/.playwright-mcp/
 **/student-pass-*.png
+**/supabase/.temp/
 
 # TypeScript
 **/*.tsbuildinfo

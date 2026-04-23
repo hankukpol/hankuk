@@ -867,31 +867,31 @@ export async function listStudentCourses(
       : (phoneCandidateRows?.length === 1 ? [phoneCandidateRows[0].id] : [])
   }
 
-  let enrollmentRows: Array<Pick<Enrollment, 'id' | 'course_id' | 'status'>> = []
+  let enrollmentRows: Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>> = []
 
   if (matchedStudentIds.length > 0) {
     const enrollments = unwrapSupabaseResult(
       'listStudentCourses.enrollmentsByStudent',
       await db
         .from('enrollments')
-        .select('id,course_id,status')
+        .select('id,course_id,status,suspended_at')
         .in('student_id', matchedStudentIds)
         .eq('status', 'active'),
     )
 
-    enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status'>>
+    enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>>
   } else {
     const enrollments = unwrapSupabaseResult(
       'listStudentCourses.enrollmentsFallback',
       await db
         .from('enrollments')
-        .select('id,course_id,status')
+        .select('id,course_id,status,suspended_at')
         .eq('name', normalizedName)
         .eq('phone', normalizedPhone)
         .eq('status', 'active'),
     )
 
-    enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status'>>
+    enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>>
   }
 
   const courseIds = Array.from(new Set(enrollmentRows.map((row) => row.course_id)))
@@ -912,12 +912,12 @@ export async function listStudentCoursesForStudent(
     'listStudentCoursesForStudent.enrollments',
     await db
       .from('enrollments')
-      .select('id,course_id,status')
+      .select('id,course_id,status,suspended_at')
       .eq('student_id', studentId)
       .eq('status', 'active'),
   )
 
-  const enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status'>>
+  const enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>>
   const courseIds = Array.from(new Set(enrollmentRows.map((row) => row.course_id)))
 
   if (courseIds.length === 0) {

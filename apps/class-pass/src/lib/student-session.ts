@@ -6,7 +6,7 @@ export const STUDENT_SESSION_NAME_KEY = 'class_pass_student_name'
 export const STUDENT_SESSION_PHONE_KEY = 'class_pass_student_phone'
 export const STUDENT_SESSION_VERIFICATION_KEY = 'class_pass_student_verification'
 export const STUDENT_SESSION_COURSES_KEY = 'class_pass_student_courses'
-const STUDENT_COURSE_CACHE_VERSION = 2
+const STUDENT_COURSE_CACHE_VERSION = 3
 
 type StudentCourseCachePayload = {
   version: number

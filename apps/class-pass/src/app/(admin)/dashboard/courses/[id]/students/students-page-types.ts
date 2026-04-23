@@ -6,6 +6,8 @@ export type StudentsPageData = {
   textbooks: Material[]
 }
 
+export type EnrollmentManageStatusFilter = 'all' | 'active' | 'refunded' | 'suspended'
+
 export type TabMode = 'manage' | 'receipts' | 'textbook-assign' | 'textbook-receipts'
 export type MatrixMode = Exclude<TabMode, 'manage'>
 export type Panel = 'none' | 'create' | 'bulk' | 'edit'

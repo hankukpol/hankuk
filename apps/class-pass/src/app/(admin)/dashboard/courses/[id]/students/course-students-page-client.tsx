@@ -9,9 +9,11 @@ import { useTenantConfig } from '@/components/TenantProvider'
 import type { Course, Enrollment, EnrollmentFieldDef, Material, TextbookAssignment } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { PinRevealModal } from './pin-reveal-modal'
+import { SuspensionModal } from './suspension-modal'
 import { StudentsManageTable } from './students-manage-table'
 import { StudentsMatrixPanel } from './students-matrix-panel'
 import {
+  type EnrollmentManageStatusFilter,
   MATRIX_TAB_META,
   emptyForm,
   isMatrixTab,
@@ -95,7 +97,7 @@ export default function CourseStudentsPage({
   const [enrollments, setEnrollments] = useState<Enrollment[]>(initialData?.enrollments ?? [])
   const [textbooks, setTextbooks] = useState<Material[]>(initialData?.textbooks ?? [])
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'refunded'>('all')
+  const [statusFilter, setStatusFilter] = useState<EnrollmentManageStatusFilter>('all')
 
   const [matrixMaterials, setMatrixMaterials] = useState<Material[]>([])
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([])
@@ -112,6 +114,8 @@ export default function CourseStudentsPage({
   const [editForm, setEditForm] = useState<EnrollmentForm>(emptyForm())
   const [bulkText, setBulkText] = useState('')
   const [pinReveal, setPinReveal] = useState<PinRevealState | null>(null)
+  const [suspensionTarget, setSuspensionTarget] = useState<Enrollment | null>(null)
+  const [suspensionSubmitting, setSuspensionSubmitting] = useState(false)
 
   const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null)
   const [photoUploading, setPhotoUploading] = useState(false)
@@ -175,7 +179,13 @@ export default function CourseStudentsPage({
   // Filter + search
   const filtered = useMemo(() => {
     let list = enrollments
-    if (statusFilter !== 'all') list = list.filter((e) => e.status === statusFilter)
+    if (statusFilter === 'active') {
+      list = list.filter((e) => e.status === 'active' && !e.suspended_at)
+    } else if (statusFilter === 'refunded') {
+      list = list.filter((e) => e.status === 'refunded')
+    } else if (statusFilter === 'suspended') {
+      list = list.filter((e) => e.status === 'active' && Boolean(e.suspended_at))
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter(
@@ -189,8 +199,10 @@ export default function CourseStudentsPage({
   }, [enrollments, statusFilter, search])
 
   const summary = useMemo(() => {
-    const active = enrollments.filter((e) => e.status === 'active').length
-    return { total: enrollments.length, active, refunded: enrollments.length - active }
+    const active = enrollments.filter((e) => e.status === 'active' && !e.suspended_at).length
+    const refunded = enrollments.filter((e) => e.status === 'refunded').length
+    const suspended = enrollments.filter((e) => e.status === 'active' && Boolean(e.suspended_at)).length
+    return { total: enrollments.length, active, refunded, suspended }
   }, [enrollments])
 
   const loadMatrixData = useCallback(async (mode: MatrixMode) => {
@@ -572,7 +584,11 @@ export default function CourseStudentsPage({
     const r = await fetch(`/api/enrollments/${e.id}/refund`, { method: 'POST' })
     const p = await r.json().catch(() => null)
     if (!r.ok) { setError(p?.error ?? '환불 실패'); return }
-    setEnrollments((c) => c.map((x) => (x.id === (p.enrollment as Enrollment).id ? p.enrollment as Enrollment : x)))
+    setEnrollments((current) => current.map((entry) => (
+      entry.id === (p.enrollment as Enrollment).id
+        ? { ...entry, ...(p.enrollment as Enrollment) }
+        : entry
+    )))
     setMessage('환불 처리 완료')
   }
 
@@ -584,6 +600,65 @@ export default function CourseStudentsPage({
     setEnrollments((c) => c.filter((x) => x.id !== e.id))
     if (editingId === e.id) { setPanel('none'); setEditingId(null) }
     setMessage('수강생을 삭제했습니다.')
+  }
+
+  async function handleSuspend(reason: string) {
+    if (!suspensionTarget) {
+      return
+    }
+
+    setSuspensionSubmitting(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch(`/api/enrollments/${suspensionTarget.id}/suspension`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    setSuspensionSubmitting(false)
+    if (!response.ok) {
+      setError(payload?.error ?? '응시 정지 처리에 실패했습니다.')
+      return
+    }
+
+    const nextEnrollment = payload.enrollment as Enrollment
+    setEnrollments((current) => current.map((entry) => (
+      entry.id === nextEnrollment.id
+        ? { ...entry, ...nextEnrollment }
+        : entry
+    )))
+    setSuspensionTarget(null)
+    setMessage('응시 정지를 적용했습니다.')
+  }
+
+  async function handleUnsuspend(enrollment: Enrollment) {
+    if (!window.confirm(`"${enrollment.name}" 학생의 응시 정지를 해제할까요?`)) {
+      return
+    }
+
+    setError('')
+    setMessage('')
+
+    const response = await fetch(`/api/enrollments/${enrollment.id}/suspension`, {
+      method: 'DELETE',
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '응시 정지 해제에 실패했습니다.')
+      return
+    }
+
+    const nextEnrollment = payload.enrollment as Enrollment
+    setEnrollments((current) => current.map((entry) => (
+      entry.id === nextEnrollment.id
+        ? { ...entry, ...nextEnrollment }
+        : entry
+    )))
+    setMessage('응시 정지를 해제했습니다.')
   }
 
   async function handleResetPin(enrollment: Enrollment) {
@@ -787,6 +862,19 @@ export default function CourseStudentsPage({
       {error && <p className="text-xs text-red-500">{error}</p>}
       {message && <p className="text-xs text-emerald-600">{message}</p>}
       <PinRevealModal reveal={pinReveal} onClose={() => setPinReveal(null)} onCopyPin={copyPin} />
+      <SuspensionModal
+        courseName={course.name}
+        enrollment={suspensionTarget}
+        submitting={suspensionSubmitting}
+        onClose={() => {
+          if (!suspensionSubmitting) {
+            setSuspensionTarget(null)
+          }
+        }}
+        onConfirm={(reason) => {
+          void handleSuspend(reason)
+        }}
+      />
 
       {/* ── Tab toggle ── */}
       <div className="flex gap-6 overflow-x-auto border-b border-slate-200">
@@ -823,6 +911,14 @@ export default function CourseStudentsPage({
           onEdit={startEdit}
           onResetPin={(enrollment) => {
             void handleResetPin(enrollment)
+          }}
+          onSuspend={(enrollment) => {
+            setSuspensionTarget(enrollment)
+            setError('')
+            setMessage('')
+          }}
+          onUnsuspend={(enrollment) => {
+            void handleUnsuspend(enrollment)
           }}
           onRefund={(enrollment) => {
             void handleRefund(enrollment)

@@ -315,12 +315,22 @@ export default function StudentCoursePassPage() {
   }
 
   const isEnrollmentActive = data.enrollment.status === 'active'
-  const examDeliveryStatus: 'eligible' | 'inactive' | 'closed' = !isEnrollmentActive
+  const isEnrollmentSuspended = isEnrollmentActive && Boolean(data.enrollment.suspended_at)
+  const examDeliveryStatus: 'eligible' | 'inactive' | 'closed' = !isEnrollmentActive || isEnrollmentSuspended
     ? 'inactive'
     : isOutsideTimeWindow
       ? 'closed'
       : 'eligible'
   const examInteractionOpen = noticeOpen || refundOpen || backConfirmOpen
+
+  if (isEnrollmentSuspended) {
+    return (
+      <SuspendedEnrollmentNotice
+        reason={data.enrollment.suspension_reason}
+        onBack={goBack}
+      />
+    )
+  }
 
   if (data.course.feature_exam_delivery_mode) {
     return (
@@ -800,6 +810,43 @@ export default function StudentCoursePassPage() {
           <p className="whitespace-pre-wrap">{data.course.refund_policy}</p>
         </Modal>
       ) : null}
+    </div>
+  )
+}
+
+function SuspendedEnrollmentNotice({
+  reason,
+  onBack,
+}: {
+  reason: string | null
+  onBack: () => void
+}) {
+  const trimmedReason = reason?.trim() || null
+
+  return (
+    <div className="student-page flex min-h-dvh items-center justify-center px-6">
+      <div className="student-card max-w-md px-6 py-7 text-center">
+        <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[12px] font-semibold text-amber-700">
+          응시 정지
+        </span>
+        <p className="mt-4 text-[22px] font-semibold tracking-[-0.04em] text-[var(--student-text)]">응시 정지</p>
+        <p className="student-body mt-3">
+          이 강좌의 모바일 수강증이 일시 정지된 상태입니다.
+          <br />
+          학원에 문의해 주세요.
+        </p>
+        {trimmedReason ? (
+          <div className="mt-4 rounded-[18px] bg-amber-50/70 px-4 py-3 text-left">
+            <p className="text-[12px] font-semibold text-amber-700">정지 사유</p>
+            <p className="mt-1 whitespace-pre-wrap break-keep text-[14px] leading-[1.5] text-[var(--student-text)]">
+              {trimmedReason}
+            </p>
+          </div>
+        ) : null}
+        <button onClick={onBack} className="student-pill-button student-pill-primary mt-6 w-full">
+          강좌 목록으로 돌아가기
+        </button>
+      </div>
     </div>
   )
 }

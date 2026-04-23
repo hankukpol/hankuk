@@ -1,15 +1,36 @@
 import type { Enrollment, EnrollmentFieldDef } from '@/types/database'
 import { formatDateTime } from '@/lib/utils'
+import type { EnrollmentManageStatusFilter } from './students-page-types'
+
+function isEnrollmentSuspended(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
+  return enrollment.status === 'active' && Boolean(enrollment.suspended_at)
+}
+
+function getSuspensionTooltip(enrollment: Enrollment) {
+  if (!isEnrollmentSuspended(enrollment)) {
+    return undefined
+  }
+
+  const lines = [`정지 시각: ${formatDateTime(enrollment.suspended_at)}`]
+  const reason = enrollment.suspension_reason?.trim()
+  if (reason) {
+    lines.push(`사유: ${reason}`)
+  }
+
+  return lines.join('\n')
+}
 
 type StudentsManageTableProps = {
   filtered: Enrollment[]
   search: string
-  statusFilter: 'all' | 'active' | 'refunded'
+  statusFilter: EnrollmentManageStatusFilter
   customFields: EnrollmentFieldDef[]
   onSearchChange: (value: string) => void
-  onStatusFilterChange: (value: 'all' | 'active' | 'refunded') => void
+  onStatusFilterChange: (value: EnrollmentManageStatusFilter) => void
   onEdit: (enrollment: Enrollment) => void
   onResetPin: (enrollment: Enrollment) => void
+  onSuspend: (enrollment: Enrollment) => void
+  onUnsuspend: (enrollment: Enrollment) => void
   onRefund: (enrollment: Enrollment) => void
   onDelete: (enrollment: Enrollment) => void
 }
@@ -23,6 +44,8 @@ export function StudentsManageTable({
   onStatusFilterChange,
   onEdit,
   onResetPin,
+  onSuspend,
+  onUnsuspend,
   onRefund,
   onDelete,
 }: StudentsManageTableProps) {
@@ -32,11 +55,11 @@ export function StudentsManageTable({
         <input
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="이름, 연락처, 응시번호 검색..."
+          placeholder="이름, 연락처, 응시번호 검색.."
           className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 sm:w-64"
         />
         <div className="flex gap-1">
-          {(['all', 'active', 'refunded'] as const).map((value) => (
+          {(['all', 'active', 'refunded', 'suspended'] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -45,7 +68,7 @@ export function StudentsManageTable({
                 statusFilter === value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'
               }`}
             >
-              {value === 'all' ? '전체' : value === 'active' ? '활성' : '환불'}
+              {value === 'all' ? '전체' : value === 'active' ? '활성' : value === 'refunded' ? '환불' : '정지'}
             </button>
           ))}
         </div>
@@ -64,7 +87,9 @@ export function StudentsManageTable({
                 <th className="px-3 py-3">이름</th>
                 <th className="px-3 py-3">연락처</th>
                 {customFields.map((field) => (
-                  <th key={field.key} className="hidden px-3 py-3 lg:table-cell">{field.label}</th>
+                  <th key={field.key} className="hidden px-3 py-3 lg:table-cell">
+                    {field.label}
+                  </th>
                 ))}
                 <th className="px-3 py-3">상태</th>
                 <th className="hidden px-3 py-3 md:table-cell">등록일</th>
@@ -72,81 +97,120 @@ export function StudentsManageTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.map((enrollment) => (
-                <tr key={enrollment.id} className="hover:bg-slate-50/60">
-                  <td className="px-5 py-3 text-gray-500">{enrollment.exam_number || '-'}</td>
-                  <td className="px-3 py-3 font-semibold text-gray-900">
-                    <div className="flex flex-col gap-1">
-                      <span>{enrollment.name}</span>
-                      <span className={`inline-flex w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                        enrollment.student_profile?.auth_method === 'birth_date'
-                          ? 'bg-blue-50 text-blue-700'
-                          : enrollment.student_profile?.auth_method === 'pin'
-                            ? 'bg-violet-50 text-violet-700'
-                            : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {enrollment.student_profile?.auth_method === 'birth_date'
-                          ? '생년월일 인증'
-                          : enrollment.student_profile?.auth_method === 'pin'
-                            ? 'PIN 인증'
-                            : '인증 미설정'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-gray-500">{enrollment.phone}</td>
-                  {customFields.map((field) => (
-                    <td key={field.key} className="hidden px-3 py-3 text-gray-500 lg:table-cell">
-                      {(enrollment.custom_data ?? {})[field.key] || '-'}
+              {filtered.map((enrollment) => {
+                const suspended = isEnrollmentSuspended(enrollment)
+
+                return (
+                  <tr
+                    key={enrollment.id}
+                    title={getSuspensionTooltip(enrollment)}
+                    className={suspended ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-slate-50/60'}
+                  >
+                    <td className="px-5 py-3 text-gray-500">{enrollment.exam_number || '-'}</td>
+                    <td className="px-3 py-3 font-semibold text-gray-900">
+                      <div className="flex flex-col gap-1">
+                        <span>{enrollment.name}</span>
+                        <span
+                          className={`inline-flex w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                            enrollment.student_profile?.auth_method === 'birth_date'
+                              ? 'bg-blue-50 text-blue-700'
+                              : enrollment.student_profile?.auth_method === 'pin'
+                                ? 'bg-violet-50 text-violet-700'
+                                : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {enrollment.student_profile?.auth_method === 'birth_date'
+                            ? '생년월일 인증'
+                            : enrollment.student_profile?.auth_method === 'pin'
+                              ? 'PIN 인증'
+                              : '인증 미설정'}
+                        </span>
+                      </div>
                     </td>
-                  ))}
-                  <td className="px-3 py-3">
-                    <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                      enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      {enrollment.status === 'active' ? '활성' : '환불'}
-                    </span>
-                  </td>
-                  <td className="hidden px-3 py-3 text-xs text-gray-400 md:table-cell">
-                    {formatDateTime(enrollment.created_at).split(' ')[0]}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => onEdit(enrollment)}
-                        className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
-                      >
-                        편집
-                      </button>
-                      {enrollment.student_profile?.auth_method === 'pin' && enrollment.student_id ? (
+                    <td className="px-3 py-3 text-gray-500">{enrollment.phone}</td>
+                    {customFields.map((field) => (
+                      <td key={field.key} className="hidden px-3 py-3 text-gray-500 lg:table-cell">
+                        {(enrollment.custom_data ?? {})[field.key] || '-'}
+                      </td>
+                    ))}
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                            enrollment.status === 'active'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-rose-50 text-rose-700'
+                          }`}
+                        >
+                          {enrollment.status === 'active' ? '활성' : '환불'}
+                        </span>
+                        {suspended ? (
+                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                            정지
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="hidden px-3 py-3 text-xs text-gray-400 md:table-cell">
+                      {formatDateTime(enrollment.created_at).split(' ')[0]}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
-                          onClick={() => onResetPin(enrollment)}
-                          className="rounded-lg bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100"
+                          onClick={() => onEdit(enrollment)}
+                          className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
                         >
-                          PIN 재설정
+                          편집
                         </button>
-                      ) : null}
-                      {enrollment.status === 'active' && (
+                        {enrollment.student_profile?.auth_method === 'pin' && enrollment.student_id ? (
+                          <button
+                            type="button"
+                            onClick={() => onResetPin(enrollment)}
+                            className="rounded-lg bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100"
+                          >
+                            PIN 재설정
+                          </button>
+                        ) : null}
+                        {enrollment.status === 'active' && !suspended ? (
+                          <button
+                            type="button"
+                            onClick={() => onSuspend(enrollment)}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            정지
+                          </button>
+                        ) : null}
+                        {enrollment.status === 'active' && suspended ? (
+                          <button
+                            type="button"
+                            onClick={() => onUnsuspend(enrollment)}
+                            className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50"
+                          >
+                            정지 해제
+                          </button>
+                        ) : null}
+                        {enrollment.status === 'active' ? (
+                          <button
+                            type="button"
+                            onClick={() => onRefund(enrollment)}
+                            className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                          >
+                            환불
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => onRefund(enrollment)}
-                          className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                          onClick={() => onDelete(enrollment)}
+                          className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100"
                         >
-                          환불
+                          삭제
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onDelete(enrollment)}
-                        className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100"
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

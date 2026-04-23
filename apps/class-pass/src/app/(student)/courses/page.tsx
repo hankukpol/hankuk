@@ -64,7 +64,7 @@ export default function StudentCoursesPage() {
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
-          throw new Error(payload?.error ?? '수강 중인 강좌를 찾지 못했습니다.')
+          throw new Error(payload?.error ?? '수강 중인 강좌를 불러오지 못했습니다.')
         }
 
         const nextCourses = payload?.courses ?? []
@@ -168,7 +168,7 @@ export default function StudentCoursesPage() {
                     : 'border-transparent text-[var(--student-text-muted)]'
                 }`}
               >
-                운영 중 {activeCourses.length}
+                이용 중 {activeCourses.length}
               </button>
               <button
                 type="button"
@@ -199,9 +199,9 @@ export default function StudentCoursesPage() {
                 </div>
               ) : (
                 <div className="student-card-muted px-4 py-4">
-                  <p className="text-[15px] font-semibold text-[var(--student-text)]">운영 중인 강좌가 없습니다.</p>
+                  <p className="text-[15px] font-semibold text-[var(--student-text)]">이용 중인 강좌가 없습니다.</p>
                   <p className="student-body mt-1">
-                    보관 탭에서 지난 수강 이력을 확인할 수 있습니다.
+                    보관 탭에서 지난 강좌 기록을 확인할 수 있습니다.
                   </p>
                 </div>
               )
@@ -220,7 +220,7 @@ export default function StudentCoursesPage() {
               <div className="student-card-muted px-4 py-4">
                 <p className="text-[15px] font-semibold text-[var(--student-text)]">보관된 강좌가 없습니다.</p>
                 <p className="student-body mt-1">
-                  관리자가 강좌를 보관 처리하면 이 탭에 표시됩니다.
+                  관리자가 강좌를 보관 처리하면 이곳에 표시됩니다.
                 </p>
               </div>
             )}
@@ -253,6 +253,7 @@ function StudentCourseCard({
   const href = archived
     ? withTenantPrefix(`/courses/${entry.course.slug}/archived?enrollmentId=${entry.enrollment_id}`, tenantType)
     : withTenantPrefix(`/courses/${entry.course.slug}?enrollmentId=${entry.enrollment_id}`, tenantType)
+  const suspended = !archived && Boolean(entry.suspended_at)
 
   const features = [
     entry.course.feature_qr_pass && 'QR',
@@ -265,7 +266,11 @@ function StudentCourseCard({
     <Link
       href={href}
       className={`student-card block overflow-hidden px-4 py-3.5 transition-transform active:scale-[0.98] ${
-        archived ? 'border border-[var(--student-line)] bg-[var(--student-surface-muted)]' : ''
+        archived
+          ? 'border border-[var(--student-line)] bg-[var(--student-surface-muted)]'
+          : suspended
+            ? 'border border-amber-100 bg-[#fffbeb]/70'
+            : ''
       }`}
     >
       <div className="flex items-start gap-3">
@@ -275,7 +280,9 @@ function StudentCourseCard({
               {formatCourseTypeLabel(entry.course.course_type)}
             </p>
             {archived ? (
-              <span className="student-chip bg-white text-[var(--student-text-muted)]">보관됨</span>
+              <span className="student-chip bg-white text-[var(--student-text-muted)]">보관</span>
+            ) : suspended ? (
+              <span className="student-chip bg-amber-50 text-amber-700">정지</span>
             ) : entry.attendance.attended_today ? (
               <span className="student-chip bg-[#eefaf1] text-[#19703a]">
                 <span className="student-status-dot" style={{ background: '#19703a' }} />
@@ -295,7 +302,11 @@ function StudentCourseCard({
 
           {archived ? (
             <p className="mt-2 text-[12px] leading-[1.5] text-[var(--student-text-muted)]">
-              실시간 기능은 종료되었고 보관된 안내와 수강 기록만 확인할 수 있습니다.
+              실시간 기능은 종료되었고 보관된 강좌 기록만 확인할 수 있습니다.
+            </p>
+          ) : suspended ? (
+            <p className="mt-2 text-[12px] leading-[1.5] text-amber-700">
+              모바일 수강증 이용이 정지된 강좌입니다.
             </p>
           ) : features.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1">

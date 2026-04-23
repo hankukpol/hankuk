@@ -99,6 +99,9 @@ export interface Enrollment {
   photo_url: string | null
   memo: string | null
   refunded_at: string | null
+  suspended_at: string | null
+  suspension_reason: string | null
+  suspended_by: string | null
   custom_data: Record<string, string>
   created_at: string
 }
@@ -321,6 +324,7 @@ export interface AppConfigRecord {
 
 export interface PassCourseSummary {
   enrollment_id: number
+  suspended_at: string | null
   course: Pick<
     Course,
     | 'id'

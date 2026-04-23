@@ -136,7 +136,7 @@ function createPassSummaryCourse(course: Course): PassCourseSummary['course'] {
 }
 
 function createPassCourseSummary(params: {
-  enrollment: Pick<Enrollment, 'id' | 'course_id' | 'status'>
+  enrollment: Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>
   course: Course
   attendanceEnabled: boolean
   attendanceRecordMap: Map<string, AttendanceRow>
@@ -146,6 +146,7 @@ function createPassCourseSummary(params: {
 
   return {
     enrollment_id: params.enrollment.id,
+    suspended_at: params.enrollment.suspended_at,
     course: createPassSummaryCourse(params.course),
     attendance: {
       enabled: Boolean(params.attendanceEnabled && params.course.feature_attendance),
@@ -192,7 +193,7 @@ function filterReceiptRowsByMaterialIds(rows: ReceiptRow[], materialIds: number[
 
 export async function buildPassCourseSummaries(
   division: TenantType,
-  enrollmentRows: Array<Pick<Enrollment, 'id' | 'course_id' | 'status'>>,
+  enrollmentRows: Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>>,
   courseIds: number[],
 ): Promise<PassCourseSummary[]> {
   const db = createServerClient()
@@ -279,7 +280,9 @@ export async function buildPassPayloadResult(params: {
     textbookReceipts: toReceiptMap(
       filterReceiptRowsByMaterialIds(receiptRows, params.textbooks.map((material) => material.id)),
     ),
-    qrToken: params.course.feature_qr_pass && params.enrollment.status === 'active'
+    qrToken: params.course.feature_qr_pass
+      && params.enrollment.status === 'active'
+      && !params.enrollment.suspended_at
       ? await generateQrToken(params.enrollment.id, params.course.id)
       : '',
   }

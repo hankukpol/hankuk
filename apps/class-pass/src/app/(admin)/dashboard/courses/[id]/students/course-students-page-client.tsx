@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import type { Course, Enrollment, EnrollmentFieldDef, Material, TextbookAssignment } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
+import { ConfirmationModal } from './confirmation-modal'
 import { PinRevealModal } from './pin-reveal-modal'
 import { SuspensionModal } from './suspension-modal'
 import { StudentsManageTable } from './students-manage-table'
@@ -32,6 +33,16 @@ type CourseStudentsPageProps = {
   initialData?: StudentsPageData | null
   initialError?: string
   initialLoaded?: boolean
+}
+
+type ConfirmationRequest = {
+  title: string
+  description?: string
+  confirmLabel: string
+  pendingLabel?: string
+  cancelLabel?: string
+  tone?: 'default' | 'danger' | 'success'
+  onConfirm: () => Promise<void> | void
 }
 
 function DynamicFieldInput({
@@ -116,6 +127,8 @@ export default function CourseStudentsPage({
   const [pinReveal, setPinReveal] = useState<PinRevealState | null>(null)
   const [suspensionTarget, setSuspensionTarget] = useState<Enrollment | null>(null)
   const [suspensionSubmitting, setSuspensionSubmitting] = useState(false)
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false)
 
   const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null)
   const [photoUploading, setPhotoUploading] = useState(false)
@@ -152,6 +165,150 @@ export default function CourseStudentsPage({
         ? current.textbookIds.filter((id) => id !== materialId)
         : [...current.textbookIds, materialId],
     }))
+  }
+
+  function openConfirmation(request: ConfirmationRequest) {
+    setError('')
+    setMessage('')
+    setConfirmation(request)
+  }
+
+  async function runConfirmedAction() {
+    if (!confirmation) {
+      return
+    }
+
+    const currentConfirmation = confirmation
+    setConfirmSubmitting(true)
+
+    try {
+      await currentConfirmation.onConfirm()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '작업을 처리하지 못했습니다.')
+    } finally {
+      setConfirmSubmitting(false)
+      setConfirmation(null)
+    }
+  }
+
+  async function handleUndoConfirmed(logId: number, studentName: string, materialName: string) {
+    setBulkProcessing(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/distribution/undo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logId }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    setBulkProcessing(false)
+    if (!response.ok) {
+      setError(payload?.error ?? '수령 기록 취소에 실패했습니다.')
+      return
+    }
+
+    setMessage(`${studentName} - ${materialName} 수령 기록을 취소했습니다.`)
+    await reloadCurrentMatrix()
+  }
+
+  async function handleRefundConfirmed(enrollment: Enrollment) {
+    setError('')
+    setMessage('')
+
+    const response = await fetch(`/api/enrollments/${enrollment.id}/refund`, { method: 'POST' })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '환불 처리에 실패했습니다.')
+      return
+    }
+
+    const nextEnrollment = payload.enrollment as Enrollment
+    setEnrollments((current) => current.map((entry) => (
+      entry.id === nextEnrollment.id
+        ? { ...entry, ...nextEnrollment }
+        : entry
+    )))
+    setMessage('환불 처리를 완료했습니다.')
+  }
+
+  async function handleDeleteConfirmed(enrollment: Enrollment) {
+    setError('')
+    setMessage('')
+
+    const response = await fetch(`/api/enrollments/${enrollment.id}`, { method: 'DELETE' })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '삭제하지 못했습니다.')
+      return
+    }
+
+    setEnrollments((current) => current.filter((entry) => entry.id !== enrollment.id))
+    if (editingId === enrollment.id) {
+      setPanel('none')
+      setEditingId(null)
+    }
+    setMessage('수강생을 삭제했습니다.')
+  }
+
+  async function handleUnsuspendConfirmed(enrollment: Enrollment) {
+    setError('')
+    setMessage('')
+
+    const response = await fetch(`/api/enrollments/${enrollment.id}/suspension`, {
+      method: 'DELETE',
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '응시 정지 해제에 실패했습니다.')
+      return
+    }
+
+    const nextEnrollment = payload.enrollment as Enrollment
+    setEnrollments((current) => current.map((entry) => (
+      entry.id === nextEnrollment.id
+        ? { ...entry, ...nextEnrollment }
+        : entry
+    )))
+    setMessage('응시 정지를 해제했습니다.')
+  }
+
+  async function handleResetPinConfirmed(enrollment: Enrollment) {
+    if (!enrollment.student_id) {
+      setError('학생 프로필을 찾을 수 없습니다.')
+      return
+    }
+
+    setSubmitting(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/students/reset-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId: enrollment.student_id }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    setSubmitting(false)
+    if (!response.ok) {
+      setError(payload?.error ?? 'PIN 재발급에 실패했습니다.')
+      return
+    }
+
+    setPinReveal({
+      title: '재발급된 학생 PIN',
+      pins: [{
+        name: enrollment.name,
+        phone: enrollment.phone,
+        pin: payload.pin as string,
+      }],
+    })
+    setMessage('학생 PIN을 재발급했습니다.')
   }
 
   const refresh = useCallback(async () => {
@@ -324,23 +481,6 @@ export default function CourseStudentsPage({
     setBulkProcessing(false)
     if (!r.ok) { setError(p?.error ?? '배부 처리에 실패했습니다.'); return }
     setMessage(`${p?.student_name ?? '수강생'} - ${p?.material_name ?? '자료'} 배부 완료`)
-    await reloadCurrentMatrix()
-  }
-
-  async function handleUndo(logId: number, studentName: string, materialName: string) {
-    if (!window.confirm(`"${studentName}"의 "${materialName}" 수령 기록을 취소할까요?`)) return
-    setBulkProcessing(true)
-    setError('')
-    setMessage('')
-    const r = await fetch('/api/distribution/undo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ logId }),
-    })
-    const p = await r.json().catch(() => null)
-    setBulkProcessing(false)
-    if (!r.ok) { setError(p?.error ?? '수령 취소에 실패했습니다.'); return }
-    setMessage(`${studentName} - ${materialName} 수령 취소 완료`)
     await reloadCurrentMatrix()
   }
 
@@ -579,29 +719,6 @@ export default function CourseStudentsPage({
     setMessage('수강생 정보를 수정했습니다.')
   }
 
-  async function handleRefund(e: Enrollment) {
-    if (!window.confirm(`"${e.name}" 환불 처리할까요?`)) return
-    const r = await fetch(`/api/enrollments/${e.id}/refund`, { method: 'POST' })
-    const p = await r.json().catch(() => null)
-    if (!r.ok) { setError(p?.error ?? '환불 실패'); return }
-    setEnrollments((current) => current.map((entry) => (
-      entry.id === (p.enrollment as Enrollment).id
-        ? { ...entry, ...(p.enrollment as Enrollment) }
-        : entry
-    )))
-    setMessage('환불 처리 완료')
-  }
-
-  async function handleDelete(e: Enrollment) {
-    if (!window.confirm(`"${e.name}" 삭제할까요?`)) return
-    const r = await fetch(`/api/enrollments/${e.id}`, { method: 'DELETE' })
-    const p = await r.json().catch(() => null)
-    if (!r.ok) { setError(p?.error ?? '삭제에 실패했습니다.'); return }
-    setEnrollments((c) => c.filter((x) => x.id !== e.id))
-    if (editingId === e.id) { setPanel('none'); setEditingId(null) }
-    setMessage('수강생을 삭제했습니다.')
-  }
-
   async function handleSuspend(reason: string) {
     if (!suspensionTarget) {
       return
@@ -632,68 +749,6 @@ export default function CourseStudentsPage({
     )))
     setSuspensionTarget(null)
     setMessage('응시 정지를 적용했습니다.')
-  }
-
-  async function handleUnsuspend(enrollment: Enrollment) {
-    if (!window.confirm(`"${enrollment.name}" 학생의 응시 정지를 해제할까요?`)) {
-      return
-    }
-
-    setError('')
-    setMessage('')
-
-    const response = await fetch(`/api/enrollments/${enrollment.id}/suspension`, {
-      method: 'DELETE',
-    })
-    const payload = await response.json().catch(() => null)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '응시 정지 해제에 실패했습니다.')
-      return
-    }
-
-    const nextEnrollment = payload.enrollment as Enrollment
-    setEnrollments((current) => current.map((entry) => (
-      entry.id === nextEnrollment.id
-        ? { ...entry, ...nextEnrollment }
-        : entry
-    )))
-    setMessage('응시 정지를 해제했습니다.')
-  }
-
-  async function handleResetPin(enrollment: Enrollment) {
-    if (!enrollment.student_id) {
-      setError('학생 프로필을 찾을 수 없습니다.')
-      return
-    }
-
-    if (!window.confirm(`${enrollment.name} 학생의 로그인 PIN을 새로 발급할까요?`)) {
-      return
-    }
-
-    setSubmitting(true); setError(''); setMessage('')
-    const r = await fetch('/api/students/reset-pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId: enrollment.student_id }),
-    })
-    const p = await r.json().catch(() => null)
-    setSubmitting(false)
-
-    if (!r.ok) {
-      setError(p?.error ?? 'PIN 재발급에 실패했습니다.')
-      return
-    }
-
-    setPinReveal({
-      title: '재발급된 학생 PIN',
-      pins: [{
-        name: enrollment.name,
-        phone: enrollment.phone,
-        pin: p.pin as string,
-      }],
-    })
-    setMessage('학생 PIN을 재발급했습니다.')
   }
 
   if (loading) return <p className="py-12 text-center text-sm text-gray-400">불러오는 중...</p>
@@ -861,6 +916,24 @@ export default function CourseStudentsPage({
       {/* Messages */}
       {error && <p className="text-xs text-red-500">{error}</p>}
       {message && <p className="text-xs text-emerald-600">{message}</p>}
+      <ConfirmationModal
+        open={Boolean(confirmation)}
+        title={confirmation?.title ?? ''}
+        description={confirmation?.description}
+        confirmLabel={confirmation?.confirmLabel ?? '확인'}
+        pendingLabel={confirmation?.pendingLabel}
+        cancelLabel={confirmation?.cancelLabel}
+        tone={confirmation?.tone}
+        submitting={confirmSubmitting}
+        onClose={() => {
+          if (!confirmSubmitting) {
+            setConfirmation(null)
+          }
+        }}
+        onConfirm={() => {
+          void runConfirmedAction()
+        }}
+      />
       <PinRevealModal reveal={pinReveal} onClose={() => setPinReveal(null)} onCopyPin={copyPin} />
       <SuspensionModal
         courseName={course.name}
@@ -910,7 +983,13 @@ export default function CourseStudentsPage({
           onStatusFilterChange={setStatusFilter}
           onEdit={startEdit}
           onResetPin={(enrollment) => {
-            void handleResetPin(enrollment)
+            openConfirmation({
+              title: '로그인 PIN을 다시 발급할까요?',
+              description: `${enrollment.name} 학생의 기존 PIN은 더 이상 사용할 수 없고, 새 PIN으로 즉시 교체됩니다.`,
+              confirmLabel: 'PIN 재발급',
+              pendingLabel: 'PIN 재발급 중...',
+              onConfirm: () => handleResetPinConfirmed(enrollment),
+            })
           }}
           onSuspend={(enrollment) => {
             setSuspensionTarget(enrollment)
@@ -918,13 +997,34 @@ export default function CourseStudentsPage({
             setMessage('')
           }}
           onUnsuspend={(enrollment) => {
-            void handleUnsuspend(enrollment)
+            openConfirmation({
+              title: '응시 정지를 해제할까요?',
+              description: `${enrollment.name} 학생이 다시 수강증과 관련 기능을 이용할 수 있게 됩니다.`,
+              confirmLabel: '정지 해제',
+              pendingLabel: '정지 해제 중...',
+              tone: 'success',
+              onConfirm: () => handleUnsuspendConfirmed(enrollment),
+            })
           }}
           onRefund={(enrollment) => {
-            void handleRefund(enrollment)
+            openConfirmation({
+              title: '환불 처리할까요?',
+              description: `${enrollment.name} 학생의 상태가 환불로 변경됩니다.`,
+              confirmLabel: '환불 처리',
+              pendingLabel: '환불 처리 중...',
+              tone: 'danger',
+              onConfirm: () => handleRefundConfirmed(enrollment),
+            })
           }}
           onDelete={(enrollment) => {
-            void handleDelete(enrollment)
+            openConfirmation({
+              title: '수강생을 삭제할까요?',
+              description: `${enrollment.name} 학생을 이 강의 목록에서 제거합니다.`,
+              confirmLabel: '삭제',
+              pendingLabel: '삭제 중...',
+              tone: 'danger',
+              onConfirm: () => handleDeleteConfirmed(enrollment),
+            })
           }}
         />
       )}
@@ -963,7 +1063,14 @@ export default function CourseStudentsPage({
             void handleDistribute(enrollmentId, materialId)
           }}
           onUndo={(logId, studentName, materialName) => {
-            void handleUndo(logId, studentName, materialName)
+            openConfirmation({
+              title: '수령 기록을 취소할까요?',
+              description: `${studentName} 학생의 "${materialName}" 수령 기록을 되돌립니다.`,
+              confirmLabel: '기록 취소',
+              pendingLabel: '기록 취소 중...',
+              tone: 'danger',
+              onConfirm: () => handleUndoConfirmed(logId, studentName, materialName),
+            })
           }}
           onAssignTextbook={(enrollmentId, materialId, checked) => {
             void handleAssignTextbook(enrollmentId, materialId, checked)

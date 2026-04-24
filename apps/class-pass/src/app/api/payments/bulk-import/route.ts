@@ -5,6 +5,7 @@ import { verifyCourseOwnership } from '@/lib/class-pass-data'
 import { runPaymentImport } from '@/lib/payments/bulk-import'
 import {
   getPaymentServiceMessage,
+  getPaymentServiceStatus,
   listCourseEnrollmentsForPaymentImport,
 } from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: getPaymentServiceMessage(error, '결제 일괄 등록을 처리하지 못했습니다.') },
-      { status: 500 },
+      { status: getPaymentServiceStatus(error) },
     )
   }
 }

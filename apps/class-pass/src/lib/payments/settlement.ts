@@ -1,4 +1,5 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { createPaymentSchemaMissingError, isPaymentSchemaMissing } from './service'
 import type { PaymentCategory, PaymentMethod, PaymentSettlementRow } from './types'
 
 export type SettlementSummary = {
@@ -128,6 +129,10 @@ export async function getPaymentSettlement(params: {
   })
 
   if (error) {
+    if (isPaymentSchemaMissing(error)) {
+      throw createPaymentSchemaMissingError()
+    }
+
     throw error
   }
 

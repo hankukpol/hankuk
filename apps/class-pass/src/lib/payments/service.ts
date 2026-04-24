@@ -80,10 +80,74 @@ const PAYMENT_SELECT = `
   enrollment_refunds(*)
 `
 
+export const PAYMENT_SCHEMA_MISSING_MESSAGE =
+  '수납·정산 테이블이 아직 DB에 적용되지 않았습니다. 로컬 Supabase에서 supabase db reset을 실행해 Phase 1 migration을 반영해 주세요.'
+
+const PAYMENT_SCHEMA_OBJECTS = [
+  'enrollment_payments',
+  'enrollment_payment_items',
+  'enrollment_refunds',
+  'payment_events',
+  'get_payment_settlement',
+]
+
 function createPaymentError(message: string, status = 400) {
   const error = new Error(message) as Error & { status?: number }
   error.status = status
   return error
+}
+
+function getPaymentErrorField(error: unknown, field: string) {
+  if (typeof error !== 'object' || error === null || !(field in error)) {
+    return ''
+  }
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : ''
+}
+
+function getPaymentErrorText(error: unknown) {
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return [
+    getPaymentErrorField(error, 'code'),
+    getPaymentErrorField(error, 'message'),
+    getPaymentErrorField(error, 'details'),
+    getPaymentErrorField(error, 'hint'),
+  ].filter(Boolean).join(' ')
+}
+
+export function isPaymentSchemaMissing(error: unknown) {
+  const code = getPaymentErrorField(error, 'code')
+  const text = getPaymentErrorText(error).toLowerCase()
+  const referencesPaymentObject = PAYMENT_SCHEMA_OBJECTS.some((objectName) => text.includes(objectName))
+
+  if (referencesPaymentObject && (
+    code === 'PGRST202'
+    || code === 'PGRST205'
+    || code === '42P01'
+    || code === '42883'
+  )) {
+    return true
+  }
+
+  return referencesPaymentObject && (
+    text.includes('could not find')
+    || text.includes('schema cache')
+    || text.includes('does not exist')
+    || text.includes('undefined_table')
+    || text.includes('undefined function')
+  )
+}
+
+export function createPaymentSchemaMissingError() {
+  return createPaymentError(PAYMENT_SCHEMA_MISSING_MESSAGE, 503)
 }
 
 function toPositiveInteger(value: number, fieldLabel: string) {
@@ -753,13 +817,26 @@ export async function deleteRefund(
 }
 
 export function getPaymentServiceStatus(error: unknown) {
+  if (isPaymentSchemaMissing(error)) {
+    return 503
+  }
+
   return typeof error === 'object' && error !== null && 'status' in error
     ? Number((error as { status?: number }).status) || 400
     : 500
 }
 
 export function getPaymentServiceMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
+  if (isPaymentSchemaMissing(error)) {
+    return PAYMENT_SCHEMA_MISSING_MESSAGE
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  const message = getPaymentErrorField(error, 'message')
+  return message || fallback
 }
 
 export function createStudentMatcher(enrollments: Enrollment[]) {

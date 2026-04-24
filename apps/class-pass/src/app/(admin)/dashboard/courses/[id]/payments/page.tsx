@@ -1,6 +1,10 @@
 import { CoursePaymentsPanel } from '@/components/payments/CoursePaymentsPanel'
 import { getCourseById, listCourseEnrollments } from '@/lib/class-pass-data'
-import { listPayments } from '@/lib/payments/service'
+import {
+  isPaymentSchemaMissing,
+  listPayments,
+  PAYMENT_SCHEMA_MISSING_MESSAGE,
+} from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
 
@@ -22,16 +26,26 @@ export default async function CoursePaymentsPage({ params }: CoursePaymentsPageP
     return <p className="py-12 text-center text-sm text-red-500">강좌를 찾을 수 없습니다.</p>
   }
 
-  const [enrollments, payments] = await Promise.all([
-    listCourseEnrollments(courseId),
-    listPayments({ courseId, limit: 500 }, division),
-  ])
+  const enrollments = await listCourseEnrollments(courseId)
+  let payments: Awaited<ReturnType<typeof listPayments>> = []
+  let initialError = ''
+
+  try {
+    payments = await listPayments({ courseId, limit: 500 }, division)
+  } catch (error) {
+    if (!isPaymentSchemaMissing(error)) {
+      throw error
+    }
+
+    initialError = PAYMENT_SCHEMA_MISSING_MESSAGE
+  }
 
   return (
     <CoursePaymentsPanel
       course={course}
       enrollments={enrollments}
       initialPayments={payments}
+      initialError={initialError}
     />
   )
 }

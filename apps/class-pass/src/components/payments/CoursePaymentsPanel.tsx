@@ -23,6 +23,7 @@ type CoursePaymentsPanelProps = {
   course: Pick<Course, 'id' | 'name'>
   enrollments: Enrollment[]
   initialPayments?: EnrollmentPayment[]
+  initialError?: string
   onDataChanged?: () => Promise<void> | void
 }
 
@@ -47,18 +48,19 @@ export function CoursePaymentsPanel({
   course,
   enrollments,
   initialPayments = [],
+  initialError = '',
   onDataChanged,
 }: CoursePaymentsPanelProps) {
   const [payments, setPayments] = useState<EnrollmentPayment[]>(initialPayments)
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<number | null>(enrollments[0]?.id ?? null)
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(initialPayments.length === 0)
+  const [loading, setLoading] = useState(initialPayments.length === 0 && !initialError)
   const [submitting, setSubmitting] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [paymentDraft, setPaymentDraft] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [refundTarget, setRefundTarget] = useState<EnrollmentPayment | null>(null)
   const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError)
 
   const loadPayments = useCallback(async () => {
     setLoading(true)
@@ -79,8 +81,12 @@ export function CoursePaymentsPanel({
   }, [course.id])
 
   useEffect(() => {
+    if (initialError) {
+      return
+    }
+
     void loadPayments()
-  }, [loadPayments])
+  }, [initialError, loadPayments])
 
   useEffect(() => {
     if (selectedEnrollmentId && enrollments.some((enrollment) => enrollment.id === selectedEnrollmentId)) {
@@ -250,7 +256,7 @@ export function CoursePaymentsPanel({
                 type="button"
                 onClick={() => {
                   setSelectedEnrollmentId(enrollment.id)
-                  setError('')
+                  setError(initialError)
                   setMessage('')
                 }}
                 className={`w-full rounded-[8px] px-3 py-3 text-left transition ${

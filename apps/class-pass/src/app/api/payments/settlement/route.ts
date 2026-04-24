@@ -7,6 +7,7 @@ import {
   summarizeSettlementRows,
   type SettlementGroupKey,
 } from '@/lib/payments/settlement'
+import { getPaymentServiceMessage, getPaymentServiceStatus } from '@/lib/payments/service'
 import { parsePositiveInt } from '@/lib/utils'
 
 function isSettlementGroupKey(value: string | null): value is SettlementGroupKey {
@@ -49,8 +50,8 @@ export async function GET(req: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '정산 데이터를 불러오지 못했습니다.' },
-      { status: 500 },
+      { error: getPaymentServiceMessage(error, '정산 데이터를 불러오지 못했습니다.') },
+      { status: getPaymentServiceStatus(error) },
     )
   }
 }

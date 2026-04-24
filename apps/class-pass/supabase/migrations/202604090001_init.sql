@@ -1,5 +1,7 @@
 create schema if not exists class_pass;
 
+grant usage on schema class_pass to service_role;
+
 create table if not exists class_pass.courses (
   id serial primary key,
   division text not null,
@@ -185,3 +187,8 @@ begin
   );
 end;
 $$;
+
+grant usage on schema class_pass to service_role;
+grant all privileges on all tables in schema class_pass to service_role;
+grant all privileges on all sequences in schema class_pass to service_role;
+grant execute on all functions in schema class_pass to service_role;

@@ -46,6 +46,14 @@ export interface Course {
   kakao_chat_url: string | null
   extra_site_url: string | null
   extra_site_label: string | null
+  presence_location_enabled: boolean
+  presence_enforcement_mode: 'monitor' | 'enforce'
+  presence_latitude: number | null
+  presence_longitude: number | null
+  presence_radius_m: number
+  presence_accuracy_max_m: number
+  presence_required_for_attendance: boolean
+  presence_required_for_designated_seat: boolean
   enrolled_from: string | null
   enrolled_until: string | null
   enrollment_fields: EnrollmentFieldDef[]
@@ -103,7 +111,18 @@ export interface Enrollment {
   suspension_reason: string | null
   suspended_by: string | null
   custom_data: Record<string, string>
+  attendance_device?: AttendanceDeviceState | null
   created_at: string
+}
+
+export type AttendanceDeviceStateStatus = 'unregistered' | 'active' | 'pending_reset'
+
+export interface AttendanceDeviceState {
+  status: AttendanceDeviceStateStatus
+  bound_at: string | null
+  last_seen_at: string | null
+  reset_requested_at: string | null
+  reset_requested_user_agent: string | null
 }
 
 export interface SeatAssignment {
@@ -158,6 +177,11 @@ export interface DesignatedSeatAuthSession {
   used_for_reservation_at: string | null
   last_verified_rotation: number
   is_active: boolean
+  presence_location_verified: boolean
+  presence_verified_at: string | null
+  presence_verification_event_id: number | null
+  presence_distance_m: number | null
+  presence_accuracy_m: number | null
   created_at: string
   updated_at: string
 }

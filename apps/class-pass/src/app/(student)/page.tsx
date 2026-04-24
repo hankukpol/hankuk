@@ -3,6 +3,7 @@
 import type { FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { StudentAccessGuide } from '@/components/student/StudentAccessGuide'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
   STUDENT_SESSION_NAME_KEY,
@@ -351,6 +352,8 @@ export default function StudentLoginPage() {
             </form>
           ) : null}
         </section>
+
+        <StudentAccessGuide storageKey="class_pass_login_access_guide_dismissed_until" />
       </div>
     </div>
   )

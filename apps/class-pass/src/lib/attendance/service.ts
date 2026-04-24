@@ -3,6 +3,7 @@ import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import type {
   AttendanceDisplaySession,
+  AttendanceDeviceState,
   AttendanceEvent,
   AttendanceRecord,
   AttendanceStudentState,
@@ -126,6 +127,9 @@ export class AttendanceServiceError extends Error {
 const ATTENDANCE_EXCUSE_MIGRATION_MESSAGE =
   '출석 사유서 DB migration이 아직 적용되지 않았습니다. `202604220001_attendance_excuses.sql`을 먼저 적용해 주세요.'
 
+const ATTENDANCE_DEVICE_BINDINGS_MIGRATION_MESSAGE =
+  '출석 기기 등록 DB migration이 아직 적용되지 않았습니다. `202604240001_attendance_device_bindings.sql`을 먼저 적용해 주세요.'
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message
@@ -167,6 +171,26 @@ function isMissingAttendanceExcuseDependencyError(error: unknown) {
   )
 }
 
+function isMissingAttendanceDeviceBindingDependencyError(error: unknown) {
+  const message = getErrorMessage(error)
+
+  return (
+    message.includes('relation "attendance_device_bindings" does not exist')
+    || message.includes('relation "class_pass.attendance_device_bindings" does not exist')
+    || message.includes("Could not find the table 'class_pass.attendance_device_bindings' in the schema cache")
+    || (
+      message.includes('attendance_events_type_check')
+      && (
+        message.includes('attendance_device_registered')
+        || message.includes('attendance_device_locked')
+        || message.includes('attendance_device_rebind_requested')
+        || message.includes('attendance_device_rebind_approved')
+        || message.includes('attendance_device_binding_reset')
+      )
+    )
+  )
+}
+
 export function normalizeAttendanceExcuseDependencyError(error: unknown) {
   if (error instanceof AttendanceServiceError) {
     return error
@@ -177,6 +201,411 @@ export function normalizeAttendanceExcuseDependencyError(error: unknown) {
   }
 
   return error
+}
+
+function normalizeAttendanceDeviceBindingDependencyError(error: unknown) {
+  if (error instanceof AttendanceServiceError) {
+    return error
+  }
+
+  if (isMissingAttendanceDeviceBindingDependencyError(error)) {
+    return new AttendanceServiceError(ATTENDANCE_DEVICE_BINDINGS_MIGRATION_MESSAGE, 503)
+  }
+
+  return error
+}
+
+type AttendanceDeviceBindingRow = {
+  id: number
+  course_id: number
+  enrollment_id: number
+  device_key_hash: string
+  is_active: boolean
+  bound_at: string
+  last_seen_at: string | null
+  reset_requested_at: string | null
+  reset_requested_device_key_hash: string | null
+  reset_requested_user_agent: string | null
+  reset_approved_at: string | null
+  reset_approved_by: string | null
+  retired_at: string | null
+  retired_by: string | null
+  retirement_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+function mapAttendanceDeviceState(row: AttendanceDeviceBindingRow | null | undefined): AttendanceDeviceState {
+  if (!row) {
+    return {
+      status: 'unregistered',
+      bound_at: null,
+      last_seen_at: null,
+      reset_requested_at: null,
+      reset_requested_user_agent: null,
+    }
+  }
+
+  return {
+    status: row.reset_requested_at ? 'pending_reset' : 'active',
+    bound_at: row.bound_at ?? null,
+    last_seen_at: row.last_seen_at ?? null,
+    reset_requested_at: row.reset_requested_at ?? null,
+    reset_requested_user_agent: row.reset_requested_user_agent ?? null,
+  }
+}
+
+function sanitizeDeviceUserAgent(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? ''
+  return trimmed ? trimmed.slice(0, 500) : null
+}
+
+async function getActiveAttendanceDeviceBinding(params: {
+  courseId: number
+  enrollmentId: number
+}) {
+  const db = createServerClient()
+  const result = await db
+    .from('attendance_device_bindings')
+    .select('*')
+    .eq('course_id', params.courseId)
+    .eq('enrollment_id', params.enrollmentId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (result.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(result.error)
+  }
+
+  return result.data as AttendanceDeviceBindingRow | null
+}
+
+export async function listAttendanceDeviceStatesForCourse(
+  courseId: number,
+  enrollmentIds?: number[],
+): Promise<Map<number, AttendanceDeviceState>> {
+  const result = new Map<number, AttendanceDeviceState>()
+  const normalizedEnrollmentIds = Array.from(new Set(
+    (enrollmentIds ?? []).filter((enrollmentId) => Number.isInteger(enrollmentId) && enrollmentId > 0),
+  ))
+
+  if (enrollmentIds && normalizedEnrollmentIds.length === 0) {
+    return result
+  }
+
+  const db = createServerClient()
+  let query = db
+    .from('attendance_device_bindings')
+    .select('*')
+    .eq('course_id', courseId)
+    .eq('is_active', true)
+
+  if (normalizedEnrollmentIds.length > 0) {
+    query = query.in('enrollment_id', normalizedEnrollmentIds)
+  }
+
+  const response = await query
+
+  if (response.error) {
+    if (isMissingAttendanceDeviceBindingDependencyError(response.error)) {
+      return result
+    }
+
+    throw response.error
+  }
+
+  for (const row of (response.data ?? []) as AttendanceDeviceBindingRow[]) {
+    result.set(Number(row.enrollment_id), mapAttendanceDeviceState(row))
+  }
+
+  return result
+}
+
+export type AttendanceDeviceBindingCheckResult =
+  | {
+    ok: true
+    state: AttendanceDeviceState
+  }
+  | {
+    ok: false
+    code: 'DEVICE_LOCKED' | 'DEVICE_REBIND_REQUIRED'
+    state: AttendanceDeviceState
+  }
+
+export async function enforceAttendanceDeviceBinding(params: {
+  courseId: number
+  enrollmentId: number
+  deviceKeyHash: string
+  userAgent?: string | null
+}): Promise<AttendanceDeviceBindingCheckResult> {
+  const db = createServerClient()
+  const deviceKeyHash = params.deviceKeyHash.trim()
+  const nowIso = new Date().toISOString()
+  const resetRequestedUserAgent = sanitizeDeviceUserAgent(params.userAgent)
+
+  if (!deviceKeyHash) {
+    throw new AttendanceServiceError('기기 식별 정보가 올바르지 않습니다.', 400)
+  }
+
+  const [ownBindingResult, deviceOwnerResult] = await Promise.all([
+    db
+      .from('attendance_device_bindings')
+      .select('*')
+      .eq('course_id', params.courseId)
+      .eq('enrollment_id', params.enrollmentId)
+      .eq('is_active', true)
+      .maybeSingle(),
+    db
+      .from('attendance_device_bindings')
+      .select('*')
+      .eq('course_id', params.courseId)
+      .eq('device_key_hash', deviceKeyHash)
+      .eq('is_active', true)
+      .maybeSingle(),
+  ])
+
+  if (ownBindingResult.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(ownBindingResult.error)
+  }
+
+  if (deviceOwnerResult.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(deviceOwnerResult.error)
+  }
+
+  const ownBinding = ownBindingResult.data as AttendanceDeviceBindingRow | null
+  const deviceOwner = deviceOwnerResult.data as AttendanceDeviceBindingRow | null
+
+  if (deviceOwner && Number(deviceOwner.enrollment_id) !== params.enrollmentId) {
+    await logAttendanceEvent({
+      course_id: params.courseId,
+      event_type: 'attendance_device_locked',
+      details: {
+        enrollment_id: params.enrollmentId,
+        registered_enrollment_id: Number(deviceOwner.enrollment_id),
+      },
+    })
+
+    return {
+      ok: false,
+      code: 'DEVICE_LOCKED',
+      state: mapAttendanceDeviceState(ownBinding),
+    }
+  }
+
+  if (!ownBinding) {
+    const insertResult = await db
+      .from('attendance_device_bindings')
+      .insert({
+        course_id: params.courseId,
+        enrollment_id: params.enrollmentId,
+        device_key_hash: deviceKeyHash,
+        bound_at: nowIso,
+        last_seen_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select('*')
+      .maybeSingle()
+
+    if (insertResult.error) {
+      if (insertResult.error.code === '23505') {
+        return enforceAttendanceDeviceBinding(params)
+      }
+
+      throw normalizeAttendanceDeviceBindingDependencyError(insertResult.error)
+    }
+
+    await logAttendanceEvent({
+      course_id: params.courseId,
+      event_type: 'attendance_device_registered',
+      details: {
+        enrollment_id: params.enrollmentId,
+      },
+    })
+
+    return {
+      ok: true,
+      state: mapAttendanceDeviceState(insertResult.data as AttendanceDeviceBindingRow | null),
+    }
+  }
+
+  if (ownBinding.device_key_hash === deviceKeyHash) {
+    const updateResult = await db
+      .from('attendance_device_bindings')
+      .update({
+        last_seen_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', ownBinding.id)
+      .select('*')
+      .maybeSingle()
+
+    if (updateResult.error) {
+      throw normalizeAttendanceDeviceBindingDependencyError(updateResult.error)
+    }
+
+    return {
+      ok: true,
+      state: mapAttendanceDeviceState(updateResult.data as AttendanceDeviceBindingRow | null),
+    }
+  }
+
+  const nextResetRequestedAt = ownBinding.reset_requested_device_key_hash === deviceKeyHash
+    ? ownBinding.reset_requested_at ?? nowIso
+    : nowIso
+  const updateResult = await db
+    .from('attendance_device_bindings')
+    .update({
+      reset_requested_at: nextResetRequestedAt,
+      reset_requested_device_key_hash: deviceKeyHash,
+      reset_requested_user_agent: resetRequestedUserAgent,
+      updated_at: nowIso,
+    })
+    .eq('id', ownBinding.id)
+    .select('*')
+    .maybeSingle()
+
+  if (updateResult.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(updateResult.error)
+  }
+
+  await logAttendanceEvent({
+    course_id: params.courseId,
+    event_type: 'attendance_device_rebind_requested',
+    details: {
+      enrollment_id: params.enrollmentId,
+      requested_at: nextResetRequestedAt,
+    },
+  })
+
+  return {
+    ok: false,
+    code: 'DEVICE_REBIND_REQUIRED',
+    state: mapAttendanceDeviceState(updateResult.data as AttendanceDeviceBindingRow | null),
+  }
+}
+
+export async function approveAttendanceDeviceReRegistration(params: {
+  courseId: number
+  enrollmentId: number
+  actor: string
+}) {
+  const db = createServerClient()
+  const binding = await getActiveAttendanceDeviceBinding({
+    courseId: params.courseId,
+    enrollmentId: params.enrollmentId,
+  })
+
+  if (!binding) {
+    throw new AttendanceServiceError('등록된 출석 기기가 없습니다.', 404)
+  }
+
+  const requestedDeviceHash = binding.reset_requested_device_key_hash?.trim()
+  if (!binding.reset_requested_at || !requestedDeviceHash) {
+    throw new AttendanceServiceError('승인할 기기 재등록 요청이 없습니다.', 409)
+  }
+
+  const deviceOwnerResult = await db
+    .from('attendance_device_bindings')
+    .select('id,enrollment_id')
+    .eq('course_id', params.courseId)
+    .eq('device_key_hash', requestedDeviceHash)
+    .eq('is_active', true)
+    .neq('enrollment_id', params.enrollmentId)
+    .maybeSingle()
+
+  if (deviceOwnerResult.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(deviceOwnerResult.error)
+  }
+
+  if (deviceOwnerResult.data) {
+    throw new AttendanceServiceError('요청된 기기가 이미 다른 수강생에게 등록되어 있습니다.', 409)
+  }
+
+  const nowIso = new Date().toISOString()
+  const updateResult = await db
+    .from('attendance_device_bindings')
+    .update({
+      device_key_hash: requestedDeviceHash,
+      bound_at: nowIso,
+      last_seen_at: nowIso,
+      reset_requested_at: null,
+      reset_requested_device_key_hash: null,
+      reset_requested_user_agent: null,
+      reset_approved_at: nowIso,
+      reset_approved_by: params.actor,
+      updated_at: nowIso,
+    })
+    .eq('id', binding.id)
+    .select('*')
+    .maybeSingle()
+
+  if (updateResult.error) {
+    if (updateResult.error.code === '23505') {
+      throw new AttendanceServiceError('요청된 기기가 이미 다른 수강생에게 등록되어 있습니다.', 409)
+    }
+
+    throw normalizeAttendanceDeviceBindingDependencyError(updateResult.error)
+  }
+
+  await logAttendanceEvent({
+    course_id: params.courseId,
+    event_type: 'attendance_device_rebind_approved',
+    details: {
+      actor: params.actor,
+      enrollment_id: params.enrollmentId,
+      requested_at: binding.reset_requested_at,
+    },
+  })
+
+  return mapAttendanceDeviceState(updateResult.data as AttendanceDeviceBindingRow | null)
+}
+
+export async function resetAttendanceDeviceBinding(params: {
+  courseId: number
+  enrollmentId: number
+  actor: string
+  reason?: string | null
+}) {
+  const binding = await getActiveAttendanceDeviceBinding({
+    courseId: params.courseId,
+    enrollmentId: params.enrollmentId,
+  })
+
+  if (!binding) {
+    return mapAttendanceDeviceState(null)
+  }
+
+  const db = createServerClient()
+  const nowIso = new Date().toISOString()
+  const updateResult = await db
+    .from('attendance_device_bindings')
+    .update({
+      is_active: false,
+      retired_at: nowIso,
+      retired_by: params.actor,
+      retirement_reason: params.reason?.trim() || null,
+      reset_requested_at: null,
+      reset_requested_device_key_hash: null,
+      reset_requested_user_agent: null,
+      updated_at: nowIso,
+    })
+    .eq('id', binding.id)
+
+  if (updateResult.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(updateResult.error)
+  }
+
+  await logAttendanceEvent({
+    course_id: params.courseId,
+    event_type: 'attendance_device_binding_reset',
+    details: {
+      actor: params.actor,
+      enrollment_id: params.enrollmentId,
+      reason: params.reason?.trim() || null,
+    },
+  })
+
+  return mapAttendanceDeviceState(null)
 }
 
 type AttendanceExcuseRecord = {
@@ -1048,7 +1477,7 @@ export async function logAttendanceEvent(input: Omit<AttendanceEvent, 'id' | 'cr
       }),
     )
   } catch (error) {
-    throw normalizeAttendanceExcuseDependencyError(error)
+    throw normalizeAttendanceDeviceBindingDependencyError(normalizeAttendanceExcuseDependencyError(error))
   }
 }
 

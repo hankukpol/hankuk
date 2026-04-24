@@ -14,6 +14,17 @@ const ATTENDANCE_FEATURE_KEYS = [
   'attendance_open',
 ] as const
 
+const PRESENCE_LOCATION_KEYS = [
+  'presence_location_enabled',
+  'presence_enforcement_mode',
+  'presence_latitude',
+  'presence_longitude',
+  'presence_radius_m',
+  'presence_accuracy_max_m',
+  'presence_required_for_attendance',
+  'presence_required_for_designated_seat',
+] as const
+
 export const EXAM_DELIVERY_FEATURE_WARNING =
   'Exam delivery mode columns are not available yet. Apply supabase/migrations/202604100001_exam_delivery_mode.sql and save again.'
 
@@ -22,6 +33,9 @@ export const DESIGNATED_SEAT_FEATURE_WARNING =
 
 export const ATTENDANCE_FEATURE_WARNING =
   'Attendance columns are not available yet. Apply supabase/migrations/202604140001_attendance.sql and save again.'
+
+export const PRESENCE_LOCATION_WARNING =
+  'Presence location columns are not available yet. Apply supabase/migrations/202604240002_presence_location.sql and save again.'
 
 function stripKeys<T extends Record<string, unknown>, K extends readonly string[]>(payload: T, keys: K) {
   const next = { ...payload }
@@ -75,6 +89,18 @@ export function hasAttendanceFeatureColumns(record: Record<string, unknown>) {
 
 export function containsAttendanceFeatureFields(record: Record<string, unknown>) {
   return containsColumns(record, ATTENDANCE_FEATURE_KEYS)
+}
+
+export function stripPresenceLocationFields<T extends Record<string, unknown>>(payload: T) {
+  return stripKeys(payload, PRESENCE_LOCATION_KEYS)
+}
+
+export function hasPresenceLocationColumns(record: Record<string, unknown>) {
+  return hasColumns(record, PRESENCE_LOCATION_KEYS)
+}
+
+export function containsPresenceLocationFields(record: Record<string, unknown>) {
+  return containsColumns(record, PRESENCE_LOCATION_KEYS)
 }
 
 export function isExamDeliveryFeatureColumnError(error: unknown) {
@@ -148,6 +174,30 @@ export function isAttendanceFeatureColumnError(error: unknown) {
   return (
     text.includes('feature_attendance')
     || text.includes('attendance_open')
+    || candidate.code === '42703'
+    || candidate.code === 'PGRST204'
+  )
+}
+
+export function isPresenceLocationColumnError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const candidate = error as {
+    code?: string
+    message?: string
+    details?: string | null
+    hint?: string | null
+  }
+
+  const text = [candidate.code, candidate.message, candidate.details, candidate.hint]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  return (
+    PRESENCE_LOCATION_KEYS.some((key) => text.includes(key))
     || candidate.code === '42703'
     || candidate.code === 'PGRST204'
   )

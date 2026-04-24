@@ -6,6 +6,7 @@ import {
   hasCourseAttendanceStarted,
 } from '@/lib/attendance/route-helpers'
 import {
+  enforceAttendanceDeviceBinding,
   getActiveAttendanceDisplaySessionForCourse,
   getAttendanceTodayKey,
   hasValidSeatAssignmentForSubject,
@@ -19,6 +20,9 @@ import {
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { attachStudentDeviceCookie, resolveStudentDevice } from '@/lib/designated-seat/device'
+import { verifyPresenceLocation } from '@/lib/presence/location'
+import { presenceErrorSchema, presenceLocationSchema } from '@/lib/presence/schema'
+import { isPresenceLocationFeatureActive } from '@/lib/presence/shared'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -29,6 +33,8 @@ const schema = z.object({
   phone: z.string().min(10),
   code: z.string().regex(/^\d{6}$/),
   localDeviceKey: z.string().min(16).max(128),
+  presenceLocation: presenceLocationSchema.optional(),
+  presenceError: presenceErrorSchema.optional(),
 })
 
 function getAttendanceFailureMessage(code: string | undefined) {
@@ -36,7 +42,9 @@ function getAttendanceFailureMessage(code: string | undefined) {
     case 'ALREADY_ATTENDED':
       return { status: 409, message: '오늘은 이미 출석 처리되었습니다.' }
     case 'DEVICE_LOCKED':
-      return { status: 409, message: '다른 기기에서 이미 출석 처리된 기기입니다.' }
+      return { status: 409, message: '이 기기는 다른 수강생의 출석 기기로 등록되어 있습니다.' }
+    case 'DEVICE_REBIND_REQUIRED':
+      return { status: 409, message: '새 기기로 감지되어 관리자에게 재등록 승인 요청을 보냈습니다. 승인 후 다시 출석해 주세요.' }
     case 'ATTENDANCE_CLOSED':
       return { status: 403, message: '지금은 출석 체크 시간이 아닙니다.' }
     case 'FEATURE_DISABLED':
@@ -153,6 +161,54 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (isPresenceLocationFeatureActive(access.course, 'attendance')) {
+      const presence = await verifyPresenceLocation({
+        course: access.course,
+        enrollmentId: access.enrollment.id,
+        feature: 'attendance',
+        location: parsed.data.presenceLocation ?? null,
+        presenceError: parsed.data.presenceError ?? null,
+        details: {
+          display_session_id: displaySession.id,
+          subject_id: displaySession.subject_id,
+          user_agent: req.headers.get('user-agent'),
+        },
+      })
+
+      if (presence.shouldBlock) {
+        return NextResponse.json(
+          {
+            error: presence.message ?? '위치 확인이 필요합니다. 다시 시도해 주세요.',
+            code: `PRESENCE_${presence.code ?? 'FAILED'}`.toUpperCase(),
+            presence,
+          },
+          { status: presence.code === 'config_required' ? 503 : 403 },
+        )
+      }
+    }
+
+    const deviceBinding = await enforceAttendanceDeviceBinding({
+      courseId: access.course.id,
+      enrollmentId: access.enrollment.id,
+      deviceKeyHash: device.deviceHash,
+      userAgent: req.headers.get('user-agent'),
+    })
+
+    if (!deviceBinding.ok) {
+      const failure = getAttendanceFailureMessage(deviceBinding.code)
+      await invalidateCache('enrollments')
+      const response = NextResponse.json(
+        { error: failure.message, code: deviceBinding.code, device: deviceBinding.state },
+        { status: failure.status },
+      )
+
+      if (device.cookieToSet) {
+        attachStudentDeviceCookie(response, device.cookieToSet)
+      }
+
+      return response
+    }
+
     const db = createServerClient()
     const attendedDate = getAttendanceTodayKey()
     const existingAttendanceQuery = db
@@ -232,6 +288,7 @@ export async function POST(req: NextRequest) {
     })
 
     await invalidateCache('attendance')
+    await invalidateCache('enrollments')
 
     const response = NextResponse.json({
       ok: true,

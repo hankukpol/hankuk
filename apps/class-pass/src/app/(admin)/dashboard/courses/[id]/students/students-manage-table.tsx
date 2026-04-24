@@ -20,15 +20,48 @@ function getSuspensionTooltip(enrollment: Enrollment) {
   return lines.join('\n')
 }
 
+function getAttendanceDeviceMeta(enrollment: Enrollment) {
+  const state = enrollment.attendance_device
+  if (!state || state.status === 'unregistered') {
+    return {
+      label: '미등록',
+      className: 'bg-slate-100 text-slate-500',
+      title: '아직 출석 기기가 등록되지 않았습니다.',
+    }
+  }
+
+  if (state.status === 'pending_reset') {
+    return {
+      label: '재등록 요청',
+      className: 'bg-amber-50 text-amber-700',
+      title: [
+        state.reset_requested_at ? `요청 시각: ${formatDateTime(state.reset_requested_at)}` : null,
+        state.reset_requested_user_agent ? `기기 정보: ${state.reset_requested_user_agent}` : null,
+      ].filter(Boolean).join('\n') || '새 기기 재등록 승인이 필요합니다.',
+    }
+  }
+
+  return {
+    label: '등록됨',
+    className: 'bg-blue-50 text-blue-700',
+    title: state.last_seen_at
+      ? `마지막 확인: ${formatDateTime(state.last_seen_at)}`
+      : '출석 기기가 등록되어 있습니다.',
+  }
+}
+
 type StudentsManageTableProps = {
   filtered: Enrollment[]
   search: string
   statusFilter: EnrollmentManageStatusFilter
   customFields: EnrollmentFieldDef[]
+  attendanceEnabled: boolean
   onSearchChange: (value: string) => void
   onStatusFilterChange: (value: EnrollmentManageStatusFilter) => void
   onEdit: (enrollment: Enrollment) => void
   onResetPin: (enrollment: Enrollment) => void
+  onApproveDeviceReRegistration: (enrollment: Enrollment) => void
+  onResetAttendanceDevice: (enrollment: Enrollment) => void
   onSuspend: (enrollment: Enrollment) => void
   onUnsuspend: (enrollment: Enrollment) => void
   onRefund: (enrollment: Enrollment) => void
@@ -40,10 +73,13 @@ export function StudentsManageTable({
   search,
   statusFilter,
   customFields,
+  attendanceEnabled,
   onSearchChange,
   onStatusFilterChange,
   onEdit,
   onResetPin,
+  onApproveDeviceReRegistration,
+  onResetAttendanceDevice,
   onSuspend,
   onUnsuspend,
   onRefund,
@@ -92,6 +128,7 @@ export function StudentsManageTable({
                   </th>
                 ))}
                 <th className="px-3 py-3">상태</th>
+                {attendanceEnabled ? <th className="hidden px-3 py-3 xl:table-cell">출석 기기</th> : null}
                 <th className="hidden px-3 py-3 md:table-cell">등록일</th>
                 <th className="px-5 py-3 text-right">관리</th>
               </tr>
@@ -99,6 +136,7 @@ export function StudentsManageTable({
             <tbody className="divide-y divide-slate-50">
               {filtered.map((enrollment) => {
                 const suspended = isEnrollmentSuspended(enrollment)
+                const attendanceDeviceMeta = getAttendanceDeviceMeta(enrollment)
 
                 return (
                   <tr
@@ -151,6 +189,16 @@ export function StudentsManageTable({
                         ) : null}
                       </div>
                     </td>
+                    {attendanceEnabled ? (
+                      <td className="hidden px-3 py-3 xl:table-cell">
+                        <span
+                          title={attendanceDeviceMeta.title}
+                          className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${attendanceDeviceMeta.className}`}
+                        >
+                          {attendanceDeviceMeta.label}
+                        </span>
+                      </td>
+                    ) : null}
                     <td className="hidden px-3 py-3 text-xs text-gray-400 md:table-cell">
                       {formatDateTime(enrollment.created_at).split(' ')[0]}
                     </td>
@@ -170,6 +218,24 @@ export function StudentsManageTable({
                             className="rounded-lg bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100"
                           >
                             PIN 재설정
+                          </button>
+                        ) : null}
+                        {attendanceEnabled && enrollment.attendance_device?.status === 'pending_reset' ? (
+                          <button
+                            type="button"
+                            onClick={() => onApproveDeviceReRegistration(enrollment)}
+                            className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                          >
+                            기기 승인
+                          </button>
+                        ) : null}
+                        {attendanceEnabled && enrollment.attendance_device?.status === 'active' ? (
+                          <button
+                            type="button"
+                            onClick={() => onResetAttendanceDevice(enrollment)}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            기기 초기화
                           </button>
                         ) : null}
                         {enrollment.status === 'active' && !suspended ? (

@@ -33,6 +33,8 @@ function getReserveFailure(reason: string | undefined) {
       return { status: 403, message: '좌석을 지정하려면 다시 현장 QR 인증이 필요합니다.' }
     case 'AUTH_DEVICE_MISMATCH':
       return { status: 409, message: '현장 인증을 마친 기기에서만 좌석을 지정할 수 있습니다.' }
+    case 'LOCATION_REQUIRED':
+      return { status: 403, message: '현장 위치 확인이 완료된 뒤 좌석을 선택할 수 있습니다. QR 인증을 다시 진행해 주세요.' }
     case 'DEVICE_LOCKED':
       return {
         status: 409,
@@ -136,6 +138,7 @@ export async function POST(req: NextRequest) {
         || result?.reason === 'AUTH_EXPIRED'
         || result?.reason === 'AUTH_ALREADY_USED'
         || result?.reason === 'AUTH_DEVICE_MISMATCH'
+        || result?.reason === 'LOCATION_REQUIRED'
         || result?.reason === 'DEVICE_LOCKED'
 
       const state = shouldIncludeState

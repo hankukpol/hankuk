@@ -6,7 +6,7 @@ import type { FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
-import type { Course, Enrollment, EnrollmentFieldDef, Material, TextbookAssignment } from '@/types/database'
+import type { AttendanceDeviceState, Course, Enrollment, EnrollmentFieldDef, Material, TextbookAssignment } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { ConfirmationModal } from './confirmation-modal'
 import { PinRevealModal } from './pin-reveal-modal'
@@ -309,6 +309,46 @@ export default function CourseStudentsPage({
       }],
     })
     setMessage('학생 PIN을 재발급했습니다.')
+  }
+
+  function applyAttendanceDeviceState(enrollmentId: number, device: AttendanceDeviceState | null) {
+    setEnrollments((current) => current.map((entry) => (
+      entry.id === enrollmentId
+        ? { ...entry, attendance_device: device }
+        : entry
+    )))
+  }
+
+  async function handleAttendanceDeviceActionConfirmed(
+    enrollment: Enrollment,
+    action: 'approve_pending' | 'reset',
+  ) {
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/attendance/admin/device-bindings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseId,
+        enrollmentId: enrollment.id,
+        action,
+        reason: action === 'reset' ? '관리자 기기 초기화' : undefined,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '출석 기기 요청을 처리하지 못했습니다.')
+      return
+    }
+
+    applyAttendanceDeviceState(enrollment.id, (payload?.device ?? null) as AttendanceDeviceState | null)
+    setMessage(
+      action === 'approve_pending'
+        ? `${enrollment.name} 학생의 출석 기기 재등록을 승인했습니다.`
+        : `${enrollment.name} 학생의 출석 기기 등록을 초기화했습니다.`,
+    )
   }
 
   const refresh = useCallback(async () => {
@@ -979,6 +1019,7 @@ export default function CourseStudentsPage({
           search={search}
           statusFilter={statusFilter}
           customFields={customFields}
+          attendanceEnabled={course.feature_attendance}
           onSearchChange={setSearch}
           onStatusFilterChange={setStatusFilter}
           onEdit={startEdit}
@@ -989,6 +1030,25 @@ export default function CourseStudentsPage({
               confirmLabel: 'PIN 재발급',
               pendingLabel: 'PIN 재발급 중...',
               onConfirm: () => handleResetPinConfirmed(enrollment),
+            })
+          }}
+          onApproveDeviceReRegistration={(enrollment) => {
+            openConfirmation({
+              title: '출석 기기 재등록을 승인할까요?',
+              description: `${enrollment.name} 학생이 새 기기로 출석할 수 있게 됩니다. 기존 등록 기기는 더 이상 사용할 수 없습니다.`,
+              confirmLabel: '기기 승인',
+              pendingLabel: '승인 중...',
+              onConfirm: () => handleAttendanceDeviceActionConfirmed(enrollment, 'approve_pending'),
+            })
+          }}
+          onResetAttendanceDevice={(enrollment) => {
+            openConfirmation({
+              title: '출석 기기를 초기화할까요?',
+              description: `${enrollment.name} 학생은 다음 출석 시 사용하는 기기로 다시 등록됩니다. 현장에서 본인 확인 후 사용해 주세요.`,
+              confirmLabel: '기기 초기화',
+              pendingLabel: '초기화 중...',
+              tone: 'danger',
+              onConfirm: () => handleAttendanceDeviceActionConfirmed(enrollment, 'reset'),
             })
           }}
           onSuspend={(enrollment) => {

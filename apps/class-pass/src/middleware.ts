@@ -87,6 +87,7 @@ function isPublicApiRoute(pathname: string, method: string) {
   return (
     pathname === '/api/enrollments/lookup'
     || pathname === '/api/enrollments/pass'
+    || pathname === '/api/presence/exception-request'
     || /^\/api\/enrollments\/\d+\/receipts$/.test(pathname)
     || (pathname === '/api/config/app' && method === 'GET')
   )

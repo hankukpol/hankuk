@@ -8,19 +8,24 @@ import {
   ATTENDANCE_FEATURE_WARNING,
   DESIGNATED_SEAT_FEATURE_WARNING,
   EXAM_DELIVERY_FEATURE_WARNING,
+  PRESENCE_LOCATION_WARNING,
   containsAttendanceFeatureFields,
   containsDesignatedSeatFeatureFields,
   containsExamDeliveryFeatureFields,
+  containsPresenceLocationFields,
   hasAttendanceFeatureColumns,
   hasDesignatedSeatFeatureColumns,
   hasExamDeliveryFeatureColumns,
+  hasPresenceLocationColumns,
   isAttendanceFeatureColumnError,
   isDesignatedSeatFeatureColumnError,
   isExamDeliveryFeatureColumnError,
+  isPresenceLocationColumnError,
   mergeFeatureWarnings,
   stripAttendanceFeatureFields,
   stripDesignatedSeatFeatureFields,
   stripExamDeliveryFeatureFields,
+  stripPresenceLocationFields,
 } from '@/lib/course-feature-compat'
 import { createServerClient } from '@/lib/supabase/server'
 import { deleteStudentIfOrphaned } from '@/lib/student-profiles'
@@ -67,6 +72,14 @@ const patchSchema = z.object({
   kakao_chat_url: z.string().url().optional().nullable(),
   extra_site_url: z.string().url().optional().nullable(),
   extra_site_label: z.string().trim().max(40).optional().nullable(),
+  presence_location_enabled: z.boolean().optional(),
+  presence_enforcement_mode: z.enum(['monitor', 'enforce']).optional(),
+  presence_latitude: z.number().min(-90).max(90).optional().nullable(),
+  presence_longitude: z.number().min(-180).max(180).optional().nullable(),
+  presence_radius_m: z.number().int().min(30).max(2000).optional(),
+  presence_accuracy_max_m: z.number().int().min(30).max(2000).optional(),
+  presence_required_for_attendance: z.boolean().optional(),
+  presence_required_for_designated_seat: z.boolean().optional(),
   enrolled_from: z.string().optional().nullable(),
   enrolled_until: z.string().optional().nullable(),
   sort_order: z.number().int().min(0).max(999).optional(),
@@ -226,15 +239,18 @@ export async function PATCH(
   const supportsExamDeliveryFeatures = hasExamDeliveryFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsDesignatedSeatFeatures = hasDesignatedSeatFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsAttendanceFeatures = hasAttendanceFeatureColumns(existingCourse as unknown as Record<string, unknown>)
+  const supportsPresenceLocation = hasPresenceLocationColumns(existingCourse as unknown as Record<string, unknown>)
   const requestedExamDeliveryFeatures = containsExamDeliveryFeatureFields(parsed.data as Record<string, unknown>)
   const requestedDesignatedSeatFeatures = containsDesignatedSeatFeatureFields(parsed.data as Record<string, unknown>)
   const requestedAttendanceFeatures = containsAttendanceFeatureFields(parsed.data as Record<string, unknown>)
+  const requestedPresenceLocation = containsPresenceLocationFields(parsed.data as Record<string, unknown>)
 
   let updatePayload: Record<string, unknown> = { ...rawUpdatePayload }
   const warnings: string[] = []
   let strippedExamDeliveryFeatures = false
   let strippedDesignatedSeatFeatures = false
   let strippedAttendanceFeatures = false
+  let strippedPresenceLocation = false
 
   if (!supportsExamDeliveryFeatures && requestedExamDeliveryFeatures) {
     updatePayload = stripExamDeliveryFeatureFields(updatePayload)
@@ -254,6 +270,12 @@ export async function PATCH(
     warnings.push(ATTENDANCE_FEATURE_WARNING)
   }
 
+  if (!supportsPresenceLocation && requestedPresenceLocation) {
+    updatePayload = stripPresenceLocationFields(updatePayload)
+    strippedPresenceLocation = true
+    warnings.push(PRESENCE_LOCATION_WARNING)
+  }
+
   const db = createServerClient()
   const runUpdate = (payload: Record<string, unknown>) => db
     .from('courses')
@@ -265,7 +287,21 @@ export async function PATCH(
 
   let { data, error } = await runUpdate(updatePayload)
 
-  for (let attempt = 0; attempt < 3 && error; attempt += 1) {
+  for (let attempt = 0; attempt < 4 && error; attempt += 1) {
+    if (
+      isPresenceLocationColumnError(error)
+      && !strippedPresenceLocation
+      && containsPresenceLocationFields(updatePayload)
+    ) {
+      updatePayload = stripPresenceLocationFields(updatePayload)
+      strippedPresenceLocation = true
+      warnings.push(PRESENCE_LOCATION_WARNING)
+      const retry = await runUpdate(updatePayload)
+      data = retry.data
+      error = retry.error
+      continue
+    }
+
     if (isAttendanceFeatureColumnError(error) && !strippedAttendanceFeatures) {
       updatePayload = stripAttendanceFeatureFields(updatePayload)
       strippedAttendanceFeatures = true

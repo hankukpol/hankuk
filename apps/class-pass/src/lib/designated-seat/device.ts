@@ -51,6 +51,9 @@ export type DeviceResolutionResult =
     ok: true
     deviceKey: string
     deviceHash: string
+    source: 'cookie' | 'local'
+    localDeviceHash: string
+    localKeyMatchedCookie: boolean
     cookieToSet: string | null
   }
   | {
@@ -70,20 +73,15 @@ export async function resolveStudentDevice(
   const cookieValue = req.cookies.get(DESIGNATED_SEAT_DEVICE_COOKIE)?.value
   const cookieDeviceKey = cookieValue ? await verifyDeviceCookie(cookieValue) : null
 
-  if (cookieValue && !cookieDeviceKey) {
-    return { ok: false, reason: 'DEVICE_MISMATCH' }
-  }
-
-  if (cookieDeviceKey && cookieDeviceKey !== normalizedLocalKey) {
-    return { ok: false, reason: 'DEVICE_MISMATCH' }
-  }
-
   const resolvedDeviceKey = cookieDeviceKey ?? normalizedLocalKey
   return {
     ok: true,
     deviceKey: resolvedDeviceKey,
     deviceHash: hashToken(resolvedDeviceKey),
-    cookieToSet: cookieDeviceKey ? null : await signDeviceCookie(resolvedDeviceKey),
+    source: cookieDeviceKey ? 'cookie' : 'local',
+    localDeviceHash: hashToken(normalizedLocalKey),
+    localKeyMatchedCookie: !cookieDeviceKey || cookieDeviceKey === normalizedLocalKey,
+    cookieToSet: await signDeviceCookie(resolvedDeviceKey),
   }
 }
 

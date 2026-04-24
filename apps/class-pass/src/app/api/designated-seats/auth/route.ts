@@ -14,6 +14,9 @@ import {
   verifyRotationToken,
 } from '@/lib/designated-seat/token'
 import { parseDesignatedSeatScanValue } from '@/lib/designated-seat/scan'
+import { verifyPresenceLocation } from '@/lib/presence/location'
+import { presenceErrorSchema, presenceLocationSchema } from '@/lib/presence/schema'
+import { isPresenceLocationFeatureActive } from '@/lib/presence/shared'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -35,6 +38,8 @@ const schema = z.object({
   rotationToken: z.string().optional(),
   rotationCode: z.string().regex(/^\d{4,6}$/).optional(),
   deviceSignature: deviceSignatureSchema.optional(),
+  presenceLocation: presenceLocationSchema.optional(),
+  presenceError: presenceErrorSchema.optional(),
 })
 
 function authFailure(message: string, status = 400) {
@@ -118,6 +123,31 @@ export async function POST(req: NextRequest) {
 
     const verifiedRotation = tokenPayload.rotation
     const displaySessionId = displaySession.id
+    const presence = isPresenceLocationFeatureActive(access.course, 'designated_seat')
+      ? await verifyPresenceLocation({
+        course: access.course,
+        enrollmentId: access.enrollment.id,
+        feature: 'designated_seat',
+        location: parsed.data.presenceLocation ?? null,
+        presenceError: parsed.data.presenceError ?? null,
+        details: {
+          display_session_id: displaySessionId,
+          rotation: verifiedRotation,
+          user_agent: req.headers.get('user-agent'),
+        },
+      })
+      : null
+
+    if (presence?.shouldBlock) {
+      return NextResponse.json(
+        {
+          error: presence.message ?? '위치 확인이 필요합니다. 다시 시도해 주세요.',
+          code: `PRESENCE_${presence.code ?? 'FAILED'}`.toUpperCase(),
+          presence,
+        },
+        { status: presence.code === 'config_required' ? 503 : 403 },
+      )
+    }
 
     const db = createServerClient()
     const existingAuthResult = await db
@@ -156,6 +186,11 @@ export async function POST(req: NextRequest) {
         used_for_reservation_at: null,
         last_verified_rotation: verifiedRotation,
         is_active: true,
+        presence_location_verified: presence ? presence.ok : false,
+        presence_verified_at: presence?.ok ? new Date().toISOString() : null,
+        presence_verification_event_id: presence?.eventId ?? null,
+        presence_distance_m: presence?.distanceM ?? null,
+        presence_accuracy_m: presence?.accuracyM ?? null,
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'course_id,enrollment_id',

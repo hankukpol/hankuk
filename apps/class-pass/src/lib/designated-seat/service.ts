@@ -17,6 +17,7 @@ import type {
   Enrollment,
 } from '@/types/database'
 import { normalizeName, normalizePhone } from '@/lib/utils'
+import { isPresenceLocationEnforced } from '@/lib/presence/shared'
 
 /** Returns today's midnight in KST as ISO string (UTC) for filtering daily reservations. */
 export function getTodayStartKST(): string {
@@ -333,13 +334,15 @@ export async function getDesignatedSeatStudentState(params: {
     unwrapSupabaseResult('designatedSeat.occupiedSeats', occupiedRows) as Array<{ seat_id: number }> | null
   )?.map((row) => Number(row.seat_id)) ?? []
 
+  const requiresEnforcedPresence = isPresenceLocationEnforced(params.course, 'designated_seat')
   const verified = Boolean(
     auth
     && params.deviceKeyHash
     && auth.device_key_hash === params.deviceKeyHash
     && auth.is_active
     && !auth.used_for_reservation_at
-    && new Date(auth.expires_at).getTime() > Date.now(),
+    && new Date(auth.expires_at).getTime() > Date.now()
+    && (!requiresEnforcedPresence || auth.presence_location_verified)
   )
 
   const restrictionReason = getDesignatedSeatRestrictionMessage({

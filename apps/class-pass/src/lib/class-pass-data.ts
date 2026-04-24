@@ -1,6 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { getAppConfig } from '@/lib/app-config'
-import { getAttendanceStudentState } from '@/lib/attendance/service'
+import { getAttendanceStudentState, listAttendanceDeviceStatesForCourse } from '@/lib/attendance/service'
 import { toReceiptMap } from '@/lib/bulk'
 import {
   buildPassCourseSummaries,
@@ -216,6 +216,22 @@ const getCachedTextbookAssignments = unstable_cache(
   },
 )
 
+async function attachAttendanceDeviceStates(courseId: number, enrollments: Enrollment[]) {
+  if (enrollments.length === 0) {
+    return enrollments
+  }
+
+  const stateMap = await listAttendanceDeviceStatesForCourse(
+    courseId,
+    enrollments.map((enrollment) => enrollment.id),
+  )
+
+  return enrollments.map((enrollment) => ({
+    ...enrollment,
+    attendance_device: stateMap.get(enrollment.id) ?? null,
+  }))
+}
+
 const getCachedSeatAssignmentsForCourse = unstable_cache(
   async (courseId: number) => {
     const db = createServerClient()
@@ -370,10 +386,13 @@ export async function listCourseEnrollments(
       })(),
     ) as EnrollmentWithStudentRow[] | null
 
-    return (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row))
+    return attachAttendanceDeviceStates(
+      courseId,
+      (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row)),
+    )
   }
 
-  return getCachedCourseEnrollments(courseId)
+  return attachAttendanceDeviceStates(courseId, await getCachedCourseEnrollments(courseId))
 }
 
 export async function listMaterialsForCourse(

@@ -45,6 +45,14 @@ type CoursePatchForm = {
   kakao_chat_url: string
   extra_site_url: string
   extra_site_label: string
+  presence_location_enabled: boolean
+  presence_enforcement_mode: 'monitor' | 'enforce'
+  presence_latitude: string
+  presence_longitude: string
+  presence_radius_m: number
+  presence_accuracy_max_m: number
+  presence_required_for_attendance: boolean
+  presence_required_for_designated_seat: boolean
   designated_seat_open: boolean
   attendance_open: boolean
   enrolled_from: string
@@ -114,6 +122,14 @@ function toPatchForm(course: Course): CoursePatchForm {
     kakao_chat_url: course.kakao_chat_url ?? '',
     extra_site_url: course.extra_site_url ?? '',
     extra_site_label: course.extra_site_label ?? '',
+    presence_location_enabled: course.presence_location_enabled ?? false,
+    presence_enforcement_mode: course.presence_enforcement_mode ?? 'monitor',
+    presence_latitude: course.presence_latitude == null ? '' : String(course.presence_latitude),
+    presence_longitude: course.presence_longitude == null ? '' : String(course.presence_longitude),
+    presence_radius_m: course.presence_radius_m ?? 180,
+    presence_accuracy_max_m: course.presence_accuracy_max_m ?? 250,
+    presence_required_for_attendance: course.presence_required_for_attendance ?? false,
+    presence_required_for_designated_seat: course.presence_required_for_designated_seat ?? false,
     designated_seat_open: course.designated_seat_open,
     attendance_open: course.attendance_open,
     enrolled_from: course.enrolled_from ?? '',
@@ -205,6 +221,18 @@ export default function CourseDetailPage({
         kakao_chat_url: form.kakao_chat_url || null,
         extra_site_url: form.extra_site_url || null,
         extra_site_label: form.extra_site_label.trim() || null,
+        presence_location_enabled: form.presence_location_enabled,
+        presence_enforcement_mode: form.presence_enforcement_mode,
+        presence_latitude: form.presence_latitude.trim() ? Number(form.presence_latitude) : null,
+        presence_longitude: form.presence_longitude.trim() ? Number(form.presence_longitude) : null,
+        presence_radius_m: form.presence_radius_m,
+        presence_accuracy_max_m: form.presence_accuracy_max_m,
+        presence_required_for_attendance: form.presence_location_enabled && form.feature_attendance
+          ? form.presence_required_for_attendance
+          : false,
+        presence_required_for_designated_seat: form.presence_location_enabled && form.feature_designated_seat
+          ? form.presence_required_for_designated_seat
+          : false,
         designated_seat_open: form.feature_designated_seat ? form.designated_seat_open : false,
         attendance_open: form.feature_attendance ? form.attendance_open : false,
         enrolled_from: form.enrolled_from || null,
@@ -224,6 +252,36 @@ export default function CourseDetailPage({
       partialSave
         ? '강좌 기본 설정은 저장됐지만 일부 기능 설정은 아직 반영되지 않았습니다.'
         : '강좌 설정을 저장했습니다.',
+    )
+  }
+
+  function handleUseCurrentLocation() {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setError('현재 브라우저에서 위치 확인을 지원하지 않습니다.')
+      return
+    }
+
+    setError('')
+    setMessage('관리자 기기의 현재 위치를 확인하는 중입니다...')
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setForm((current) => current && {
+          ...current,
+          presence_latitude: position.coords.latitude.toFixed(7),
+          presence_longitude: position.coords.longitude.toFixed(7),
+          presence_accuracy_max_m: Math.max(current.presence_accuracy_max_m, Math.ceil(position.coords.accuracy)),
+        })
+        setMessage(`현재 위치를 입력했습니다. 정확도 약 ${Math.round(position.coords.accuracy)}m`)
+      },
+      () => {
+        setError('현재 위치를 가져오지 못했습니다. 브라우저 위치 권한을 허용하거나 좌표를 직접 입력해 주세요.')
+        setMessage('')
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
     )
   }
 
@@ -590,6 +648,118 @@ export default function CourseDetailPage({
               />
               지정좌석 학생 신청 열기
             </label>
+
+            <section className="rounded-2xl bg-slate-50 px-4 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-700">현장 위치 인증</h4>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                    출석 체크와 지정좌석 QR 인증 시 학생 스마트폰 위치가 학원 반경 안인지 확인합니다.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={form.presence_location_enabled}
+                    onChange={(e) => setForm((c) => c ? { ...c, presence_location_enabled: e.target.checked } : c)}
+                    className="rounded"
+                  />
+                  사용
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={form.presence_required_for_attendance}
+                    onChange={(e) => setForm((c) => c ? { ...c, presence_required_for_attendance: e.target.checked } : c)}
+                    disabled={!form.presence_location_enabled || !form.feature_attendance}
+                    className="rounded"
+                  />
+                  출석 체크에 적용
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={form.presence_required_for_designated_seat}
+                    onChange={(e) => setForm((c) => c ? { ...c, presence_required_for_designated_seat: e.target.checked } : c)}
+                    disabled={!form.presence_location_enabled || !form.feature_designated_seat}
+                    className="rounded"
+                  />
+                  지정좌석 QR 인증에 적용
+                </label>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-[1fr,1fr,140px]">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-500">위도</label>
+                  <input
+                    value={form.presence_latitude}
+                    onChange={(e) => setForm((c) => c && { ...c, presence_latitude: e.target.value })}
+                    inputMode="decimal"
+                    placeholder="37.0000000"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-500">경도</label>
+                  <input
+                    value={form.presence_longitude}
+                    onChange={(e) => setForm((c) => c && { ...c, presence_longitude: e.target.value })}
+                    inputMode="decimal"
+                    placeholder="127.0000000"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  className="self-end rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800"
+                >
+                  현재 위치 저장
+                </button>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-500">운영 모드</label>
+                  <select
+                    value={form.presence_enforcement_mode}
+                    onChange={(e) => setForm((c) => c ? { ...c, presence_enforcement_mode: e.target.value as 'monitor' | 'enforce' } : c)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  >
+                    <option value="monitor">모니터링만</option>
+                    <option value="enforce">반경 밖 차단</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-500">허용 반경(m)</label>
+                  <input
+                    type="number"
+                    min={30}
+                    max={2000}
+                    value={form.presence_radius_m}
+                    onChange={(e) => setForm((c) => c ? { ...c, presence_radius_m: Number(e.target.value || 180) } : c)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-500">최대 오차(m)</label>
+                  <input
+                    type="number"
+                    min={30}
+                    max={2000}
+                    value={form.presence_accuracy_max_m}
+                    onChange={(e) => setForm((c) => c ? { ...c, presence_accuracy_max_m: Number(e.target.value || 250) } : c)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-gray-500">
+                처음 1~2일은 모니터링만으로 실패율을 확인한 뒤, 안정되면 반경 밖 차단으로 전환하는 것을 권장합니다.
+              </p>
+            </section>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-gray-500">공지 제목</label>

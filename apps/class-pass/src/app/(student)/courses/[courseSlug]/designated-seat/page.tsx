@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
+import { PresenceFailureActions } from '@/components/student/PresenceFailureActions'
+import { StudentAccessGuide } from '@/components/student/StudentAccessGuide'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
+import { getPresenceLocation, type ClientPresenceError } from '@/lib/client/geolocation'
 import { getStrictMainRearCamera } from '@/lib/camera/main-rear-camera'
 import { fetchDesignatedSeatState } from '@/lib/designated-seat/client-state'
 import {
   parseDesignatedSeatScanValue,
   type DesignatedSeatVerificationPayload,
 } from '@/lib/designated-seat/scan'
+import { isPresenceLocationEnforced, isPresenceLocationFeatureActive } from '@/lib/presence/shared'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { DesignatedSeatStudentState, PassPayload } from '@/types/database'
 
@@ -24,6 +28,7 @@ const STATE_REFRESH_REASONS = new Set([
   'AUTH_EXPIRED',
   'AUTH_ALREADY_USED',
   'AUTH_DEVICE_MISMATCH',
+  'LOCATION_REQUIRED',
   'DEVICE_LOCKED',
 ])
 
@@ -80,6 +85,7 @@ export default function DesignatedSeatPage() {
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [presenceFailure, setPresenceFailure] = useState<ClientPresenceError | null>(null)
   const [lastScanDebug, setLastScanDebug] = useState('')
   const scannerRef = useRef<ScannerInstance | null>(null)
 
@@ -180,6 +186,21 @@ export default function DesignatedSeatPage() {
     setWorking(true)
     setError('')
     setMessage('')
+    setPresenceFailure(null)
+
+    const shouldCheckPresence = isPresenceLocationFeatureActive(data.course, 'designated_seat')
+    const presenceEnforced = isPresenceLocationEnforced(data.course, 'designated_seat')
+    const presenceResult = shouldCheckPresence ? await getPresenceLocation() : null
+
+    if (presenceResult && !presenceResult.ok) {
+      setPresenceFailure(presenceResult.error)
+
+      if (presenceEnforced) {
+        setWorking(false)
+        setError(presenceResult.error.message)
+        return
+      }
+    }
 
     const response = await fetch(withTenantPrefix('/api/designated-seats/auth', tenant.type), {
       method: 'POST',
@@ -191,6 +212,8 @@ export default function DesignatedSeatPage() {
         phone: data.enrollment.phone,
         localDeviceKey: deviceKey,
         deviceSignature: buildDeviceSignature(),
+        presenceLocation: presenceResult?.ok ? presenceResult.location : undefined,
+        presenceError: presenceResult && !presenceResult.ok ? presenceResult.error : undefined,
         ...payload,
       }),
     })
@@ -198,7 +221,19 @@ export default function DesignatedSeatPage() {
     setWorking(false)
 
     if (!response.ok) {
-      setError((result as { error?: string } | null)?.error ?? '현장 인증에 실패했습니다.')
+      const failure = result as {
+        error?: string
+        code?: string
+        presence?: { code?: string; message?: string }
+      } | null
+      setError(failure?.error ?? '현장 인증에 실패했습니다.')
+      if (failure?.code?.startsWith('PRESENCE_')) {
+        setPresenceFailure({
+          errorCode: (failure.presence?.code ?? 'position_unavailable') as ClientPresenceError['errorCode'],
+          message: failure.presence?.message ?? failure.error ?? '위치 확인이 필요합니다.',
+          browserContext: presenceResult?.ok === false ? presenceResult.error.browserContext : 'other',
+        })
+      }
       return
     }
 
@@ -209,6 +244,7 @@ export default function DesignatedSeatPage() {
       await refreshDesignatedSeatState().catch(() => null)
     }
 
+    setPresenceFailure(null)
     setMessage('현장 인증이 완료되었습니다. 원하시는 좌석을 선택해 주세요.')
   }, [applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
 
@@ -441,6 +477,19 @@ export default function DesignatedSeatPage() {
           <section className="student-card px-4 py-3">
             {error ? <p className="text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
             {message ? <p className="text-[14px] font-medium text-[#19703a]">{message}</p> : null}
+            {presenceFailure ? (
+              <PresenceFailureActions
+                courseId={data.course.id}
+                enrollmentId={data.enrollment.id}
+                name={data.enrollment.name}
+                phone={data.enrollment.phone}
+                feature="designated_seat"
+                browserContext={presenceFailure.browserContext}
+                errorCode={presenceFailure.errorCode}
+                message={presenceFailure.message}
+                onRetry={() => setScannerOpen(true)}
+              />
+            ) : null}
           </section>
         ) : null}
 
@@ -458,7 +507,7 @@ export default function DesignatedSeatPage() {
               className="student-pill-button student-pill-primary mt-3 w-full disabled:opacity-40"
               style={{ backgroundColor: courseTheme, borderColor: courseTheme }}
             >
-              QR 스캔으로 현장 인증
+              {working ? '위치 확인 중...' : 'QR 스캔으로 현장 인증'}
             </button>
             <div className={`mt-3 grid gap-2 sm:grid-cols-[1fr,auto] ${manualCodeEntryEnabled ? '' : 'hidden'}`}>
               <input
@@ -533,6 +582,10 @@ export default function DesignatedSeatPage() {
         <button onClick={goBack} className="student-pill-button student-pill-outline w-full">
           수강증으로 돌아가기
         </button>
+      </div>
+
+      <div className="px-4 pt-3 sm:px-5">
+        <StudentAccessGuide compact onlyWhenKakao storageKey="class_pass_seat_access_guide_dismissed_until" />
       </div>
 
       {scannerOpen ? (

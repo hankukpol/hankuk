@@ -3,7 +3,11 @@
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { PresenceFailureActions } from '@/components/student/PresenceFailureActions'
+import { StudentAccessGuide } from '@/components/student/StudentAccessGuide'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { getPresenceLocation, type ClientPresenceError } from '@/lib/client/geolocation'
+import { isPresenceLocationEnforced, isPresenceLocationFeatureActive } from '@/lib/presence/shared'
 import type { PassPayload } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 
@@ -82,6 +86,7 @@ export default function StudentAttendancePage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [deviceKey, setDeviceKey] = useState('')
+  const [presenceFailure, setPresenceFailure] = useState<ClientPresenceError | null>(null)
   const [digits, setDigits] = useState<string[]>(getInitialDigits)
   const inputRefs = useRef<Array<HTMLInputElement | null>>([])
 
@@ -203,6 +208,21 @@ export default function StudentAttendancePage() {
     setSubmitting(true)
     setError('')
     setMessage('')
+    setPresenceFailure(null)
+
+    const shouldCheckPresence = isPresenceLocationFeatureActive(data.course, 'attendance')
+    const presenceEnforced = isPresenceLocationEnforced(data.course, 'attendance')
+    const presenceResult = shouldCheckPresence ? await getPresenceLocation() : null
+
+    if (presenceResult && !presenceResult.ok) {
+      setPresenceFailure(presenceResult.error)
+
+      if (presenceEnforced) {
+        setSubmitting(false)
+        setError(presenceResult.error.message)
+        return
+      }
+    }
 
     const response = await fetch(withTenantPrefix('/api/attendance/submit', tenant.type), {
       method: 'POST',
@@ -214,17 +234,32 @@ export default function StudentAttendancePage() {
         phone: data.enrollment.phone,
         code: codeValue,
         localDeviceKey: deviceKey,
+        presenceLocation: presenceResult?.ok ? presenceResult.location : undefined,
+        presenceError: presenceResult && !presenceResult.ok ? presenceResult.error : undefined,
       }),
     })
     const result = await response.json().catch(() => null)
     setSubmitting(false)
 
     if (!response.ok) {
-      setError((result as { error?: string } | null)?.error ?? '출석 처리에 실패했습니다.')
+      const failure = result as {
+        error?: string
+        code?: string
+        presence?: { code?: string; message?: string }
+      } | null
+      setError(failure?.error ?? '출석 처리에 실패했습니다.')
+      if (failure?.code?.startsWith('PRESENCE_')) {
+        setPresenceFailure({
+          errorCode: (failure.presence?.code ?? 'position_unavailable') as ClientPresenceError['errorCode'],
+          message: failure.presence?.message ?? failure.error ?? '위치 확인이 필요합니다.',
+          browserContext: presenceResult?.ok === false ? presenceResult.error.browserContext : 'other',
+        })
+      }
       return
     }
 
     setDigits(getInitialDigits())
+    setPresenceFailure(null)
     setMessage('오늘 출석이 완료되었습니다.')
     await loadData().catch(() => null)
   }
@@ -351,6 +386,20 @@ export default function StudentAttendancePage() {
             </div>
           ) : null}
 
+          {presenceFailure ? (
+            <PresenceFailureActions
+              courseId={data.course.id}
+              enrollmentId={data.enrollment.id}
+              name={data.enrollment.name}
+              phone={data.enrollment.phone}
+              feature="attendance"
+              browserContext={presenceFailure.browserContext}
+              errorCode={presenceFailure.errorCode}
+              message={presenceFailure.message}
+              onRetry={() => void handleSubmit()}
+            />
+          ) : null}
+
           <div className="mt-4">
             <p className="student-eyebrow student-eyebrow-light">6자리 코드</p>
             <div className="mt-3 flex items-center justify-between gap-2">
@@ -388,7 +437,7 @@ export default function StudentAttendancePage() {
                 <span>오늘의 출석 완료</span>
                 {attendedDateLabel ? <span className="mt-0.5 text-[13px] font-medium">({attendedDateLabel})</span> : null}
               </span>
-            ) : submitting ? '처리 중...' : '출석하기'}
+            ) : submitting ? '위치 확인 중...' : '출석하기'}
           </button>
 
           <div className="mt-5 border-t border-[var(--student-line)] pt-4">
@@ -441,6 +490,9 @@ export default function StudentAttendancePage() {
             )}
           </div>
         </section>
+        <div className="mt-3">
+          <StudentAccessGuide compact onlyWhenKakao storageKey="class_pass_attendance_access_guide_dismissed_until" />
+        </div>
       </div>
     </div>
   )

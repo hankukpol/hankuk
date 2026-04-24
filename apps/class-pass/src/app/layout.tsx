@@ -12,9 +12,15 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: tenant.defaultAppName,
     description: tenant.defaultDescription,
+    manifest: '/manifest.webmanifest',
+    icons: {
+      icon: '/class-pass-icon.svg',
+      apple: '/class-pass-icon.svg',
+    },
     other: {
       'mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-capable': 'yes',
+      'apple-mobile-web-app-title': tenant.defaultAppName,
     },
   }
 }

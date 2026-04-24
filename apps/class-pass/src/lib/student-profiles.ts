@@ -3,13 +3,23 @@ import { normalizeBirthDate } from '@/lib/auth/student-auth'
 import { generateStudentPin } from '@/lib/auth/pin'
 import { createServerClient } from '@/lib/supabase/server'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
-import type { Enrollment, Student } from '@/types/database'
+import type { Course, Enrollment, Student } from '@/types/database'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 
 type DbClient = ReturnType<typeof createServerClient>
 
 type EnrollmentWithStudentRow = Enrollment & {
   students?: Student | null
+}
+
+type MaybeJoinedOne<T> = T | T[] | null | undefined
+
+type EnrollmentWithCourseAndStudentRow = Pick<
+  Enrollment,
+  'id' | 'course_id' | 'student_id' | 'name' | 'phone' | 'exam_number' | 'status'
+> & {
+  courses?: MaybeJoinedOne<Pick<Course, 'id' | 'name' | 'status' | 'sort_order'>>
+  students?: MaybeJoinedOne<Pick<Student, 'id' | 'birth_date' | 'auth_method'>>
 }
 
 export type StudentProfileSnapshot = {
@@ -56,6 +66,22 @@ export type PendingStudentAuthStats = {
   pinRequiredCount: number
 }
 
+export type MissingBirthDateStudent = {
+  enrollmentId: number
+  studentId: number | null
+  name: string
+  phone: string
+  examNumber: string | null
+  authMethod: Student['auth_method']
+}
+
+export type MissingBirthDateCourseGroup = {
+  courseId: number
+  courseName: string
+  courseStatus: Course['status']
+  students: MissingBirthDateStudent[]
+}
+
 type NormalizedStudentSnapshot = {
   name: string
   phone: string
@@ -88,6 +114,18 @@ function buildStudentIdentityKey(snapshot: StudentProfileSnapshot | Student | No
   }
 
   return `phone:${normalizePhone(snapshot.phone)}::${normalizeName(snapshot.name)}`
+}
+
+function normalizeJoinedOne<T>(value: MaybeJoinedOne<T>): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null
+  }
+
+  return value ?? null
+}
+
+function hasStoredBirthDate(value: string | null | undefined) {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 function shouldUpdateStudent(
@@ -599,6 +637,100 @@ export async function getPendingStudentAuthStats(
     birthDateReadyCount,
     pinRequiredCount: Math.max(total - birthDateReadyCount, 0),
   }
+}
+
+export async function listMissingBirthDateStudentsByCourse(
+  db: DbClient,
+  division: TenantType,
+): Promise<MissingBirthDateCourseGroup[]> {
+  const rows = unwrapSupabaseResult(
+    'studentProfiles.listMissingBirthDateStudentsByCourse',
+    await db
+      .from('enrollments')
+      .select([
+        'id,course_id,student_id,name,phone,exam_number,status',
+        'courses!inner(id,name,status,sort_order)',
+        'students(id,birth_date,auth_method)',
+      ].join(','))
+      .eq('status', 'active')
+      .eq('courses.division', division)
+      .order('course_id')
+      .order('created_at', { ascending: false }),
+  ) as EnrollmentWithCourseAndStudentRow[] | null
+
+  const collator = new Intl.Collator('ko-KR', { numeric: true, sensitivity: 'base' })
+  const groupsByCourseId = new Map<
+    number,
+    MissingBirthDateCourseGroup & {
+      sortOrder: number
+    }
+  >()
+
+  for (const row of rows ?? []) {
+    const course = normalizeJoinedOne(row.courses)
+    if (!course) {
+      continue
+    }
+
+    const student = normalizeJoinedOne(row.students)
+    if (hasStoredBirthDate(student?.birth_date)) {
+      continue
+    }
+
+    const group = groupsByCourseId.get(course.id) ?? {
+      courseId: course.id,
+      courseName: course.name,
+      courseStatus: course.status,
+      students: [],
+      sortOrder: course.sort_order,
+    }
+
+    group.students.push({
+      enrollmentId: row.id,
+      studentId: row.student_id,
+      name: row.name,
+      phone: row.phone,
+      examNumber: row.exam_number,
+      authMethod: student?.auth_method ?? null,
+    })
+
+    groupsByCourseId.set(course.id, group)
+  }
+
+  return Array.from(groupsByCourseId.values())
+    .map((group) => ({
+      ...group,
+      students: group.students.sort((left, right) => {
+        const nameCompare = collator.compare(left.name, right.name)
+        if (nameCompare !== 0) {
+          return nameCompare
+        }
+
+        return collator.compare(left.examNumber ?? '', right.examNumber ?? '')
+      }),
+    }))
+    .sort((left, right) => {
+      if (left.courseStatus !== right.courseStatus) {
+        return left.courseStatus === 'active' ? -1 : 1
+      }
+
+      if (left.sortOrder !== right.sortOrder) {
+        return left.sortOrder - right.sortOrder
+      }
+
+      const nameCompare = collator.compare(left.courseName, right.courseName)
+      if (nameCompare !== 0) {
+        return nameCompare
+      }
+
+      return left.courseId - right.courseId
+    })
+    .map((group) => ({
+      courseId: group.courseId,
+      courseName: group.courseName,
+      courseStatus: group.courseStatus,
+      students: group.students,
+    }))
 }
 
 export async function listStudentsPendingAuthSetup(

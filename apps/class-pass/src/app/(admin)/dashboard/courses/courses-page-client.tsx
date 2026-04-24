@@ -67,6 +67,21 @@ function courseTypeLabel(value: CourseType) {
   return formatCourseTypeLabel(value)
 }
 
+function getCourseFeatureTags(course: Course) {
+  return [
+    course.feature_qr_pass && 'QR',
+    course.feature_qr_distribution && '배부',
+    course.feature_seat_assignment && '좌석',
+    course.feature_attendance && '출결',
+    course.feature_time_window && '시간',
+    course.feature_photo && '사진',
+    course.feature_dday && 'D-day',
+    course.feature_exam_delivery_mode && '배부모드',
+    course.feature_weekday_color && '요일색',
+    course.feature_anti_forgery_motion && '보안효과',
+  ].filter(Boolean) as string[]
+}
+
 export default function CoursesPageClient({
   initialCourses,
   initialError = '',
@@ -225,7 +240,7 @@ export default function CoursesPageClient({
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
-          className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+          className="w-full rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 sm:w-auto"
         >
           {showForm ? '닫기' : '+ 새 강좌'}
         </button>
@@ -255,9 +270,9 @@ export default function CoursesPageClient({
             </select>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-3">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             {FEATURE_LABELS.map((item) => (
-              <label key={item.key} className="flex items-center gap-1.5 text-xs text-[#1d1d1f]">
+              <label key={item.key} className="flex min-h-9 items-center gap-1.5 rounded-[8px] bg-[#f5f5f7] px-2.5 text-xs text-[#1d1d1f] sm:min-h-0 sm:bg-transparent sm:px-0">
                 <input
                   type="checkbox"
                   checked={Boolean(form[item.key])}
@@ -269,11 +284,11 @@ export default function CoursesPageClient({
             ))}
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <button
               type="submit"
               disabled={saving}
-              className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 sm:py-2"
             >
               {saving ? '생성 중...' : '강좌 생성'}
             </button>
@@ -315,7 +330,90 @@ export default function CoursesPageClient({
         ) : filtered.length === 0 ? (
           <p className="px-5 py-12 text-center text-sm text-[#86868b]">해당 강좌가 없습니다.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {filtered.map((course) => {
+              const tags = getCourseFeatureTags(course)
+              const isActive = course.status === 'active'
+
+              return (
+                <article key={course.id} className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-[#1d1d1f]">{course.name}</p>
+                        {course.copied_from_course_id ? (
+                          <span className="shrink-0 rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                            복사본
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 truncate text-[11px] text-[#86868b]">
+                        {courseTypeLabel(course.course_type)} · {course.slug}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
+                    }`}>
+                      {isActive ? '운영중' : '보관됨'}
+                    </span>
+                  </div>
+
+                  {tags.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {tags.map((tag) => (
+                        <span key={tag} className="rounded-[4px] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#86868b]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Link
+                      href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
+                      className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                    >
+                      수강생
+                    </Link>
+                    <Link
+                      href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
+                      className="rounded-[8px] bg-[#1d1d1f] px-3 py-2 text-center text-xs font-semibold text-white hover:bg-[#1d1d1f]"
+                    >
+                      설정
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void handleDuplicate(course)}
+                      disabled={duplicatingCourseId === course.id}
+                      className="rounded-[8px] bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {duplicatingCourseId === course.id ? '복사중' : '복사'}
+                    </button>
+                    {isActive ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleArchive(course)}
+                        className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#86868b] hover:bg-[#e8e8ed]"
+                      >
+                        보관
+                      </button>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDestroy(course)}
+                    disabled={deletingCourseId === course.id}
+                    className="mt-2 w-full rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deletingCourseId === course.id ? '삭제중..' : '삭제'}
+                  </button>
+                </article>
+              )
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#f5f5f7] text-left text-xs font-medium text-[#86868b]">
@@ -328,18 +426,7 @@ export default function CoursesPageClient({
               </thead>
               <tbody className="divide-y divide-[#f5f5f7]">
                 {filtered.map((course) => {
-                  const tags = [
-                    course.feature_qr_pass && 'QR',
-                    course.feature_qr_distribution && '배부',
-                    course.feature_seat_assignment && '좌석',
-                    course.feature_attendance && '출결',
-                    course.feature_time_window && '시간',
-                    course.feature_photo && '사진',
-                    course.feature_dday && 'D-day',
-                    course.feature_exam_delivery_mode && '배부모드',
-                    course.feature_weekday_color && '요일색',
-                    course.feature_anti_forgery_motion && '보안효과',
-                  ].filter(Boolean)
+                  const tags = getCourseFeatureTags(course)
 
                   return (
                     <tr key={course.id} className="hover:bg-[#f5f5f7]/60">
@@ -427,6 +514,7 @@ export default function CoursesPageClient({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </div>

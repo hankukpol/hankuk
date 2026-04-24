@@ -433,26 +433,26 @@ export default function CourseDetailPage({
   return (
     <div className="flex flex-col gap-6">
       {/* ── KPI strip ── */}
-      <div className="grid gap-4 md:grid-cols-5">
-        <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">과목 수</p>
-          <p className="mt-1 text-2xl font-extrabold text-blue-600">{stats.subjectCount}</p>
+          <p className="mt-1 text-xl font-extrabold text-blue-600 sm:text-2xl">{stats.subjectCount}</p>
         </div>
-        <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+        <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">좌석 기능</p>
-          <p className="mt-1 text-2xl font-extrabold text-emerald-600">{stats.seatEnabled ? 'ON' : 'OFF'}</p>
+          <p className="mt-1 text-xl font-extrabold text-emerald-600 sm:text-2xl">{stats.seatEnabled ? 'ON' : 'OFF'}</p>
         </div>
-        <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+        <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">자료 배부</p>
-          <p className="mt-1 text-2xl font-extrabold text-amber-600">{stats.materialEnabled ? 'ON' : 'OFF'}</p>
+          <p className="mt-1 text-xl font-extrabold text-amber-600 sm:text-2xl">{stats.materialEnabled ? 'ON' : 'OFF'}</p>
         </div>
-        <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+        <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">지정좌석</p>
-          <p className="mt-1 text-2xl font-extrabold text-violet-600">{stats.designatedSeatEnabled ? 'ON' : 'OFF'}</p>
+          <p className="mt-1 text-xl font-extrabold text-violet-600 sm:text-2xl">{stats.designatedSeatEnabled ? 'ON' : 'OFF'}</p>
         </div>
-        <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+        <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">출결 체크</p>
-          <p className="mt-1 text-2xl font-extrabold text-rose-600">{stats.attendanceEnabled ? 'ON' : 'OFF'}</p>
+          <p className="mt-1 text-xl font-extrabold text-rose-600 sm:text-2xl">{stats.attendanceEnabled ? 'ON' : 'OFF'}</p>
         </div>
       </div>
 
@@ -928,13 +928,74 @@ export default function CourseDetailPage({
       </div>
 
       {/* ── Enrollment fields ── */}
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <section className="rounded-[8px] bg-white p-4 shadow-sm sm:p-5">
         <h3 className="text-sm font-bold text-gray-700">수강생 정보 필드</h3>
         <p className="mt-1 text-xs text-gray-400">
           학번, 이름, 연락처는 기본 필수 항목입니다. 강좌별로 추가 정보 필드를 설정할 수 있습니다.
         </p>
 
-        <div className="mt-4 grid gap-2">
+        <div className="mt-4 grid gap-3 md:hidden">
+          {enrollmentFields.map((field, index) => (
+            <article key={field.key} className="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-400">필드 {index + 1}</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveField(index, 'up')}
+                    disabled={index === 0}
+                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >UP</button>
+                  <button
+                    type="button"
+                    onClick={() => moveField(index, 'down')}
+                    disabled={index === enrollmentFields.length - 1}
+                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  >DN</button>
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-2">
+                <input
+                  value={field.label}
+                  onChange={(e) => updateField(index, { label: e.target.value })}
+                  placeholder="필드명 (예: 성별, 지역)"
+                  className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                />
+                <select
+                  value={field.type}
+                  onChange={(e) => updateField(index, { type: e.target.value as 'text' | 'select' })}
+                  className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                >
+                  <option value="text">텍스트</option>
+                  <option value="select">선택</option>
+                </select>
+                {field.type === 'select' ? (
+                  <input
+                    value={(field.options ?? []).join(',')}
+                    onChange={(e) =>
+                      updateField(index, {
+                        options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                      })
+                    }
+                    placeholder="남,여"
+                    className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  />
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => removeField(index)}
+                className="mt-3 w-full rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
+              >
+                삭제
+              </button>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-4 hidden gap-2 md:grid">
           <div className="grid grid-cols-[72px,1fr,1fr,100px,auto] gap-2 text-[11px] font-semibold text-gray-400">
             <span>순서</span>
             <span>필드명</span>

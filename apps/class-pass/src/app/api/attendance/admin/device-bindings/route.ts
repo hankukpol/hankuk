@@ -8,18 +8,26 @@ import {
 import {
   AttendanceServiceError,
   approveAttendanceDeviceReRegistration,
+  resetCourseAttendanceDeviceBindings,
   resetAttendanceDeviceBinding,
 } from '@/lib/attendance/service'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { createServerClient } from '@/lib/supabase/server'
 import type { StaffJwtPayload } from '@/types/database'
 
-const schema = z.object({
-  courseId: z.number().int().positive(),
-  enrollmentId: z.number().int().positive(),
-  action: z.enum(['approve_pending', 'reset']),
-  reason: z.string().max(300).optional().nullable(),
-})
+const schema = z.discriminatedUnion('action', [
+  z.object({
+    courseId: z.number().int().positive(),
+    enrollmentId: z.number().int().positive(),
+    action: z.enum(['approve_pending', 'reset']),
+    reason: z.string().max(300).optional().nullable(),
+  }),
+  z.object({
+    courseId: z.number().int().positive(),
+    action: z.literal('reset_course'),
+    reason: z.string().max(300).optional().nullable(),
+  }),
+])
 
 function getActor(payload: StaffJwtPayload | null) {
   if (!payload) {
@@ -56,6 +64,21 @@ export async function POST(req: NextRequest) {
     }
 
     const { course, payload } = guard.context
+    const actor = getActor(payload)
+
+    if (parsed.data.action === 'reset_course') {
+      const result = await resetCourseAttendanceDeviceBindings({
+        courseId: course.id,
+        actor,
+        reason: parsed.data.reason,
+      })
+
+      await invalidateCache('enrollments')
+      await invalidateCache('attendance')
+
+      return NextResponse.json(result)
+    }
+
     const db = createServerClient()
     const enrollment = await db
       .from('enrollments')
@@ -72,7 +95,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const actor = getActor(payload)
     const device = parsed.data.action === 'approve_pending'
       ? await approveAttendanceDeviceReRegistration({
         courseId: course.id,

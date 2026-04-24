@@ -9,6 +9,24 @@ type PendingSummary = {
   total: number
   birth_date_ready_count?: number
   pin_required_count?: number
+  missing_birth_date_courses?: MissingBirthDateCourse[]
+}
+
+type MissingBirthDateStudent = {
+  enrollment_id: number
+  student_id: number | null
+  name: string
+  phone: string
+  exam_number: string | null
+  auth_method: 'birth_date' | 'pin' | null
+}
+
+type MissingBirthDateCourse = {
+  course_id: number
+  course_name: string
+  course_status: 'active' | 'archived'
+  missing_birth_date_count: number
+  students: MissingBirthDateStudent[]
 }
 
 type GeneratedPin = {
@@ -30,6 +48,18 @@ function escapeCsvValue(value: string) {
 
 function formatDateLabel(date: Date) {
   return date.toISOString().slice(0, 10)
+}
+
+function getAuthMethodLabel(method: MissingBirthDateStudent['auth_method']) {
+  if (method === 'birth_date') {
+    return '생년월일 인증'
+  }
+
+  if (method === 'pin') {
+    return 'PIN 인증'
+  }
+
+  return '인증 미설정'
 }
 
 function downloadPinsCsv(division: string, entries: GeneratedPin[]) {
@@ -59,6 +89,12 @@ export default function StudentAuthSetupPage() {
   const [error, setError] = useState('')
 
   const pendingCount = summary?.total ?? 0
+  const missingBirthDateCourses = summary?.missing_birth_date_courses ?? []
+  const missingBirthDateCount = missingBirthDateCourses.reduce(
+    (sum, course) => sum + course.missing_birth_date_count,
+    0,
+  )
+  const hasOnlyMissingBirthDateStudents = pendingCount === 0 && missingBirthDateCount > 0
 
   const loadSummary = useCallback(async () => {
     const response = await fetch(
@@ -167,12 +203,26 @@ export default function StudentAuthSetupPage() {
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Pending Students</p>
-            <p className="mt-2 text-3xl font-black text-slate-900">인증 미설정 학생: {pendingCount}명</p>
-            <p className="mt-2 text-sm text-slate-500">
-              생년월일 등록 학생 {summary?.birth_date_ready_count ?? 0}명, PIN 발급 필요 학생 {summary?.pin_required_count ?? 0}명
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-bold text-slate-500">인증 방식 미설정</p>
+                <p className="mt-1 text-3xl font-black text-slate-900">{pendingCount}명</p>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-500">생년월일 미등록</p>
+                <p className="mt-1 text-3xl font-black text-amber-600">{missingBirthDateCount}명</p>
+              </div>
+            </div>
+            <p className="mt-3 text-sm text-slate-500">
+              일괄 설정 대상: 생년월일 등록 {summary?.birth_date_ready_count ?? 0}명, PIN 발급 필요 {summary?.pin_required_count ?? 0}명
             </p>
+            {hasOnlyMissingBirthDateStudents ? (
+              <p className="mt-2 text-sm font-semibold text-amber-600">
+                생년월일 미등록 학생은 이미 PIN 인증이 설정되어 있어 일괄 설정 대상에는 포함되지 않습니다.
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -180,7 +230,7 @@ export default function StudentAuthSetupPage() {
             disabled={running || pendingCount === 0}
             className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {running ? '일괄 설정 실행 중...' : '일괄 설정 실행'}
+            {running ? '일괄 설정 실행 중...' : pendingCount === 0 ? '설정 대상 없음' : '일괄 설정 실행'}
           </button>
         </div>
       </section>
@@ -192,6 +242,78 @@ export default function StudentAuthSetupPage() {
           <li>생년월일이 있으면 생년월일 인증으로 설정합니다.</li>
           <li>생년월일이 없으면 4자리 PIN을 새로 발급합니다.</li>
         </ul>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-700">강좌별 생년월일 미등록 학생</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              활성 수강생 기준이며, 이미 PIN 인증이 설정된 학생도 포함합니다.
+            </p>
+          </div>
+          <p className="text-sm font-bold text-slate-900">
+            {missingBirthDateCourses.length}개 강좌 · {missingBirthDateCount}명
+          </p>
+        </div>
+
+        {missingBirthDateCount === 0 ? (
+          <p className="mt-4 text-sm text-slate-400">생년월일이 비어 있는 활성 수강생이 없습니다.</p>
+        ) : (
+          <div className="mt-4 divide-y divide-slate-100">
+            {missingBirthDateCourses.map((course) => (
+              <div key={course.course_id} className="py-4 first:pt-0 last:pb-0">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">{course.course_name}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-400">
+                      {course.course_status === 'archived' ? '보관 강좌' : '운영 강좌'}
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold text-amber-600">{course.missing_birth_date_count}명</p>
+                </div>
+
+                <div className="mt-3 divide-y divide-slate-100 sm:hidden">
+                  {course.students.map((student) => (
+                    <div key={student.enrollment_id} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-semibold text-slate-900">{student.name}</p>
+                        <p className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                          {getAuthMethodLabel(student.auth_method)}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{student.phone}</p>
+                      <p className="mt-1 text-xs text-slate-400">수험번호 {student.exam_number || '-'}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 hidden overflow-x-auto sm:block">
+                  <table className="w-full min-w-[680px] text-sm">
+                    <thead className="text-left text-xs font-semibold text-slate-400">
+                      <tr>
+                        <th className="py-2 pr-4">이름</th>
+                        <th className="px-4 py-2">전화번호</th>
+                        <th className="px-4 py-2">수험번호</th>
+                        <th className="px-4 py-2">인증 방식</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {course.students.map((student) => (
+                        <tr key={student.enrollment_id}>
+                          <td className="py-2 pr-4 font-semibold text-slate-900">{student.name}</td>
+                          <td className="px-4 py-2 text-slate-600">{student.phone}</td>
+                          <td className="px-4 py-2 text-slate-500">{student.exam_number || '-'}</td>
+                          <td className="px-4 py-2 text-slate-600">{getAuthMethodLabel(student.auth_method)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm">

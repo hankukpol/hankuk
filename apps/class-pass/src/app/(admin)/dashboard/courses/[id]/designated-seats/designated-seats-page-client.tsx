@@ -554,7 +554,7 @@ export default function CourseDesignatedSeatsPage({
       ) : null}
 
       {/* Tab switcher */}
-      <div className="flex gap-6 border-b border-slate-200">
+      <div className="flex gap-4 overflow-x-auto border-b border-slate-200 sm:gap-6">
         {TAB_ITEMS.map((item) => (
           <button
             key={item.key}
@@ -576,16 +576,16 @@ export default function CourseDesignatedSeatsPage({
 
       {/* Summary stats */}
       {tab !== 'attendance' ? (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             { label: '활성 좌석', value: summary.activeSeatCount },
             { label: '배정 완료', value: summary.reservedCount },
             { label: '잔여 좌석', value: summary.availableCount },
             { label: '신청 상태', value: seatOpen ? 'OPEN' : 'CLOSED' },
           ].map((item) => (
-            <article key={item.label} className="rounded-[8px] bg-white p-5">
-              <p className="text-sm font-semibold text-[#86868b]">{item.label}</p>
-              <p className="mt-3 text-3xl font-semibold text-[#1d1d1f]">{item.value}</p>
+            <article key={item.label} className="rounded-[8px] bg-white px-4 py-3 sm:p-5">
+              <p className="text-xs font-semibold text-[#86868b] sm:text-sm">{item.label}</p>
+              <p className="mt-1 text-2xl font-semibold text-[#1d1d1f] sm:mt-3 sm:text-3xl">{item.value}</p>
             </article>
           ))}
         </div>
@@ -608,7 +608,7 @@ export default function CourseDesignatedSeatsPage({
             </div>
           ) : null}
 
-          <form onSubmit={handleSaveLayout} className="rounded-[8px] bg-white p-6">
+          <form onSubmit={handleSaveLayout} className="rounded-[8px] bg-white p-4 sm:p-6">
             <div className="flex flex-col gap-5">
               {/* Feature toggles */}
               <div className="grid gap-4 md:grid-cols-2">
@@ -686,7 +686,7 @@ export default function CourseDesignatedSeatsPage({
               </div>
 
               {/* Seat map */}
-              <div className="rounded-[8px] border border-[#d2d2d7] p-4">
+              <div className="rounded-[8px] border border-[#d2d2d7] p-3 sm:p-4">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-base font-bold text-[#1d1d1f]">좌석 맵</h3>
@@ -696,7 +696,7 @@ export default function CourseDesignatedSeatsPage({
                     <p className="mt-1 text-xs text-[#86868b]">새 좌석 번호는 가로 A, B, C / 세로 1, 2, 3 순서로 자동 생성됩니다.</p>
                   </div>
                   {bulkCount > 1 ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-semibold text-[#1d1d1f]">{bulkCount}개 선택</span>
                       <button type="button" onClick={() => updateSelectedSeats({ is_active: true })} className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1b7a1b] hover:bg-[#e8e8ed]">일괄 활성화</button>
                       <button type="button" onClick={() => updateSelectedSeats({ is_active: false })} className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]">일괄 비활성화</button>
@@ -796,13 +796,13 @@ export default function CourseDesignatedSeatsPage({
       {tab === 'status' && (
         <div className="flex flex-col gap-6">
           {/* QR Display — top */}
-          <section className="rounded-[8px] bg-white p-6">
-            <div className="flex items-center justify-between gap-3">
+          <section className="rounded-[8px] bg-white p-4 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-[#1d1d1f]">현장 QR 표시</h3>
                 <p className="mt-1 text-sm text-[#86868b]">관리자 전용 토큰으로만 열리는 모니터 화면입니다.</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={displayDuration}
                   onChange={(event) => setDisplayDuration(Number(event.target.value))}
@@ -850,7 +850,7 @@ export default function CourseDesignatedSeatsPage({
                   readOnly
                   className="rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] px-3 py-2.5 text-xs text-[#1d1d1f] outline-none"
                 />
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex">
                   <button
                     type="button"
                     onClick={async () => {
@@ -881,8 +881,8 @@ export default function CourseDesignatedSeatsPage({
           </section>
 
           {/* Seat map */}
-          <section className="rounded-[8px] bg-white p-6">
-            <div className="mb-4 flex items-center justify-between">
+          <section className="rounded-[8px] bg-white p-4 sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <h3 className="text-lg font-semibold text-[#1d1d1f]">좌석 배정 현황</h3>
               <button
                 type="button"

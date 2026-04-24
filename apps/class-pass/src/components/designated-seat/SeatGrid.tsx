@@ -75,6 +75,14 @@ export function SeatGrid({
     return parts.join(' ')
   }, [columns, aisles, mode])
 
+  const adminMinWidth = useMemo(() => {
+    if (mode !== 'admin') {
+      return undefined
+    }
+
+    return Math.max(320, columns * 42 + aisles.length * 12)
+  }, [aisles.length, columns, mode])
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const items: any[] = []
 
@@ -177,11 +185,13 @@ export function SeatGrid({
         </div>
       ) : null}
 
-      <div
-        className={`grid gap-1 sm:gap-1.5 ${mode === 'student' ? 'overflow-x-auto' : 'gap-1.5 sm:gap-2'}`}
-        style={{ gridTemplateColumns: templateColumns }}
-      >
-        {items}
+      <div className={mode === 'admin' ? 'overflow-x-auto pb-1' : 'overflow-x-auto'}>
+        <div
+          className={`grid gap-1 sm:gap-1.5 ${mode === 'admin' ? 'gap-1.5 sm:gap-2' : ''}`}
+          style={{ gridTemplateColumns: templateColumns, minWidth: adminMinWidth }}
+        >
+          {items}
+        </div>
       </div>
 
       {mode === 'admin' ? (

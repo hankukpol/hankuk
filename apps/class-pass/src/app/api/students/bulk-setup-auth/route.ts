@@ -6,6 +6,7 @@ import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   getPendingStudentAuthStats,
   initializeStudentAuthBatch,
+  listMissingBirthDateStudentsByCourse,
   listStudentsPendingAuthSetup,
 } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
@@ -35,15 +36,31 @@ export async function GET(req: NextRequest) {
     }
 
     const requestedDivision = req.nextUrl.searchParams.get('division')
-    const { division, stats } = await loadPendingStudents()
+    const { db, division, stats } = await loadPendingStudents()
     if (requestedDivision && requestedDivision !== division) {
       return NextResponse.json({ error: '현재 지점과 요청 지점이 일치하지 않습니다.' }, { status: 400 })
     }
+
+    const missingBirthDateCourses = await listMissingBirthDateStudentsByCourse(db, division)
 
     return NextResponse.json({
       total: stats.total,
       birth_date_ready_count: stats.birthDateReadyCount,
       pin_required_count: stats.pinRequiredCount,
+      missing_birth_date_courses: missingBirthDateCourses.map((course) => ({
+        course_id: course.courseId,
+        course_name: course.courseName,
+        course_status: course.courseStatus,
+        missing_birth_date_count: course.students.length,
+        students: course.students.map((student) => ({
+          enrollment_id: student.enrollmentId,
+          student_id: student.studentId,
+          name: student.name,
+          phone: student.phone,
+          exam_number: student.examNumber,
+          auth_method: student.authMethod,
+        })),
+      })),
     })
   } catch (error) {
     return handleRouteError('students.bulk-setup-auth.GET', '학생 인증 설정 현황을 불러오지 못했습니다.', error)

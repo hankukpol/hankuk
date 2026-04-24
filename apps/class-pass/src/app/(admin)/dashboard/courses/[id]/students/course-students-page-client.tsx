@@ -351,6 +351,33 @@ export default function CourseStudentsPage({
     )
   }
 
+  async function handleResetAllAttendanceDevicesConfirmed() {
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/attendance/admin/device-bindings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseId,
+        action: 'reset_course',
+        reason: '관리자 강좌 전체 기기 초기화',
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setError(payload?.error ?? '출석 기기 전체 초기화에 실패했습니다.')
+      return
+    }
+
+    setEnrollments((current) => current.map((entry) => ({
+      ...entry,
+      attendance_device: null,
+    })))
+    setMessage(`출석 기기 전체 초기화 완료: ${payload?.resetCount ?? 0}건 초기화`)
+  }
+
   const refresh = useCallback(async () => {
     const data = await fetchStudentsPageData(courseId)
     setCourse(data.course)
@@ -813,6 +840,24 @@ export default function CourseStudentsPage({
           </div>
         ) : null}
         <div className="flex gap-2">
+          {course.feature_attendance ? (
+            <button
+              type="button"
+              onClick={() => {
+                openConfirmation({
+                  title: '출석 기기를 전체 초기화할까요?',
+                  description: '이 강좌의 모든 출석 기기 등록을 초기화합니다. 학생들은 다음 출석 시 현장에서 사용하는 기기로 다시 등록됩니다.',
+                  confirmLabel: '전체 초기화',
+                  pendingLabel: '초기화 중...',
+                  tone: 'danger',
+                  onConfirm: handleResetAllAttendanceDevicesConfirmed,
+                })
+              }}
+              className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+            >
+              출석 기기 전체 초기화
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setPanel(panel === 'create' ? 'none' : 'create')}

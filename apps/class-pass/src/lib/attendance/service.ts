@@ -608,6 +608,49 @@ export async function resetAttendanceDeviceBinding(params: {
   return mapAttendanceDeviceState(null)
 }
 
+export async function resetCourseAttendanceDeviceBindings(params: {
+  courseId: number
+  actor: string
+  reason?: string | null
+}) {
+  const db = createServerClient()
+  const nowIso = new Date().toISOString()
+  const reason = params.reason?.trim() || null
+  const updateResult = await db
+    .from('attendance_device_bindings')
+    .update({
+      is_active: false,
+      retired_at: nowIso,
+      retired_by: params.actor,
+      retirement_reason: reason,
+      reset_requested_at: null,
+      reset_requested_device_key_hash: null,
+      reset_requested_user_agent: null,
+      updated_at: nowIso,
+    })
+    .eq('course_id', params.courseId)
+    .eq('is_active', true)
+    .select('id,enrollment_id')
+
+  if (updateResult.error) {
+    throw normalizeAttendanceDeviceBindingDependencyError(updateResult.error)
+  }
+
+  const resetCount = updateResult.data?.length ?? 0
+  await logAttendanceEvent({
+    course_id: params.courseId,
+    event_type: 'attendance_device_binding_reset',
+    details: {
+      actor: params.actor,
+      reason,
+      scope: 'course',
+      reset_count: resetCount,
+    },
+  })
+
+  return { resetCount }
+}
+
 type AttendanceExcuseRecord = {
   id: number
   courseId: number

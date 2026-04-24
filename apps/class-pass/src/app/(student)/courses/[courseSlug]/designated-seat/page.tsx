@@ -193,9 +193,8 @@ export default function DesignatedSeatPage() {
     const presenceResult = shouldCheckPresence ? await getPresenceLocation() : null
 
     if (presenceResult && !presenceResult.ok) {
-      setPresenceFailure(presenceResult.error)
-
       if (presenceEnforced) {
+        setPresenceFailure(presenceResult.error)
         setWorking(false)
         setError(presenceResult.error.message)
         return
@@ -233,6 +232,8 @@ export default function DesignatedSeatPage() {
           message: failure.presence?.message ?? failure.error ?? '위치 확인이 필요합니다.',
           browserContext: presenceResult?.ok === false ? presenceResult.error.browserContext : 'other',
         })
+      } else {
+        setPresenceFailure(null)
       }
       return
     }

@@ -274,7 +274,101 @@ export default function AdminDashboardPage() {
         {stats.courses.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-slate-500">운영 중인 강좌가 없습니다.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {stats.courses.map((course) => {
+              const featureBadges = getFeatureBadges(course)
+              const statusBadges = getStatusBadges(course)
+
+              return (
+                <article key={course.id} className="rounded-[8px] bg-slate-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={`mt-0.5 inline-flex h-8 min-w-8 items-center justify-center rounded-[8px] px-2 text-xs font-bold text-white ${
+                        course.needsAttention ? 'bg-red-500' : 'bg-slate-800'
+                      }`}
+                    >
+                      {course.id}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{course.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatCourseTypeLabel(course.courseType)} · 활성 {course.activeStudents}명 / 환불 {course.refundedStudents}명
+                          </p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                          course.needsAttention ? 'bg-red-50 text-red-700' : 'bg-white text-slate-500'
+                        }`}>
+                          {course.needsAttention ? '확인 필요' : '정상'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {featureBadges.length > 0 ? (
+                          featureBadges.map((badge) => (
+                            <span
+                              key={badge}
+                              className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600"
+                            >
+                              {badge}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-slate-400">사용 중인 기능 없음</span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {statusBadges.map((badge) => (
+                          <span
+                            key={badge.label}
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${getBadgeClass(badge.tone)}`}
+                          >
+                            {badge.label}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <Link
+                          href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
+                          className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          학생
+                        </Link>
+                        {course.featureAttendance ? (
+                          <Link
+                            href={withTenantPrefix(`/dashboard/courses/${course.id}/attendance`, tenant.type)}
+                            className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            출석
+                          </Link>
+                        ) : null}
+                        {course.featureDesignatedSeat ? (
+                          <Link
+                            href={withTenantPrefix(`/dashboard/courses/${course.id}/designated-seats`, tenant.type)}
+                            className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            지정좌석
+                          </Link>
+                        ) : null}
+                        <Link
+                          href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
+                          className="rounded-[8px] bg-slate-900 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-slate-800"
+                        >
+                          상세
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-400">
@@ -388,6 +482,7 @@ export default function AdminDashboardPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </div>

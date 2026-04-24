@@ -41,6 +41,8 @@
 **/.playwright-mcp/
 **/student-pass-*.png
 **/class-pass-suspension-*.png
+**/auth-setup-*.png
+**/test-results/
 **/supabase/.temp/
 
 # TypeScript

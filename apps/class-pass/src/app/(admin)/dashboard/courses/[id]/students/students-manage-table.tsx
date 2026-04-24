@@ -115,6 +115,8 @@ export function StudentsManageTable({
     const baseClass = density === 'mobile'
       ? 'rounded-[8px] px-3 py-2 text-center text-xs font-semibold transition'
       : 'rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition'
+    const attendanceDeviceStatus = enrollment.attendance_device?.status ?? 'unregistered'
+    const canResetAttendanceDevice = attendanceDeviceStatus === 'active'
 
     return (
       <>
@@ -134,7 +136,7 @@ export function StudentsManageTable({
             PIN 재설정
           </button>
         ) : null}
-        {attendanceEnabled && enrollment.attendance_device?.status === 'pending_reset' ? (
+        {attendanceEnabled && attendanceDeviceStatus === 'pending_reset' ? (
           <button
             type="button"
             onClick={() => onApproveDeviceReRegistration(enrollment)}
@@ -143,11 +145,13 @@ export function StudentsManageTable({
             기기 승인
           </button>
         ) : null}
-        {attendanceEnabled && enrollment.attendance_device?.status === 'active' ? (
+        {attendanceEnabled && attendanceDeviceStatus !== 'pending_reset' ? (
           <button
             type="button"
             onClick={() => onResetAttendanceDevice(enrollment)}
-            className={`${baseClass} border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50`}
+            disabled={!canResetAttendanceDevice}
+            title={canResetAttendanceDevice ? undefined : '아직 등록된 출석 기기가 없습니다.'}
+            className={`${baseClass} border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white`}
           >
             기기 초기화
           </button>

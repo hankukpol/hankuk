@@ -12,6 +12,7 @@ import {
   type AttendanceExcuseStudentOption,
 } from './attendance-excuse-modal'
 import { AttendanceExcusesPanel } from './attendance-excuses-panel'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 
 type DashboardRecord = {
   enrollmentId: number
@@ -92,6 +93,12 @@ type ExcuseModalState = {
   lockedEnrollmentId: number | null
   defaultSubjectId: number | null
   defaultDate: string
+}
+
+type OverrideConfirmationState = {
+  enrollmentId: number
+  studentName: string
+  status: 'present' | 'absent'
 }
 
 function getToday() {
@@ -322,6 +329,7 @@ export default function AdminAttendancePage() {
     defaultSubjectId: null,
     defaultDate: getToday(),
   })
+  const [overrideConfirmation, setOverrideConfirmation] = useState<OverrideConfirmationState | null>(null)
   const [excusesRefreshKey, setExcusesRefreshKey] = useState(0)
   const courseLoadedRef = useRef(false)
   const studentsLoadedRef = useRef(false)
@@ -341,6 +349,7 @@ export default function AdminAttendancePage() {
       defaultSubjectId: null,
       defaultDate: getToday(),
     })
+    setOverrideConfirmation(null)
   }, [courseId])
 
   const loadData = useCallback(async () => {
@@ -721,6 +730,20 @@ export default function AdminAttendancePage() {
 
     setMessage(status === 'present' ? '수동 출석 처리했습니다.' : '결석 처리했습니다.')
     await loadData().catch(() => null)
+  }
+
+  function requestOverrideConfirmation(params: OverrideConfirmationState) {
+    setOverrideConfirmation(params)
+  }
+
+  function confirmOverride() {
+    if (!overrideConfirmation) {
+      return
+    }
+
+    const { enrollmentId, status } = overrideConfirmation
+    setOverrideConfirmation(null)
+    void handleOverride(enrollmentId, status)
   }
 
   function openCreateExcuseModal(options?: {
@@ -1140,7 +1163,12 @@ export default function AdminAttendancePage() {
                               type="button"
                               onClick={() => {
                                 const nextStatus = row.status === 'present' ? 'absent' : 'present'
-                                if (nextStatus === 'absent' && !window.confirm(`${row.studentName} 수강생을 결석 처리할까요?`)) {
+                                if (nextStatus === 'absent') {
+                                  requestOverrideConfirmation({
+                                    enrollmentId: row.enrollmentId,
+                                    studentName: row.studentName,
+                                    status: nextStatus,
+                                  })
                                   return
                                 }
 
@@ -1209,11 +1237,11 @@ export default function AdminAttendancePage() {
                             <button
                               type="button"
                               onClick={() => {
-                                if (!window.confirm(`${row.studentName} 수강생을 결석 처리할까요?`)) {
-                                  return
-                                }
-
-                                void handleOverride(row.enrollmentId, 'absent')
+                                requestOverrideConfirmation({
+                                  enrollmentId: row.enrollmentId,
+                                  studentName: row.studentName,
+                                  status: 'absent',
+                                })
                               }}
                               disabled={working}
                               className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
@@ -1452,6 +1480,26 @@ export default function AdminAttendancePage() {
             setDate(excuse.excuseDate)
           }
         }}
+      />
+      <ConfirmationModal
+        open={Boolean(overrideConfirmation)}
+        title="결석 처리할까요?"
+        description={
+          overrideConfirmation
+            ? `${overrideConfirmation.studentName} 수강생의 출석 상태를 결석으로 변경합니다.`
+            : undefined
+        }
+        confirmLabel="결석 처리"
+        pendingLabel="처리 중..."
+        cancelLabel="취소"
+        tone="danger"
+        submitting={working}
+        onClose={() => {
+          if (!working) {
+            setOverrideConfirmation(null)
+          }
+        }}
+        onConfirm={confirmOverride}
       />
     </div>
   )

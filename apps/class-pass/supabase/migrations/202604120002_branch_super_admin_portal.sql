@@ -148,6 +148,7 @@ left join class_pass.app_config config
   on config.key like branch.slug || '::%'
 where branch.slug is not null
   and length(trim(branch.slug)) > 0
+group by branch.slug
 on conflict (slug) do update
 set
   name = excluded.name,

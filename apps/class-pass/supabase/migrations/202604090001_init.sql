@@ -56,6 +56,7 @@ create table if not exists class_pass.enrollments (
   status text not null default 'active',
   photo_url text,
   memo text,
+  custom_data jsonb not null default '{}'::jsonb,
   refunded_at timestamptz,
   created_at timestamptz not null default now(),
   unique (course_id, name, phone),

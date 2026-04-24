@@ -6,6 +6,10 @@ export type CourseStatus = 'active' | 'archived'
 export type EnrollmentStatus = 'active' | 'refunded'
 export type StudentAuthMethod = 'birth_date' | 'pin'
 export type MaterialType = 'handout' | 'textbook'
+export type PaymentMethod = 'card' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'other'
+export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
+export type PaymentCategory = 'tuition' | 'textbook' | 'material' | 'exam_fee' | 'extension' | 'etc'
+export type RefundMethod = 'card_cancel' | 'cash' | 'bank_transfer' | 'point' | 'other'
 
 export interface EnrollmentFieldDef {
   key: string
@@ -337,6 +341,61 @@ export interface DistributionLog {
   distributed_by: string | null
   note: string | null
   materials?: Pick<Material, 'name'>
+}
+
+export interface EnrollmentPaymentItem {
+  id: number
+  payment_id: number
+  label: string
+  amount: number
+  sort_order: number
+}
+
+export interface EnrollmentRefund {
+  id: number
+  payment_id: number
+  amount: number
+  method: RefundMethod
+  reason: string | null
+  refunded_at: string
+  processed_by_staff_id: number | null
+  memo: string | null
+  created_at: string
+}
+
+export interface EnrollmentPayment {
+  id: number
+  enrollment_id: number
+  course_id: number
+  amount: number
+  method: PaymentMethod
+  status: PaymentStatus
+  category: PaymentCategory
+  paid_at: string
+  paid_date: string
+  memo: string | null
+  card_last4: string | null
+  installment_months: number
+  bank_name: string | null
+  bank_account_last4: string | null
+  created_by_staff_id: number | null
+  created_at: string
+  updated_at: string
+  enrollment_payment_items?: EnrollmentPaymentItem[]
+  enrollment_refunds?: EnrollmentRefund[]
+  enrollments?: Pick<Enrollment, 'id' | 'name' | 'phone' | 'exam_number' | 'status'> | null
+  courses?: Pick<Course, 'id' | 'name'> | null
+}
+
+export interface PaymentEvent {
+  id: number
+  payment_id: number | null
+  enrollment_id: number | null
+  event_type: 'payment_created' | 'payment_updated' | 'payment_voided' | 'refund_created' | 'refund_voided'
+  actor_staff_id: number | null
+  before_json: Record<string, unknown> | null
+  after_json: Record<string, unknown> | null
+  created_at: string
 }
 
 export interface AppConfigRecord {

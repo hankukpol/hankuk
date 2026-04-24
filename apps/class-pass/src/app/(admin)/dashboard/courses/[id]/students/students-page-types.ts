@@ -8,8 +8,8 @@ export type StudentsPageData = {
 
 export type EnrollmentManageStatusFilter = 'all' | 'active' | 'refunded' | 'suspended'
 
-export type TabMode = 'manage' | 'receipts' | 'textbook-assign' | 'textbook-receipts'
-export type MatrixMode = Exclude<TabMode, 'manage'>
+export type TabMode = 'manage' | 'payments' | 'receipts' | 'textbook-assign' | 'textbook-receipts'
+export type MatrixMode = Exclude<TabMode, 'manage' | 'payments'>
 export type Panel = 'none' | 'create' | 'bulk' | 'edit'
 
 export type ReceiptCell = {
@@ -64,5 +64,5 @@ export function toEditForm(enrollment: Enrollment): EnrollmentForm {
 }
 
 export function isMatrixTab(tab: TabMode): tab is MatrixMode {
-  return tab !== 'manage'
+  return tab !== 'manage' && tab !== 'payments'
 }

@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   MonitorSmartphone,
+  ReceiptText,
   Settings,
   ShieldCheck,
   Users,
@@ -18,6 +19,7 @@ import { stripTenantPrefix, withTenantPrefix } from '@/lib/tenant'
 const NAV_ITEMS = [
   { href: '/dashboard', label: '대시보드', icon: LayoutDashboard },
   { href: '/dashboard/courses', label: '강좌 관리', icon: BookOpen },
+  { href: '/dashboard/settlements', label: '수납·정산', icon: ReceiptText },
   { href: '/dashboard/students/auth-setup', label: '학생 인증', icon: ShieldCheck },
   { href: '/dashboard/staff', label: '직원 관리', icon: Users },
   { href: '/dashboard/popups', label: '팝업 관리', icon: MonitorSmartphone },

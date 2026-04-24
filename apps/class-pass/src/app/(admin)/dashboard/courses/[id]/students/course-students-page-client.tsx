@@ -6,6 +6,13 @@ import type { FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { CoursePaymentsPanel } from '@/components/payments/CoursePaymentsPanel'
+import {
+  PaymentSection,
+  createEmptyPaymentSectionValue,
+  normalizePaymentSectionPayload,
+  type PaymentSectionValue,
+} from '@/components/payments/PaymentSection'
 import { useTenantConfig } from '@/components/TenantProvider'
 import type { AttendanceDeviceState, Course, Enrollment, EnrollmentFieldDef, Material, TextbookAssignment } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -121,6 +128,7 @@ export default function CourseStudentsPage({
 
   // Forms
   const [createForm, setCreateForm] = useState<EnrollmentForm>(emptyForm())
+  const [createPaymentForm, setCreatePaymentForm] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<EnrollmentForm>(emptyForm())
   const [bulkText, setBulkText] = useState('')
@@ -666,6 +674,8 @@ export default function CourseStudentsPage({
   // CRUD
   async function handleCreate(ev: FormEvent) {
     ev.preventDefault()
+    const submitter = (ev.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
+    const shouldSavePayment = submitter?.dataset.paymentMode === 'with-payment'
     setSubmitting(true)
     setError('')
     setMessage('')
@@ -683,9 +693,44 @@ export default function CourseStudentsPage({
       }),
     })
     const p = await r.json().catch(() => null)
+    if (!r.ok) {
+      setSubmitting(false)
+      setError(p?.error ?? '수강생 등록에 실패했습니다.')
+      return
+    }
+
+    let paymentSaved = false
+    if (shouldSavePayment) {
+      const paymentPayload = normalizePaymentSectionPayload(createPaymentForm)
+      if (!Number.isInteger(paymentPayload.amount) || paymentPayload.amount <= 0) {
+        setSubmitting(false)
+        setError('수강생은 등록됐지만 결제 금액이 없어 결제 저장은 건너뛰었습니다.')
+        await refresh().catch(() => null)
+        return
+      }
+
+      const paymentResponse = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...paymentPayload,
+          courseId,
+          enrollmentId: (p.enrollment as Enrollment).id,
+        }),
+      })
+      const paymentResult = await paymentResponse.json().catch(() => null)
+      if (!paymentResponse.ok) {
+        setSubmitting(false)
+        setError(paymentResult?.error ?? '수강생은 등록됐지만 결제 저장에 실패했습니다.')
+        await refresh().catch(() => null)
+        return
+      }
+      paymentSaved = true
+    }
+
     setSubmitting(false)
-    if (!r.ok) { setError(p?.error ?? '수강생 등록에 실패했습니다.'); return }
     setCreateForm(emptyForm())
+    setCreatePaymentForm(createEmptyPaymentSectionValue())
     if (p?.generated_pin) {
       setPinReveal({
         title: '신규 학생 PIN',
@@ -696,7 +741,7 @@ export default function CourseStudentsPage({
         }],
       })
     }
-    setMessage('수강생을 등록했습니다.')
+    setMessage(paymentSaved ? '수강생과 결제 정보를 함께 등록했습니다.' : '수강생을 등록했습니다.')
     setPanel('none')
     await refresh().catch(() => null)
   }
@@ -918,8 +963,27 @@ export default function CourseStudentsPage({
             </div>
           ) : null}
 
-          <div className="mt-3 flex items-center gap-3">
-            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{submitting ? '등록 중...' : '등록'}</button>
+          <div className="mt-4">
+            <PaymentSection value={createPaymentForm} onChange={setCreatePaymentForm} />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              data-payment-mode="without-payment"
+              disabled={submitting}
+              className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+            >
+              {submitting ? '등록 중...' : '결제 없이 등록'}
+            </button>
+            <button
+              type="submit"
+              data-payment-mode="with-payment"
+              disabled={submitting}
+              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {submitting ? '저장 중...' : '등록 + 결제 저장'}
+            </button>
             <button type="button" onClick={() => setPanel('none')} className="text-xs text-gray-400 hover:underline">취소</button>
           </div>
         </form>
@@ -1038,6 +1102,7 @@ export default function CourseStudentsPage({
       <div className="flex gap-6 overflow-x-auto border-b border-slate-200">
         {([
           ['manage', '관리'],
+          ['payments', '결제'],
           ['receipts', '배부자료 수령현황'],
           ['textbook-assign', '교재 배정'],
           ['textbook-receipts', '교재 수령현황'],
@@ -1131,6 +1196,14 @@ export default function CourseStudentsPage({
               onConfirm: () => handleDeleteConfirmed(enrollment),
             })
           }}
+        />
+      )}
+
+      {tab === 'payments' && (
+        <CoursePaymentsPanel
+          course={course}
+          enrollments={enrollments}
+          onDataChanged={refresh}
         />
       )}
 

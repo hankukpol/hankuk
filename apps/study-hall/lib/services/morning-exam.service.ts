@@ -298,7 +298,15 @@ export async function saveMorningExamScores(
 
   if (isMockMode()) {
     const savedCount = await updateMockState((state) => {
-      const scores = state.morningExamScoresByDivision[divisionSlug] ?? [];
+      const existing = state.morningExamScoresByDivision[divisionSlug] ?? [];
+      const scores = existing.filter(
+        (s) =>
+          !(
+            s.examTypeId === input.examTypeId &&
+            s.examDate === input.date &&
+            s.subjectId !== input.subjectId
+          ),
+      );
       const now = new Date().toISOString();
       let count = 0;
 
@@ -350,6 +358,14 @@ export async function saveMorningExamScores(
 
   const examDate = toUtcDate(input.date);
   let savedCount = 0;
+
+  await prisma.morningExamScore.deleteMany({
+    where: {
+      examTypeId: input.examTypeId,
+      examDate,
+      subjectId: { not: input.subjectId },
+    },
+  });
 
   for (const row of input.rows) {
     await prisma.morningExamScore.upsert({

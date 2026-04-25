@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
-import { getServerTenantType } from '@/lib/tenant.server'
-import { parsePositiveInt } from '@/lib/utils'
-import type { StaffJwtPayload } from '@/types/database'
 import {
-  createRefund,
+  createRefundBundle,
   getPaymentServiceMessage,
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
+import { getServerTenantType } from '@/lib/tenant.server'
+import type { StaffJwtPayload } from '@/types/database'
 
-const createRefundSchema = z.object({
+const refundSchema = z.object({
+  paymentId: z.number().int().positive(),
   amount: z.number().int().positive(),
   method: z.enum(['card_cancel', 'cash', 'bank_transfer', 'point', 'other']),
   reasonCategory: z.enum([
@@ -29,42 +29,43 @@ const createRefundSchema = z.object({
   memo: z.string().optional().nullable(),
 })
 
+const createRefundBundleSchema = z.object({
+  refunds: z.array(refundSchema).min(1).max(20),
+})
+
 function getActorStaffId(payload: StaffJwtPayload | null) {
   return payload?.accountId ?? payload?.membershipId ?? null
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req)
   if (auth.error) {
     return auth.error
   }
 
   try {
-    const { id } = await params
-    const paymentId = parsePositiveInt(id)
-    if (!paymentId) {
-      return NextResponse.json({ error: '결제 ID가 올바르지 않습니다.' }, { status: 400 })
-    }
-
     const body = await req.json().catch(() => null)
-    const parsed = createRefundSchema.safeParse(body)
+    const parsed = createRefundBundleSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: '환불 요청 형식이 올바르지 않습니다.' }, { status: 400 })
     }
 
-    if (parsed.data.method === 'card_cancel' && !parsed.data.cancelReceiptNo?.trim()) {
+    const missingCardCancelReceipt = parsed.data.refunds.some((refund) => (
+      refund.method === 'card_cancel' && !refund.cancelReceiptNo?.trim()
+    ))
+    if (missingCardCancelReceipt) {
       return NextResponse.json({ error: '카드 취소 승인번호를 입력해 주세요.' }, { status: 400 })
     }
 
-    if (parsed.data.method === 'bank_transfer' && !parsed.data.refundAccountLast4) {
+    const missingBankTransferAccount = parsed.data.refunds.some((refund) => (
+      refund.method === 'bank_transfer' && !refund.refundAccountLast4
+    ))
+    if (missingBankTransferAccount) {
       return NextResponse.json({ error: '환불 입금 계좌 마지막 4자리를 입력해 주세요.' }, { status: 400 })
     }
 
     const division = await getServerTenantType()
-    const result = await createRefund(paymentId, parsed.data, division, getActorStaffId(auth.payload))
+    const result = await createRefundBundle(parsed.data, division, getActorStaffId(auth.payload))
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     return NextResponse.json(

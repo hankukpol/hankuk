@@ -1,6 +1,6 @@
 'use client'
 
-import { Banknote, Building2, CreditCard, Layers3, ReceiptText } from 'lucide-react'
+import { Banknote, Building2, Coins, CreditCard, Plus, ReceiptText, Trash2 } from 'lucide-react'
 import {
   PAYMENT_CATEGORIES,
   PAYMENT_CATEGORY_LABEL,
@@ -10,84 +10,139 @@ import {
 } from '@/lib/payments/types'
 import { formatWon } from '@/lib/payments/format'
 
-export type PaymentSectionItemDraft = {
+type PaymentEntryMethod = Exclude<PaymentMethod, 'mixed' | 'free'>
+
+export type PaymentEntryDraft = {
   id: string
-  label: string
+  method: PaymentEntryMethod
   amount: string
+  memo: string
+  cashReceiptApprovalNo: string
+}
+
+export type NormalizedPaymentDraft = {
+  amount: number
+  method: PaymentMethod
+  category: PaymentCategory
+  paidAt?: string
+  memo: string | null
+  cashReceiptApprovalNo?: string | null
+  items: Array<{ label: string; amount: number }>
+}
+
+export type NormalizedPaymentSectionPayload = {
+  expectedAmount: number
+  discountAmount: number
+  payableAmount: number
+  paidAmount: number
+  remainingAmount: number
+  paymentTotal: number
+  tuitionExempt: boolean
+  payments: NormalizedPaymentDraft[]
 }
 
 export type PaymentSectionValue = {
-  amount: string
-  method: PaymentMethod
+  expectedAmount: string
+  discountAmount: string
+  discountReason: string
+  paidAmount: string
   category: PaymentCategory
   paidAt: string
   memo: string
-  cardLast4: string
-  installmentMonths: string
-  bankName: string
-  bankAccountLast4: string
-  items: PaymentSectionItemDraft[]
-  confirmedCoursePrice: boolean
+  tuitionExempt: boolean
+  tuitionExemptReason: string
+  entries: PaymentEntryDraft[]
 }
 
 type PaymentSectionProps = {
   value: PaymentSectionValue
   onChange: (value: PaymentSectionValue) => void
   compact?: boolean
+  showCategory?: boolean
 }
 
-const METHOD_META: Array<{
-  value: PaymentMethod
+const PAYMENT_METHOD_META: Array<{
+  value: PaymentEntryMethod
   label: string
   icon: typeof CreditCard
 }> = [
   { value: 'card', label: '카드', icon: CreditCard },
   { value: 'cash', label: '현금', icon: Banknote },
   { value: 'bank_transfer', label: '계좌', icon: Building2 },
-  { value: 'mixed', label: '복합', icon: Layers3 },
+  { value: 'point', label: '포인트', icon: Coins },
   { value: 'other', label: '기타', icon: ReceiptText },
 ]
 
-function createItemId() {
-  return `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+function createEntryId() {
+  return `payment_entry_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+function toLocalDateTimeInputValue(date = new Date()) {
+  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return localTime.toISOString().slice(0, 16)
+}
+
+function createEmptyEntry(options?: Partial<Omit<PaymentEntryDraft, 'id'>>): PaymentEntryDraft {
+  return {
+    id: createEntryId(),
+    method: options?.method ?? 'card',
+    amount: options?.amount ?? '',
+    memo: options?.memo ?? '',
+    cashReceiptApprovalNo: options?.cashReceiptApprovalNo ?? '',
+  }
 }
 
 export function createEmptyPaymentSectionValue(): PaymentSectionValue {
   return {
-    amount: '',
-    method: 'card',
+    expectedAmount: '',
+    discountAmount: '',
+    discountReason: '',
+    paidAmount: '',
     category: 'tuition',
-    paidAt: new Date().toISOString().slice(0, 16),
+    paidAt: toLocalDateTimeInputValue(),
     memo: '',
-    cardLast4: '',
-    installmentMonths: '0',
-    bankName: '',
-    bankAccountLast4: '',
-    items: [{ id: createItemId(), label: '수강료', amount: '' }],
-    confirmedCoursePrice: false,
+    tuitionExempt: false,
+    tuitionExemptReason: '',
+    entries: [createEmptyEntry()],
   }
 }
 
-export function normalizePaymentSectionPayload(value: PaymentSectionValue) {
-  const amount = Number(value.amount.replace(/,/g, ''))
-  const items = value.items
-    .map((item) => ({
-      label: item.label.trim(),
-      amount: Number(item.amount.replace(/,/g, '')),
-    }))
-    .filter((item) => item.label && Number.isInteger(item.amount) && item.amount > 0)
+export function createPaymentSectionValueForAmount(amount: number): PaymentSectionValue {
+  const next = createEmptyPaymentSectionValue()
+  const normalizedAmount = Number.isFinite(amount) && amount > 0 ? Math.floor(amount) : 0
+  const amountText = normalizedAmount > 0 ? String(normalizedAmount) : ''
 
   return {
-    amount,
-    method: value.method,
-    category: value.category,
-    paidAt: value.paidAt ? new Date(value.paidAt).toISOString() : undefined,
-    memo: value.memo.trim() || null,
-    cardLast4: value.cardLast4.trim() || null,
-    installmentMonths: Number(value.installmentMonths || 0),
-    bankName: value.bankName.trim() || null,
-    bankAccountLast4: value.bankAccountLast4.trim() || null,
-    items: items.length > 0 ? items : [{ label: PAYMENT_CATEGORY_LABEL[value.category], amount }],
+    ...next,
+    expectedAmount: amountText,
+    entries: [createEmptyEntry({ amount: amountText })],
+  }
+}
+
+export function createPaymentSectionValueForBilling(options: {
+  expectedAmount: number
+  discountAmount?: number | null
+  discountReason?: string | null
+  paidAmount?: number | null
+  tuitionExempt?: boolean | null
+  tuitionExemptReason?: string | null
+}): PaymentSectionValue {
+  const next = createEmptyPaymentSectionValue()
+  const expectedAmount = Math.max(0, Math.floor(Number(options.expectedAmount) || 0))
+  const discountAmount = Math.max(0, Math.floor(Number(options.discountAmount ?? 0) || 0))
+  const paidAmount = Math.max(0, Math.floor(Number(options.paidAmount ?? 0) || 0))
+  const payableAmount = options.tuitionExempt ? 0 : Math.max(expectedAmount - discountAmount, 0)
+  const remainingAmount = Math.max(payableAmount - paidAmount, 0)
+
+  return {
+    ...next,
+    expectedAmount: expectedAmount > 0 ? String(expectedAmount) : '',
+    discountAmount: discountAmount > 0 ? String(discountAmount) : '',
+    discountReason: options.discountReason ?? '',
+    paidAmount: paidAmount > 0 ? String(paidAmount) : '',
+    tuitionExempt: Boolean(options.tuitionExempt),
+    tuitionExemptReason: options.tuitionExemptReason ?? '',
+    entries: [createEmptyEntry({ amount: remainingAmount > 0 ? String(remainingAmount) : '' })],
   }
 }
 
@@ -95,95 +150,283 @@ function numberInputValue(value: string) {
   return value.replace(/[^\d]/g, '')
 }
 
-function itemTotal(items: PaymentSectionItemDraft[]) {
-  return items.reduce((sum, item) => sum + Number(item.amount.replace(/,/g, '') || 0), 0)
+function toNumber(value: string) {
+  return Number(value.replace(/,/g, '') || 0)
 }
 
-export function PaymentSection({ value, onChange, compact = false }: PaymentSectionProps) {
-  const amount = Number(value.amount.replace(/,/g, '') || 0)
-  const total = itemTotal(value.items)
-  const totalMatches = amount > 0 && total === amount
+function paymentTotal(entries: PaymentEntryDraft[]) {
+  return entries.reduce((sum, entry) => sum + toNumber(entry.amount), 0)
+}
+
+function usesCashReceipt(method: PaymentEntryMethod) {
+  return method === 'cash' || method === 'bank_transfer'
+}
+
+function needsCashReceiptNotice(method: PaymentEntryMethod, amount: number) {
+  return usesCashReceipt(method) && amount >= 100000
+}
+
+export function normalizePaymentSectionPayload(value: PaymentSectionValue): NormalizedPaymentSectionPayload {
+  const expectedAmount = toNumber(value.expectedAmount)
+  const discountAmount = toNumber(value.discountAmount)
+  const paidAmount = toNumber(value.paidAmount)
+  const payableAmount = Math.max(expectedAmount - discountAmount, 0)
+  const remainingAmount = Math.max(payableAmount - paidAmount, 0)
+  const paidAt = value.paidAt ? new Date(value.paidAt).toISOString() : undefined
+
+  if (value.tuitionExempt) {
+    const reason = value.tuitionExemptReason.trim()
+    const memo = [
+      value.memo.trim(),
+      reason ? `무료 수강: ${reason}` : '무료 수강',
+    ].filter(Boolean).join('\n')
+
+    return {
+      expectedAmount,
+      discountAmount,
+      payableAmount: 0,
+      paidAmount,
+      remainingAmount: 0,
+      paymentTotal: 0,
+      tuitionExempt: true,
+      payments: [{
+        amount: 0,
+        method: 'free' as PaymentMethod,
+        category: value.category,
+        paidAt,
+        memo: memo || null,
+        items: [{ label: PAYMENT_CATEGORY_LABEL[value.category], amount: 0 }],
+      }],
+    }
+  }
+
+  const payments = value.entries
+    .map((entry) => {
+      const amount = toNumber(entry.amount)
+      const memo = [value.memo.trim(), entry.memo.trim()].filter(Boolean).join('\n')
+
+      return {
+        amount,
+        method: entry.method,
+        category: value.category,
+        paidAt,
+        memo: memo || null,
+        cashReceiptApprovalNo: usesCashReceipt(entry.method) ? entry.cashReceiptApprovalNo.trim() || null : null,
+        items: [{ label: PAYMENT_CATEGORY_LABEL[value.category], amount }],
+      } satisfies NormalizedPaymentDraft
+    })
+    .filter((payment) => payment.amount > 0)
+
+  return {
+    expectedAmount,
+    discountAmount,
+    payableAmount,
+    paidAmount,
+    remainingAmount,
+    paymentTotal: payments.reduce((sum, payment) => sum + payment.amount, 0),
+    tuitionExempt: false,
+    payments,
+  }
+}
+
+export function PaymentSection({ value, onChange, compact = false, showCategory = false }: PaymentSectionProps) {
+  const expectedAmount = toNumber(value.expectedAmount)
+  const discountAmount = toNumber(value.discountAmount)
+  const paidAmount = toNumber(value.paidAmount)
+  const payableAmount = Math.max(expectedAmount - discountAmount, 0)
+  const total = paymentTotal(value.entries)
+  const dueAmount = Math.max(payableAmount - paidAmount, 0)
+  const remainingAmount = Math.max(dueAmount - total, 0)
+  const discountExceeded = discountAmount > expectedAmount && discountAmount > 0
+  const totalOverPayable = !value.tuitionExempt && dueAmount >= 0 && total > dueAmount
+  const totalAccepted = value.tuitionExempt || (dueAmount > 0 && total === dueAmount)
+  const totalBadgeText = value.tuitionExempt
+    ? '무료 수강'
+    : total > 0 && total < dueAmount
+      ? `수납 부족 ${formatWon(remainingAmount)}`
+      : `수납 합계 ${formatWon(total)}`
 
   function patch(next: Partial<PaymentSectionValue>) {
     onChange({ ...value, ...next })
   }
 
-  function updateItem(itemId: string, patchItem: Partial<PaymentSectionItemDraft>) {
+  function fillSingleEntryAmount(nextValue: PaymentSectionValue, nextPayableAmount: number) {
+    if (nextValue.tuitionExempt || nextValue.entries.length !== 1) {
+      return nextValue.entries
+    }
+
+    return nextValue.entries.map((entry) => ({ ...entry, amount: nextPayableAmount > 0 ? String(nextPayableAmount) : '' }))
+  }
+
+  function patchWithAutoAmount(next: Partial<PaymentSectionValue>) {
+    const nextValue = { ...value, ...next }
+    const nextExpectedAmount = toNumber(nextValue.expectedAmount)
+    const nextDiscountAmount = toNumber(nextValue.discountAmount)
+    const nextPaidAmount = toNumber(nextValue.paidAmount)
+    const nextPayableAmount = Math.max(nextExpectedAmount - nextDiscountAmount, 0)
+    const nextDueAmount = Math.max(nextPayableAmount - nextPaidAmount, 0)
+    onChange({ ...nextValue, entries: fillSingleEntryAmount(nextValue, nextDueAmount) })
+  }
+
+  function updateEntry(entryId: string, patchEntry: Partial<PaymentEntryDraft>) {
     patch({
-      items: value.items.map((item) => item.id === itemId ? { ...item, ...patchItem } : item),
+      entries: value.entries.map((entry) => entry.id === entryId ? { ...entry, ...patchEntry } : entry),
     })
   }
 
-  function removeItem(itemId: string) {
-    if (value.items.length <= 1) {
+  function updateEntryMethod(entryId: string, method: PaymentEntryMethod) {
+    const otherTotal = value.entries
+      .filter((entry) => entry.id !== entryId)
+      .reduce((sum, entry) => sum + toNumber(entry.amount), 0)
+    const remaining = Math.max(dueAmount - otherTotal, 0)
+
+    patch({
+      entries: value.entries.map((entry) => {
+        if (entry.id !== entryId) {
+          return entry
+        }
+
+        return {
+          ...entry,
+          method,
+          amount: entry.amount.trim() ? entry.amount : remaining > 0 ? String(remaining) : '',
+          cashReceiptApprovalNo: usesCashReceipt(method) ? entry.cashReceiptApprovalNo : '',
+        }
+      }),
+    })
+  }
+
+  function removeEntry(entryId: string) {
+    if (value.entries.length <= 1) {
       return
     }
 
-    patch({ items: value.items.filter((item) => item.id !== itemId) })
+    patch({ entries: value.entries.filter((entry) => entry.id !== entryId) })
+  }
+
+  function addEntry() {
+    const currentTotal = paymentTotal(value.entries)
+    const remaining = Math.max(dueAmount - currentTotal, 0)
+
+    patch({
+      entries: [
+        ...value.entries,
+        createEmptyEntry({
+          method: value.entries[0]?.method === 'card' ? 'cash' : 'card',
+          amount: remaining > 0 ? String(remaining) : '',
+        }),
+      ],
+    })
   }
 
   return (
     <section className={compact ? 'rounded-[8px] bg-slate-50 p-4' : 'rounded-[8px] border border-slate-200 bg-slate-50/70 p-4'}>
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-sm font-bold text-[#1d1d1f]">결제 정보</h3>
-          <p className="mt-1 text-xs text-slate-500">실제 단말기 결제 후 class-pass에는 수납 기록만 저장합니다.</p>
+          <h3 className="text-sm font-bold text-[#1d1d1f]">수납 정보</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            강좌 정가에서 할인 금액과 기존 수납액을 제외한 남은 금액을 정확히 맞춰 저장합니다.
+          </p>
         </div>
         <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
-          totalMatches ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          totalOverPayable
+            ? 'bg-rose-50 text-rose-700'
+            : totalAccepted
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-amber-50 text-amber-700'
         }`}>
-          항목 합계 {formatWon(total)}
+          {totalBadgeText}
         </span>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
-        {METHOD_META.map((method) => {
-          const Icon = method.icon
-          const active = value.method === method.value
-
-          return (
-            <button
-              key={method.value}
-              type="button"
-              onClick={() => patch({ method: method.value })}
-              className={`flex items-center justify-center gap-2 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition ${
-                active ? 'bg-[#1d1d1f] text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {method.label}
-            </button>
-          )
-        })}
-      </div>
+      <label className="mt-4 flex items-start gap-3 rounded-[8px] bg-white px-3 py-3 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
+        <input
+          type="checkbox"
+          checked={value.tuitionExempt}
+          onChange={(event) => patch({ tuitionExempt: event.target.checked })}
+          className="mt-1 h-4 w-4 accent-blue-600"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-[#1d1d1f]">무료 수강 / 수납 면제</span>
+          <span className="mt-1 block text-xs leading-5 text-slate-500">
+            장학생, 무료 체험, 운영 지원처럼 결제를 받지 않는 수강생이면 체크합니다.
+          </span>
+        </span>
+      </label>
 
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-slate-500">총 결제 금액</span>
+          <span className="text-xs font-semibold text-slate-500">강좌 정가</span>
           <input
             inputMode="numeric"
-            value={value.amount}
-            onChange={(event) => patch({ amount: numberInputValue(event.target.value) })}
-            placeholder="300000"
+            value={value.expectedAmount}
+            onChange={(event) => patchWithAutoAmount({ expectedAmount: numberInputValue(event.target.value) })}
+            placeholder="50000"
             className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-slate-500">분류</span>
-          <select
-            value={value.category}
-            onChange={(event) => patch({ category: event.target.value as PaymentCategory })}
-            className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          >
-            {PAYMENT_CATEGORIES.map((category) => (
-              <option key={category} value={category}>{PAYMENT_CATEGORY_LABEL[category]}</option>
-            ))}
-          </select>
+          <span className="text-xs font-semibold text-slate-500">할인 금액</span>
+          <input
+            inputMode="numeric"
+            value={value.discountAmount}
+            onChange={(event) => patchWithAutoAmount({ discountAmount: numberInputValue(event.target.value) })}
+            placeholder="0"
+            className={`rounded-[8px] border bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 ${
+              discountExceeded ? 'border-rose-300' : 'border-slate-200'
+            }`}
+          />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-slate-500">결제일시</span>
+          <span className="text-xs font-semibold text-slate-500">할인 사유</span>
+          <input
+            value={value.discountReason}
+            onChange={(event) => patch({ discountReason: event.target.value })}
+            placeholder="형제 할인, 이벤트 등"
+            className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          />
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-slate-500">적용 금액</span>
+          <div className={`rounded-[8px] px-3 py-2.5 text-sm font-bold ${
+            discountExceeded ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-[#1d1d1f] shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]'
+          }`}>
+            {formatWon(payableAmount)}
+          </div>
+        </div>
+      </div>
+
+      {paidAmount > 0 ? (
+        <div className="mt-3 rounded-[8px] bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
+          기존 수납 {formatWon(paidAmount)} · 이번 수납 필요 {formatWon(dueAmount)}
+        </div>
+      ) : null}
+
+      {discountExceeded ? (
+        <p className="mt-2 text-xs font-medium text-rose-600">할인 금액은 강좌 정가보다 클 수 없습니다.</p>
+      ) : null}
+
+      <div className={`mt-3 grid gap-3 ${showCategory ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
+        {showCategory ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-slate-500">분류</span>
+            <select
+              value={value.category}
+              onChange={(event) => patch({ category: event.target.value as PaymentCategory })}
+              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            >
+              {PAYMENT_CATEGORIES.map((category) => (
+                <option key={category} value={category}>{PAYMENT_CATEGORY_LABEL[category]}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-slate-500">수납일시</span>
           <input
             type="datetime-local"
             value={value.paidAt}
@@ -191,127 +434,145 @@ export function PaymentSection({ value, onChange, compact = false }: PaymentSect
             className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>
+      </div>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-slate-500">결제 방법</span>
-          <select
-            value={value.method}
-            onChange={(event) => patch({ method: event.target.value as PaymentMethod })}
+      {value.tuitionExempt ? (
+        <label className="mt-3 flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-slate-500">면제 사유</span>
+          <textarea
+            value={value.tuitionExemptReason}
+            onChange={(event) => patch({ tuitionExemptReason: event.target.value })}
+            rows={3}
+            placeholder="예: 장학생, 무료 체험, 운영 지원"
             className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          >
-            {Object.entries(PAYMENT_METHOD_LABEL).map(([method, label]) => (
-              <option key={method} value={method}>{label}</option>
-            ))}
-          </select>
+          />
         </label>
-      </div>
-
-      {value.method === 'card' || value.method === 'mixed' ? (
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">카드 마지막 4자리</span>
-            <input
-              inputMode="numeric"
-              maxLength={4}
-              value={value.cardLast4}
-              onChange={(event) => patch({ cardLast4: numberInputValue(event.target.value).slice(0, 4) })}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">할부 개월</span>
-            <input
-              inputMode="numeric"
-              value={value.installmentMonths}
-              onChange={(event) => patch({ installmentMonths: numberInputValue(event.target.value).slice(0, 2) || '0' })}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            />
-          </label>
-        </div>
-      ) : null}
-
-      {value.method === 'bank_transfer' || value.method === 'mixed' ? (
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">은행</span>
-            <input
-              value={value.bankName}
-              onChange={(event) => patch({ bankName: event.target.value })}
-              placeholder="예: 국민은행"
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">계좌 마지막 4자리</span>
-            <input
-              inputMode="numeric"
-              maxLength={4}
-              value={value.bankAccountLast4}
-              onChange={(event) => patch({ bankAccountLast4: numberInputValue(event.target.value).slice(0, 4) })}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            />
-          </label>
-        </div>
-      ) : null}
-
-      <div className="mt-4 rounded-[8px] bg-white p-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-semibold text-slate-500">결제 항목</p>
-          <button
-            type="button"
-            onClick={() => patch({ items: [...value.items, { id: createItemId(), label: '', amount: '' }] })}
-            className="rounded-[8px] bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-          >
-            + 항목
-          </button>
-        </div>
-        <div className="mt-3 grid gap-2">
-          {value.items.map((item, index) => (
-            <div key={item.id} className="grid gap-2 sm:grid-cols-[1fr,160px,auto]">
-              <input
-                value={item.label}
-                onChange={(event) => updateItem(item.id, { label: event.target.value })}
-                placeholder={index === 0 ? PAYMENT_CATEGORY_LABEL[value.category] : '항목명'}
-                className="rounded-[8px] border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-              />
-              <input
-                inputMode="numeric"
-                value={item.amount}
-                onChange={(event) => updateItem(item.id, { amount: numberInputValue(event.target.value) })}
-                placeholder="금액"
-                className="rounded-[8px] border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-              />
-              <button
-                type="button"
-                onClick={() => removeItem(item.id)}
-                disabled={value.items.length <= 1}
-                className="rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                삭제
-              </button>
+      ) : (
+        <div className="mt-4 rounded-[8px] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">결제 수단별 수납</p>
+              <p className="mt-1 text-xs text-slate-400">수단 버튼을 누르면 남은 적용 금액이 자동으로 입력됩니다.</p>
             </div>
-          ))}
+            <button
+              type="button"
+              onClick={addEntry}
+              className="inline-flex items-center gap-1 rounded-[8px] bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              수단 추가
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-3">
+            {value.entries.map((entry, index) => {
+              const entryAmount = toNumber(entry.amount)
+              const cashReceiptNotice = needsCashReceiptNotice(entry.method, entryAmount)
+
+              return (
+              <article key={entry.id} className="rounded-[8px] bg-slate-50/80 p-3 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.72)]">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-500">결제 {index + 1}</p>
+                  <button
+                    type="button"
+                    onClick={() => removeEntry(entry.id)}
+                    disabled={value.entries.length <= 1}
+                    className="inline-flex items-center gap-1 rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    삭제
+                  </button>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 md:grid-cols-5">
+                    {PAYMENT_METHOD_META.map((method) => {
+                      const Icon = method.icon
+                      const active = entry.method === method.value
+
+                      return (
+                        <button
+                          key={method.value}
+                          type="button"
+                          onClick={() => updateEntryMethod(entry.id, method.value)}
+                          className={`flex min-h-10 items-center justify-center gap-2 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition ${
+                            active ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700' : 'bg-white text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {method.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-slate-500">수납 금액</span>
+                    <input
+                      inputMode="numeric"
+                      value={entry.amount}
+                      onChange={(event) => updateEntry(entry.id, { amount: numberInputValue(event.target.value) })}
+                      placeholder="금액"
+                      className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-slate-500">결제 메모</span>
+                    <input
+                      value={entry.memo}
+                      onChange={(event) => updateEntry(entry.id, { memo: event.target.value })}
+                      placeholder={PAYMENT_METHOD_LABEL[entry.method]}
+                      className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                    />
+                  </label>
+
+                  {usesCashReceipt(entry.method) ? (
+                    <label className="flex flex-col gap-1.5 sm:col-span-2">
+                      <span className="text-xs font-semibold text-slate-500">현금영수증 승인번호</span>
+                      <input
+                        value={entry.cashReceiptApprovalNo}
+                        onChange={(event) => updateEntry(entry.id, { cashReceiptApprovalNo: event.target.value })}
+                        placeholder="현금영수증 발행 시 승인번호 입력"
+                        className={`rounded-[8px] border bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 ${
+                          cashReceiptNotice && !entry.cashReceiptApprovalNo.trim()
+                            ? 'border-amber-300'
+                            : 'border-slate-200'
+                        }`}
+                      />
+                      {cashReceiptNotice ? (
+                        <span className="text-xs font-medium text-amber-700">
+                          10만 원 이상 현금·계좌 수납은 현금영수증 발급 상태 또는 승인번호를 확인해 주세요.
+                        </span>
+                      ) : null}
+                    </label>
+                  ) : null}
+                </div>
+              </article>
+            )})}
+          </div>
+
+          <div className="mt-3 grid gap-2 rounded-[8px] bg-slate-50 px-3 py-3 text-xs sm:grid-cols-3">
+            <p className="text-slate-500">정가 <span className="font-bold text-[#1d1d1f]">{formatWon(expectedAmount)}</span></p>
+            <p className="text-slate-500">할인 <span className="font-bold text-rose-600">{formatWon(discountAmount)}</span></p>
+            <p className={totalOverPayable ? 'text-rose-700' : totalAccepted ? 'text-emerald-700' : 'text-amber-700'}>
+              필요/이번수납 <span className="font-bold">{formatWon(dueAmount)} / {formatWon(total)}</span>
+              {!value.tuitionExempt && remainingAmount > 0 ? (
+                <span className="ml-1 text-slate-500">미납 {formatWon(remainingAmount)}</span>
+              ) : null}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <label className="mt-3 flex flex-col gap-1.5">
-        <span className="text-xs font-semibold text-slate-500">메모</span>
+        <span className="text-xs font-semibold text-slate-500">공통 메모</span>
         <textarea
           value={value.memo}
           onChange={(event) => patch({ memo: event.target.value })}
           rows={compact ? 2 : 3}
           className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
         />
-      </label>
-
-      <label className="mt-3 flex items-start gap-2 rounded-[8px] bg-white px-3 py-2.5 text-xs text-slate-600">
-        <input
-          type="checkbox"
-          checked={value.confirmedCoursePrice}
-          onChange={(event) => patch({ confirmedCoursePrice: event.target.checked })}
-          className="mt-0.5"
-        />
-        <span>결제 금액과 항목 합계를 확인했습니다. 강좌 정가가 별도로 있으면 데스크에서 대조 후 저장합니다.</span>
       </label>
     </section>
   )

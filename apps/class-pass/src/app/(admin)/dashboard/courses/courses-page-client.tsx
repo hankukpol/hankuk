@@ -6,6 +6,7 @@ import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { confirmPermanentCourseDeletion } from '@/lib/course-delete-confirm'
+import { formatWon } from '@/lib/payments/format'
 import type { Course, CourseType } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { formatCourseTypeLabel } from '@/lib/utils'
@@ -14,6 +15,7 @@ type CreateCourseForm = {
   name: string
   course_type: CourseType
   theme_color: string
+  tuition_amount: string
   status: 'active' | 'archived'
   feature_qr_pass: boolean
   feature_qr_distribution: boolean
@@ -33,6 +35,7 @@ const DEFAULT_FORM: CreateCourseForm = {
   name: '',
   course_type: 'general',
   theme_color: '#1A237E',
+  tuition_amount: '',
   status: 'active',
   feature_qr_pass: true,
   feature_qr_distribution: false,
@@ -135,7 +138,11 @@ export default function CoursesPageClient({
     const response = await fetch('/api/courses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, theme_color: form.theme_color.trim() }),
+      body: JSON.stringify({
+        ...form,
+        theme_color: form.theme_color.trim(),
+        tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
+      }),
     })
     const payload = await response.json().catch(() => null)
     setSaving(false)
@@ -250,24 +257,46 @@ export default function CoursesPageClient({
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-[8px] border border-[#d2d2d7] bg-white p-5">
           <h3 className="text-sm font-bold text-[#1d1d1f]">새 강좌 만들기</h3>
+          <p className="mt-1 text-xs text-[#86868b]">
+            강좌 금액은 결제 추가 시 정가와 수납 금액으로 자동 적용됩니다.
+          </p>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input
-              value={form.name}
-              onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))}
-              placeholder="강좌명"
-              className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b] sm:col-span-2"
-            />
-            <select
-              value={form.course_type}
-              onChange={(e) => setForm((c) => ({ ...c, course_type: e.target.value as CourseType }))}
-              className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-            >
-              <option value="general">일반</option>
-              <option value="lecture">강의</option>
-              <option value="mock_exam">모의고사</option>
-              <option value="interview">면접</option>
-            </select>
+          <div className="mt-4 grid gap-3 md:grid-cols-[2fr,1fr,1fr]">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">강좌명</span>
+              <input
+                value={form.name}
+                onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))}
+                placeholder="예: 2026 경찰 기본반"
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">강좌 유형</span>
+              <select
+                value={form.course_type}
+                onChange={(e) => setForm((c) => ({ ...c, course_type: e.target.value as CourseType }))}
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+              >
+                <option value="general">일반</option>
+                <option value="lecture">강의</option>
+                <option value="mock_exam">모의고사</option>
+                <option value="interview">면접</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">강좌 금액</span>
+              <div className="relative">
+                <input
+                  inputMode="numeric"
+                  value={form.tuition_amount}
+                  onChange={(e) => setForm((c) => ({ ...c, tuition_amount: e.target.value.replace(/[^\d]/g, '') }))}
+                  placeholder="50000"
+                  className="w-full rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 pr-9 text-sm outline-none focus:border-[#86868b]"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#86868b]">원</span>
+              </div>
+            </label>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
@@ -351,6 +380,9 @@ export default function CoursesPageClient({
                       <p className="mt-1 truncate text-[11px] text-[#86868b]">
                         {courseTypeLabel(course.course_type)} · {course.slug}
                       </p>
+                      <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
+                        강좌 금액 {formatWon(course.tuition_amount ?? 0)}
+                      </p>
                     </div>
                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                       isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
@@ -419,6 +451,7 @@ export default function CoursesPageClient({
                 <tr className="border-b border-[#f5f5f7] text-left text-xs font-medium text-[#86868b]">
                   <th className="px-5 py-3">강좌</th>
                   <th className="px-3 py-3">유형</th>
+                  <th className="px-3 py-3 text-right">금액</th>
                   <th className="px-3 py-3">상태</th>
                   <th className="hidden px-3 py-3 md:table-cell">기능</th>
                   <th className="px-5 py-3 text-right">관리</th>
@@ -457,6 +490,9 @@ export default function CoursesPageClient({
                         </div>
                       </td>
                       <td className="px-3 py-3.5 text-[#86868b]">{courseTypeLabel(course.course_type)}</td>
+                      <td className="px-3 py-3.5 text-right font-semibold text-[#1d1d1f]">
+                        {formatWon(course.tuition_amount ?? 0)}
+                      </td>
                       <td className="px-3 py-3.5">
                         <span className={`inline-block rounded-[4px] px-2 py-0.5 text-[11px] font-semibold ${
                           course.status === 'active'

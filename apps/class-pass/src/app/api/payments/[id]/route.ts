@@ -12,12 +12,12 @@ import {
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
-  amount: z.number().int().positive(),
+  amount: z.number().int().min(0),
 })
 
 const patchPaymentSchema = z.object({
-  amount: z.number().int().positive().optional(),
-  method: z.enum(['card', 'cash', 'bank_transfer', 'point', 'mixed', 'other']).optional(),
+  amount: z.number().int().min(0).optional(),
+  method: z.enum(['card', 'cash', 'bank_transfer', 'point', 'free', 'other']).optional(),
   category: z.enum(['tuition', 'textbook', 'material', 'exam_fee', 'extension', 'etc']).optional(),
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
@@ -25,6 +25,7 @@ const patchPaymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
 

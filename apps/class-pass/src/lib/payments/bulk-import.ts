@@ -1,4 +1,5 @@
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
+import { createServerClient } from '@/lib/supabase/server'
 import type { Enrollment } from '@/types/database'
 import {
   createEnrollmentForPayment,
@@ -58,8 +59,9 @@ const METHOD_MAP: Record<string, PaymentMethod> = {
   이체: 'bank_transfer',
   point: 'point',
   포인트: 'point',
-  mixed: 'mixed',
-  복합: 'mixed',
+  free: 'free',
+  무료: 'free',
+  면제: 'free',
   other: 'other',
   기타: 'other',
 }
@@ -112,6 +114,56 @@ function normalizePaidAt(value: string | null | undefined) {
   }
 
   return raw
+}
+
+function toPaidDateKey(value: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value.slice(0, 10)
+  }
+
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(parsed)
+}
+
+function getDuplicatePaymentKey(row: Pick<PaymentImportPreviewRow, 'enrollmentId' | 'paidAt' | 'amount'>) {
+  return row.enrollmentId ? `${row.enrollmentId}:${toPaidDateKey(row.paidAt)}:${row.amount}` : null
+}
+
+async function loadExistingPaymentKeys(params: {
+  courseId: number
+  division: string
+  rows: PaymentImportPreviewRow[]
+}) {
+  const enrollmentIds = Array.from(new Set(
+    params.rows
+      .map((row) => row.enrollmentId)
+      .filter((id): id is number => typeof id === 'number'),
+  ))
+
+  if (enrollmentIds.length === 0) {
+    return new Set<string>()
+  }
+
+  const db = createServerClient()
+  const { data, error } = await db
+    .from('enrollment_payments')
+    .select('enrollment_id,paid_date,amount,courses!inner(division)')
+    .eq('course_id', params.courseId)
+    .eq('courses.division', params.division)
+    .in('enrollment_id', enrollmentIds)
+    .neq('status', 'voided')
+
+  if (error) {
+    throw error
+  }
+
+  return new Set((data ?? []).map((payment) => (
+    `${payment.enrollment_id}:${payment.paid_date}:${payment.amount}`
+  )))
 }
 
 function buildEnrollmentMaps(enrollments: Enrollment[]) {
@@ -188,11 +240,20 @@ export function previewPaymentImportRows(params: {
       return { rowNumber, name, phone, examNumber, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '이름이 없습니다.' }
     }
 
+    if (String(row.method ?? '').trim().toLowerCase() === 'mixed' || String(row.method ?? '').trim() === '복합') {
+      return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '복합 결제는 카드/현금처럼 실제 수단별 행으로 나누어 업로드해 주세요.' }
+    }
+
     if (phone.length < 4) {
       return { rowNumber, name, phone, examNumber, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '연락처가 없거나 너무 짧습니다.' }
     }
 
-    if (!Number.isInteger(amount) || amount <= 0) {
+    if (
+      !Number.isInteger(amount)
+      || amount < 0
+      || (method !== 'free' && amount <= 0)
+      || (method === 'free' && amount !== 0)
+    ) {
       return { rowNumber, name, phone, examNumber, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '결제 금액이 올바르지 않습니다.' }
     }
 
@@ -237,6 +298,24 @@ export async function runPaymentImport(params: {
     enrollments: params.enrollments,
     createMissingEnrollment: params.createMissingEnrollment,
   })
+
+  const existingPaymentKeys = await loadExistingPaymentKeys({
+    courseId: params.courseId,
+    division: params.division,
+    rows: previewRows,
+  })
+
+  for (const row of previewRows) {
+    if (row.status === 'error' || row.status === 'duplicate') {
+      continue
+    }
+
+    const duplicateKey = getDuplicatePaymentKey(row)
+    if (duplicateKey && existingPaymentKeys.has(duplicateKey)) {
+      row.status = 'duplicate'
+      row.message = '같은 수강생·수납일·금액의 결제 기록이 이미 있습니다.'
+    }
+  }
 
   const result: PaymentImportResult = {
     dryRun: params.dryRun,

@@ -3,10 +3,12 @@ import {
   PAYMENT_METHOD_LABEL,
   PAYMENT_STATUS_LABEL,
   REFUND_METHOD_LABEL,
+  REFUND_REASON_CATEGORY_LABEL,
   type PaymentCategory,
   type PaymentMethod,
   type PaymentStatus,
   type RefundMethod,
+  type RefundReasonCategory,
 } from './types'
 
 export function formatWon(value: number | null | undefined) {
@@ -42,4 +44,8 @@ export function paymentStatusLabel(value: PaymentStatus) {
 
 export function refundMethodLabel(value: RefundMethod) {
   return REFUND_METHOD_LABEL[value] ?? value
+}
+
+export function reasonCategoryLabel(value: RefundReasonCategory | null | undefined) {
+  return value ? REFUND_REASON_CATEGORY_LABEL[value] ?? value : REFUND_REASON_CATEGORY_LABEL.other
 }

@@ -355,6 +355,12 @@ export default function AdminDashboardPage() {
                           </Link>
                         ) : null}
                         <Link
+                          href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
+                          className="rounded-[8px] bg-[#0071e3] px-3 py-2 text-center text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          수납
+                        </Link>
+                        <Link
                           href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
                           className="rounded-[8px] bg-slate-900 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-slate-800"
                         >
@@ -468,6 +474,12 @@ export default function AdminDashboardPage() {
                               지정좌석
                             </Link>
                           ) : null}
+                          <Link
+                            href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          >
+                            수납
+                          </Link>
                           <Link
                             href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
                             className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"

@@ -107,12 +107,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
         match: matches(`${basePath}/students`),
       },
       {
-        label: '결제',
-        href: `${basePath}/payments`,
-        enabled: true,
-        match: matches(`${basePath}/payments`),
-      },
-      {
         label: '좌석 배정',
         href: `${basePath}/seats`,
         enabled: course ? course.feature_seat_assignment : true,

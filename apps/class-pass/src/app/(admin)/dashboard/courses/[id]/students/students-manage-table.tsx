@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import type { Enrollment, EnrollmentFieldDef } from '@/types/database'
 import { formatDateTime } from '@/lib/utils'
 import type { EnrollmentManageStatusFilter } from './students-page-types'
+
+const STATUS_FILTER_OPTIONS: Array<{ value: EnrollmentManageStatusFilter; label: string }> = [
+  { value: 'all', label: '전체' },
+  { value: 'active', label: '수강중' },
+  { value: 'refunded', label: '환불완료' },
+  { value: 'suspended', label: '정지' },
+]
 
 function isEnrollmentSuspended(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
   return enrollment.status === 'active' && Boolean(enrollment.suspended_at)
@@ -82,13 +89,13 @@ type StudentsManageTableProps = {
   attendanceEnabled: boolean
   onSearchChange: (value: string) => void
   onStatusFilterChange: (value: EnrollmentManageStatusFilter) => void
+  onOpenDetail: (enrollment: Enrollment) => void
   onEdit: (enrollment: Enrollment) => void
   onResetPin: (enrollment: Enrollment) => void
   onApproveDeviceReRegistration: (enrollment: Enrollment) => void
   onResetAttendanceDevice: (enrollment: Enrollment) => void
   onSuspend: (enrollment: Enrollment) => void
   onUnsuspend: (enrollment: Enrollment) => void
-  onRefund: (enrollment: Enrollment) => void
   onDelete: (enrollment: Enrollment) => void
 }
 
@@ -100,16 +107,21 @@ export function StudentsManageTable({
   attendanceEnabled,
   onSearchChange,
   onStatusFilterChange,
+  onOpenDetail,
   onEdit,
   onResetPin,
   onApproveDeviceReRegistration,
   onResetAttendanceDevice,
   onSuspend,
   onUnsuspend,
-  onRefund,
   onDelete,
 }: StudentsManageTableProps) {
   const [expandedMobileId, setExpandedMobileId] = useState<number | null>(null)
+
+  function handleActionClick(event: MouseEvent<HTMLButtonElement>, action: () => void) {
+    event.stopPropagation()
+    action()
+  }
 
   function renderActionButtons(enrollment: Enrollment, suspended: boolean, density: 'mobile' | 'desktop') {
     const baseClass = density === 'mobile'
@@ -122,7 +134,14 @@ export function StudentsManageTable({
       <>
         <button
           type="button"
-          onClick={() => onEdit(enrollment)}
+          onClick={(event) => handleActionClick(event, () => onOpenDetail(enrollment))}
+          className={`${baseClass} bg-blue-50 text-blue-700 hover:bg-blue-100`}
+        >
+          상세
+        </button>
+        <button
+          type="button"
+          onClick={(event) => handleActionClick(event, () => onEdit(enrollment))}
           className={`${baseClass} bg-slate-100 text-slate-600 hover:bg-slate-200`}
         >
           편집
@@ -130,7 +149,7 @@ export function StudentsManageTable({
         {enrollment.student_profile?.auth_method === 'pin' && enrollment.student_id ? (
           <button
             type="button"
-            onClick={() => onResetPin(enrollment)}
+            onClick={(event) => handleActionClick(event, () => onResetPin(enrollment))}
             className={`${baseClass} bg-violet-50 text-violet-700 hover:bg-violet-100`}
           >
             PIN 재설정
@@ -139,7 +158,7 @@ export function StudentsManageTable({
         {attendanceEnabled && attendanceDeviceStatus === 'pending_reset' ? (
           <button
             type="button"
-            onClick={() => onApproveDeviceReRegistration(enrollment)}
+            onClick={(event) => handleActionClick(event, () => onApproveDeviceReRegistration(enrollment))}
             className={`${baseClass} bg-blue-50 text-blue-700 hover:bg-blue-100`}
           >
             기기 승인
@@ -148,7 +167,7 @@ export function StudentsManageTable({
         {attendanceEnabled && attendanceDeviceStatus !== 'pending_reset' ? (
           <button
             type="button"
-            onClick={() => onResetAttendanceDevice(enrollment)}
+            onClick={(event) => handleActionClick(event, () => onResetAttendanceDevice(enrollment))}
             disabled={!canResetAttendanceDevice}
             title={canResetAttendanceDevice ? undefined : '아직 등록된 출석 기기가 없습니다.'}
             className={`${baseClass} border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white`}
@@ -159,7 +178,7 @@ export function StudentsManageTable({
         {enrollment.status === 'active' && !suspended ? (
           <button
             type="button"
-            onClick={() => onSuspend(enrollment)}
+            onClick={(event) => handleActionClick(event, () => onSuspend(enrollment))}
             className={`${baseClass} border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50`}
           >
             정지
@@ -168,24 +187,15 @@ export function StudentsManageTable({
         {enrollment.status === 'active' && suspended ? (
           <button
             type="button"
-            onClick={() => onUnsuspend(enrollment)}
+            onClick={(event) => handleActionClick(event, () => onUnsuspend(enrollment))}
             className={`${baseClass} border border-emerald-300 bg-white text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50`}
           >
             정지 해제
           </button>
         ) : null}
-        {enrollment.status === 'active' ? (
-          <button
-            type="button"
-            onClick={() => onRefund(enrollment)}
-            className={`${baseClass} bg-amber-50 text-amber-700 hover:bg-amber-100`}
-          >
-            환불
-          </button>
-        ) : null}
         <button
           type="button"
-          onClick={() => onDelete(enrollment)}
+          onClick={(event) => handleActionClick(event, () => onDelete(enrollment))}
           className={`${baseClass} bg-red-50 text-red-600 hover:bg-red-100`}
         >
           삭제
@@ -203,17 +213,22 @@ export function StudentsManageTable({
           placeholder="이름, 연락처, 응시번호 검색.."
           className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-64 sm:py-2"
         />
-        <div className="grid grid-cols-4 gap-1 sm:flex">
-          {(['all', 'active', 'refunded', 'suspended'] as const).map((value) => (
+        <div
+          aria-label="수강생 상태 필터"
+          className="grid grid-cols-4 gap-0.5 rounded-[10px] bg-[#f5f5f7] p-1 sm:flex sm:shrink-0"
+        >
+          {STATUS_FILTER_OPTIONS.map((option) => (
             <button
-              key={value}
+              key={option.value}
               type="button"
-              onClick={() => onStatusFilterChange(value)}
-              className={`rounded-[8px] px-2 py-2 text-[11px] font-semibold transition sm:px-3 sm:py-1.5 ${
-                statusFilter === value ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'
+              onClick={() => onStatusFilterChange(option.value)}
+              className={`whitespace-nowrap rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold transition sm:min-w-14 ${
+                statusFilter === option.value
+                  ? 'bg-white text-[#0071e3] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                  : 'text-slate-500 hover:text-[#1d1d1f]'
               }`}
             >
-              {value === 'all' ? '전체' : value === 'active' ? '활성' : value === 'refunded' ? '환불' : '정지'}
+              {option.label}
             </button>
           ))}
         </div>
@@ -243,7 +258,8 @@ export function StudentsManageTable({
               <article
                 key={enrollment.id}
                 title={getSuspensionTooltip(enrollment)}
-                className={suspended ? 'bg-amber-50/30 px-4 py-3' : 'px-4 py-3'}
+                onClick={() => onOpenDetail(enrollment)}
+                className={suspended ? 'cursor-pointer bg-amber-50/30 px-4 py-3 transition hover:bg-amber-50/70' : 'cursor-pointer px-4 py-3 transition hover:bg-slate-50/70'}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 min-w-11 items-center justify-center rounded-[8px] bg-slate-100 px-2 text-xs font-bold text-slate-700">
@@ -257,8 +273,11 @@ export function StudentsManageTable({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setExpandedMobileId(expanded ? null : enrollment.id)}
-                        className="shrink-0 rounded-[8px] bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setExpandedMobileId(expanded ? null : enrollment.id)
+                        }}
+                        className="shrink-0 rounded-[8px] bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
                         aria-expanded={expanded}
                       >
                         관리
@@ -351,7 +370,8 @@ export function StudentsManageTable({
                   <tr
                     key={enrollment.id}
                     title={getSuspensionTooltip(enrollment)}
-                    className={suspended ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-slate-50/60'}
+                    onClick={() => onOpenDetail(enrollment)}
+                    className={suspended ? 'cursor-pointer bg-amber-50/40 transition hover:bg-amber-50/70' : 'cursor-pointer transition hover:bg-slate-50/60'}
                   >
                     <td className="px-5 py-3 text-gray-500">{enrollment.exam_number || '-'}</td>
                     <td className="px-3 py-3 font-semibold text-gray-900">

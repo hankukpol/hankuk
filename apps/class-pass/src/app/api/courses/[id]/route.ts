@@ -46,6 +46,7 @@ const patchSchema = z.object({
   course_type: z.enum(['interview', 'mock_exam', 'lecture', 'general']).optional(),
   status: z.enum(['active', 'archived']).optional(),
   theme_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
+  tuition_amount: z.number().int().min(0).max(100_000_000).optional(),
   feature_qr_pass: z.boolean().optional(),
   feature_qr_distribution: z.boolean().optional(),
   feature_seat_assignment: z.boolean().optional(),

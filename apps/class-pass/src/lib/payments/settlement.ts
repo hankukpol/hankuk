@@ -172,6 +172,7 @@ export async function getMonthlySettlementData(
     bank_transfer: { count: 0, amount: 0 },
     point: { count: 0, amount: 0 },
     mixed: { count: 0, amount: 0 },
+    free: { count: 0, amount: 0 },
     other: { count: 0, amount: 0 },
   } satisfies Record<PaymentMethod, MonthlyMethodStat>
   const categories = {

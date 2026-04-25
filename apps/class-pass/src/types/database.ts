@@ -6,10 +6,20 @@ export type CourseStatus = 'active' | 'archived'
 export type EnrollmentStatus = 'active' | 'refunded'
 export type StudentAuthMethod = 'birth_date' | 'pin'
 export type MaterialType = 'handout' | 'textbook'
-export type PaymentMethod = 'card' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'other'
+export type PaymentMethod = 'card' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
+export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
 export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
+export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded'
 export type PaymentCategory = 'tuition' | 'textbook' | 'material' | 'exam_fee' | 'extension' | 'etc'
 export type RefundMethod = 'card_cancel' | 'cash' | 'bank_transfer' | 'point' | 'other'
+export type RefundReasonCategory =
+  | 'withdrawal'
+  | 'transfer'
+  | 'schedule_change'
+  | 'change_of_mind'
+  | 'payment_correction'
+  | 'policy_application'
+  | 'other'
 
 export interface EnrollmentFieldDef {
   key: string
@@ -26,6 +36,7 @@ export interface Course {
   course_type: CourseType
   status: CourseStatus
   theme_color: string | null
+  tuition_amount: number
   feature_qr_pass: boolean
   feature_qr_distribution: boolean
   feature_seat_assignment: boolean
@@ -116,7 +127,24 @@ export interface Enrollment {
   suspended_by: string | null
   custom_data: Record<string, string>
   attendance_device?: AttendanceDeviceState | null
+  billing?: EnrollmentBilling | null
   created_at: string
+}
+
+export interface EnrollmentBilling {
+  id: number
+  enrollment_id: number
+  course_id: number
+  expected_amount: number
+  discount_amount: number
+  discount_reason: string | null
+  payable_amount: number
+  tuition_exempt: boolean
+  tuition_exempt_reason: string | null
+  status: BillingStatus
+  created_by_staff_id: number | null
+  created_at: string
+  updated_at: string
 }
 
 export type AttendanceDeviceStateStatus = 'unregistered' | 'active' | 'pending_reset'
@@ -356,8 +384,12 @@ export interface EnrollmentRefund {
   payment_id: number
   amount: number
   method: RefundMethod
+  reason_category: RefundReasonCategory
   reason: string | null
+  cancel_receipt_no: string | null
+  refund_account_last4: string | null
   refunded_at: string
+  refund_date: string
   processed_by_staff_id: number | null
   memo: string | null
   created_at: string
@@ -378,6 +410,7 @@ export interface EnrollmentPayment {
   installment_months: number
   bank_name: string | null
   bank_account_last4: string | null
+  cash_receipt_approval_no: string | null
   created_by_staff_id: number | null
   created_at: string
   updated_at: string

@@ -494,6 +494,36 @@ export async function enforceAttendanceDeviceBinding(params: {
         throw normalizeAttendanceDeviceBindingDependencyError(insertResult.error)
       }
     } else {
+      const insertedBinding = insertResult.data as AttendanceDeviceBindingRow | null
+      let nextBindings = insertedBinding ? [...ownBindings, insertedBinding] : ownBindings
+      const fulfilledPendingBindings = ownBindings.filter(
+        (binding) => binding.reset_requested_device_key_hash === deviceKeyHash,
+      )
+
+      if (fulfilledPendingBindings.length > 0) {
+        const clearResult = await db
+          .from('attendance_device_bindings')
+          .update({
+            reset_requested_at: null,
+            reset_requested_device_key_hash: null,
+            reset_requested_user_agent: null,
+            updated_at: nowIso,
+          })
+          .eq('course_id', params.courseId)
+          .eq('enrollment_id', params.enrollmentId)
+          .eq('is_active', true)
+          .eq('reset_requested_device_key_hash', deviceKeyHash)
+          .select('*')
+
+        if (clearResult.error) {
+          throw normalizeAttendanceDeviceBindingDependencyError(clearResult.error)
+        }
+
+        const clearedRows = (clearResult.data ?? []) as AttendanceDeviceBindingRow[]
+        const clearedRowMap = new Map(clearedRows.map((binding) => [binding.id, binding]))
+        nextBindings = nextBindings.map((binding) => clearedRowMap.get(binding.id) ?? binding)
+      }
+
       await logAttendanceEvent({
         course_id: params.courseId,
         event_type: 'attendance_device_registered',
@@ -501,13 +531,13 @@ export async function enforceAttendanceDeviceBinding(params: {
           enrollment_id: params.enrollmentId,
           registered_count: ownBindings.length + 1,
           device_limit: ATTENDANCE_DEVICE_BINDING_LIMIT,
+          fulfilled_pending_request: fulfilledPendingBindings.length > 0,
         },
       })
 
-      const insertedBinding = insertResult.data as AttendanceDeviceBindingRow | null
       return {
         ok: true,
-        state: mapAttendanceDeviceStateFromRows(insertedBinding ? [...ownBindings, insertedBinding] : ownBindings),
+        state: mapAttendanceDeviceStateFromRows(nextBindings),
       }
     }
   }

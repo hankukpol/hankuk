@@ -178,6 +178,7 @@ export default function CourseStudentsPage({
     emptyForm(getDefaultSeriesOptionId(initialData?.seriesOptions ?? []))
   ))
   const [createPaymentForm, setCreatePaymentForm] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
+  const studentLookupInputTimerRef = useRef<number | null>(null)
   const [studentLookupQuery, setStudentLookupQuery] = useState('')
   const [studentLookupResults, setStudentLookupResults] = useState<StudentSearchResult[]>([])
   const [studentLookupLoading, setStudentLookupLoading] = useState(false)
@@ -243,10 +244,22 @@ export default function CourseStudentsPage({
   }, [panel, submitting])
 
   useEffect(() => {
+    return () => {
+      if (studentLookupInputTimerRef.current !== null) {
+        window.clearTimeout(studentLookupInputTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (panel === 'create') {
       return
     }
 
+    if (studentLookupInputTimerRef.current !== null) {
+      window.clearTimeout(studentLookupInputTimerRef.current)
+      studentLookupInputTimerRef.current = null
+    }
     setStudentLookupQuery('')
     setStudentLookupResults([])
     setStudentLookupError('')
@@ -301,6 +314,17 @@ export default function CourseStudentsPage({
   }, [courseId, panel, studentLookupQuery])
 
   const selectedStudentLocked = Boolean(selectedStudent) && !selectedStudentEditable
+
+  function scheduleStudentLookupQuery(value: string) {
+    if (studentLookupInputTimerRef.current !== null) {
+      window.clearTimeout(studentLookupInputTimerRef.current)
+    }
+
+    studentLookupInputTimerRef.current = window.setTimeout(() => {
+      setStudentLookupQuery(value)
+      studentLookupInputTimerRef.current = null
+    }, 150)
+  }
 
   function selectStudentForCreate(student: StudentSearchResult) {
     if (student.alreadyEnrolled) {
@@ -926,6 +950,10 @@ export default function CourseStudentsPage({
     setCreatePaymentForm(createPaymentSectionValueForAmount(course?.tuition_amount ?? 0))
     setSelectedStudent(null)
     setSelectedStudentEditable(false)
+    if (studentLookupInputTimerRef.current !== null) {
+      window.clearTimeout(studentLookupInputTimerRef.current)
+      studentLookupInputTimerRef.current = null
+    }
     setStudentLookupQuery('')
     setStudentLookupResults([])
     if (p?.generated_pin) {
@@ -1202,8 +1230,8 @@ export default function CourseStudentsPage({
                 <div className="mt-2 flex items-center gap-2 rounded-[8px] bg-white px-3 py-2.5 border border-slate-200 transition focus-within:border-slate-400">
                   <Search className="h-4 w-4 text-slate-500" />
                   <input
-                    value={studentLookupQuery}
-                    onChange={(event) => setStudentLookupQuery(event.target.value)}
+                    defaultValue=""
+                    onChange={(event) => scheduleStudentLookupQuery(event.target.value)}
                     placeholder="학번, 이름, 연락처"
                     className="min-w-0 flex-1 text-sm outline-none"
                   />

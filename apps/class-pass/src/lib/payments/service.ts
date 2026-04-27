@@ -1,4 +1,5 @@
 import { invalidateCache } from '@/lib/cache/revalidate'
+import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { verifyCourseOwnership } from '@/lib/class-pass-data'
 import {
   ensureStudentProfile,
@@ -105,7 +106,7 @@ export type ListPaymentsOptions = {
 
 const PAYMENT_SELECT = `
   *,
-  enrollments(id,name,phone,exam_number,status),
+  enrollments(id,name,phone,exam_number,status,series_option_id,series_group,series),
   courses!inner(id,name,division),
   enrollment_payment_items(*),
   enrollment_refunds(*)
@@ -126,6 +127,10 @@ const PAYMENT_SCHEMA_OBJECTS = [
   'reason_category',
   'cancel_receipt_no',
   'refund_account_last4',
+  'branch_series_options',
+  'series_option_id_snapshot',
+  'series_group_snapshot',
+  'series_label_snapshot',
 ]
 
 function createPaymentError(message: string, status = 400) {
@@ -708,6 +713,7 @@ export async function createEnrollmentForPayment(
   )
 
   const student = authSetup.student
+  const seriesOption = await resolveBranchSeriesOption()
   const { data, error } = await db
     .from('enrollments')
     .insert({
@@ -716,6 +722,9 @@ export async function createEnrollmentForPayment(
       name: student.name,
       phone: student.phone,
       exam_number: student.exam_number,
+      series_option_id: seriesOption?.id ?? null,
+      series_group: seriesOption?.group_key ?? 'public',
+      series: seriesOption?.label ?? '공채',
       custom_data: input.customData ?? {},
     })
     .select('*')
@@ -837,6 +846,9 @@ export async function createPayment(
       bank_name: normalizeOptionalText(input.bankName),
       bank_account_last4: normalizeLast4(input.bankAccountLast4, '계좌 마�?�?번호'),
       cash_receipt_approval_no: normalizeOptionalText(input.cashReceiptApprovalNo),
+      series_option_id_snapshot: enrollment.series_option_id ?? null,
+      series_group_snapshot: enrollment.series_group ?? 'public',
+      series_label_snapshot: enrollment.series?.trim() || (enrollment.series_group === 'career' ? '경채' : '공채'),
       created_by_staff_id: actorStaffId ?? null,
     })
     .select('*')
@@ -1075,46 +1087,120 @@ export async function listPaymentsByIds(paymentIds: number[], division: string) 
   }
 
   const db = createServerClient()
-  const { data, error } = await db
-    .from('enrollment_payments')
-    .select(PAYMENT_SELECT)
-    .eq('courses.division', division)
-    .in('id', normalizedIds)
-    .order('paid_at', { ascending: false })
-    .order('id', { ascending: false })
+  const payments: EnrollmentPayment[] = []
+  const chunkSize = 500
 
-  if (error) {
-    throw error
+  for (let index = 0; index < normalizedIds.length; index += chunkSize) {
+    const chunk = normalizedIds.slice(index, index + chunkSize)
+    const { data, error } = await db
+      .from('enrollment_payments')
+      .select(PAYMENT_SELECT)
+      .eq('courses.division', division)
+      .in('id', chunk)
+      .order('paid_at', { ascending: false })
+      .order('id', { ascending: false })
+
+    if (error) {
+      throw error
+    }
+
+    payments.push(...((data ?? []) as EnrollmentPayment[]))
   }
 
-  return (data ?? []) as EnrollmentPayment[]
+  return payments.sort((left, right) => {
+    const paidAtCompare = right.paid_at.localeCompare(left.paid_at)
+    return paidAtCompare === 0 ? right.id - left.id : paidAtCompare
+  })
+}
+
+async function listSettlementPaidPayments(
+  options: Pick<ListPaymentsOptions, 'courseId' | 'from' | 'to'>,
+  division: string,
+) {
+  const db = createServerClient()
+  const pageSize = 1000
+  const payments: EnrollmentPayment[] = []
+
+  for (let offset = 0; ; offset += pageSize) {
+    let query = db
+      .from('enrollment_payments')
+      .select(PAYMENT_SELECT)
+      .eq('courses.division', division)
+      .order('paid_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1)
+
+    if (options.courseId) {
+      query = query.eq('course_id', options.courseId)
+    }
+
+    if (options.from) {
+      query = query.gte('paid_date', options.from)
+    }
+
+    if (options.to) {
+      query = query.lte('paid_date', options.to)
+    }
+
+    const { data, error } = await query
+    if (error) {
+      throw error
+    }
+
+    const page = (data ?? []) as EnrollmentPayment[]
+    payments.push(...page)
+    if (page.length < pageSize) {
+      break
+    }
+  }
+
+  return payments
+}
+
+async function listRefundPaymentIdsInDateRange(from: string, to: string) {
+  const db = createServerClient()
+  const pageSize = 1000
+  const paymentIds: number[] = []
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db
+      .from('enrollment_refunds')
+      .select('payment_id')
+      .gte('refund_date', from)
+      .lte('refund_date', to)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+
+    if (error) {
+      throw error
+    }
+
+    const page = data ?? []
+    paymentIds.push(...page
+      .map((row) => Number(row.payment_id))
+      .filter((paymentId) => Number.isInteger(paymentId) && paymentId > 0))
+
+    if (page.length < pageSize) {
+      break
+    }
+  }
+
+  return Array.from(new Set(paymentIds))
 }
 
 export async function listSettlementDetailPayments(
   options: Pick<ListPaymentsOptions, 'courseId' | 'from' | 'to' | 'limit'>,
   division: string,
 ) {
-  const paidPayments = await listPayments(options, division)
+  const paidPayments = await listSettlementPaidPayments(options, division)
 
   if (!options.from || !options.to) {
     return paidPayments
   }
 
-  const db = createServerClient()
-  const { data: refundRows, error } = await db
-    .from('enrollment_refunds')
-    .select('payment_id')
-    .gte('refund_date', options.from)
-    .lte('refund_date', options.to)
-    .limit(options.limit ?? 5000)
-
-  if (error) {
-    throw error
-  }
-
-  const refundPaymentIds = (refundRows ?? [])
-    .map((row) => Number(row.payment_id))
-    .filter((paymentId) => Number.isInteger(paymentId) && paymentId > 0)
+  // Settlement accuracy is more important than display limits: page through all
+  // matching refunds so branch/course filtering never drops late rows silently.
+  const refundPaymentIds = await listRefundPaymentIdsInDateRange(options.from, options.to)
   const refundPayments = await listPaymentsByIds(refundPaymentIds, division)
   const merged = new Map<number, EnrollmentPayment>()
 

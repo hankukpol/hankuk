@@ -44,7 +44,7 @@ function getAttendanceFailureMessage(code: string | undefined) {
     case 'DEVICE_LOCKED':
       return { status: 409, message: '이 기기는 다른 수강생의 출석 기기로 등록되어 있습니다.' }
     case 'DEVICE_REBIND_REQUIRED':
-      return { status: 409, message: '새 기기로 감지되어 관리자에게 재등록 승인 요청을 보냈습니다. 승인 후 다시 출석해 주세요.' }
+      return { status: 409, message: '등록 가능한 브라우저 3개를 모두 사용했습니다. 관리자에게 추가 기기 승인 요청을 보냈습니다. 승인 후 다시 출석해 주세요.' }
     case 'ATTENDANCE_CLOSED':
       return { status: 403, message: '지금은 출석 체크 시간이 아닙니다.' }
     case 'FEATURE_DISABLED':

@@ -1,4 +1,5 @@
 import { getCourseById, listCourseEnrollments, listMaterialsForCourse } from '@/lib/class-pass-data'
+import { listBranchSeriesOptions } from '@/lib/branch-series'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
 import CourseStudentsPageClient from './course-students-page-client'
@@ -15,12 +16,13 @@ async function loadInitialData(courseId: number): Promise<StudentsPageData | nul
     return null
   }
 
-  const [enrollments, textbooks] = await Promise.all([
+  const [enrollments, textbooks, seriesOptions] = await Promise.all([
     listCourseEnrollments(courseId),
     listMaterialsForCourse(courseId, { materialType: 'textbook' }),
+    listBranchSeriesOptions({ includeInactive: true }),
   ])
 
-  return { course, enrollments, textbooks }
+  return { course, enrollments, textbooks, seriesOptions }
 }
 
 export default async function CourseStudentsPage({ params }: CourseStudentsPageProps) {

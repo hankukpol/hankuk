@@ -4,10 +4,12 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import { Search, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
+import { SeriesSelector } from '@/components/series/SeriesSelector'
 import {
   PaymentSection,
   createEmptyPaymentSectionValue,
@@ -16,7 +18,16 @@ import {
   type PaymentSectionValue,
 } from '@/components/payments/PaymentSection'
 import { useTenantConfig } from '@/components/TenantProvider'
-import type { AttendanceDeviceState, Course, Enrollment, EnrollmentFieldDef, Material, TextbookAssignment } from '@/types/database'
+import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
+import type {
+  AttendanceDeviceState,
+  BranchSeriesOption,
+  Course,
+  Enrollment,
+  EnrollmentFieldDef,
+  Material,
+  TextbookAssignment,
+} from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { PinRevealModal } from './pin-reveal-modal'
 import { SuspensionModal } from './suspension-modal'
@@ -71,6 +82,16 @@ type StudentSearchResult = {
   } | null
 }
 
+function getDefaultSeriesOptionId(options: BranchSeriesOption[]) {
+  const activeOptions = options.filter((option) => option.is_active)
+  return (
+    activeOptions.find((option) => option.is_default)?.id
+    ?? activeOptions.find((option) => option.group_key === 'public')?.id
+    ?? activeOptions[0]?.id
+    ?? null
+  )
+}
+
 function DynamicFieldInput({
   field, value, onChange,
 }: {
@@ -101,21 +122,25 @@ function DynamicFieldInput({
 }
 
 async function fetchStudentsPageData(courseId: number) {
-  const [courseRes, enrollRes, textbookRes] = await Promise.all([
+  const [courseRes, enrollRes, textbookRes, seriesRes] = await Promise.all([
     fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
     fetch(`/api/enrollments?courseId=${courseId}`, { cache: 'no-store' }),
     fetch(`/api/materials?courseId=${courseId}&materialType=textbook`, { cache: 'no-store' }),
+    fetch('/api/config/series-options', { cache: 'no-store' }),
   ])
   const coursePay = await courseRes.json().catch(() => null)
   const enrollPay = await enrollRes.json().catch(() => null)
   const textbookPay = await textbookRes.json().catch(() => null)
+  const seriesPay = await seriesRes.json().catch(() => null)
   if (!courseRes.ok) throw new Error(coursePay?.error ?? '강좌 정보를 불러오지 못했습니다.')
   if (!enrollRes.ok) throw new Error(enrollPay?.error ?? '수강생 목록을 불러오지 못했습니다.')
   if (!textbookRes.ok) throw new Error(textbookPay?.error ?? '교재 목록을 불러오지 못했습니다.')
+  if (!seriesRes.ok) throw new Error(seriesPay?.error ?? '직렬 설정을 불러오지 못했습니다.')
   return {
     course: coursePay.course as Course,
     enrollments: (enrollPay.enrollments ?? []) as Enrollment[],
     textbooks: (textbookPay.materials ?? []) as Material[],
+    seriesOptions: (seriesPay.options ?? []) as BranchSeriesOption[],
   }
 }
 
@@ -126,6 +151,8 @@ export default function CourseStudentsPage({
 }: CourseStudentsPageProps) {
   const params = useParams<{ id: string }>()
   const tenant = useTenantConfig()
+  const motionConfig = useMotionConfig()
+  const panelBackdropDuration = useReducedMotionDuration(0.2)
   const courseId = Number(params.id)
 
   const [tab, setTab] = useState<TabMode>('manage')
@@ -133,6 +160,7 @@ export default function CourseStudentsPage({
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
   const [enrollments, setEnrollments] = useState<Enrollment[]>(initialData?.enrollments ?? [])
   const [textbooks, setTextbooks] = useState<Material[]>(initialData?.textbooks ?? [])
+  const [seriesOptions, setSeriesOptions] = useState<BranchSeriesOption[]>(initialData?.seriesOptions ?? [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<EnrollmentManageStatusFilter>('all')
 
@@ -146,7 +174,9 @@ export default function CourseStudentsPage({
   const [bulkProcessing, setBulkProcessing] = useState(false)
 
   // Forms
-  const [createForm, setCreateForm] = useState<EnrollmentForm>(emptyForm())
+  const [createForm, setCreateForm] = useState<EnrollmentForm>(() => (
+    emptyForm(getDefaultSeriesOptionId(initialData?.seriesOptions ?? []))
+  ))
   const [createPaymentForm, setCreatePaymentForm] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [studentLookupQuery, setStudentLookupQuery] = useState('')
   const [studentLookupResults, setStudentLookupResults] = useState<StudentSearchResult[]>([])
@@ -182,6 +212,10 @@ export default function CourseStudentsPage({
     () => textbooks.filter((textbook) => textbook.is_active),
     [textbooks],
   )
+  const defaultSeriesOptionId = useMemo(
+    () => getDefaultSeriesOptionId(seriesOptions),
+    [seriesOptions],
+  )
   const paymentDetailEnrollment = useMemo(
     () => enrollments.find((enrollment) => enrollment.id === paymentDetailEnrollmentId) ?? null,
     [enrollments, paymentDetailEnrollmentId],
@@ -193,12 +227,20 @@ export default function CourseStudentsPage({
     }
 
     const previousOverflow = document.body.style.overflow
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !submitting) {
+        setPanel('none')
+      }
+    }
+
     document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
 
     return () => {
       document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [panel])
+  }, [panel, submitting])
 
   useEffect(() => {
     if (panel === 'create') {
@@ -466,7 +508,7 @@ export default function CourseStudentsPage({
     applyAttendanceDeviceState(enrollment.id, (payload?.device ?? null) as AttendanceDeviceState | null)
     setMessage(
       action === 'approve_pending'
-        ? `${enrollment.name} 학생의 출석 기기 재등록을 승인했습니다.`
+        ? `${enrollment.name} 학생의 추가 출석 기기를 승인했습니다.`
         : `${enrollment.name} 학생의 출석 기기 등록을 초기화했습니다.`,
     )
   }
@@ -503,6 +545,7 @@ export default function CourseStudentsPage({
     setCourse(data.course)
     setEnrollments(data.enrollments)
     setTextbooks(data.textbooks)
+    setSeriesOptions(data.seriesOptions)
   }, [courseId])
 
   useEffect(() => {
@@ -857,6 +900,7 @@ export default function CourseStudentsPage({
         phone: createForm.phone,
         exam_number: createForm.exam_number || null,
         birth_date: createForm.birth_date || null,
+        series_option_id: createForm.series_option_id,
         custom_data: createForm.custom_data,
         textbookIds: createForm.textbookIds,
         billing: {
@@ -878,7 +922,7 @@ export default function CourseStudentsPage({
     }
 
     setSubmitting(false)
-    setCreateForm(emptyForm())
+    setCreateForm(emptyForm(defaultSeriesOptionId))
     setCreatePaymentForm(createPaymentSectionValueForAmount(course?.tuition_amount ?? 0))
     setSelectedStudent(null)
     setSelectedStudentEditable(false)
@@ -979,6 +1023,7 @@ export default function CourseStudentsPage({
         phone: editForm.phone,
         exam_number: editForm.exam_number || null,
         birth_date: editForm.birth_date || null,
+        series_option_id: editForm.series_option_id,
         custom_data: editForm.custom_data,
       }),
     })
@@ -1023,7 +1068,7 @@ export default function CourseStudentsPage({
     setMessage('응시 정지를 적용했습니다.')
   }
 
-  if (loading) return <p className="py-12 text-center text-sm text-gray-400">불러오는 중...</p>
+  if (loading) return <p className="py-12 text-center text-sm text-slate-500">불러오는 중...</p>
   if (!course) return <p className="py-12 text-center text-sm text-red-500">{error || '강좌를 찾을 수 없습니다.'}</p>
 
   return (
@@ -1034,12 +1079,12 @@ export default function CourseStudentsPage({
           <div>
           <Link
             href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-            className="text-xs font-medium text-gray-400 hover:underline"
+            className="text-xs font-medium text-slate-500 hover:underline"
           >
             ← {course!.name}
           </Link>
           <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-slate-500">
             전체 {summary.total} · 활성 {summary.active} · 환불 {summary.refunded}
           </p>
           </div>
@@ -1058,7 +1103,7 @@ export default function CourseStudentsPage({
                   onConfirm: handleResetAllAttendanceDevicesConfirmed,
                 })
               }}
-              className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+              className="rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-rose-600 shadow-[inset_0_0_0_1px_rgba(180,35,24,0.3)] transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97]"
             >
               출석 기기 전체 초기화
             </button>
@@ -1069,24 +1114,25 @@ export default function CourseStudentsPage({
               const opening = panel !== 'create'
               if (opening) {
                 setCreatePaymentForm(createPaymentSectionValueForAmount(course.tuition_amount ?? 0))
+                setCreateForm(emptyForm(defaultSeriesOptionId))
               }
               setPanel(opening ? 'create' : 'none')
             }}
-            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100"
           >
             + 수강생 등록
           </button>
           <button
             type="button"
             onClick={() => setPanel(panel === 'bulk' ? 'none' : 'bulk')}
-            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+            className="rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
           >
             명단 붙여넣기
           </button>
           {course.feature_photo && (
             <Link
               href={withTenantPrefix(`/dashboard/courses/${courseId}/students/photos`, tenant.type)}
-              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+              className="rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
             >
               사진 일괄 업로드
             </Link>
@@ -1095,24 +1141,44 @@ export default function CourseStudentsPage({
       </div>
 
       {/* ── Collapsible panels ── */}
-      {panel === 'create' && (
-        <div className="fixed inset-0 z-[100] flex justify-end bg-black/24 backdrop-blur-[2px]" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            aria-label="수강생 등록 닫기"
-            className="hidden flex-1 cursor-default sm:block"
+      <AnimatePresence>
+      {panel === 'create' ? (
+        <>
+          <motion.div
+            className="fixed inset-0 z-[100] bg-black/40 sm:backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: panelBackdropDuration }}
             onClick={() => {
               if (!submitting) {
                 setPanel('none')
               }
             }}
           />
-          <aside className="flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:max-w-[760px]">
-            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
+          <motion.aside
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-y-0 right-0 z-[101] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:max-w-[760px]"
+            initial={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
+            transition={motionConfig.drawer}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.2}
+            whileDrag={{ scale: 0.995 }}
+            onDragEnd={(_event, info) => {
+              if (!submitting && info.offset.x > 100 && info.velocity.x > 200) {
+                setPanel('none')
+              }
+            }}
+          >
+            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">New Student</p>
-                <h3 className="mt-1 text-xl font-semibold text-[#1d1d1f]">수강생 등록</h3>
-                <p className="mt-1 truncate text-sm text-slate-500">{course.name}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">New Student</p>
+                <h3 className="mt-1.5 text-[28px] font-semibold text-[#1d1d1f]">수강생 등록</h3>
+                <p className="mt-2 truncate text-sm text-slate-500">{course.name}</p>
               </div>
               <button
                 type="button"
@@ -1123,18 +1189,18 @@ export default function CourseStudentsPage({
                   }
                 }}
                 disabled={submitting}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-50 text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
               >
                 <X className="h-4 w-4" />
               </button>
             </header>
-            <form onSubmit={handleCreate} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-          <section className="rounded-[8px] border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <form id="create-student-form" onSubmit={handleCreate} className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-6 sm:px-6">
+          <section>
+            <div className="flex items-end justify-between gap-3">
               <label className="min-w-0 flex-1">
-                <span className="text-xs font-semibold text-slate-500">기존 수강생 검색</span>
-                <div className="mt-1.5 flex items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-3 py-2.5">
-                  <Search className="h-4 w-4 text-slate-400" />
+                <span className="text-[11px] font-medium text-slate-500">기존 수강생 검색</span>
+                <div className="mt-2 flex items-center gap-2 rounded-[8px] bg-white px-3 py-2.5 border border-slate-200 transition focus-within:border-slate-400">
+                  <Search className="h-4 w-4 text-slate-500" />
                   <input
                     value={studentLookupQuery}
                     onChange={(event) => setStudentLookupQuery(event.target.value)}
@@ -1143,8 +1209,8 @@ export default function CourseStudentsPage({
                   />
                 </div>
               </label>
-              <span className="text-xs text-slate-500">
-                {studentLookupLoading ? '검색 중...' : '선택하면 원장 정보가 자동으로 채워집니다.'}
+              <span className="hidden shrink-0 pb-2 text-xs text-slate-500 sm:inline">
+                {studentLookupLoading ? '검색 중...' : '선택하면 원장 정보가 자동 채워집니다.'}
               </span>
             </div>
 
@@ -1172,15 +1238,15 @@ export default function CourseStudentsPage({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-[#1d1d1f]">
                           {student.name}
-                          <span className="ml-2 text-xs font-medium text-slate-400">{student.exam_number || '-'}</span>
+                          <span className="ml-2 text-xs font-medium text-slate-500">{student.exam_number || '-'}</span>
                         </p>
                         <p className="mt-1 truncate text-xs text-slate-500">{student.phone}</p>
-                        <p className="mt-1 truncate text-xs text-slate-400">
+                        <p className="mt-1 truncate text-xs text-slate-500">
                           최근 수강: {student.latestEnrollment?.courseName ?? '-'}
                         </p>
                       </div>
                       <span className={`w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                        student.alreadyEnrolled ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'
+                        student.alreadyEnrolled ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-700'
                       }`}>
                         {student.alreadyEnrolled ? '이미 등록됨' : '선택 가능'}
                       </span>
@@ -1189,15 +1255,15 @@ export default function CourseStudentsPage({
                 ))}
               </div>
             ) : studentLookupQuery.trim().length >= 2 && !studentLookupLoading ? (
-              <p className="mt-3 rounded-[8px] bg-white px-3 py-3 text-center text-xs text-slate-400">
+              <p className="mt-3 rounded-[8px] bg-white px-3 py-3 text-center text-xs text-slate-500">
                 검색 결과가 없습니다. 아래 입력값으로 새 수강생을 등록할 수 있습니다.
               </p>
             ) : null}
 
             {selectedStudent ? (
-              <div className="mt-3 flex flex-col gap-3 rounded-[8px] border border-blue-100 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-3 flex flex-col gap-3 rounded-[8px] shadow-[inset_0_0_0_1px_rgba(0,113,227,0.18)] bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-blue-50 text-blue-600">
+                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#eff6ff] text-blue-600">
                     <UserCheck className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
@@ -1211,14 +1277,14 @@ export default function CourseStudentsPage({
                   <button
                     type="button"
                     onClick={() => setSelectedStudentEditable((value) => !value)}
-                    className="rounded-[8px] bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                    className="rounded-[8px] bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
                   >
                     {selectedStudentEditable ? '수정 잠금' : '정보 수정'}
                   </button>
                   <button
                     type="button"
                     onClick={clearSelectedStudentForCreate}
-                    className="rounded-[8px] bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                    className="rounded-[8px] bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
                   >
                     선택 해제
                   </button>
@@ -1227,70 +1293,108 @@ export default function CourseStudentsPage({
             ) : null}
           </section>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <input value={createForm.exam_number} onChange={(e) => setCreateForm((c) => ({ ...c, exam_number: e.target.value }))} disabled={selectedStudentLocked} placeholder="학번" className={`rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${selectedStudentLocked ? 'shadow-[inset_0_0_0_1px_rgba(226,232,240,0.55)]' : ''}`} />
-            <input value={createForm.name} onChange={(e) => setCreateForm((c) => ({ ...c, name: e.target.value }))} disabled={selectedStudentLocked} placeholder="이름" className={`rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${selectedStudentLocked ? 'shadow-[inset_0_0_0_1px_rgba(226,232,240,0.55)]' : ''}`} />
-            <input value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="연락처" className={`rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${selectedStudentLocked ? 'shadow-[inset_0_0_0_1px_rgba(226,232,240,0.55)]' : ''}`} />
-            <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="생년월일(YYMMDD, 선택)" className={`rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${selectedStudentLocked ? 'shadow-[inset_0_0_0_1px_rgba(226,232,240,0.55)]' : ''}`} />
-            {customFields.map((f) => (
-              <DynamicFieldInput key={f.key} field={f} value={createForm.custom_data[f.key] ?? ''} onChange={(v) => setCreateForm((c) => ({ ...c, custom_data: { ...c.custom_data, [f.key]: v } }))} />
-            ))}
-          </div>
+          <section className="mt-8">
+            <h4 className="text-sm font-semibold text-[#1d1d1f]">인적 사항</h4>
+            <p className="mt-0.5 text-xs text-slate-500">학번·이름·연락처는 필수, 생년월일은 선택입니다.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">학번</span>
+                <input value={createForm.exam_number} onChange={(e) => setCreateForm((c) => ({ ...c, exam_number: e.target.value }))} disabled={selectedStudentLocked} placeholder="예: A-001" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">이름</span>
+                <input value={createForm.name} onChange={(e) => setCreateForm((c) => ({ ...c, name: e.target.value }))} disabled={selectedStudentLocked} placeholder="홍길동" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">연락처</span>
+                <input value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="010-0000-0000" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">생년월일 (선택)</span>
+                <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              </label>
+              <div className="sm:col-span-3">
+                <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
+                <SeriesSelector
+                  options={seriesOptions}
+                  valueId={createForm.series_option_id}
+                  onChange={(seriesOptionId) => setCreateForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
+                />
+              </div>
+              {customFields.map((f) => (
+                <DynamicFieldInput key={f.key} field={f} value={createForm.custom_data[f.key] ?? ''} onChange={(v) => setCreateForm((c) => ({ ...c, custom_data: { ...c.custom_data, [f.key]: v } }))} />
+              ))}
+            </div>
+          </section>
 
           {visibleTextbooks.length > 0 ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-gray-700">구매 교재</p>
-                <span className="text-xs text-gray-400">등록과 동시에 교재를 배정합니다.</span>
+            <section className="mt-8">
+              <div className="flex items-baseline justify-between gap-3">
+                <h4 className="text-sm font-semibold text-[#1d1d1f]">구매 교재</h4>
+                <span className="text-xs text-slate-500">등록과 동시에 교재를 배정합니다.</span>
               </div>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {visibleTextbooks.map((textbook) => (
-                  <label key={textbook.id} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={createForm.textbookIds.includes(textbook.id)}
-                      onChange={() => toggleCreateTextbook(textbook.id)}
-                    />
-                    <span>{textbook.name}</span>
-                  </label>
-                ))}
+                {visibleTextbooks.map((textbook) => {
+                  const checked = createForm.textbookIds.includes(textbook.id)
+                  return (
+                    <label key={textbook.id} className={`flex cursor-pointer items-center gap-2.5 rounded-[10px] border px-3 py-2.5 text-sm transition-colors ${checked ? 'border-[#1d1d1f] bg-slate-50 text-[#1d1d1f]' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleCreateTextbook(textbook.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-[#1d1d1f] focus:ring-[#0071e3]"
+                      />
+                      <span className="font-medium">{textbook.name}</span>
+                    </label>
+                  )
+                })}
               </div>
-            </div>
+            </section>
           ) : null}
 
-          <div className="mt-4">
+          <div className="mt-8">
             <PaymentSection value={createPaymentForm} onChange={setCreatePaymentForm} />
           </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              data-payment-mode="without-payment"
-              disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
-              className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
-            >
-              {submitting ? '등록 중...' : '결제 없이 등록'}
-            </button>
-            <button
-              type="submit"
-              data-payment-mode="with-payment"
-              disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {submitting ? '저장 중...' : '등록 + 결제 저장'}
-            </button>
-            <button type="button" onClick={() => setPanel('none')} className="text-xs text-gray-400 hover:underline">취소</button>
-          </div>
             </form>
-          </aside>
-        </div>
-      )}
+
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3.5 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] sm:px-6">
+              <button
+                type="button"
+                onClick={() => setPanel('none')}
+                disabled={submitting}
+                className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-700 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                form="create-student-form"
+                data-payment-mode="without-payment"
+                disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
+                className="rounded-[8px] bg-slate-50 px-4 py-2.5 text-[14px] font-medium text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+              >
+                {submitting ? '등록 중...' : '결제 없이 등록'}
+              </button>
+              <button
+                type="submit"
+                form="create-student-form"
+                data-payment-mode="with-payment"
+                disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
+                className="rounded-[8px] bg-blue-600 px-5 py-2.5 text-[14px] font-medium text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
+              >
+                {submitting ? '저장 중...' : '등록 + 결제 저장'}
+              </button>
+            </div>
+          </motion.aside>
+        </>
+      ) : null}
+      </AnimatePresence>
 
       {panel === 'bulk' && (
         <form onSubmit={handleBulkImport} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
-          <p className="mt-1 text-xs text-gray-400">
-            탭 구분 · 순서: <span className="font-semibold text-gray-600">학번, 이름, 연락처, 생년월일(선택){customFields.map((f) => `, ${f.label}`).join('')}</span>
+          <p className="mt-1 text-xs text-slate-500">
+            탭 구분 · 순서: <span className="font-semibold text-slate-700">학번, 이름, 연락처, 생년월일(선택){customFields.map((f) => `, ${f.label}`).join('')}</span>
           </p>
           <textarea
             value={bulkText}
@@ -1299,19 +1403,19 @@ export default function CourseStudentsPage({
             placeholder={`A-001\t홍길동\t01012345678\t990315\nA-002\t김소방\t01087654321`}
             className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-slate-400"
           />
-          <p className="mt-3 text-xs text-gray-400">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>
+          <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>
           <div className="mt-3 flex items-center gap-3">
-            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{submitting ? '반영 중...' : '일괄 반영'}</button>
-            <button type="button" onClick={() => setPanel('none')} className="text-xs text-gray-400 hover:underline">취소</button>
+            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100">{submitting ? '반영 중...' : '일괄 반영'}</button>
+            <button type="button" onClick={() => setPanel('none')} className="text-xs text-slate-500 transition-all duration-200 ease-ios hover:underline active:scale-[0.97]">취소</button>
           </div>
         </form>
       )}
 
       {panel === 'edit' && editingId && (
-        <form onSubmit={handleSaveEdit} className="rounded-2xl border border-blue-200 bg-blue-50/30 p-5 shadow-sm">
+        <form onSubmit={handleSaveEdit} className="rounded-2xl bg-slate-50 p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-gray-700">수강생 편집</h3>
-            <button type="button" onClick={() => { setPanel('none'); setEditingId(null) }} className="text-xs text-gray-400 hover:underline">닫기</button>
+            <button type="button" onClick={() => { setPanel('none'); setEditingId(null) }} className="text-xs text-slate-500 transition-all duration-200 ease-ios hover:underline active:scale-[0.97]">닫기</button>
           </div>
 
           {course.feature_photo && (
@@ -1324,7 +1428,7 @@ export default function CourseStudentsPage({
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="cursor-pointer rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200">
+                <label className="cursor-pointer rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]">
                   {photoUploading ? '업로드 중...' : '사진 업로드'}
                   <input
                     type="file"
@@ -1335,11 +1439,11 @@ export default function CourseStudentsPage({
                   />
                 </label>
                 {editPhotoUrl && (
-                  <button type="button" onClick={() => void handlePhotoDelete()} disabled={photoUploading} className="text-left text-[10px] text-red-400 hover:underline">
+                  <button type="button" onClick={() => void handlePhotoDelete()} disabled={photoUploading} className="text-left text-[10px] text-red-400 transition-all duration-200 ease-ios hover:underline active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100">
                     사진 삭제
                   </button>
                 )}
-                <p className="text-[10px] text-gray-400">JPEG/PNG/WebP · 2MB 이하</p>
+                <p className="text-[10px] text-slate-500">JPEG/PNG/WebP · 2MB 이하</p>
               </div>
             </div>
           )}
@@ -1349,12 +1453,20 @@ export default function CourseStudentsPage({
             <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="생년월일(YYMMDD)" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
+            <div className="sm:col-span-3">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-500">직렬</label>
+              <SeriesSelector
+                options={seriesOptions}
+                valueId={editForm.series_option_id}
+                onChange={(seriesOptionId) => setEditForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
+              />
+            </div>
             {customFields.map((f) => (
               <DynamicFieldInput key={f.key} field={f} value={editForm.custom_data[f.key] ?? ''} onChange={(v) => setEditForm((c) => ({ ...c, custom_data: { ...c.custom_data, [f.key]: v } }))} />
             ))}
           </div>
           <div className="mt-3">
-            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{submitting ? '저장 중...' : '저장'}</button>
+            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100">{submitting ? '저장 중...' : '저장'}</button>
           </div>
         </form>
       )}
@@ -1407,13 +1519,20 @@ export default function CourseStudentsPage({
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+            className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
               tab === key
-                ? 'border-[#1d1d1f] text-[#1d1d1f]'
-                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+                ? 'text-[#1d1d1f]'
+                : 'text-slate-500 hover:text-[#1d1d1f]'
             }`}
           >
             {label}
+            {tab === key ? (
+              <motion.div
+                layoutId="students-tabs"
+                className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
+                transition={motionConfig.tab}
+              />
+            ) : null}
           </button>
         ))}
       </div>
@@ -1442,7 +1561,7 @@ export default function CourseStudentsPage({
           onApproveDeviceReRegistration={(enrollment) => {
             openConfirmation({
               title: '출석 기기 재등록을 승인할까요?',
-              description: `${enrollment.name} 학생이 새 기기로 출석할 수 있게 됩니다. 기존 등록 기기는 더 이상 사용할 수 없습니다.`,
+              description: `${enrollment.name} 학생이 새 브라우저로 출석할 수 있게 됩니다. 이미 3개가 등록된 경우 가장 오래된 슬롯 하나를 대체합니다.`,
               confirmLabel: '기기 승인',
               pendingLabel: '승인 중...',
               onConfirm: () => handleAttendanceDeviceActionConfirmed(enrollment, 'approve_pending'),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { parseEnrollmentBulkText } from '@/lib/bulk'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
@@ -29,6 +30,8 @@ type ExistingEnrollmentRow = {
   exam_number: string | null
   gender: string | null
   region: string | null
+  series_option_id: number | null
+  series_group: 'public' | 'career' | null
   series: string | null
   status: 'active' | 'refunded'
   photo_url: string | null
@@ -166,6 +169,7 @@ export async function POST(req: NextRequest) {
 
   const updates: Array<Record<string, unknown>> = []
   const inserts: Array<Record<string, unknown>> = []
+  const defaultSeriesOption = await resolveBranchSeriesOption()
 
   for (const resolved of latestRowByStudentId.values()) {
     const student = resolved.student
@@ -175,6 +179,9 @@ export async function POST(req: NextRequest) {
       existingByStudentId.get(student.id)
       ?? (examNumber ? existingByExamNumber.get(examNumber) : null)
       ?? existingByPhoneName.get(`${phone}::${normalizeName(student.name)}`)
+    const explicitSeriesOption = resolved.series
+      ? await resolveBranchSeriesOption({ label: resolved.series })
+      : null
 
     const payload = {
       student_id: student.id,
@@ -183,7 +190,9 @@ export async function POST(req: NextRequest) {
       exam_number: student.exam_number,
       gender: resolved.gender ?? current?.gender ?? null,
       region: resolved.region ?? current?.region ?? null,
-      series: resolved.series ?? current?.series ?? null,
+      series_option_id: explicitSeriesOption?.id ?? current?.series_option_id ?? defaultSeriesOption?.id ?? null,
+      series_group: explicitSeriesOption?.group_key ?? current?.series_group ?? defaultSeriesOption?.group_key ?? 'public',
+      series: explicitSeriesOption?.label ?? current?.series ?? defaultSeriesOption?.label ?? '공채',
       photo_url: student.photo_url,
       custom_data: resolved.custom_data ?? current?.custom_data ?? {},
     }

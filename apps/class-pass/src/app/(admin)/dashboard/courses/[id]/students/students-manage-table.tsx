@@ -38,23 +38,29 @@ function getAttendanceDeviceMeta(enrollment: Enrollment) {
     }
   }
 
+  const registeredCount = state.registered_count ?? 1
+  const maxDeviceCount = state.max_device_count ?? 3
+  const countLabel = `${registeredCount}/${maxDeviceCount}`
+
   if (state.status === 'pending_reset') {
     return {
-      label: '재등록 요청',
+      label: `한도 초과 ${countLabel}`,
       className: 'bg-amber-50 text-amber-700',
       title: [
+        `등록된 브라우저: ${countLabel}`,
         state.reset_requested_at ? `요청 시각: ${formatDateTime(state.reset_requested_at)}` : null,
         state.reset_requested_user_agent ? `기기 정보: ${state.reset_requested_user_agent}` : null,
-      ].filter(Boolean).join('\n') || '새 기기 재등록 승인이 필요합니다.',
+      ].filter(Boolean).join('\n') || '추가 기기 승인이 필요합니다.',
     }
   }
 
   return {
-    label: '등록됨',
+    label: `등록 ${countLabel}`,
     className: 'bg-blue-50 text-blue-700',
-    title: state.last_seen_at
-      ? `마지막 확인: ${formatDateTime(state.last_seen_at)}`
-      : '출석 기기가 등록되어 있습니다.',
+    title: [
+      `등록된 브라우저: ${countLabel}`,
+      state.last_seen_at ? `마지막 확인: ${formatDateTime(state.last_seen_at)}` : null,
+    ].filter(Boolean).join('\n') || '출석 기기가 등록되어 있습니다.',
   }
 }
 
@@ -78,6 +84,14 @@ function getAuthMethodMeta(enrollment: Enrollment) {
   return {
     label: '인증 미설정',
     className: 'bg-slate-100 text-slate-500',
+  }
+}
+
+function getSeriesMeta(enrollment: Enrollment) {
+  const group = enrollment.series_group ?? 'public'
+  return {
+    label: enrollment.series?.trim() || (group === 'career' ? '경채' : '공채'),
+    className: group === 'career' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600',
   }
 }
 
@@ -125,10 +139,10 @@ export function StudentsManageTable({
 
   function renderActionButtons(enrollment: Enrollment, suspended: boolean, density: 'mobile' | 'desktop') {
     const baseClass = density === 'mobile'
-      ? 'rounded-[8px] px-3 py-2 text-center text-xs font-semibold transition'
-      : 'rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition'
+      ? 'rounded-[8px] px-3 py-2 text-center text-xs font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100'
+      : 'rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100'
     const attendanceDeviceStatus = enrollment.attendance_device?.status ?? 'unregistered'
-    const canResetAttendanceDevice = attendanceDeviceStatus === 'active'
+    const canResetAttendanceDevice = (enrollment.attendance_device?.registered_count ?? 0) > 0
 
     return (
       <>
@@ -222,7 +236,7 @@ export function StudentsManageTable({
               key={option.value}
               type="button"
               onClick={() => onStatusFilterChange(option.value)}
-              className={`whitespace-nowrap rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold transition sm:min-w-14 ${
+              className={`whitespace-nowrap rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] sm:min-w-14 ${
                 statusFilter === option.value
                   ? 'bg-white text-[#0071e3] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
                   : 'text-slate-500 hover:text-[#1d1d1f]'
@@ -245,6 +259,7 @@ export function StudentsManageTable({
             const suspended = isEnrollmentSuspended(enrollment)
             const attendanceDeviceMeta = getAttendanceDeviceMeta(enrollment)
             const authMethodMeta = getAuthMethodMeta(enrollment)
+            const seriesMeta = getSeriesMeta(enrollment)
             const expanded = expandedMobileId === enrollment.id
             const visibleCustomFields = customFields
               .map((field) => ({
@@ -259,7 +274,7 @@ export function StudentsManageTable({
                 key={enrollment.id}
                 title={getSuspensionTooltip(enrollment)}
                 onClick={() => onOpenDetail(enrollment)}
-                className={suspended ? 'cursor-pointer bg-amber-50/30 px-4 py-3 transition hover:bg-amber-50/70' : 'cursor-pointer px-4 py-3 transition hover:bg-slate-50/70'}
+                className={suspended ? 'cursor-pointer bg-amber-50/30 px-4 py-3 transition-transform duration-200 ease-ios hover:bg-amber-50/70 active:scale-[0.98]' : 'cursor-pointer px-4 py-3 transition-transform duration-200 ease-ios hover:bg-slate-50/70 active:scale-[0.98]'}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 min-w-11 items-center justify-center rounded-[8px] bg-slate-100 px-2 text-xs font-bold text-slate-700">
@@ -277,7 +292,7 @@ export function StudentsManageTable({
                           event.stopPropagation()
                           setExpandedMobileId(expanded ? null : enrollment.id)
                         }}
-                        className="shrink-0 rounded-[8px] bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
+                        className="shrink-0 rounded-[8px] bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
                         aria-expanded={expanded}
                       >
                         관리
@@ -302,6 +317,9 @@ export function StudentsManageTable({
                       <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${authMethodMeta.className}`}>
                         {authMethodMeta.label}
                       </span>
+                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>
+                        {seriesMeta.label}
+                      </span>
                       {attendanceEnabled ? (
                         <span
                           title={attendanceDeviceMeta.title}
@@ -322,6 +340,10 @@ export function StudentsManageTable({
                           <div>
                             <p className="text-[11px] font-semibold text-slate-400">출석 기기</p>
                             <p className="mt-0.5 text-slate-700">{attendanceEnabled ? attendanceDeviceMeta.label : '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-400">직렬</p>
+                            <p className="mt-0.5 text-slate-700">{seriesMeta.label}</p>
                           </div>
                           {visibleCustomFields.map((field) => (
                             <div key={field.key} className="min-w-0">
@@ -349,6 +371,7 @@ export function StudentsManageTable({
                 <th className="px-5 py-3">응시번호</th>
                 <th className="px-3 py-3">이름</th>
                 <th className="px-3 py-3">연락처</th>
+                <th className="px-3 py-3">직렬</th>
                 {customFields.map((field) => (
                   <th key={field.key} className="hidden px-3 py-3 lg:table-cell">
                     {field.label}
@@ -365,6 +388,7 @@ export function StudentsManageTable({
                 const suspended = isEnrollmentSuspended(enrollment)
                 const attendanceDeviceMeta = getAttendanceDeviceMeta(enrollment)
                 const authMethodMeta = getAuthMethodMeta(enrollment)
+                const seriesMeta = getSeriesMeta(enrollment)
 
                 return (
                   <tr
@@ -385,6 +409,11 @@ export function StudentsManageTable({
                       </div>
                     </td>
                     <td className="px-3 py-3 text-gray-500">{enrollment.phone}</td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>
+                        {seriesMeta.label}
+                      </span>
+                    </td>
                     {customFields.map((field) => (
                       <td key={field.key} className="hidden px-3 py-3 text-gray-500 lg:table-cell">
                         {(enrollment.custom_data ?? {})[field.key] || '-'}

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, Download, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { buildSettlementReport, type SettlementReport } from '@/lib/payments/settlement-report'
+import { buildSettlementReport, type SettlementSeriesFilter } from '@/lib/payments/settlement-report'
 import { downloadMonthlySettlementXlsx, downloadSettlementCsv } from '@/lib/payments/xlsx-export'
 import { formatWon } from '@/lib/payments/format'
 import { PAYMENT_METHOD_LABEL, type EnrollmentPayment, type PaymentMethod } from '@/lib/payments/types'
@@ -49,12 +49,31 @@ function getInitialCourseId() {
   return courseId && /^\d+$/.test(courseId) ? courseId : ''
 }
 
+function parseSeriesFilter(value: string): SettlementSeriesFilter | undefined {
+  if (value === 'public' || value === 'career') {
+    return { group: value }
+  }
+
+  if (value.startsWith('detail:')) {
+    const [, group, ...labelParts] = value.split(':')
+    if (group === 'public' || group === 'career') {
+      return { group, label: labelParts.join(':') }
+    }
+  }
+
+  return undefined
+}
+
+function toSeriesFilterValue(group: string, label: string) {
+  return `detail:${group}:${label}`
+}
+
 function StatCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'blue' | 'rose' }) {
-  const toneClass = tone === 'blue' ? 'text-blue-600' : tone === 'rose' ? 'text-rose-600' : 'text-[#1d1d1f]'
+  const toneClass = tone === 'blue' ? 'text-blue-600' : tone === 'rose' ? 'text-rose-600' : 'text-slate-900'
   return (
-    <article className="rounded-[8px] bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-semibold text-slate-400">{label}</p>
-      <p className={`mt-1 text-xl font-bold ${toneClass}`}>{value}</p>
+    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p className={`mt-2 text-2xl font-bold ${toneClass}`}>{value}</p>
     </article>
   )
 }
@@ -65,7 +84,8 @@ export default function MonthlySettlementsPage() {
   const [month, setMonth] = useState(getCurrentMonthKst)
   const [courses, setCourses] = useState<Course[]>([])
   const [courseId, setCourseId] = useState(getInitialCourseId)
-  const [report, setReport] = useState<SettlementReport | null>(null)
+  const [rawPayments, setRawPayments] = useState<EnrollmentPayment[]>([])
+  const [seriesFilter, setSeriesFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -86,9 +106,9 @@ export default function MonthlySettlementsPage() {
         throw new Error(result?.error ?? '월별 정산 데이터를 불러오지 못했습니다.')
       }
 
-      setReport(buildSettlementReport((result?.payments ?? []) as EnrollmentPayment[], range.from, range.to))
+      setRawPayments((result?.payments ?? []) as EnrollmentPayment[])
     } catch (reason) {
-      setReport(null)
+      setRawPayments([])
       setError(reason instanceof Error ? reason.message : '월별 정산 데이터를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
@@ -112,6 +132,15 @@ export default function MonthlySettlementsPage() {
   useEffect(() => {
     void loadReport()
   }, [loadReport])
+
+  const allReport = useMemo(
+    () => buildSettlementReport(rawPayments, range.from, range.to),
+    [range.from, range.to, rawPayments],
+  )
+  const report = useMemo(
+    () => buildSettlementReport(rawPayments, range.from, range.to, parseSeriesFilter(seriesFilter)),
+    [range.from, range.to, rawPayments, seriesFilter],
+  )
 
   const methodRows = useMemo(() => {
     const rows = new Map<PaymentMethod, { method: PaymentMethod; label: string; count: number; gross: number; refund: number; net: number }>()
@@ -167,10 +196,10 @@ export default function MonthlySettlementsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-[8px] bg-white px-5 py-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Monthly Settlement</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Monthly Settlement</p>
             <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">월별 정산</h1>
             <p className="mt-2 text-sm text-slate-500">월간 수납 흐름, 환불률, 강좌별 매출 순위를 확인합니다.</p>
           </div>
@@ -195,7 +224,7 @@ export default function MonthlySettlementsPage() {
               type="button"
               onClick={() => report ? downloadMonthlySettlementXlsx(report, month) : undefined}
               disabled={!report}
-              className="inline-flex items-center gap-2 rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
               XLSX 다운로드
@@ -203,7 +232,7 @@ export default function MonthlySettlementsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[220px,1fr,auto]">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[220px,1fr,220px,auto]">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-slate-500">정산월</span>
             <select
@@ -229,6 +258,23 @@ export default function MonthlySettlementsPage() {
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-slate-500">직렬</span>
+            <select
+              value={seriesFilter}
+              onChange={(event) => setSeriesFilter(event.target.value)}
+              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="all">전체 직렬</option>
+              <option value="public">공채</option>
+              <option value="career">경채</option>
+              {allReport.seriesRows.map((series) => (
+                <option key={series.key} value={toSeriesFilterValue(series.group, series.label)}>
+                  {series.group === 'career' ? '경채' : '공채'} · {series.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => void loadReport()}
@@ -251,15 +297,38 @@ export default function MonthlySettlementsPage() {
         <StatCard label="일평균" value={formatWon(summary.averageDailyNet)} />
       </section>
 
-      <section className="rounded-[8px] bg-white px-5 py-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
         <p className="text-sm font-bold text-[#1d1d1f]">
           환불률 {(summary.refundRate * 100).toFixed(1)}%
           <span className="ml-2 font-medium text-slate-500">환불액 / 총매출 기준</span>
         </p>
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {(report?.seriesGroups ?? []).map((series) => (
+            <div key={series.key} className="rounded-[8px] bg-slate-50 px-4 py-3">
+              <p className="text-sm font-bold text-[#1d1d1f]">{series.label}</p>
+              <p className="mt-2 text-lg font-bold text-blue-600">{formatWon(series.netAmount)}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                수납 {series.paymentCount}건 · 환불 {series.refundCount}건 · {series.studentCount}명
+              </p>
+            </div>
+          ))}
+          {(report?.seriesRows ?? []).filter((series) => series.group === 'career').map((series) => (
+            <div key={series.key} className="rounded-[8px] bg-blue-50 px-4 py-3">
+              <p className="text-sm font-bold text-[#1d1d1f]">{series.label}</p>
+              <p className="mt-2 text-lg font-bold text-blue-700">{formatWon(series.netAmount)}</p>
+              <p className="mt-1 text-xs text-blue-600">
+                수납 {series.paymentCount}건 · 환불 {series.refundCount}건 · {series.studentCount}명
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
-        <article className="rounded-[8px] bg-white shadow-sm">
+        <article className="rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-bold text-[#1d1d1f]">결제수단별 월간 합계</h2>
           </div>
@@ -287,7 +356,7 @@ export default function MonthlySettlementsPage() {
           </div>
         </article>
 
-        <article className="rounded-[8px] bg-white p-5 shadow-sm">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <h2 className="text-base font-bold text-[#1d1d1f]">분류별 매출</h2>
           <div className="mt-4 space-y-4">
             {(report?.categories ?? []).map((category) => (
@@ -309,7 +378,7 @@ export default function MonthlySettlementsPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <article className="rounded-[8px] bg-white shadow-sm">
+        <article className="rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-bold text-[#1d1d1f]">강좌별 매출 순위 Top 10</h2>
           </div>
@@ -329,7 +398,7 @@ export default function MonthlySettlementsPage() {
           </div>
         </article>
 
-        <article className="rounded-[8px] bg-white shadow-sm">
+        <article className="rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-bold text-[#1d1d1f]">일별 명세</h2>
           </div>

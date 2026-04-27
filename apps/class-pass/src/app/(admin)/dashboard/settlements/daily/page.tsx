@@ -4,7 +4,11 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, Download, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { buildSettlementReport, type SettlementFilterKind, type SettlementReport } from '@/lib/payments/settlement-report'
+import {
+  buildSettlementReport,
+  type SettlementFilterKind,
+  type SettlementSeriesFilter,
+} from '@/lib/payments/settlement-report'
 import { downloadDailySettlementXlsx, downloadSettlementCsv } from '@/lib/payments/xlsx-export'
 import { formatWon } from '@/lib/payments/format'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -38,12 +42,31 @@ function getInitialCourseId() {
   return courseId && /^\d+$/.test(courseId) ? courseId : ''
 }
 
+function parseSeriesFilter(value: string): SettlementSeriesFilter | undefined {
+  if (value === 'public' || value === 'career') {
+    return { group: value }
+  }
+
+  if (value.startsWith('detail:')) {
+    const [, group, ...labelParts] = value.split(':')
+    if (group === 'public' || group === 'career') {
+      return { group, label: labelParts.join(':') }
+    }
+  }
+
+  return undefined
+}
+
+function toSeriesFilterValue(group: string, label: string) {
+  return `detail:${group}:${label}`
+}
+
 function StatCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'blue' | 'rose' }) {
-  const toneClass = tone === 'blue' ? 'text-blue-600' : tone === 'rose' ? 'text-rose-600' : 'text-[#1d1d1f]'
+  const toneClass = tone === 'blue' ? 'text-blue-600' : tone === 'rose' ? 'text-rose-600' : 'text-slate-900'
   return (
-    <article className="rounded-[8px] bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-semibold text-slate-400">{label}</p>
-      <p className={`mt-1 text-xl font-bold ${toneClass}`}>{value}</p>
+    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p className={`mt-2 text-2xl font-bold ${toneClass}`}>{value}</p>
     </article>
   )
 }
@@ -53,8 +76,9 @@ export default function DailySettlementsPage() {
   const [date, setDate] = useState(getInitialDate)
   const [courses, setCourses] = useState<Course[]>([])
   const [courseId, setCourseId] = useState(getInitialCourseId)
-  const [report, setReport] = useState<SettlementReport | null>(null)
+  const [rawPayments, setRawPayments] = useState<EnrollmentPayment[]>([])
   const [filter, setFilter] = useState<SettlementFilterKind>('all')
+  const [seriesFilter, setSeriesFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -73,9 +97,9 @@ export default function DailySettlementsPage() {
         throw new Error(result?.error ?? '일일 정산 데이터를 불러오지 못했습니다.')
       }
 
-      setReport(buildSettlementReport((result?.payments ?? []) as EnrollmentPayment[], date, date))
+      setRawPayments((result?.payments ?? []) as EnrollmentPayment[])
     } catch (reason) {
-      setReport(null)
+      setRawPayments([])
       setError(reason instanceof Error ? reason.message : '일일 정산 데이터를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
@@ -99,6 +123,15 @@ export default function DailySettlementsPage() {
   useEffect(() => {
     void loadReport()
   }, [loadReport])
+
+  const allReport = useMemo(
+    () => buildSettlementReport(rawPayments, date, date),
+    [date, rawPayments],
+  )
+  const report = useMemo(
+    () => buildSettlementReport(rawPayments, date, date, parseSeriesFilter(seriesFilter)),
+    [date, rawPayments, seriesFilter],
+  )
 
   const rows = useMemo(() => {
     const ledgerRows = report?.ledgerRows ?? []
@@ -124,10 +157,10 @@ export default function DailySettlementsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-[8px] bg-white px-5 py-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Daily Settlement</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Daily Settlement</p>
             <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">일일 정산</h1>
             <p className="mt-2 text-sm text-slate-500">하루 수납, 환불, 영수증 번호 범위와 결제자 명단을 확인합니다.</p>
           </div>
@@ -152,7 +185,7 @@ export default function DailySettlementsPage() {
               type="button"
               onClick={() => report ? downloadDailySettlementXlsx(report, date) : undefined}
               disabled={!report}
-              className="inline-flex items-center gap-2 rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
               XLSX 다운로드
@@ -160,7 +193,7 @@ export default function DailySettlementsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[220px,1fr,auto]">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[220px,1fr,220px,auto]">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-slate-500">정산일</span>
             <input
@@ -180,6 +213,23 @@ export default function DailySettlementsPage() {
               <option value="">전체 강좌</option>
               {courses.map((course) => (
                 <option key={course.id} value={course.id}>{course.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-slate-500">직렬</span>
+            <select
+              value={seriesFilter}
+              onChange={(event) => setSeriesFilter(event.target.value)}
+              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="all">전체 직렬</option>
+              <option value="public">공채</option>
+              <option value="career">경채</option>
+              {allReport.seriesRows.map((series) => (
+                <option key={series.key} value={toSeriesFilterValue(series.group, series.label)}>
+                  {series.group === 'career' ? '경채' : '공채'} · {series.label}
+                </option>
               ))}
             </select>
           </label>
@@ -207,7 +257,7 @@ export default function DailySettlementsPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <article className="rounded-[8px] bg-white p-5 shadow-sm">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <h2 className="text-base font-bold text-[#1d1d1f]">수납</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(report?.paymentMethods ?? []).map((method) => (
@@ -223,7 +273,7 @@ export default function DailySettlementsPage() {
           </div>
         </article>
 
-        <article className="rounded-[8px] bg-white p-5 shadow-sm">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <h2 className="text-base font-bold text-[#1d1d1f]">환불</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(report?.refundMethods ?? []).map((method) => (
@@ -240,7 +290,7 @@ export default function DailySettlementsPage() {
         </article>
       </section>
 
-      <section className="rounded-[8px] bg-white px-5 py-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
         <div className="grid gap-3 sm:grid-cols-3">
           {(report?.categories ?? []).map((category) => (
             <div key={category.key} className="flex items-center justify-between gap-3 rounded-[8px] bg-slate-50 px-4 py-3">
@@ -251,7 +301,30 @@ export default function DailySettlementsPage() {
         </div>
       </section>
 
-      <section className="rounded-[8px] bg-white shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {(report?.seriesGroups ?? []).map((series) => (
+            <div key={series.key} className="rounded-[8px] bg-slate-50 px-4 py-3">
+              <p className="text-sm font-bold text-[#1d1d1f]">{series.label}</p>
+              <p className="mt-2 text-lg font-bold text-blue-600">{formatWon(series.netAmount)}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                수납 {series.paymentCount}건 · 환불 {series.refundCount}건 · {series.studentCount}명
+              </p>
+            </div>
+          ))}
+          {(report?.seriesRows ?? []).filter((series) => series.group === 'career').map((series) => (
+            <div key={series.key} className="rounded-[8px] bg-blue-50 px-4 py-3">
+              <p className="text-sm font-bold text-[#1d1d1f]">{series.label}</p>
+              <p className="mt-2 text-lg font-bold text-blue-700">{formatWon(series.netAmount)}</p>
+              <p className="mt-1 text-xs text-blue-600">
+                수납 {series.paymentCount}건 · 환불 {series.refundCount}건 · {series.studentCount}명
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-base font-bold text-[#1d1d1f]">결제 명단</h2>
@@ -277,10 +350,10 @@ export default function DailySettlementsPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-left text-sm">
+          <table className="min-w-[1080px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold text-slate-500">
               <tr>
-                {['시각', '학생', '강좌', '방법', '결제액', '환불', '순액', '영수증번호', '사유'].map((header) => (
+                {['시각', '학생', '강좌', '직렬', '방법', '결제액', '환불', '순액', '영수증번호', '사유'].map((header) => (
                   <th key={header} className="px-4 py-3">{header}</th>
                 ))}
               </tr>
@@ -294,6 +367,13 @@ export default function DailySettlementsPage() {
                     <p className="mt-1 text-xs text-slate-400">{row.examNumber ?? row.phone ?? '-'}</p>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{row.courseName}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-[8px] px-2.5 py-1 text-xs font-bold ${
+                      row.seriesGroup === 'career' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {row.seriesLabel}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-semibold text-slate-700">{row.methodLabel}</td>
                   <td className="px-4 py-3 text-right font-semibold text-[#1d1d1f]">{formatWon(row.paymentAmount)}</td>
                   <td className="px-4 py-3 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
@@ -314,7 +394,7 @@ export default function DailySettlementsPage() {
               ))}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">정산 내역이 없습니다.</td>
+                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">정산 내역이 없습니다.</td>
                 </tr>
               ) : null}
             </tbody>

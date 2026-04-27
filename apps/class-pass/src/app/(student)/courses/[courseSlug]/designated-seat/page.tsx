@@ -440,7 +440,7 @@ export default function DesignatedSeatPage() {
     <div className="student-page student-safe-bottom">
       <section className="student-hero px-4 pb-6 pt-4 sm:px-5">
         <div className="flex items-center justify-between gap-3">
-          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-opacity hover:text-white">
+          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-all duration-200 ease-ios hover:text-white active:scale-[0.97]">
             수강증으로
           </button>
           <span className={`student-chip student-chip-dark ${state.open ? '' : 'opacity-70'}`}>
@@ -594,7 +594,7 @@ export default function DesignatedSeatPage() {
           <div className="student-card w-full max-w-md bg-white p-4" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-[15px] font-semibold text-[var(--student-text)]">현장 QR 스캔</h3>
-              <button type="button" onClick={() => setScannerOpen(false)} className="text-[13px] text-[var(--student-link)]">
+              <button type="button" onClick={() => setScannerOpen(false)} className="text-[13px] text-[var(--student-link)] transition-all duration-200 ease-ios active:scale-[0.97]">
                 닫기
               </button>
             </div>

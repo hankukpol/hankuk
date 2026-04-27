@@ -34,8 +34,8 @@ export default function SettlementsHubPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-[8px] bg-white px-5 py-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Settlement</p>
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Settlement</p>
         <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">수납·정산</h1>
         <p className="mt-2 text-sm text-slate-500">데스크 결제 기록을 일일 정산과 월별 정산으로 나누어 확인합니다.</p>
       </section>
@@ -48,7 +48,7 @@ export default function SettlementsHubPage() {
             <Link
               key={item.href}
               href={withTenantPrefix(item.href, tenant.type)}
-              className="group rounded-[8px] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-blue-50 text-blue-600">
                 <Icon className="h-5 w-5" />

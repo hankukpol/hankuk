@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   PAYMENT_METHOD_LABEL,
   REFUND_REASON_CATEGORIES,
@@ -12,6 +13,7 @@ import {
   type RefundReasonCategory,
 } from '@/lib/payments/types'
 import { formatPaymentDate, formatWon } from '@/lib/payments/format'
+import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 
 type RefundModalProps = {
   open: boolean
@@ -107,6 +109,8 @@ export function RefundModal({
   onClose,
   onConfirm,
 }: RefundModalProps) {
+  const motionConfig = useMotionConfig()
+  const backdropDuration = useReducedMotionDuration(0.2)
   const refundablePayments = useMemo(
     () => getRefundablePayments(payment, payments),
     [payment, payments],
@@ -141,11 +145,20 @@ export function RefundModal({
     setMemo('')
   }, [open, payment, payments])
 
-  if (!open || !payment) {
-    return null
-  }
+  useEffect(() => {
+    if (!open) return
 
-  const student = payment.enrollments
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !submitting) {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, open, submitting])
+
+  const student = payment?.enrollments
   const selectedDrafts = drafts.filter((draft) => draft.enabled)
   const refundRequests = selectedDrafts.map((draft) => {
     const target = paymentById.get(draft.paymentId)
@@ -184,26 +197,36 @@ export function RefundModal({
   }
 
   return (
-    <div
-      role="presentation"
-      className="apple-modal-backdrop fixed inset-0 z-[140] flex items-center justify-center px-5"
-      onClick={() => {
-        if (!submitting) {
-          onClose()
-        }
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="max-h-[calc(100dvh-48px)] w-full max-w-2xl overflow-y-auto rounded-[8px] bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <AnimatePresence>
+      {open && payment ? (
+        <motion.div
+          role="presentation"
+          className="fixed inset-0 z-[140] flex items-center justify-center bg-black/40 px-5 sm:backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: backdropDuration }}
+          onClick={() => {
+            if (!submitting) {
+              onClose()
+            }
+          }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[12px] bg-white p-6 shadow-[3px_5px_30px_0px_rgba(0,0,0,0.22)]"
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={motionConfig.modal}
+            onClick={(event) => event.stopPropagation()}
+          >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Refund</p>
-            <h3 className="mt-1 text-[21px] font-semibold tracking-[-0.22px] text-[#1d1d1f]">환불 처리</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Refund</p>
+            <h3 className="mt-1 text-[21px] font-semibold tracking-[-0.231px] text-[#1d1d1f]">환불 처리</h3>
+            <p className="mt-2 text-sm text-slate-700">
               {student?.name ?? '수강생'} / {courseName}
             </p>
           </div>
@@ -211,13 +234,13 @@ export function RefundModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-full px-2 py-1 text-xs font-semibold text-black/45 transition hover:bg-black/5 hover:text-black/70 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full px-2 py-1 text-xs font-semibold text-slate-400 transition-all duration-200 ease-ios hover:bg-slate-100 hover:text-slate-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             닫기
           </button>
         </div>
 
-        <div className="mt-5 rounded-[8px] bg-slate-50 p-4 text-sm text-slate-600">
+        <div className="mt-5 rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700">
           <p className="font-semibold text-[#1d1d1f]">
             기준 수납: {formatPaymentDate(payment.paid_at)} {PAYMENT_METHOD_LABEL[payment.method]} {formatWon(payment.amount)}
           </p>
@@ -227,7 +250,7 @@ export function RefundModal({
         </div>
 
         {hasMultiplePayments ? (
-          <p className="mt-3 rounded-[8px] bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
+          <p className="mt-3 rounded-[8px] bg-slate-50 px-3 py-2 text-xs text-[#0066cc]">
             혼합 또는 분할 수납 {refundablePayments.length}건을 결제수단별로 나누어 환불합니다. 필요 없는 건은 체크를 해제해 주세요.
           </p>
         ) : null}
@@ -246,8 +269,8 @@ export function RefundModal({
             return (
               <article
                 key={entry.id}
-                className={`rounded-[8px] border px-3 py-3 transition ${
-                  draft?.enabled ? 'border-blue-100 bg-white' : 'border-slate-100 bg-slate-50/80'
+                className={`rounded-[8px] px-4 py-3 transition ${
+                  draft?.enabled ? 'bg-white shadow-[inset_0_0_0_1px_rgba(0,113,227,0.18)]' : 'bg-slate-50'
                 }`}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -256,7 +279,7 @@ export function RefundModal({
                       type="checkbox"
                       checked={draft?.enabled ?? false}
                       onChange={(event) => updateDraft(entry.id, { enabled: event.target.checked })}
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
+                      className="mt-1 h-4 w-4 rounded border-slate-300 accent-[#0071e3]"
                     />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-[#1d1d1f]">
@@ -267,7 +290,7 @@ export function RefundModal({
                       </span>
                     </span>
                   </label>
-                  <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                  <span className="w-fit rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
                     환불 가능 {formatWon(remainingAmount)}
                   </span>
                 </div>
@@ -280,8 +303,10 @@ export function RefundModal({
                       value={draft?.amount ?? ''}
                       disabled={!draft?.enabled}
                       onChange={(event) => updateDraft(entry.id, { amount: event.target.value.replace(/[^\d]/g, '') })}
-                      className={`rounded-[8px] border px-3 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${
-                        amountInvalid ? 'border-red-200 bg-red-50/60' : 'border-slate-200 focus:border-slate-400'
+                      className={`rounded-[8px] bg-white px-3 py-2.5 text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
+                        amountInvalid
+                          ? 'shadow-[inset_0_0_0_1px_rgba(180,35,24,0.4)] bg-[#fef2f2]'
+                          : 'border border-slate-200 focus:border-slate-400'
                       }`}
                     />
                   </label>
@@ -291,7 +316,7 @@ export function RefundModal({
                       value={draft?.method ?? getDefaultRefundMethod(entry)}
                       disabled={!draft?.enabled}
                       onChange={(event) => updateDraft(entry.id, { method: event.target.value as RefundMethod })}
-                      className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                      className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       {REFUND_METHODS.map((refundMethod) => (
                         <option key={refundMethod} value={refundMethod}>
@@ -306,10 +331,10 @@ export function RefundModal({
           })}
         </div>
 
-        <div className="mt-4 rounded-[8px] bg-slate-50 px-3 py-3 text-sm">
+        <div className="mt-4 rounded-[8px] bg-slate-50 px-4 py-3 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <span className="font-semibold text-slate-500">총 환불 금액</span>
-            <span className="text-base font-bold text-[#1d1d1f]">{formatWon(totalRefundAmount)}</span>
+            <span className="font-medium text-slate-500">총 환불 금액</span>
+            <span className="text-base font-semibold text-[#1d1d1f]">{formatWon(totalRefundAmount)}</span>
           </div>
         </div>
 
@@ -319,7 +344,7 @@ export function RefundModal({
             <select
               value={reasonCategory}
               onChange={(event) => setReasonCategory(event.target.value as RefundReasonCategory)}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
             >
               {REFUND_REASON_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
@@ -337,7 +362,7 @@ export function RefundModal({
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder={reasonCategory === 'other' ? '기타 사유를 입력하세요' : '필요 시 사유를 보충하세요'}
-              className="rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
             />
           </label>
 
@@ -348,7 +373,7 @@ export function RefundModal({
                 value={cancelReceiptNo}
                 onChange={(event) => setCancelReceiptNo(event.target.value)}
                 placeholder="단말기 취소 영수증 번호"
-                className="rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
               />
             </label>
           ) : null}
@@ -362,7 +387,7 @@ export function RefundModal({
                 value={refundAccountLast4}
                 onChange={(event) => setRefundAccountLast4(event.target.value.replace(/\D/g, '').slice(0, 4))}
                 placeholder="4자리 숫자"
-                className="rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
               />
             </label>
           ) : null}
@@ -373,13 +398,13 @@ export function RefundModal({
               value={memo}
               onChange={(event) => setMemo(event.target.value)}
               rows={3}
-              className="rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
             />
           </label>
         </div>
 
         {hasCardCancel ? (
-          <p className="mt-4 rounded-[8px] bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+          <p className="mt-4 rounded-[8px] bg-slate-50 px-3 py-2 text-xs text-slate-700">
             카드 환불은 단말기에서 취소 처리 후 영수증 번호 입력
           </p>
         ) : null}
@@ -389,7 +414,7 @@ export function RefundModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-full bg-[#f5f5f7] px-4 py-2 text-sm font-semibold text-[#1d1d1f] transition hover:bg-[#ebebee] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-[8px] bg-slate-50 px-4 py-2 text-[14px] font-medium text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             취소
           </button>
@@ -408,12 +433,14 @@ export function RefundModal({
               })),
             })}
             disabled={submitting || selectedDrafts.length === 0 || hasInvalidRefund || refundMetaInvalid}
-            className="rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-[8px] bg-blue-600 px-4 py-2 text-[14px] font-medium text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] active:duration-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             {submitting ? '저장 중...' : '환불 저장'}
           </button>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }

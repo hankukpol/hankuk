@@ -320,12 +320,12 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
   }
 
   return (
-    <section className={compact ? 'rounded-[8px] bg-slate-50 p-4' : 'rounded-[8px] border border-slate-200 bg-slate-50/70 p-4'}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className={compact ? 'rounded-[10px] bg-slate-50 p-4' : ''}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-sm font-bold text-[#1d1d1f]">수납 정보</h3>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            강좌 정가에서 할인 금액과 기존 수납액을 제외한 남은 금액을 정확히 맞춰 저장합니다.
+          <h3 className="text-base font-semibold text-[#1d1d1f]">수납 정보</h3>
+          <p className="mt-0.5 text-xs leading-5 text-slate-500">
+            정가에서 할인과 기존 수납액을 빼고 남은 금액을 입력합니다.
           </p>
         </div>
         <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -333,18 +333,18 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             ? 'bg-rose-50 text-rose-700'
             : totalAccepted
               ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-amber-50 text-amber-700'
+              : 'bg-slate-50 text-blue-600'
         }`}>
           {totalBadgeText}
         </span>
       </div>
 
-      <label className="mt-4 flex items-start gap-3 rounded-[8px] bg-white px-3 py-3 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
+      <label className="mt-4 flex items-start gap-3 rounded-[8px] bg-slate-50 px-4 py-3">
         <input
           type="checkbox"
           checked={value.tuitionExempt}
           onChange={(event) => patch({ tuitionExempt: event.target.checked })}
-          className="mt-1 h-4 w-4 accent-blue-600"
+          className="mt-1 h-4 w-4 accent-[#0071e3]"
         />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-[#1d1d1f]">무료 수강 / 수납 면제</span>
@@ -362,7 +362,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             value={value.expectedAmount}
             onChange={(event) => patchWithAutoAmount({ expectedAmount: numberInputValue(event.target.value) })}
             placeholder="50000"
-            className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>
 
@@ -374,7 +374,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             onChange={(event) => patchWithAutoAmount({ discountAmount: numberInputValue(event.target.value) })}
             placeholder="0"
             className={`rounded-[8px] border bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 ${
-              discountExceeded ? 'border-rose-300' : 'border-slate-200'
+              discountExceeded ? 'shadow-[inset_0_0_0_1.5px_#b42318]' : 'border border-slate-200'
             }`}
           />
         </label>
@@ -385,14 +385,14 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             value={value.discountReason}
             onChange={(event) => patch({ discountReason: event.target.value })}
             placeholder="형제 할인, 이벤트 등"
-            className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>
 
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold text-slate-500">적용 금액</span>
           <div className={`rounded-[8px] px-3 py-2.5 text-sm font-bold ${
-            discountExceeded ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-[#1d1d1f] shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]'
+            discountExceeded ? 'bg-rose-50 text-rose-700' : 'bg-slate-50 text-[#1d1d1f]'
           }`}>
             {formatWon(payableAmount)}
           </div>
@@ -400,7 +400,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
       </div>
 
       {paidAmount > 0 ? (
-        <div className="mt-3 rounded-[8px] bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
+        <div className="mt-3 rounded-[8px] bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
           기존 수납 {formatWon(paidAmount)} · 이번 수납 필요 {formatWon(dueAmount)}
         </div>
       ) : null}
@@ -416,7 +416,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             <select
               value={value.category}
               onChange={(event) => patch({ category: event.target.value as PaymentCategory })}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             >
               {PAYMENT_CATEGORIES.map((category) => (
                 <option key={category} value={category}>{PAYMENT_CATEGORY_LABEL[category]}</option>
@@ -431,7 +431,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             type="datetime-local"
             value={value.paidAt}
             onChange={(event) => patch({ paidAt: event.target.value })}
-            className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>
       </div>
@@ -444,91 +444,90 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             onChange={(event) => patch({ tuitionExemptReason: event.target.value })}
             rows={3}
             placeholder="예: 장학생, 무료 체험, 운영 지원"
-            className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>
       ) : (
-        <div className="mt-4 rounded-[8px] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)]">
+        <div className="mt-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-slate-500">결제 수단별 수납</p>
-              <p className="mt-1 text-xs text-slate-400">수단 버튼을 누르면 남은 적용 금액이 자동으로 입력됩니다.</p>
+              <p className="text-sm font-semibold text-[#1d1d1f]">결제 수단</p>
+              <p className="mt-0.5 text-xs text-slate-500">분할 결제 시 [+ 수단 추가]로 카드와 현금 등을 함께 입력하세요.</p>
             </div>
             <button
               type="button"
               onClick={addEntry}
-              className="inline-flex items-center gap-1 rounded-[8px] bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+              className="inline-flex items-center gap-1 rounded-[8px] border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97]"
             >
               <Plus className="h-3.5 w-3.5" />
               수단 추가
             </button>
           </div>
 
-          <div className="mt-3 grid gap-3">
+          <div className="mt-3 grid gap-2">
             {value.entries.map((entry, index) => {
               const entryAmount = toNumber(entry.amount)
               const cashReceiptNotice = needsCashReceiptNotice(entry.method, entryAmount)
 
               return (
-              <article key={entry.id} className="rounded-[8px] bg-slate-50/80 p-3 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.72)]">
+              <article key={entry.id} className="rounded-[8px] bg-slate-50 p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-slate-500">결제 {index + 1}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">결제 {index + 1}</p>
                   <button
                     type="button"
                     onClick={() => removeEntry(entry.id)}
                     disabled={value.entries.length <= 1}
-                    className="inline-flex items-center gap-1 rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium text-rose-600 transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     삭제
                   </button>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 md:grid-cols-5">
-                    {PAYMENT_METHOD_META.map((method) => {
-                      const Icon = method.icon
-                      const active = entry.method === method.value
-
-                      return (
-                        <button
-                          key={method.value}
-                          type="button"
-                          onClick={() => updateEntryMethod(entry.id, method.value)}
-                          className={`flex min-h-10 items-center justify-center gap-2 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition ${
-                            active ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700' : 'bg-white text-slate-600 hover:bg-slate-100'
-                          }`}
+                <div className="grid gap-3">
+                  <div className="grid gap-2 sm:grid-cols-[180px,1fr]">
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500">결제 수단</span>
+                      <div className="relative">
+                        <select
+                          value={entry.method}
+                          onChange={(event) => updateEntryMethod(entry.id, event.target.value as PaymentEntryMethod)}
+                          className="w-full appearance-none rounded-[8px] border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-sm font-medium text-[#1d1d1f] outline-none focus:border-slate-400"
                         >
-                          <Icon className="h-4 w-4" />
-                          {method.label}
-                        </button>
-                      )
-                    })}
-                  </div>
+                          {PAYMENT_METHOD_META.map((method) => (
+                            <option key={method.value} value={method.value}>
+                              {method.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">▾</span>
+                      </div>
+                    </label>
 
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-xs font-semibold text-slate-500">수납 금액</span>
-                    <input
-                      inputMode="numeric"
-                      value={entry.amount}
-                      onChange={(event) => updateEntry(entry.id, { amount: numberInputValue(event.target.value) })}
-                      placeholder="금액"
-                      className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-                    />
-                  </label>
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500">수납 금액</span>
+                      <input
+                        inputMode="numeric"
+                        value={entry.amount}
+                        onChange={(event) => updateEntry(entry.id, { amount: numberInputValue(event.target.value) })}
+                        placeholder={`전액 ${formatWon(Math.max(payableAmount - paidAmount, 0))}`}
+                        className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </div>
 
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold text-slate-500">결제 메모</span>
                     <input
                       value={entry.memo}
                       onChange={(event) => updateEntry(entry.id, { memo: event.target.value })}
-                      placeholder={PAYMENT_METHOD_LABEL[entry.method]}
+                      placeholder={`예: ${PAYMENT_METHOD_LABEL[entry.method]} 마지막 4자리`}
                       className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                     />
                   </label>
 
                   {usesCashReceipt(entry.method) ? (
-                    <label className="flex flex-col gap-1.5 sm:col-span-2">
+                    <label className="flex flex-col gap-1.5">
                       <span className="text-xs font-semibold text-slate-500">현금영수증 승인번호</span>
                       <input
                         value={entry.cashReceiptApprovalNo}
@@ -541,7 +540,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
                         }`}
                       />
                       {cashReceiptNotice ? (
-                        <span className="text-xs font-medium text-amber-700">
+                        <span className="text-xs font-medium text-amber-600">
                           10만 원 이상 현금·계좌 수납은 현금영수증 발급 상태 또는 승인번호를 확인해 주세요.
                         </span>
                       ) : null}
@@ -552,15 +551,29 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             )})}
           </div>
 
-          <div className="mt-3 grid gap-2 rounded-[8px] bg-slate-50 px-3 py-3 text-xs sm:grid-cols-3">
-            <p className="text-slate-500">정가 <span className="font-bold text-[#1d1d1f]">{formatWon(expectedAmount)}</span></p>
-            <p className="text-slate-500">할인 <span className="font-bold text-rose-600">{formatWon(discountAmount)}</span></p>
-            <p className={totalOverPayable ? 'text-rose-700' : totalAccepted ? 'text-emerald-700' : 'text-amber-700'}>
-              필요/이번수납 <span className="font-bold">{formatWon(dueAmount)} / {formatWon(total)}</span>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-[8px] bg-slate-50 px-4 py-3 text-xs">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
+              <span>정가 <span className="font-semibold text-[#1d1d1f]">{formatWon(expectedAmount)}</span></span>
+              <span className="text-slate-300">·</span>
+              <span>할인 <span className="font-semibold text-rose-600">{formatWon(discountAmount)}</span></span>
+              <span className="text-slate-300">·</span>
+              <span>이번 수납 필요 <span className="font-semibold text-[#1d1d1f]">{formatWon(dueAmount)}</span></span>
               {!value.tuitionExempt && remainingAmount > 0 ? (
-                <span className="ml-1 text-slate-500">미납 {formatWon(remainingAmount)}</span>
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span>미납 <span className="font-semibold text-amber-600">{formatWon(remainingAmount)}</span></span>
+                </>
               ) : null}
-            </p>
+            </div>
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+              totalOverPayable
+                ? 'bg-rose-50 text-rose-700'
+                : totalAccepted
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-slate-50 text-blue-600'
+            }`}>
+              합계 {formatWon(total)}
+            </span>
           </div>
         </div>
       )}
@@ -571,7 +584,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
           value={value.memo}
           onChange={(event) => patch({ memo: event.target.value })}
           rows={compact ? 2 : 3}
-          className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
         />
       </label>
     </section>

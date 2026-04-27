@@ -60,6 +60,8 @@ function normalizeSettlementRow(row: Record<string, unknown>): PaymentSettlement
     course_name: String(row.course_name ?? ''),
     method: row.method as PaymentMethod,
     category: row.category as PaymentCategory,
+    series_group: row.series_group === 'career' ? 'career' : row.series_group === 'public' ? 'public' : null,
+    series_label: row.series_label ? String(row.series_label) : null,
     gross_amount: toNumber(row.gross_amount),
     refund_amount: toNumber(row.refund_amount),
     net_amount: toNumber(row.net_amount),

@@ -3,7 +3,9 @@
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import type { Course, Material, MaterialType } from '@/types/database'
+import { useMotionConfig } from '@/lib/motion'
 
 type MaterialForm = {
   name: string
@@ -72,6 +74,7 @@ export default function CourseMaterialsPage({
   initialLoaded = Boolean(initialData),
 }: CourseMaterialsPageProps) {
   const params = useParams<{ id: string }>()
+  const motionConfig = useMotionConfig()
   const courseId = Number(params.id)
 
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
@@ -243,13 +246,20 @@ export default function CourseMaterialsPage({
                 setMessage('')
                 setError('')
               }}
-              className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+              className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
                 activeTab === materialType
-                  ? 'border-[#1d1d1f] text-[#1d1d1f]'
-                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+                  ? 'text-[#1d1d1f]'
+                  : 'text-slate-500 hover:text-[#1d1d1f]'
               }`}
             >
               {getTabLabel(materialType)}
+              {activeTab === materialType ? (
+                <motion.div
+                  layoutId="materials-tabs"
+                  className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
+                  transition={motionConfig.tab}
+                />
+              ) : null}
             </button>
           ))}
         </div>
@@ -325,7 +335,7 @@ export default function CourseMaterialsPage({
           <button
             type="submit"
             disabled={saving}
-            className="mt-5 rounded-2xl px-5 py-4 text-lg font-bold text-white disabled:opacity-60"
+            className="mt-5 rounded-2xl px-5 py-4 text-lg font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
             style={{ background: 'var(--theme)' }}
           >
             {saving ? '저장 중...' : `${getTabLabel(activeTab)} 생성`}
@@ -349,7 +359,7 @@ export default function CourseMaterialsPage({
                     })
                     .finally(() => setLoading(false))
                 }}
-                className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
+                className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97]"
               >
                 새로고침
               </button>
@@ -387,14 +397,14 @@ export default function CourseMaterialsPage({
                         <button
                           type="button"
                           onClick={() => startEdit(material)}
-                          className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
+                          className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97]"
                         >
                           수정
                         </button>
                         <button
                           type="button"
                           onClick={() => void handleDelete(material)}
-                          className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700"
+                          className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97]"
                         >
                           삭제
                         </button>
@@ -413,7 +423,7 @@ export default function CourseMaterialsPage({
                 <button
                   type="button"
                   onClick={() => setEditingId(null)}
-                  className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
+                  className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97]"
                 >
                   닫기
                 </button>
@@ -464,7 +474,7 @@ export default function CourseMaterialsPage({
               <button
                 type="submit"
                 disabled={saving}
-                className="mt-5 rounded-2xl px-5 py-4 text-lg font-bold text-white disabled:opacity-60"
+                className="mt-5 rounded-2xl px-5 py-4 text-lg font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
                 style={{ background: 'var(--theme)' }}
               >
                 {saving ? '저장 중...' : '변경사항 저장'}

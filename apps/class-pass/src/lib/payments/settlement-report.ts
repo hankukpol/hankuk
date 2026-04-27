@@ -9,10 +9,15 @@ import {
   type RefundMethod,
 } from './types'
 import { reasonCategoryLabel } from './format'
+import type { BranchSeriesGroup } from '@/types/database'
 
 export type SettlementEventKind = 'payment' | 'refund'
 export type SettlementFilterKind = 'all' | 'payment' | 'refund'
 export type SettlementCategoryGroup = 'tuition' | 'textbook' | 'other'
+export type SettlementSeriesFilter = {
+  group?: BranchSeriesGroup | null
+  label?: string | null
+}
 
 export type SettlementLedgerRow = {
   id: string
@@ -29,6 +34,8 @@ export type SettlementLedgerRow = {
   phone: string | null
   courseId: number
   courseName: string
+  seriesGroup: BranchSeriesGroup
+  seriesLabel: string
   method: PaymentMethod | RefundMethod
   methodLabel: string
   originalPaymentMethod: PaymentMethod
@@ -36,6 +43,7 @@ export type SettlementLedgerRow = {
   category: PaymentCategory
   categoryLabel: string
   paymentAmount: number
+  originalPaymentAmount: number
   discountAmount: number
   refundAmount: number
   netAmount: number
@@ -88,6 +96,18 @@ export type SettlementCourseSummary = {
   studentCount: number
 }
 
+export type SettlementSeriesSummary = {
+  key: string
+  group: BranchSeriesGroup
+  label: string
+  grossAmount: number
+  refundAmount: number
+  netAmount: number
+  paymentCount: number
+  refundCount: number
+  studentCount: number
+}
+
 export type SettlementReport = {
   range: {
     from: string
@@ -106,6 +126,8 @@ export type SettlementReport = {
   paymentMethods: SettlementMethodSummary[]
   refundMethods: SettlementMethodSummary[]
   categories: SettlementCategorySummary[]
+  seriesGroups: SettlementSeriesSummary[]
+  seriesRows: SettlementSeriesSummary[]
   dailyRows: SettlementDailySummary[]
   courseRows: SettlementCourseSummary[]
   ledgerRows: SettlementLedgerRow[]
@@ -200,7 +222,33 @@ function getCourseName(payment: EnrollmentPayment) {
   return payment.courses?.name ?? `강좌 #${payment.course_id}`
 }
 
+function getPaymentSeriesMeta(payment: EnrollmentPayment): { group: BranchSeriesGroup; label: string } {
+  const group = payment.series_group_snapshot ?? payment.enrollments?.series_group ?? 'public'
+  const fallbackLabel = group === 'career' ? '경채' : '공채'
+  return {
+    group,
+    label: payment.series_label_snapshot?.trim() || payment.enrollments?.series?.trim() || fallbackLabel,
+  }
+}
+
+function matchesSeriesFilter(row: SettlementLedgerRow, filter?: SettlementSeriesFilter) {
+  if (!filter?.group && !filter?.label) {
+    return true
+  }
+
+  if (filter.group && row.seriesGroup !== filter.group) {
+    return false
+  }
+
+  if (filter.label && row.seriesLabel !== filter.label) {
+    return false
+  }
+
+  return true
+}
+
 function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
+  const series = getPaymentSeriesMeta(payment)
   return {
     id: `payment-${payment.id}`,
     kind: 'payment',
@@ -216,6 +264,8 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     phone: payment.enrollments?.phone ?? null,
     courseId: payment.course_id,
     courseName: getCourseName(payment),
+    seriesGroup: series.group,
+    seriesLabel: series.label,
     method: payment.method,
     methodLabel: PAYMENT_METHOD_LABEL[payment.method] ?? payment.method,
     originalPaymentMethod: payment.method,
@@ -223,6 +273,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     category: payment.category,
     categoryLabel: PAYMENT_CATEGORY_LABEL[payment.category] ?? payment.category,
     paymentAmount: payment.amount,
+    originalPaymentAmount: payment.amount,
     discountAmount: 0,
     refundAmount: 0,
     netAmount: payment.amount,
@@ -238,6 +289,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
 }
 
 function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): SettlementLedgerRow {
+  const series = getPaymentSeriesMeta(payment)
   return {
     id: `refund-${refund.id}`,
     kind: 'refund',
@@ -253,6 +305,8 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     phone: payment.enrollments?.phone ?? null,
     courseId: payment.course_id,
     courseName: getCourseName(payment),
+    seriesGroup: series.group,
+    seriesLabel: series.label,
     method: refund.method,
     methodLabel: REFUND_METHOD_LABEL[refund.method] ?? refund.method,
     originalPaymentMethod: payment.method,
@@ -260,6 +314,7 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     category: payment.category,
     categoryLabel: PAYMENT_CATEGORY_LABEL[payment.category] ?? payment.category,
     paymentAmount: 0,
+    originalPaymentAmount: payment.amount,
     discountAmount: 0,
     refundAmount: refund.amount,
     netAmount: -refund.amount,
@@ -329,16 +384,65 @@ function normalizeMethodSummaries(
   })
 }
 
-export function buildSettlementReport(payments: EnrollmentPayment[], from: string, to: string): SettlementReport {
+function ensureSeriesSummary(
+  summaries: Map<string, SettlementSeriesSummary & { studentIds: Set<number> }>,
+  key: string,
+  group: BranchSeriesGroup,
+  label: string,
+) {
+  const current = summaries.get(key) ?? {
+    key,
+    group,
+    label,
+    grossAmount: 0,
+    refundAmount: 0,
+    netAmount: 0,
+    paymentCount: 0,
+    refundCount: 0,
+    studentCount: 0,
+    studentIds: new Set<number>(),
+  }
+  summaries.set(key, current)
+  return current
+}
+
+function normalizeSeriesSummaries(summaries: Map<string, SettlementSeriesSummary & { studentIds: Set<number> }>) {
+  return Array.from(summaries.values())
+    .map((row) => ({
+      key: row.key,
+      group: row.group,
+      label: row.label,
+      grossAmount: row.grossAmount,
+      refundAmount: row.refundAmount,
+      netAmount: row.netAmount,
+      paymentCount: row.paymentCount,
+      refundCount: row.refundCount,
+      studentCount: row.studentCount,
+    }))
+    .sort((left, right) => {
+      if (left.group !== right.group) {
+        return left.group === 'public' ? -1 : 1
+      }
+      return right.netAmount - left.netAmount || left.label.localeCompare(right.label)
+    })
+}
+
+export function buildSettlementReport(
+  payments: EnrollmentPayment[],
+  from: string,
+  to: string,
+  seriesFilter?: SettlementSeriesFilter,
+): SettlementReport {
   const activePayments = payments.filter((payment) => payment.status !== 'voided')
   const paymentRows = activePayments
     .filter((payment) => inDateRange(payment.paid_date || toKstDate(payment.paid_at), from, to))
     .map(createPaymentRow)
+    .filter((row) => matchesSeriesFilter(row, seriesFilter))
   const refundRows = activePayments.flatMap((payment) => (
     (payment.enrollment_refunds ?? [])
       .filter((refund) => inDateRange(refund.refund_date || toKstDate(refund.refunded_at), from, to))
       .map((refund) => createRefundRow(payment, refund))
-  ))
+  )).filter((row) => matchesSeriesFilter(row, seriesFilter))
   const ledgerRows = [...paymentRows, ...refundRows].sort((left, right) => {
     const occurredCompare = right.occurredAt.localeCompare(left.occurredAt)
     return occurredCompare === 0 ? right.id.localeCompare(left.id) : occurredCompare
@@ -346,12 +450,14 @@ export function buildSettlementReport(payments: EnrollmentPayment[], from: strin
 
   const grossAmount = paymentRows.reduce((sum, row) => sum + row.paymentAmount, 0)
   const refundAmount = refundRows.reduce((sum, row) => sum + row.refundAmount, 0)
-  const payerIds = new Set(ledgerRows.map((row) => row.enrollmentId))
+  const payerIds = new Set(paymentRows.map((row) => row.enrollmentId))
   const paymentMethodMap = new Map<string, SettlementMethodSummary & { receiptIds: number[] }>()
   const refundMethodMap = new Map<string, SettlementMethodSummary & { receiptIds: number[] }>()
   const categoryMap = new Map<SettlementCategoryGroup, SettlementCategorySummary>()
   const dailyMap = new Map<string, SettlementDailySummary & { payerIds: Set<number> }>()
   const courseMap = new Map<number, SettlementCourseSummary & { studentIds: Set<number> }>()
+  const seriesGroupMap = new Map<string, SettlementSeriesSummary & { studentIds: Set<number> }>()
+  const seriesDetailMap = new Map<string, SettlementSeriesSummary & { studentIds: Set<number> }>()
 
   for (const row of paymentRows) {
     const methodSummary = ensureMethodSummary(paymentMethodMap, row.method, row.methodLabel)
@@ -413,7 +519,9 @@ export function buildSettlementReport(payments: EnrollmentPayment[], from: strin
     daily.netAmount += row.netAmount
     daily.paymentCount += row.kind === 'payment' ? 1 : 0
     daily.refundCount += row.kind === 'refund' ? 1 : 0
-    daily.payerIds.add(row.enrollmentId)
+    if (row.kind === 'payment') {
+      daily.payerIds.add(row.enrollmentId)
+    }
     daily.payerCount = daily.payerIds.size
     dailyMap.set(row.date, daily)
 
@@ -436,6 +544,35 @@ export function buildSettlementReport(payments: EnrollmentPayment[], from: strin
     course.studentIds.add(row.enrollmentId)
     course.studentCount = course.studentIds.size
     courseMap.set(row.courseId, course)
+
+    const groupLabel = row.seriesGroup === 'career' ? '경채' : '공채'
+    const seriesGroup = ensureSeriesSummary(
+      seriesGroupMap,
+      `group:${row.seriesGroup}`,
+      row.seriesGroup,
+      groupLabel,
+    )
+    seriesGroup.grossAmount += row.paymentAmount
+    seriesGroup.refundAmount += row.refundAmount
+    seriesGroup.netAmount += row.netAmount
+    seriesGroup.paymentCount += row.kind === 'payment' ? 1 : 0
+    seriesGroup.refundCount += row.kind === 'refund' ? 1 : 0
+    seriesGroup.studentIds.add(row.enrollmentId)
+    seriesGroup.studentCount = seriesGroup.studentIds.size
+
+    const seriesDetail = ensureSeriesSummary(
+      seriesDetailMap,
+      `${row.seriesGroup}:${row.seriesLabel}`,
+      row.seriesGroup,
+      row.seriesLabel,
+    )
+    seriesDetail.grossAmount += row.paymentAmount
+    seriesDetail.refundAmount += row.refundAmount
+    seriesDetail.netAmount += row.netAmount
+    seriesDetail.paymentCount += row.kind === 'payment' ? 1 : 0
+    seriesDetail.refundCount += row.kind === 'refund' ? 1 : 0
+    seriesDetail.studentIds.add(row.enrollmentId)
+    seriesDetail.studentCount = seriesDetail.studentIds.size
   }
 
   return {
@@ -453,6 +590,8 @@ export function buildSettlementReport(payments: EnrollmentPayment[], from: strin
     paymentMethods: normalizeMethodSummaries(paymentMethodMap, PAYMENT_METHOD_ORDER, '#'),
     refundMethods: normalizeMethodSummaries(refundMethodMap, REFUND_METHOD_ORDER, 'R#'),
     categories: Array.from(categoryMap.values()),
+    seriesGroups: normalizeSeriesSummaries(seriesGroupMap),
+    seriesRows: normalizeSeriesSummaries(seriesDetailMap),
     dailyRows: Array.from(dailyMap.values())
       .map((row) => ({
         date: row.date,

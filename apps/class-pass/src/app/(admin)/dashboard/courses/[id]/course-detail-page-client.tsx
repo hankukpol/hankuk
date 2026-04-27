@@ -727,7 +727,7 @@ export default function CourseDetailPage({
                 <button
                   type="button"
                   onClick={handleUseCurrentLocation}
-                  className="self-end rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800"
+                  className="self-end rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-slate-800 hover:shadow-md active:scale-[0.97]"
                 >
                   현재 위치 저장
                 </button>
@@ -844,7 +844,7 @@ export default function CourseDetailPage({
           <button
             type="submit"
             disabled={saving}
-            className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-blue-700"
+            className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
           >
             {saving ? '저장 중...' : '강좌 저장'}
           </button>
@@ -870,7 +870,7 @@ export default function CourseDetailPage({
               onChange={(e) => setNewSubject((c) => ({ ...c, sort_order: Number(e.target.value || 0) }))}
               className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             />
-            <button type="submit" className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800">
+            <button type="submit" className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-slate-800 hover:shadow-md active:scale-[0.97] active:duration-100">
               추가
             </button>
           </form>
@@ -916,14 +916,14 @@ export default function CourseDetailPage({
                           <div className="flex items-center justify-end gap-1.5">
                             <Link
                               href={withTenantPrefix(`/dashboard/courses/${courseId}/seats`, tenant.type)}
-                              className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
+                              className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
                             >
                               좌석
                             </Link>
                             <button
                               type="button"
                               onClick={() => void handleSubjectDelete(subject)}
-                              className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100"
+                              className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97]"
                             >
                               삭제
                             </button>
@@ -956,13 +956,13 @@ export default function CourseDetailPage({
                     type="button"
                     onClick={() => moveField(index, 'up')}
                     disabled={index === 0}
-                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                   >UP</button>
                   <button
                     type="button"
                     onClick={() => moveField(index, 'down')}
                     disabled={index === enrollmentFields.length - 1}
-                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                   >DN</button>
                 </div>
               </div>
@@ -999,7 +999,7 @@ export default function CourseDetailPage({
               <button
                 type="button"
                 onClick={() => removeField(index)}
-                className="mt-3 w-full rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
+                className="mt-3 w-full rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97]"
               >
                 삭제
               </button>
@@ -1023,13 +1023,13 @@ export default function CourseDetailPage({
                   type="button"
                   onClick={() => moveField(index, 'up')}
                   disabled={index === 0}
-                  className="rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                 >UP</button>
                 <button
                   type="button"
                   onClick={() => moveField(index, 'down')}
                   disabled={index === enrollmentFields.length - 1}
-                  className="rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                 >DN</button>
               </div>
               <input
@@ -1065,7 +1065,7 @@ export default function CourseDetailPage({
               <button
                 type="button"
                 onClick={() => removeField(index)}
-                className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100"
+                className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97]"
               >
                 삭제
               </button>
@@ -1077,7 +1077,7 @@ export default function CourseDetailPage({
           <button
             type="button"
             onClick={addField}
-            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+            className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
           >
             + 필드 추가
           </button>
@@ -1085,7 +1085,7 @@ export default function CourseDetailPage({
             type="button"
             onClick={() => void handleSaveFields()}
             disabled={fieldsSaving}
-            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-blue-700"
+            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
           >
             {fieldsSaving ? '저장 중...' : '필드 설정 저장'}
           </button>
@@ -1103,7 +1103,7 @@ export default function CourseDetailPage({
             type="button"
             onClick={() => void handleDestroyCourse()}
             disabled={destroying}
-            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-red-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
             {destroying ? '삭제 중..' : '강좌 완전 삭제'}
           </button>

@@ -1,8 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion, type PanInfo } from 'framer-motion'
 import { Plus, ReceiptText, RotateCcw, X, XCircle } from 'lucide-react'
 import type { Course, Enrollment } from '@/types/database'
+import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import {
   BILLING_STATUS_LABEL,
   PAYMENT_CATEGORY_LABEL,
@@ -40,7 +42,7 @@ function getPaymentStatusClass(status: EnrollmentPayment['status']) {
     case 'fully_refunded':
       return 'bg-rose-50 text-rose-700'
     default:
-      return 'bg-slate-100 text-slate-500'
+      return 'bg-slate-100 text-slate-600'
   }
 }
 
@@ -77,6 +79,8 @@ export function EnrollmentPaymentDrawer({
   onClose,
   onDataChanged,
 }: EnrollmentPaymentDrawerProps) {
+  const motionConfig = useMotionConfig()
+  const backdropDuration = useReducedMotionDuration(0.2)
   const [payments, setPayments] = useState<EnrollmentPayment[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -344,32 +348,61 @@ export function EnrollmentPaymentDrawer({
     await refreshAll()
   }
 
-  if (!open || !enrollment) {
-    return null
+  function handleDrawerDragEnd(
+    _event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo,
+  ) {
+    if (!submitting && info.offset.x > 100 && info.velocity.x > 200) {
+      onClose()
+    }
   }
 
-  const billing = enrollment.billing
+  const billing = enrollment?.billing
 
   return (
     <>
-      <div className="fixed inset-0 z-[100] flex justify-end bg-black/24 backdrop-blur-[2px]" role="dialog" aria-modal="true">
-        <button
-          type="button"
-          aria-label="결제 상세 닫기"
-          className="hidden flex-1 cursor-default sm:block"
-          onClick={() => {
-            if (!submitting) {
-              onClose()
-            }
-          }}
-        />
-        <aside className="flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:max-w-[760px]">
-          <header className="border-b border-slate-100 px-5 py-4 sm:px-6">
+      <AnimatePresence>
+        {open && enrollment ? (
+          <>
+            <motion.div
+              className="fixed inset-0 z-[120] bg-black/40 sm:backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: backdropDuration }}
+              onClick={() => {
+                if (!submitting) {
+                  onClose()
+                }
+              }}
+            />
+            <motion.aside
+              role="dialog"
+              aria-modal="true"
+              className="fixed inset-y-0 right-0 z-[121] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:w-[640px] xl:w-[780px]"
+              initial={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
+              transition={motionConfig.drawer}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              whileDrag={{ scale: 0.995 }}
+              onDragEnd={handleDrawerDragEnd}
+            >
+          <header className="border-b border-slate-100 px-5 py-5 sm:px-6">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Student Detail</p>
-                <h2 className="mt-1 truncate text-xl font-semibold text-[#1d1d1f]">{enrollment.name}</h2>
-                <p className="mt-1 truncate text-sm text-slate-500">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Student Detail</p>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <h2 className="truncate text-[28px] font-semibold text-[#1d1d1f]">{enrollment.name}</h2>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                    enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                  }`}>
+                    {enrollment.status === 'active' ? '수강 중' : '환불'}
+                  </span>
+                </div>
+                <p className="mt-2 truncate text-sm text-slate-500">
                   {enrollment.exam_number || '-'} · {enrollment.phone || '-'} · {course.name}
                 </p>
               </div>
@@ -378,7 +411,7 @@ export function EnrollmentPaymentDrawer({
                 aria-label="닫기"
                 onClick={onClose}
                 disabled={submitting}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-50 text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -389,87 +422,77 @@ export function EnrollmentPaymentDrawer({
             {(message || error) ? (
               <div className="mb-4 space-y-2">
                 {message ? (
-                  <p className="rounded-[8px] bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{message}</p>
+                  <p className="rounded-[8px] bg-[#ecfdf5] px-3 py-2 text-xs font-medium text-emerald-600">{message}</p>
                 ) : null}
                 {error ? (
-                  <p className="rounded-[8px] bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">{error}</p>
+                  <p className="rounded-[8px] bg-[#fef2f2] px-3 py-2 text-xs font-medium text-rose-600">{error}</p>
                 ) : null}
               </div>
             ) : null}
 
-            <section className="rounded-[8px] bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-[#1d1d1f]">수납 요약</h3>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    수납 추가, 결제 취소, 환불 처리를 이 학생 기준으로 관리합니다.
+            <section>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                  <p className="text-xs font-semibold text-slate-500">총 수납</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">{formatWon(summary.gross)}</p>
+                </article>
+                <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                  <p className="text-xs font-semibold text-slate-500">환불</p>
+                  <p className="mt-2 text-2xl font-bold text-rose-600">
+                    {summary.refund > 0 ? '−' : ''}{formatWon(summary.refund)}
                   </p>
-                </div>
-                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                }`}>
-                  {enrollment.status === 'active' ? '수강 중' : '환불'}
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-[8px] bg-white px-3 py-3">
-                  <p className="text-[11px] font-semibold text-slate-400">총 수납</p>
-                  <p className="mt-1 text-sm font-bold text-[#1d1d1f]">{formatWon(summary.gross)}</p>
-                </div>
-                <div className="rounded-[8px] bg-white px-3 py-3">
-                  <p className="text-[11px] font-semibold text-slate-400">환불</p>
-                  <p className="mt-1 text-sm font-bold text-rose-600">{formatWon(summary.refund)}</p>
-                </div>
-                <div className="rounded-[8px] bg-white px-3 py-3">
-                  <p className="text-[11px] font-semibold text-slate-400">미납</p>
-                  <p className="mt-1 text-sm font-bold text-blue-600">{formatWon(remainingAmount)}</p>
-                </div>
+                </article>
+                <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                  <p className="text-xs font-semibold text-slate-500">미납</p>
+                  <p className={`mt-2 text-2xl font-bold ${remainingAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {formatWon(remainingAmount)}
+                  </p>
+                </article>
               </div>
 
               {billing ? (
-                <div className="mt-3 grid gap-2 rounded-[8px] bg-white px-3 py-3 text-xs sm:grid-cols-4">
-                  <p className="text-slate-500">정가 <span className="font-bold text-[#1d1d1f]">{formatWon(billing.expected_amount)}</span></p>
-                  <p className="text-slate-500">할인 <span className="font-bold text-rose-600">{formatWon(billing.discount_amount)}</span></p>
-                  <p className="text-slate-500">청구 <span className="font-bold text-[#1d1d1f]">{formatWon(billing.payable_amount)}</span></p>
-                  <p>
-                    <span className={`rounded-md px-2 py-0.5 font-semibold ${getBillingStatusClass(billing.status)}`}>
-                      {BILLING_STATUS_LABEL[billing.status]}
-                    </span>
-                  </p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  <span>정가 <span className="font-semibold text-slate-900">{formatWon(billing.expected_amount)}</span></span>
+                  <span className="text-slate-300">·</span>
+                  <span>할인 <span className="font-semibold text-rose-600">{formatWon(billing.discount_amount)}</span></span>
+                  <span className="text-slate-300">·</span>
+                  <span>청구 <span className="font-semibold text-slate-900">{formatWon(billing.payable_amount)}</span></span>
+                  <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${getBillingStatusClass(billing.status)}`}>
+                    {BILLING_STATUS_LABEL[billing.status]}
+                  </span>
                 </div>
               ) : null}
             </section>
 
-            <section className="mt-4 rounded-[8px] border border-slate-200 bg-white">
-              <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <section className="mt-6">
+              <div className="flex items-center justify-between gap-3 px-1 pb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-[#1d1d1f]">결제 내역</h3>
-                  <p className="mt-1 text-xs text-slate-500">학생별 상세 수납, 취소, 환불 기록입니다.</p>
-                  <p className="mt-1 text-xs text-slate-400">전액 환불이 완료되면 강좌와 모바일 수강증에서 자동 제외됩니다.</p>
+                  <h3 className="text-base font-semibold text-[#1d1d1f]">결제 내역</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">전체 {payments.length}건 · 합계 {formatWon(summary.gross)}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={openPaymentForm}
-                    disabled={!canWritePayment || submitting}
-                    className="inline-flex items-center gap-1.5 rounded-[8px] bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    수납 추가
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={openPaymentForm}
+                  disabled={!canWritePayment || submitting}
+                  className="inline-flex items-center gap-1.5 rounded-[8px] bg-blue-600 px-3.5 py-2 text-xs font-medium text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] active:duration-100 disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  수납 추가
+                </button>
               </div>
 
+              <div className="overflow-hidden rounded-[10px] bg-white border border-slate-200">
+                {/* 보조 안내는 제거 — 사용자가 한번 보면 충분 */}
+
               {formOpen ? (
-                <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-4">
+                <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
                   <PaymentSection value={paymentDraft} onChange={setPaymentDraft} compact />
-                  <div className="mt-3 flex justify-end gap-2">
+                  <div className="mt-4 flex justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => setFormOpen(false)}
                       disabled={submitting}
-                      className="rounded-[8px] bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-[8px] bg-white border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                     >
                       취소
                     </button>
@@ -477,7 +500,7 @@ export function EnrollmentPaymentDrawer({
                       type="button"
                       onClick={() => void handleCreatePayment()}
                       disabled={submitting}
-                      className="rounded-[8px] bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-[8px] bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                     >
                       {submitting ? '저장 중...' : '결제 저장'}
                     </button>
@@ -486,11 +509,11 @@ export function EnrollmentPaymentDrawer({
               ) : null}
 
               {loading ? (
-                <p className="px-4 py-12 text-center text-sm text-slate-400">결제 내역을 불러오는 중입니다.</p>
+                <p className="px-4 py-12 text-center text-sm text-slate-500">결제 내역을 불러오는 중입니다.</p>
               ) : payments.length === 0 ? (
                 <div className="px-4 py-12 text-center">
                   <ReceiptText className="mx-auto h-8 w-8 text-slate-300" />
-                  <p className="mt-3 text-sm text-slate-400">아직 결제 기록이 없습니다.</p>
+                  <p className="mt-3 text-sm text-slate-500">아직 결제 기록이 없습니다.</p>
                 </div>
               ) : (
                 <>
@@ -509,7 +532,7 @@ export function EnrollmentPaymentDrawer({
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="text-sm font-bold text-[#1d1d1f]">{formatWon(payment.amount)}</p>
-                          <p className="mt-1 text-xs font-semibold text-rose-600">환불 {formatWon(getRefundTotal(payment))}</p>
+                          <p className="mt-1 text-xs font-semibold text-rose-600">−{formatWon(getRefundTotal(payment))}</p>
                         </div>
                       </div>
                       {payment.memo || payment.cash_receipt_approval_no ? (
@@ -522,7 +545,7 @@ export function EnrollmentPaymentDrawer({
                           type="button"
                           onClick={() => setRefundTarget(payment)}
                           disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
-                          className="inline-flex items-center gap-1 rounded-[8px] bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-1 rounded-[8px] bg-[#fffbeb] px-2.5 py-1.5 text-[11px] font-semibold text-amber-600 transition-all duration-200 ease-ios hover:bg-amber-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                           환불
@@ -531,7 +554,7 @@ export function EnrollmentPaymentDrawer({
                           type="button"
                           onClick={() => void handleVoidPayment(payment)}
                           disabled={payment.status !== 'paid' || submitting}
-                          className="inline-flex items-center gap-1 rounded-[8px] bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-1 rounded-[8px] bg-[#fef2f2] px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 transition-all duration-200 ease-ios hover:bg-rose-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
                           <XCircle className="h-3.5 w-3.5" />
                           취소
@@ -540,63 +563,77 @@ export function EnrollmentPaymentDrawer({
                     </article>
                   ))}
                 </div>
-                <div className="hidden overflow-x-auto sm:block">
-                  <table className="w-full table-fixed text-sm">
+                <div className="hidden sm:block">
+                  <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-400">
-                        <th className="w-[150px] px-3 py-3">일시</th>
-                        <th className="px-3 py-3">수납 정보</th>
-                        <th className="w-[124px] px-3 py-3 text-right">금액</th>
-                        <th className="w-[92px] px-3 py-3">상태</th>
-                        <th className="w-[132px] px-3 py-3 text-right">관리</th>
+                      <tr className="border-b border-slate-200 bg-slate-50/60 text-left text-xs font-semibold text-slate-500">
+                        <th className="px-5 py-3">일시</th>
+                        <th className="px-3 py-3">수납</th>
+                        <th className="px-3 py-3 text-right">금액</th>
+                        <th className="px-3 py-3 text-center">상태</th>
+                        <th className="px-5 py-3 text-right">관리</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-100">
                       {payments.map((payment) => {
                         const refundTotal = getRefundTotal(payment)
+                        const isInactive = payment.status === 'voided' || payment.status === 'fully_refunded'
 
                         return (
-                          <tr key={payment.id} className="hover:bg-slate-50/70">
-                            <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">
+                          <tr key={payment.id} className={`transition-colors hover:bg-slate-50/70 ${isInactive ? 'opacity-60' : ''}`}>
+                            <td className="whitespace-nowrap px-5 py-3.5 text-xs text-slate-500">
                               {formatPaymentDate(payment.paid_at)}
                             </td>
-                            <td className="min-w-0 px-3 py-3">
-                              <p className="truncate font-semibold text-slate-700">
-                                {PAYMENT_METHOD_LABEL[payment.method]} · {PAYMENT_CATEGORY_LABEL[payment.category]}
+                            <td className="px-3 py-3.5">
+                              <p className="whitespace-nowrap font-semibold text-slate-700">
+                                {PAYMENT_METHOD_LABEL[payment.method]}
+                                <span className="ml-1.5 text-xs font-normal text-slate-500">{PAYMENT_CATEGORY_LABEL[payment.category]}</span>
                               </p>
-                              <p className="mt-1 truncate text-xs text-slate-400">{getPaymentMemo(payment)}</p>
+                              {getPaymentMemo(payment) ? (
+                                <p className="mt-0.5 truncate text-xs text-slate-500" title={getPaymentMemo(payment)}>
+                                  {getPaymentMemo(payment)}
+                                </p>
+                              ) : null}
                             </td>
-                            <td className="px-3 py-3 text-right">
+                            <td className="px-3 py-3.5 text-right">
                               <p className="whitespace-nowrap font-semibold text-[#1d1d1f]">{formatWon(payment.amount)}</p>
-                              <p className="mt-1 whitespace-nowrap text-xs font-semibold text-rose-600">
-                                환불 {formatWon(refundTotal)}
-                              </p>
+                              {refundTotal > 0 ? (
+                                <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-rose-600">
+                                  −{formatWon(refundTotal)}
+                                </p>
+                              ) : null}
                             </td>
-                            <td className="px-3 py-3">
-                              <span className={`inline-flex whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${getPaymentStatusClass(payment.status)}`}>
+                            <td className="px-3 py-3.5 text-center">
+                              <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${getPaymentStatusClass(payment.status)}`}>
                                 {PAYMENT_STATUS_LABEL[payment.status]}
                               </span>
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-5 py-3.5">
                               <div className="flex justify-end gap-1.5 whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => setRefundTarget(payment)}
-                                  disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
-                                  className="inline-flex items-center gap-1 rounded-[8px] bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" />
-                                  환불
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleVoidPayment(payment)}
-                                  disabled={payment.status !== 'paid' || submitting}
-                                  className="inline-flex items-center gap-1 rounded-[8px] bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  <XCircle className="h-3.5 w-3.5" />
-                                  취소
-                                </button>
+                                {isInactive ? (
+                                  <span className="text-[11px] text-slate-300">—</span>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRefundTarget(payment)}
+                                      disabled={submitting}
+                                      className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-amber-50 hover:text-amber-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+                                    >
+                                      <RotateCcw className="h-3 w-3" />
+                                      환불
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleVoidPayment(payment)}
+                                      disabled={payment.status !== 'paid' || submitting}
+                                      className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-rose-50 hover:text-rose-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+                                    >
+                                      <XCircle className="h-3 w-3" />
+                                      취소
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -607,10 +644,13 @@ export function EnrollmentPaymentDrawer({
                 </div>
                 </>
               )}
+              </div>
             </section>
           </div>
-        </aside>
-      </div>
+            </motion.aside>
+          </>
+        ) : null}
+      </AnimatePresence>
 
       <RefundModal
         open={Boolean(refundTarget)}

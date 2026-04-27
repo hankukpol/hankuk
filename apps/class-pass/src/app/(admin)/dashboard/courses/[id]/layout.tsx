@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import { formatCourseTypeLabel } from '@/lib/utils'
 import type { Course } from '@/types/database'
@@ -31,6 +33,7 @@ async function fetchCourseHeader(courseId: number): Promise<Course> {
 }
 
 export default function CourseLayout({ children }: CourseLayoutProps) {
+  const motionConfig = useMotionConfig()
   const params = useParams<{ id: string }>()
   const pathname = usePathname()
   const router = useRouter()
@@ -193,7 +196,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
               type="button"
               onClick={() => void handleDuplicate()}
               disabled={duplicating}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
             >
               {duplicating ? '복사중' : '복사'}
             </button>
@@ -223,13 +226,20 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+                className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
                   isActive
-                    ? 'border-[#1d1d1f] text-[#1d1d1f]'
-                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+                    ? 'text-[#1d1d1f]'
+                    : 'text-slate-500 hover:text-[#1d1d1f]'
                 }`}
               >
                 {tab.label}
+                {isActive ? (
+                  <motion.div
+                    layoutId="course-tabs"
+                    className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
+                    transition={motionConfig.tab}
+                  />
+                ) : null}
               </Link>
             )
           })}

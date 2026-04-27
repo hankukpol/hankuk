@@ -449,7 +449,7 @@ export default function StudentCoursePassPage() {
     <div className="student-page student-safe-bottom flex min-h-dvh flex-col">
       <section className="student-hero px-4 pb-6 pt-4 sm:px-5">
         <div className="flex items-center justify-between gap-3">
-          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/72 transition-opacity hover:text-white">
+          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/72 transition-all duration-200 ease-ios hover:text-white active:scale-[0.97]">
             목록으로
           </button>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -948,7 +948,7 @@ function Modal({
           <span className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">{title}</span>
           <button
             onClick={onClose}
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--student-surface-muted)] text-[var(--student-text-muted)] transition-opacity active:opacity-70"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--student-surface-muted)] text-[var(--student-text-muted)] transition-all duration-200 ease-ios active:scale-[0.97] active:opacity-70"
             aria-label="닫기"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">

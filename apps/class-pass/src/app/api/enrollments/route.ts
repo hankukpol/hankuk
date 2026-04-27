@@ -4,6 +4,7 @@ import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   bulkAssignTextbooks,
@@ -72,6 +73,7 @@ const createSchema = z.object({
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
+  series_option_id: z.number().int().positive().optional().nullable(),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
   birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
@@ -268,6 +270,13 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServerClient()
+    const seriesOption = await resolveBranchSeriesOption({
+      optionId: parsed.data.series_option_id,
+      label: parsed.data.series,
+    })
+    if (parsed.data.series_option_id && seriesOption?.id !== parsed.data.series_option_id) {
+      return NextResponse.json({ error: '선택한 직렬이 현재 지점에서 사용할 수 없습니다.' }, { status: 400 })
+    }
     const selectedStudent = parsed.data.studentId
       ? await getStudentProfileById(db, parsed.data.studentId, division)
       : null
@@ -333,7 +342,9 @@ export async function POST(req: NextRequest) {
         exam_number: student.exam_number,
         gender: parsed.data.gender || null,
         region: parsed.data.region || null,
-        series: parsed.data.series || null,
+        series_option_id: seriesOption?.id ?? null,
+        series_group: seriesOption?.group_key ?? 'public',
+        series: seriesOption?.label ?? parsed.data.series ?? '공채',
         memo: parsed.data.memo || null,
         photo_url: student.photo_url,
         custom_data: parsed.data.custom_data ?? {},

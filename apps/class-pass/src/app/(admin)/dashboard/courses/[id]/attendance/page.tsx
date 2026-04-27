@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course, CourseSubject, Enrollment } from '@/types/database'
 import {
@@ -173,14 +175,16 @@ function TabButton(props: {
   count: number
   onClick: () => void
 }) {
+  const motionConfig = useMotionConfig()
+
   return (
     <button
       type="button"
       onClick={props.onClick}
-      className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+      className={`relative -mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
         props.active
-          ? 'border-[#1d1d1f] text-[#1d1d1f]'
-          : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+          ? 'text-[#1d1d1f]'
+          : 'text-slate-500 hover:text-[#1d1d1f]'
       }`}
     >
       <span>{props.label}</span>
@@ -191,6 +195,13 @@ function TabButton(props: {
       >
         {props.count}
       </span>
+      {props.active ? (
+        <motion.div
+          layoutId="attendance-tabs"
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
+          transition={motionConfig.tab}
+        />
+      ) : null}
     </button>
   )
 }
@@ -228,7 +239,7 @@ function ExcuseActionButton(props: {
             type="button"
             onClick={props.onEdit}
             disabled={props.disabled}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
           >
             수정
           </button>
@@ -238,7 +249,7 @@ function ExcuseActionButton(props: {
           type="button"
           onClick={props.onCreate}
           disabled={props.disabled}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
         >
           사유 등록
         </button>
@@ -279,7 +290,7 @@ function PaginationControls(props: {
           type="button"
           onClick={() => props.onPageChange(props.currentPage - 1)}
           disabled={props.currentPage <= 1}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
         >
           이전
         </button>
@@ -290,7 +301,7 @@ function PaginationControls(props: {
           type="button"
           onClick={() => props.onPageChange(props.currentPage + 1)}
           disabled={props.currentPage >= props.pageCount}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
         >
           다음
         </button>
@@ -808,7 +819,7 @@ export default function AdminAttendancePage() {
         <p className="text-sm text-gray-500">이 강의는 출석 체크 기능이 비활성화되어 있습니다.</p>
         <Link
           href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-          className="inline-flex w-fit rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"
+          className="inline-flex w-fit rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97]"
         >
           강의 설정으로 이동
         </Link>
@@ -863,7 +874,7 @@ export default function AdminAttendancePage() {
               type="button"
               onClick={() => void handleStart()}
               disabled={working || startBlockedBySubjectSelection}
-              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
             >
               출석 시작
             </button>
@@ -871,7 +882,7 @@ export default function AdminAttendancePage() {
               type="button"
               onClick={() => void handleStop()}
               disabled={working || !dashboard.displaySession.isActive}
-              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
             >
               출석 종료
             </button>
@@ -1175,7 +1186,7 @@ export default function AdminAttendancePage() {
                                 void handleOverride(row.enrollmentId, nextStatus)
                               }}
                               disabled={working}
-                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 ${
                                 row.status === 'present'
                                   ? 'bg-slate-100 text-slate-700'
                                   : 'bg-blue-600 text-white'
@@ -1244,7 +1255,7 @@ export default function AdminAttendancePage() {
                                 })
                               }}
                               disabled={working}
-                              className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                              className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                             >
                               결석 처리
                             </button>
@@ -1315,7 +1326,7 @@ export default function AdminAttendancePage() {
                                 type="button"
                                 onClick={() => void handleOverride(row.enrollmentId, 'present')}
                                 disabled={working}
-                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
                               >
                                 출석 처리
                               </button>

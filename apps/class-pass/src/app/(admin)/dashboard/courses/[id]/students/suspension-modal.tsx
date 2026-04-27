@@ -2,7 +2,9 @@
 
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { Enrollment } from '@/types/database'
+import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 
 type SuspensionModalProps = {
   courseName: string
@@ -19,15 +21,26 @@ export function SuspensionModal({
   onClose,
   onConfirm,
 }: SuspensionModalProps) {
+  const motionConfig = useMotionConfig()
+  const backdropDuration = useReducedMotionDuration(0.2)
   const [reason, setReason] = useState('')
 
   useEffect(() => {
     setReason(enrollment?.suspension_reason ?? '')
   }, [enrollment])
 
-  if (!enrollment) {
-    return null
-  }
+  useEffect(() => {
+    if (!enrollment) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !submitting) {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [enrollment, onClose, submitting])
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -35,19 +48,31 @@ export function SuspensionModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-5"
-      onClick={() => {
-        if (!submitting) {
-          onClose()
-        }
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <AnimatePresence>
+      {enrollment ? (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-5 sm:backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: backdropDuration }}
+          onClick={() => {
+            if (!submitting) {
+              onClose()
+            }
+          }}
+        >
+          <motion.form
+            role="dialog"
+            aria-modal="true"
+            onSubmit={handleSubmit}
+            className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-5 shadow-xl"
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={motionConfig.modal}
+            onClick={(event) => event.stopPropagation()}
+          >
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-base font-bold text-gray-900">응시 정지</h3>
@@ -60,7 +85,7 @@ export function SuspensionModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-sm text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-sm text-gray-400 transition-all duration-200 ease-ios hover:text-gray-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             닫기
           </button>
@@ -90,19 +115,21 @@ export function SuspensionModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             취소
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black hover:shadow-md active:scale-[0.97] active:duration-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             {submitting ? '정지 처리 중...' : '정지 처리'}
           </button>
         </div>
-      </form>
-    </div>
+          </motion.form>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }

@@ -7,6 +7,10 @@
   --radius-2xl: 0.5rem;
   --radius-3xl: 0.5rem;
   --radius-4xl: 0.5rem;
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-ios-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-250: 250ms;
+  --duration-350: 350ms;
 }
 
 :root {
@@ -210,13 +214,21 @@ body {
   line-height: 1.2;
   letter-spacing: -0.01em;
   transition:
-    background-color 160ms ease,
-    opacity 160ms ease;
+    background-color 200ms var(--ease-ios),
+    box-shadow 200ms var(--ease-ios),
+    opacity 200ms var(--ease-ios),
+    transform 200ms var(--ease-ios);
   cursor: pointer;
 }
 
 .student-pill-button:active {
-  opacity: 0.72;
+  opacity: 0.84;
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+
+.student-pill-button:disabled:active {
+  transform: scale(1);
 }
 
 .student-pill-button:focus-visible {
@@ -374,5 +386,14 @@ body {
   .student-input {
     min-height: 40px;
     font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

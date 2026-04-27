@@ -16,6 +16,7 @@ function paymentDetailRows(rows: SettlementLedgerRow[]) {
     row.examNumber ?? '',
     row.phone ?? '',
     row.courseName,
+    row.seriesLabel,
     row.methodLabel,
     row.categoryLabel,
     row.paymentAmount,
@@ -35,7 +36,8 @@ function refundDetailRows(rows: SettlementLedgerRow[]) {
     row.paymentDate,
     row.studentName,
     row.courseName,
-    row.paymentAmount,
+    row.seriesLabel,
+    row.originalPaymentAmount,
     row.refundAmount,
     row.methodLabel,
     row.reasonCategoryLabel ?? '',
@@ -80,6 +82,17 @@ function summaryRows(report: SettlementReport, title: string) {
       category.refundAmount,
       category.netAmount,
     ]),
+    [],
+    ['직렬', '수납', '환불', '순액', '수납건수', '환불건수', '인원'],
+    ...report.seriesRows.map((series) => [
+      series.label,
+      series.grossAmount,
+      series.refundAmount,
+      series.netAmount,
+      series.paymentCount,
+      series.refundCount,
+      series.studentCount,
+    ]),
   ]
 }
 
@@ -91,11 +104,11 @@ export function downloadDailySettlementXlsx(report: SettlementReport, date: stri
   const workbook = XLSX.utils.book_new()
   appendSheet(workbook, '요약', summaryRows(report, `${date} 일일 정산`))
   appendSheet(workbook, '결제명세', [
-    ['결제ID', '시각', '학생ID', '학생명', '응시번호', '연락처', '강좌', '방법', '분류', '결제액', '할인액', '영수증번호', '현금영수증여부', '메모', '담당직원', '결제상태'],
+    ['결제ID', '시각', '학생ID', '학생명', '응시번호', '연락처', '강좌', '직렬', '방법', '분류', '결제액', '할인액', '영수증번호', '현금영수증여부', '메모', '담당직원', '결제상태'],
     ...paymentDetailRows(report.paymentRows),
   ])
   appendSheet(workbook, '환불내역', [
-    ['환불ID', '환불일', '결제일', '학생명', '강좌', '결제액', '환불액', '환불방법', '사유분류', '사유메모', '카드취소영수증', '처리자'],
+    ['환불ID', '환불일', '결제일', '학생명', '강좌', '직렬', '결제액', '환불액', '환불방법', '사유분류', '사유메모', '카드취소영수증', '처리자'],
     ...refundDetailRows(report.refundRows),
   ])
   writeWorkbook(workbook, `settlement-daily-${date.replace(/-/g, '')}.xlsx`)
@@ -121,11 +134,11 @@ export function downloadMonthlySettlementXlsx(report: SettlementReport, month: s
     ]),
   ])
   appendSheet(workbook, '결제명세', [
-    ['결제ID', '시각', '학생ID', '학생명', '응시번호', '연락처', '강좌', '방법', '분류', '결제액', '할인액', '영수증번호', '현금영수증여부', '메모', '담당직원', '결제상태'],
+    ['결제ID', '시각', '학생ID', '학생명', '응시번호', '연락처', '강좌', '직렬', '방법', '분류', '결제액', '할인액', '영수증번호', '현금영수증여부', '메모', '담당직원', '결제상태'],
     ...paymentDetailRows(report.paymentRows),
   ])
   appendSheet(workbook, '환불내역', [
-    ['환불ID', '환불일', '결제일', '학생명', '강좌', '결제액', '환불액', '환불방법', '사유분류', '사유메모', '카드취소영수증', '처리자'],
+    ['환불ID', '환불일', '결제일', '학생명', '강좌', '직렬', '결제액', '환불액', '환불방법', '사유분류', '사유메모', '카드취소영수증', '처리자'],
     ...refundDetailRows(report.refundRows),
   ])
   appendSheet(workbook, '강좌별', [
@@ -145,7 +158,7 @@ export function downloadMonthlySettlementXlsx(report: SettlementReport, month: s
 }
 
 export function downloadSettlementCsv(rows: SettlementLedgerRow[], filename: string) {
-  const header = ['구분', '일자', '시각', '학생', '강좌', '방법', '분류', '결제액', '환불액', '순액', '영수증번호', '사유']
+  const header = ['구분', '일자', '시각', '학생', '강좌', '직렬', '방법', '분류', '결제액', '환불액', '순액', '영수증번호', '사유']
   const escapeCell = (value: unknown) => {
     const raw = String(value ?? '')
     return /[",\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw
@@ -158,6 +171,7 @@ export function downloadSettlementCsv(rows: SettlementLedgerRow[], filename: str
       row.time,
       row.studentName,
       row.courseName,
+      row.seriesLabel,
       row.methodLabel,
       row.categoryLabel,
       row.paymentAmount,

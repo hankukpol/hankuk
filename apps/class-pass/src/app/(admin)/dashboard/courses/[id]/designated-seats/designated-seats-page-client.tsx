@@ -4,10 +4,12 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { defaultSeatLabel, sortSeats } from '@/lib/designated-seat/layout'
+import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import type {
   Course,
@@ -133,6 +135,7 @@ export default function CourseDesignatedSeatsPage({
 }: CourseDesignatedSeatsPageProps) {
   const params = useParams<{ id: string }>()
   const tenant = useTenantConfig()
+  const motionConfig = useMotionConfig()
   const courseId = Number(params.id)
   const initialState = getInitialViewState(initialPayload)
   const initialSnapshot = initialState
@@ -537,13 +540,13 @@ export default function CourseDesignatedSeatsPage({
           <div className="flex flex-wrap gap-2">
             <Link
               href={withTenantPrefix(`/dashboard/courses/${course!.id}`, tenant.type)}
-              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
             >
               강좌 설정
             </Link>
             <Link
               href={withTenantPrefix(`/dashboard/courses/${course!.id}/seats`, tenant.type)}
-              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
             >
               기존 좌석 배정
             </Link>
@@ -560,15 +563,22 @@ export default function CourseDesignatedSeatsPage({
             key={item.key}
             type="button"
             onClick={() => handleTabChange(item.key)}
-            className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+            className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
               tab === item.key
-                ? 'border-[#1d1d1f] text-[#1d1d1f]'
-                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+                ? 'text-[#1d1d1f]'
+                : 'text-slate-500 hover:text-[#1d1d1f]'
             }`}
           >
             {item.label}
             {item.key === 'editor' && isDirty ? (
               <span className="ml-2 inline-block h-2 w-2 rounded-full bg-amber-400" />
+            ) : null}
+            {tab === item.key ? (
+              <motion.div
+                layoutId="designated-seats-tabs"
+                className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
+                transition={motionConfig.tab}
+              />
             ) : null}
           </button>
         ))}
@@ -698,9 +708,9 @@ export default function CourseDesignatedSeatsPage({
                   {bulkCount > 1 ? (
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-semibold text-[#1d1d1f]">{bulkCount}개 선택</span>
-                      <button type="button" onClick={() => updateSelectedSeats({ is_active: true })} className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1b7a1b] hover:bg-[#e8e8ed]">일괄 활성화</button>
-                      <button type="button" onClick={() => updateSelectedSeats({ is_active: false })} className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]">일괄 비활성화</button>
-                      <button type="button" onClick={clearSelection} className="rounded-[8px] px-2 py-1.5 text-xs font-semibold text-[#86868b] hover:text-[#1d1d1f]">선택 해제</button>
+                      <button type="button" onClick={() => updateSelectedSeats({ is_active: true })} className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1b7a1b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]">일괄 활성화</button>
+                      <button type="button" onClick={() => updateSelectedSeats({ is_active: false })} className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]">일괄 비활성화</button>
+                      <button type="button" onClick={clearSelection} className="rounded-[8px] px-2 py-1.5 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:text-[#1d1d1f] active:scale-[0.97]">선택 해제</button>
                     </div>
                   ) : null}
                 </div>
@@ -725,7 +735,7 @@ export default function CourseDesignatedSeatsPage({
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-[8px] bg-[#0071e3] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 hover:bg-blue-700"
+                className="rounded-[8px] bg-[#0071e3] px-5 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
               >
                 {saving ? '저장 중...' : '레이아웃 저장'}
               </button>
@@ -781,7 +791,7 @@ export default function CourseDesignatedSeatsPage({
                   <button
                     type="button"
                     onClick={closeEditorSeatModal}
-                    className="rounded-full bg-[#1d1d1f] px-5 py-2 text-sm font-medium text-white transition hover:bg-black"
+                    className="rounded-full bg-[#1d1d1f] px-5 py-2 text-sm font-medium text-white transition-all duration-200 ease-ios hover:bg-black hover:shadow-md active:scale-[0.97]"
                   >
                     닫기
                   </button>
@@ -818,7 +828,7 @@ export default function CourseDesignatedSeatsPage({
                   type="button"
                   onClick={() => void handleStartDisplay()}
                   disabled={working}
-                  className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-[#1d1d1f]"
+                  className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
                 >
                   시작
                 </button>
@@ -826,7 +836,7 @@ export default function CourseDesignatedSeatsPage({
                   type="button"
                   onClick={() => void handleStopDisplay()}
                   disabled={working || !activeDisplaySession}
-                  className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] disabled:opacity-60 hover:bg-[#e8e8ed]"
+                  className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                 >
                   중지
                 </button>
@@ -857,7 +867,7 @@ export default function CourseDesignatedSeatsPage({
                       await navigator.clipboard.writeText(displayUrl)
                       setMessage('표시 URL을 복사했습니다.')
                     }}
-                    className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                    className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                   >
                     URL 복사
                   </button>
@@ -865,13 +875,13 @@ export default function CourseDesignatedSeatsPage({
                     href={displayUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                    className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97]"
                   >
                     새 창 열기
                   </a>
                   <a
                     href="/dashboard/designated-seat-monitor"
-                    className="rounded-[8px] border border-[#d2d2d7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] hover:bg-[#f5f5f7]"
+                    className="rounded-[8px] border border-[#d2d2d7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#f5f5f7] active:scale-[0.97]"
                   >
                     멀티 모니터 설정
                   </a>
@@ -887,7 +897,7 @@ export default function CourseDesignatedSeatsPage({
               <button
                 type="button"
                 onClick={() => void refresh()}
-                className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-sm font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
               >
                 새로고침
               </button>
@@ -939,7 +949,7 @@ export default function CourseDesignatedSeatsPage({
                 <button
                   type="button"
                   onClick={() => { setModalSeatId(null); setStudentSearch(''); setManualEnrollmentId(null) }}
-                  className="text-sm font-semibold text-[#86868b] hover:text-[#1d1d1f]"
+                  className="text-sm font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:text-[#1d1d1f] active:scale-[0.97]"
                 >
                   닫기
                 </button>
@@ -966,7 +976,7 @@ export default function CourseDesignatedSeatsPage({
                       void handleManualClear(currentReservation!.enrollment_id)
                     }}
                     disabled={working}
-                    className="mt-3 w-full rounded-[8px] bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 disabled:opacity-60 hover:bg-red-100"
+                    className="mt-3 w-full rounded-[8px] bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                   >
                     배정 해제
                   </button>
@@ -996,7 +1006,7 @@ export default function CourseDesignatedSeatsPage({
                           key={enrollment.id}
                           type="button"
                           onClick={() => setManualEnrollmentId(isSelected ? null : enrollment.id)}
-                          className={`flex w-full items-center justify-between gap-2 border-b border-[#f5f5f7] px-4 py-2.5 text-left text-sm last:border-b-0 ${
+                          className={`flex w-full items-center justify-between gap-2 border-b border-[#f5f5f7] px-4 py-2.5 text-left text-sm transition-all duration-200 ease-ios active:scale-[0.99] last:border-b-0 ${
                             isSelected
                               ? 'bg-blue-50 font-bold text-blue-800'
                               : isAlreadyAssigned
@@ -1030,7 +1040,7 @@ export default function CourseDesignatedSeatsPage({
                   void handleManualAssign(modalSeatId, manualEnrollmentId)
                 }}
                 disabled={working || !manualEnrollmentId}
-                className="mt-3 w-full rounded-[8px] bg-[#0071e3] px-4 py-3 text-sm font-bold text-white disabled:opacity-60 hover:bg-blue-700"
+                className="mt-3 w-full rounded-[8px] bg-[#0071e3] px-4 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
               >
                 {currentEnrollment ? '학생 변경' : '배정하기'}
               </button>

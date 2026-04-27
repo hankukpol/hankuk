@@ -1,7 +1,9 @@
 'use client'
 
 import { X } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect } from 'react'
+import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 
 type SeatEditModalProps = {
   open: boolean
@@ -22,6 +24,9 @@ export function SeatEditModal({
   children,
   onClose,
 }: SeatEditModalProps) {
+  const motionConfig = useMotionConfig()
+  const backdropDuration = useReducedMotionDuration(0.2)
+
   useEffect(() => {
     if (!open) return
 
@@ -46,26 +51,28 @@ export function SeatEditModal({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [open, onClose])
 
-  if (!open) {
-    return null
-  }
-
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
-      <button
-        type="button"
-        aria-label="모달 닫기"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-      />
-
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className={`relative z-10 flex w-full flex-col overflow-hidden rounded-[10px] border border-[#d2d2d7] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.18)] ${widthClassName}`}
-        style={{ maxHeight: 'calc(100vh - 2rem)' }}
-      >
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 sm:p-6 sm:backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: backdropDuration }}
+          onClick={onClose}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            className={`relative z-10 flex max-h-[90vh] w-full flex-col overflow-hidden rounded-[10px] border border-[#d2d2d7] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.18)] ${widthClassName}`}
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={motionConfig.modal}
+            onClick={(event) => event.stopPropagation()}
+          >
         <div className="shrink-0 border-b border-[#d2d2d7] px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -82,7 +89,7 @@ export function SeatEditModal({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-[#d2d2d7] text-[#6e6e73] transition hover:bg-[#f5f5f7] hover:text-[#1d1d1f]"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-[#d2d2d7] text-[#6e6e73] transition-all duration-200 ease-ios hover:bg-[#f5f5f7] hover:text-[#1d1d1f] active:scale-[0.97]"
             >
               <X className="h-4 w-4" />
             </button>
@@ -93,7 +100,9 @@ export function SeatEditModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {children as never}
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }

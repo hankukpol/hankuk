@@ -1,4 +1,4 @@
-import type { Course, Enrollment } from '@/types/database'
+import type { BranchSeriesGroup, Course, Enrollment } from '@/types/database'
 
 export type PaymentMethod = 'card' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
 export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
@@ -61,10 +61,16 @@ export type EnrollmentPayment = {
   bank_name: string | null
   bank_account_last4: string | null
   cash_receipt_approval_no: string | null
+  series_option_id_snapshot: number | null
+  series_group_snapshot: BranchSeriesGroup | null
+  series_label_snapshot: string | null
   created_by_staff_id: number | null
   created_at: string
   updated_at: string
-  enrollments?: Pick<Enrollment, 'id' | 'name' | 'phone' | 'exam_number' | 'status'> | null
+  enrollments?: Pick<
+    Enrollment,
+    'id' | 'name' | 'phone' | 'exam_number' | 'status' | 'series_option_id' | 'series_group' | 'series'
+  > | null
   courses?: Pick<Course, 'id' | 'name'> | null
   enrollment_payment_items?: PaymentItem[]
   enrollment_refunds?: EnrollmentRefund[]
@@ -92,6 +98,8 @@ export type PaymentSettlementRow = {
   course_name: string
   method: PaymentMethod
   category: PaymentCategory
+  series_group: BranchSeriesGroup | null
+  series_label: string | null
   gross_amount: number
   refund_amount: number
   net_amount: number

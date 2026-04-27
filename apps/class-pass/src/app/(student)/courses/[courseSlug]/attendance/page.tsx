@@ -336,7 +336,7 @@ export default function StudentAttendancePage() {
         <button
           type="button"
           onClick={goBack}
-          className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-opacity hover:text-white"
+          className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-all duration-200 ease-ios hover:text-white active:scale-[0.97]"
         >
           강의 페이지
         </button>

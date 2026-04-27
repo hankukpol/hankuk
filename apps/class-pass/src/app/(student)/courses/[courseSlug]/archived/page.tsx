@@ -394,7 +394,7 @@ function Modal({
           <span className="text-[17px] font-semibold tracking-[-0.03em] text-[var(--student-text)]">{title}</span>
           <button
             onClick={onClose}
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--student-surface-muted)] text-[var(--student-text-muted)] transition-opacity active:opacity-70"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[var(--student-surface-muted)] text-[var(--student-text-muted)] transition-all duration-200 ease-ios active:scale-[0.97] active:opacity-70"
             aria-label="닫기"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">

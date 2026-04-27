@@ -1,9 +1,10 @@
-import type { Course, Enrollment, Material } from '@/types/database'
+import type { BranchSeriesOption, Course, Enrollment, Material } from '@/types/database'
 
 export type StudentsPageData = {
   course: Course
   enrollments: Enrollment[]
   textbooks: Material[]
+  seriesOptions: BranchSeriesOption[]
 }
 
 export type EnrollmentManageStatusFilter = 'all' | 'active' | 'refunded' | 'suspended'
@@ -28,6 +29,7 @@ export type EnrollmentForm = {
   phone: string
   exam_number: string
   birth_date: string
+  series_option_id: number | null
   custom_data: Record<string, string>
   textbookIds: number[]
 }
@@ -48,8 +50,16 @@ export const MATRIX_TAB_META: Record<MatrixMode, { materialType: 'handout' | 'te
   'textbook-receipts': { materialType: 'textbook', title: '교재 수령현황' },
 }
 
-export function emptyForm(): EnrollmentForm {
-  return { name: '', phone: '', exam_number: '', birth_date: '', custom_data: {}, textbookIds: [] }
+export function emptyForm(seriesOptionId: number | null = null): EnrollmentForm {
+  return {
+    name: '',
+    phone: '',
+    exam_number: '',
+    birth_date: '',
+    series_option_id: seriesOptionId,
+    custom_data: {},
+    textbookIds: [],
+  }
 }
 
 export function toEditForm(enrollment: Enrollment): EnrollmentForm {
@@ -58,6 +68,7 @@ export function toEditForm(enrollment: Enrollment): EnrollmentForm {
     phone: enrollment.phone,
     exam_number: enrollment.exam_number ?? '',
     birth_date: enrollment.student_profile?.birth_date ?? '',
+    series_option_id: enrollment.series_option_id ?? null,
     custom_data: enrollment.custom_data ?? {},
     textbookIds: [],
   }

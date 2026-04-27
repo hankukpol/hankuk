@@ -213,7 +213,7 @@ export default function BulkPhotoUploadPage({
       >
         <p className="text-sm font-semibold text-gray-700">사진 파일을 드래그하거나 클릭해서 선택하세요.</p>
         <p className="mt-1 text-xs text-gray-400">JPEG, PNG, WebP / 2MB 이하 / 파일명 = 수험번호</p>
-        <label className="mt-4 cursor-pointer rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700">
+        <label className="mt-4 cursor-pointer rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97]">
           파일 선택
           <input
             type="file"
@@ -246,7 +246,7 @@ export default function BulkPhotoUploadPage({
                     return []
                   })
                 }}
-                className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200"
+                className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
               >
                 초기화
               </button>
@@ -254,7 +254,7 @@ export default function BulkPhotoUploadPage({
                 type="button"
                 onClick={() => void handleUpload()}
                 disabled={uploading || matchedCount === 0}
-                className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
               >
                 {uploading ? `업로드 중 (${progress.done}/${progress.total})` : `매칭된 ${matchedCount}건 업로드`}
               </button>

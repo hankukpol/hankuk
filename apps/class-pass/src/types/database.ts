@@ -11,6 +11,7 @@ export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
 export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
 export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded'
 export type PaymentCategory = 'tuition' | 'textbook' | 'material' | 'exam_fee' | 'extension' | 'etc'
+export type BranchSeriesGroup = 'public' | 'career'
 export type RefundMethod = 'card_cancel' | 'cash' | 'bank_transfer' | 'point' | 'other'
 export type RefundReasonCategory =
   | 'withdrawal'
@@ -117,6 +118,8 @@ export interface Enrollment {
   exam_number: string | null
   gender: string | null
   region: string | null
+  series_option_id: number | null
+  series_group: BranchSeriesGroup | null
   series: string | null
   status: EnrollmentStatus
   photo_url: string | null
@@ -155,6 +158,8 @@ export interface AttendanceDeviceState {
   last_seen_at: string | null
   reset_requested_at: string | null
   reset_requested_user_agent: string | null
+  registered_count: number
+  max_device_count: number
 }
 
 export interface SeatAssignment {
@@ -411,12 +416,18 @@ export interface EnrollmentPayment {
   bank_name: string | null
   bank_account_last4: string | null
   cash_receipt_approval_no: string | null
+  series_option_id_snapshot: number | null
+  series_group_snapshot: BranchSeriesGroup | null
+  series_label_snapshot: string | null
   created_by_staff_id: number | null
   created_at: string
   updated_at: string
   enrollment_payment_items?: EnrollmentPaymentItem[]
   enrollment_refunds?: EnrollmentRefund[]
-  enrollments?: Pick<Enrollment, 'id' | 'name' | 'phone' | 'exam_number' | 'status'> | null
+  enrollments?: Pick<
+    Enrollment,
+    'id' | 'name' | 'phone' | 'exam_number' | 'status' | 'series_option_id' | 'series_group' | 'series'
+  > | null
   courses?: Pick<Course, 'id' | 'name'> | null
 }
 
@@ -508,6 +519,18 @@ export interface Branch {
   region_label: string
   app_name: string
   theme_color: string
+  is_active: boolean
+  display_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BranchSeriesOption {
+  id: number
+  branch_id: number
+  group_key: BranchSeriesGroup
+  label: string
+  is_default: boolean
   is_active: boolean
   display_order: number
   created_at: string

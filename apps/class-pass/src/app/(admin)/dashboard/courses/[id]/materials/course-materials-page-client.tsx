@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import type { Course, Material, MaterialType } from '@/types/database'
 import { useMotionConfig } from '@/lib/motion'
@@ -241,10 +241,12 @@ export default function CourseMaterialsPage({
               key={materialType}
               type="button"
               onClick={() => {
-                setActiveTab(materialType)
-                setEditingId(null)
-                setMessage('')
-                setError('')
+                startTransition(() => {
+                  setActiveTab(materialType)
+                  setEditingId(null)
+                  setMessage('')
+                  setError('')
+                })
               }}
               className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
                 activeTab === materialType

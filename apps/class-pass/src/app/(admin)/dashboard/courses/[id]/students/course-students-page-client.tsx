@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import type { FormEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import { Search, UserCheck, X } from 'lucide-react'
@@ -1546,7 +1546,7 @@ export default function CourseStudentsPage({
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => startTransition(() => setTab(key))}
             className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
               tab === key
                 ? 'text-[#1d1d1f]'

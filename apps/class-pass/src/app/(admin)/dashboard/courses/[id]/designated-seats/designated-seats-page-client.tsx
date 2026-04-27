@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
@@ -364,13 +364,15 @@ export default function CourseDesignatedSeatsPage({
       if (!confirmed) return
       void refresh().catch(() => null)
     }
-    setTab(nextTab)
-    setError('')
-    setMessage('')
-    setEditorModalSeatId(null)
-    setModalSeatId(null)
-    setManualEnrollmentId(null)
-    setStudentSearch('')
+    startTransition(() => {
+      setTab(nextTab)
+      setError('')
+      setMessage('')
+      setEditorModalSeatId(null)
+      setModalSeatId(null)
+      setManualEnrollmentId(null)
+      setStudentSearch('')
+    })
   }
 
   async function handleSaveLayout(event: FormEvent) {

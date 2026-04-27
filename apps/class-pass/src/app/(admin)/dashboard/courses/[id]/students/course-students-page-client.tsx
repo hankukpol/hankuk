@@ -10,6 +10,7 @@ import { Search, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
 import { SeriesSelector } from '@/components/series/SeriesSelector'
+import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
 import {
   PaymentSection,
   createEmptyPaymentSectionValue,
@@ -153,6 +154,7 @@ export default function CourseStudentsPage({
   const tenant = useTenantConfig()
   const motionConfig = useMotionConfig()
   const panelBackdropDuration = useReducedMotionDuration(0.2)
+  const deferInteractionWork = useDeferredInteractionWork()
   const courseId = Number(params.id)
 
   const [tab, setTab] = useState<TabMode>('manage')
@@ -1546,7 +1548,15 @@ export default function CourseStudentsPage({
           <button
             key={key}
             type="button"
-            onClick={() => startTransition(() => setTab(key))}
+            onClick={() => {
+              if (tab === key) {
+                return
+              }
+
+              deferInteractionWork(() => {
+                startTransition(() => setTab(key))
+              })
+            }}
             className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
               tab === key
                 ? 'text-[#1d1d1f]'

@@ -4,6 +4,8 @@ import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
 import type { Course, Material, MaterialType } from '@/types/database'
 import { useMotionConfig } from '@/lib/motion'
 
@@ -75,6 +77,7 @@ export default function CourseMaterialsPage({
 }: CourseMaterialsPageProps) {
   const params = useParams<{ id: string }>()
   const motionConfig = useMotionConfig()
+  const deferInteractionWork = useDeferredInteractionWork()
   const courseId = Number(params.id)
 
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
@@ -85,6 +88,8 @@ export default function CourseMaterialsPage({
   const [editForm, setEditForm] = useState<MaterialForm>(EMPTY_FORM)
   const [loading, setLoading] = useState(!initialLoaded)
   const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Material | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
 
@@ -198,30 +203,44 @@ export default function CourseMaterialsPage({
     setMessage('자료를 수정했습니다.')
   }
 
-  async function handleDelete(material: Material) {
-    const confirmed = window.confirm(`"${material.name}" 항목을 삭제할까요?`)
-    if (!confirmed) {
+  function requestDelete(material: Material) {
+    deferInteractionWork(() => {
+      setDeleteTarget(material)
+    })
+  }
+
+  async function handleDeleteConfirmed() {
+    const material = deleteTarget
+    if (!material || deleteSubmitting) {
       return
     }
 
+    setDeleteSubmitting(true)
     setError('')
     setMessage('')
 
-    const response = await fetch(`/api/materials/${material.id}`, {
-      method: 'DELETE',
-    })
-    const payload = await response.json().catch(() => null)
+    try {
+      const response = await fetch(`/api/materials/${material.id}`, {
+        method: 'DELETE',
+      })
+      const payload = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      setError(payload?.error ?? '자료를 삭제하지 못했습니다.')
-      return
-    }
+      if (!response.ok) {
+        setError(payload?.error ?? '자료를 삭제하지 못했습니다.')
+        return
+      }
 
-    setMaterials((current) => current.filter((entry) => entry.id !== material.id))
-    if (editingId === material.id) {
-      setEditingId(null)
+      setMaterials((current) => current.filter((entry) => entry.id !== material.id))
+      if (editingId === material.id) {
+        setEditingId(null)
+      }
+      setDeleteTarget(null)
+      setMessage('자료를 삭제했습니다.')
+    } catch {
+      setError('자료를 삭제하지 못했습니다.')
+    } finally {
+      setDeleteSubmitting(false)
     }
-    setMessage('자료를 삭제했습니다.')
   }
 
   if (loading) {
@@ -233,7 +252,25 @@ export default function CourseMaterialsPage({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
+      <ConfirmationModal
+        open={Boolean(deleteTarget)}
+        title="자료를 삭제할까요?"
+        description={deleteTarget ? `"${deleteTarget.name}" 항목은 삭제 후 되돌릴 수 없습니다.` : undefined}
+        confirmLabel="삭제"
+        pendingLabel="삭제 중..."
+        tone="danger"
+        submitting={deleteSubmitting}
+        onClose={() => {
+          if (!deleteSubmitting) {
+            setDeleteTarget(null)
+          }
+        }}
+        onConfirm={() => {
+          void handleDeleteConfirmed()
+        }}
+      />
+      <div className="flex flex-col gap-6">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
         <div className="flex gap-6 border-b border-slate-200 overflow-x-auto">
           {(['handout', 'textbook'] as const).map((materialType) => (
@@ -241,11 +278,17 @@ export default function CourseMaterialsPage({
               key={materialType}
               type="button"
               onClick={() => {
-                startTransition(() => {
-                  setActiveTab(materialType)
-                  setEditingId(null)
-                  setMessage('')
-                  setError('')
+                if (activeTab === materialType) {
+                  return
+                }
+
+                deferInteractionWork(() => {
+                  startTransition(() => {
+                    setActiveTab(materialType)
+                    setEditingId(null)
+                    setMessage('')
+                    setError('')
+                  })
                 })
               }}
               className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
@@ -405,7 +448,7 @@ export default function CourseMaterialsPage({
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDelete(material)}
+                          onClick={() => requestDelete(material)}
                           className="rounded-2xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97]"
                         >
                           삭제
@@ -485,6 +528,7 @@ export default function CourseMaterialsPage({
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

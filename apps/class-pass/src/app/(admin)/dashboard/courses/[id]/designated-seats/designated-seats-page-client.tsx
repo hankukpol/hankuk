@@ -5,9 +5,11 @@ import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
 import { defaultSeatLabel, sortSeats } from '@/lib/designated-seat/layout'
 import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -136,6 +138,7 @@ export default function CourseDesignatedSeatsPage({
   const params = useParams<{ id: string }>()
   const tenant = useTenantConfig()
   const motionConfig = useMotionConfig()
+  const deferInteractionWork = useDeferredInteractionWork()
   const courseId = Number(params.id)
   const initialState = getInitialViewState(initialPayload)
   const initialSnapshot = initialState
@@ -176,6 +179,7 @@ export default function CourseDesignatedSeatsPage({
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [isDirty, setIsDirty] = useState(false)
+  const [pendingTab, setPendingTab] = useState<TabMode | null>(null)
   const savedSnapshotRef = useRef(initialSnapshot)
 
   function markSnapshot(drafts: SeatDraft[], cols: number, rws: number, aisle: string, feat: boolean, open: boolean) {
@@ -357,13 +361,7 @@ export default function CourseDesignatedSeatsPage({
     setEditorModalSeatId(null)
   }
 
-  function handleTabChange(nextTab: TabMode) {
-    if (nextTab === tab) return
-    if (isDirty && nextTab !== 'editor') {
-      const confirmed = window.confirm('저장하지 않은 변경 사항이 있습니다. 탭을 전환하면 변경 내용이 사라집니다. 계속할까요?')
-      if (!confirmed) return
-      void refresh().catch(() => null)
-    }
+  function applyTabChange(nextTab: TabMode) {
     startTransition(() => {
       setTab(nextTab)
       setError('')
@@ -373,6 +371,30 @@ export default function CourseDesignatedSeatsPage({
       setManualEnrollmentId(null)
       setStudentSearch('')
     })
+  }
+
+  function handleTabChange(nextTab: TabMode) {
+    if (nextTab === tab) return
+
+    if (isDirty && tab === 'editor' && nextTab !== 'editor') {
+      deferInteractionWork(() => setPendingTab(nextTab))
+      return
+    }
+
+    deferInteractionWork(() => applyTabChange(nextTab))
+  }
+
+  function confirmPendingTabChange() {
+    const nextTab = pendingTab
+    if (!nextTab) {
+      return
+    }
+
+    setPendingTab(null)
+    if (isDirty) {
+      void refresh().catch(() => null)
+    }
+    applyTabChange(nextTab)
   }
 
   async function handleSaveLayout(event: FormEvent) {
@@ -522,7 +544,18 @@ export default function CourseDesignatedSeatsPage({
   const bulkCount = allSelectedIds.size
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
+      <ConfirmationModal
+        open={Boolean(pendingTab)}
+        title="저장하지 않은 변경 사항이 있습니다"
+        description="탭을 전환하면 좌석 편집 내용이 사라집니다. 계속할까요?"
+        confirmLabel="계속"
+        pendingLabel="전환 중..."
+        tone="danger"
+        onClose={() => setPendingTab(null)}
+        onConfirm={confirmPendingTabChange}
+      />
+      <div className="flex flex-col gap-6">
       {/* Header */}
       {false ? (
         <section className="rounded-[8px] bg-white p-6">
@@ -1050,6 +1083,7 @@ export default function CourseDesignatedSeatsPage({
           </div>
         )
       })()}
-    </div>
+      </div>
+    </>
   )
 }

@@ -606,6 +606,101 @@ export async function approveAttendanceDeviceReRegistration(params: {
   }
 
   const nowIso = new Date().toISOString()
+
+  if (bindings.length < ATTENDANCE_DEVICE_BINDING_LIMIT) {
+    const insertResult = await db
+      .from('attendance_device_bindings')
+      .insert({
+        course_id: params.courseId,
+        enrollment_id: params.enrollmentId,
+        device_key_hash: requestedDeviceHash,
+        bound_at: nowIso,
+        last_seen_at: nowIso,
+        reset_approved_at: nowIso,
+        reset_approved_by: params.actor,
+        updated_at: nowIso,
+      })
+      .select('*')
+      .maybeSingle()
+
+    if (insertResult.error) {
+      if (insertResult.error.code === '23505') {
+        const refreshedBindings = await getActiveAttendanceDeviceBindings({
+          courseId: params.courseId,
+          enrollmentId: params.enrollmentId,
+        })
+        const alreadyRegisteredBinding = refreshedBindings.find((row) => row.device_key_hash === requestedDeviceHash) ?? null
+
+        if (alreadyRegisteredBinding) {
+          const clearResult = await db
+            .from('attendance_device_bindings')
+            .update({
+              reset_requested_at: null,
+              reset_requested_device_key_hash: null,
+              reset_requested_user_agent: null,
+              reset_approved_at: nowIso,
+              reset_approved_by: params.actor,
+              updated_at: nowIso,
+            })
+            .eq('id', binding.id)
+            .select('*')
+            .maybeSingle()
+
+          if (clearResult.error) {
+            throw normalizeAttendanceDeviceBindingDependencyError(clearResult.error)
+          }
+
+          const clearedBinding = clearResult.data as AttendanceDeviceBindingRow | null
+          return mapAttendanceDeviceStateFromRows(
+            refreshedBindings.map((row) => (row.id === clearedBinding?.id ? clearedBinding : row)),
+          )
+        }
+
+        throw new AttendanceServiceError('요청된 기기가 이미 다른 수강생에게 등록되어 있습니다.', 409)
+      }
+
+      throw normalizeAttendanceDeviceBindingDependencyError(insertResult.error)
+    }
+
+    const clearResult = await db
+      .from('attendance_device_bindings')
+      .update({
+        reset_requested_at: null,
+        reset_requested_device_key_hash: null,
+        reset_requested_user_agent: null,
+        reset_approved_at: nowIso,
+        reset_approved_by: params.actor,
+        updated_at: nowIso,
+      })
+      .eq('id', binding.id)
+      .select('*')
+      .maybeSingle()
+
+    if (clearResult.error) {
+      throw normalizeAttendanceDeviceBindingDependencyError(clearResult.error)
+    }
+
+    await logAttendanceEvent({
+      course_id: params.courseId,
+      event_type: 'attendance_device_rebind_approved',
+      details: {
+        actor: params.actor,
+        enrollment_id: params.enrollmentId,
+        requested_at: binding.reset_requested_at,
+        registered_count: bindings.length + 1,
+        device_limit: ATTENDANCE_DEVICE_BINDING_LIMIT,
+        mode: 'added',
+      },
+    })
+
+    const insertedBinding = insertResult.data as AttendanceDeviceBindingRow | null
+    const clearedBinding = clearResult.data as AttendanceDeviceBindingRow | null
+    return mapAttendanceDeviceStateFromRows([
+      ...bindings.map((row) => (row.id === clearedBinding?.id ? clearedBinding : row)),
+      ...(insertedBinding ? [insertedBinding] : []),
+    ])
+  }
+
   const updateResult = await db
     .from('attendance_device_bindings')
     .update({
@@ -640,6 +735,7 @@ export async function approveAttendanceDeviceReRegistration(params: {
       requested_at: binding.reset_requested_at,
       registered_count: bindings.length,
       device_limit: ATTENDANCE_DEVICE_BINDING_LIMIT,
+      mode: 'replaced',
     },
   })
 

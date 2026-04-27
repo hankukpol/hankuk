@@ -44,13 +44,13 @@ function getAttendanceDeviceMeta(enrollment: Enrollment) {
 
   if (state.status === 'pending_reset') {
     return {
-      label: `한도 초과 ${countLabel}`,
+      label: `승인 대기 ${countLabel}`,
       className: 'bg-amber-50 text-amber-700',
       title: [
         `등록된 브라우저: ${countLabel}`,
         state.reset_requested_at ? `요청 시각: ${formatDateTime(state.reset_requested_at)}` : null,
         state.reset_requested_user_agent ? `기기 정보: ${state.reset_requested_user_agent}` : null,
-      ].filter(Boolean).join('\n') || '추가 기기 승인이 필요합니다.',
+      ].filter(Boolean).join('\n') || '추가 기기 승인 대기 중입니다.',
     }
   }
 

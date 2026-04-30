@@ -660,6 +660,50 @@ async function recalculatePaymentStatus(
   return (await loadPaymentById(db, paymentId, division)) ?? payment
 }
 
+async function listExistingPaymentRegistrations(
+  db: ServerClient,
+  courseId: number,
+  studentId: number,
+  name: string,
+  phone: string,
+) {
+  const [byStudent, byIdentity] = await Promise.all([
+    db
+      .from('enrollments')
+      .select('*')
+      .eq('course_id', courseId)
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false }),
+    db
+      .from('enrollments')
+      .select('*')
+      .eq('course_id', courseId)
+      .eq('name', name)
+      .eq('phone', phone)
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (byStudent.error) {
+    throw byStudent.error
+  }
+
+  if (byIdentity.error) {
+    throw byIdentity.error
+  }
+
+  const byId = new Map<number, Enrollment>()
+  for (const enrollment of [
+    ...((byStudent.data ?? []) as Enrollment[]),
+    ...((byIdentity.data ?? []) as Enrollment[]),
+  ]) {
+    byId.set(enrollment.id, enrollment)
+  }
+
+  return Array.from(byId.values()).sort((left, right) => (
+    right.created_at.localeCompare(left.created_at)
+  ))
+}
+
 export async function createEnrollmentForPayment(
   input: CreateEnrollmentForPaymentInput,
   division: string,
@@ -676,23 +720,6 @@ export async function createEnrollmentForPayment(
     phone: input.phone,
     exam_number: input.examNumber,
   })
-
-  if (matchedStudent) {
-    const { data: existingByStudent, error: existingError } = await db
-      .from('enrollments')
-      .select('id')
-      .eq('course_id', input.courseId)
-      .eq('student_id', matchedStudent.id)
-      .maybeSingle()
-
-    if (existingError) {
-      throw existingError
-    }
-
-    if (existingByStudent) {
-      throw createPaymentError('같�? 강좌???�일???�생???��? ?�록?�어 ?�습?�다.', 409)
-    }
-  }
 
   const studentResult = await ensureStudentProfile(db, {
     division,
@@ -713,6 +740,47 @@ export async function createEnrollmentForPayment(
   )
 
   const student = authSetup.student
+  const existingRegistrations = await listExistingPaymentRegistrations(
+    db,
+    input.courseId,
+    student.id,
+    student.name,
+    student.phone,
+  )
+  const activeRegistration = existingRegistrations.find((entry) => entry.status === 'active')
+  if (activeRegistration) {
+    throw createPaymentError('같은 강좌에 동일한 학생이 이미 등록되어 있습니다.', 409)
+  }
+
+  const refundedRegistration = existingRegistrations.find((entry) => entry.status === 'refunded')
+  if (refundedRegistration) {
+    const { data: updatedRegistration, error: updateError } = await db
+      .from('enrollments')
+      .update({
+        student_id: student.id,
+        name: student.name,
+        phone: student.phone,
+        exam_number: student.exam_number,
+        custom_data: input.customData ?? refundedRegistration.custom_data ?? {},
+      })
+      .eq('id', refundedRegistration.id)
+      .select('*')
+      .single()
+
+    if (updateError) {
+      throw updateError
+    }
+
+    await invalidateCache('enrollments')
+    return {
+      enrollment: {
+        ...(updatedRegistration as Enrollment),
+        student_profile: getStudentAuthProfile(student),
+      },
+      generatedPin: authSetup.generatedPin ?? null,
+    }
+  }
+
   const seriesOption = await resolveBranchSeriesOption()
   const { data, error } = await db
     .from('enrollments')

@@ -61,9 +61,15 @@ type ConfirmationRequest = {
   description?: string
   confirmLabel: string
   pendingLabel?: string
-  cancelLabel?: string
+  cancelLabel?: string | null
   tone?: 'default' | 'danger' | 'success'
   onConfirm: () => Promise<void> | void
+}
+
+type NoticeRequest = {
+  title: string
+  description: string
+  tone?: 'default' | 'danger' | 'success'
 }
 
 type StudentSearchResult = {
@@ -195,7 +201,10 @@ export default function CourseStudentsPage({
   const [suspensionTarget, setSuspensionTarget] = useState<Enrollment | null>(null)
   const [suspensionSubmitting, setSuspensionSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
+  const [notice, setNotice] = useState<NoticeRequest | null>(null)
   const [confirmSubmitting, setConfirmSubmitting] = useState(false)
+  const lastErrorNoticeRef = useRef('')
+  const lastLookupNoticeRef = useRef('')
 
   const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null)
   const [photoUploading, setPhotoUploading] = useState(false)
@@ -223,6 +232,42 @@ export default function CourseStudentsPage({
     () => enrollments.find((enrollment) => enrollment.id === paymentDetailEnrollmentId) ?? null,
     [enrollments, paymentDetailEnrollmentId],
   )
+
+  useEffect(() => {
+    if (!error) {
+      lastErrorNoticeRef.current = ''
+      return
+    }
+
+    if (lastErrorNoticeRef.current === error) {
+      return
+    }
+
+    lastErrorNoticeRef.current = error
+    setNotice({
+      title: '확인이 필요합니다',
+      description: error,
+      tone: 'danger',
+    })
+  }, [error])
+
+  useEffect(() => {
+    if (panel !== 'create' || !studentLookupError) {
+      lastLookupNoticeRef.current = ''
+      return
+    }
+
+    if (lastLookupNoticeRef.current === studentLookupError) {
+      return
+    }
+
+    lastLookupNoticeRef.current = studentLookupError
+    setNotice({
+      title: '수강생 선택을 확인해 주세요',
+      description: studentLookupError,
+      tone: 'danger',
+    })
+  }, [panel, studentLookupError])
 
   useEffect(() => {
     if (panel !== 'create') {
@@ -382,6 +427,13 @@ export default function CourseStudentsPage({
     setConfirmation(request)
   }
 
+  function openNotice(request: NoticeRequest) {
+    setError(request.description)
+    setMessage('')
+    setNotice(request)
+    lastErrorNoticeRef.current = request.description
+  }
+
   async function runConfirmedAction() {
     if (!confirmation) {
       return
@@ -430,7 +482,13 @@ export default function CourseStudentsPage({
     const payload = await response.json().catch(() => null)
 
     if (!response.ok) {
-      setError(payload?.error ?? '삭제하지 못했습니다.')
+      openNotice({
+        title: '수강생을 삭제할 수 없습니다',
+        description: payload?.reason
+          ? `${payload.error ?? '삭제하지 못했습니다.'}\n\n이유: ${payload.reason}`
+          : payload?.error ?? '삭제하지 못했습니다.',
+        tone: 'danger',
+      })
       return
     }
 
@@ -968,7 +1026,16 @@ export default function CourseStudentsPage({
         }],
       })
     }
-    setMessage(shouldSavePayment ? '수강생과 수납 정보를 함께 등록했습니다.' : '수강생을 등록하고 미납 청구를 남겼습니다.')
+    const wasReactivated = Boolean(p?.reactivated)
+    setMessage(
+      wasReactivated
+        ? shouldSavePayment
+          ? '환불 완료 수강생을 재등록하고 수납 정보를 저장했습니다.'
+          : '환불 완료 수강생을 다시 활성 등록으로 전환했습니다.'
+        : shouldSavePayment
+          ? '수강생과 수납 정보를 함께 등록했습니다.'
+          : '수강생을 등록하고 미납 청구를 남겼습니다.',
+    )
     setPanel('none')
     await refresh().catch(() => null)
   }
@@ -1098,8 +1165,36 @@ export default function CourseStudentsPage({
     setMessage('응시 정지를 적용했습니다.')
   }
 
-  if (loading) return <p className="py-12 text-center text-sm text-slate-500">불러오는 중...</p>
-  if (!course) return <p className="py-12 text-center text-sm text-red-500">{error || '강좌를 찾을 수 없습니다.'}</p>
+  const noticeModal = (
+    <ConfirmationModal
+      open={Boolean(notice)}
+      title={notice?.title ?? ''}
+      description={notice?.description}
+      confirmLabel="확인"
+      cancelLabel={null}
+      tone={notice?.tone}
+      onClose={() => setNotice(null)}
+      onConfirm={() => setNotice(null)}
+    />
+  )
+
+  if (loading) {
+    return (
+      <>
+        <p className="py-12 text-center text-sm text-slate-500">불러오는 중...</p>
+        {noticeModal}
+      </>
+    )
+  }
+
+  if (!course) {
+    return (
+      <>
+        <p className="py-12 text-center text-sm text-red-500">{error || '강좌를 찾을 수 없습니다.'}</p>
+        {noticeModal}
+      </>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -1522,6 +1617,7 @@ export default function CourseStudentsPage({
           void runConfirmedAction()
         }}
       />
+      {noticeModal}
       <PinRevealModal reveal={pinReveal} onClose={() => setPinReveal(null)} onCopyPin={copyPin} />
       <SuspensionModal
         courseName={course.name}
@@ -1633,7 +1729,7 @@ export default function CourseStudentsPage({
           onDelete={(enrollment) => {
             openConfirmation({
               title: '수강생을 삭제할까요?',
-              description: `${enrollment.name} 학생을 이 강의 목록에서 제거합니다.`,
+              description: `${enrollment.name} 학생을 이 강의 목록에서 제거합니다.\n\n결제 기록, 정산 이력, 출결/좌석 기록처럼 보존해야 하는 이력이 있으면 삭제할 수 없습니다.`,
               confirmLabel: '삭제',
               pendingLabel: '삭제 중...',
               tone: 'danger',

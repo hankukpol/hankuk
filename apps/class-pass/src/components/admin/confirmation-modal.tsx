@@ -12,7 +12,8 @@ type ConfirmationModalProps = {
   description?: string
   confirmLabel: string
   pendingLabel?: string
-  cancelLabel?: string
+  cancelLabel?: string | null
+  overlayClassName?: string
   tone?: ConfirmationTone
   submitting?: boolean
   onClose: () => void
@@ -32,6 +33,7 @@ export function ConfirmationModal({
   confirmLabel,
   pendingLabel,
   cancelLabel = '취소',
+  overlayClassName = 'z-50',
   tone = 'default',
   submitting = false,
   onClose,
@@ -60,7 +62,7 @@ export function ConfirmationModal({
       {open ? (
         <motion.div
           role="presentation"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-5 sm:backdrop-blur-sm"
+          className={`fixed inset-0 flex items-center justify-center bg-black/40 px-5 sm:backdrop-blur-sm ${overlayClassName}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -89,7 +91,7 @@ export function ConfirmationModal({
               {title}
             </h3>
             {description ? (
-              <p id={descriptionId} className="mt-2 text-sm text-slate-700">
+              <p id={descriptionId} className="mt-2 whitespace-pre-line text-sm text-slate-700">
                 {description}
               </p>
             ) : null}
@@ -105,14 +107,16 @@ export function ConfirmationModal({
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-[8px] bg-slate-50 px-4 py-2 text-[14px] font-medium text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-          >
-            {cancelLabel}
-          </button>
+          {cancelLabel !== null ? (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-[8px] bg-slate-50 px-4 py-2 text-[14px] font-medium text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            >
+              {cancelLabel}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onConfirm}

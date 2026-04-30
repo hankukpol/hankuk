@@ -163,6 +163,70 @@ async function rollbackCreatedEnrollment(
   }
 }
 
+async function listExistingCourseRegistrations(
+  db: ReturnType<typeof createServerClient>,
+  courseId: number,
+  studentId: number,
+  name: string,
+  phone: string,
+) {
+  const [byStudent, byIdentity] = await Promise.all([
+    db
+      .from('enrollments')
+      .select('*')
+      .eq('course_id', courseId)
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false }),
+    db
+      .from('enrollments')
+      .select('*')
+      .eq('course_id', courseId)
+      .eq('name', name)
+      .eq('phone', phone)
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (byStudent.error) {
+    throw byStudent.error
+  }
+
+  if (byIdentity.error) {
+    throw byIdentity.error
+  }
+
+  const byId = new Map<number, Enrollment>()
+  for (const enrollment of [
+    ...((byStudent.data ?? []) as Enrollment[]),
+    ...((byIdentity.data ?? []) as Enrollment[]),
+  ]) {
+    byId.set(enrollment.id, enrollment)
+  }
+
+  return Array.from(byId.values()).sort((left, right) => (
+    right.created_at.localeCompare(left.created_at)
+  ))
+}
+
+async function restoreRefundedRegistrationState(
+  db: ReturnType<typeof createServerClient>,
+  enrollment: Pick<Enrollment, 'id' | 'refunded_at' | 'suspended_at' | 'suspension_reason' | 'suspended_by'>,
+) {
+  const { error } = await db
+    .from('enrollments')
+    .update({
+      status: 'refunded',
+      refunded_at: enrollment.refunded_at ?? new Date().toISOString(),
+      suspended_at: enrollment.suspended_at,
+      suspension_reason: enrollment.suspension_reason,
+      suspended_by: enrollment.suspended_by,
+    })
+    .eq('id', enrollment.id)
+
+  if (error) {
+    throw error
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authError = await requireAdminApi(req)
@@ -293,23 +357,6 @@ export async function POST(req: NextRequest) {
       photo_url: parsed.data.photo_url,
     })
 
-    if (matchedStudent) {
-      const { data: existingByStudent, error: existingError } = await db
-        .from('enrollments')
-        .select('id')
-        .eq('course_id', parsed.data.courseId)
-        .eq('student_id', matchedStudent.id)
-        .maybeSingle()
-
-      if (existingError) {
-        return NextResponse.json({ error: '수강생을 생성하지 못했습니다.' }, { status: 500 })
-      }
-
-      if (existingByStudent) {
-        return NextResponse.json({ error: '같은 과정에 동일한 수강생이 이미 존재합니다.' }, { status: 409 })
-      }
-    }
-
     const studentResult = selectedStudent && !parsed.data.updateSelectedStudent
       ? { student: selectedStudent, created: false, changed: false }
       : await ensureStudentProfile(db, {
@@ -332,44 +379,95 @@ export async function POST(req: NextRequest) {
     )
     const student = authSetup.student
 
-    const { data, error } = await db
-      .from('enrollments')
-      .insert({
-        course_id: parsed.data.courseId,
-        student_id: student.id,
-        name: student.name,
-        phone: student.phone,
-        exam_number: student.exam_number,
-        gender: parsed.data.gender || null,
-        region: parsed.data.region || null,
-        series_option_id: seriesOption?.id ?? null,
-        series_group: seriesOption?.group_key ?? 'public',
-        series: seriesOption?.label ?? parsed.data.series ?? '공채',
-        memo: parsed.data.memo || null,
-        photo_url: student.photo_url,
-        custom_data: parsed.data.custom_data ?? {},
-      })
-      .select('*')
-      .single()
-
-    if (error) {
-      if (error.code === '23505') {
-        return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
-      }
-
-      return NextResponse.json({ error: '수강생을 생성하지 못했습니다.' }, { status: 500 })
+    const existingRegistrations = await listExistingCourseRegistrations(
+      db,
+      parsed.data.courseId,
+      student.id,
+      student.name,
+      student.phone,
+    )
+    const activeRegistration = existingRegistrations.find((entry) => entry.status === 'active')
+    if (activeRegistration) {
+      return NextResponse.json({ error: '같은 과정에 동일한 수강생이 이미 등록되어 있습니다.' }, { status: 409 })
     }
 
-    const enrollment = data as Enrollment
+    const refundedRegistration = existingRegistrations.find((entry) => entry.status === 'refunded') ?? null
+    const enrollmentPayload = {
+      course_id: parsed.data.courseId,
+      student_id: student.id,
+      name: student.name,
+      phone: student.phone,
+      exam_number: student.exam_number,
+      gender: parsed.data.gender || null,
+      region: parsed.data.region || null,
+      series_option_id: seriesOption?.id ?? null,
+      series_group: seriesOption?.group_key ?? 'public',
+      series: seriesOption?.label ?? parsed.data.series ?? '공채',
+      memo: parsed.data.memo || null,
+      photo_url: student.photo_url,
+      custom_data: parsed.data.custom_data ?? {},
+    }
+
+    let enrollment: Enrollment
+    let createdEnrollment = false
+    let reactivatedRegistration: Enrollment | null = null
+
+    if (refundedRegistration) {
+      const { data, error } = await db
+        .from('enrollments')
+        .update({
+          ...enrollmentPayload,
+          status: 'active',
+          refunded_at: null,
+          suspended_at: null,
+          suspension_reason: null,
+          suspended_by: null,
+        })
+        .eq('id', refundedRegistration.id)
+        .select('*')
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
+        }
+
+        return NextResponse.json({ error: '환불 완료 수강생을 재등록하지 못했습니다.' }, { status: 500 })
+      }
+
+      enrollment = data as Enrollment
+      reactivatedRegistration = refundedRegistration
+    } else {
+      const { data, error } = await db
+        .from('enrollments')
+        .insert(enrollmentPayload)
+        .select('*')
+        .single()
+
+      if (error) {
+        if (error.code === '23505') {
+          return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
+        }
+
+        return NextResponse.json({ error: '수강생을 생성하지 못했습니다.' }, { status: 500 })
+      }
+
+      enrollment = data as Enrollment
+      createdEnrollment = true
+    }
 
     if (textbookIds.length > 0) {
       try {
         await bulkAssignTextbooks(enrollment.id, textbookIds, 'admin')
       } catch (assignmentError) {
-        try {
-          await rollbackCreatedEnrollment(db, enrollment.id, student.id, studentResult.created)
-        } catch {
-          throw new Error('ENROLLMENT_TEXTBOOK_ASSIGNMENT_ROLLBACK_FAILED', { cause: assignmentError })
+        if (createdEnrollment) {
+          try {
+            await rollbackCreatedEnrollment(db, enrollment.id, student.id, studentResult.created)
+          } catch {
+            throw new Error('ENROLLMENT_TEXTBOOK_ASSIGNMENT_ROLLBACK_FAILED', { cause: assignmentError })
+          }
+        } else if (reactivatedRegistration) {
+          await restoreRefundedRegistrationState(db, reactivatedRegistration)
         }
 
         throw assignmentError
@@ -397,10 +495,14 @@ export async function POST(req: NextRequest) {
         }, division, getActorStaffId(auth.payload))
       }
     } catch (paymentError) {
-      try {
-        await rollbackCreatedEnrollment(db, enrollment.id, student.id, studentResult.created)
-      } catch (rollbackError) {
-        throw new Error('ENROLLMENT_PAYMENT_ROLLBACK_FAILED', { cause: rollbackError })
+      if (createdEnrollment) {
+        try {
+          await rollbackCreatedEnrollment(db, enrollment.id, student.id, studentResult.created)
+        } catch (rollbackError) {
+          throw new Error('ENROLLMENT_PAYMENT_ROLLBACK_FAILED', { cause: rollbackError })
+        }
+      } else if (reactivatedRegistration) {
+        await restoreRefundedRegistrationState(db, reactivatedRegistration)
       }
 
       return NextResponse.json(
@@ -418,8 +520,9 @@ export async function POST(req: NextRequest) {
         ...enrollment,
         student_profile: getStudentAuthProfile(student),
       },
+      reactivated: Boolean(reactivatedRegistration),
       generated_pin: authSetup.generatedPin ?? undefined,
-    }, { status: 201 })
+    }, { status: reactivatedRegistration ? 200 : 201 })
   } catch (error) {
     return handleRouteError('enrollments.POST', '수강생을 생성하지 못했습니다.', error)
   }

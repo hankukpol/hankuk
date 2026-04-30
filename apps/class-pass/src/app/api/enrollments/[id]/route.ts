@@ -203,12 +203,41 @@ export async function DELETE(
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
   }
 
+  const { count: paymentCount, error: paymentCountError } = await db
+    .from('enrollment_payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('enrollment_id', enrollmentId)
+
+  if (paymentCountError) {
+    return NextResponse.json({ error: '결제 이력을 확인하지 못했습니다.' }, { status: 500 })
+  }
+
+  if ((paymentCount ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        error: '결제 기록이 있어 수강생을 삭제할 수 없습니다.',
+        reason: '정산·환불 이력 보존을 위해 결제 기록이 연결된 수강생은 삭제하지 않습니다. 결제 취소/환불 또는 응시 정지를 사용해 주세요.',
+      },
+      { status: 409 },
+    )
+  }
+
   const { error } = await db
     .from('enrollments')
     .delete()
     .eq('id', enrollmentId)
 
   if (error) {
+    if (error.code === '23503') {
+      return NextResponse.json(
+        {
+          error: '연결된 기록이 있어 수강생을 삭제할 수 없습니다.',
+          reason: '출결, 결제, 좌석, 자료 수령 등 보존해야 하는 이력이 남아 있습니다. 관련 이력을 정리하거나 응시 정지를 사용해 주세요.',
+        },
+        { status: 409 },
+      )
+    }
+
     return NextResponse.json({ error: '수강생을 삭제하지 못했습니다.' }, { status: 500 })
   }
 

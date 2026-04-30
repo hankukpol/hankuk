@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion'
 import { Plus, ReceiptText, RotateCcw, X, XCircle } from 'lucide-react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { Course, Enrollment } from '@/types/database'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import {
@@ -31,6 +32,12 @@ type EnrollmentPaymentDrawerProps = {
   enrollment: Enrollment | null
   onClose: () => void
   onDataChanged?: () => Promise<void> | void
+}
+
+type DrawerNotice = {
+  title: string
+  description: string
+  tone?: 'default' | 'danger' | 'success'
 }
 
 function getPaymentStatusClass(status: EnrollmentPayment['status']) {
@@ -87,8 +94,11 @@ export function EnrollmentPaymentDrawer({
   const [formOpen, setFormOpen] = useState(false)
   const [paymentDraft, setPaymentDraft] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [refundTarget, setRefundTarget] = useState<EnrollmentPayment | null>(null)
+  const [voidTarget, setVoidTarget] = useState<EnrollmentPayment | null>(null)
+  const [notice, setNotice] = useState<DrawerNotice | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const lastErrorNoticeRef = useRef('')
 
   const loadPayments = useCallback(async () => {
     if (!enrollment) {
@@ -120,7 +130,7 @@ export function EnrollmentPaymentDrawer({
 
     const previousOverflow = document.body.style.overflow
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting && !refundTarget) {
+      if (event.key === 'Escape' && !submitting && !refundTarget && !voidTarget && !notice) {
         onClose()
       }
     }
@@ -132,7 +142,7 @@ export function EnrollmentPaymentDrawer({
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose, open, refundTarget, submitting])
+  }, [notice, onClose, open, refundTarget, submitting, voidTarget])
 
   useEffect(() => {
     if (!open || !enrollment) {
@@ -143,14 +153,34 @@ export function EnrollmentPaymentDrawer({
     setError('')
     setFormOpen(false)
     setRefundTarget(null)
+    setVoidTarget(null)
+    setNotice(null)
     void loadPayments()
   }, [enrollment, loadPayments, open])
+
+  useEffect(() => {
+    if (!error) {
+      lastErrorNoticeRef.current = ''
+      return
+    }
+
+    if (lastErrorNoticeRef.current === error) {
+      return
+    }
+
+    lastErrorNoticeRef.current = error
+    setNotice({
+      title: '확인이 필요합니다',
+      description: error,
+      tone: 'danger',
+    })
+  }, [error])
 
   const summary = useMemo(() => summarizePayments(payments), [payments])
   const tuitionSummary = useMemo(() => summarizePayments(payments, { category: 'tuition' }), [payments])
   const payableAmount = enrollment?.billing?.payable_amount ?? course.tuition_amount ?? 0
   const remainingAmount = Math.max(payableAmount - tuitionSummary.net, 0)
-  const canWritePayment = Boolean(enrollment && enrollment.status === 'active' && !enrollment.billing?.tuition_exempt)
+  const canWritePayment = Boolean(enrollment && !enrollment.billing?.tuition_exempt)
 
   const refreshAll = useCallback(async () => {
     await loadPayments()
@@ -185,11 +215,6 @@ export function EnrollmentPaymentDrawer({
 
   async function handleCreatePayment() {
     if (!enrollment) {
-      return
-    }
-
-    if (enrollment.status !== 'active') {
-      setError('환불 처리된 수강생에는 수납을 추가할 수 없습니다.')
       return
     }
 
@@ -285,7 +310,13 @@ export function EnrollmentPaymentDrawer({
     setSubmitting(false)
     setFormOpen(false)
     setPaymentDraft(createEmptyPaymentSectionValue())
-    setMessage(payload.tuitionExempt ? '수납 면제 기록을 저장했습니다.' : '수납 내역을 저장했습니다.')
+    setMessage(
+      enrollment.status === 'refunded'
+        ? '환불 완료 수강생을 다시 활성화하고 수납 내역을 저장했습니다.'
+        : payload.tuitionExempt
+          ? '수납 면제 기록을 저장했습니다.'
+          : '수납 내역을 저장했습니다.',
+    )
     await refreshAll()
   }
 
@@ -326,24 +357,29 @@ export function EnrollmentPaymentDrawer({
     await refreshAll()
   }
 
-  async function handleVoidPayment(payment: EnrollmentPayment) {
-    const confirmed = window.confirm(`${formatWon(payment.amount)} 결제를 취소할까요? 오입력 취소 용도이며 환불 기록이 있으면 취소할 수 없습니다.`)
-    if (!confirmed) {
+  function handleVoidPayment(payment: EnrollmentPayment) {
+    setVoidTarget(payment)
+  }
+
+  async function handleVoidPaymentConfirmed() {
+    if (!voidTarget) {
       return
     }
 
     setSubmitting(true)
     setError('')
     setMessage('')
-    const response = await fetch(`/api/payments/${payment.id}/void`, { method: 'POST' })
+    const response = await fetch(`/api/payments/${voidTarget.id}/void`, { method: 'POST' })
     const result = await response.json().catch(() => null)
     setSubmitting(false)
 
     if (!response.ok) {
+      setVoidTarget(null)
       setError(result?.error ?? '결제를 취소하지 못했습니다.')
       return
     }
 
+    setVoidTarget(null)
     setMessage('결제를 취소했습니다.')
     await refreshAll()
   }
@@ -552,7 +588,7 @@ export function EnrollmentPaymentDrawer({
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleVoidPayment(payment)}
+                          onClick={() => handleVoidPayment(payment)}
                           disabled={payment.status !== 'paid' || submitting}
                           className="inline-flex items-center gap-1 rounded-[8px] bg-[#fef2f2] px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 transition-all duration-200 ease-ios hover:bg-rose-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
@@ -625,7 +661,7 @@ export function EnrollmentPaymentDrawer({
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => void handleVoidPayment(payment)}
+                                      onClick={() => handleVoidPayment(payment)}
                                       disabled={payment.status !== 'paid' || submitting}
                                       className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-rose-50 hover:text-rose-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                                     >
@@ -666,6 +702,37 @@ export function EnrollmentPaymentDrawer({
         onConfirm={(input) => {
           void handleCreateRefund(input)
         }}
+      />
+
+      <ConfirmationModal
+        open={Boolean(voidTarget)}
+        title="결제를 취소할까요?"
+        description={voidTarget ? `${formatWon(voidTarget.amount)} 결제를 취소합니다.\n\n이유: 오입력 또는 실제 승인 취소가 필요한 경우에만 사용해 주세요. 환불 기록이 있는 결제는 취소할 수 없습니다.` : undefined}
+        confirmLabel="결제 취소"
+        pendingLabel="취소 중..."
+        tone="danger"
+        submitting={submitting}
+        overlayClassName="z-[200]"
+        onClose={() => {
+          if (!submitting) {
+            setVoidTarget(null)
+          }
+        }}
+        onConfirm={() => {
+          void handleVoidPaymentConfirmed()
+        }}
+      />
+
+      <ConfirmationModal
+        open={Boolean(notice)}
+        title={notice?.title ?? '확인이 필요합니다'}
+        description={notice?.description}
+        confirmLabel="확인"
+        cancelLabel={null}
+        tone={notice?.tone ?? 'danger'}
+        overlayClassName="z-[210]"
+        onClose={() => setNotice(null)}
+        onConfirm={() => setNotice(null)}
       />
     </>
   )

@@ -1080,7 +1080,7 @@ export default function CourseStudentsPage({
           onApproveDeviceReRegistration={(enrollment) => {
             openConfirmation({
               title: '출석 기기 재등록을 승인할까요?',
-              description: `${enrollment.name} 학생이 새 기기로 출석할 수 있게 됩니다. 기존 등록 기기는 더 이상 사용할 수 없습니다.`,
+              description: `${enrollment.name} 학생이 새 기기로 출석할 수 있게 됩니다. 출석 기기 3대 한도를 초과한 요청이므로 기존 등록 기기 1건이 요청 기기로 교체됩니다.`,
               confirmLabel: '기기 승인',
               pendingLabel: '승인 중...',
               onConfirm: () => handleAttendanceDeviceActionConfirmed(enrollment, 'approve_pending'),

@@ -119,6 +119,8 @@ export type AttendanceDeviceStateStatus = 'unregistered' | 'active' | 'pending_r
 
 export interface AttendanceDeviceState {
   status: AttendanceDeviceStateStatus
+  registered_count: number
+  max_registered_count: number
   bound_at: string | null
   last_seen_at: string | null
   reset_requested_at: string | null

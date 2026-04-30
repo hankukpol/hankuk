@@ -23,19 +23,24 @@ function getSuspensionTooltip(enrollment: Enrollment) {
 
 function getAttendanceDeviceMeta(enrollment: Enrollment) {
   const state = enrollment.attendance_device
+  const registeredCount = state?.registered_count ?? 0
+  const maxRegisteredCount = state?.max_registered_count ?? 3
+  const countLabel = `${registeredCount}/${maxRegisteredCount}`
+
   if (!state || state.status === 'unregistered') {
     return {
       label: '미등록',
       className: 'bg-slate-100 text-slate-500',
-      title: '아직 출석 기기가 등록되지 않았습니다.',
+      title: `아직 출석 기기가 등록되지 않았습니다. 최대 ${maxRegisteredCount}대까지 자동 등록됩니다.`,
     }
   }
 
   if (state.status === 'pending_reset') {
     return {
-      label: '재등록 요청',
+      label: `재등록 요청 ${countLabel}`,
       className: 'bg-amber-50 text-amber-700',
       title: [
+        `등록 기기: ${countLabel}`,
         state.reset_requested_at ? `요청 시각: ${formatDateTime(state.reset_requested_at)}` : null,
         state.reset_requested_user_agent ? `기기 정보: ${state.reset_requested_user_agent}` : null,
       ].filter(Boolean).join('\n') || '새 기기 재등록 승인이 필요합니다.',
@@ -43,11 +48,12 @@ function getAttendanceDeviceMeta(enrollment: Enrollment) {
   }
 
   return {
-    label: '등록됨',
+    label: `등록 ${countLabel}`,
     className: 'bg-blue-50 text-blue-700',
-    title: state.last_seen_at
-      ? `마지막 확인: ${formatDateTime(state.last_seen_at)}`
-      : '출석 기기가 등록되어 있습니다.',
+    title: [
+      `등록 기기: ${countLabel}`,
+      state.last_seen_at ? `마지막 확인: ${formatDateTime(state.last_seen_at)}` : null,
+    ].filter(Boolean).join('\n') || '출석 기기가 등록되어 있습니다.',
   }
 }
 

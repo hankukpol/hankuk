@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { DragEvent, FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, GripVertical, Loader2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { confirmPermanentCourseDeletion } from '@/lib/course-delete-confirm'
+import { useMotionConfig } from '@/lib/motion'
+import { formatWon } from '@/lib/payments/format'
 import type { Course, CourseType } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { formatCourseTypeLabel } from '@/lib/utils'
@@ -15,6 +16,7 @@ type CreateCourseForm = {
   name: string
   course_type: CourseType
   theme_color: string
+  tuition_amount: string
   status: 'active' | 'archived'
   feature_qr_pass: boolean
   feature_qr_distribution: boolean
@@ -30,13 +32,11 @@ type CreateCourseForm = {
   feature_anti_forgery_motion: boolean
 }
 
-type CourseFilter = 'all' | 'active' | 'archived'
-type MoveDirection = 'up' | 'down'
-
 const DEFAULT_FORM: CreateCourseForm = {
   name: '',
   course_type: 'general',
   theme_color: '#1A237E',
+  tuition_amount: '',
   status: 'active',
   feature_qr_pass: true,
   feature_qr_distribution: false,
@@ -86,77 +86,6 @@ function getCourseFeatureTags(course: Course) {
   ].filter(Boolean) as string[]
 }
 
-function isVisibleForFilter(course: Course, filter: CourseFilter) {
-  return filter === 'all' || course.status === filter
-}
-
-function normalizeSortOrder(courseList: Course[]) {
-  return courseList.map((course, index) => (
-    course.sort_order === index ? course : { ...course, sort_order: index }
-  ))
-}
-
-function mergeVisibleCourseOrder(
-  allCourses: Course[],
-  filter: CourseFilter,
-  nextVisibleCourses: Course[],
-) {
-  let visibleIndex = 0
-  return normalizeSortOrder(allCourses.map((course) => {
-    if (!isVisibleForFilter(course, filter)) {
-      return course
-    }
-
-    const nextCourse = nextVisibleCourses[visibleIndex]
-    visibleIndex += 1
-    return nextCourse ?? course
-  }))
-}
-
-function moveVisibleCourse(
-  allCourses: Course[],
-  filter: CourseFilter,
-  courseId: number,
-  direction: MoveDirection,
-) {
-  const visibleCourses = allCourses.filter((course) => isVisibleForFilter(course, filter))
-  const currentIndex = visibleCourses.findIndex((course) => course.id === courseId)
-  const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-
-  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= visibleCourses.length) {
-    return null
-  }
-
-  const nextVisibleCourses = [...visibleCourses]
-  const [movedCourse] = nextVisibleCourses.splice(currentIndex, 1)
-  nextVisibleCourses.splice(nextIndex, 0, movedCourse)
-  return mergeVisibleCourseOrder(allCourses, filter, nextVisibleCourses)
-}
-
-function dropVisibleCourse(
-  allCourses: Course[],
-  filter: CourseFilter,
-  sourceCourseId: number,
-  targetCourseId: number,
-) {
-  if (sourceCourseId === targetCourseId) {
-    return null
-  }
-
-  const visibleCourses = allCourses.filter((course) => isVisibleForFilter(course, filter))
-  const sourceIndex = visibleCourses.findIndex((course) => course.id === sourceCourseId)
-  const targetIndex = visibleCourses.findIndex((course) => course.id === targetCourseId)
-
-  if (sourceIndex < 0 || targetIndex < 0) {
-    return null
-  }
-
-  const nextVisibleCourses = [...visibleCourses]
-  const [movedCourse] = nextVisibleCourses.splice(sourceIndex, 1)
-  nextVisibleCourses.splice(targetIndex, 0, movedCourse)
-  return mergeVisibleCourseOrder(allCourses, filter, nextVisibleCourses)
-}
-
 export default function CoursesPageClient({
   initialCourses,
   initialError = '',
@@ -168,17 +97,14 @@ export default function CoursesPageClient({
 }) {
   const router = useRouter()
   const tenant = useTenantConfig()
+  const motionConfig = useMotionConfig()
   const [courses, setCourses] = useState<Course[]>(initialCourses)
   const [form, setForm] = useState<CreateCourseForm>(DEFAULT_FORM)
   const [showForm, setShowForm] = useState(false)
-  const [filter, setFilter] = useState<CourseFilter>('all')
+  const [filter, setFilter] = useState<'all' | 'active' | 'archived'>('all')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicatingCourseId, setDuplicatingCourseId] = useState<number | null>(null)
-  const [deletingCourseId, setDeletingCourseId] = useState<number | null>(null)
-  const [reorderingCourseId, setReorderingCourseId] = useState<number | null>(null)
-  const [draggedCourseId, setDraggedCourseId] = useState<number | null>(null)
-  const [dragOverCourseId, setDragOverCourseId] = useState<number | null>(null)
   const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
 
@@ -213,7 +139,11 @@ export default function CoursesPageClient({
     const response = await fetch('/api/courses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, theme_color: form.theme_color.trim() }),
+      body: JSON.stringify({
+        ...form,
+        theme_color: form.theme_color.trim(),
+        tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
+      }),
     })
     const payload = await response.json().catch(() => null)
     setSaving(false)
@@ -271,178 +201,14 @@ export default function CoursesPageClient({
     router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
   }
 
-  async function handleDestroy(course: Course) {
-    const confirmation = confirmPermanentCourseDeletion(course.name)
-    if (!confirmation.confirmed) {
-      if (confirmation.reason === 'mismatch') {
-        setError('강좌명을 정확하게 입력해야 강좌를 삭제할 수 있습니다.')
-      }
-      return
-    }
-
-    setDeletingCourseId(course.id)
-    setError('')
-    setMessage('')
-
-    const response = await fetch(`/api/courses/${course.id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'destroy',
-        confirmCourseName: course.name,
-      }),
-    })
-    const payload = await response.json().catch(() => null)
-    setDeletingCourseId(null)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '강좌를 삭제하지 못했습니다.')
-      return
-    }
-
-    setCourses((current) => current.filter((item) => item.id !== course.id))
-    setError(payload?.warning ?? '')
-    setMessage('강좌를 완전 삭제했습니다.')
-  }
-
-  async function persistCourseOrder(nextCourses: Course[], movedCourseId: number) {
-    const previousCourses = courses
-    setCourses(nextCourses)
-    setReorderingCourseId(movedCourseId)
-    setError('')
-    setMessage('')
-
-    const response = await fetch('/api/courses/reorder', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseIds: nextCourses.map((course) => course.id) }),
-    })
-    const payload = await response.json().catch(() => null)
-    setReorderingCourseId(null)
-
-    if (!response.ok) {
-      setCourses(previousCourses)
-      setError(payload?.error ?? '강좌 순서를 저장하지 못했습니다.')
-      return
-    }
-
-    setMessage('강좌 순서를 저장했습니다.')
-  }
-
-  function handleMoveCourse(courseId: number, direction: MoveDirection) {
-    if (reorderingCourseId !== null) {
-      return
-    }
-
-    const nextCourses = moveVisibleCourse(courses, filter, courseId, direction)
-    if (!nextCourses) {
-      return
-    }
-
-    void persistCourseOrder(nextCourses, courseId)
-  }
-
-  function handleDragStart(event: DragEvent<HTMLButtonElement>, courseId: number) {
-    if (reorderingCourseId !== null) {
-      event.preventDefault()
-      return
-    }
-
-    setDraggedCourseId(courseId)
-    setDragOverCourseId(null)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(courseId))
-  }
-
-  function handleDragOver(event: DragEvent<HTMLElement>, courseId: number) {
-    if (reorderingCourseId !== null) {
-      return
-    }
-
-    const sourceCourseId = Number(event.dataTransfer.getData('text/plain')) || draggedCourseId
-    if (!sourceCourseId || sourceCourseId === courseId) {
-      return
-    }
-
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setDragOverCourseId(courseId)
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>, courseId: number) {
-    event.preventDefault()
-    const sourceCourseId = Number(event.dataTransfer.getData('text/plain')) || draggedCourseId
-    setDraggedCourseId(null)
-    setDragOverCourseId(null)
-
-    if (!sourceCourseId || sourceCourseId === courseId || reorderingCourseId !== null) {
-      return
-    }
-
-    const nextCourses = dropVisibleCourse(courses, filter, sourceCourseId, courseId)
-    if (!nextCourses) {
-      return
-    }
-
-    void persistCourseOrder(nextCourses, sourceCourseId)
-  }
-
-  function handleDragEnd() {
-    setDraggedCourseId(null)
-    setDragOverCourseId(null)
-  }
-
-  function renderOrderControls(course: Course, index: number, total: number) {
-    const isSavingThisCourse = reorderingCourseId === course.id
-    const disabled = reorderingCourseId !== null
-    const iconButtonClassName = 'flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f5f5f7] text-[#86868b] hover:bg-[#e8e8ed] hover:text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-35'
-
-    return (
-      <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          draggable={!disabled}
-          onDragStart={(event) => handleDragStart(event, course.id)}
-          onDragEnd={handleDragEnd}
-          disabled={disabled}
-          aria-label={`${course.name} 드래그해서 순서 변경`}
-          title="드래그해서 순서 변경"
-          className={`${iconButtonClassName} cursor-grab active:cursor-grabbing`}
-        >
-          {isSavingThisCourse ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <GripVertical className="h-4 w-4" />
-          )}
-        </button>
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={() => handleMoveCourse(course.id, 'up')}
-            disabled={disabled || index === 0}
-            aria-label={`${course.name} 위로 이동`}
-            title="위로 이동"
-            className="flex h-[15px] w-8 items-center justify-center rounded-[6px] bg-[#f5f5f7] text-[#86868b] hover:bg-[#e8e8ed] hover:text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-35"
-          >
-            <ArrowUp className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleMoveCourse(course.id, 'down')}
-            disabled={disabled || index === total - 1}
-            aria-label={`${course.name} 아래로 이동`}
-            title="아래로 이동"
-            className="flex h-[15px] w-8 items-center justify-center rounded-[6px] bg-[#f5f5f7] text-[#86868b] hover:bg-[#e8e8ed] hover:text-[#1d1d1f] disabled:cursor-not-allowed disabled:opacity-35"
-          >
-            <ArrowDown className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-6">
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 14, scale: 0.995 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={motionConfig.modal}
+      className="flex flex-col gap-6"
+    >
       {/* ── Header + actions ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -454,34 +220,65 @@ export default function CoursesPageClient({
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
-          className="w-full rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 sm:w-auto"
+          className="w-full rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 sm:w-auto"
         >
           {showForm ? '닫기' : '+ 새 강좌'}
         </button>
       </div>
 
       {/* ── Create form (collapsible) ── */}
-      {showForm && (
-        <form onSubmit={handleCreate} className="rounded-[8px] border border-[#d2d2d7] bg-white p-5">
+      <AnimatePresence initial={false}>
+      {showForm ? (
+        <motion.form
+          layout
+          onSubmit={handleCreate}
+          initial={{ opacity: 0, scale: 0.98, y: -8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.98, y: -8 }}
+          transition={motionConfig.modal}
+          className="rounded-[8px] border border-[#d2d2d7] bg-white p-5"
+        >
           <h3 className="text-sm font-bold text-[#1d1d1f]">새 강좌 만들기</h3>
+          <p className="mt-1 text-xs text-[#86868b]">
+            강좌 금액은 결제 추가 시 정가와 수납 금액으로 자동 적용됩니다.
+          </p>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input
-              value={form.name}
-              onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))}
-              placeholder="강좌명"
-              className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b] sm:col-span-2"
-            />
-            <select
-              value={form.course_type}
-              onChange={(e) => setForm((c) => ({ ...c, course_type: e.target.value as CourseType }))}
-              className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-            >
-              <option value="general">일반</option>
-              <option value="lecture">강의</option>
-              <option value="mock_exam">모의고사</option>
-              <option value="interview">면접</option>
-            </select>
+          <div className="mt-4 grid gap-3 md:grid-cols-[2fr,1fr,1fr]">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">강좌명</span>
+              <input
+                value={form.name}
+                onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))}
+                placeholder="예: 2026 경찰 기본반"
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">강좌 유형</span>
+              <select
+                value={form.course_type}
+                onChange={(e) => setForm((c) => ({ ...c, course_type: e.target.value as CourseType }))}
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+              >
+                <option value="general">일반</option>
+                <option value="lecture">강의</option>
+                <option value="mock_exam">모의고사</option>
+                <option value="interview">면접</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">강좌 금액</span>
+              <div className="relative">
+                <input
+                  inputMode="numeric"
+                  value={form.tuition_amount}
+                  onChange={(e) => setForm((c) => ({ ...c, tuition_amount: e.target.value.replace(/[^\d]/g, '') }))}
+                  placeholder="50000"
+                  className="w-full rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 pr-9 text-sm outline-none focus:border-[#86868b]"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#86868b]">원</span>
+              </div>
+            </label>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
@@ -502,15 +299,16 @@ export default function CoursesPageClient({
             <button
               type="submit"
               disabled={saving}
-              className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 sm:py-2"
+              className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100 sm:py-2"
             >
               {saving ? '생성 중...' : '강좌 생성'}
             </button>
             {error && <span className="text-xs text-red-500">{error}</span>}
             {message && <span className="text-xs text-[#1b7a1b]">{message}</span>}
           </div>
-        </form>
-      )}
+        </motion.form>
+      ) : null}
+      </AnimatePresence>
 
       {/* ── Filter tabs ── */}
       {(error || message) && !showForm ? (
@@ -520,69 +318,95 @@ export default function CoursesPageClient({
         </div>
       ) : null}
 
-      <div className="flex gap-1 rounded-[10px] border border-slate-200 bg-slate-200/70 p-1">
+      <motion.div layout className="flex gap-1 rounded-[10px] border border-slate-200 bg-slate-200/70 p-1">
         {(['all', 'active', 'archived'] as const).map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => setFilter(f)}
-            className={`flex-1 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition ${
+            className={`relative flex-1 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.98] ${
               filter === f
-                ? 'bg-[#1d1d1f] text-white shadow-sm'
-                : 'text-slate-700 hover:bg-white hover:text-[#1d1d1f]'
+                ? 'text-white'
+                : 'text-slate-700 hover:bg-white/70 hover:text-[#1d1d1f]'
             }`}
           >
-            {f === 'all' ? '전체' : f === 'active' ? '운영중' : '보관됨'}
+            {filter === f ? (
+              <motion.div
+                layoutId="courses-filter-tabs"
+                className="absolute inset-0 rounded-[8px] bg-[#1d1d1f] shadow-sm"
+                transition={motionConfig.tab}
+              />
+            ) : null}
+            <span className="relative z-10">
+              {f === 'all' ? '전체' : f === 'active' ? '운영중' : '보관됨'}
+            </span>
           </button>
         ))}
-      </div>
+      </motion.div>
 
       {/* ── Course table ── */}
-      <section className="overflow-hidden rounded-[8px] bg-white">
+      <motion.section layout transition={motionConfig.tab} className="overflow-hidden rounded-[8px] bg-white">
         {loading ? (
-          <p className="px-5 py-12 text-center text-sm text-[#86868b]">불러오는 중...</p>
+          <motion.p
+            key="loading"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motionConfig.modal}
+            className="px-5 py-12 text-center text-sm text-[#86868b]"
+          >
+            불러오는 중...
+          </motion.p>
         ) : filtered.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-[#86868b]">해당 강좌가 없습니다.</p>
+          <motion.p
+            key={`empty-${filter}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motionConfig.modal}
+            className="px-5 py-12 text-center text-sm text-[#86868b]"
+          >
+            해당 강좌가 없습니다.
+          </motion.p>
         ) : (
-          <>
+          <motion.div
+            key={`courses-${filter}`}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motionConfig.modal}
+          >
           <div className="grid gap-3 p-3 md:hidden">
-            {filtered.map((course, index) => {
+            {filtered.map((course) => {
               const tags = getCourseFeatureTags(course)
               const isActive = course.status === 'active'
-              const isDragTarget = dragOverCourseId === course.id
-              const isDragging = draggedCourseId === course.id
 
               return (
-                <article
+                <motion.article
                   key={course.id}
-                  onDragOver={(event) => handleDragOver(event, course.id)}
-                  onDrop={(event) => handleDrop(event, course.id)}
-                  className={`rounded-[8px] bg-[#f5f5f7] p-4 ${
-                    isDragTarget ? 'ring-2 ring-[#0071e3]/40' : ''
-                  } ${isDragging ? 'opacity-55' : ''}`}
+                  whileTap={{ scale: 0.985 }}
+                  transition={motionConfig.tab}
+                  className="rounded-[8px] bg-[#f5f5f7] p-4 transition-transform duration-200 ease-ios active:scale-[0.98]"
                 >
-                  <div className="flex items-start gap-3">
-                    {renderOrderControls(course, index, filtered.length)}
-                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-[#1d1d1f]">{course.name}</p>
-                          {course.copied_from_course_id ? (
-                            <span className="shrink-0 rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                              복사본
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-1 truncate text-[11px] text-[#86868b]">
-                          {courseTypeLabel(course.course_type)} · {course.slug}
-                        </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-[#1d1d1f]">{course.name}</p>
+                        {course.copied_from_course_id ? (
+                          <span className="shrink-0 rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                            복사본
+                          </span>
+                        ) : null}
                       </div>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                        isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
-                      }`}>
-                        {isActive ? '운영중' : '보관됨'}
-                      </span>
+                      <p className="mt-1 truncate text-[11px] text-[#86868b]">
+                        {courseTypeLabel(course.course_type)} · {course.slug}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
+                        강좌 금액 {formatWon(course.tuition_amount ?? 0)}
+                      </p>
                     </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
+                    }`}>
+                      {isActive ? '운영중' : '보관됨'}
+                    </span>
                   </div>
 
                   {tags.length > 0 ? (
@@ -598,13 +422,13 @@ export default function CoursesPageClient({
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <Link
                       href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
-                      className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                      className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                     >
                       수강생
                     </Link>
                     <Link
                       href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-                      className="rounded-[8px] bg-[#1d1d1f] px-3 py-2 text-center text-xs font-semibold text-white hover:bg-[#1d1d1f]"
+                      className="rounded-[8px] bg-[#1d1d1f] px-3 py-2 text-center text-xs font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
                     >
                       설정
                     </Link>
@@ -612,7 +436,7 @@ export default function CoursesPageClient({
                       type="button"
                       onClick={() => void handleDuplicate(course)}
                       disabled={duplicatingCourseId === course.id}
-                      className="rounded-[8px] bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-[8px] bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
                     >
                       {duplicatingCourseId === course.id ? '복사중' : '복사'}
                     </button>
@@ -620,21 +444,13 @@ export default function CoursesPageClient({
                       <button
                         type="button"
                         onClick={() => void handleArchive(course)}
-                        className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#86868b] hover:bg-[#e8e8ed]"
+                        className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                       >
                         보관
                       </button>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDestroy(course)}
-                    disabled={deletingCourseId === course.id}
-                    className="mt-2 w-full rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {deletingCourseId === course.id ? '삭제중..' : '삭제'}
-                  </button>
-                </article>
+                </motion.article>
               )
             })}
           </div>
@@ -643,33 +459,21 @@ export default function CoursesPageClient({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#f5f5f7] text-left text-xs font-medium text-[#86868b]">
-                  <th className="w-[112px] px-5 py-3">순서</th>
-                  <th className="px-3 py-3">강좌</th>
+                  <th className="px-5 py-3">강좌</th>
                   <th className="px-3 py-3">유형</th>
+                  <th className="px-3 py-3 text-right">금액</th>
                   <th className="px-3 py-3">상태</th>
                   <th className="hidden px-3 py-3 md:table-cell">기능</th>
                   <th className="px-5 py-3 text-right">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f5f5f7]">
-                {filtered.map((course, index) => {
+                {filtered.map((course) => {
                   const tags = getCourseFeatureTags(course)
-                  const isDragTarget = dragOverCourseId === course.id
-                  const isDragging = draggedCourseId === course.id
 
                   return (
-                    <tr
-                      key={course.id}
-                      onDragOver={(event) => handleDragOver(event, course.id)}
-                      onDrop={(event) => handleDrop(event, course.id)}
-                      className={`hover:bg-[#f5f5f7]/60 ${
-                        isDragTarget ? 'bg-blue-50/70' : ''
-                      } ${isDragging ? 'opacity-55' : ''}`}
-                    >
+                    <tr key={course.id} className="transition-colors duration-200 ease-ios hover:bg-[#f5f5f7]/60">
                       <td className="px-5 py-3.5">
-                        {renderOrderControls(course, index, filtered.length)}
-                      </td>
-                      <td className="px-3 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
@@ -685,17 +489,12 @@ export default function CoursesPageClient({
                               {course.copied_from_course_name ? ` · 원본 ${course.copied_from_course_name}` : ''}
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleDestroy(course)}
-                            disabled={deletingCourseId === course.id}
-                            className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingCourseId === course.id ? '삭제중..' : '삭제'}
-                          </button>
                         </div>
                       </td>
                       <td className="px-3 py-3.5 text-[#86868b]">{courseTypeLabel(course.course_type)}</td>
+                      <td className="px-3 py-3.5 text-right font-semibold text-[#1d1d1f]">
+                        {formatWon(course.tuition_amount ?? 0)}
+                      </td>
                       <td className="px-3 py-3.5">
                         <span className={`inline-block rounded-[4px] px-2 py-0.5 text-[11px] font-semibold ${
                           course.status === 'active'
@@ -718,13 +517,13 @@ export default function CoursesPageClient({
                         <div className="flex items-center justify-end gap-1.5">
                           <Link
                             href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
-                            className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                            className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                           >
                             수강생
                           </Link>
                           <Link
                             href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-                            className="rounded-[8px] bg-[#1d1d1f] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1d1d1f]"
+                            className="rounded-[8px] bg-[#1d1d1f] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
                           >
                             설정
                           </Link>
@@ -732,7 +531,7 @@ export default function CoursesPageClient({
                             type="button"
                             onClick={() => void handleDuplicate(course)}
                             disabled={duplicatingCourseId === course.id}
-                            className="rounded-[8px] bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-[8px] bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
                           >
                             {duplicatingCourseId === course.id ? '복사중' : '복사'}
                           </button>
@@ -740,7 +539,7 @@ export default function CoursesPageClient({
                             <button
                               type="button"
                               onClick={() => void handleArchive(course)}
-                              className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#86868b] hover:bg-[#e8e8ed]"
+                              className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                             >
                               보관
                             </button>
@@ -753,9 +552,9 @@ export default function CoursesPageClient({
               </tbody>
             </table>
           </div>
-          </>
+          </motion.div>
         )}
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   )
 }

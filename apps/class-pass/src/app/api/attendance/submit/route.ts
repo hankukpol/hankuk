@@ -11,8 +11,10 @@ import {
   getAttendanceTodayKey,
   hasValidSeatAssignmentForSubject,
   logAttendanceEvent,
+  tryLogAttendanceEvent,
   verifyStudentAttendanceAccess,
 } from '@/lib/attendance/service'
+import { buildAttendanceCodeInvalidEventDetails } from '@/lib/attendance/submit-event-details'
 import {
   generateAttendanceRotationCode,
   getAttendanceRotationBucket,
@@ -155,6 +157,20 @@ export async function POST(req: NextRequest) {
     })
 
     if (parsed.data.code !== currentCode && parsed.data.code !== previousCode) {
+      await tryLogAttendanceEvent({
+        course_id: access.course.id,
+        event_type: 'attendance_code_invalid',
+        details: buildAttendanceCodeInvalidEventDetails({
+          enrollmentId: access.enrollment.id,
+          displaySessionId: displaySession.id,
+          subjectId: displaySession.subject_id,
+          currentRotation,
+          userAgent: req.headers.get('user-agent'),
+          deviceSource: device.source,
+          localKeyMatchedCookie: device.localKeyMatchedCookie,
+        }),
+      })
+
       return NextResponse.json(
         { error: '출석 코드가 올바르지 않거나 만료되었습니다.', code: 'INVALID_CODE' },
         { status: 400 },

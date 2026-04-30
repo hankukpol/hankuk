@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "rootDir": ".",
+    "outDir": ".codex-temp/attendance-tests",
+    "incremental": false
+  },
+  "include": [
+    "src/lib/attendance/device-binding-policy.ts",
+    "src/lib/attendance/submit-event-details.ts",
+    "tests/attendance/**/*.ts"
+  ]
+}

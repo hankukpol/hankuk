@@ -555,7 +555,7 @@ async function createPaymentItems(db: ServerClient, paymentId: number, items: Re
 async function recalculateEnrollmentPaymentState(
   db: ServerClient,
   enrollmentId: number,
-  options?: { allowRefundStatus?: boolean },
+  options?: { allowRefundStatus?: boolean; forceActive?: boolean },
 ) {
   const { data, error } = await db
     .from('enrollment_payments')
@@ -604,7 +604,7 @@ async function recalculateEnrollmentPaymentState(
     throw enrollmentError
   }
 
-  if (enrollment?.status === 'refunded' && tuitionNetAmount > 0) {
+  if (enrollment?.status === 'refunded' && (tuitionNetAmount > 0 || options?.forceActive)) {
     const { error: updateError } = await db
       .from('enrollments')
       .update({
@@ -856,7 +856,9 @@ export async function upsertEnrollmentBilling(
     throw error
   }
 
-  await recalculateEnrollmentPaymentState(db, enrollment.id)
+  await recalculateEnrollmentPaymentState(db, enrollment.id, {
+    forceActive: enrollment.status === 'refunded' && normalized.tuitionExempt,
+  })
   await invalidateCache('enrollments')
 
   return data as EnrollmentBilling
@@ -936,7 +938,13 @@ export async function createPayment(
       actorStaffId,
       afterJson: { ...data, items: normalizedItems },
     })
-    await recalculateEnrollmentPaymentState(db, enrollment.id)
+    await recalculateEnrollmentPaymentState(db, enrollment.id, {
+      forceActive: (
+        enrollment.status === 'refunded'
+        && category === 'tuition'
+        && input.method === 'free'
+      ),
+    })
   } catch (reason) {
     await db.from('enrollment_payments').delete().eq('id', paymentId)
     throw reason
@@ -1092,7 +1100,9 @@ export async function createPaymentBundle(
     throw createPaymentError('���� ���� ����� Ȯ������ ���߽��ϴ�.', 500)
   }
 
-  await recalculateEnrollmentPaymentState(db, enrollment.id)
+  await recalculateEnrollmentPaymentState(db, enrollment.id, {
+    forceActive: enrollment.status === 'refunded' && Boolean(normalizedBilling?.tuitionExempt),
+  })
   const createdPayments = await Promise.all(paymentIds.map((paymentId) => loadPaymentById(db, paymentId, division)))
   await invalidateCache('enrollments')
   return createdPayments.filter((payment): payment is EnrollmentPayment => Boolean(payment))

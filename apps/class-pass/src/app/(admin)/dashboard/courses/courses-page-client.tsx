@@ -2,9 +2,10 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { FormEvent } from 'react'
+import type { DragEvent, FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowDown, ArrowUp, GripVertical, Loader2 } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig } from '@/lib/motion'
 import { formatWon } from '@/lib/payments/format'
@@ -31,6 +32,9 @@ type CreateCourseForm = {
   feature_weekday_color: boolean
   feature_anti_forgery_motion: boolean
 }
+
+type CourseFilter = 'all' | 'active' | 'archived'
+type MoveDirection = 'up' | 'down'
 
 const DEFAULT_FORM: CreateCourseForm = {
   name: '',
@@ -86,6 +90,77 @@ function getCourseFeatureTags(course: Course) {
   ].filter(Boolean) as string[]
 }
 
+function isVisibleForFilter(course: Course, filter: CourseFilter) {
+  return filter === 'all' || course.status === filter
+}
+
+function normalizeSortOrder(courseList: Course[]) {
+  return courseList.map((course, index) => (
+    course.sort_order === index ? course : { ...course, sort_order: index }
+  ))
+}
+
+function mergeVisibleCourseOrder(
+  allCourses: Course[],
+  filter: CourseFilter,
+  nextVisibleCourses: Course[],
+) {
+  let visibleIndex = 0
+  return normalizeSortOrder(allCourses.map((course) => {
+    if (!isVisibleForFilter(course, filter)) {
+      return course
+    }
+
+    const nextCourse = nextVisibleCourses[visibleIndex]
+    visibleIndex += 1
+    return nextCourse ?? course
+  }))
+}
+
+function moveVisibleCourse(
+  allCourses: Course[],
+  filter: CourseFilter,
+  courseId: number,
+  direction: MoveDirection,
+) {
+  const visibleCourses = allCourses.filter((course) => isVisibleForFilter(course, filter))
+  const currentIndex = visibleCourses.findIndex((course) => course.id === courseId)
+  const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+
+  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= visibleCourses.length) {
+    return null
+  }
+
+  const nextVisibleCourses = [...visibleCourses]
+  const [movedCourse] = nextVisibleCourses.splice(currentIndex, 1)
+  nextVisibleCourses.splice(nextIndex, 0, movedCourse)
+  return mergeVisibleCourseOrder(allCourses, filter, nextVisibleCourses)
+}
+
+function dropVisibleCourse(
+  allCourses: Course[],
+  filter: CourseFilter,
+  sourceCourseId: number,
+  targetCourseId: number,
+) {
+  if (sourceCourseId === targetCourseId) {
+    return null
+  }
+
+  const visibleCourses = allCourses.filter((course) => isVisibleForFilter(course, filter))
+  const sourceIndex = visibleCourses.findIndex((course) => course.id === sourceCourseId)
+  const targetIndex = visibleCourses.findIndex((course) => course.id === targetCourseId)
+
+  if (sourceIndex < 0 || targetIndex < 0) {
+    return null
+  }
+
+  const nextVisibleCourses = [...visibleCourses]
+  const [movedCourse] = nextVisibleCourses.splice(sourceIndex, 1)
+  nextVisibleCourses.splice(targetIndex, 0, movedCourse)
+  return mergeVisibleCourseOrder(allCourses, filter, nextVisibleCourses)
+}
+
 export default function CoursesPageClient({
   initialCourses,
   initialError = '',
@@ -101,10 +176,13 @@ export default function CoursesPageClient({
   const [courses, setCourses] = useState<Course[]>(initialCourses)
   const [form, setForm] = useState<CreateCourseForm>(DEFAULT_FORM)
   const [showForm, setShowForm] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'active' | 'archived'>('all')
+  const [filter, setFilter] = useState<CourseFilter>('all')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicatingCourseId, setDuplicatingCourseId] = useState<number | null>(null)
+  const [reorderingCourseId, setReorderingCourseId] = useState<number | null>(null)
+  const [draggedCourseId, setDraggedCourseId] = useState<number | null>(null)
+  const [dragOverCourseId, setDragOverCourseId] = useState<number | null>(null)
   const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
 
@@ -199,6 +277,148 @@ export default function CoursesPageClient({
     }
 
     router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
+  }
+
+  async function persistCourseOrder(nextCourses: Course[], movedCourseId: number) {
+    const previousCourses = courses
+    setCourses(nextCourses)
+    setReorderingCourseId(movedCourseId)
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await fetch('/api/courses/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseIds: nextCourses.map((course) => course.id) }),
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        setCourses(previousCourses)
+        setError(payload?.error ?? '강좌 순서를 저장하지 못했습니다.')
+        return
+      }
+
+      setMessage('강좌 순서를 저장했습니다.')
+    } catch {
+      setCourses(previousCourses)
+      setError('강좌 순서를 저장하지 못했습니다. 네트워크 상태를 확인해 주세요.')
+    } finally {
+      setReorderingCourseId(null)
+    }
+  }
+
+  function handleMoveCourse(courseId: number, direction: MoveDirection) {
+    if (reorderingCourseId !== null) {
+      return
+    }
+
+    const nextCourses = moveVisibleCourse(courses, filter, courseId, direction)
+    if (!nextCourses) {
+      return
+    }
+
+    void persistCourseOrder(nextCourses, courseId)
+  }
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>, courseId: number) {
+    if (reorderingCourseId !== null) {
+      event.preventDefault()
+      return
+    }
+
+    setDraggedCourseId(courseId)
+    setDragOverCourseId(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(courseId))
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>, courseId: number) {
+    if (reorderingCourseId !== null) {
+      return
+    }
+
+    const sourceCourseId = Number(event.dataTransfer.getData('text/plain')) || draggedCourseId
+    if (!sourceCourseId || sourceCourseId === courseId) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setDragOverCourseId(courseId)
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>, courseId: number) {
+    event.preventDefault()
+    const sourceCourseId = Number(event.dataTransfer.getData('text/plain')) || draggedCourseId
+    setDraggedCourseId(null)
+    setDragOverCourseId(null)
+
+    if (!sourceCourseId || sourceCourseId === courseId || reorderingCourseId !== null) {
+      return
+    }
+
+    const nextCourses = dropVisibleCourse(courses, filter, sourceCourseId, courseId)
+    if (!nextCourses) {
+      return
+    }
+
+    void persistCourseOrder(nextCourses, sourceCourseId)
+  }
+
+  function handleDragEnd() {
+    setDraggedCourseId(null)
+    setDragOverCourseId(null)
+  }
+
+  function renderOrderControls(course: Course, index: number, total: number) {
+    const isSavingThisCourse = reorderingCourseId === course.id
+    const disabled = reorderingCourseId !== null
+    const iconButtonClassName = 'flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100'
+
+    return (
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          draggable={!disabled}
+          onDragStart={(event) => handleDragStart(event, course.id)}
+          onDragEnd={handleDragEnd}
+          disabled={disabled}
+          aria-label={`${course.name} 드래그해서 순서 변경`}
+          title="드래그해서 순서 변경"
+          className={`${iconButtonClassName} cursor-grab active:cursor-grabbing`}
+        >
+          {isSavingThisCourse ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <GripVertical className="h-4 w-4" />
+          )}
+        </button>
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => handleMoveCourse(course.id, 'up')}
+            disabled={disabled || index === 0}
+            aria-label={`${course.name} 위로 이동`}
+            title="위로 이동"
+            className="flex h-[15px] w-8 items-center justify-center rounded-[6px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100"
+          >
+            <ArrowUp className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleMoveCourse(course.id, 'down')}
+            disabled={disabled || index === total - 1}
+            aria-label={`${course.name} 아래로 이동`}
+            title="아래로 이동"
+            className="flex h-[15px] w-8 items-center justify-center rounded-[6px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100"
+          >
+            <ArrowDown className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -374,39 +594,48 @@ export default function CoursesPageClient({
             transition={motionConfig.modal}
           >
           <div className="grid gap-3 p-3 md:hidden">
-            {filtered.map((course) => {
+            {filtered.map((course, index) => {
               const tags = getCourseFeatureTags(course)
               const isActive = course.status === 'active'
+              const isDragTarget = dragOverCourseId === course.id
+              const isDragging = draggedCourseId === course.id
 
               return (
                 <motion.article
                   key={course.id}
+                  onDragOver={(event) => handleDragOver(event, course.id)}
+                  onDrop={(event) => handleDrop(event, course.id)}
                   whileTap={{ scale: 0.985 }}
                   transition={motionConfig.tab}
-                  className="rounded-[8px] bg-[#f5f5f7] p-4 transition-transform duration-200 ease-ios active:scale-[0.98]"
+                  className={`rounded-[8px] bg-[#f5f5f7] p-4 transition-all duration-200 ease-ios active:scale-[0.98] ${
+                    isDragTarget ? 'ring-2 ring-[#0071e3]/40' : ''
+                  } ${isDragging ? 'opacity-55' : ''}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-[#1d1d1f]">{course.name}</p>
-                        {course.copied_from_course_id ? (
-                          <span className="shrink-0 rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                            복사본
-                          </span>
-                        ) : null}
+                  <div className="flex items-start gap-3">
+                    {renderOrderControls(course, index, filtered.length)}
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-[#1d1d1f]">{course.name}</p>
+                          {course.copied_from_course_id ? (
+                            <span className="shrink-0 rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                              복사본
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 truncate text-[11px] text-[#86868b]">
+                          {courseTypeLabel(course.course_type)} · {course.slug}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
+                          강좌 금액 {formatWon(course.tuition_amount ?? 0)}
+                        </p>
                       </div>
-                      <p className="mt-1 truncate text-[11px] text-[#86868b]">
-                        {courseTypeLabel(course.course_type)} · {course.slug}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
-                        강좌 금액 {formatWon(course.tuition_amount ?? 0)}
-                      </p>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
+                      }`}>
+                        {isActive ? '운영중' : '보관됨'}
+                      </span>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                      isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
-                    }`}>
-                      {isActive ? '운영중' : '보관됨'}
-                    </span>
                   </div>
 
                   {tags.length > 0 ? (
@@ -459,7 +688,8 @@ export default function CoursesPageClient({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#f5f5f7] text-left text-xs font-medium text-[#86868b]">
-                  <th className="px-5 py-3">강좌</th>
+                  <th className="w-[112px] px-5 py-3">순서</th>
+                  <th className="px-3 py-3">강좌</th>
                   <th className="px-3 py-3">유형</th>
                   <th className="px-3 py-3 text-right">금액</th>
                   <th className="px-3 py-3">상태</th>
@@ -468,12 +698,24 @@ export default function CoursesPageClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f5f5f7]">
-                {filtered.map((course) => {
+                {filtered.map((course, index) => {
                   const tags = getCourseFeatureTags(course)
+                  const isDragTarget = dragOverCourseId === course.id
+                  const isDragging = draggedCourseId === course.id
 
                   return (
-                    <tr key={course.id} className="transition-colors duration-200 ease-ios hover:bg-[#f5f5f7]/60">
+                    <tr
+                      key={course.id}
+                      onDragOver={(event) => handleDragOver(event, course.id)}
+                      onDrop={(event) => handleDrop(event, course.id)}
+                      className={`transition-all duration-200 ease-ios hover:bg-[#f5f5f7]/60 ${
+                        isDragTarget ? 'bg-blue-50/70' : ''
+                      } ${isDragging ? 'opacity-55' : ''}`}
+                    >
                       <td className="px-5 py-3.5">
+                        {renderOrderControls(course, index, filtered.length)}
+                      </td>
+                      <td className="px-3 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">

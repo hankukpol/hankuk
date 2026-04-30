@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { motion } from 'framer-motion'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import { formatCourseTypeLabel } from '@/lib/utils'
 import type { Course } from '@/types/database'
@@ -31,6 +33,7 @@ async function fetchCourseHeader(courseId: number): Promise<Course> {
 }
 
 export default function CourseLayout({ children }: CourseLayoutProps) {
+  const motionConfig = useMotionConfig()
   const params = useParams<{ id: string }>()
   const pathname = usePathname()
   const router = useRouter()
@@ -42,6 +45,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
   const [duplicating, setDuplicating] = useState(false)
   const [error, setError] = useState('')
   const [hasMounted, setHasMounted] = useState(false)
+  const tabNavigationFrameRef = useRef<number | null>(null)
 
   const basePath = useMemo(
     () => withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type),
@@ -50,6 +54,14 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
   useEffect(() => {
     setHasMounted(true)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (tabNavigationFrameRef.current !== null) {
+        window.cancelAnimationFrame(tabNavigationFrameRef.current)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -169,6 +181,34 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
     router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
   }
 
+  function handleCourseTabClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
+    if (
+      event.defaultPrevented
+      || event.button !== 0
+      || event.metaKey
+      || event.altKey
+      || event.ctrlKey
+      || event.shiftKey
+      || event.currentTarget.target
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    if (href === pathname) {
+      return
+    }
+
+    if (tabNavigationFrameRef.current !== null) {
+      window.cancelAnimationFrame(tabNavigationFrameRef.current)
+    }
+
+    tabNavigationFrameRef.current = window.requestAnimationFrame(() => {
+      tabNavigationFrameRef.current = null
+      router.push(href)
+    })
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-[8px] border border-slate-200 bg-white px-5 pt-5 sm:px-6 sm:pt-6">
@@ -193,7 +233,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
               type="button"
               onClick={() => void handleDuplicate()}
               disabled={duplicating}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
             >
               {duplicating ? '복사중' : '복사'}
             </button>
@@ -223,13 +263,21 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+                onClick={(event) => handleCourseTabClick(event, tab.href)}
+                className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
                   isActive
-                    ? 'border-[#1d1d1f] text-[#1d1d1f]'
-                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
+                    ? 'text-[#1d1d1f]'
+                    : 'text-slate-500 hover:text-[#1d1d1f]'
                 }`}
               >
                 {tab.label}
+                {isActive ? (
+                  <motion.div
+                    layoutId="course-tabs"
+                    className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
+                    transition={motionConfig.tab}
+                  />
+                ) : null}
               </Link>
             )
           })}

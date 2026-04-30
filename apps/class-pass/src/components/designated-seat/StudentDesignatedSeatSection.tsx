@@ -326,7 +326,7 @@ export function StudentDesignatedSeatSection({
                   type="button"
                   onClick={() => void handleVerify({ verificationMethod: 'code', rotationCode: codeInput })}
                   disabled={working || codeInput.length < 4}
-                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-60 hover:bg-blue-700"
+                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
                 >
                   코드 인증
                 </button>
@@ -336,7 +336,7 @@ export function StudentDesignatedSeatSection({
                 type="button"
                 onClick={() => setScannerOpen(true)}
                 disabled={working}
-                className="mt-3 w-full rounded-xl border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-700 disabled:opacity-60 hover:bg-blue-100"
+                className="mt-3 w-full rounded-xl border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
               >
                 카메라로 QR 스캔
               </button>

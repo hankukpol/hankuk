@@ -41,7 +41,7 @@ function renderMatrixCell(
         <button
           type="button"
           onClick={() => void onUndo(receipt.logId, row.enrollment.name, material.name)}
-          className="inline-flex flex-col items-center gap-0.5 text-emerald-600 hover:text-emerald-700"
+          className="inline-flex flex-col items-center gap-0.5 text-emerald-600 transition-all duration-200 ease-ios hover:text-emerald-700 active:scale-[0.97]"
         >
           <span className="text-base">✓</span>
           <span className="text-[10px] text-gray-400">{formatDateTime(receipt.distributed_at).split(' ')[0]}</span>
@@ -54,7 +54,7 @@ function renderMatrixCell(
         type="button"
         disabled={bulkProcessing}
         onClick={() => void onDistribute(row.enrollment.id, material.id)}
-        className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+        className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
       >
         배부
       </button>
@@ -87,7 +87,7 @@ function renderMatrixCell(
       <button
         type="button"
         onClick={() => void onUndo(receipt.logId, row.enrollment.name, material.name)}
-        className="inline-flex flex-col items-center gap-0.5 text-emerald-600 hover:text-emerald-700"
+        className="inline-flex flex-col items-center gap-0.5 text-emerald-600 transition-all duration-200 ease-ios hover:text-emerald-700 active:scale-[0.97]"
       >
         <span className="text-base">✓</span>
         <span className="text-[10px] text-gray-400">{formatDateTime(receipt.distributed_at).split(' ')[0]}</span>
@@ -100,7 +100,7 @@ function renderMatrixCell(
       type="button"
       disabled={bulkProcessing}
       onClick={() => void onDistribute(row.enrollment.id, material.id)}
-      className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+      className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
     >
       배부
     </button>
@@ -152,7 +152,7 @@ export function StudentsMatrixPanel({
           <button
             type="button"
             onClick={onClearFilter}
-            className="rounded-lg bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-200"
+            className="rounded-lg bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-200 active:scale-[0.97]"
           >
             필터 해제
           </button>
@@ -238,7 +238,7 @@ export function StudentsMatrixPanel({
                             type="button"
                             disabled={bulkProcessing || allAssigned}
                             onClick={() => onAssignAllTextbooks?.(row.enrollment.id)}
-                            className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${
+                            className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100 ${
                               allAssigned
                                 ? 'cursor-default bg-slate-100 text-slate-400'
                                 : 'bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50'
@@ -277,7 +277,7 @@ export function StudentsMatrixPanel({
             type="button"
             onClick={() => void onRunBulkAction()}
             disabled={bulkProcessing}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-blue-700"
+            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
           >
             {bulkProcessing
               ? `${tab === 'receipts' ? '배부' : '배정'} 중... (${bulkProgress.done}/${bulkProgress.total})`

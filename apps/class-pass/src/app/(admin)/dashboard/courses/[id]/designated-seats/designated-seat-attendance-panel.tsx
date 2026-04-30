@@ -71,7 +71,7 @@ function TabButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition ${
+      className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] ${
         props.active
           ? 'border-[#1d1d1f] text-[#1d1d1f]'
           : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
@@ -133,7 +133,7 @@ function PaginationControls(props: {
           type="button"
           onClick={() => props.onPageChange(props.currentPage - 1)}
           disabled={props.currentPage <= 1}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
         >
           이전
         </button>
@@ -144,7 +144,7 @@ function PaginationControls(props: {
           type="button"
           onClick={() => props.onPageChange(props.currentPage + 1)}
           disabled={props.currentPage >= props.pageCount}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
         >
           다음
         </button>
@@ -315,7 +315,7 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
               type="button"
               onClick={handleRefresh}
               disabled={loading}
-              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition hover:bg-[#e8e8ed] disabled:opacity-60"
+              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
             >
               {loading ? '불러오는 중...' : '새로고침'}
             </button>

@@ -276,7 +276,7 @@ export default function StudentLoginPage() {
                   <button
                     type="button"
                     onClick={handleReset}
-                    className="text-[14px] font-semibold text-[var(--student-link)] transition-opacity hover:opacity-70"
+                    className="text-[14px] font-semibold text-[var(--student-link)] transition-all duration-200 ease-ios hover:opacity-70 active:scale-[0.97]"
                   >
                     정보 변경
                   </button>

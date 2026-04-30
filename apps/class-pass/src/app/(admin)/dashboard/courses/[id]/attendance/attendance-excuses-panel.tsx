@@ -178,7 +178,7 @@ export function AttendanceExcusesPanel({
               date: defaultDate,
             })}
             disabled={subjects.length === 0}
-            className="rounded-xl bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            className="rounded-xl bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
           >
             새 사유서
           </button>
@@ -231,7 +231,7 @@ export function AttendanceExcusesPanel({
           <button
             type="button"
             onClick={() => void loadData()}
-            className="text-xs font-semibold text-[#0066cc] hover:underline"
+            className="text-xs font-semibold text-[#0066cc] transition-all duration-200 ease-ios hover:underline active:scale-[0.97]"
           >
             새로고침
           </button>
@@ -284,7 +284,7 @@ export function AttendanceExcusesPanel({
                         <button
                           type="button"
                           onClick={() => onEditRequest(record)}
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:border-slate-300 hover:bg-slate-50 active:scale-[0.97]"
                         >
                           수정
                         </button>
@@ -292,7 +292,7 @@ export function AttendanceExcusesPanel({
                           type="button"
                           onClick={() => void handleDelete(record)}
                           disabled={deletingId === record.id}
-                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 disabled:opacity-60"
+                          className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                         >
                           {deletingId === record.id ? '삭제 중...' : '삭제'}
                         </button>

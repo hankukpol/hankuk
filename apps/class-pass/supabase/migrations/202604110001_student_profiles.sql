@@ -123,44 +123,57 @@ order by
   src.created_at
 on conflict do nothing;
 
+with matched_enrollments as (
+  select
+    e.id as enrollment_id,
+    e.photo_url as enrollment_photo_url,
+    matched.id as student_id,
+    matched.name,
+    matched.phone,
+    matched.exam_number,
+    matched.photo_url
+  from class_pass.enrollments e
+  join class_pass.courses c
+    on c.id = e.course_id
+  cross join lateral (
+    select
+      s.id,
+      s.name,
+      s.phone,
+      s.exam_number,
+      s.photo_url
+    from class_pass.students s
+    where s.division = c.division
+      and (
+        (
+          nullif(btrim(e.exam_number), '') is not null
+          and s.exam_number = nullif(btrim(e.exam_number), '')
+        )
+        or (
+          nullif(btrim(e.exam_number), '') is null
+          and s.phone = e.phone
+          and s.name = e.name
+        )
+      )
+    order by
+      case
+        when nullif(btrim(e.exam_number), '') is not null
+          and s.exam_number = nullif(btrim(e.exam_number), '')
+        then 0
+        else 1
+      end,
+      case when s.photo_url is not null then 0 else 1 end,
+      s.id
+    limit 1
+  ) matched
+  where e.student_id is null
+)
 update class_pass.enrollments e
 set
-  student_id = matched.id,
+  student_id = matched.student_id,
   name = matched.name,
   phone = matched.phone,
   exam_number = matched.exam_number,
-  photo_url = coalesce(matched.photo_url, e.photo_url)
-from class_pass.courses c,
-lateral (
-  select
-    s.id,
-    s.name,
-    s.phone,
-    s.exam_number,
-    s.photo_url
-  from class_pass.students s
-  where s.division = c.division
-    and (
-      (
-        nullif(btrim(e.exam_number), '') is not null
-        and s.exam_number = nullif(btrim(e.exam_number), '')
-      )
-      or (
-        nullif(btrim(e.exam_number), '') is null
-        and s.phone = e.phone
-        and s.name = e.name
-      )
-    )
-  order by
-    case
-      when nullif(btrim(e.exam_number), '') is not null
-        and s.exam_number = nullif(btrim(e.exam_number), '')
-      then 0
-      else 1
-    end,
-    case when s.photo_url is not null then 0 else 1 end,
-    s.id
-  limit 1
-) matched
-where c.id = e.course_id
-  and e.student_id is null;
+  photo_url = coalesce(matched.photo_url, matched.enrollment_photo_url)
+from matched_enrollments matched
+where e.id = matched.enrollment_id;

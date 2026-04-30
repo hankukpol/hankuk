@@ -3,6 +3,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { BranchSeriesOptionsEditor } from '@/components/series/BranchSeriesOptionsEditor'
 import {
   APP_CONFIG_DEFAULTS,
   APP_FEATURE_GROUPS,
@@ -12,6 +13,7 @@ import {
   type AppFeatureKey,
 } from '@/lib/app-config.shared'
 import { withTenantPrefix } from '@/lib/tenant'
+import type { BranchSeriesOption } from '@/types/database'
 
 const TRACK_OPTIONS = [
   { value: 'police', label: '경찰' },
@@ -40,6 +42,8 @@ function buildInitialConfig(tenant: ReturnType<typeof useTenantConfig>): AppConf
 export default function ConfigPage() {
   const tenant = useTenantConfig()
   const [config, setConfig] = useState<AppConfigSnapshot>(() => buildInitialConfig(tenant))
+  const [seriesOptions, setSeriesOptions] = useState<BranchSeriesOption[]>([])
+  const [seriesSaving, setSeriesSaving] = useState(false)
   const [adminId, setAdminId] = useState('')
   const [adminPin, setAdminPin] = useState('')
   const [staffPin, setStaffPin] = useState('')
@@ -53,14 +57,16 @@ export default function ConfigPage() {
     Promise.all([
       fetch(withTenantPrefix('/api/config/app', tenant.type)).then((response) => response.json()),
       fetch(withTenantPrefix('/api/auth/admin/id', tenant.type), { cache: 'no-store' }).then((response) => response.json()),
+      fetch(withTenantPrefix('/api/config/series-options', tenant.type), { cache: 'no-store' }).then((response) => response.json()),
     ])
-      .then(([appConfig, admin]) => {
+      .then(([appConfig, admin, series]) => {
         if (cancelled) {
           return
         }
 
         setConfig((current) => ({ ...current, ...appConfig }))
         setAdminId(admin.id ?? '')
+        setSeriesOptions((series?.options ?? []) as BranchSeriesOption[])
       })
       .finally(() => {
         if (!cancelled) {
@@ -103,6 +109,36 @@ export default function ConfigPage() {
     }
 
     setError(payload?.error ?? '지점 설정을 저장하지 못했습니다.')
+  }
+
+  async function saveSeriesOptions() {
+    resetFeedback()
+    setSeriesSaving(true)
+
+    const response = await fetch(withTenantPrefix('/api/config/series-options', tenant.type), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        options: seriesOptions.map((option) => ({
+          id: option.id > 0 ? option.id : null,
+          group_key: option.group_key,
+          label: option.label,
+          is_default: option.is_default,
+          is_active: option.is_active,
+          display_order: option.display_order,
+        })),
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    setSeriesSaving(false)
+
+    if (response.ok) {
+      setSeriesOptions((payload?.options ?? []) as BranchSeriesOption[])
+      setMessage('직렬 설정을 저장했습니다.')
+      return
+    }
+
+    setError(payload?.error ?? '직렬 설정을 저장하지 못했습니다.')
   }
 
   async function saveAdminIdentity(event: FormEvent) {
@@ -250,6 +286,28 @@ export default function ConfigPage() {
                   />
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700">직렬 설정</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  학생 등록 기본값은 공채이며, 경채 수강생은 여기서 관리한 세부 직렬을 선택합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveSeriesOptions()}
+                disabled={seriesSaving}
+                className="rounded-[8px] bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {seriesSaving ? '저장 중...' : '직렬 설정 저장'}
+              </button>
+            </div>
+            <div className="mt-4">
+              <BranchSeriesOptionsEditor value={seriesOptions} onChange={setSeriesOptions} />
             </div>
           </section>
 

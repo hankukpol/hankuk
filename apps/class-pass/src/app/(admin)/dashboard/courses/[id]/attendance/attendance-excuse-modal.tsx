@@ -288,14 +288,14 @@ export function AttendanceExcuseModal({
             type="button"
             onClick={onClose}
             disabled={working}
-            className="rounded-xl border border-[#d2d2d7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition hover:bg-[#f5f5f7] disabled:opacity-60"
+            className="rounded-xl border border-[#d2d2d7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#f5f5f7] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
           >
             취소
           </button>
           <button
             type="submit"
             disabled={!canSubmit}
-            className="rounded-xl bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0077ed] disabled:opacity-60"
+            className="rounded-xl bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-[#0077ed] hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
           >
             {working ? '저장 중...' : isEditMode ? '사유서 수정' : '사유서 등록'}
           </button>

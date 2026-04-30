@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
+import { useMotionConfig } from '@/lib/motion'
 import {
   STUDENT_SESSION_NAME_KEY,
   STUDENT_SESSION_PHONE_KEY,
@@ -19,6 +21,7 @@ import { formatCourseTypeLabel, maskPhone, normalizeName, normalizePhone } from 
 export default function StudentCoursesPage() {
   const tenant = useTenantConfig()
   const router = useRouter()
+  const motionConfig = useMotionConfig()
   const [courses, setCourses] = useState<PassCourseSummary[]>([])
   const [studentName, setStudentName] = useState('')
   const [studentPhone, setStudentPhone] = useState('')
@@ -129,7 +132,7 @@ export default function StudentCoursesPage() {
             <button
               type="button"
               onClick={handleReset}
-              className="student-pill-button student-pill-primary mt-5 w-full"
+              className="student-pill-button student-pill-primary mt-5 w-full transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
             >
               다시 로그인
             </button>
@@ -145,7 +148,7 @@ export default function StudentCoursesPage() {
             <button
               type="button"
               onClick={handleReset}
-              className="student-pill-button student-pill-primary mt-4 w-full"
+              className="student-pill-button student-pill-primary mt-4 w-full transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
             >
               처음으로 돌아가기
             </button>
@@ -162,26 +165,40 @@ export default function StudentCoursesPage() {
                 role="tab"
                 aria-selected={activeTab === 'active'}
                 onClick={() => setActiveTab('active')}
-                className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
+                className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
                   activeTab === 'active'
-                    ? 'border-[var(--student-text)] text-[var(--student-text)]'
-                    : 'border-transparent text-[var(--student-text-muted)]'
+                    ? 'text-[var(--student-text)]'
+                    : 'text-[var(--student-text-muted)]'
                 }`}
               >
                 이용 중 {activeCourses.length}
+                {activeTab === 'active' ? (
+                  <motion.div
+                    layoutId="student-course-tabs"
+                    className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--student-text)]"
+                    transition={motionConfig.tab}
+                  />
+                ) : null}
               </button>
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeTab === 'archived'}
                 onClick={() => setActiveTab('archived')}
-                className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
+                className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
                   activeTab === 'archived'
-                    ? 'border-[var(--student-text)] text-[var(--student-text)]'
-                    : 'border-transparent text-[var(--student-text-muted)]'
+                    ? 'text-[var(--student-text)]'
+                    : 'text-[var(--student-text-muted)]'
                 }`}
               >
                 보관 {archivedCourses.length}
+                {activeTab === 'archived' ? (
+                  <motion.div
+                    layoutId="student-course-tabs"
+                    className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--student-text)]"
+                    transition={motionConfig.tab}
+                  />
+                ) : null}
               </button>
             </div>
 
@@ -232,7 +249,7 @@ export default function StudentCoursesPage() {
         <button
           type="button"
           onClick={handleReset}
-          className="student-pill-button student-pill-outline w-full"
+          className="student-pill-button student-pill-outline w-full transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97]"
         >
           로그아웃
         </button>
@@ -265,7 +282,7 @@ function StudentCourseCard({
   return (
     <Link
       href={href}
-      className={`student-card block overflow-hidden px-4 py-3.5 transition-transform active:scale-[0.98] ${
+      className={`student-card block overflow-hidden px-4 py-3.5 transition-transform duration-200 ease-ios active:scale-[0.98] ${
         archived
           ? 'border border-[var(--student-line)] bg-[var(--student-surface-muted)]'
           : suspended

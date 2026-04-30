@@ -26,6 +26,7 @@ const courseSchema = z.object({
   course_type: z.enum(['interview', 'mock_exam', 'lecture', 'general']).default('general'),
   status: z.enum(['active', 'archived']).default('active'),
   theme_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
+  tuition_amount: z.number().int().min(0).max(100_000_000).default(0),
   feature_qr_pass: z.boolean().default(true),
   feature_qr_distribution: z.boolean().default(false),
   feature_seat_assignment: z.boolean().default(false),

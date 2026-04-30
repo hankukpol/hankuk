@@ -513,7 +513,7 @@ export default function CourseSeatsPage({
               />
               <button
                 type="submit"
-                className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-slate-800 hover:shadow-md active:scale-[0.97] active:duration-100"
               >
                 과목 추가
               </button>
@@ -552,7 +552,7 @@ export default function CourseSeatsPage({
                       <button
                         type="button"
                         onClick={() => void handleSubjectDelete(subject)}
-                        className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                        className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97]"
                       >
                         삭제
                       </button>
@@ -605,7 +605,7 @@ export default function CourseSeatsPage({
             <button
               type="submit"
               disabled={submitting}
-              className="mt-5 rounded-xl px-5 py-3 text-sm font-bold text-white disabled:opacity-60"
+              className="mt-5 rounded-xl px-5 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
               style={{ background: 'var(--theme)' }}
             >
               {submitting ? '반영 중...' : '좌석 일괄 반영'}
@@ -636,7 +636,7 @@ export default function CourseSeatsPage({
                   })
                   .finally(() => setLoading(false))
               }}
-              className="rounded-[8px] bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+              className="rounded-[8px] bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
             >
               새로고침
             </button>
@@ -663,7 +663,7 @@ export default function CourseSeatsPage({
                 <button
                   type="button"
                   onClick={() => setSeatSearch('')}
-                  className="rounded-full bg-slate-200 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-300"
+                  className="rounded-full bg-slate-200 px-3 py-2 font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-300 active:scale-[0.97]"
                 >
                   검색 초기화
                 </button>

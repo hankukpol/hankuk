@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
+import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   applyStudentBirthDate,
@@ -22,6 +23,7 @@ const patchSchema = z.object({
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
+  series_option_id: z.number().int().positive().optional().nullable(),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
   birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
@@ -128,7 +130,18 @@ export async function PATCH(
 
   if (parsed.data.gender !== undefined) payload.gender = parsed.data.gender || null
   if (parsed.data.region !== undefined) payload.region = parsed.data.region || null
-  if (parsed.data.series !== undefined) payload.series = parsed.data.series || null
+  if (parsed.data.series_option_id !== undefined || parsed.data.series !== undefined) {
+    const seriesOption = await resolveBranchSeriesOption({
+      optionId: parsed.data.series_option_id,
+      label: parsed.data.series,
+    })
+    if (parsed.data.series_option_id && seriesOption?.id !== parsed.data.series_option_id) {
+      return NextResponse.json({ error: '선택한 직렬이 현재 지점에서 사용할 수 없습니다.' }, { status: 400 })
+    }
+    payload.series_option_id = seriesOption?.id ?? null
+    payload.series_group = seriesOption?.group_key ?? 'public'
+    payload.series = seriesOption?.label ?? parsed.data.series ?? '공채'
+  }
   if (parsed.data.memo !== undefined) payload.memo = parsed.data.memo || null
   if (parsed.data.status !== undefined) payload.status = parsed.data.status
   if (parsed.data.custom_data !== undefined) payload.custom_data = parsed.data.custom_data

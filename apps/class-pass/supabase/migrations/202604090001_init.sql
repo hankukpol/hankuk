@@ -1,5 +1,7 @@
 create schema if not exists class_pass;
 
+grant usage on schema class_pass to service_role;
+
 create table if not exists class_pass.courses (
   id serial primary key,
   division text not null,
@@ -54,6 +56,7 @@ create table if not exists class_pass.enrollments (
   status text not null default 'active',
   photo_url text,
   memo text,
+  custom_data jsonb not null default '{}'::jsonb,
   refunded_at timestamptz,
   created_at timestamptz not null default now(),
   unique (course_id, name, phone),
@@ -185,3 +188,8 @@ begin
   );
 end;
 $$;
+
+grant usage on schema class_pass to service_role;
+grant all privileges on all tables in schema class_pass to service_role;
+grant all privileges on all sequences in schema class_pass to service_role;
+grant execute on all functions in schema class_pass to service_role;

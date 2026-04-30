@@ -16,6 +16,7 @@ import type {
   Course,
   CourseSubject,
   Enrollment,
+  EnrollmentBilling,
   Material,
   MaterialType,
   ArchivedPassPayload,
@@ -157,7 +158,9 @@ const getCachedCourseEnrollments = unstable_cache(
         .order('created_at', { ascending: false }),
     ) as EnrollmentWithStudentRow[] | null
 
-    return (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row))
+    return attachEnrollmentBilling(
+      (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row)),
+    )
   },
   ['course-enrollments'],
   {
@@ -229,6 +232,56 @@ async function attachAttendanceDeviceStates(courseId: number, enrollments: Enrol
   return enrollments.map((enrollment) => ({
     ...enrollment,
     attendance_device: stateMap.get(enrollment.id) ?? null,
+  }))
+}
+
+function isOptionalBillingSchemaMissing(error: unknown) {
+  if (typeof error !== 'object' || error === null) {
+    return false
+  }
+
+  const record = error as Record<string, unknown>
+  const code = typeof record.code === 'string' ? record.code : ''
+  const message = [
+    record.message,
+    record.details,
+    record.hint,
+  ].filter((value): value is string => typeof value === 'string').join(' ').toLowerCase()
+
+  return (
+    code === 'PGRST205'
+    || code === '42P01'
+    || message.includes('enrollment_billing')
+    && (message.includes('could not find') || message.includes('does not exist'))
+  )
+}
+
+async function attachEnrollmentBilling(enrollments: Enrollment[]) {
+  if (enrollments.length === 0) {
+    return enrollments
+  }
+
+  const db = createServerClient()
+  const { data, error } = await db
+    .from('enrollment_billing')
+    .select('*')
+    .in('enrollment_id', enrollments.map((enrollment) => enrollment.id))
+
+  if (error) {
+    if (isOptionalBillingSchemaMissing(error)) {
+      return enrollments
+    }
+
+    throw error
+  }
+
+  const billingByEnrollmentId = new Map(
+    ((data ?? []) as EnrollmentBilling[]).map((billing) => [billing.enrollment_id, billing]),
+  )
+
+  return enrollments.map((enrollment) => ({
+    ...enrollment,
+    billing: billingByEnrollmentId.get(enrollment.id) ?? null,
   }))
 }
 
@@ -386,10 +439,11 @@ export async function listCourseEnrollments(
       })(),
     ) as EnrollmentWithStudentRow[] | null
 
-    return attachAttendanceDeviceStates(
-      courseId,
+    const enrollments = await attachEnrollmentBilling(
       (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row)),
     )
+
+    return attachAttendanceDeviceStates(courseId, enrollments)
   }
 
   return attachAttendanceDeviceStates(courseId, await getCachedCourseEnrollments(courseId))
@@ -808,6 +862,10 @@ async function loadStudentCourseAccessContext(params: {
   }
 
   const mergedEnrollment = mergeEnrollmentStudentSnapshot(enrollment)
+  if (mergedEnrollment.status !== 'active') {
+    return null
+  }
+
   const course = await getCourseById(mergedEnrollment.course_id, params.division)
   if (!course) {
     return null

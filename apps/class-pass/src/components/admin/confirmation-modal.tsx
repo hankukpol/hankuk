@@ -41,7 +41,7 @@ export function ConfirmationModal({
   submitting = false,
   onClose,
   onConfirm,
-}: ConfirmationModalProps): ReactNode {
+}: ConfirmationModalProps) {
   const titleId = useId()
   const descriptionId = useId()
   const motionConfig = useMotionConfig()
@@ -64,7 +64,9 @@ export function ConfirmationModal({
     return null
   }
 
-  return createPortal(
+  return (
+    <>
+      {createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -142,6 +144,8 @@ export function ConfirmationModal({
         </motion.div>
       ) : null}
     </AnimatePresence>,
-    document.body,
+        document.body,
+      )}
+    </>
   )
 }

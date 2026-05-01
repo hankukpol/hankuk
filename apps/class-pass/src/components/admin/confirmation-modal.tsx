@@ -41,7 +41,7 @@ export function ConfirmationModal({
   submitting = false,
   onClose,
   onConfirm,
-}: ConfirmationModalProps) {
+}: ConfirmationModalProps): ReactNode {
   const titleId = useId()
   const descriptionId = useId()
   const motionConfig = useMotionConfig()

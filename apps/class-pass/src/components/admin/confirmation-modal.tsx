@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useId, type ReactNode } from 'react'
+import * as React from 'react'
+import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
@@ -15,7 +16,7 @@ type ConfirmationModalProps = {
   pendingLabel?: string
   cancelLabel?: string | null
   overlayClassName?: string
-  children?: ReactNode
+  children?: React.ReactNode
   tone?: ConfirmationTone
   submitting?: boolean
   onClose: () => void
@@ -106,7 +107,7 @@ export function ConfirmationModal({
             ) : null}
             {children ? (
               <div className="mt-4">
-                {children}
+                {children as React.ReactNode}
               </div>
             ) : null}
           </div>

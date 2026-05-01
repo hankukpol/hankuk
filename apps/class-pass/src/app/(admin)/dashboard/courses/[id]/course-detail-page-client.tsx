@@ -4,8 +4,8 @@ import Link from 'next/link'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { confirmPermanentCourseDeletion } from '@/lib/course-delete-confirm'
 import type { Course, CourseSubject, CourseType, EnrollmentFieldDef } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 
@@ -165,6 +165,9 @@ export default function CourseDetailPage({
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [warning, setWarning] = useState('')
+  const [subjectDeleteTarget, setSubjectDeleteTarget] = useState<CourseSubject | null>(null)
+  const [destroyConfirmOpen, setDestroyConfirmOpen] = useState(false)
+  const [destroyCourseNameInput, setDestroyCourseNameInput] = useState('')
 
   useEffect(() => {
     if (!Number.isInteger(courseId) || courseId <= 0) {
@@ -321,8 +324,9 @@ export default function CourseDetailPage({
     setMessage('과목을 수정했습니다.')
   }
 
-  async function handleSubjectDelete(subject: CourseSubject) {
-    if (!window.confirm(`"${subject.name}" 과목을 삭제할까요?`)) return
+  async function handleSubjectDeleteConfirmed() {
+    const subject = subjectDeleteTarget
+    if (!subject) return
     setError('')
     setWarning('')
     const response = await fetch(`/api/courses/${courseId}/subjects`, {
@@ -333,6 +337,7 @@ export default function CourseDetailPage({
     const payload = await response.json().catch(() => null)
     if (!response.ok) { setError(payload?.error ?? '과목을 삭제하지 못했습니다.'); return }
     setSubjects((current) => current.filter((e) => e.id !== subject.id))
+    setSubjectDeleteTarget(null)
     setMessage('과목을 삭제했습니다.')
   }
 
@@ -396,11 +401,8 @@ export default function CourseDetailPage({
   async function handleDestroyCourse() {
     if (!course) return
 
-    const confirmation = confirmPermanentCourseDeletion(course.name)
-    if (!confirmation.confirmed) {
-      if (confirmation.reason === 'mismatch') {
-        setError('강좌명을 정확하게 입력해야 강좌를 삭제할 수 있습니다.')
-      }
+    if (destroyCourseNameInput.trim() !== course.name) {
+      setError('강좌명을 정확하게 입력해야 강좌를 삭제할 수 있습니다.')
       return
     }
 
@@ -429,11 +431,51 @@ export default function CourseDetailPage({
       setWarning(payload.warning)
     }
 
+    setDestroyConfirmOpen(false)
     router.push(withTenantPrefix('/dashboard/courses', tenant.type))
     router.refresh()
   }
 
   return (
+    <>
+    <ConfirmationModal
+      open={Boolean(subjectDeleteTarget)}
+      title="과목을 삭제할까요?"
+      description={subjectDeleteTarget ? `"${subjectDeleteTarget.name}" 과목을 삭제합니다. 좌석/출석에서 이 과목을 쓰고 있다면 관련 표시도 함께 정리됩니다.` : undefined}
+      confirmLabel="삭제"
+      pendingLabel="삭제 중..."
+      tone="danger"
+      onClose={() => setSubjectDeleteTarget(null)}
+      onConfirm={() => {
+        void handleSubjectDeleteConfirmed()
+      }}
+    />
+    <ConfirmationModal
+      open={destroyConfirmOpen}
+      title="강좌를 완전 삭제할까요?"
+      description={course ? `"${course.name}" 강좌, 수강생, 좌석, 출석, 교재, 배부 이력이 함께 삭제되며 복구할 수 없습니다.\n\n완전 삭제하려면 강좌명을 정확히 입력하세요.` : undefined}
+      confirmLabel="완전 삭제"
+      pendingLabel="삭제 중..."
+      tone="danger"
+      submitting={destroying}
+      onClose={() => {
+        if (!destroying) {
+          setDestroyConfirmOpen(false)
+          setDestroyCourseNameInput('')
+        }
+      }}
+      onConfirm={() => {
+        void handleDestroyCourse()
+      }}
+    >
+      <input
+        value={destroyCourseNameInput}
+        onChange={(event) => setDestroyCourseNameInput(event.target.value)}
+        placeholder={course?.name ?? '강좌명'}
+        disabled={destroying}
+        className="w-full rounded-[8px] border border-red-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-red-400 disabled:opacity-60"
+      />
+    </ConfirmationModal>
     <div className="flex flex-col gap-6">
       {/* ── KPI strip ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -922,7 +964,7 @@ export default function CourseDetailPage({
                             </Link>
                             <button
                               type="button"
-                              onClick={() => void handleSubjectDelete(subject)}
+                              onClick={() => setSubjectDeleteTarget(subject)}
                               className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97]"
                             >
                               삭제
@@ -1101,7 +1143,10 @@ export default function CourseDetailPage({
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => void handleDestroyCourse()}
+            onClick={() => {
+              setDestroyCourseNameInput('')
+              setDestroyConfirmOpen(true)
+            }}
             disabled={destroying}
             className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-red-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
@@ -1111,5 +1156,6 @@ export default function CourseDetailPage({
         </div>
       </section>
     </div>
+    </>
   )
 }

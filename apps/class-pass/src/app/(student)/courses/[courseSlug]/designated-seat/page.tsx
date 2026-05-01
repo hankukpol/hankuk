@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { PresenceFailureActions } from '@/components/student/PresenceFailureActions'
 import { StudentAccessGuide } from '@/components/student/StudentAccessGuide'
@@ -16,7 +17,7 @@ import {
 } from '@/lib/designated-seat/scan'
 import { isPresenceLocationEnforced, isPresenceLocationFeatureActive } from '@/lib/presence/shared'
 import { withTenantPrefix } from '@/lib/tenant'
-import type { DesignatedSeatStudentState, PassPayload } from '@/types/database'
+import type { DesignatedSeat, DesignatedSeatStudentState, PassPayload } from '@/types/database'
 
 const LS_NAME = 'class_pass_student_name'
 const LS_PHONE = 'class_pass_student_phone'
@@ -87,6 +88,7 @@ export default function DesignatedSeatPage() {
   const [message, setMessage] = useState('')
   const [presenceFailure, setPresenceFailure] = useState<ClientPresenceError | null>(null)
   const [lastScanDebug, setLastScanDebug] = useState('')
+  const [reserveTarget, setReserveTarget] = useState<DesignatedSeat | null>(null)
   const scannerRef = useRef<ScannerInstance | null>(null)
 
   useEffect(() => {
@@ -398,6 +400,16 @@ export default function DesignatedSeatPage() {
     setMessage(action === 'changed' ? '좌석이 변경되었습니다.' : '좌석을 확정했습니다.')
   }
 
+  async function handleReserveConfirmed() {
+    const seat = reserveTarget
+    if (!seat) {
+      return
+    }
+
+    await handleReserve(seat.id)
+    setReserveTarget(null)
+  }
+
   const goBack = useCallback(() => {
     router.push(withTenantPrefix(`/courses/${params.courseSlug}?enrollmentId=${enrollmentId}`, tenant.type))
   }, [router, params.courseSlug, enrollmentId, tenant.type])
@@ -438,6 +450,26 @@ export default function DesignatedSeatPage() {
 
   return (
     <div className="student-page student-safe-bottom">
+      <ConfirmationModal
+        open={Boolean(reserveTarget)}
+        title={currentSeatLabel ? '좌석을 변경할까요?' : '좌석을 확정할까요?'}
+        description={reserveTarget ? (
+          currentSeatLabel
+            ? `현재 ${currentSeatLabel} 좌석에서 ${reserveTarget.label} 좌석으로 변경합니다. 좌석 변경 후 다시 바꾸려면 QR 인증이 다시 필요합니다.`
+            : `${reserveTarget.label} 좌석을 내 좌석으로 확정합니다.`
+        ) : undefined}
+        confirmLabel={currentSeatLabel ? '좌석 변경' : '좌석 확정'}
+        pendingLabel="처리 중..."
+        submitting={working}
+        onClose={() => {
+          if (!working) {
+            setReserveTarget(null)
+          }
+        }}
+        onConfirm={() => {
+          void handleReserveConfirmed()
+        }}
+      />
       <section className="student-hero px-4 pb-6 pt-4 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/56 transition-all duration-200 ease-ios hover:text-white active:scale-[0.97]">
@@ -550,16 +582,7 @@ export default function DesignatedSeatPage() {
                     return
                   }
 
-                  const confirmed = window.confirm(
-                    currentSeatLabel
-                      ? `${seat.label} 좌석으로 변경할까요?`
-                      : `${seat.label} 좌석을 확정할까요?`,
-                  )
-                  if (!confirmed) {
-                    return
-                  }
-
-                  void handleReserve(seat.id)
+                  setReserveTarget(seat)
                 }}
                 mode="student"
               />

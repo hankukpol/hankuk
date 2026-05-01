@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
@@ -10,7 +11,7 @@ import {
   type DesignatedSeatVerificationPayload,
 } from '@/lib/designated-seat/scan'
 import { withTenantPrefix } from '@/lib/tenant'
-import type { PassPayload } from '@/types/database'
+import type { DesignatedSeat, PassPayload } from '@/types/database'
 
 const DEVICE_KEY_STORAGE = 'class_pass_designated_seat_device'
 
@@ -71,6 +72,7 @@ export function StudentDesignatedSeatSection({
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [lastScanDebug, setLastScanDebug] = useState('')
+  const [reserveTarget, setReserveTarget] = useState<DesignatedSeat | null>(null)
   const tenant = useTenantConfig()
 
   const state = data.designatedSeat
@@ -252,6 +254,16 @@ export function StudentDesignatedSeatSection({
     await onRefresh()
   }
 
+  async function handleReserveConfirmed() {
+    const seat = reserveTarget
+    if (!seat) {
+      return
+    }
+
+    await handleReserve(seat.id)
+    setReserveTarget(null)
+  }
+
   const currentSeatId = state.reservation?.seat_id ?? null
   const currentSeatLabel = state.reservation?.seat?.label ?? null
   const manualCodeEntryEnabled = false
@@ -271,6 +283,26 @@ export function StudentDesignatedSeatSection({
 
   return (
     <>
+      <ConfirmationModal
+        open={Boolean(reserveTarget)}
+        title={currentSeatLabel ? '좌석을 변경할까요?' : '좌석을 확정할까요?'}
+        description={reserveTarget ? (
+          currentSeatLabel
+            ? `현재 ${currentSeatLabel} 좌석에서 ${reserveTarget.label} 좌석으로 변경합니다. 좌석 변경 후 다시 바꾸려면 QR 인증이 다시 필요합니다.`
+            : `${reserveTarget.label} 좌석을 내 좌석으로 확정합니다.`
+        ) : undefined}
+        confirmLabel={currentSeatLabel ? '좌석 변경' : '좌석 확정'}
+        pendingLabel="처리 중..."
+        submitting={working}
+        onClose={() => {
+          if (!working) {
+            setReserveTarget(null)
+          }
+        }}
+        onConfirm={() => {
+          void handleReserveConfirmed()
+        }}
+      />
       <section className="border-t border-gray-100 p-4">
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -363,16 +395,7 @@ export function StudentDesignatedSeatSection({
                       return
                     }
 
-                    const confirmed = window.confirm(
-                      currentSeatLabel
-                        ? `${seat.label} 좌석으로 변경할까요?`
-                        : `${seat.label} 좌석을 확정할까요?`,
-                    )
-                    if (!confirmed) {
-                      return
-                    }
-
-                    void handleReserve(seat.id)
+                    setReserveTarget(seat)
                   }}
                   mode="student"
                 />

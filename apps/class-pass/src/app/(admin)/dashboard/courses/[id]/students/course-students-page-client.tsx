@@ -1099,11 +1099,22 @@ export default function CourseStudentsPage({
   async function handlePhotoDelete() {
     if (!editingId) return
     setPhotoUploading(true)
-    await fetch(`/api/enrollments/${editingId}/photo`, { method: 'DELETE' })
-    setPhotoUploading(false)
-    setEditPhotoUrl(null)
-    setEnrollments((c) => c.map((x) => x.id === editingId ? { ...x, photo_url: null } : x))
-    setMessage('사진을 삭제했습니다.')
+    setError('')
+    try {
+      const response = await fetch(`/api/enrollments/${editingId}/photo`, { method: 'DELETE' })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        setError(payload?.error ?? '사진 삭제 실패')
+        return
+      }
+      setEditPhotoUrl(null)
+      setEnrollments((c) => c.map((x) => x.id === editingId ? { ...x, photo_url: null } : x))
+      setMessage('사진을 삭제했습니다.')
+    } catch {
+      setError('사진 삭제 실패')
+    } finally {
+      setPhotoUploading(false)
+    }
   }
 
   async function handleSaveEdit(ev: FormEvent) {
@@ -1420,7 +1431,7 @@ export default function CourseStudentsPage({
 
           <section className="mt-8">
             <h4 className="text-sm font-semibold text-[#1d1d1f]">인적 사항</h4>
-            <p className="mt-0.5 text-xs text-slate-500">학번·이름·연락처는 필수, 생년월일은 선택입니다.</p>
+            <p className="mt-0.5 text-xs text-slate-500">학번·이름·연락처는 필수입니다.</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">학번</span>
@@ -1435,7 +1446,7 @@ export default function CourseStudentsPage({
                 <input value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="010-0000-0000" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">생년월일 (선택)</span>
+                <span className="text-[11px] font-medium text-slate-500">생년월일</span>
                 <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
               <div className="sm:col-span-3">
@@ -1519,7 +1530,7 @@ export default function CourseStudentsPage({
         <form onSubmit={handleBulkImport} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
           <p className="mt-1 text-xs text-slate-500">
-            탭 구분 · 순서: <span className="font-semibold text-slate-700">학번, 이름, 연락처, 생년월일(선택){customFields.map((f) => `, ${f.label}`).join('')}</span>
+            탭 구분 · 순서: <span className="font-semibold text-slate-700">학번, 이름, 연락처, 생년월일{customFields.map((f) => `, ${f.label}`).join('')}</span>
           </p>
           <textarea
             value={bulkText}
@@ -1564,7 +1575,21 @@ export default function CourseStudentsPage({
                   />
                 </label>
                 {editPhotoUrl && (
-                  <button type="button" onClick={() => void handlePhotoDelete()} disabled={photoUploading} className="text-left text-[10px] text-red-400 transition-all duration-200 ease-ios hover:underline active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openConfirmation({
+                        title: '사진을 삭제할까요?',
+                        description: `${editForm.name || '선택한 수강생'} 학생의 증명사진을 삭제합니다. 삭제한 사진은 다시 복구할 수 없습니다.`,
+                        confirmLabel: '사진 삭제',
+                        pendingLabel: '삭제 중...',
+                        tone: 'danger',
+                        onConfirm: handlePhotoDelete,
+                      })
+                    }}
+                    disabled={photoUploading}
+                    className="text-left text-[10px] text-red-400 transition-all duration-200 ease-ios hover:underline active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+                  >
                     사진 삭제
                   </button>
                 )}

@@ -341,6 +341,7 @@ export default function AdminAttendancePage() {
     defaultDate: getToday(),
   })
   const [overrideConfirmation, setOverrideConfirmation] = useState<OverrideConfirmationState | null>(null)
+  const [stopAttendanceConfirmOpen, setStopAttendanceConfirmOpen] = useState(false)
   const [excusesRefreshKey, setExcusesRefreshKey] = useState(0)
   const courseLoadedRef = useRef(false)
   const studentsLoadedRef = useRef(false)
@@ -361,6 +362,7 @@ export default function AdminAttendancePage() {
       defaultDate: getToday(),
     })
     setOverrideConfirmation(null)
+    setStopAttendanceConfirmOpen(false)
   }, [courseId])
 
   const loadData = useCallback(async () => {
@@ -715,6 +717,11 @@ export default function AdminAttendancePage() {
     await loadData().catch(() => null)
   }
 
+  async function handleStopConfirmed() {
+    await handleStop()
+    setStopAttendanceConfirmOpen(false)
+  }
+
   async function handleOverride(enrollmentId: number, status: 'present' | 'absent') {
     setWorking(true)
     setError('')
@@ -869,6 +876,9 @@ export default function AdminAttendancePage() {
               <option value={10}>10분</option>
               <option value={15}>15분</option>
               <option value={30}>30분</option>
+              <option value={120}>2시간</option>
+              <option value={150}>2시간 30분</option>
+              <option value={180}>3시간</option>
             </select>
             <button
               type="button"
@@ -880,7 +890,7 @@ export default function AdminAttendancePage() {
             </button>
             <button
               type="button"
-              onClick={() => void handleStop()}
+              onClick={() => setStopAttendanceConfirmOpen(true)}
               disabled={working || !dashboard.displaySession.isActive}
               className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
             >
@@ -1490,6 +1500,25 @@ export default function AdminAttendancePage() {
           if (excuse.excuseDate !== date) {
             setDate(excuse.excuseDate)
           }
+        }}
+      />
+      <ConfirmationModal
+        open={stopAttendanceConfirmOpen}
+        title="출석 세션을 종료할까요?"
+        description={dashboard.displaySession.subjectName
+          ? `${dashboard.displaySession.subjectName} 출석 세션을 종료합니다. 종료 후 학생들은 더 이상 이 세션으로 출석할 수 없습니다.`
+          : '현재 진행 중인 출석 세션을 종료합니다. 종료 후 학생들은 더 이상 이 세션으로 출석할 수 없습니다.'}
+        confirmLabel="출석 종료"
+        pendingLabel="종료 중..."
+        tone="danger"
+        submitting={working}
+        onClose={() => {
+          if (!working) {
+            setStopAttendanceConfirmOpen(false)
+          }
+        }}
+        onConfirm={() => {
+          void handleStopConfirmed()
         }}
       />
       <ConfirmationModal

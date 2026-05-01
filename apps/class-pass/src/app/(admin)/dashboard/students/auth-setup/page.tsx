@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
 
@@ -85,6 +86,7 @@ export default function StudentAuthSetupPage() {
   const [result, setResult] = useState<SetupResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -129,17 +131,16 @@ export default function StudentAuthSetupPage() {
     ]
   }, [result])
 
-  async function runBulkSetup() {
+  function requestBulkSetup() {
     if (pendingCount === 0) {
       setMessage('인증 미설정 학생이 없습니다.')
       return
     }
 
-    const confirmed = window.confirm(`${pendingCount}명의 학생에게 인증을 설정합니다. 계속하시겠습니까?`)
-    if (!confirmed) {
-      return
-    }
+    setConfirmOpen(true)
+  }
 
+  async function runBulkSetup() {
     setRunning(true)
     setMessage('')
     setError('')
@@ -172,6 +173,7 @@ export default function StudentAuthSetupPage() {
       setError(reason instanceof Error ? reason.message : '학생 인증 정보를 일괄 설정하지 못했습니다.')
     } finally {
       setRunning(false)
+      setConfirmOpen(false)
     }
   }
 
@@ -180,6 +182,23 @@ export default function StudentAuthSetupPage() {
   }
 
   return (
+    <>
+    <ConfirmationModal
+      open={confirmOpen}
+      title="학생 인증을 일괄 설정할까요?"
+      description={`${pendingCount}명의 학생에게 생년월일 인증 또는 PIN 인증을 설정합니다. 새로 발급되는 PIN은 실행 직후에만 확인할 수 있습니다.`}
+      confirmLabel="일괄 설정"
+      pendingLabel="설정 중..."
+      submitting={running}
+      onClose={() => {
+        if (!running) {
+          setConfirmOpen(false)
+        }
+      }}
+      onConfirm={() => {
+        void runBulkSetup()
+      }}
+    />
     <div className="flex flex-col gap-6">
       <div>
         <Link
@@ -226,7 +245,7 @@ export default function StudentAuthSetupPage() {
           </div>
           <button
             type="button"
-            onClick={() => void runBulkSetup()}
+            onClick={requestBulkSetup}
             disabled={running || pendingCount === 0}
             className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
@@ -376,5 +395,6 @@ export default function StudentAuthSetupPage() {
         )}
       </section>
     </div>
+    </>
   )
 }

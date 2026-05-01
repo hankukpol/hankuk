@@ -137,7 +137,7 @@ export default function AttendanceDisplayPage() {
               </p>
             ) : null}
             <p className="mt-3 text-lg text-slate-300">학생은 휴대폰에서 출석 페이지를 열고 아래 6자리 숫자를 입력하면 됩니다.</p>
-            <p className="mt-2 text-sm text-slate-500">코드는 30초마다 바뀌며, 출석 세션이 끝나면 자동으로 더 이상 제출되지 않습니다.</p>
+            <p className="mt-2 text-sm text-slate-500">코드는 15초마다 바뀌며, 출석 세션이 끝나면 자동으로 더 이상 제출되지 않습니다.</p>
           </div>
 
           <div className="rounded-[20px] border border-white/10 bg-white/5 px-6 py-5 text-right backdrop-blur">

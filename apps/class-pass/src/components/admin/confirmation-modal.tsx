@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useId } from 'react'
+import { useEffect, useId, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 
@@ -14,6 +15,7 @@ type ConfirmationModalProps = {
   pendingLabel?: string
   cancelLabel?: string | null
   overlayClassName?: string
+  children?: ReactNode
   tone?: ConfirmationTone
   submitting?: boolean
   onClose: () => void
@@ -33,7 +35,8 @@ export function ConfirmationModal({
   confirmLabel,
   pendingLabel,
   cancelLabel = '취소',
-  overlayClassName = 'z-50',
+  overlayClassName = 'z-[220]',
+  children,
   tone = 'default',
   submitting = false,
   onClose,
@@ -57,7 +60,11 @@ export function ConfirmationModal({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onClose, open, submitting])
 
-  return (
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -95,6 +102,11 @@ export function ConfirmationModal({
                 {description}
               </p>
             ) : null}
+            {children ? (
+              <div className="mt-4">
+                {children}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -129,6 +141,7 @@ export function ConfirmationModal({
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }

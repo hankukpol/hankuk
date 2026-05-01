@@ -40,6 +40,13 @@ type DrawerNotice = {
   tone?: 'default' | 'danger' | 'success'
 }
 
+type EnrollmentCancellationPrompt = {
+  enrollmentId: number
+  studentName: string
+  payableAmount: number
+  source: 'refund' | 'void'
+}
+
 function getPaymentStatusClass(status: EnrollmentPayment['status']) {
   switch (status) {
     case 'paid':
@@ -79,6 +86,35 @@ function getPaymentMemo(payment: EnrollmentPayment) {
   return '메모 없음'
 }
 
+function mergePaymentUpdates(current: EnrollmentPayment[], updates: EnrollmentPayment[]) {
+  if (updates.length === 0) {
+    return current
+  }
+
+  const updatedById = new Map(updates.map((payment) => [payment.id, payment]))
+  return current.map((payment) => updatedById.get(payment.id) ?? payment)
+}
+
+function shouldPromptEnrollmentCancellation(options: {
+  enrollment: Enrollment | null
+  payments: EnrollmentPayment[]
+  payableAmount: number
+  changedCategory: EnrollmentPayment['category']
+}) {
+  if (
+    !options.enrollment
+    || options.enrollment.status !== 'active'
+    || options.enrollment.billing?.tuition_exempt
+    || options.payableAmount <= 0
+    || options.changedCategory !== 'tuition'
+  ) {
+    return false
+  }
+
+  const hasTuitionPaymentHistory = options.payments.some((payment) => payment.category === 'tuition')
+  return hasTuitionPaymentHistory && summarizePayments(options.payments, { category: 'tuition' }).net <= 0
+}
+
 export function EnrollmentPaymentDrawer({
   open,
   course,
@@ -95,6 +131,7 @@ export function EnrollmentPaymentDrawer({
   const [paymentDraft, setPaymentDraft] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [refundTarget, setRefundTarget] = useState<EnrollmentPayment | null>(null)
   const [voidTarget, setVoidTarget] = useState<EnrollmentPayment | null>(null)
+  const [cancelEnrollmentPrompt, setCancelEnrollmentPrompt] = useState<EnrollmentCancellationPrompt | null>(null)
   const [notice, setNotice] = useState<DrawerNotice | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -130,7 +167,7 @@ export function EnrollmentPaymentDrawer({
 
     const previousOverflow = document.body.style.overflow
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting && !refundTarget && !voidTarget && !notice) {
+      if (event.key === 'Escape' && !submitting && !refundTarget && !voidTarget && !cancelEnrollmentPrompt && !notice) {
         onClose()
       }
     }
@@ -142,7 +179,7 @@ export function EnrollmentPaymentDrawer({
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [notice, onClose, open, refundTarget, submitting, voidTarget])
+  }, [cancelEnrollmentPrompt, notice, onClose, open, refundTarget, submitting, voidTarget])
 
   useEffect(() => {
     if (!open || !enrollment) {
@@ -154,6 +191,7 @@ export function EnrollmentPaymentDrawer({
     setFormOpen(false)
     setRefundTarget(null)
     setVoidTarget(null)
+    setCancelEnrollmentPrompt(null)
     setNotice(null)
     void loadPayments()
   }, [enrollment, loadPayments, open])
@@ -336,6 +374,7 @@ export function EnrollmentPaymentDrawer({
       return
     }
 
+    const target = refundTarget
     setSubmitting(true)
     setError('')
     setMessage('')
@@ -352,9 +391,26 @@ export function EnrollmentPaymentDrawer({
       return
     }
 
+    const updatedPayments = Array.isArray(result?.payments) ? result.payments as EnrollmentPayment[] : []
+    const nextPayments = mergePaymentUpdates(payments, updatedPayments)
+    const shouldAskToCancelEnrollment = shouldPromptEnrollmentCancellation({
+      enrollment,
+      payments: nextPayments,
+      payableAmount,
+      changedCategory: target.category,
+    })
+
     setRefundTarget(null)
     setMessage(input.refunds.length > 1 ? '복수 결제 건의 환불 처리를 완료했습니다.' : '환불 처리를 완료했습니다.')
     await refreshAll()
+    if (shouldAskToCancelEnrollment && enrollment) {
+      setCancelEnrollmentPrompt({
+        enrollmentId: enrollment.id,
+        studentName: enrollment.name,
+        payableAmount,
+        source: 'refund',
+      })
+    }
   }
 
   function handleVoidPayment(payment: EnrollmentPayment) {
@@ -366,6 +422,7 @@ export function EnrollmentPaymentDrawer({
       return
     }
 
+    const target = voidTarget
     setSubmitting(true)
     setError('')
     setMessage('')
@@ -379,9 +436,56 @@ export function EnrollmentPaymentDrawer({
       return
     }
 
+    const updatedPayment = result?.payment as EnrollmentPayment | undefined
+    const nextPayments = updatedPayment ? mergePaymentUpdates(payments, [updatedPayment]) : payments
+    const shouldAskToCancelEnrollment = shouldPromptEnrollmentCancellation({
+      enrollment,
+      payments: nextPayments,
+      payableAmount,
+      changedCategory: target.category,
+    })
+
     setVoidTarget(null)
     setMessage('결제를 취소했습니다.')
     await refreshAll()
+    if (shouldAskToCancelEnrollment && enrollment) {
+      setCancelEnrollmentPrompt({
+        enrollmentId: enrollment.id,
+        studentName: enrollment.name,
+        payableAmount,
+        source: 'void',
+      })
+    }
+  }
+
+  async function handleCancelEnrollmentConfirmed() {
+    if (!cancelEnrollmentPrompt) {
+      return
+    }
+
+    setSubmitting(true)
+    setError('')
+    const response = await fetch(`/api/enrollments/${cancelEnrollmentPrompt.enrollmentId}/refund`, { method: 'POST' })
+    const result = await response.json().catch(() => null)
+    setSubmitting(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '수강 상태를 취소하지 못했습니다.')
+      return
+    }
+
+    setCancelEnrollmentPrompt(null)
+    setMessage('수강 상태를 수강취소로 변경했습니다.')
+    await refreshAll()
+  }
+
+  function keepEnrollmentActive() {
+    if (submitting) {
+      return
+    }
+
+    setCancelEnrollmentPrompt(null)
+    setMessage('수강 상태는 활성으로 유지했습니다. 재결제 예정이면 수납을 다시 추가해 주세요.')
   }
 
   function handleDrawerDragEnd(
@@ -720,6 +824,27 @@ export function EnrollmentPaymentDrawer({
         }}
         onConfirm={() => {
           void handleVoidPaymentConfirmed()
+        }}
+      />
+
+      <ConfirmationModal
+        open={Boolean(cancelEnrollmentPrompt)}
+        title="수강 상태도 취소할까요?"
+        description={cancelEnrollmentPrompt ? [
+          `${cancelEnrollmentPrompt.studentName} 학생의 수강료 실수납이 0원이 되어 미납액이 ${formatWon(cancelEnrollmentPrompt.payableAmount)}입니다.`,
+          cancelEnrollmentPrompt.source === 'void'
+            ? '결제 취소만 정정한 것이고 재결제 예정이면 활성 상태를 유지하세요.'
+            : '전액 환불 후 실제 수강도 종료된 경우에만 수강취소로 변경하세요.',
+        ].join('\n\n') : undefined}
+        confirmLabel="수강취소"
+        pendingLabel="처리 중..."
+        cancelLabel="활성 유지"
+        tone="danger"
+        submitting={submitting}
+        overlayClassName="z-[205]"
+        onClose={keepEnrollmentActive}
+        onConfirm={() => {
+          void handleCancelEnrollmentConfirmed()
         }}
       />
 

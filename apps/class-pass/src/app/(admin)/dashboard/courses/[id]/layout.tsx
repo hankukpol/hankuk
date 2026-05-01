@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { motion } from 'framer-motion'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -43,6 +44,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
   const [course, setCourse] = useState<Course | null>(null)
   const [loading, setLoading] = useState(true)
   const [duplicating, setDuplicating] = useState(false)
+  const [duplicateConfirmOpen, setDuplicateConfirmOpen] = useState(false)
   const [error, setError] = useState('')
   const [hasMounted, setHasMounted] = useState(false)
   const tabNavigationFrameRef = useRef<number | null>(null)
@@ -145,19 +147,18 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
     ]
   }, [basePath, course])
 
-  async function handleDuplicate() {
+  function requestDuplicate() {
     if (!course) {
       return
     }
 
-    const confirmed = window.confirm(
-      `"${course.name}" 강좌를 복사할까요?\n\n강좌 설정, 과목, 수강생 추가 필드만 복사되고 학생/자료/좌석 데이터는 복사되지 않습니다.`,
-    )
+    setDuplicateConfirmOpen(true)
+  }
 
-    if (!confirmed) {
+  async function handleDuplicateConfirmed() {
+    if (!course) {
       return
     }
-
     setDuplicating(true)
     setError('')
 
@@ -178,6 +179,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
       return
     }
 
+    setDuplicateConfirmOpen(false)
     router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
   }
 
@@ -210,6 +212,23 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
   }
 
   return (
+    <>
+    <ConfirmationModal
+      open={duplicateConfirmOpen}
+      title="강좌를 복사할까요?"
+      description={course ? `"${course.name}" 강좌의 설정, 과목, 수강생 추가 필드만 복사됩니다. 학생, 자료, 좌석 데이터는 복사되지 않습니다.` : undefined}
+      confirmLabel="복사"
+      pendingLabel="복사 중..."
+      submitting={duplicating}
+      onClose={() => {
+        if (!duplicating) {
+          setDuplicateConfirmOpen(false)
+        }
+      }}
+      onConfirm={() => {
+        void handleDuplicateConfirmed()
+      }}
+    />
     <div className="flex flex-col gap-6">
       <section className="rounded-[8px] border border-slate-200 bg-white px-5 pt-5 sm:px-6 sm:pt-6">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">강좌 관리</p>
@@ -231,7 +250,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
           {course ? (
             <button
               type="button"
-              onClick={() => void handleDuplicate()}
+              onClick={requestDuplicate}
               disabled={duplicating}
               className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
             >
@@ -292,5 +311,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
       {children}
     </div>
+    </>
   )
 }

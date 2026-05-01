@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { CourseSubject } from '@/types/database'
 import type {
   AttendanceExcuseRecord,
@@ -66,6 +67,7 @@ export function AttendanceExcusesPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AttendanceExcuseRecord | null>(null)
 
   useEffect(() => {
     if (!active || subjectFilter || !defaultSubjectId) {
@@ -138,11 +140,9 @@ export function AttendanceExcusesPanel({
 
   const studentCount = students.length
 
-  async function handleDelete(record: AttendanceExcuseRecord) {
-    if (!window.confirm(`${record.studentName} 학생의 사유서를 삭제할까요?`)) {
-      return
-    }
-
+  async function handleDeleteConfirmed() {
+    const record = deleteTarget
+    if (!record) return
     setDeletingId(record.id)
     const response = await fetch(`/api/attendance/admin/excuses/${record.id}`, {
       method: 'DELETE',
@@ -158,10 +158,29 @@ export function AttendanceExcusesPanel({
     }
 
     await loadData()
+    setDeleteTarget(null)
     onChanged('사유서를 삭제했습니다.')
   }
 
   return (
+    <>
+    <ConfirmationModal
+      open={Boolean(deleteTarget)}
+      title="사유서를 삭제할까요?"
+      description={deleteTarget ? `${deleteTarget.studentName} 학생의 사유서를 삭제합니다. 연속 결석 계산에 다시 반영될 수 있습니다.` : undefined}
+      confirmLabel="삭제"
+      pendingLabel="삭제 중..."
+      tone="danger"
+      submitting={deletingId !== null}
+      onClose={() => {
+        if (deletingId === null) {
+          setDeleteTarget(null)
+        }
+      }}
+      onConfirm={() => {
+        void handleDeleteConfirmed()
+      }}
+    />
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -290,7 +309,7 @@ export function AttendanceExcusesPanel({
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDelete(record)}
+                          onClick={() => setDeleteTarget(record)}
                           disabled={deletingId === record.id}
                           className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                         >
@@ -306,5 +325,6 @@ export function AttendanceExcusesPanel({
         </div>
       </div>
     </div>
+    </>
   )
 }

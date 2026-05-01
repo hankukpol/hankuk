@@ -2,6 +2,7 @@
 
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { PopupRow } from '@/lib/popups.shared'
 import { formatDateTime } from '@/lib/utils'
 
@@ -30,6 +31,8 @@ export default function PopupManagementPageClient({
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
+  const [deleteTarget, setDeleteTarget] = useState<Popup | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
 
   // Create form
   const [newType, setNewType] = useState('notice')
@@ -93,8 +96,10 @@ export default function PopupManagementPageClient({
     setEditingId(null); setMessage('팝업을 수정했습니다.')
   }
 
-  async function handleDelete(popup: Popup) {
-    if (!window.confirm(`"${popup.title || popup.type}" 팝업을 삭제할까요?`)) return
+  async function handleDeleteConfirmed() {
+    const popup = deleteTarget
+    if (!popup) return
+    setDeleteSubmitting(true)
     setError(''); setMessage('')
     const response = await fetch('/api/popups', {
       method: 'DELETE',
@@ -102,9 +107,11 @@ export default function PopupManagementPageClient({
       body: JSON.stringify({ id: popup.id }),
     })
     const payload = await response.json().catch(() => null)
+    setDeleteSubmitting(false)
     if (!response.ok) { setError(payload?.error ?? '팝업을 삭제하지 못했습니다.'); return }
     setPopups((c) => c.filter((p) => p.id !== popup.id))
     if (editingId === popup.id) setEditingId(null)
+    setDeleteTarget(null)
     setMessage('팝업을 삭제했습니다.')
   }
 
@@ -128,6 +135,24 @@ export default function PopupManagementPageClient({
   if (loading) return <p className="py-12 text-center text-sm text-[#86868b]">불러오는 중...</p>
 
   return (
+    <>
+    <ConfirmationModal
+      open={Boolean(deleteTarget)}
+      title="팝업을 삭제할까요?"
+      description={deleteTarget ? `"${deleteTarget.title || deleteTarget.type}" 팝업은 삭제 후 복구할 수 없습니다.` : undefined}
+      confirmLabel="삭제"
+      pendingLabel="삭제 중..."
+      tone="danger"
+      submitting={deleteSubmitting}
+      onClose={() => {
+        if (!deleteSubmitting) {
+          setDeleteTarget(null)
+        }
+      }}
+      onConfirm={() => {
+        void handleDeleteConfirmed()
+      }}
+    />
     <div className="flex flex-col gap-6">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
@@ -292,7 +317,7 @@ export default function PopupManagementPageClient({
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDelete(popup)}
+                          onClick={() => setDeleteTarget(popup)}
                           className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-[#ff3b30] hover:bg-red-100"
                         >
                           삭제
@@ -307,5 +332,6 @@ export default function PopupManagementPageClient({
         )}
       </section>
     </div>
+    </>
   )
 }

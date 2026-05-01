@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { Course, CourseSubject, Enrollment, SeatAssignment } from '@/types/database'
 
 type SeatResponse = {
@@ -112,6 +113,7 @@ export default function CourseSeatsPage({
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [bulkIssues, setBulkIssues] = useState<string[]>([])
+  const [subjectDeleteTarget, setSubjectDeleteTarget] = useState<CourseSubject | null>(null)
 
   async function refreshPage() {
     const data = await fetchSeatsPageData(courseId)
@@ -245,12 +247,9 @@ export default function CourseSeatsPage({
     setMessage('과목을 수정했습니다.')
   }
 
-  async function handleSubjectDelete(subject: CourseSubject) {
-    const confirmed = window.confirm(`"${subject.name}" 과목을 삭제할까요?`)
-    if (!confirmed) {
-      return
-    }
-
+  async function handleSubjectDeleteConfirmed() {
+    const subject = subjectDeleteTarget
+    if (!subject) return
     setError('')
     setMessage('')
     setBulkIssues([])
@@ -268,6 +267,7 @@ export default function CourseSeatsPage({
     }
 
     setSubjects((current) => current.filter((entry) => entry.id !== subject.id))
+    setSubjectDeleteTarget(null)
     setSeatAssignments((current) => current.filter((entry) => entry.subject_id !== subject.id))
     setSeatDrafts((current) => {
       const nextDrafts = { ...current }
@@ -456,6 +456,19 @@ export default function CourseSeatsPage({
   }
 
   return (
+    <>
+    <ConfirmationModal
+      open={Boolean(subjectDeleteTarget)}
+      title="과목을 삭제할까요?"
+      description={subjectDeleteTarget ? `"${subjectDeleteTarget.name}" 과목과 연결된 좌석 배정 입력값을 함께 정리합니다.` : undefined}
+      confirmLabel="삭제"
+      pendingLabel="삭제 중..."
+      tone="danger"
+      onClose={() => setSubjectDeleteTarget(null)}
+      onConfirm={() => {
+        void handleSubjectDeleteConfirmed()
+      }}
+    />
     <div className="flex flex-col gap-6">
       <section className="rounded-[8px] bg-white p-4 shadow-sm sm:p-6">
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
@@ -551,7 +564,7 @@ export default function CourseSeatsPage({
                       />
                       <button
                         type="button"
-                        onClick={() => void handleSubjectDelete(subject)}
+                        onClick={() => setSubjectDeleteTarget(subject)}
                         className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97]"
                       >
                         삭제
@@ -774,5 +787,6 @@ export default function CourseSeatsPage({
         </section>
       </div>
     </div>
+    </>
   )
 }

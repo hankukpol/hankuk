@@ -6,6 +6,7 @@ import type { DragEvent, FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDown, ArrowUp, GripVertical, Loader2 } from 'lucide-react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig } from '@/lib/motion'
 import { formatWon } from '@/lib/payments/format'
@@ -35,6 +36,14 @@ type CreateCourseForm = {
 
 type CourseFilter = 'all' | 'active' | 'archived'
 type MoveDirection = 'up' | 'down'
+type ConfirmationRequest = {
+  title: string
+  description?: string
+  confirmLabel: string
+  pendingLabel?: string
+  tone?: 'default' | 'danger' | 'success'
+  onConfirm: () => Promise<void> | void
+}
 
 const DEFAULT_FORM: CreateCourseForm = {
   name: '',
@@ -185,6 +194,8 @@ export default function CoursesPageClient({
   const [dragOverCourseId, setDragOverCourseId] = useState<number | null>(null)
   const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false)
 
   async function loadCourses() {
     const response = await fetch('/api/courses', { cache: 'no-store' })
@@ -238,8 +249,18 @@ export default function CoursesPageClient({
     await loadCourses().catch(() => {})
   }
 
-  async function handleArchive(course: Course) {
-    if (!window.confirm(`"${course.name}" 강좌를 아카이브할까요?`)) return
+  function requestArchive(course: Course) {
+    setConfirmation({
+      title: '강좌를 보관할까요?',
+      description: `"${course.name}" 강좌를 보관합니다. 수강생과 기록은 유지되며 운영중 목록에서 제외됩니다.`,
+      confirmLabel: '보관',
+      pendingLabel: '보관 중...',
+      tone: 'danger',
+      onConfirm: () => handleArchiveConfirmed(course),
+    })
+  }
+
+  async function handleArchiveConfirmed(course: Course) {
     setError('')
     setMessage('')
     const response = await fetch(`/api/courses/${course.id}`, { method: 'DELETE' })
@@ -249,12 +270,17 @@ export default function CoursesPageClient({
     setMessage('강좌를 아카이브했습니다.')
   }
 
-  async function handleDuplicate(course: Course) {
-    const confirmed = window.confirm(
-      `"${course.name}" 강좌를 복사할까요?\n\n강좌 설정, 과목, 수강생 추가 필드만 복사되고 학생/자료/좌석 데이터는 복사되지 않습니다.`,
-    )
-    if (!confirmed) return
+  function requestDuplicate(course: Course) {
+    setConfirmation({
+      title: '강좌를 복사할까요?',
+      description: `"${course.name}" 강좌의 설정, 과목, 수강생 추가 필드만 복사됩니다. 학생, 자료, 좌석 데이터는 복사되지 않습니다.`,
+      confirmLabel: '복사',
+      pendingLabel: '복사 중...',
+      onConfirm: () => handleDuplicateConfirmed(course),
+    })
+  }
 
+  async function handleDuplicateConfirmed(course: Course) {
     setDuplicatingCourseId(course.id)
     setError('')
     setMessage('')
@@ -277,6 +303,21 @@ export default function CoursesPageClient({
     }
 
     router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
+  }
+
+  async function runConfirmedAction() {
+    if (!confirmation) {
+      return
+    }
+
+    const current = confirmation
+    setConfirmSubmitting(true)
+    try {
+      await current.onConfirm()
+    } finally {
+      setConfirmSubmitting(false)
+      setConfirmation(null)
+    }
   }
 
   async function persistCourseOrder(nextCourses: Course[], movedCourseId: number) {
@@ -422,6 +463,24 @@ export default function CoursesPageClient({
   }
 
   return (
+    <>
+    <ConfirmationModal
+      open={Boolean(confirmation)}
+      title={confirmation?.title ?? ''}
+      description={confirmation?.description}
+      confirmLabel={confirmation?.confirmLabel ?? '확인'}
+      pendingLabel={confirmation?.pendingLabel}
+      tone={confirmation?.tone ?? 'default'}
+      submitting={confirmSubmitting}
+      onClose={() => {
+        if (!confirmSubmitting) {
+          setConfirmation(null)
+        }
+      }}
+      onConfirm={() => {
+        void runConfirmedAction()
+      }}
+    />
     <motion.div
       layout
       initial={{ opacity: 0, y: 14, scale: 0.995 }}
@@ -663,7 +722,7 @@ export default function CoursesPageClient({
                     </Link>
                     <button
                       type="button"
-                      onClick={() => void handleDuplicate(course)}
+                      onClick={() => requestDuplicate(course)}
                       disabled={duplicatingCourseId === course.id}
                       className="rounded-[8px] bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
                     >
@@ -672,7 +731,7 @@ export default function CoursesPageClient({
                     {isActive ? (
                       <button
                         type="button"
-                        onClick={() => void handleArchive(course)}
+                        onClick={() => requestArchive(course)}
                         className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                       >
                         보관
@@ -771,7 +830,7 @@ export default function CoursesPageClient({
                           </Link>
                           <button
                             type="button"
-                            onClick={() => void handleDuplicate(course)}
+                            onClick={() => requestDuplicate(course)}
                             disabled={duplicatingCourseId === course.id}
                             className="rounded-[8px] bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
                           >
@@ -780,7 +839,7 @@ export default function CoursesPageClient({
                           {course.status === 'active' && (
                             <button
                               type="button"
-                              onClick={() => void handleArchive(course)}
+                              onClick={() => requestArchive(course)}
                               className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                             >
                               보관
@@ -798,5 +857,6 @@ export default function CoursesPageClient({
         )}
       </motion.section>
     </motion.div>
+    </>
   )
 }

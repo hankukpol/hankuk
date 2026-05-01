@@ -23,6 +23,20 @@ import type {
 import { DesignatedSeatAttendancePanel } from './designated-seat-attendance-panel'
 
 type TabMode = 'editor' | 'status' | 'attendance'
+type ManualSeatConfirmation =
+  | {
+    type: 'clear'
+    enrollmentId: number
+    studentName: string
+    seatLabel: string
+  }
+  | {
+    type: 'assign'
+    seatId: number
+    enrollmentId: number
+    studentName: string
+    seatLabel: string
+  }
 
 export type AdminPayload = {
   course: Course
@@ -180,6 +194,8 @@ export default function CourseDesignatedSeatsPage({
   const [error, setError] = useState(initialError)
   const [isDirty, setIsDirty] = useState(false)
   const [pendingTab, setPendingTab] = useState<TabMode | null>(null)
+  const [manualSeatConfirmation, setManualSeatConfirmation] = useState<ManualSeatConfirmation | null>(null)
+  const [displayStopConfirmOpen, setDisplayStopConfirmOpen] = useState(false)
   const savedSnapshotRef = useRef(initialSnapshot)
 
   function markSnapshot(drafts: SeatDraft[], cols: number, rws: number, aisle: string, feat: boolean, open: boolean) {
@@ -483,6 +499,11 @@ export default function CourseDesignatedSeatsPage({
     await refresh().catch(() => null)
   }
 
+  async function handleStopDisplayConfirmed() {
+    await handleStopDisplay()
+    setDisplayStopConfirmOpen(false)
+  }
+
   async function handleManualAssign(seatId: number, enrollmentId: number) {
     setWorking(true)
     setError('')
@@ -533,6 +554,49 @@ export default function CourseDesignatedSeatsPage({
     await refresh().catch(() => null)
   }
 
+  function requestManualClear(params: {
+    enrollmentId: number
+    studentName: string
+    seatLabel: string
+  }) {
+    setManualSeatConfirmation({
+      type: 'clear',
+      enrollmentId: params.enrollmentId,
+      studentName: params.studentName,
+      seatLabel: params.seatLabel,
+    })
+  }
+
+  function requestManualAssign(params: {
+    seatId: number
+    enrollmentId: number
+    studentName: string
+    seatLabel: string
+  }) {
+    setManualSeatConfirmation({
+      type: 'assign',
+      seatId: params.seatId,
+      enrollmentId: params.enrollmentId,
+      studentName: params.studentName,
+      seatLabel: params.seatLabel,
+    })
+  }
+
+  function confirmManualSeatAction() {
+    const confirmation = manualSeatConfirmation
+    if (!confirmation) {
+      return
+    }
+
+    setManualSeatConfirmation(null)
+    if (confirmation.type === 'clear') {
+      void handleManualClear(confirmation.enrollmentId)
+      return
+    }
+
+    void handleManualAssign(confirmation.seatId, confirmation.enrollmentId)
+  }
+
   if (loading) {
     return <p className="py-12 text-center text-sm text-[#86868b]">지정좌석 정보를 불러오는 중입니다...</p>
   }
@@ -554,6 +618,44 @@ export default function CourseDesignatedSeatsPage({
         tone="danger"
         onClose={() => setPendingTab(null)}
         onConfirm={confirmPendingTabChange}
+      />
+      <ConfirmationModal
+        open={Boolean(manualSeatConfirmation)}
+        title={manualSeatConfirmation?.type === 'clear' ? '좌석 배정을 해제할까요?' : '좌석을 배정할까요?'}
+        description={manualSeatConfirmation ? (
+          manualSeatConfirmation.type === 'clear'
+            ? `${manualSeatConfirmation.studentName} 학생의 ${manualSeatConfirmation.seatLabel} 좌석 배정을 해제합니다.`
+            : `${manualSeatConfirmation.studentName} 학생을 ${manualSeatConfirmation.seatLabel} 좌석에 배정합니다. 이미 다른 좌석이 있으면 배정이 변경될 수 있습니다.`
+        ) : undefined}
+        confirmLabel={manualSeatConfirmation?.type === 'clear' ? '배정 해제' : '배정'}
+        pendingLabel="처리 중..."
+        tone={manualSeatConfirmation?.type === 'clear' ? 'danger' : 'default'}
+        submitting={working}
+        onClose={() => {
+          if (!working) {
+            setManualSeatConfirmation(null)
+          }
+        }}
+        onConfirm={confirmManualSeatAction}
+      />
+      <ConfirmationModal
+        open={displayStopConfirmOpen}
+        title="현장 QR 표시를 중지할까요?"
+        description={activeDisplaySession
+          ? `현재 활성화된 현장 QR 표시 세션을 중지합니다. 학생들은 새 QR 인증을 받을 수 없습니다.\n\n만료 예정: ${new Date(activeDisplaySession.expires_at).toLocaleString('ko-KR')}`
+          : '현재 활성화된 현장 QR 표시 세션을 중지합니다.'}
+        confirmLabel="표시 중지"
+        pendingLabel="중지 중..."
+        tone="danger"
+        submitting={working}
+        onClose={() => {
+          if (!working) {
+            setDisplayStopConfirmOpen(false)
+          }
+        }}
+        onConfirm={() => {
+          void handleStopDisplayConfirmed()
+        }}
       />
       <div className="flex flex-col gap-6">
       {/* Header */}
@@ -869,7 +971,7 @@ export default function CourseDesignatedSeatsPage({
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleStopDisplay()}
+                  onClick={() => setDisplayStopConfirmOpen(true)}
                   disabled={working || !activeDisplaySession}
                   className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                 >
@@ -1006,10 +1108,11 @@ export default function CourseDesignatedSeatsPage({
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!window.confirm(`${currentEnrollment.name} 학생의 좌석 배정을 해제할까요?`)) return
-                      void handleManualClear(currentReservation!.enrollment_id)
-                    }}
+                    onClick={() => requestManualClear({
+                      enrollmentId: currentReservation!.enrollment_id,
+                      studentName: currentEnrollment.name,
+                      seatLabel: modalSeat?.label ?? `#${modalSeatId}`,
+                    })}
                     disabled={working}
                     className="mt-3 w-full rounded-[8px] bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                   >
@@ -1071,8 +1174,12 @@ export default function CourseDesignatedSeatsPage({
                   if (!manualEnrollmentId) return
                   const target = enrollments.find((e) => e.id === manualEnrollmentId)
                   const label = modalSeat?.label ?? `#${modalSeatId}`
-                  if (!window.confirm(`${target?.name ?? '학생'}을(를) ${label} 좌석에 배정할까요?`)) return
-                  void handleManualAssign(modalSeatId, manualEnrollmentId)
+                  requestManualAssign({
+                    seatId: modalSeatId,
+                    enrollmentId: manualEnrollmentId,
+                    studentName: target?.name ?? '학생',
+                    seatLabel: label,
+                  })
                 }}
                 disabled={working || !manualEnrollmentId}
                 className="mt-3 w-full rounded-[8px] bg-[#0071e3] px-4 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"

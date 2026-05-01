@@ -578,17 +578,8 @@ async function recalculateEnrollmentPaymentState(
       allowRefundStatus: true,
     })
 
-    const { error: updateError } = await db
-      .from('enrollments')
-      .update({
-        status: 'refunded',
-        refunded_at: new Date().toISOString(),
-      })
-      .eq('id', enrollmentId)
-
-    if (updateError) {
-      throw updateError
-    }
+    // Payment/refund state can imply a fully unpaid billing state, but the
+    // enrollment itself is cancelled only after an explicit admin confirmation.
     return
   }
 

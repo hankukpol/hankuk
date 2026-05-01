@@ -2,6 +2,7 @@
 
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
+import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { StaffAccountSummary } from '@/lib/staff-accounts'
 import { formatDateTime } from '@/lib/utils'
 
@@ -27,6 +28,8 @@ export default function StaffAccountsPageClient({
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
+  const [deleteTarget, setDeleteTarget] = useState<StaffAccount | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
 
   useEffect(() => {
     if (initialLoaded) {
@@ -56,17 +59,38 @@ export default function StaffAccountsPageClient({
     const u = p.account as StaffAccount; setAccounts((c) => c.map((x) => (x.id === u.id ? u : x))); setEditingId(null); setMessage('수정 완료')
   }
 
-  async function handleDelete(a: StaffAccount) {
-    if (!window.confirm(`"${a.name}" 삭제?`)) return; setError(''); setMessage('')
-    const r = await fetch('/api/staff-accounts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id }) })
+  async function handleDeleteConfirmed() {
+    const target = deleteTarget
+    if (!target) return
+    setDeleteSubmitting(true); setError(''); setMessage('')
+    const r = await fetch('/api/staff-accounts', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: target.id }) })
     const p = await r.json().catch(() => null)
+    setDeleteSubmitting(false)
     if (!r.ok) { setError(p?.error ?? '삭제 실패'); return }
-    setAccounts((c) => c.filter((x) => x.id !== a.id)); if (editingId === a.id) setEditingId(null); setMessage('삭제 완료')
+    setAccounts((c) => c.filter((x) => x.id !== target.id)); if (editingId === target.id) setEditingId(null); setDeleteTarget(null); setMessage('삭제 완료')
   }
 
   if (loading) return <p className="py-12 text-center text-sm text-[#86868b]">불러오는 중...</p>
 
   return (
+    <>
+    <ConfirmationModal
+      open={Boolean(deleteTarget)}
+      title="직원 계정을 삭제할까요?"
+      description={deleteTarget ? `"${deleteTarget.name}" 계정은 삭제 후 직원 로그인에 사용할 수 없습니다.` : undefined}
+      confirmLabel="삭제"
+      pendingLabel="삭제 중..."
+      tone="danger"
+      submitting={deleteSubmitting}
+      onClose={() => {
+        if (!deleteSubmitting) {
+          setDeleteTarget(null)
+        }
+      }}
+      onConfirm={() => {
+        void handleDeleteConfirmed()
+      }}
+    />
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
@@ -133,7 +157,7 @@ export default function StaffAccountsPageClient({
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button type="button" onClick={() => startEdit(a)} className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#1d1d1f] hover:bg-[#e8e8ed]">편집</button>
-                      <button type="button" onClick={() => void handleDelete(a)} className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-[#ff3b30] hover:bg-red-100">삭제</button>
+                      <button type="button" onClick={() => setDeleteTarget(a)} className="rounded-[8px] bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-[#ff3b30] hover:bg-red-100">삭제</button>
                     </div>
                   </td>
                 </tr>
@@ -143,5 +167,6 @@ export default function StaffAccountsPageClient({
         )}
       </section>
     </div>
+    </>
   )
 }

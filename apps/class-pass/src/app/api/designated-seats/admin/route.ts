@@ -9,6 +9,7 @@ import {
   getActiveDisplaySessionForCourse,
   getDesignatedSeatAdminData,
   getTodayStartKST,
+  listDesignatedSeatReservationsForDate,
   normalizeAisleColumns,
 } from '@/lib/designated-seat/service'
 import { createServerClient } from '@/lib/supabase/server'
@@ -16,6 +17,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 
 const searchSchema = z.object({
   courseId: z.coerce.number().int().positive(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
 const seatSchema = z.object({
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest) {
 
     const parsed = searchSchema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
+      date: req.nextUrl.searchParams.get('date') ?? undefined,
     })
     if (!parsed.success) {
       return NextResponse.json({ error: '잘못된 지정좌석 조회 요청입니다.' }, { status: 400 })
@@ -65,10 +68,14 @@ export async function GET(req: NextRequest) {
       getDesignatedSeatAdminData(course.id),
       getActiveDisplaySessionForCourse(course.id),
     ])
+    const reservations = parsed.data.date
+      ? await listDesignatedSeatReservationsForDate(course.id, parsed.data.date)
+      : data.reservations
 
     return NextResponse.json({
       course,
       ...data,
+      reservations,
       activeDisplaySession: activeDisplaySession
         ? {
           id: activeDisplaySession.id,

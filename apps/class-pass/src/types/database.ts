@@ -260,6 +260,8 @@ export interface DesignatedSeatAttendanceRecord {
   examNumber: string | null
   phone: string
   status: DesignatedSeatAttendanceStatus
+  consecutiveAbsences: number
+  lastAttendedDate: string | null
   seatId: number | null
   seatLabel: string | null
   checkedInAt: string | null

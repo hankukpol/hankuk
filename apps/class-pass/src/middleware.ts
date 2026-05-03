@@ -24,15 +24,21 @@ import {
 } from '@/lib/tenant'
 
 const PUBLIC_FILE = /\.[^/]+$/
-const PORTAL_LOGIN_URL = `${
-  (
-    process.env.PORTAL_URL ??
-    process.env.NEXT_PUBLIC_PORTAL_URL ??
-    (process.env.NODE_ENV === 'development'
-      ? 'http://localhost:3000'
-      : 'https://portal.hankukpol.co.kr')
-  ).replace(/\/+$/, '')
-}/login`
+function getPortalLoginUrl(req: NextRequest, division: TenantType) {
+  const configuredPortalUrl = process.env.PORTAL_URL ?? process.env.NEXT_PUBLIC_PORTAL_URL
+  if (configuredPortalUrl) {
+    return new URL(`${configuredPortalUrl.replace(/\/+$/, '')}/login`)
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    const url = req.nextUrl.clone()
+    url.pathname = withTenantPrefix('/admin/login', division)
+    url.search = ''
+    return url
+  }
+
+  return new URL('https://portal.hankukpol.co.kr/login')
+}
 
 function withDivisionCookie(response: NextResponse, division: TenantType) {
   response.cookies.set(
@@ -210,7 +216,7 @@ export async function middleware(req: NextRequest) {
         return jsonAuthError('포털에서 인증이 필요합니다.')
       }
 
-      return withDivisionCookie(NextResponse.redirect(new URL(PORTAL_LOGIN_URL)), division)
+      return withDivisionCookie(NextResponse.redirect(getPortalLoginUrl(req, division)), division)
     }
 
     requestHeaders.set(VERIFIED_ADMIN_HEADER, encodeVerifiedPayload(payload))

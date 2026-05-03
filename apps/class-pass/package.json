@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:attendance": "node -e \"require('fs').rmSync('.codex-temp/attendance-tests',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test .codex-temp/attendance-tests/tests/attendance/device-binding-policy.test.js .codex-temp/attendance-tests/tests/attendance/submit-event-details.test.js",
+    "verify:payments-local": "node scripts/verify-payment-workflows-local.js",
     "verify:designated-seat-display": "node scripts/verify-designated-seat-display.js"
   },
   "dependencies": {

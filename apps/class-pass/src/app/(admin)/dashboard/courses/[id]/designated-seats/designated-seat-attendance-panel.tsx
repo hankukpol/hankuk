@@ -101,6 +101,37 @@ function StatusChip(props: { status: DesignatedSeatAttendanceRecord['status'] })
   )
 }
 
+function ConsecutiveAbsenceCell(props: { record: DesignatedSeatAttendanceRecord }) {
+  if (props.record.status === 'present') {
+    return <span className="text-slate-400">-</span>
+  }
+
+  if (props.record.consecutiveAbsences <= 0) {
+    return (
+      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+        평일 집계 없음
+      </span>
+    )
+  }
+
+  const highlighted = props.record.consecutiveAbsences >= 2
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span
+        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+          highlighted ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'
+        }`}
+      >
+        연속 결석 {props.record.consecutiveAbsences}회
+      </span>
+      {props.record.lastAttendedDate ? (
+        <span className="text-[11px] text-slate-400">최근 출석 {props.record.lastAttendedDate}</span>
+      ) : null}
+    </div>
+  )
+}
+
 function PaginationControls(props: {
   currentPage: number
   pageCount: number
@@ -257,12 +288,19 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
     const scoped = activeTab === 'all'
       ? source
       : source.filter((row) => row.status === activeTab)
+    const ordered = activeTab === 'absent'
+      ? [...scoped].sort((left, right) => (
+        right.consecutiveAbsences - left.consecutiveAbsences
+        || left.studentName.localeCompare(right.studentName, 'ko-KR')
+      ))
+      : scoped
 
-    return scoped.filter((row) => matchesFields(search, [
+    return ordered.filter((row) => matchesFields(search, [
       row.studentName,
       row.examNumber,
       row.phone,
       row.seatLabel,
+      row.status === 'absent' ? `연속결석${row.consecutiveAbsences}회` : '',
       row.status === 'present' ? '출석' : '결석',
       formatTime(row.checkedInAt),
     ]))
@@ -378,14 +416,15 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
         ) : null}
 
         <div className="overflow-x-auto">
-          <table className="min-w-[760px] w-full table-fixed">
+          <table className="min-w-[920px] w-full table-fixed">
             <colgroup>
+              <col className="w-[11%]" />
               <col className="w-[13%]" />
-              <col className="w-[15%]" />
+              <col className="w-[16%]" />
+              <col className="w-[12%]" />
               <col className="w-[18%]" />
-              <col className="w-[14%]" />
-              <col className="w-[22%]" />
-              <col className="w-[18%]" />
+              <col className="w-[17%]" />
+              <col className="w-[13%]" />
             </colgroup>
             <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
               <tr>
@@ -394,13 +433,14 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
                 <th className="px-4 py-3">이름</th>
                 <th className="px-4 py-3">좌석번호</th>
                 <th className="px-4 py-3">연락처</th>
+                <th className="px-4 py-3">연속 결석</th>
                 <th className="px-4 py-3">출석 시각</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
               {pagedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
                     {getEmptyStateMessage({ tab: activeTab, hasSearch, hasNoStudents })}
                   </td>
                 </tr>
@@ -421,6 +461,9 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
                     </td>
                     <td className="px-4 py-3 align-middle text-center text-slate-600">
                       <span className="block truncate">{row.phone}</span>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-center">
+                      <ConsecutiveAbsenceCell record={row} />
                     </td>
                     <td className="px-4 py-3 align-middle text-center text-slate-600">
                       {formatTime(row.checkedInAt)}

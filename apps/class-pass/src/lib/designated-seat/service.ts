@@ -29,6 +29,28 @@ export function getTodayStartKST(): string {
   return utcMidnight.toISOString()
 }
 
+export function getTodayKSTDateKey() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
+}
+
+function isDateKey(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function getKstDateBounds(dateKey: string) {
+  if (!isDateKey(dateKey)) {
+    throw new Error('Invalid KST date key.')
+  }
+
+  const start = new Date(`${dateKey}T00:00:00+09:00`)
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  }
+}
+
 function normalizeAisleColumns(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return []
@@ -103,6 +125,26 @@ function mapReservationRow(row: Record<string, unknown>): DesignatedSeatReservat
       }
       : undefined,
   }
+}
+
+function mapHistoricalReservationRow(row: Record<string, unknown>): DesignatedSeatReservation | null {
+  if (row.enrollment_id == null || row.seat_id == null) {
+    return null
+  }
+
+  const mapped = mapReservationRow({
+    id: row.id,
+    course_id: row.course_id,
+    seat_id: row.seat_id,
+    enrollment_id: row.enrollment_id,
+    device_key_hash: null,
+    reserved_at: row.created_at,
+    updated_at: row.created_at,
+    course_seats: row.course_seats,
+    enrollments: row.enrollments,
+  })
+
+  return mapped
 }
 
 export function getDesignatedSeatRestrictionMessage(state: {
@@ -244,6 +286,70 @@ export async function listDesignatedSeats(courseId: number) {
 
 export async function listDesignatedSeatReservations(courseId: number) {
   return getCachedDesignatedSeatReservations(courseId)
+}
+
+export async function listDesignatedSeatReservationsForDate(courseId: number, date: string) {
+  if (date === getTodayKSTDateKey()) {
+    return getCachedDesignatedSeatReservations(courseId)
+  }
+
+  const { startIso, endIso } = getKstDateBounds(date)
+  const db = createServerClient()
+  const rows = unwrapSupabaseResult(
+    'designatedSeat.reservationsForDate',
+    await db
+      .from('course_seat_events')
+      .select('id,course_id,enrollment_id,seat_id,event_type,details,created_at,course_seats(id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
+      .eq('course_id', courseId)
+      .in('event_type', [
+        ...DESIGNATED_SEAT_ATTENDANCE_EVENT_TYPES,
+        'admin_seat_cleared',
+      ])
+      .gte('created_at', startIso)
+      .lt('created_at', endIso)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true }),
+  ) as Array<Record<string, unknown>> | null
+
+  const byEnrollment = new Map<number, DesignatedSeatReservation>()
+  const seatOwner = new Map<number, number>()
+
+  for (const row of rows ?? []) {
+    const enrollmentId = row.enrollment_id == null ? null : Number(row.enrollment_id)
+    const seatId = row.seat_id == null ? null : Number(row.seat_id)
+    if (!Number.isFinite(enrollmentId) || enrollmentId == null) {
+      continue
+    }
+
+    if (row.event_type === 'admin_seat_cleared') {
+      const previous = byEnrollment.get(enrollmentId)
+      if (previous) {
+        seatOwner.delete(previous.seat_id)
+      }
+      byEnrollment.delete(enrollmentId)
+      continue
+    }
+
+    const reservation = mapHistoricalReservationRow(row)
+    if (!reservation || seatId == null || !Number.isFinite(seatId)) {
+      continue
+    }
+
+    const previous = byEnrollment.get(enrollmentId)
+    if (previous) {
+      seatOwner.delete(previous.seat_id)
+    }
+
+    const previousSeatOwner = seatOwner.get(seatId)
+    if (previousSeatOwner != null && previousSeatOwner !== enrollmentId) {
+      byEnrollment.delete(previousSeatOwner)
+    }
+
+    byEnrollment.set(enrollmentId, reservation)
+    seatOwner.set(seatId, enrollmentId)
+  }
+
+  return [...byEnrollment.values()].sort((left, right) => left.updated_at.localeCompare(right.updated_at))
 }
 
 export async function getDesignatedSeatAdminData(courseId: number) {
@@ -493,6 +599,83 @@ const designatedSeatAttendanceEventTypeSet = new Set<DesignatedSeatAttendanceEve
   DESIGNATED_SEAT_ATTENDANCE_EVENT_TYPES,
 )
 
+type DesignatedSeatAttendanceMetrics = {
+  consecutiveAbsences: number
+  lastAttendedDate: string | null
+}
+
+function getKstDateKey(value: string | Date) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date(value))
+}
+
+function getDateKeyFromUtcDate(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function getDateKeyAtUtcNoon(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00.000Z`)
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const date = getDateKeyAtUtcNoon(dateKey)
+  date.setUTCDate(date.getUTCDate() + days)
+  return getDateKeyFromUtcDate(date)
+}
+
+function isWeekdayDateKey(dateKey: string) {
+  const day = getDateKeyAtUtcNoon(dateKey).getUTCDay()
+  return day !== 0 && day !== 6
+}
+
+function maxDateKey(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) {
+    return right ?? null
+  }
+
+  if (!right) {
+    return left
+  }
+
+  return left > right ? left : right
+}
+
+function minDateKey(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) {
+    return right ?? null
+  }
+
+  if (!right) {
+    return left
+  }
+
+  return left < right ? left : right
+}
+
+function getKstDayStartIso(dateKey: string) {
+  return new Date(`${dateKey}T00:00:00+09:00`).toISOString()
+}
+
+function getNextKstDayStartIso(dateKey: string) {
+  return getKstDayStartIso(addDaysToDateKey(dateKey, 1))
+}
+
+function normalizeDateKey(value: unknown) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+    return getKstDateKey(trimmed)
+  }
+
+  return null
+}
+
 function mapDesignatedSeatAttendanceRow(row: Record<string, unknown>): DesignatedSeatAttendanceRecord {
   const statusValue = row.status === 'present' ? 'present' : 'absent'
   const eventTypeValue = typeof row.event_type === 'string'
@@ -506,11 +689,166 @@ function mapDesignatedSeatAttendanceRow(row: Record<string, unknown>): Designate
     examNumber: row.exam_number ? String(row.exam_number) : null,
     phone: String(row.phone ?? ''),
     status: statusValue as DesignatedSeatAttendanceStatus,
+    consecutiveAbsences: Number(row.consecutive_absences ?? 0),
+    lastAttendedDate: row.last_attended_date ? String(row.last_attended_date) : null,
     seatId: row.seat_id == null ? null : Number(row.seat_id),
     seatLabel: row.seat_label ? String(row.seat_label) : null,
     checkedInAt: row.checked_in_at ? String(row.checked_in_at) : null,
     eventType: eventTypeValue,
   }
+}
+
+async function getDesignatedSeatAbsenceMetrics(params: {
+  courseId: number
+  date: string
+  records: DesignatedSeatAttendanceRecord[]
+}) {
+  const result = new Map<number, DesignatedSeatAttendanceMetrics>()
+  for (const record of params.records) {
+    result.set(record.enrollmentId, {
+      consecutiveAbsences: 0,
+      lastAttendedDate: null,
+    })
+  }
+
+  const absentRecords = params.records.filter((record) => record.status === 'absent')
+  if (absentRecords.length === 0) {
+    return result
+  }
+
+  const db = createServerClient()
+  const [courseResult, enrollmentsResult] = await Promise.all([
+    db
+      .from('courses')
+      .select('enrolled_from')
+      .eq('id', params.courseId)
+      .maybeSingle(),
+    db
+      .from('enrollments')
+      .select('id,created_at')
+      .eq('course_id', params.courseId)
+      .eq('status', 'active'),
+  ])
+
+  const courseRow = unwrapSupabaseResult(
+    'designatedSeat.absenceMetrics.course',
+    courseResult,
+  ) as { enrolled_from?: string | null } | null
+  const enrollmentRows = unwrapSupabaseResult(
+    'designatedSeat.absenceMetrics.enrollments',
+    enrollmentsResult,
+  ) as Array<{ id: number; created_at: string | null }> | null
+
+  const courseStartDate = normalizeDateKey(courseRow?.enrolled_from)
+  const enrollmentStartDateMap = new Map<number, string | null>()
+  let earliestStartDate: string | null = courseStartDate ?? params.date
+
+  for (const enrollment of enrollmentRows ?? []) {
+    const enrollmentStartDate = maxDateKey(courseStartDate, normalizeDateKey(enrollment.created_at))
+    enrollmentStartDateMap.set(Number(enrollment.id), enrollmentStartDate)
+    earliestStartDate = minDateKey(earliestStartDate, enrollmentStartDate)
+  }
+
+  const startDate = earliestStartDate && earliestStartDate <= params.date ? earliestStartDate : params.date
+  const startIso = getKstDayStartIso(startDate)
+  const endIso = getNextKstDayStartIso(params.date)
+
+  const [eventsResult, displaySessionsResult] = await Promise.all([
+    db
+      .from('course_seat_events')
+      .select('enrollment_id,created_at')
+      .eq('course_id', params.courseId)
+      .in('event_type', DESIGNATED_SEAT_ATTENDANCE_EVENT_TYPES)
+      .not('enrollment_id', 'is', null)
+      .gte('created_at', startIso)
+      .lt('created_at', endIso),
+    db
+      .from('course_seat_display_sessions')
+      .select('created_at')
+      .eq('course_id', params.courseId)
+      .gte('created_at', startIso)
+      .lt('created_at', endIso),
+  ])
+
+  const eventRows = unwrapSupabaseResult(
+    'designatedSeat.absenceMetrics.events',
+    eventsResult,
+  ) as Array<{ enrollment_id: number | null; created_at: string }> | null
+  const displaySessionRows = unwrapSupabaseResult(
+    'designatedSeat.absenceMetrics.displaySessions',
+    displaySessionsResult,
+  ) as Array<{ created_at: string }> | null
+
+  const operatedWeekdayDateSet = new Set<string>()
+  if (isWeekdayDateKey(params.date)) {
+    operatedWeekdayDateSet.add(params.date)
+  }
+
+  for (const row of displaySessionRows ?? []) {
+    const dateKey = getKstDateKey(row.created_at)
+    if (isWeekdayDateKey(dateKey)) {
+      operatedWeekdayDateSet.add(dateKey)
+    }
+  }
+
+  const attendanceDateMap = new Map<number, Set<string>>()
+  for (const row of eventRows ?? []) {
+    const enrollmentId = Number(row.enrollment_id)
+    if (!Number.isFinite(enrollmentId)) {
+      continue
+    }
+
+    const dateKey = getKstDateKey(row.created_at)
+    if (!isWeekdayDateKey(dateKey)) {
+      continue
+    }
+
+    operatedWeekdayDateSet.add(dateKey)
+    if (!attendanceDateMap.has(enrollmentId)) {
+      attendanceDateMap.set(enrollmentId, new Set<string>())
+    }
+    attendanceDateMap.get(enrollmentId)?.add(dateKey)
+  }
+
+  const operatedWeekdayDates = [...operatedWeekdayDateSet]
+    .filter((dateKey) => dateKey >= startDate && dateKey <= params.date)
+    .sort((left, right) => right.localeCompare(left))
+
+  for (const record of params.records) {
+    if (record.status === 'present') {
+      result.set(record.enrollmentId, {
+        consecutiveAbsences: 0,
+        lastAttendedDate: params.date,
+      })
+      continue
+    }
+
+    const enrollmentStartDate = enrollmentStartDateMap.get(record.enrollmentId) ?? startDate
+    const attendedDates = attendanceDateMap.get(record.enrollmentId) ?? new Set<string>()
+    const lastAttendedDate = operatedWeekdayDates.find((dateKey) => (
+      dateKey >= enrollmentStartDate && attendedDates.has(dateKey)
+    )) ?? null
+    let consecutiveAbsences = 0
+
+    for (const dateKey of operatedWeekdayDates) {
+      if (dateKey < enrollmentStartDate) {
+        break
+      }
+
+      if (attendedDates.has(dateKey)) {
+        break
+      }
+
+      consecutiveAbsences += 1
+    }
+
+    result.set(record.enrollmentId, {
+      consecutiveAbsences,
+      lastAttendedDate,
+    })
+  }
+
+  return result
 }
 
 export async function getDesignatedSeatAttendanceDashboardData(params: {
@@ -526,7 +864,20 @@ export async function getDesignatedSeatAttendanceDashboardData(params: {
     }),
   ) as Array<Record<string, unknown>> | null
 
-  const records = (rows ?? []).map(mapDesignatedSeatAttendanceRow)
+  const baseRecords = (rows ?? []).map(mapDesignatedSeatAttendanceRow)
+  const absenceMetrics = await getDesignatedSeatAbsenceMetrics({
+    courseId: params.courseId,
+    date: params.date,
+    records: baseRecords,
+  })
+  const records = baseRecords.map((record) => {
+    const metric = absenceMetrics.get(record.enrollmentId)
+    return {
+      ...record,
+      consecutiveAbsences: metric?.consecutiveAbsences ?? 0,
+      lastAttendedDate: metric?.lastAttendedDate ?? null,
+    }
+  })
   const targetCount = records.length
   const presentCount = records.filter((row) => row.status === 'present').length
   const absentCount = Math.max(targetCount - presentCount, 0)

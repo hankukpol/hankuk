@@ -77,6 +77,10 @@ type CourseDesignatedSeatsPageProps = {
 const DEFAULT_COLUMNS = 8
 const DEFAULT_ROWS = 5
 
+function getToday() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
+}
+
 function buildSeatDrafts(columns: number, rows: number, seats: DesignatedSeat[]) {
   const seatMap = new Map(seats.map((seat) => [`${seat.position_x}:${seat.position_y}`, seat]))
   const next: SeatDraft[] = []
@@ -128,8 +132,12 @@ function getInitialViewState(payload: AdminPayload | null | undefined): InitialV
   }
 }
 
-async function fetchAdminData(courseId: number) {
-  const response = await fetch(`/api/designated-seats/admin?courseId=${courseId}`, { cache: 'no-store' })
+async function fetchAdminData(courseId: number, date?: string) {
+  const query = new URLSearchParams({ courseId: String(courseId) })
+  if (date) {
+    query.set('date', date)
+  }
+  const response = await fetch(`/api/designated-seats/admin?${query.toString()}`, { cache: 'no-store' })
   const payload = (await response.json().catch(() => null)) as AdminPayload | { error?: string } | null
   if (!response.ok) {
     throw new Error(payload && 'error' in payload ? payload.error ?? '지정좌석 정보를 불러오지 못했습니다.' : '지정좌석 정보를 불러오지 못했습니다.')
@@ -190,6 +198,8 @@ export default function CourseDesignatedSeatsPage({
   const [loading, setLoading] = useState(!initialLoaded)
   const [saving, setSaving] = useState(false)
   const [working, setWorking] = useState(false)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [reservationDate, setReservationDate] = useState(getToday())
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [isDirty, setIsDirty] = useState(false)
@@ -243,9 +253,23 @@ export default function CourseDesignatedSeatsPage({
     setIsDirty(false)
   }, [])
 
-  async function refresh() {
-    const payload = await fetchAdminData(courseId)
+  async function refresh(date = reservationDate) {
+    const payload = await fetchAdminData(courseId, date)
     applyPayload(payload)
+  }
+
+  async function loadReservationDate(nextDate: string) {
+    setReservationDate(nextDate)
+    setStatusLoading(true)
+    setError('')
+    setMessage('')
+    try {
+      await refresh(nextDate)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '좌석 배정 현황을 불러오지 못했습니다.')
+    } finally {
+      setStatusLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -257,13 +281,13 @@ export default function CourseDesignatedSeatsPage({
     if (initialLoaded) {
       return
     }
-    fetchAdminData(courseId)
+    fetchAdminData(courseId, reservationDate)
       .then(applyPayload)
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : '지정좌석 정보를 불러오지 못했습니다.')
       })
       .finally(() => setLoading(false))
-  }, [courseId, applyPayload, initialLoaded])
+  }, [courseId, applyPayload, initialLoaded, reservationDate])
 
   const aisleColumnsParsed = useMemo(
     () => aisleInput.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0),
@@ -326,6 +350,8 @@ export default function CourseDesignatedSeatsPage({
       availableCount: Math.max(activeSeatCount - reservations.length, 0),
     }
   }, [reservations.length, seatDrafts])
+  const todayKey = getToday()
+  const isHistoricalReservationDate = reservationDate !== todayKey
 
   useEffect(() => {
     if (editorModalSeatId !== null && !editorSeat) {
@@ -1029,16 +1055,48 @@ export default function CourseDesignatedSeatsPage({
 
           {/* Seat map */}
           <section className="rounded-[8px] bg-white p-4 sm:p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold text-[#1d1d1f]">좌석 배정 현황</h3>
-              <button
-                type="button"
-                onClick={() => void refresh()}
-                className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
-              >
-                새로고침
-              </button>
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-[#1d1d1f]">좌석 배정 현황</h3>
+                <p className="mt-1 text-sm text-[#86868b]">
+                  {reservationDate} 기준
+                  {isHistoricalReservationDate ? ' 최종 배정' : ' 현재 배정'}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-semibold text-[#86868b]">조회 날짜</span>
+                  <input
+                    type="date"
+                    value={reservationDate}
+                    max={todayKey}
+                    onChange={(event) => void loadReservationDate(event.target.value || todayKey)}
+                    className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm text-[#1d1d1f] outline-none transition focus:border-[#0071e3]"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void loadReservationDate(todayKey)}
+                  disabled={statusLoading || reservationDate === todayKey}
+                  className="rounded-[8px] bg-[#f5f5f7] px-3 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
+                >
+                  오늘
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void loadReservationDate(reservationDate)}
+                  disabled={statusLoading}
+                  className="rounded-[8px] bg-[#f5f5f7] px-3 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
+                >
+                  {statusLoading ? '불러오는 중...' : '새로고침'}
+                </button>
+              </div>
             </div>
+            {isHistoricalReservationDate ? (
+              <div className="mb-4 rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3 text-sm font-medium text-[#1d1d1f]">
+                과거 좌석표는 조회 전용입니다.
+              </div>
+            ) : null}
             <SeatGrid
               columns={columns}
               rows={rows}
@@ -1048,6 +1106,7 @@ export default function CourseDesignatedSeatsPage({
               selectedSeatId={modalSeatId}
               seatStudentMap={seatStudentMap}
               onSeatClick={(seat) => {
+                if (isHistoricalReservationDate) return
                 const seatDbId = (seat as SeatDraft).persistedId ?? seat.id
                 if (seatDbId <= 0 || !seat.is_active) return
                 setModalSeatId(seatDbId)

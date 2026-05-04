@@ -74,7 +74,7 @@ const createSchema = z.object({
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
   series_option_id: z.number().int().positive().optional().nullable(),
-  student_type: z.enum(['academy', 'general']).default('general'),
+  student_type: z.enum(['academy', 'general']).default('academy'),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
   birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),

@@ -1506,7 +1506,7 @@ export default function CourseStudentsPage({
                 <span className="text-[11px] font-medium text-slate-500">생년월일</span>
                 <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
-              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[max-content_220px] sm:justify-start">
                 <div>
                   <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
                   <SeriesSelector
@@ -1669,7 +1669,7 @@ export default function CourseStudentsPage({
             <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="생년월일(YYMMDD)" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[max-content_220px] sm:justify-start">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500">직렬</label>
                 <SeriesSelector

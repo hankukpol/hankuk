@@ -58,7 +58,7 @@ export function emptyForm(seriesOptionId: number | null = null): EnrollmentForm 
     exam_number: '',
     birth_date: '',
     series_option_id: seriesOptionId,
-    student_type: 'general',
+    student_type: 'academy',
     custom_data: {},
     textbookIds: [],
   }

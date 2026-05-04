@@ -1,5 +1,8 @@
 alter table class_pass.enrollments
-  add column if not exists student_type text not null default 'general';
+  add column if not exists student_type text not null default 'academy';
+
+alter table class_pass.enrollments
+  alter column student_type set default 'academy';
 
 alter table class_pass.enrollments
   drop constraint if exists class_pass_enrollments_student_type_check;

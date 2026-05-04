@@ -150,6 +150,52 @@ function getBillingValidationError(
   return null
 }
 
+function getErrorField(error: unknown, field: string) {
+  if (typeof error !== 'object' || error === null || !(field in error)) {
+    return ''
+  }
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : ''
+}
+
+function getErrorText(error: unknown) {
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return [
+    getErrorField(error, 'code'),
+    getErrorField(error, 'message'),
+    getErrorField(error, 'details'),
+    getErrorField(error, 'hint'),
+  ].filter(Boolean).join(' ')
+}
+
+function isStudentTypeColumnMissing(error: unknown) {
+  const code = getErrorField(error, 'code')
+  const text = getErrorText(error).toLowerCase()
+
+  return text.includes('student_type') && (
+    code === 'PGRST204'
+    || code === '42703'
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('does not exist')
+    || text.includes('column')
+  )
+}
+
+function omitStudentType<T extends Record<string, unknown>>(payload: T) {
+  const rest = { ...payload }
+  delete rest.student_type
+  return rest
+}
+
 function getActorStaffId(payload: StaffJwtPayload | null) {
   return payload?.accountId ?? payload?.membershipId ?? null
 }
@@ -424,20 +470,31 @@ export async function POST(req: NextRequest) {
     let reactivatedRegistration: Enrollment | null = null
 
     if (refundedRegistration) {
-      const { data, error } = await db
+      const updatePayload = {
+        ...enrollmentPayload,
+        status: 'active',
+        refunded_at: null,
+        suspended_at: null,
+        suspension_reason: null,
+        suspended_by: null,
+      }
+      let updateResult = await db
         .from('enrollments')
-        .update({
-          ...enrollmentPayload,
-          status: 'active',
-          refunded_at: null,
-          suspended_at: null,
-          suspension_reason: null,
-          suspended_by: null,
-        })
+        .update(updatePayload)
         .eq('id', refundedRegistration.id)
         .select('*')
         .single()
 
+      if (updateResult.error && isStudentTypeColumnMissing(updateResult.error)) {
+        updateResult = await db
+          .from('enrollments')
+          .update(omitStudentType(updatePayload))
+          .eq('id', refundedRegistration.id)
+          .select('*')
+          .single()
+      }
+
+      const { data, error } = updateResult
       if (error) {
         if (error.code === '23505') {
           return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
@@ -446,15 +503,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '환불 완료 수강생을 재등록하지 못했습니다.' }, { status: 500 })
       }
 
-      enrollment = data as Enrollment
+      enrollment = { ...(data as Enrollment), student_type: parsed.data.student_type }
       reactivatedRegistration = refundedRegistration
     } else {
-      const { data, error } = await db
+      let insertResult = await db
         .from('enrollments')
         .insert(enrollmentPayload)
         .select('*')
         .single()
 
+      if (insertResult.error && isStudentTypeColumnMissing(insertResult.error)) {
+        insertResult = await db
+          .from('enrollments')
+          .insert(omitStudentType(enrollmentPayload))
+          .select('*')
+          .single()
+      }
+
+      const { data, error } = insertResult
       if (error) {
         if (error.code === '23505') {
           return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
@@ -463,7 +529,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '수강생을 생성하지 못했습니다.' }, { status: 500 })
       }
 
-      enrollment = data as Enrollment
+      enrollment = { ...(data as Enrollment), student_type: parsed.data.student_type }
       createdEnrollment = true
     }
 

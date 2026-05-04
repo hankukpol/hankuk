@@ -281,12 +281,13 @@ function normalizeBillingInput(input: UpsertEnrollmentBillingInput) {
   const discountAmount = toNonNegativeInteger(Number(input.discountAmount ?? 0), '?�인 금액')
   const tuitionExempt = Boolean(input.tuitionExempt)
   const discountReason = normalizeOptionalText(input.discountReason)
+  const isZeroAmountBilling = !tuitionExempt && expectedAmount === 0 && discountAmount === 0
 
   if (discountAmount > expectedAmount) {
     throw createPaymentError('?�인 금액?� 강좌 ?��?보다 ?????�습?�다.')
   }
 
-  if (!tuitionExempt && expectedAmount <= 0) {
+  if (!tuitionExempt && expectedAmount <= 0 && !isZeroAmountBilling) {
     throw createPaymentError('?�료 ?�강?� 강좌 ?��?�?1???�상 ?�력?�야 ?�니??')
   }
 
@@ -303,7 +304,7 @@ function normalizeBillingInput(input: UpsertEnrollmentBillingInput) {
     throw createPaymentError('?�용 금액?� 강좌 ?��??�서 ?�인 금액??뺀 금액�?같아???�니??')
   }
 
-  if (!tuitionExempt && payableAmount <= 0) {
+  if (!tuitionExempt && payableAmount <= 0 && !isZeroAmountBilling) {
     throw createPaymentError('?�용 금액??0?�이�?무료 ?�강 ?�는 ?�납 면제�?기록??주세??')
   }
 
@@ -1018,6 +1019,13 @@ export async function createPaymentBundle(
         throw createPaymentError('무료 ?�강 결제 기록?� 금액 0?�과 무료 ?�단?�로�??�?�할 ???�습?�다.')
       }
     } else {
+      const isZeroAmountBilling = normalizedBilling.expectedAmount === 0
+        && normalizedBilling.discountAmount === 0
+        && normalizedBilling.payableAmount === 0
+      if (isZeroAmountBilling) {
+        throw createPaymentError('0원 강좌는 결제 내역 없이 등록해 주세요.')
+      }
+
       const remainingAmount = Math.max(normalizedBilling.payableAmount - existingTuitionNetAmount, 0)
       if (tuitionPaymentTotal !== remainingAmount) {
         throw createPaymentError('결제 ?�단�??�납 ?�계가 ?��? ?�용 금액�??�치?�야 ?�니??')

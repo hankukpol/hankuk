@@ -110,12 +110,12 @@ export function createEmptyPaymentSectionValue(): PaymentSectionValue {
 export function createPaymentSectionValueForAmount(amount: number): PaymentSectionValue {
   const next = createEmptyPaymentSectionValue()
   const normalizedAmount = Number.isFinite(amount) && amount > 0 ? Math.floor(amount) : 0
-  const amountText = normalizedAmount > 0 ? String(normalizedAmount) : ''
+  const amountText = String(normalizedAmount)
 
   return {
     ...next,
     expectedAmount: amountText,
-    entries: [createEmptyEntry({ amount: amountText })],
+    entries: [createEmptyEntry({ amount: normalizedAmount > 0 ? amountText : '' })],
   }
 }
 
@@ -136,7 +136,7 @@ export function createPaymentSectionValueForBilling(options: {
 
   return {
     ...next,
-    expectedAmount: expectedAmount > 0 ? String(expectedAmount) : '',
+    expectedAmount: String(expectedAmount),
     discountAmount: discountAmount > 0 ? String(discountAmount) : '',
     discountReason: options.discountReason ?? '',
     paidAmount: paidAmount > 0 ? String(paidAmount) : '',
@@ -239,9 +239,12 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
   const remainingAmount = Math.max(dueAmount - total, 0)
   const discountExceeded = discountAmount > expectedAmount && discountAmount > 0
   const totalOverPayable = !value.tuitionExempt && dueAmount >= 0 && total > dueAmount
-  const totalAccepted = value.tuitionExempt || (dueAmount > 0 && total === dueAmount)
+  const noChargeTuition = !value.tuitionExempt && expectedAmount === 0 && discountAmount === 0 && payableAmount === 0
+  const totalAccepted = value.tuitionExempt || noChargeTuition || (dueAmount > 0 && total === dueAmount)
   const totalBadgeText = value.tuitionExempt
     ? '무료 수강'
+    : noChargeTuition
+      ? '납부 금액 0원'
     : total > 0 && total < dueAmount
       ? `수납 부족 ${formatWon(remainingAmount)}`
       : `수납 합계 ${formatWon(total)}`
@@ -361,7 +364,7 @@ export function PaymentSection({ value, onChange, compact = false, showCategory 
             inputMode="numeric"
             value={value.expectedAmount}
             onChange={(event) => patchWithAutoAmount({ expectedAmount: numberInputValue(event.target.value) })}
-            placeholder="50000"
+            placeholder="0"
             className="rounded-[8px] border bg-white border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
         </label>

@@ -924,6 +924,11 @@ export default function CourseStudentsPage({
     }
 
     const paymentPayload = normalizePaymentSectionPayload(createPaymentForm)
+    const isZeroAmountBilling = !paymentPayload.tuitionExempt
+      && paymentPayload.expectedAmount === 0
+      && paymentPayload.discountAmount === 0
+      && paymentPayload.payableAmount === 0
+    const shouldRecordPayments = shouldSavePayment && !isZeroAmountBilling
     if (!Number.isInteger(paymentPayload.expectedAmount) || paymentPayload.expectedAmount < 0) {
       setError('강좌 정가를 확인해 주세요.')
       return
@@ -949,7 +954,12 @@ export default function CourseStudentsPage({
       return
     }
 
-    if (shouldSavePayment && !paymentPayload.tuitionExempt) {
+    if (!paymentPayload.tuitionExempt && paymentPayload.payableAmount <= 0 && !isZeroAmountBilling) {
+      setError('적용 금액이 0원이면 무료 수강으로 기록해 주세요.')
+      return
+    }
+
+    if (shouldRecordPayments && !paymentPayload.tuitionExempt) {
       if (paymentPayload.expectedAmount <= 0) {
         setError('유료 수강은 강좌 정가를 1원 이상 입력해야 합니다.')
         return
@@ -972,7 +982,7 @@ export default function CourseStudentsPage({
     }
 
     setSubmitting(true)
-    const paymentsToSave = shouldSavePayment ? paymentPayload.payments : []
+    const paymentsToSave = shouldRecordPayments ? paymentPayload.payments : []
     const r = await fetch('/api/enrollments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1027,14 +1037,24 @@ export default function CourseStudentsPage({
       })
     }
     const wasReactivated = Boolean(p?.reactivated)
+    const noChargeMessage = paymentPayload.tuitionExempt
+      ? '수강생을 등록하고 수납 면제로 기록했습니다.'
+      : '0원 강좌 수강생을 등록했습니다.'
+    const reactivatedNoChargeMessage = paymentPayload.tuitionExempt
+      ? '환불 완료 수강생을 다시 활성 등록으로 전환하고 수납 면제로 기록했습니다.'
+      : '환불 완료 수강생을 다시 활성 등록으로 전환하고 납부할 금액 없음으로 기록했습니다.'
     setMessage(
       wasReactivated
-        ? shouldSavePayment
+        ? shouldRecordPayments
           ? '환불 완료 수강생을 재등록하고 수납 정보를 저장했습니다.'
-          : '환불 완료 수강생을 다시 활성 등록으로 전환했습니다.'
-        : shouldSavePayment
+          : paymentPayload.payableAmount <= 0
+            ? reactivatedNoChargeMessage
+            : '환불 완료 수강생을 다시 활성 등록으로 전환했습니다.'
+        : shouldRecordPayments
           ? '수강생과 수납 정보를 함께 등록했습니다.'
-          : '수강생을 등록하고 미납 청구를 남겼습니다.',
+          : paymentPayload.payableAmount <= 0
+            ? noChargeMessage
+            : '수강생을 등록하고 미납 청구를 남겼습니다.',
     )
     setPanel('none')
     await refresh().catch(() => null)

@@ -95,7 +95,12 @@ function getBillingValidationError(
     return '할인 금액은 강좌 정가보다 클 수 없습니다.'
   }
 
-  if (!billing.tuitionExempt && billing.expectedAmount <= 0) {
+  const isZeroAmountBilling = !billing.tuitionExempt
+    && billing.expectedAmount === 0
+    && billing.discountAmount === 0
+    && billing.payableAmount === 0
+
+  if (!billing.tuitionExempt && billing.expectedAmount <= 0 && !isZeroAmountBilling) {
     return '유료 수강은 강좌 정가를 1원 이상 입력해야 합니다.'
   }
 
@@ -110,8 +115,12 @@ function getBillingValidationError(
     return '적용 금액이 청구 정보와 일치하지 않습니다.'
   }
 
-  if (!billing.tuitionExempt && billing.payableAmount <= 0) {
+  if (!billing.tuitionExempt && billing.payableAmount <= 0 && !isZeroAmountBilling) {
     return '적용 금액이 0원이면 무료 수강 또는 수납 면제로 기록해 주세요.'
+  }
+
+  if (isZeroAmountBilling && payments.length > 0) {
+    return '0원 강좌는 결제 내역 없이 등록해 주세요.'
   }
 
   const tuitionPaymentTotal = payments.reduce((sum, payment) => (

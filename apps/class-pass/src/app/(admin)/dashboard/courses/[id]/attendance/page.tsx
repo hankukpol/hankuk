@@ -8,6 +8,7 @@ import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course, CourseSubject, Enrollment } from '@/types/database'
+import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import {
   AttendanceExcuseModal,
   type AttendanceExcuseRecord,
@@ -82,6 +83,40 @@ type WarningRow = {
   subjectName: string | null
 }
 
+type AbsenceDetailTarget = {
+  enrollmentId: number
+  studentName: string
+  examNumber: string | null
+  consecutiveAbsences: number
+  lastAttendedDate?: string | null
+  attendanceStartDate: string | null
+  seatLabel: string | null
+  subjectId?: number | null
+  subjectName?: string | null
+}
+
+type AbsenceDetailPayload = {
+  enrollmentId: number
+  studentName: string
+  examNumber: string | null
+  phone: string
+  seatLabel: string | null
+  subjectId: number | null
+  subjectName: string | null
+  consecutiveAbsences: number
+  lastAttendedDate: string | null
+  attendanceStartDate: string | null
+  absenceDates: string[]
+}
+
+type AbsenceDetailState = {
+  open: boolean
+  target: AbsenceDetailTarget | null
+  detail: AbsenceDetailPayload | null
+  loading: boolean
+  error: string
+}
+
 type AbsenceReportPayload = {
   threshold: number
   flaggedStudents: WarningRow[]
@@ -131,6 +166,20 @@ function formatTime(value: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  }).format(new Date(`${value}T00:00:00+09:00`))
 }
 
 function normalizeAttendanceSearchValue(value: string | null | undefined) {
@@ -258,6 +307,138 @@ function ExcuseActionButton(props: {
   )
 }
 
+function ConsecutiveAbsenceButton(props: {
+  count: number
+  onClick: () => void
+}) {
+  if (props.count <= 0) {
+    return <span className="text-slate-600">0회</span>
+  }
+
+  const highlighted = props.count >= 2
+
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      aria-label={`연속 결석 ${props.count}회 날짜 보기`}
+      className={`rounded-[6px] px-2 py-1 text-sm font-semibold transition-all duration-200 ease-ios hover:bg-rose-50 hover:underline focus:outline-none focus:ring-2 focus:ring-[#0071e3] focus:ring-offset-2 active:scale-[0.97] ${
+        highlighted ? 'text-rose-600' : 'text-slate-600'
+      }`}
+    >
+      {props.count}회
+    </button>
+  )
+}
+
+function AbsenceDetailModal(props: {
+  state: AbsenceDetailState
+  defaultSubjectId: number | null
+  onClose: () => void
+  onCreateExcuse: (absenceDate: string) => void
+}) {
+  const target = props.state.detail ?? props.state.target
+  const absenceDates = props.state.detail?.absenceDates ?? []
+  const subjectId = props.state.detail?.subjectId ?? props.state.target?.subjectId ?? props.defaultSubjectId
+  const canCreateExcuse = Boolean(props.state.detail && subjectId != null)
+
+  return (
+    <SeatEditModal
+      open={props.state.open}
+      title="연속 결석 상세"
+      badge="Attendance"
+      description={target
+        ? `${target.studentName} 학생의 연속 결석으로 계산된 날짜를 확인합니다.`
+        : undefined}
+      widthClassName="max-w-2xl"
+      onClose={props.onClose}
+    >
+      <div className="space-y-5">
+        {target ? (
+          <div className="grid gap-3 rounded-[8px] bg-[#f5f5f7] p-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">학생</p>
+              <p className="mt-1 text-sm font-semibold text-[#1d1d1f]">
+                {target.studentName} {target.examNumber ? `(${target.examNumber})` : ''}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">과목</p>
+              <p className="mt-1 text-sm font-semibold text-[#1d1d1f]">{target.subjectName ?? props.state.detail?.subjectName ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">연속 결석</p>
+              <p className="mt-1 text-sm font-semibold text-rose-600">
+                {(props.state.detail?.consecutiveAbsences ?? target.consecutiveAbsences)}회
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">마지막 출석</p>
+              <p className="mt-1 text-sm font-semibold text-[#1d1d1f]">
+                {formatDate(props.state.detail?.lastAttendedDate ?? target.lastAttendedDate ?? null)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">기준일</p>
+              <p className="mt-1 text-sm font-semibold text-[#1d1d1f]">
+                {formatDate(props.state.detail?.attendanceStartDate ?? target.attendanceStartDate)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">좌석번호</p>
+              <p className="mt-1 text-sm font-semibold text-[#1d1d1f]">{props.state.detail?.seatLabel ?? target.seatLabel ?? '-'}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {props.state.loading ? (
+          <div className="rounded-[8px] border border-[#d2d2d7] px-4 py-8 text-center text-sm text-[#86868b]">
+            결석 날짜를 불러오는 중입니다.
+          </div>
+        ) : props.state.error ? (
+          <div className="rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {props.state.error}
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-[8px] border border-[#d2d2d7] bg-white">
+            <div className="border-b border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3">
+              <p className="text-sm font-semibold text-[#1d1d1f]">결석 날짜 {absenceDates.length}건</p>
+            </div>
+            {absenceDates.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-[#86868b]">확인할 결석 날짜가 없습니다.</p>
+            ) : (
+              <ul className="divide-y divide-[#f0f0f2]">
+                {absenceDates.map((absenceDate, index) => (
+                  <li key={absenceDate} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-rose-50 text-xs font-bold text-rose-600">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-[#1d1d1f]">{formatDate(absenceDate)}</p>
+                        <p className="mt-0.5 text-xs text-[#86868b]">연속 결석 산정일</p>
+                      </div>
+                    </div>
+                    {canCreateExcuse ? (
+                      <button
+                        type="button"
+                        onClick={() => props.onCreateExcuse(absenceDate)}
+                        className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#f5f5f7] active:scale-[0.97]"
+                      >
+                        사유 등록
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </SeatEditModal>
+  )
+}
+
 function PaginationControls(props: {
   currentPage: number
   pageCount: number
@@ -340,6 +521,13 @@ export default function AdminAttendancePage() {
     defaultSubjectId: null,
     defaultDate: getToday(),
   })
+  const [absenceDetailState, setAbsenceDetailState] = useState<AbsenceDetailState>({
+    open: false,
+    target: null,
+    detail: null,
+    loading: false,
+    error: '',
+  })
   const [overrideConfirmation, setOverrideConfirmation] = useState<OverrideConfirmationState | null>(null)
   const [stopAttendanceConfirmOpen, setStopAttendanceConfirmOpen] = useState(false)
   const [excusesRefreshKey, setExcusesRefreshKey] = useState(0)
@@ -360,6 +548,13 @@ export default function AdminAttendancePage() {
       lockedEnrollmentId: null,
       defaultSubjectId: null,
       defaultDate: getToday(),
+    })
+    setAbsenceDetailState({
+      open: false,
+      target: null,
+      detail: null,
+      loading: false,
+      error: '',
     })
     setOverrideConfirmation(null)
     setStopAttendanceConfirmOpen(false)
@@ -764,6 +959,66 @@ export default function AdminAttendancePage() {
     void handleOverride(enrollmentId, status)
   }
 
+  async function openAbsenceDetail(target: AbsenceDetailTarget) {
+    if (target.consecutiveAbsences <= 0) {
+      return
+    }
+
+    setAbsenceDetailState({
+      open: true,
+      target,
+      detail: null,
+      loading: true,
+      error: '',
+    })
+
+    const query = new URLSearchParams({
+      courseId: String(courseId),
+      enrollmentId: String(target.enrollmentId),
+    })
+
+    if (target.subjectId != null) {
+      query.set('subjectId', String(target.subjectId))
+    }
+
+    const response = await fetch(`/api/attendance/admin/absence-detail?${query.toString()}`, { cache: 'no-store' })
+    const payload = await readJson<(AbsenceDetailPayload & { error?: string }) | { error?: string }>(response)
+
+    if (!response.ok || !payload || !('absenceDates' in payload)) {
+      setAbsenceDetailState((current) => ({
+        ...current,
+        ...(current.target?.enrollmentId === target.enrollmentId && current.target?.subjectId === target.subjectId
+          ? {
+            loading: false,
+            error: payload?.error ?? '결석 날짜를 불러오지 못했습니다.',
+          }
+          : {}),
+      }))
+      return
+    }
+
+    setAbsenceDetailState((current) => ({
+      ...current,
+      ...(current.target?.enrollmentId === target.enrollmentId && current.target?.subjectId === target.subjectId
+        ? {
+          detail: payload,
+          loading: false,
+          error: '',
+        }
+        : {}),
+    }))
+  }
+
+  function closeAbsenceDetail() {
+    setAbsenceDetailState({
+      open: false,
+      target: null,
+      detail: null,
+      loading: false,
+      error: '',
+    })
+  }
+
   function openCreateExcuseModal(options?: {
     enrollmentId?: number
     subjectId?: number | null
@@ -781,6 +1036,21 @@ export default function AdminAttendancePage() {
       lockedEnrollmentId: options?.enrollmentId ?? null,
       defaultSubjectId: options?.subjectId ?? effectiveSubjectId ?? null,
       defaultDate: options?.date ?? date,
+    })
+  }
+
+  function openExcuseFromAbsenceDetail(absenceDate: string) {
+    const target = absenceDetailState.detail ?? absenceDetailState.target
+    if (!target) {
+      return
+    }
+
+    const subjectId = absenceDetailState.detail?.subjectId ?? absenceDetailState.target?.subjectId ?? effectiveSubjectId
+    closeAbsenceDetail()
+    openCreateExcuseModal({
+      enrollmentId: target.enrollmentId,
+      subjectId,
+      date: absenceDate,
     })
   }
 
@@ -1175,9 +1445,19 @@ export default function AdminAttendancePage() {
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.phone}</td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{formatDateTime(row.attendedAt)}</td>
                           <td className="px-4 py-3 align-middle text-center">
-                            <span className={row.consecutiveAbsences >= 2 ? 'font-semibold text-rose-600' : 'text-slate-600'}>
-                              {row.consecutiveAbsences}회
-                            </span>
+                            <ConsecutiveAbsenceButton
+                              count={row.consecutiveAbsences}
+                              onClick={() => void openAbsenceDetail({
+                                enrollmentId: row.enrollmentId,
+                                studentName: row.studentName,
+                                examNumber: row.examNumber,
+                                consecutiveAbsences: row.consecutiveAbsences,
+                                attendanceStartDate: row.attendanceStartDate,
+                                seatLabel: row.seatLabel,
+                                subjectId: effectiveSubjectId,
+                                subjectName: effectiveSubjectName,
+                              })}
+                            />
                           </td>
                           <td className="px-4 py-3 align-middle text-center">
                             <button
@@ -1325,9 +1605,19 @@ export default function AdminAttendancePage() {
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.phone}</td>
                           <td className="px-4 py-3 align-middle text-center">
-                            <span className={row.consecutiveAbsences >= 2 ? 'font-semibold text-rose-600' : 'text-slate-600'}>
-                              {row.consecutiveAbsences}회
-                            </span>
+                            <ConsecutiveAbsenceButton
+                              count={row.consecutiveAbsences}
+                              onClick={() => void openAbsenceDetail({
+                                enrollmentId: row.enrollmentId,
+                                studentName: row.studentName,
+                                examNumber: row.examNumber,
+                                consecutiveAbsences: row.consecutiveAbsences,
+                                attendanceStartDate: row.attendanceStartDate,
+                                seatLabel: row.seatLabel,
+                                subjectId: effectiveSubjectId,
+                                subjectName: effectiveSubjectName,
+                              })}
+                            />
                           </td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.attendanceStartDate ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center">
@@ -1424,7 +1714,20 @@ export default function AdminAttendancePage() {
                           <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.studentName}</td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center">
-                            <span className="font-semibold text-rose-600">{row.consecutiveAbsences}회</span>
+                            <ConsecutiveAbsenceButton
+                              count={row.consecutiveAbsences}
+                              onClick={() => void openAbsenceDetail({
+                                enrollmentId: row.enrollmentId,
+                                studentName: row.studentName,
+                                examNumber: row.examNumber,
+                                consecutiveAbsences: row.consecutiveAbsences,
+                                lastAttendedDate: row.lastAttendedDate,
+                                attendanceStartDate: row.attendanceStartDate,
+                                seatLabel: row.seatLabel,
+                                subjectId: row.subjectId,
+                                subjectName: row.subjectName,
+                              })}
+                            />
                           </td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.lastAttendedDate ?? '-'}</td>
                           <td className="px-4 py-3 align-middle text-center text-slate-600">{row.attendanceStartDate ?? '-'}</td>
@@ -1483,6 +1786,12 @@ export default function AdminAttendancePage() {
         </div>
       </section>
 
+      <AbsenceDetailModal
+        state={absenceDetailState}
+        defaultSubjectId={effectiveSubjectId}
+        onClose={closeAbsenceDetail}
+        onCreateExcuse={openExcuseFromAbsenceDetail}
+      />
       <AttendanceExcuseModal
         open={excuseModalState.open}
         courseId={courseId}

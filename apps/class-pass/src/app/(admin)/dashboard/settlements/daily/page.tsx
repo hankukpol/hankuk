@@ -350,10 +350,10 @@ export default function DailySettlementsPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-[1080px] w-full text-left text-sm">
+          <table className="min-w-[1160px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold text-slate-500">
               <tr>
-                {['시각', '학생', '강좌', '직렬', '방법', '결제액', '환불', '순액', '영수증번호', '사유'].map((header) => (
+                {['시각', '학생', '학원구분', '강좌', '직렬', '방법', '결제액', '환불', '순액', '영수증번호', '사유'].map((header) => (
                   <th key={header} className="px-4 py-3">{header}</th>
                 ))}
               </tr>
@@ -365,6 +365,11 @@ export default function DailySettlementsPage() {
                   <td className="px-4 py-3">
                     <p className="font-semibold text-[#1d1d1f]">{row.studentName}</p>
                     <p className="mt-1 text-xs text-slate-400">{row.examNumber ?? row.phone ?? '-'}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex rounded-[8px] bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                      {row.studentTypeLabel}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{row.courseName}</td>
                   <td className="px-4 py-3">
@@ -394,7 +399,7 @@ export default function DailySettlementsPage() {
               ))}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">정산 내역이 없습니다.</td>
+                  <td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-400">정산 내역이 없습니다.</td>
                 </tr>
               ) : null}
             </tbody>

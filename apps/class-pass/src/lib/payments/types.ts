@@ -1,6 +1,6 @@
 import type { BranchSeriesGroup, Course, Enrollment } from '@/types/database'
 
-export type PaymentMethod = 'card' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
+export type PaymentMethod = 'card' | 'homepage' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
 export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
 export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
 export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded'
@@ -69,7 +69,7 @@ export type EnrollmentPayment = {
   updated_at: string
   enrollments?: Pick<
     Enrollment,
-    'id' | 'name' | 'phone' | 'exam_number' | 'status' | 'series_option_id' | 'series_group' | 'series'
+    'id' | 'name' | 'phone' | 'exam_number' | 'status' | 'series_option_id' | 'series_group' | 'series' | 'student_type'
   > | null
   courses?: Pick<Course, 'id' | 'name'> | null
   enrollment_payment_items?: PaymentItem[]
@@ -115,6 +115,7 @@ export type PaymentSummary = {
 
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   card: '카드',
+  homepage: '홈페이지 결제',
   cash: '현금',
   bank_transfer: '계좌이체',
   point: '포인트',

@@ -19,7 +19,7 @@ const paymentItemSchema = z.object({
   amount: z.number().int().min(0),
 })
 
-const writablePaymentMethodSchema = z.enum(['card', 'cash', 'bank_transfer', 'point', 'free', 'other'])
+const writablePaymentMethodSchema = z.enum(['card', 'homepage', 'cash', 'bank_transfer', 'point', 'free', 'other'])
 
 const paymentCategorySchema = z.enum(['tuition', 'textbook', 'material', 'exam_fee', 'extension', 'etc'])
 
@@ -126,6 +126,7 @@ function getActorStaffId(payload: StaffJwtPayload | null) {
 
 function parsePaymentMethod(value: string | null): PaymentMethod | null {
   return value === 'card'
+    || value === 'homepage'
     || value === 'cash'
     || value === 'bank_transfer'
     || value === 'point'

@@ -11,7 +11,7 @@ import { PAYMENT_METHOD_LABEL, type EnrollmentPayment, type PaymentMethod } from
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course } from '@/types/database'
 
-const PAYMENT_METHOD_ORDER: PaymentMethod[] = ['card', 'cash', 'bank_transfer', 'point', 'other', 'free']
+const PAYMENT_METHOD_ORDER: PaymentMethod[] = ['card', 'homepage', 'cash', 'bank_transfer', 'point', 'other', 'free']
 
 function getCurrentMonthKst() {
   return new Intl.DateTimeFormat('sv-SE', {

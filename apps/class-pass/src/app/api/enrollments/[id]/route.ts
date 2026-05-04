@@ -24,6 +24,7 @@ const patchSchema = z.object({
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
   series_option_id: z.number().int().positive().optional().nullable(),
+  student_type: z.enum(['academy', 'general']).optional(),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
   birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
@@ -142,6 +143,7 @@ export async function PATCH(
     payload.series_group = seriesOption?.group_key ?? 'public'
     payload.series = seriesOption?.label ?? parsed.data.series ?? '공채'
   }
+  if (parsed.data.student_type !== undefined) payload.student_type = parsed.data.student_type
   if (parsed.data.memo !== undefined) payload.memo = parsed.data.memo || null
   if (parsed.data.status !== undefined) payload.status = parsed.data.status
   if (parsed.data.custom_data !== undefined) payload.custom_data = parsed.data.custom_data

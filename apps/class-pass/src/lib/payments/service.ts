@@ -106,7 +106,7 @@ export type ListPaymentsOptions = {
 
 const PAYMENT_SELECT = `
   *,
-  enrollments(id,name,phone,exam_number,status,series_option_id,series_group,series),
+  enrollments(id,name,phone,exam_number,status,series_option_id,series_group,series,student_type),
   courses!inner(id,name,division),
   enrollment_payment_items(*),
   enrollment_refunds(*)
@@ -131,6 +131,7 @@ const PAYMENT_SCHEMA_OBJECTS = [
   'series_option_id_snapshot',
   'series_group_snapshot',
   'series_label_snapshot',
+  'student_type',
 ]
 
 function createPaymentError(message: string, status = 400) {

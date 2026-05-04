@@ -16,7 +16,7 @@ const paymentItemSchema = z.object({
 
 const paymentSchema = z.object({
   amount: z.number().int().min(0),
-  method: z.enum(['card', 'cash', 'bank_transfer', 'point', 'free', 'other']),
+  method: z.enum(['card', 'homepage', 'cash', 'bank_transfer', 'point', 'free', 'other']),
   category: z.enum(['tuition', 'textbook', 'material', 'exam_fee', 'extension', 'etc']).default('tuition'),
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),

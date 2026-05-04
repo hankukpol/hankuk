@@ -34,6 +34,7 @@ type MaterialQueryOptions = { activeOnly?: boolean; materialType?: MaterialType 
 type MaterialSnapshot = Pick<Material, 'id' | 'course_id' | 'material_type'>
 type AttendanceSummaryRow = AttendanceHistoryEntry
 type StudentCourseAccessContext = { course: Course; enrollment: Enrollment }
+type CourseEnrollmentCountRow = Pick<Enrollment, 'course_id' | 'status' | 'suspended_at'>
 
 export type StudentPassLookupResult =
   | { kind: 'ok'; payload: PassPayload }
@@ -55,6 +56,40 @@ export function isTextbookAssignmentError(error: unknown, code: string) {
   return error instanceof Error && error.message === `TEXTBOOK_ASSIGNMENT:${code}`
 }
 
+async function attachCourseEnrollmentCounts(courses: Course[]) {
+  if (courses.length === 0) {
+    return courses
+  }
+
+  const db = createServerClient()
+  const rows = unwrapSupabaseResult(
+    'attachCourseEnrollmentCounts',
+    await db
+      .from('enrollments')
+      .select('course_id,status,suspended_at')
+      .in('course_id', courses.map((course) => course.id)),
+  ) as CourseEnrollmentCountRow[] | null
+
+  const countMap = new Map<number, { active: number; total: number }>()
+  for (const row of rows ?? []) {
+    const current = countMap.get(row.course_id) ?? { active: 0, total: 0 }
+    current.total += 1
+    if (row.status === 'active' && !row.suspended_at) {
+      current.active += 1
+    }
+    countMap.set(row.course_id, current)
+  }
+
+  return courses.map((course) => {
+    const counts = countMap.get(course.id) ?? { active: 0, total: 0 }
+    return {
+      ...course,
+      active_enrollment_count: counts.active,
+      total_enrollment_count: counts.total,
+    }
+  })
+}
+
 const getCachedCoursesByDivision = unstable_cache(
   async (division: TenantType, activeOnly: boolean) => {
     const db = createServerClient()
@@ -70,12 +105,12 @@ const getCachedCoursesByDivision = unstable_cache(
     }
 
     const data = unwrapSupabaseResult('listCoursesByDivision', await query)
-    return (data ?? []) as Course[]
+    return attachCourseEnrollmentCounts((data ?? []) as Course[])
   },
   ['courses-by-division'],
   {
     revalidate: 15,
-    tags: ['courses'],
+    tags: ['courses', 'enrollments'],
   },
 )
 

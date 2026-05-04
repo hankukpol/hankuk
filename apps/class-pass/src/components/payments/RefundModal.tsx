@@ -60,7 +60,7 @@ function getDefaultRefundMethod(payment: EnrollmentPayment | null): RefundMethod
     return 'point'
   }
 
-  if (payment.method === 'other' || payment.method === 'mixed') {
+  if (payment.method === 'homepage' || payment.method === 'other' || payment.method === 'mixed') {
     return 'other'
   }
 

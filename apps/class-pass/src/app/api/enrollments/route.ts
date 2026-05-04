@@ -38,7 +38,7 @@ const paymentItemSchema = z.object({
   amount: z.number().int().min(0),
 })
 
-const paymentMethodSchema = z.enum(['card', 'cash', 'bank_transfer', 'point', 'free', 'other'])
+const paymentMethodSchema = z.enum(['card', 'homepage', 'cash', 'bank_transfer', 'point', 'free', 'other'])
 
 const paymentSchema = z.object({
   amount: z.number().int().min(0),
@@ -74,6 +74,7 @@ const createSchema = z.object({
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
   series_option_id: z.number().int().positive().optional().nullable(),
+  student_type: z.enum(['academy', 'general']).default('general'),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
   birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
@@ -412,6 +413,7 @@ export async function POST(req: NextRequest) {
       series_option_id: seriesOption?.id ?? null,
       series_group: seriesOption?.group_key ?? 'public',
       series: seriesOption?.label ?? parsed.data.series ?? '공채',
+      student_type: parsed.data.student_type,
       memo: parsed.data.memo || null,
       photo_url: student.photo_url,
       custom_data: parsed.data.custom_data ?? {},

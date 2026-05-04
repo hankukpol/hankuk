@@ -1,4 +1,4 @@
-import type { BranchSeriesOption, Course, Enrollment, Material } from '@/types/database'
+import type { BranchSeriesOption, Course, Enrollment, EnrollmentStudentType, Material } from '@/types/database'
 
 export type StudentsPageData = {
   course: Course
@@ -30,6 +30,7 @@ export type EnrollmentForm = {
   exam_number: string
   birth_date: string
   series_option_id: number | null
+  student_type: EnrollmentStudentType
   custom_data: Record<string, string>
   textbookIds: number[]
 }
@@ -57,6 +58,7 @@ export function emptyForm(seriesOptionId: number | null = null): EnrollmentForm 
     exam_number: '',
     birth_date: '',
     series_option_id: seriesOptionId,
+    student_type: 'general',
     custom_data: {},
     textbookIds: [],
   }
@@ -69,6 +71,7 @@ export function toEditForm(enrollment: Enrollment): EnrollmentForm {
     exam_number: enrollment.exam_number ?? '',
     birth_date: enrollment.student_profile?.birth_date ?? '',
     series_option_id: enrollment.series_option_id ?? null,
+    student_type: enrollment.student_type ?? 'general',
     custom_data: enrollment.custom_data ?? {},
     textbookIds: [],
   }

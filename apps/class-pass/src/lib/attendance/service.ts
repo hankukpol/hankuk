@@ -1034,7 +1034,7 @@ function filterAttendanceEligibleEnrollments(params: {
 
 async function listAttendanceRecordsForCourse(
   courseId: number,
-  options?: { attendedDate?: string; subjectId?: number | null },
+  options?: { attendedDate?: string; enrollmentId?: number; subjectId?: number | null },
 ) {
   const db = createServerClient()
   let query = db
@@ -1045,6 +1045,10 @@ async function listAttendanceRecordsForCourse(
 
   if (options?.attendedDate) {
     query = query.eq('attended_date', options.attendedDate)
+  }
+
+  if (options?.enrollmentId !== undefined) {
+    query = query.eq('enrollment_id', options.enrollmentId)
   }
 
   if (options?.subjectId !== undefined) {
@@ -1685,6 +1689,120 @@ export async function getConsecutiveAbsenceMap(
   }
 
   return result
+}
+
+export async function getAttendanceAbsenceDetail(params: {
+  courseId: number
+  enrollmentId: number
+  attendanceStartDate?: string | null
+  subjectId?: number | null
+}) {
+  const db = createServerClient()
+  const enrollment = unwrapSupabaseResult(
+    'attendance.absenceDetail.enrollment',
+    await db
+      .from('enrollments')
+      .select('id,course_id,name,phone,exam_number,status,created_at')
+      .eq('course_id', params.courseId)
+      .eq('id', params.enrollmentId)
+      .maybeSingle(),
+  ) as Enrollment | null
+
+  if (!enrollment || enrollment.status !== 'active') {
+    throw new AttendanceServiceError('학생을 찾을 수 없습니다.', 404)
+  }
+
+  const [subjects, seatLabelMap] = await Promise.all([
+    listAttendanceSubjects(params.courseId),
+    listSeatLabelsByEnrollment(params.courseId, params.subjectId),
+  ])
+  const subject = params.subjectId == null
+    ? null
+    : subjects.find((item) => item.id === params.subjectId) ?? null
+
+  if (params.subjectId != null && !subject) {
+    throw new AttendanceServiceError('과목을 찾을 수 없습니다.', 404)
+  }
+
+  const subjectSeatEnrollmentIds = params.subjectId != null
+    ? await listEligibleSubjectSeatEnrollmentIds([params.subjectId])
+    : new Map<number, Set<number>>()
+  const eligibleEnrollments = filterAttendanceEligibleEnrollments({
+    enrollments: [enrollment],
+    targetDate: getAttendanceTodayKey(),
+    attendanceStartDate: params.attendanceStartDate,
+    allowedEnrollmentIds: params.subjectId != null
+      ? (subjectSeatEnrollmentIds.get(params.subjectId) ?? new Set<number>())
+      : null,
+  })
+  const attendanceStartDate = getEffectiveAttendanceStartDate(params.attendanceStartDate, enrollment.created_at)
+
+  if (eligibleEnrollments.length === 0) {
+    return {
+      enrollmentId: enrollment.id,
+      studentName: enrollment.name,
+      examNumber: enrollment.exam_number,
+      phone: enrollment.phone,
+      seatLabel: seatLabelMap.get(enrollment.id) ?? null,
+      subjectId: subject?.id ?? null,
+      subjectName: subject?.name ?? null,
+      consecutiveAbsences: 0,
+      lastAttendedDate: null,
+      attendanceStartDate,
+      absenceDates: [],
+    }
+  }
+
+  const [sessionDates, attendanceRows, excuses] = await Promise.all([
+    listAttendanceSessionDates(params.courseId, params.attendanceStartDate, params.subjectId),
+    listAttendanceRecordsForCourse(params.courseId, {
+      enrollmentId: params.enrollmentId,
+      subjectId: params.subjectId,
+    }),
+    listAttendanceExcuses({
+      courseId: params.courseId,
+      enrollmentId: params.enrollmentId,
+      subjectId: params.subjectId ?? undefined,
+    }),
+  ])
+  const relevantSessionDates = sessionDates.filter((sessionDate) => (
+    hasAttendanceStartedForDate(sessionDate, attendanceStartDate)
+  ))
+  const sessionDateSet = new Set(relevantSessionDates)
+  const attendedDates = new Set(
+    attendanceRows
+      .filter((record) => (
+        record.enrollment_id === params.enrollmentId
+        && sessionDateSet.has(record.attended_date)
+      ))
+      .map((record) => record.attended_date),
+  )
+  const excusedDates = new Set(
+    excuses
+      .map((excuse) => excuse.excuseDate)
+      .filter((excuseDate) => sessionDateSet.has(excuseDate)),
+  )
+  const eligibleSessionDates = relevantSessionDates.filter((sessionDate) => !excusedDates.has(sessionDate))
+  const lastAttendedDate = [...eligibleSessionDates]
+    .reverse()
+    .find((sessionDate) => attendedDates.has(sessionDate)) ?? null
+  const absenceDates = lastAttendedDate === null
+    ? eligibleSessionDates
+    : eligibleSessionDates.filter((sessionDate) => sessionDate > lastAttendedDate)
+
+  return {
+    enrollmentId: enrollment.id,
+    studentName: enrollment.name,
+    examNumber: enrollment.exam_number,
+    phone: enrollment.phone,
+    seatLabel: seatLabelMap.get(enrollment.id) ?? null,
+    subjectId: subject?.id ?? null,
+    subjectName: subject?.name ?? null,
+    consecutiveAbsences: absenceDates.length,
+    lastAttendedDate,
+    attendanceStartDate,
+    absenceDates,
+  }
 }
 
 export async function getAttendanceDashboardData(params: {

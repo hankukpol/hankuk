@@ -20,14 +20,16 @@ import {
 } from '@/components/payments/PaymentSection'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
-import type {
-  AttendanceDeviceState,
-  BranchSeriesOption,
-  Course,
-  Enrollment,
-  EnrollmentFieldDef,
-  Material,
-  TextbookAssignment,
+import {
+  ENROLLMENT_STUDENT_TYPE_LABEL,
+  type AttendanceDeviceState,
+  type BranchSeriesOption,
+  type Course,
+  type Enrollment,
+  type EnrollmentFieldDef,
+  type EnrollmentStudentType,
+  type Material,
+  type TextbookAssignment,
 } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
 import { PinRevealModal } from './pin-reveal-modal'
@@ -125,6 +127,38 @@ function DynamicFieldInput({
       placeholder={field.label}
       className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
     />
+  )
+}
+
+function StudentTypeSelector({
+  value,
+  onChange,
+}: {
+  value: EnrollmentStudentType
+  onChange: (value: EnrollmentStudentType) => void
+}) {
+  const options: EnrollmentStudentType[] = ['academy', 'general']
+
+  return (
+    <div
+      aria-label="학원구분"
+      className="grid grid-cols-2 gap-1 rounded-[10px] bg-[#f5f5f7] p-1"
+    >
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          className={`rounded-[8px] px-3 py-2 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] ${
+            value === option
+              ? 'bg-white text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+              : 'text-slate-500 hover:text-[#1d1d1f]'
+          }`}
+        >
+          {ENROLLMENT_STUDENT_TYPE_LABEL[option]}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -663,7 +697,8 @@ export default function CourseStudentsPage({
         (e) =>
           e.name.toLowerCase().includes(q) ||
           e.phone.includes(q) ||
-          (e.exam_number ?? '').toLowerCase().includes(q),
+          (e.exam_number ?? '').toLowerCase().includes(q) ||
+          ENROLLMENT_STUDENT_TYPE_LABEL[e.student_type ?? 'general'].includes(search.trim()),
       )
     }
     return list
@@ -995,6 +1030,7 @@ export default function CourseStudentsPage({
         exam_number: createForm.exam_number || null,
         birth_date: createForm.birth_date || null,
         series_option_id: createForm.series_option_id,
+        student_type: createForm.student_type,
         custom_data: createForm.custom_data,
         textbookIds: createForm.textbookIds,
         billing: {
@@ -1152,6 +1188,7 @@ export default function CourseStudentsPage({
         exam_number: editForm.exam_number || null,
         birth_date: editForm.birth_date || null,
         series_option_id: editForm.series_option_id,
+        student_type: editForm.student_type,
         custom_data: editForm.custom_data,
       }),
     })
@@ -1469,13 +1506,22 @@ export default function CourseStudentsPage({
                 <span className="text-[11px] font-medium text-slate-500">생년월일</span>
                 <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
-              <div className="sm:col-span-3">
-                <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
-                <SeriesSelector
-                  options={seriesOptions}
-                  valueId={createForm.series_option_id}
-                  onChange={(seriesOptionId) => setCreateForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
-                />
+              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <div>
+                  <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
+                  <SeriesSelector
+                    options={seriesOptions}
+                    valueId={createForm.series_option_id}
+                    onChange={(seriesOptionId) => setCreateForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
+                  />
+                </div>
+                <div>
+                  <span className="mb-2 block text-[11px] font-medium text-slate-500">학원구분</span>
+                  <StudentTypeSelector
+                    value={createForm.student_type}
+                    onChange={(studentType) => setCreateForm((current) => ({ ...current, student_type: studentType }))}
+                  />
+                </div>
               </div>
               {customFields.map((f) => (
                 <DynamicFieldInput key={f.key} field={f} value={createForm.custom_data[f.key] ?? ''} onChange={(v) => setCreateForm((c) => ({ ...c, custom_data: { ...c.custom_data, [f.key]: v } }))} />
@@ -1623,13 +1669,22 @@ export default function CourseStudentsPage({
             <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="생년월일(YYMMDD)" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <div className="sm:col-span-3">
-              <label className="mb-1.5 block text-xs font-semibold text-slate-500">직렬</label>
-              <SeriesSelector
-                options={seriesOptions}
-                valueId={editForm.series_option_id}
-                onChange={(seriesOptionId) => setEditForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
-              />
+            <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">직렬</label>
+                <SeriesSelector
+                  options={seriesOptions}
+                  valueId={editForm.series_option_id}
+                  onChange={(seriesOptionId) => setEditForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">학원구분</label>
+                <StudentTypeSelector
+                  value={editForm.student_type}
+                  onChange={(studentType) => setEditForm((current) => ({ ...current, student_type: studentType }))}
+                />
+              </div>
             </div>
             {customFields.map((f) => (
               <DynamicFieldInput key={f.key} field={f} value={editForm.custom_data[f.key] ?? ''} onChange={(v) => setEditForm((c) => ({ ...c, custom_data: { ...c.custom_data, [f.key]: v } }))} />
@@ -1720,6 +1775,7 @@ export default function CourseStudentsPage({
       {tab === 'manage' && (
         <StudentsManageTable
           filtered={filtered}
+          summary={summary}
           search={search}
           statusFilter={statusFilter}
           customFields={customFields}

@@ -99,6 +99,26 @@ function getCourseFeatureTags(course: Course) {
   ].filter(Boolean) as string[]
 }
 
+function getActiveEnrollmentCount(course: Course) {
+  return course.active_enrollment_count ?? 0
+}
+
+function EnrollmentCountBadge({ course, compact = false }: { course: Course; compact?: boolean }) {
+  const count = getActiveEnrollmentCount(course)
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-[8px] bg-[#f5f5f7] font-semibold text-[#1d1d1f] ${
+        compact ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-[11px]'
+      }`}
+      title={`현재 수강중 ${count.toLocaleString('ko-KR')}명`}
+    >
+      <span className="text-[#86868b]">수강중</span>
+      <span>{count.toLocaleString('ko-KR')}명</span>
+    </span>
+  )
+}
+
 function isVisibleForFilter(course: Course, filter: CourseFilter) {
   return filter === 'all' || course.status === filter
 }
@@ -688,6 +708,9 @@ export default function CoursesPageClient({
                         <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
                           강좌 금액 {formatWon(course.tuition_amount ?? 0)}
                         </p>
+                        <div className="mt-2">
+                          <EnrollmentCountBadge course={course} compact />
+                        </div>
                       </div>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                         isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
@@ -750,6 +773,7 @@ export default function CoursesPageClient({
                   <th className="w-[112px] px-5 py-3">순서</th>
                   <th className="px-3 py-3">강좌</th>
                   <th className="px-3 py-3">유형</th>
+                  <th className="px-3 py-3">수강중</th>
                   <th className="px-3 py-3 text-right">금액</th>
                   <th className="px-3 py-3">상태</th>
                   <th className="hidden px-3 py-3 md:table-cell">기능</th>
@@ -793,6 +817,9 @@ export default function CoursesPageClient({
                         </div>
                       </td>
                       <td className="px-3 py-3.5 text-[#86868b]">{courseTypeLabel(course.course_type)}</td>
+                      <td className="px-3 py-3.5">
+                        <EnrollmentCountBadge course={course} />
+                      </td>
                       <td className="px-3 py-3.5 text-right font-semibold text-[#1d1d1f]">
                         {formatWon(course.tuition_amount ?? 0)}
                       </td>

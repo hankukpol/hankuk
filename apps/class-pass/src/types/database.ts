@@ -4,9 +4,10 @@ import type { TenantType } from '@/lib/tenant'
 export type CourseType = 'interview' | 'mock_exam' | 'lecture' | 'general'
 export type CourseStatus = 'active' | 'archived'
 export type EnrollmentStatus = 'active' | 'refunded'
+export type EnrollmentStudentType = 'academy' | 'general'
 export type StudentAuthMethod = 'birth_date' | 'pin'
 export type MaterialType = 'handout' | 'textbook'
-export type PaymentMethod = 'card' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
+export type PaymentMethod = 'card' | 'homepage' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
 export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
 export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
 export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded'
@@ -21,6 +22,11 @@ export type RefundReasonCategory =
   | 'payment_correction'
   | 'policy_application'
   | 'other'
+
+export const ENROLLMENT_STUDENT_TYPE_LABEL: Record<EnrollmentStudentType, string> = {
+  academy: '학원생',
+  general: '일반생',
+}
 
 export interface EnrollmentFieldDef {
   key: string
@@ -81,6 +87,8 @@ export interface Course {
   sort_order: number
   created_at: string
   updated_at: string
+  active_enrollment_count?: number
+  total_enrollment_count?: number
 }
 
 export interface CourseSubject {
@@ -121,6 +129,7 @@ export interface Enrollment {
   series_option_id: number | null
   series_group: BranchSeriesGroup | null
   series: string | null
+  student_type: EnrollmentStudentType
   status: EnrollmentStatus
   photo_url: string | null
   memo: string | null

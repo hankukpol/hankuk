@@ -1,6 +1,6 @@
 'use client'
 
-import { Banknote, Building2, Coins, CreditCard, Plus, ReceiptText, Trash2 } from 'lucide-react'
+import { Banknote, Building2, Coins, CreditCard, Globe2, Plus, ReceiptText, Trash2 } from 'lucide-react'
 import {
   PAYMENT_CATEGORIES,
   PAYMENT_CATEGORY_LABEL,
@@ -67,6 +67,7 @@ const PAYMENT_METHOD_META: Array<{
   icon: typeof CreditCard
 }> = [
   { value: 'card', label: '카드', icon: CreditCard },
+  { value: 'homepage', label: '홈페이지 결제', icon: Globe2 },
   { value: 'cash', label: '현금', icon: Banknote },
   { value: 'bank_transfer', label: '계좌', icon: Building2 },
   { value: 'point', label: '포인트', icon: Coins },

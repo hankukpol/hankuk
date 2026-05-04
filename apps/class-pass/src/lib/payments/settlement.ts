@@ -170,6 +170,7 @@ export async function getMonthlySettlementData(
   const dailyRows = groupSettlementRows(rows, 'daily')
   const methods = {
     card: { count: 0, amount: 0 },
+    homepage: { count: 0, amount: 0 },
     cash: { count: 0, amount: 0 },
     bank_transfer: { count: 0, amount: 0 },
     point: { count: 0, amount: 0 },

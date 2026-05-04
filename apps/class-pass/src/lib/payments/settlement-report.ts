@@ -9,7 +9,11 @@ import {
   type RefundMethod,
 } from './types'
 import { reasonCategoryLabel } from './format'
-import type { BranchSeriesGroup } from '@/types/database'
+import {
+  ENROLLMENT_STUDENT_TYPE_LABEL,
+  type BranchSeriesGroup,
+  type EnrollmentStudentType,
+} from '@/types/database'
 
 export type SettlementEventKind = 'payment' | 'refund'
 export type SettlementFilterKind = 'all' | 'payment' | 'refund'
@@ -32,6 +36,8 @@ export type SettlementLedgerRow = {
   studentName: string
   examNumber: string | null
   phone: string | null
+  studentType: EnrollmentStudentType
+  studentTypeLabel: string
   courseId: number
   courseName: string
   seriesGroup: BranchSeriesGroup
@@ -135,7 +141,7 @@ export type SettlementReport = {
   refundRows: SettlementLedgerRow[]
 }
 
-const PAYMENT_METHOD_ORDER: PaymentMethod[] = ['card', 'cash', 'bank_transfer', 'point', 'other', 'free']
+const PAYMENT_METHOD_ORDER: PaymentMethod[] = ['card', 'homepage', 'cash', 'bank_transfer', 'point', 'other', 'free']
 const REFUND_METHOD_ORDER: RefundMethod[] = ['card_cancel', 'cash', 'bank_transfer']
 const CATEGORY_GROUP_LABEL: Record<SettlementCategoryGroup, string> = {
   tuition: '강좌료',
@@ -231,6 +237,10 @@ function getPaymentSeriesMeta(payment: EnrollmentPayment): { group: BranchSeries
   }
 }
 
+function getPaymentStudentType(payment: EnrollmentPayment): EnrollmentStudentType {
+  return payment.enrollments?.student_type ?? 'general'
+}
+
 function matchesSeriesFilter(row: SettlementLedgerRow, filter?: SettlementSeriesFilter) {
   if (!filter?.group && !filter?.label) {
     return true
@@ -249,6 +259,7 @@ function matchesSeriesFilter(row: SettlementLedgerRow, filter?: SettlementSeries
 
 function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
   const series = getPaymentSeriesMeta(payment)
+  const studentType = getPaymentStudentType(payment)
   return {
     id: `payment-${payment.id}`,
     kind: 'payment',
@@ -262,6 +273,8 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     studentName: getStudentName(payment),
     examNumber: payment.enrollments?.exam_number ?? null,
     phone: payment.enrollments?.phone ?? null,
+    studentType,
+    studentTypeLabel: ENROLLMENT_STUDENT_TYPE_LABEL[studentType],
     courseId: payment.course_id,
     courseName: getCourseName(payment),
     seriesGroup: series.group,
@@ -290,6 +303,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
 
 function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): SettlementLedgerRow {
   const series = getPaymentSeriesMeta(payment)
+  const studentType = getPaymentStudentType(payment)
   return {
     id: `refund-${refund.id}`,
     kind: 'refund',
@@ -303,6 +317,8 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     studentName: getStudentName(payment),
     examNumber: payment.enrollments?.exam_number ?? null,
     phone: payment.enrollments?.phone ?? null,
+    studentType,
+    studentTypeLabel: ENROLLMENT_STUDENT_TYPE_LABEL[studentType],
     courseId: payment.course_id,
     courseName: getCourseName(payment),
     seriesGroup: series.group,

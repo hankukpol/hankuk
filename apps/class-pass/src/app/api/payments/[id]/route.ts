@@ -17,7 +17,7 @@ const paymentItemSchema = z.object({
 
 const patchPaymentSchema = z.object({
   amount: z.number().int().min(0).optional(),
-  method: z.enum(['card', 'cash', 'bank_transfer', 'point', 'free', 'other']).optional(),
+  method: z.enum(['card', 'homepage', 'cash', 'bank_transfer', 'point', 'free', 'other']).optional(),
   category: z.enum(['tuition', 'textbook', 'material', 'exam_fee', 'extension', 'etc']).optional(),
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),

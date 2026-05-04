@@ -1,5 +1,9 @@
 import { useState, type MouseEvent } from 'react'
-import type { Enrollment, EnrollmentFieldDef } from '@/types/database'
+import {
+  ENROLLMENT_STUDENT_TYPE_LABEL,
+  type Enrollment,
+  type EnrollmentFieldDef,
+} from '@/types/database'
 import { formatDateTime } from '@/lib/utils'
 import type { EnrollmentManageStatusFilter } from './students-page-types'
 
@@ -95,8 +99,23 @@ function getSeriesMeta(enrollment: Enrollment) {
   }
 }
 
+function getStudentTypeMeta(enrollment: Enrollment) {
+  const studentType = enrollment.student_type ?? 'general'
+
+  return {
+    label: ENROLLMENT_STUDENT_TYPE_LABEL[studentType],
+    className: studentType === 'academy' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600',
+  }
+}
+
 type StudentsManageTableProps = {
   filtered: Enrollment[]
+  summary: {
+    total: number
+    active: number
+    refunded: number
+    suspended: number
+  }
   search: string
   statusFilter: EnrollmentManageStatusFilter
   customFields: EnrollmentFieldDef[]
@@ -115,6 +134,7 @@ type StudentsManageTableProps = {
 
 export function StudentsManageTable({
   filtered,
+  summary,
   search,
   statusFilter,
   customFields,
@@ -227,24 +247,34 @@ export function StudentsManageTable({
           placeholder="이름, 연락처, 응시번호 검색.."
           className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-64 sm:py-2"
         />
-        <div
-          aria-label="수강생 상태 필터"
-          className="grid grid-cols-4 gap-0.5 rounded-[10px] bg-[#f5f5f7] p-1 sm:flex sm:shrink-0"
-        >
-          {STATUS_FILTER_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onStatusFilterChange(option.value)}
-              className={`whitespace-nowrap rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] sm:min-w-14 ${
-                statusFilter === option.value
-                  ? 'bg-white text-[#0071e3] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-                  : 'text-slate-500 hover:text-[#1d1d1f]'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div
+            className="inline-flex items-center justify-center gap-1.5 rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#1d1d1f]"
+            title={`전체 등록 ${summary.total.toLocaleString('ko-KR')}명`}
+          >
+            <span className="text-slate-500">수강중</span>
+            <span>{summary.active.toLocaleString('ko-KR')}명</span>
+            <span className="text-slate-400">/ 전체 {summary.total.toLocaleString('ko-KR')}명</span>
+          </div>
+          <div
+            aria-label="수강생 상태 필터"
+            className="grid grid-cols-4 gap-0.5 rounded-[10px] bg-[#f5f5f7] p-1 sm:flex sm:shrink-0"
+          >
+            {STATUS_FILTER_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onStatusFilterChange(option.value)}
+                className={`whitespace-nowrap rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] sm:min-w-14 ${
+                  statusFilter === option.value
+                    ? 'bg-white text-[#0071e3] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                    : 'text-slate-500 hover:text-[#1d1d1f]'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -260,6 +290,7 @@ export function StudentsManageTable({
             const attendanceDeviceMeta = getAttendanceDeviceMeta(enrollment)
             const authMethodMeta = getAuthMethodMeta(enrollment)
             const seriesMeta = getSeriesMeta(enrollment)
+            const studentTypeMeta = getStudentTypeMeta(enrollment)
             const expanded = expandedMobileId === enrollment.id
             const visibleCustomFields = customFields
               .map((field) => ({
@@ -320,6 +351,9 @@ export function StudentsManageTable({
                       <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>
                         {seriesMeta.label}
                       </span>
+                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${studentTypeMeta.className}`}>
+                        {studentTypeMeta.label}
+                      </span>
                       {attendanceEnabled ? (
                         <span
                           title={attendanceDeviceMeta.title}
@@ -344,6 +378,10 @@ export function StudentsManageTable({
                           <div>
                             <p className="text-[11px] font-semibold text-slate-400">직렬</p>
                             <p className="mt-0.5 text-slate-700">{seriesMeta.label}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-400">학원구분</p>
+                            <p className="mt-0.5 text-slate-700">{studentTypeMeta.label}</p>
                           </div>
                           {visibleCustomFields.map((field) => (
                             <div key={field.key} className="min-w-0">
@@ -372,6 +410,7 @@ export function StudentsManageTable({
                 <th className="px-3 py-3">이름</th>
                 <th className="px-3 py-3">연락처</th>
                 <th className="px-3 py-3">직렬</th>
+                <th className="px-3 py-3">학원구분</th>
                 {customFields.map((field) => (
                   <th key={field.key} className="hidden px-3 py-3 lg:table-cell">
                     {field.label}
@@ -389,6 +428,7 @@ export function StudentsManageTable({
                 const attendanceDeviceMeta = getAttendanceDeviceMeta(enrollment)
                 const authMethodMeta = getAuthMethodMeta(enrollment)
                 const seriesMeta = getSeriesMeta(enrollment)
+                const studentTypeMeta = getStudentTypeMeta(enrollment)
 
                 return (
                   <tr
@@ -412,6 +452,11 @@ export function StudentsManageTable({
                     <td className="px-3 py-3">
                       <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>
                         {seriesMeta.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${studentTypeMeta.className}`}>
+                        {studentTypeMeta.label}
                       </span>
                     </td>
                     {customFields.map((field) => (

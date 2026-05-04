@@ -112,6 +112,14 @@ const PAYMENT_SELECT = `
   enrollment_refunds(*)
 `
 
+const PAYMENT_SELECT_LEGACY = `
+  *,
+  enrollments(id,name,phone,exam_number,status,series_option_id,series_group,series),
+  courses!inner(id,name,division),
+  enrollment_payment_items(*),
+  enrollment_refunds(*)
+`
+
 export const PAYMENT_SCHEMA_MISSING_MESSAGE =
   '수납·정산 테이블이 아직 DB에 적용되지 않았습니다. 로컬 Supabase에서 supabase db reset을 실행해 Phase 1 migration을 반영해 주세요.'
 
@@ -164,6 +172,20 @@ function getPaymentErrorText(error: unknown) {
     getPaymentErrorField(error, 'details'),
     getPaymentErrorField(error, 'hint'),
   ].filter(Boolean).join(' ')
+}
+
+function isStudentTypeColumnMissing(error: unknown) {
+  const code = getPaymentErrorField(error, 'code')
+  const text = getPaymentErrorText(error).toLowerCase()
+
+  return text.includes('student_type') && (
+    code === 'PGRST204'
+    || code === '42703'
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('does not exist')
+    || text.includes('column')
+  )
 }
 
 export function isPaymentSchemaMissing(error: unknown) {
@@ -500,18 +522,25 @@ async function recordPaymentEvent(
 }
 
 async function loadPaymentById(db: ServerClient, paymentId: number, division: string) {
-  const { data, error } = await db
-    .from('enrollment_payments')
-    .select(PAYMENT_SELECT)
-    .eq('id', paymentId)
-    .eq('courses.division', division)
-    .maybeSingle()
-
-  if (error) {
-    throw error
+  async function queryPayment(select: string) {
+    return db
+      .from('enrollment_payments')
+      .select(select)
+      .eq('id', paymentId)
+      .eq('courses.division', division)
+      .maybeSingle()
   }
 
-  return data as EnrollmentPayment | null
+  let result = await queryPayment(PAYMENT_SELECT)
+  if (result.error && isStudentTypeColumnMissing(result.error)) {
+    result = await queryPayment(PAYMENT_SELECT_LEGACY)
+  }
+
+  if (result.error) {
+    throw result.error
+  }
+
+  return result.data as EnrollmentPayment | null
 }
 
 async function getEnrollmentForPayment(
@@ -1113,44 +1142,53 @@ export async function listPayments(
   division: string,
 ) {
   const db = createServerClient()
-  let query = db
-    .from('enrollment_payments')
-    .select(PAYMENT_SELECT)
-    .eq('courses.division', division)
-    .order('paid_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(options.limit ?? 200)
 
-  if (options.courseId) {
-    query = query.eq('course_id', options.courseId)
+  function buildQuery(select: string) {
+    let query = db
+      .from('enrollment_payments')
+      .select(select)
+      .eq('courses.division', division)
+      .order('paid_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(options.limit ?? 200)
+
+    if (options.courseId) {
+      query = query.eq('course_id', options.courseId)
+    }
+
+    if (options.enrollmentId) {
+      query = query.eq('enrollment_id', options.enrollmentId)
+    }
+
+    if (options.from) {
+      query = query.gte('paid_date', options.from)
+    }
+
+    if (options.to) {
+      query = query.lte('paid_date', options.to)
+    }
+
+    if (options.method) {
+      query = query.eq('method', options.method)
+    }
+
+    if (options.status) {
+      query = query.eq('status', options.status)
+    }
+
+    return query
   }
 
-  if (options.enrollmentId) {
-    query = query.eq('enrollment_id', options.enrollmentId)
+  let result = await buildQuery(PAYMENT_SELECT)
+  if (result.error && isStudentTypeColumnMissing(result.error)) {
+    result = await buildQuery(PAYMENT_SELECT_LEGACY)
   }
 
-  if (options.from) {
-    query = query.gte('paid_date', options.from)
+  if (result.error) {
+    throw result.error
   }
 
-  if (options.to) {
-    query = query.lte('paid_date', options.to)
-  }
-
-  if (options.method) {
-    query = query.eq('method', options.method)
-  }
-
-  if (options.status) {
-    query = query.eq('status', options.status)
-  }
-
-  const { data, error } = await query
-  if (error) {
-    throw error
-  }
-
-  return (data ?? []) as EnrollmentPayment[]
+  return ((result.data ?? []) as unknown) as EnrollmentPayment[]
 }
 
 export async function listPaymentsByIds(paymentIds: number[], division: string) {
@@ -1170,19 +1208,27 @@ export async function listPaymentsByIds(paymentIds: number[], division: string) 
 
   for (let index = 0; index < normalizedIds.length; index += chunkSize) {
     const chunk = normalizedIds.slice(index, index + chunkSize)
-    const { data, error } = await db
-      .from('enrollment_payments')
-      .select(PAYMENT_SELECT)
-      .eq('courses.division', division)
-      .in('id', chunk)
-      .order('paid_at', { ascending: false })
-      .order('id', { ascending: false })
 
-    if (error) {
-      throw error
+    async function queryPayments(select: string) {
+      return db
+        .from('enrollment_payments')
+        .select(select)
+        .eq('courses.division', division)
+        .in('id', chunk)
+        .order('paid_at', { ascending: false })
+        .order('id', { ascending: false })
     }
 
-    payments.push(...((data ?? []) as EnrollmentPayment[]))
+    let result = await queryPayments(PAYMENT_SELECT)
+    if (result.error && isStudentTypeColumnMissing(result.error)) {
+      result = await queryPayments(PAYMENT_SELECT_LEGACY)
+    }
+
+    if (result.error) {
+      throw result.error
+    }
+
+    payments.push(...(((result.data ?? []) as unknown) as EnrollmentPayment[]))
   }
 
   return payments.sort((left, right) => {
@@ -1200,32 +1246,40 @@ async function listSettlementPaidPayments(
   const payments: EnrollmentPayment[] = []
 
   for (let offset = 0; ; offset += pageSize) {
-    let query = db
-      .from('enrollment_payments')
-      .select(PAYMENT_SELECT)
-      .eq('courses.division', division)
-      .order('paid_at', { ascending: false })
-      .order('id', { ascending: false })
-      .range(offset, offset + pageSize - 1)
+    function buildQuery(select: string) {
+      let query = db
+        .from('enrollment_payments')
+        .select(select)
+        .eq('courses.division', division)
+        .order('paid_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(offset, offset + pageSize - 1)
 
-    if (options.courseId) {
-      query = query.eq('course_id', options.courseId)
+      if (options.courseId) {
+        query = query.eq('course_id', options.courseId)
+      }
+
+      if (options.from) {
+        query = query.gte('paid_date', options.from)
+      }
+
+      if (options.to) {
+        query = query.lte('paid_date', options.to)
+      }
+
+      return query
     }
 
-    if (options.from) {
-      query = query.gte('paid_date', options.from)
+    let result = await buildQuery(PAYMENT_SELECT)
+    if (result.error && isStudentTypeColumnMissing(result.error)) {
+      result = await buildQuery(PAYMENT_SELECT_LEGACY)
     }
 
-    if (options.to) {
-      query = query.lte('paid_date', options.to)
+    if (result.error) {
+      throw result.error
     }
 
-    const { data, error } = await query
-    if (error) {
-      throw error
-    }
-
-    const page = (data ?? []) as EnrollmentPayment[]
+    const page = ((result.data ?? []) as unknown) as EnrollmentPayment[]
     payments.push(...page)
     if (page.length < pageSize) {
       break

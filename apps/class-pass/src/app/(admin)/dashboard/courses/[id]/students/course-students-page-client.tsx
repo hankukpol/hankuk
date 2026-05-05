@@ -6,7 +6,7 @@ import type { FormEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
-import { Search, UserCheck, X } from 'lucide-react'
+import { Download, Search, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
 import { SeriesSelector } from '@/components/series/SeriesSelector'
@@ -99,6 +99,47 @@ function getDefaultSeriesOptionId(options: BranchSeriesOption[]) {
     ?? activeOptions[0]?.id
     ?? null
   )
+}
+
+function escapeCsvCell(value: unknown) {
+  const raw = String(value ?? '')
+  return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw
+}
+
+function getKoreanDateKey(value = new Date()) {
+  return value.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+}
+
+function formatCsvDate(value: string | null | undefined) {
+  if (!value) {
+    return ''
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : getKoreanDateKey(date)
+}
+
+function formatExcelTextCell(value: string | null | undefined) {
+  const raw = String(value ?? '')
+  return raw ? `="${raw.replace(/"/g, '""')}"` : ''
+}
+
+function sanitizeDownloadFilename(value: string) {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'course'
+}
+
+function getEnrollmentStatusLabel(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
+  if (enrollment.status === 'active' && enrollment.suspended_at) {
+    return '정지'
+  }
+
+  return enrollment.status === 'active' ? '수강중' : '환불완료'
 }
 
 function DynamicFieldInput({
@@ -247,7 +288,7 @@ export default function CourseStudentsPage({
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
 
-  const customFields = course?.enrollment_fields ?? []
+  const customFields = useMemo(() => course?.enrollment_fields ?? [], [course?.enrollment_fields])
   const activeEnrollments = useMemo(
     () => enrollments.filter((enrollment) => enrollment.status === 'active'),
     [enrollments],
@@ -710,6 +751,54 @@ export default function CourseStudentsPage({
     const suspended = enrollments.filter((e) => e.status === 'active' && Boolean(e.suspended_at)).length
     return { total: enrollments.length, active, refunded, suspended }
   }, [enrollments])
+
+  const handleDownloadStudentList = useCallback(() => {
+    if (!course) {
+      return
+    }
+
+    if (enrollments.length === 0) {
+      setError('다운로드할 수강생이 없습니다.')
+      return
+    }
+
+    const header = [
+      '번호',
+      '응시번호',
+      '이름',
+      '연락처',
+      '직렬',
+      '학원구분',
+      ...customFields.map((field) => field.label),
+      '상태',
+      '등록일',
+    ]
+    const rows = enrollments.map((enrollment, index) => [
+      index + 1,
+      enrollment.exam_number ?? '',
+      enrollment.name,
+      formatExcelTextCell(enrollment.phone),
+      enrollment.series?.trim() || (enrollment.series_group === 'career' ? '경채' : '공채'),
+      ENROLLMENT_STUDENT_TYPE_LABEL[enrollment.student_type ?? 'general'],
+      ...customFields.map((field) => (enrollment.custom_data ?? {})[field.key] ?? ''),
+      getEnrollmentStatusLabel(enrollment),
+      formatCsvDate(enrollment.created_at),
+    ])
+    const csv = [header, ...rows]
+      .map((line) => line.map(escapeCsvCell).join(','))
+      .join('\r\n')
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${sanitizeDownloadFilename(course.slug || course.name)}-students-${getKoreanDateKey().replace(/-/g, '')}.csv`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+    setError('')
+    setMessage(`${course.name} 수강생 명단 CSV를 다운로드했습니다.`)
+  }, [course, customFields, enrollments])
 
   const loadMatrixData = useCallback(async (mode: MatrixMode) => {
     setMatrixLoading(true)
@@ -1282,7 +1371,7 @@ export default function CourseStudentsPage({
           </p>
           </div>
         ) : null}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           {course.feature_attendance ? (
             <button
               type="button"
@@ -1321,6 +1410,16 @@ export default function CourseStudentsPage({
             className="rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
           >
             명단 붙여넣기
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadStudentList}
+            disabled={enrollments.length === 0}
+            title={enrollments.length === 0 ? '다운로드할 수강생이 없습니다.' : '현재 강좌의 전체 수강생 명단을 CSV로 다운로드'}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-50 disabled:active:scale-100"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            명단 다운로드
           </button>
           {course.feature_photo && (
             <Link

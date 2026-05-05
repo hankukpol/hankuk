@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion'
-import { Plus, ReceiptText, RotateCcw, X, XCircle } from 'lucide-react'
+import { Plus, ReceiptText, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { Course, Enrollment } from '@/types/database'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
+import { PaymentCorrectionModal, type PaymentCorrectionConfirmInput } from './PaymentCorrectionModal'
 import {
   BILLING_STATUS_LABEL,
   PAYMENT_CATEGORY_LABEL,
@@ -130,6 +131,7 @@ export function EnrollmentPaymentDrawer({
   const [formOpen, setFormOpen] = useState(false)
   const [paymentDraft, setPaymentDraft] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [refundTarget, setRefundTarget] = useState<EnrollmentPayment | null>(null)
+  const [correctionTarget, setCorrectionTarget] = useState<EnrollmentPayment | null>(null)
   const [voidTarget, setVoidTarget] = useState<EnrollmentPayment | null>(null)
   const [cancelEnrollmentPrompt, setCancelEnrollmentPrompt] = useState<EnrollmentCancellationPrompt | null>(null)
   const [notice, setNotice] = useState<DrawerNotice | null>(null)
@@ -167,7 +169,7 @@ export function EnrollmentPaymentDrawer({
 
     const previousOverflow = document.body.style.overflow
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting && !refundTarget && !voidTarget && !cancelEnrollmentPrompt && !notice) {
+      if (event.key === 'Escape' && !submitting && !refundTarget && !correctionTarget && !voidTarget && !cancelEnrollmentPrompt && !notice) {
         onClose()
       }
     }
@@ -179,7 +181,7 @@ export function EnrollmentPaymentDrawer({
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [cancelEnrollmentPrompt, notice, onClose, open, refundTarget, submitting, voidTarget])
+  }, [cancelEnrollmentPrompt, correctionTarget, notice, onClose, open, refundTarget, submitting, voidTarget])
 
   useEffect(() => {
     if (!open || !enrollment) {
@@ -190,6 +192,7 @@ export function EnrollmentPaymentDrawer({
     setError('')
     setFormOpen(false)
     setRefundTarget(null)
+    setCorrectionTarget(null)
     setVoidTarget(null)
     setCancelEnrollmentPrompt(null)
     setNotice(null)
@@ -413,6 +416,36 @@ export function EnrollmentPaymentDrawer({
     }
   }
 
+  async function handleCreateCorrection(input: PaymentCorrectionConfirmInput) {
+    if (!enrollment) {
+      return
+    }
+
+    setSubmitting(true)
+    setError('')
+    setMessage('')
+    const response = await fetch('/api/payments/corrections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enrollmentId: enrollment.id,
+        courseId: course.id,
+        ...input,
+      }),
+    })
+    const result = await response.json().catch(() => null)
+    setSubmitting(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '결제 정정을 저장하지 못했습니다.')
+      return
+    }
+
+    setCorrectionTarget(null)
+    setMessage('환불과 재수납 정정을 저장했습니다.')
+    await refreshAll()
+  }
+
   function handleVoidPayment(payment: EnrollmentPayment) {
     setVoidTarget(payment)
   }
@@ -519,7 +552,7 @@ export function EnrollmentPaymentDrawer({
             <motion.aside
               role="dialog"
               aria-modal="true"
-              className="fixed inset-y-0 right-0 z-[121] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:w-[640px] xl:w-[780px]"
+              className="fixed inset-y-0 right-0 z-[121] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:w-[640px] xl:w-[780px] 2xl:w-[960px]"
               initial={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
@@ -657,7 +690,7 @@ export function EnrollmentPaymentDrawer({
                 </div>
               ) : (
                 <>
-                <div className="grid gap-2 p-3 sm:hidden">
+                <div className="grid gap-2 p-3 2xl:hidden">
                   {payments.map((payment) => (
                     <article key={payment.id} className="rounded-[8px] bg-slate-50 px-3 py-3">
                       <div className="flex items-start justify-between gap-3">
@@ -680,7 +713,7 @@ export function EnrollmentPaymentDrawer({
                           {payment.memo || `현금영수증 ${payment.cash_receipt_approval_no}`}
                         </p>
                       ) : null}
-                      <div className="mt-3 flex justify-end gap-1.5">
+                      <div className="mt-3 flex flex-wrap justify-end gap-1.5">
                         <button
                           type="button"
                           onClick={() => setRefundTarget(payment)}
@@ -689,6 +722,15 @@ export function EnrollmentPaymentDrawer({
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                           환불
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCorrectionTarget(payment)}
+                          disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                          className="inline-flex items-center gap-1 rounded-[8px] bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          정정
                         </button>
                         <button
                           type="button"
@@ -703,7 +745,7 @@ export function EnrollmentPaymentDrawer({
                     </article>
                   ))}
                 </div>
-                <div className="hidden sm:block">
+                <div className="hidden 2xl:block">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50/60 text-left text-xs font-semibold text-slate-500">
@@ -765,6 +807,15 @@ export function EnrollmentPaymentDrawer({
                                     </button>
                                     <button
                                       type="button"
+                                      onClick={() => setCorrectionTarget(payment)}
+                                      disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                                      className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-blue-50 hover:text-blue-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+                                    >
+                                      <RefreshCw className="h-3 w-3" />
+                                      정정
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => handleVoidPayment(payment)}
                                       disabled={payment.status !== 'paid' || submitting}
                                       className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-rose-50 hover:text-rose-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
@@ -805,6 +856,23 @@ export function EnrollmentPaymentDrawer({
         }}
         onConfirm={(input) => {
           void handleCreateRefund(input)
+        }}
+      />
+
+      <PaymentCorrectionModal
+        open={Boolean(correctionTarget)}
+        payment={correctionTarget}
+        courseName={course.name}
+        currentTuitionNetAmount={tuitionSummary.net}
+        billingPayableAmount={payableAmount}
+        submitting={submitting}
+        onClose={() => {
+          if (!submitting) {
+            setCorrectionTarget(null)
+          }
+        }}
+        onConfirm={(input) => {
+          void handleCreateCorrection(input)
         }}
       />
 

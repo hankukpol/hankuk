@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Download, FileSpreadsheet, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
   buildSettlementReport,
@@ -25,21 +25,11 @@ function getTodayKst() {
 }
 
 function getInitialDate() {
-  if (typeof window === 'undefined') {
-    return getTodayKst()
-  }
-
-  const date = new URLSearchParams(window.location.search).get('date')
-  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getTodayKst()
+  return getTodayKst()
 }
 
 function getInitialCourseId() {
-  if (typeof window === 'undefined') {
-    return ''
-  }
-
-  const courseId = new URLSearchParams(window.location.search).get('courseId')
-  return courseId && /^\d+$/.test(courseId) ? courseId : ''
+  return ''
 }
 
 function parseSeriesFilter(value: string): SettlementSeriesFilter | undefined {
@@ -71,6 +61,55 @@ function StatCard({ label, value, tone = 'default' }: { label: string; value: st
   )
 }
 
+type SettlementConfirmationPayload = {
+  division: string
+  settlementDate: string
+  effectiveStatus: 'unconfirmed' | 'confirmed' | 'needs_review'
+  confirmation: {
+    id: number
+    settlementDate: string
+    division: string
+    status: 'confirmed' | 'needs_review'
+    effectiveStatus: 'confirmed' | 'needs_review'
+    confirmedAt: string
+    confirmedByName: string | null
+    confirmedByStaffId: number
+    snapshot: DailySettlementSnapshot | null
+    currentSnapshot: DailySettlementSnapshot
+    latestChangedAt: string | null
+    snapshotChanged: boolean
+    memo: string | null
+  } | null
+  currentSnapshot: DailySettlementSnapshot
+  latestChangedAt: string | null
+  snapshotChanged: boolean
+}
+
+type DailySettlementSnapshot = {
+  gross: number
+  refund: number
+  net: number
+  payment_count: number
+  refund_count: number
+  payer_count: number
+  by_method: Partial<Record<string, number>>
+  refund_by_method: Record<string, number>
+}
+
+function formatKstShortDateTime(value: string | null | undefined) {
+  if (!value) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
 export default function DailySettlementsPage() {
   const tenant = useTenantConfig()
   const [date, setDate] = useState(getInitialDate)
@@ -78,9 +117,28 @@ export default function DailySettlementsPage() {
   const [courseId, setCourseId] = useState(getInitialCourseId)
   const [rawPayments, setRawPayments] = useState<EnrollmentPayment[]>([])
   const [filter, setFilter] = useState<SettlementFilterKind>('all')
+  const [searchTerm, setSearchTerm] = useState('')
   const [seriesFilter, setSeriesFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [confirmation, setConfirmation] = useState<SettlementConfirmationPayload | null>(null)
+  const [confirmationLoading, setConfirmationLoading] = useState(true)
+  const [confirmationSaving, setConfirmationSaving] = useState(false)
+  const [confirmationError, setConfirmationError] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const initialDate = params.get('date')
+    const initialCourseId = params.get('courseId')
+
+    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+      setDate(initialDate)
+    }
+
+    if (initialCourseId && /^\d+$/.test(initialCourseId)) {
+      setCourseId(initialCourseId)
+    }
+  }, [])
 
   const loadReport = useCallback(async () => {
     setLoading(true)
@@ -106,6 +164,26 @@ export default function DailySettlementsPage() {
     }
   }, [courseId, date])
 
+  const loadConfirmation = useCallback(async () => {
+    setConfirmationLoading(true)
+    setConfirmationError('')
+
+    try {
+      const response = await fetch(`/api/settlements/confirmation?date=${encodeURIComponent(date)}`, { cache: 'no-store' })
+      const result = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(result?.error ?? '정산 확인 상태를 불러오지 못했습니다.')
+      }
+
+      setConfirmation(result as SettlementConfirmationPayload)
+    } catch (reason) {
+      setConfirmation(null)
+      setConfirmationError(reason instanceof Error ? reason.message : '정산 확인 상태를 불러오지 못했습니다.')
+    } finally {
+      setConfirmationLoading(false)
+    }
+  }, [date])
+
   useEffect(() => {
     fetch('/api/courses?activeOnly=1', { cache: 'no-store' })
       .then(async (response) => {
@@ -124,6 +202,10 @@ export default function DailySettlementsPage() {
     void loadReport()
   }, [loadReport])
 
+  useEffect(() => {
+    void loadConfirmation()
+  }, [loadConfirmation])
+
   const allReport = useMemo(
     () => buildSettlementReport(rawPayments, date, date),
     [date, rawPayments],
@@ -135,14 +217,36 @@ export default function DailySettlementsPage() {
 
   const rows = useMemo(() => {
     const ledgerRows = report?.ledgerRows ?? []
-    if (filter === 'payment') {
-      return ledgerRows.filter((row) => row.kind === 'payment')
+    const filteredByKind = filter === 'payment'
+      ? ledgerRows.filter((row) => row.kind === 'payment')
+      : filter === 'refund'
+        ? ledgerRows.filter((row) => row.kind === 'refund')
+        : ledgerRows
+    const keyword = searchTerm.trim().toLowerCase()
+
+    if (!keyword) {
+      return filteredByKind
     }
-    if (filter === 'refund') {
-      return ledgerRows.filter((row) => row.kind === 'refund')
-    }
-    return ledgerRows
-  }, [filter, report])
+
+    return filteredByKind.filter((row) => [
+      row.kind === 'payment' ? '수납' : '환불',
+      row.studentName,
+      row.examNumber,
+      row.phone,
+      row.studentTypeLabel,
+      row.courseName,
+      row.seriesLabel,
+      row.methodLabel,
+      row.categoryLabel,
+      row.receiptNo,
+      row.reasonCategoryLabel,
+      row.reason,
+      row.memo,
+      String(row.paymentAmount),
+      String(row.refundAmount),
+      String(row.netAmount),
+    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)))
+  }, [filter, report, searchTerm])
 
   const summary = report?.summary ?? {
     grossAmount: 0,
@@ -153,6 +257,46 @@ export default function DailySettlementsPage() {
     payerCount: 0,
     averageDailyNet: 0,
     refundRate: 0,
+  }
+  const hasActiveLedgerSearch = searchTerm.trim().length > 0
+  const confirmationDisabledReason = courseId || seriesFilter !== 'all'
+    ? '정산 확인은 전체 강좌·전체 직렬 조회 상태에서만 처리할 수 있습니다.'
+    : hasActiveLedgerSearch
+      ? '검색어를 지운 뒤 전체 결제 명단 기준으로 정산 확인을 처리할 수 있습니다.'
+      : ''
+  const canConfirmSettlement = !confirmationDisabledReason
+  const confirmationStatus = confirmation?.effectiveStatus ?? 'unconfirmed'
+  const confirmationLabel = confirmationStatus === 'confirmed'
+    ? '확인 완료'
+    : confirmationStatus === 'needs_review'
+      ? '재확인 필요'
+      : '미확인'
+  const confirmerName = confirmation?.confirmation?.confirmedByName
+    ?? (confirmation?.confirmation?.confirmedByStaffId ? `담당자 #${confirmation.confirmation.confirmedByStaffId}` : '')
+
+  async function handleConfirmSettlement() {
+    if (!canConfirmSettlement) {
+      setConfirmationError(confirmationDisabledReason || '현재 조회 조건에서는 정산 확인을 처리할 수 없습니다.')
+      return
+    }
+
+    setConfirmationSaving(true)
+    setConfirmationError('')
+
+    const response = await fetch('/api/settlements/confirmation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date }),
+    })
+    const result = await response.json().catch(() => null)
+    setConfirmationSaving(false)
+
+    if (!response.ok) {
+      setConfirmationError(result?.error ?? '정산 확인을 저장하지 못했습니다.')
+      return
+    }
+
+    setConfirmation(result as SettlementConfirmationPayload)
   }
 
   return (
@@ -243,6 +387,69 @@ export default function DailySettlementsPage() {
             조회
           </button>
         </div>
+
+        <div className={`mt-4 rounded-[10px] border px-4 py-3 ${
+          confirmationStatus === 'needs_review'
+            ? 'border-amber-200 bg-amber-50'
+            : confirmationStatus === 'confirmed'
+              ? 'border-emerald-200 bg-emerald-50'
+              : 'border-slate-200 bg-slate-50'
+        }`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {confirmationStatus === 'needs_review' ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                ) : confirmationStatus === 'confirmed' ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 text-slate-400" />
+                )}
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                  confirmationStatus === 'needs_review'
+                    ? 'bg-amber-100 text-amber-700'
+                    : confirmationStatus === 'confirmed'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-white text-slate-500'
+                }`}>
+                  {confirmationLabel}
+                </span>
+                <span className="text-xs font-semibold text-slate-500">
+                  {tenant.branchName} · {date}
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-slate-700">
+                {confirmationLoading
+                  ? '정산 확인 상태를 불러오는 중입니다.'
+                  : confirmationStatus === 'confirmed' && confirmation?.confirmation
+                    ? `확인 완료 · ${formatKstShortDateTime(confirmation.confirmation.confirmedAt)}${confirmerName ? ` · ${confirmerName}` : ''}`
+                  : confirmationStatus === 'needs_review' && confirmation?.confirmation
+                      ? confirmation.confirmation.latestChangedAt
+                        ? `확인 이후 수납 또는 환불 변경이 있습니다. 마지막 변경 ${formatKstShortDateTime(confirmation.confirmation.latestChangedAt)}`
+                        : '확인 당시 집계와 현재 집계가 다릅니다. 수납·환불 내역을 다시 확인해 주세요.'
+                      : '아직 이 날짜의 정산 확인 기록이 없습니다.'}
+              </p>
+              {confirmationStatus !== 'confirmed' && confirmationDisabledReason ? (
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {confirmationDisabledReason}
+                </p>
+              ) : null}
+              {confirmationError ? (
+                <p className="mt-1 text-xs font-semibold text-rose-600">{confirmationError}</p>
+              ) : null}
+            </div>
+            {confirmationStatus !== 'confirmed' ? (
+              <button
+                type="button"
+                onClick={() => void handleConfirmSettlement()}
+                disabled={!canConfirmSettlement || confirmationLoading || confirmationSaving}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {confirmationSaving ? '저장 중...' : confirmationStatus === 'needs_review' ? '재확인' : '정산 확인'}
+              </button>
+            ) : null}
+          </div>
+        </div>
       </section>
 
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
@@ -325,12 +532,23 @@ export default function DailySettlementsPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
             <h2 className="text-base font-bold text-[#1d1d1f]">결제 명단</h2>
             <p className="mt-1 text-xs text-slate-500">시각 역순으로 수납과 환불을 함께 표시합니다.</p>
           </div>
-          <div className="flex rounded-[8px] bg-slate-100 p-1">
+          <label className="relative w-full xl:max-w-[460px]">
+            <span className="sr-only">결제 명단 검색</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="학생, 응시번호, 연락처, 강좌, 영수증 검색"
+              className="h-10 w-full rounded-[8px] border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <div className="flex shrink-0 rounded-[8px] bg-slate-100 p-1">
             {[
               ['all', '전체'],
               ['payment', '수납만'],
@@ -399,7 +617,9 @@ export default function DailySettlementsPage() {
               ))}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-400">정산 내역이 없습니다.</td>
+                  <td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-400">
+                    {searchTerm.trim() ? '검색 결과가 없습니다.' : '정산 내역이 없습니다.'}
+                  </td>
                 </tr>
               ) : null}
             </tbody>

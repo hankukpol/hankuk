@@ -32,6 +32,52 @@ const patchSchema = z.object({
   custom_data: z.record(z.string()).optional(),
 })
 
+function getErrorField(error: unknown, field: string) {
+  if (typeof error !== 'object' || error === null || !(field in error)) {
+    return ''
+  }
+
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value : ''
+}
+
+function getErrorText(error: unknown) {
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return [
+    getErrorField(error, 'code'),
+    getErrorField(error, 'message'),
+    getErrorField(error, 'details'),
+    getErrorField(error, 'hint'),
+  ].filter(Boolean).join(' ')
+}
+
+function isStudentTypeColumnMissing(error: unknown) {
+  const code = getErrorField(error, 'code')
+  const text = getErrorText(error).toLowerCase()
+
+  return text.includes('student_type') && (
+    code === 'PGRST204'
+    || code === '42703'
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('does not exist')
+    || text.includes('column')
+  )
+}
+
+function omitStudentType<T extends Record<string, unknown>>(payload: T) {
+  const rest = { ...payload }
+  delete rest.student_type
+  return rest
+}
+
 async function getVerifiedEnrollment(
   db: ReturnType<typeof createServerClient>,
   enrollmentId: number,
@@ -148,12 +194,26 @@ export async function PATCH(
   if (parsed.data.status !== undefined) payload.status = parsed.data.status
   if (parsed.data.custom_data !== undefined) payload.custom_data = parsed.data.custom_data
 
-  const { data, error } = await db
+  let { data, error } = await db
     .from('enrollments')
     .update(payload)
     .eq('id', enrollmentId)
     .select('*')
     .maybeSingle()
+
+  if (error && parsed.data.student_type !== undefined && isStudentTypeColumnMissing(error)) {
+    const retry = await db
+      .from('enrollments')
+      .update(omitStudentType(payload))
+      .eq('id', enrollmentId)
+      .select('*')
+      .maybeSingle()
+
+    data = retry.data
+      ? { ...retry.data, student_type: parsed.data.student_type }
+      : retry.data
+    error = retry.error
+  }
 
   if (error) {
     if (error.code === '23505') {

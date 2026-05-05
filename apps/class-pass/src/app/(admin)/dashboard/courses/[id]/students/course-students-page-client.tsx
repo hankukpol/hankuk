@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
@@ -446,6 +446,19 @@ export default function CourseStudentsPage({
       setStudentLookupQuery(value)
       studentLookupInputTimerRef.current = null
     }, 150)
+  }
+
+  function handleStudentLookupKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    if (studentLookupInputTimerRef.current !== null) {
+      window.clearTimeout(studentLookupInputTimerRef.current)
+      studentLookupInputTimerRef.current = null
+    }
+    setStudentLookupQuery(event.currentTarget.value)
   }
 
   function selectStudentForCreate(student: StudentSearchResult) {
@@ -1496,6 +1509,7 @@ export default function CourseStudentsPage({
                   <input
                     defaultValue=""
                     onChange={(event) => scheduleStudentLookupQuery(event.target.value)}
+                    onKeyDown={handleStudentLookupKeyDown}
                     placeholder="학번, 이름, 연락처"
                     className="min-w-0 flex-1 text-sm outline-none"
                   />

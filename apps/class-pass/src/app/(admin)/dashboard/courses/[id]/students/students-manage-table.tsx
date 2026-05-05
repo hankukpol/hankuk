@@ -249,12 +249,32 @@ export function StudentsManageTable({
         />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <div
-            className="inline-flex items-center justify-center gap-1.5 rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#1d1d1f]"
-            title={`전체 등록 ${summary.total.toLocaleString('ko-KR')}명`}
+            className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#1d1d1f]"
+            title={`전체 등록 ${summary.total.toLocaleString('ko-KR')}명 · 수강중 ${summary.active.toLocaleString('ko-KR')}명 · 정지 ${summary.suspended.toLocaleString('ko-KR')}명 · 환불 ${summary.refunded.toLocaleString('ko-KR')}명`}
           >
-            <span className="text-slate-500">수강중</span>
-            <span>{summary.active.toLocaleString('ko-KR')}명</span>
-            <span className="text-slate-400">/ 전체 {summary.total.toLocaleString('ko-KR')}명</span>
+            <span className="whitespace-nowrap">
+              <span className="text-slate-500">전체 등록</span>{' '}
+              <span>{summary.total.toLocaleString('ko-KR')}명</span>
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className="whitespace-nowrap">
+              <span className="text-slate-500">수강중</span>{' '}
+              <span>{summary.active.toLocaleString('ko-KR')}명</span>
+            </span>
+            {summary.suspended > 0 ? (
+              <>
+                <span className="text-slate-300">·</span>
+                <span className="whitespace-nowrap">
+                  <span className="text-slate-500">정지</span>{' '}
+                  <span>{summary.suspended.toLocaleString('ko-KR')}명</span>
+                </span>
+              </>
+            ) : null}
+            <span className="text-slate-300">·</span>
+            <span className="whitespace-nowrap">
+              <span className="text-slate-500">환불</span>{' '}
+              <span>{summary.refunded.toLocaleString('ko-KR')}명</span>
+            </span>
           </div>
           <div
             aria-label="수강생 상태 필터"

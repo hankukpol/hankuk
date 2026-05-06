@@ -178,6 +178,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const deviceSlotMigration = await db
+      .from('course_seat_display_devices')
+      .update({ slot_id: data.id, updated_at: nowIso })
+      .eq('course_id', course.id)
+      .is('slot_id', null)
+      .is('revoked_at', null)
+
+    if (deviceSlotMigration.error) {
+      throw deviceSlotMigration.error
+    }
+
     return NextResponse.json({
       slot: data,
       displayUrl: `${req.nextUrl.origin}${withTenantPrefix(buildSlotDisplayPath(slotKey), division)}`,

@@ -469,6 +469,22 @@ export interface EnrollmentPayment {
   courses?: Pick<Course, 'id' | 'name'> | null
 }
 
+export interface SettlementEntryConfirmation {
+  id: number
+  division: string
+  entry_kind: 'payment' | 'refund'
+  payment_id: number
+  refund_id: number | null
+  settlement_date: string
+  status: 'confirmed' | 'canceled'
+  confirmed_at: string
+  confirmed_by_staff_id: number
+  canceled_at: string | null
+  canceled_by_staff_id: number | null
+  created_at: string
+  updated_at: string
+}
+
 export interface PaymentEvent {
   id: number
   payment_id: number | null

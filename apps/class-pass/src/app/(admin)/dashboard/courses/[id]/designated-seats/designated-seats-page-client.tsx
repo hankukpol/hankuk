@@ -101,15 +101,41 @@ type CourseDesignatedSeatsPageProps = {
 const DEFAULT_COLUMNS = 8
 const DEFAULT_ROWS = 5
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
+const DISPLAY_SCHEDULE_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
-function getDefaultDisplaySchedules(): DisplayScheduleRow[] {
-  return [1, 2, 3, 4, 5].map((dayOfWeek) => ({
+function createDefaultDisplaySchedule(dayOfWeek: number): DisplayScheduleRow {
+  return {
     dayOfWeek,
     startTime: '06:00',
     endTime: '22:00',
     label: '조기 입실 QR',
     isActive: false,
-  }))
+  }
+}
+
+function sortDisplaySchedules(schedules: DisplayScheduleRow[]) {
+  return [...schedules].sort((left, right) => {
+    const leftDayIndex = DISPLAY_SCHEDULE_DAY_ORDER.indexOf(left.dayOfWeek)
+    const rightDayIndex = DISPLAY_SCHEDULE_DAY_ORDER.indexOf(right.dayOfWeek)
+    if (leftDayIndex !== rightDayIndex) {
+      return leftDayIndex - rightDayIndex
+    }
+
+    return left.startTime.localeCompare(right.startTime)
+  })
+}
+
+function getDefaultDisplaySchedules(): DisplayScheduleRow[] {
+  return DISPLAY_SCHEDULE_DAY_ORDER.map(createDefaultDisplaySchedule)
+}
+
+function ensureWeeklyDisplaySchedules(schedules: DisplayScheduleRow[]) {
+  const existingDays = new Set(schedules.map((schedule) => schedule.dayOfWeek))
+  const missingSchedules = DISPLAY_SCHEDULE_DAY_ORDER
+    .filter((dayOfWeek) => !existingDays.has(dayOfWeek))
+    .map(createDefaultDisplaySchedule)
+
+  return sortDisplaySchedules([...schedules, ...missingSchedules])
 }
 
 function normalizeDisplayTime(value: string | null | undefined) {
@@ -356,7 +382,7 @@ export default function CourseDesignatedSeatsPage({
         label: schedule.label ?? '',
         isActive: schedule.is_active,
       }))
-      setDisplaySchedules(schedules.length > 0 ? schedules : getDefaultDisplaySchedules())
+      setDisplaySchedules(ensureWeeklyDisplaySchedules(schedules))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '표시 설정을 불러오지 못했습니다.')
     } finally {

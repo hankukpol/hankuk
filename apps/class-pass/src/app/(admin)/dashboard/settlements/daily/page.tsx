@@ -7,12 +7,13 @@ import { useTenantConfig } from '@/components/TenantProvider'
 import {
   buildSettlementReport,
   type SettlementFilterKind,
+  type SettlementLedgerRow,
   type SettlementSeriesFilter,
 } from '@/lib/payments/settlement-report'
 import { downloadDailySettlementXlsx, downloadSettlementCsv } from '@/lib/payments/xlsx-export'
 import { formatWon } from '@/lib/payments/format'
 import { withTenantPrefix } from '@/lib/tenant'
-import type { EnrollmentPayment } from '@/lib/payments/types'
+import type { EnrollmentPayment, SettlementEntryConfirmation } from '@/lib/payments/types'
 import type { Course } from '@/types/database'
 
 function getTodayKst() {
@@ -125,6 +126,8 @@ export default function DailySettlementsPage() {
   const [confirmationLoading, setConfirmationLoading] = useState(true)
   const [confirmationSaving, setConfirmationSaving] = useState(false)
   const [confirmationError, setConfirmationError] = useState('')
+  const [entryConfirmationSavingId, setEntryConfirmationSavingId] = useState('')
+  const [entryConfirmationError, setEntryConfirmationError] = useState('')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -297,6 +300,78 @@ export default function DailySettlementsPage() {
     }
 
     setConfirmation(result as SettlementConfirmationPayload)
+  }
+
+  function applyEntryConfirmationResult(input: {
+    kind: 'payment' | 'refund'
+    paymentId: number
+    refundId: number | null
+    confirmation: SettlementEntryConfirmation
+  }) {
+    setRawPayments((current) => current.map((payment) => {
+      if (payment.id !== input.paymentId) {
+        return payment
+      }
+
+      if (input.kind === 'payment') {
+        return {
+          ...payment,
+          settlement_confirmation: input.confirmation,
+        }
+      }
+
+      return {
+        ...payment,
+        enrollment_refunds: (payment.enrollment_refunds ?? []).map((refund) => (
+          refund.id === input.refundId
+            ? {
+              ...refund,
+              settlement_confirmation: input.confirmation,
+            }
+            : refund
+        )),
+      }
+    }))
+  }
+
+  async function handleToggleEntryConfirmation(row: SettlementLedgerRow) {
+    if (row.kind === 'refund' && !row.refundId) {
+      setEntryConfirmationError('환불 행 정보를 확인하지 못했습니다.')
+      return
+    }
+
+    setEntryConfirmationSavingId(row.id)
+    setEntryConfirmationError('')
+
+    const action = row.settlementConfirmedAt ? 'cancel' : 'confirm'
+    const response = await fetch('/api/settlements/entry-confirmation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: row.date,
+        kind: row.kind,
+        paymentId: row.paymentId,
+        refundId: row.refundId,
+        action,
+      }),
+    })
+    const result = await response.json().catch(() => null) as {
+      error?: string
+      entry?: SettlementEntryConfirmation
+    } | null
+    setEntryConfirmationSavingId('')
+
+    if (!response.ok || !result?.entry) {
+      setEntryConfirmationError(result?.error ?? '정산 행 확인 상태를 저장하지 못했습니다.')
+      return
+    }
+
+    applyEntryConfirmationResult({
+      kind: row.kind,
+      paymentId: row.paymentId,
+      refundId: row.refundId,
+      confirmation: result.entry,
+    })
   }
 
   return (
@@ -566,12 +641,15 @@ export default function DailySettlementsPage() {
               </button>
             ))}
           </div>
+          {entryConfirmationError ? (
+            <p className="text-xs font-semibold text-rose-600 xl:basis-full xl:text-right">{entryConfirmationError}</p>
+          ) : null}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-[1160px] w-full text-left text-sm">
+          <table className="min-w-[1280px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold text-slate-500">
               <tr>
-                {['시각', '학생', '학원구분', '강좌', '직렬', '방법', '결제액', '환불', '순액', '영수증번호', '사유'].map((header) => (
+                {['시각', '학생', '학원구분', '강좌', '직렬', '방법', '결제액', '환불', '순액', '영수증번호', '사유', '정산확인'].map((header) => (
                   <th key={header} className="px-4 py-3">{header}</th>
                 ))}
               </tr>
@@ -613,11 +691,41 @@ export default function DailySettlementsPage() {
                       <span className="text-xs text-slate-400">{row.memo ?? '-'}</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {row.settlementConfirmedAt ? (
+                      <div className="flex min-w-[120px] flex-col items-start gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          확인 완료
+                        </span>
+                        <span className="text-[11px] font-medium text-slate-400">
+                          {formatKstShortDateTime(row.settlementConfirmedAt)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleEntryConfirmation(row)}
+                          disabled={entryConfirmationSavingId === row.id}
+                          className="rounded-[8px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {entryConfirmationSavingId === row.id ? '처리 중' : '확인 취소'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleEntryConfirmation(row)}
+                        disabled={entryConfirmationSavingId === row.id}
+                        className="inline-flex min-w-[82px] items-center justify-center rounded-[8px] bg-[#0071e3] px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {entryConfirmationSavingId === row.id ? '처리 중' : '정산 확인'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={12} className="px-4 py-10 text-center text-sm text-slate-400">
                     {searchTerm.trim() ? '검색 결과가 없습니다.' : '정산 내역이 없습니다.'}
                   </td>
                 </tr>

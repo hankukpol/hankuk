@@ -61,6 +61,8 @@ export type SettlementLedgerRow = {
   memo: string | null
   status: string
   cancelReceiptNo: string | null
+  settlementConfirmedAt: string | null
+  settlementConfirmedByStaffId: number | null
 }
 
 export type SettlementMethodSummary = {
@@ -220,6 +222,18 @@ function getPaymentRefundTotal(payment: EnrollmentPayment) {
   return (payment.enrollment_refunds ?? []).reduce((sum, refund) => sum + refund.amount, 0)
 }
 
+function getSettlementConfirmedAt(entry: Pick<EnrollmentPayment, 'settlement_confirmation'> | EnrollmentRefund) {
+  return entry.settlement_confirmation?.status === 'confirmed'
+    ? entry.settlement_confirmation.confirmed_at
+    : null
+}
+
+function getSettlementConfirmedByStaffId(entry: Pick<EnrollmentPayment, 'settlement_confirmation'> | EnrollmentRefund) {
+  return entry.settlement_confirmation?.status === 'confirmed'
+    ? entry.settlement_confirmation.confirmed_by_staff_id
+    : null
+}
+
 function getStudentName(payment: EnrollmentPayment) {
   return payment.enrollments?.name ?? `수강생 #${payment.enrollment_id}`
 }
@@ -298,6 +312,8 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     memo: payment.memo,
     status: payment.status,
     cancelReceiptNo: null,
+    settlementConfirmedAt: getSettlementConfirmedAt(payment),
+    settlementConfirmedByStaffId: getSettlementConfirmedByStaffId(payment),
   }
 }
 
@@ -342,6 +358,8 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     memo: refund.memo,
     status: 'refunded',
     cancelReceiptNo: refund.cancel_receipt_no,
+    settlementConfirmedAt: getSettlementConfirmedAt(refund),
+    settlementConfirmedByStaffId: getSettlementConfirmedByStaffId(refund),
   }
 }
 

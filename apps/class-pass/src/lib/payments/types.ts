@@ -21,6 +21,22 @@ export type PaymentEventType =
   | 'refund_created'
   | 'refund_voided'
 
+export type SettlementEntryConfirmation = {
+  id: number
+  division: string
+  entry_kind: 'payment' | 'refund'
+  payment_id: number
+  refund_id: number | null
+  settlement_date: string
+  status: 'confirmed' | 'canceled'
+  confirmed_at: string
+  confirmed_by_staff_id: number
+  canceled_at: string | null
+  canceled_by_staff_id: number | null
+  created_at: string
+  updated_at: string
+}
+
 export type PaymentItem = {
   id: number
   payment_id: number
@@ -42,6 +58,7 @@ export type EnrollmentRefund = {
   refund_date: string
   processed_by_staff_id: number | null
   memo: string | null
+  settlement_confirmation?: SettlementEntryConfirmation | null
   created_at: string
 }
 
@@ -65,6 +82,7 @@ export type EnrollmentPayment = {
   series_group_snapshot: BranchSeriesGroup | null
   series_label_snapshot: string | null
   created_by_staff_id: number | null
+  settlement_confirmation?: SettlementEntryConfirmation | null
   created_at: string
   updated_at: string
   enrollments?: Pick<

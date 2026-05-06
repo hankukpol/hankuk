@@ -23,6 +23,7 @@ import {
   type PaymentStatus,
   type RefundMethod,
   type RefundReasonCategory,
+  type SettlementEntryConfirmation,
 } from './types'
 
 type ServerClient = ReturnType<typeof createServerClient>
@@ -149,6 +150,7 @@ const PAYMENT_SCHEMA_OBJECTS = [
   'series_group_snapshot',
   'series_label_snapshot',
   'student_type',
+  'settlement_entry_confirmations',
 ]
 
 function createPaymentError(message: string, status = 400) {
@@ -1246,6 +1248,57 @@ export async function listPaymentsByIds(paymentIds: number[], division: string) 
   })
 }
 
+async function attachSettlementEntryConfirmations(payments: EnrollmentPayment[], division: string) {
+  const paymentIds = Array.from(new Set(
+    payments
+      .map((payment) => Number(payment.id))
+      .filter((paymentId) => Number.isInteger(paymentId) && paymentId > 0),
+  ))
+
+  if (paymentIds.length === 0) {
+    return payments
+  }
+
+  const db = createServerClient()
+  const confirmations: SettlementEntryConfirmation[] = []
+  const chunkSize = 500
+
+  for (let index = 0; index < paymentIds.length; index += chunkSize) {
+    const chunk = paymentIds.slice(index, index + chunkSize)
+    const { data, error } = await db
+      .from('settlement_entry_confirmations')
+      .select('*')
+      .eq('division', division)
+      .in('payment_id', chunk)
+
+    if (error) {
+      throw error
+    }
+
+    confirmations.push(...(((data ?? []) as unknown) as SettlementEntryConfirmation[]))
+  }
+
+  const paymentConfirmations = new Map<number, SettlementEntryConfirmation>()
+  const refundConfirmations = new Map<number, SettlementEntryConfirmation>()
+
+  for (const confirmation of confirmations) {
+    if (confirmation.entry_kind === 'payment') {
+      paymentConfirmations.set(Number(confirmation.payment_id), confirmation)
+    } else if (confirmation.refund_id) {
+      refundConfirmations.set(Number(confirmation.refund_id), confirmation)
+    }
+  }
+
+  return payments.map((payment) => ({
+    ...payment,
+    settlement_confirmation: paymentConfirmations.get(Number(payment.id)) ?? null,
+    enrollment_refunds: (payment.enrollment_refunds ?? []).map((refund) => ({
+      ...refund,
+      settlement_confirmation: refundConfirmations.get(Number(refund.id)) ?? null,
+    })),
+  }))
+}
+
 async function listSettlementPaidPayments(
   options: Pick<ListPaymentsOptions, 'courseId' | 'from' | 'to'>,
   division: string,
@@ -1336,7 +1389,7 @@ export async function listSettlementDetailPayments(
   const paidPayments = await listSettlementPaidPayments(options, division)
 
   if (!options.from || !options.to) {
-    return paidPayments
+    return attachSettlementEntryConfirmations(paidPayments, division)
   }
 
   // Settlement accuracy is more important than display limits: page through all
@@ -1355,10 +1408,12 @@ export async function listSettlementDetailPayments(
     }
   }
 
-  return Array.from(merged.values()).sort((left, right) => {
+  const payments = Array.from(merged.values()).sort((left, right) => {
     const paidAtCompare = right.paid_at.localeCompare(left.paid_at)
     return paidAtCompare === 0 ? right.id - left.id : paidAtCompare
   })
+
+  return attachSettlementEntryConfirmations(payments, division)
 }
 
 export async function updatePayment(

@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { getCourseById } from '@/lib/class-pass-data'
-import { getActiveDisplaySessionByHash } from '@/lib/designated-seat/service'
+import { resolveDisplayDevice } from '@/lib/designated-seat/display-device'
+import { ensureDisplaySessionForCurrentSchedule } from '@/lib/designated-seat/service'
 import {
-  generateRotationCode,
   generateRotationToken,
   getRotationBucket,
-  hashToken,
 } from '@/lib/designated-seat/token'
 import {
   getRotationExpiresAt,
@@ -18,17 +17,15 @@ import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
   courseId: z.coerce.number().int().positive(),
-  token: z.string().min(20),
 })
 
 export async function GET(req: NextRequest) {
   try {
     const parsed = schema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
-      token: req.nextUrl.searchParams.get('token'),
     })
     if (!parsed.success) {
-      return NextResponse.json({ error: '잘못된 표시 세션 요청입니다.' }, { status: 400 })
+      return NextResponse.json({ error: '잘못된 표시 QR 요청입니다.' }, { status: 400 })
     }
 
     const division = await getServerTenantType()
@@ -37,18 +34,56 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const session = await getActiveDisplaySessionByHash(parsed.data.courseId, hashToken(parsed.data.token))
-    if (!session) {
-      return NextResponse.json({ error: '표시 세션이 만료되었거나 유효하지 않습니다.' }, { status: 404 })
+    if (!course.feature_designated_seat) {
+      return NextResponse.json({ error: '지정좌석 기능이 활성화되지 않은 강좌입니다.' }, { status: 409 })
     }
 
+    const device = await resolveDisplayDevice(req, course.id)
+    if (!device.ok) {
+      return NextResponse.json({
+        status: 'registration_required',
+        code: device.reason,
+        error: '등록된 QR 표시 기기가 아닙니다. 관리자에게 등록 코드를 요청해 주세요.',
+        course: {
+          id: course.id,
+          name: course.name,
+        },
+      }, { status: device.reason === 'MISSING_COOKIE' ? 401 : 403 })
+    }
+
+    const sessionAvailability = await ensureDisplaySessionForCurrentSchedule(course.id)
+    if (sessionAvailability.status === 'inactive') {
+      return NextResponse.json({
+        status: 'inactive',
+        reason: sessionAvailability.reason,
+        message: '현재 입실 가능 시간이 아닙니다.',
+        course: {
+          id: course.id,
+          name: course.name,
+        },
+      })
+    }
+
+    const session = sessionAvailability.session
     const now = Date.now()
+    const nowIso = new Date(now).toISOString()
+    const db = createServerClient()
+
     if (shouldUpdateDisplayHeartbeat(session.last_seen_at, now)) {
-      const db = createServerClient()
       await db
         .from('course_seat_display_sessions')
-        .update({ last_seen_at: new Date(now).toISOString() })
+        .update({ last_seen_at: nowIso })
         .eq('id', session.id)
+    }
+
+    if (shouldUpdateDisplayHeartbeat(device.device.last_seen_at, now)) {
+      await db
+        .from('course_seat_display_devices')
+        .update({
+          last_seen_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', device.device.id)
     }
 
     const rotation = getRotationBucket(now)
@@ -57,14 +92,10 @@ export async function GET(req: NextRequest) {
       displaySessionId: session.id,
       rotation,
     })
-    const rotationCode = generateRotationCode({
-      courseId: course.id,
-      displaySessionId: session.id,
-      rotation,
-    })
     const rotationExpiresAt = getRotationExpiresAt(rotation)
 
     return NextResponse.json({
+      status: 'active',
       course: {
         id: course.id,
         name: course.name,
@@ -74,8 +105,11 @@ export async function GET(req: NextRequest) {
         expires_at: session.expires_at,
       },
       rotationToken,
-      rotationCode,
       rotationExpiresAt,
+      device: {
+        id: device.device.id,
+        name: device.device.device_name,
+      },
     })
   } catch (error) {
     return handleRouteError('designatedSeats.display.GET', '현장 QR 정보를 불러오지 못했습니다.', error)

@@ -10,6 +10,8 @@ import {
 } from '@/lib/designated-seat/service'
 import {
   DESIGNATED_SEAT_AUTH_TTL_MS,
+  DESIGNATED_SEAT_ROTATION_GRACE_MS,
+  DESIGNATED_SEAT_ROTATION_MS,
   getRotationBucket,
   verifyRotationToken,
 } from '@/lib/designated-seat/token'
@@ -111,8 +113,15 @@ export async function POST(req: NextRequest) {
       return authFailure('QR 인증 정보가 만료되었거나 올바르지 않습니다.')
     }
 
-    const currentRotation = getRotationBucket()
-    if (tokenPayload.rotation < currentRotation - 1 || tokenPayload.rotation > currentRotation) {
+    const now = Date.now()
+    const currentRotation = getRotationBucket(now)
+    const tokenRotationStartsAt = tokenPayload.rotation * DESIGNATED_SEAT_ROTATION_MS
+    const tokenRotationExpiresAt = (tokenPayload.rotation + 1) * DESIGNATED_SEAT_ROTATION_MS
+    if (
+      tokenPayload.rotation > currentRotation
+      || now < tokenRotationStartsAt
+      || now > tokenRotationExpiresAt + DESIGNATED_SEAT_ROTATION_GRACE_MS
+    ) {
       return authFailure('QR 인증 시간이 맞지 않습니다. 화면의 최신 QR로 다시 인증해 주세요.')
     }
 

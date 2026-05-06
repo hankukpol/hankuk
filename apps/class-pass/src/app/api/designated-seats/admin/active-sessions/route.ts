@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const courseMap = new Map((courses ?? []).map((course) => [course.id, course.name]))
     const { data: sessions } = await db
       .from('course_seat_display_sessions')
-      .select('id,course_id,display_token_hash,expires_at,created_at')
+      .select('id,course_id,expires_at,created_at,source,schedule_id')
       .in('course_id', courseIds)
       .is('revoked_at', null)
       .gt('expires_at', new Date().toISOString())
@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
       courseName: courseMap.get(session.course_id) ?? `강좌 #${session.course_id}`,
       sessionId: session.id,
       expiresAt: session.expires_at,
+      source: session.source ?? 'manual',
+      scheduleId: session.schedule_id ?? null,
     }))
 
     return NextResponse.json({ sessions: result })

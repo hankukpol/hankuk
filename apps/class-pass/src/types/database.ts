@@ -240,7 +240,34 @@ export interface DesignatedSeatDisplaySession {
   expires_at: string
   last_seen_at: string | null
   revoked_at: string | null
+  source: 'manual' | 'schedule'
+  schedule_id: number | null
   created_at: string
+}
+
+export interface DesignatedSeatDisplayDevice {
+  id: number
+  course_id: number
+  device_name: string
+  device_token_hash: string
+  registered_by: string | null
+  last_seen_at: string | null
+  revoked_at: string | null
+  revoked_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DesignatedSeatDisplaySchedule {
+  id: number
+  course_id: number
+  day_of_week: number
+  start_time: string
+  end_time: string
+  label: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface DesignatedSeatEvent {

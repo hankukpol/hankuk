@@ -1,4 +1,27 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const Module = require('node:module')
+const path = require('node:path')
+const ts = require('typescript')
+
+function requireTsModule(relativePath) {
+  const filename = path.resolve(__dirname, relativePath)
+  const source = fs.readFileSync(filename, 'utf8')
+  const transpiled = ts.transpileModule(source, {
+    fileName: filename,
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+    },
+  }).outputText
+
+  const mod = new Module(filename, module)
+  mod.filename = filename
+  mod.paths = Module._nodeModulePaths(path.dirname(filename))
+  mod._compile(transpiled, filename)
+  return mod.exports
+}
 
 const {
   DESIGNATED_SEAT_DISPLAY_HEARTBEAT_MS,
@@ -7,7 +30,7 @@ const {
   getDisplayRefreshDelay,
   getRotationExpiresAt,
   shouldUpdateDisplayHeartbeat,
-} = require('../src/lib/designated-seat/display-runtime.js')
+} = requireTsModule('../src/lib/designated-seat/display-runtime.ts')
 
 function testHeartbeatWindow() {
   const now = Date.parse('2026-04-12T00:00:00.000Z')

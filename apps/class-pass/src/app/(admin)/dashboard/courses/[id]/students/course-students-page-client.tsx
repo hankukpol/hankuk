@@ -1380,7 +1380,10 @@ export default function CourseStudentsPage({
           </Link>
           <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
           <p className="mt-1 text-sm text-slate-500">
-            전체 {summary.total} · 활성 {summary.active} · 환불 {summary.refunded}
+            전체 등록 {summary.total} · 수강중 {summary.active}
+            {summary.suspended > 0 ? ` · 정지 ${summary.suspended}` : ''}
+            {' · '}
+            환불 {summary.refunded}
           </p>
           </div>
         ) : null}

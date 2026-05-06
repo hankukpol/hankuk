@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
         created_by: payload?.adminId ?? payload?.staffName ?? 'admin',
         expires_at: expiresAt,
         last_seen_at: nowIso,
+        source: 'manual',
       })
       .select('*')
       .single()
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
     await invalidateCache('designated-seats')
 
     const displayUrl = `${req.nextUrl.origin}${withTenantPrefix(
-      `/designated-seat-display/${course.id}?token=${encodeURIComponent(rawToken)}`,
+      `/designated-seat-display/${course.id}`,
       division,
     )}`
 

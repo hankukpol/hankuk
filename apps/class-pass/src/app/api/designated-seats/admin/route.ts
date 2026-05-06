@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
           id: activeDisplaySession.id,
           expires_at: activeDisplaySession.expires_at,
           last_seen_at: activeDisplaySession.last_seen_at,
+          source: activeDisplaySession.source ?? 'manual',
         }
         : null,
     })

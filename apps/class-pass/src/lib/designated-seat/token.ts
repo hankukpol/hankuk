@@ -4,8 +4,8 @@ import type { DesignatedSeatRotationTokenPayload } from '@/types/database'
 
 export const DESIGNATED_SEAT_ROTATION_MS = 15_000
 export const DESIGNATED_SEAT_AUTH_TTL_MS = 2 * 60 * 1000
-const DESIGNATED_SEAT_ROTATION_CLOCK_TOLERANCE_S = 5
-const DESIGNATED_SEAT_TOKEN_VALID_ROTATIONS = 2
+export const DESIGNATED_SEAT_ROTATION_GRACE_MS = 5_000
+const DESIGNATED_SEAT_ROTATION_CLOCK_TOLERANCE_S = DESIGNATED_SEAT_ROTATION_GRACE_MS / 1000
 
 function getSecretValue() {
   const secret =
@@ -29,7 +29,7 @@ export function getRotationBucket(at = Date.now()) {
 }
 
 export function getRotationTokenExpiresAt(rotation: number) {
-  return (rotation + DESIGNATED_SEAT_TOKEN_VALID_ROTATIONS) * DESIGNATED_SEAT_ROTATION_MS
+  return (rotation + 1) * DESIGNATED_SEAT_ROTATION_MS
 }
 
 export function createOpaqueDisplayToken() {
@@ -45,8 +45,8 @@ export async function generateRotationToken(params: {
   displaySessionId: number
   rotation?: number
 }) {
-  const now = Date.now()
-  const rotation = params.rotation ?? getRotationBucket(now)
+  const rotation = params.rotation ?? getRotationBucket()
+  const issuedAtSeconds = Math.floor((rotation * DESIGNATED_SEAT_ROTATION_MS) / 1000)
 
   return new SignJWT({
     courseId: params.courseId,
@@ -54,7 +54,7 @@ export async function generateRotationToken(params: {
     rotation,
   })
     .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt(Math.floor(now / 1000))
+    .setIssuedAt(issuedAtSeconds)
     .setExpirationTime(Math.floor(getRotationTokenExpiresAt(rotation) / 1000))
     .sign(await getSecretKey())
 }

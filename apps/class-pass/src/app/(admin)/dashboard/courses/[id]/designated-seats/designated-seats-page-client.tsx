@@ -38,6 +38,29 @@ type ManualSeatConfirmation =
     seatLabel: string
   }
 
+type DisplayDeviceRow = {
+  id: number
+  device_name: string
+  registered_by: string | null
+  last_seen_at: string | null
+  created_at: string
+}
+
+type DisplayScheduleRow = {
+  id?: number
+  dayOfWeek: number
+  startTime: string
+  endTime: string
+  label: string
+  isActive: boolean
+}
+
+type RegistrationCodeState = {
+  code: string
+  expiresAt: string
+  deviceName: string
+} | null
+
 export type AdminPayload = {
   course: Course
   layout: DesignatedSeatLayout | null
@@ -48,6 +71,7 @@ export type AdminPayload = {
     id: number
     expires_at: string
     last_seen_at: string | null
+    source?: 'manual' | 'schedule'
   } | null
 }
 
@@ -76,6 +100,21 @@ type CourseDesignatedSeatsPageProps = {
 
 const DEFAULT_COLUMNS = 8
 const DEFAULT_ROWS = 5
+const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
+
+function getDefaultDisplaySchedules(): DisplayScheduleRow[] {
+  return [1, 2, 3, 4, 5].map((dayOfWeek) => ({
+    dayOfWeek,
+    startTime: '06:00',
+    endTime: '22:00',
+    label: '조기 입실 QR',
+    isActive: false,
+  }))
+}
+
+function normalizeDisplayTime(value: string | null | undefined) {
+  return (value ?? '06:00').slice(0, 5)
+}
 
 function getToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
@@ -189,6 +228,12 @@ export default function CourseDesignatedSeatsPage({
   )
   const [displayUrl, setDisplayUrl] = useState('')
   const [displayDuration, setDisplayDuration] = useState(24)
+  const [displayDevices, setDisplayDevices] = useState<DisplayDeviceRow[]>([])
+  const [displaySchedules, setDisplaySchedules] = useState<DisplayScheduleRow[]>(getDefaultDisplaySchedules)
+  const [displayDeviceName, setDisplayDeviceName] = useState('QR PC 1')
+  const [registrationCode, setRegistrationCode] = useState<RegistrationCodeState>(null)
+  const [displayConfigLoading, setDisplayConfigLoading] = useState(false)
+  const [displayConfigSaving, setDisplayConfigSaving] = useState(false)
   const [selectedSeatId, setSelectedSeatId] = useState<number | null>(null)
   const [selectedSeatIds, setSelectedSeatIds] = useState<Set<number>>(new Set())
   const [editorModalSeatId, setEditorModalSeatId] = useState<number | null>(null)
@@ -207,6 +252,19 @@ export default function CourseDesignatedSeatsPage({
   const [manualSeatConfirmation, setManualSeatConfirmation] = useState<ManualSeatConfirmation | null>(null)
   const [displayStopConfirmOpen, setDisplayStopConfirmOpen] = useState(false)
   const savedSnapshotRef = useRef(initialSnapshot)
+  const fixedDisplayUrl = useMemo(() => {
+    if (typeof window === 'undefined' || !Number.isInteger(courseId) || courseId <= 0) {
+      return ''
+    }
+
+    return `${window.location.origin}${withTenantPrefix(`/designated-seat-display/${courseId}`, tenant.type)}`
+  }, [courseId, tenant.type])
+
+  useEffect(() => {
+    if (fixedDisplayUrl) {
+      setDisplayUrl(fixedDisplayUrl)
+    }
+  }, [fixedDisplayUrl])
 
   function markSnapshot(drafts: SeatDraft[], cols: number, rws: number, aisle: string, feat: boolean, open: boolean) {
     savedSnapshotRef.current = JSON.stringify({ drafts, cols, rws, aisle, feat, open })
@@ -258,6 +316,54 @@ export default function CourseDesignatedSeatsPage({
     applyPayload(payload)
   }
 
+  const loadDisplayConfig = useCallback(async () => {
+    if (!Number.isInteger(courseId) || courseId <= 0) {
+      return
+    }
+
+    setDisplayConfigLoading(true)
+    try {
+      const [devicesResponse, schedulesResponse] = await Promise.all([
+        fetch(`/api/designated-seats/admin/display-devices?courseId=${courseId}`, { cache: 'no-store' }),
+        fetch(`/api/designated-seats/admin/display-schedules?courseId=${courseId}`, { cache: 'no-store' }),
+      ])
+      const devicesPayload = await devicesResponse.json().catch(() => null) as { devices?: DisplayDeviceRow[]; error?: string } | null
+      const schedulesPayload = await schedulesResponse.json().catch(() => null) as {
+        schedules?: Array<{
+          id: number
+          day_of_week: number
+          start_time: string
+          end_time: string
+          label: string | null
+          is_active: boolean
+        }>
+        error?: string
+      } | null
+
+      if (!devicesResponse.ok) {
+        throw new Error(devicesPayload?.error ?? '표시 기기 목록을 불러오지 못했습니다.')
+      }
+      if (!schedulesResponse.ok) {
+        throw new Error(schedulesPayload?.error ?? '표시 스케줄을 불러오지 못했습니다.')
+      }
+
+      setDisplayDevices(devicesPayload?.devices ?? [])
+      const schedules = (schedulesPayload?.schedules ?? []).map((schedule) => ({
+        id: schedule.id,
+        dayOfWeek: schedule.day_of_week,
+        startTime: normalizeDisplayTime(schedule.start_time),
+        endTime: normalizeDisplayTime(schedule.end_time),
+        label: schedule.label ?? '',
+        isActive: schedule.is_active,
+      }))
+      setDisplaySchedules(schedules.length > 0 ? schedules : getDefaultDisplaySchedules())
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '표시 설정을 불러오지 못했습니다.')
+    } finally {
+      setDisplayConfigLoading(false)
+    }
+  }, [courseId])
+
   async function loadReservationDate(nextDate: string) {
     setReservationDate(nextDate)
     setStatusLoading(true)
@@ -288,6 +394,12 @@ export default function CourseDesignatedSeatsPage({
       })
       .finally(() => setLoading(false))
   }, [courseId, applyPayload, initialLoaded, reservationDate])
+
+  useEffect(() => {
+    if (tab === 'status') {
+      void loadDisplayConfig()
+    }
+  }, [loadDisplayConfig, tab])
 
   const aisleColumnsParsed = useMemo(
     () => aisleInput.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0),
@@ -497,7 +609,7 @@ export default function CourseDesignatedSeatsPage({
       return
     }
 
-    setDisplayUrl((result as { displayUrl?: string } | null)?.displayUrl ?? '')
+    setDisplayUrl((result as { displayUrl?: string } | null)?.displayUrl ?? fixedDisplayUrl)
     setMessage('현장 QR 표시 세션을 시작했습니다.')
     await refresh().catch(() => null)
   }
@@ -520,7 +632,7 @@ export default function CourseDesignatedSeatsPage({
       return
     }
 
-    setDisplayUrl('')
+    setDisplayUrl(fixedDisplayUrl)
     setMessage('현장 QR 표시 세션을 종료했습니다.')
     await refresh().catch(() => null)
   }
@@ -528,6 +640,114 @@ export default function CourseDesignatedSeatsPage({
   async function handleStopDisplayConfirmed() {
     await handleStopDisplay()
     setDisplayStopConfirmOpen(false)
+  }
+
+  async function handleCreateRegistrationCode() {
+    setDisplayConfigSaving(true)
+    setError('')
+    setMessage('')
+    setRegistrationCode(null)
+
+    const response = await fetch('/api/designated-seats/admin/display-devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseId,
+        deviceName: displayDeviceName.trim() || `QR PC ${displayDevices.length + 1}`,
+      }),
+    })
+    const result = await response.json().catch(() => null) as ({
+      code: string
+      expiresAt: string
+      deviceName: string
+      error?: string
+    } | null)
+    setDisplayConfigSaving(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '표시 기기 등록 코드를 만들지 못했습니다.')
+      return
+    }
+
+    setRegistrationCode(result)
+    setMessage('등록 코드를 생성했습니다. 강의실 PC 화면에 입력해 주세요.')
+  }
+
+  async function handleRevokeDisplayDevice(deviceId: number) {
+    setDisplayConfigSaving(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/designated-seats/admin/display-devices', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId, deviceId }),
+    })
+    const result = await response.json().catch(() => null) as { error?: string } | null
+    setDisplayConfigSaving(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '표시 기기 해제에 실패했습니다.')
+      return
+    }
+
+    setMessage('표시 기기 등록을 해제했습니다.')
+    await loadDisplayConfig()
+  }
+
+  function updateDisplaySchedule(index: number, patch: Partial<DisplayScheduleRow>) {
+    setDisplaySchedules((current) => current.map((schedule, currentIndex) => (
+      currentIndex === index ? { ...schedule, ...patch } : schedule
+    )))
+  }
+
+  function addDisplaySchedule() {
+    setDisplaySchedules((current) => [
+      ...current,
+      {
+        dayOfWeek: 1,
+        startTime: '06:00',
+        endTime: '22:00',
+        label: '조기 입실 QR',
+        isActive: true,
+      },
+    ])
+  }
+
+  function removeDisplaySchedule(index: number) {
+    setDisplaySchedules((current) => current.filter((_, currentIndex) => currentIndex !== index))
+  }
+
+  async function handleSaveDisplaySchedules() {
+    setDisplayConfigSaving(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/designated-seats/admin/display-schedules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseId,
+        schedules: displaySchedules.map((schedule) => ({
+          dayOfWeek: schedule.dayOfWeek,
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          label: schedule.label,
+          isActive: schedule.isActive,
+        })),
+      }),
+    })
+    const result = await response.json().catch(() => null) as { error?: string } | null
+    setDisplayConfigSaving(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '표시 스케줄 저장에 실패했습니다.')
+      return
+    }
+
+    setMessage('표시 스케줄을 저장했습니다.')
+    await loadDisplayConfig()
+    await refresh().catch(() => null)
   }
 
   async function handleManualAssign(seatId: number, enrollmentId: number) {
@@ -970,87 +1190,246 @@ export default function CourseDesignatedSeatsPage({
         <div className="flex flex-col gap-6">
           {/* QR Display — top */}
           <section className="rounded-[8px] bg-white p-4 sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-[#1d1d1f]">현장 QR 표시</h3>
-                <p className="mt-1 text-sm text-[#86868b]">관리자 전용 토큰으로만 열리는 모니터 화면입니다.</p>
+                <p className="mt-1 text-sm text-[#86868b]">
+                  강의실 PC는 고정 URL을 북마크하고, 등록된 표시 기기만 QR을 볼 수 있습니다.
+                </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={displayDuration}
-                  onChange={(event) => setDisplayDuration(Number(event.target.value))}
-                  className="rounded-[8px] border border-[#d2d2d7] px-2 py-2.5 text-sm outline-none"
-                >
-                  <option value={6}>6시간</option>
-                  <option value={12}>12시간</option>
-                  <option value={24}>24시간</option>
-                  <option value={48}>48시간</option>
-                  <option value={72}>72시간</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => void handleStartDisplay()}
-                  disabled={working}
-                  className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
-                >
-                  시작
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDisplayStopConfirmOpen(true)}
-                  disabled={working || !activeDisplaySession}
-                  className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
-                >
-                  중지
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => void loadDisplayConfig()}
+                disabled={displayConfigLoading}
+                className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60"
+              >
+                {displayConfigLoading ? '불러오는 중...' : '표시 설정 새로고침'}
+              </button>
             </div>
 
-            {activeDisplaySession ? (
-              <div className="mt-4 rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3 text-sm text-[#1b7a1b]">
-                활성 세션 · 만료: {new Date(activeDisplaySession.expires_at).toLocaleString('ko-KR')}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3 text-sm text-[#1d1d1f]">
-                활성화된 세션 없음
-              </div>
-            )}
+            <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_1.25fr]">
+              <div className="flex flex-col gap-4">
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <p className="text-xs font-semibold text-[#86868b]">강의실 PC 북마크 URL</p>
+                  <input
+                    value={displayUrl}
+                    readOnly
+                    className="mt-2 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-xs text-[#1d1d1f] outline-none"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(displayUrl)
+                        setMessage('표시 URL을 복사했습니다.')
+                      }}
+                      disabled={!displayUrl}
+                      className="rounded-[8px] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60"
+                    >
+                      URL 복사
+                    </button>
+                    <a
+                      href={displayUrl || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97]"
+                    >
+                      새 창 열기
+                    </a>
+                  </div>
+                </div>
 
-            {displayUrl ? (
-              <div className="mt-4 flex flex-col gap-2">
-                <input
-                  value={displayUrl}
-                  readOnly
-                  className="rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] px-3 py-2.5 text-xs text-[#1d1d1f] outline-none"
-                />
-                <div className="grid grid-cols-2 gap-2 sm:flex">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(displayUrl)
-                      setMessage('표시 URL을 복사했습니다.')
-                    }}
-                    className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
-                  >
-                    URL 복사
-                  </button>
-                  <a
-                    href={displayUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97]"
-                  >
-                    새 창 열기
-                  </a>
-                  <a
-                    href="/dashboard/designated-seat-monitor"
-                    className="rounded-[8px] border border-[#d2d2d7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#f5f5f7] active:scale-[0.97]"
-                  >
-                    멀티 모니터 설정
-                  </a>
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="flex-1">
+                      <span className="text-xs font-semibold text-[#86868b]">표시 기기 이름</span>
+                      <input
+                        value={displayDeviceName}
+                        onChange={(event) => setDisplayDeviceName(event.target.value)}
+                        className="mt-1.5 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0071e3]"
+                        placeholder="301호 QR PC 1"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateRegistrationCode()}
+                      disabled={displayConfigSaving}
+                      className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black active:scale-[0.97] disabled:opacity-60"
+                    >
+                      등록 코드 생성
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[#86868b]">
+                    표시기기 권한은 자동 만료하지 않습니다. 다만 브라우저 쿠키가 삭제되거나 브라우저 정책으로 만료되면 같은 PC라도 재등록이 필요합니다.
+                  </p>
+
+                  {registrationCode ? (
+                    <div className="mt-4 rounded-[8px] bg-white px-4 py-3">
+                      <p className="text-xs font-semibold text-[#86868b]">{registrationCode.deviceName}</p>
+                      <p className="mt-1 text-4xl font-black tracking-[0.18em] text-[#1d1d1f]">{registrationCode.code}</p>
+                      <p className="mt-2 text-xs text-[#86868b]">
+                        만료: {new Date(registrationCode.expiresAt).toLocaleTimeString('ko-KR')}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[#1d1d1f]">등록된 표시 기기</p>
+                    <span className="text-xs font-semibold text-[#86868b]">{displayDevices.length}대</span>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {displayDevices.length === 0 ? (
+                      <p className="rounded-[8px] bg-white px-3 py-3 text-sm text-[#86868b]">등록된 표시 기기가 없습니다.</p>
+                    ) : displayDevices.map((device) => (
+                      <div key={device.id} className="flex items-center justify-between gap-3 rounded-[8px] bg-white px-3 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[#1d1d1f]">{device.device_name}</p>
+                          <p className="mt-1 text-xs text-[#86868b]">
+                            마지막 접속: {device.last_seen_at ? new Date(device.last_seen_at).toLocaleString('ko-KR') : '-'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleRevokeDisplayDevice(device.id)}
+                          disabled={displayConfigSaving}
+                          className="shrink-0 rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97] disabled:opacity-60"
+                        >
+                          해제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            ) : null}
+
+              <div className="flex flex-col gap-4">
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[#1d1d1f]">주간 자동 표시 스케줄</p>
+                      <p className="mt-1 text-xs text-[#86868b]">KST 기준이며 자정을 넘기는 시간대는 나누어 등록합니다.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={addDisplaySchedule}
+                        className="rounded-[8px] bg-white px-3 py-2 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+                      >
+                        행 추가
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveDisplaySchedules()}
+                        disabled={displayConfigSaving}
+                        className="rounded-[8px] bg-[#0071e3] px-3 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] disabled:opacity-60"
+                      >
+                        스케줄 저장
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2">
+                    {displaySchedules.map((schedule, index) => (
+                      <div key={`${schedule.dayOfWeek}-${index}`} className="grid gap-2 rounded-[8px] bg-white p-3 sm:grid-cols-[70px_1fr_1fr_1.5fr_80px_60px] sm:items-center">
+                        <select
+                          value={schedule.dayOfWeek}
+                          onChange={(event) => updateDisplaySchedule(index, { dayOfWeek: Number(event.target.value) })}
+                          className="rounded-[8px] border border-[#d2d2d7] px-2 py-2 text-sm outline-none"
+                        >
+                          {DAY_LABELS.map((label, dayIndex) => (
+                            <option key={label} value={dayIndex}>{label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="time"
+                          value={schedule.startTime}
+                          onChange={(event) => updateDisplaySchedule(index, { startTime: event.target.value })}
+                          className="rounded-[8px] border border-[#d2d2d7] px-2 py-2 text-sm outline-none"
+                        />
+                        <input
+                          type="time"
+                          value={schedule.endTime}
+                          onChange={(event) => updateDisplaySchedule(index, { endTime: event.target.value })}
+                          className="rounded-[8px] border border-[#d2d2d7] px-2 py-2 text-sm outline-none"
+                        />
+                        <input
+                          value={schedule.label}
+                          onChange={(event) => updateDisplaySchedule(index, { label: event.target.value })}
+                          placeholder="스케줄 이름"
+                          className="rounded-[8px] border border-[#d2d2d7] px-2 py-2 text-sm outline-none"
+                        />
+                        <label className="flex items-center gap-2 text-sm font-semibold text-[#1d1d1f]">
+                          <input
+                            type="checkbox"
+                            checked={schedule.isActive}
+                            onChange={(event) => updateDisplaySchedule(index, { isActive: event.target.checked })}
+                            className="h-4 w-4"
+                          />
+                          사용
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeDisplaySchedule(index)}
+                          className="rounded-[8px] bg-[#f5f5f7] px-2 py-2 text-sm font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:text-red-700 active:scale-[0.97]"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-[#1d1d1f]">수동 표시 세션</p>
+                      <p className="mt-1 text-xs text-[#86868b]">스케줄과 별도로 즉시 켜야 할 때만 사용합니다.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={displayDuration}
+                        onChange={(event) => setDisplayDuration(Number(event.target.value))}
+                        className="rounded-[8px] border border-[#d2d2d7] bg-white px-2 py-2.5 text-sm outline-none"
+                      >
+                        <option value={6}>6시간</option>
+                        <option value={12}>12시간</option>
+                        <option value={24}>24시간</option>
+                        <option value={48}>48시간</option>
+                        <option value={72}>72시간</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleStartDisplay()}
+                        disabled={working}
+                        className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black active:scale-[0.97] disabled:opacity-60"
+                      >
+                        수동 시작
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDisplayStopConfirmOpen(true)}
+                        disabled={working || !activeDisplaySession}
+                        className="rounded-[8px] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60"
+                      >
+                        중지
+                      </button>
+                    </div>
+                  </div>
+
+                  {activeDisplaySession ? (
+                    <div className="mt-4 rounded-[8px] bg-white px-4 py-3 text-sm text-[#1b7a1b]">
+                      활성 세션 · {activeDisplaySession.source === 'schedule' ? '스케줄' : '수동'} · 만료: {new Date(activeDisplaySession.expires_at).toLocaleString('ko-KR')}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-[8px] bg-white px-4 py-3 text-sm text-[#1d1d1f]">
+                      활성화된 세션 없음
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* Seat map */}

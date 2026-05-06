@@ -1519,7 +1519,7 @@ export default function CourseStudentsPage({
                 </div>
               </label>
               <span className="hidden shrink-0 pb-2 text-xs text-slate-500 sm:inline">
-                {studentLookupLoading ? '검색 중...' : '선택하면 원장 정보가 자동 채워집니다.'}
+                {studentLookupLoading ? '검색 중...' : '선택하면 기존 수강생 정보가 자동 채워집니다.'}
               </span>
             </div>
 
@@ -1576,9 +1576,9 @@ export default function CourseStudentsPage({
                     <UserCheck className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[#1d1d1f]">{selectedStudent.name} 원장 선택됨</p>
+                    <p className="truncate text-sm font-semibold text-[#1d1d1f]">{selectedStudent.name} 수강생 선택됨</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {selectedStudentEditable ? '이번 등록 전에 원장 인적사항도 함께 수정합니다.' : '기본 인적사항은 원장 정보를 그대로 사용합니다.'}
+                      {selectedStudentEditable ? '이번 등록 전에 수강생 인적사항도 함께 수정합니다.' : '기본 인적사항은 기존 수강생 정보를 그대로 사용합니다.'}
                     </p>
                   </div>
                 </div>

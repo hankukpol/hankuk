@@ -242,12 +242,27 @@ export interface DesignatedSeatDisplaySession {
   revoked_at: string | null
   source: 'manual' | 'schedule'
   schedule_id: number | null
+  display_slot_id: number | null
   created_at: string
+}
+
+export interface DesignatedSeatDisplaySlot {
+  id: number
+  division: string
+  slot_key: string
+  label: string
+  course_id: number | null
+  is_active: boolean
+  created_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface DesignatedSeatDisplayDevice {
   id: number
   course_id: number
+  slot_id: number | null
   device_name: string
   device_token_hash: string
   registered_by: string | null
@@ -261,6 +276,18 @@ export interface DesignatedSeatDisplayDevice {
 export interface DesignatedSeatDisplaySchedule {
   id: number
   course_id: number
+  day_of_week: number
+  start_time: string
+  end_time: string
+  label: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface DesignatedSeatDisplaySlotSchedule {
+  id: number
+  slot_id: number
   day_of_week: number
   start_time: string
   end_time: string

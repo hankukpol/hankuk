@@ -6,7 +6,7 @@ import { requireAppFeature } from '@/lib/app-feature-guard'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
 import {
-  getActiveDisplaySessionForCourse,
+  getActiveDisplaySessionForDisplayTarget,
   getDesignatedSeatAdminData,
   getTodayStartKST,
   listDesignatedSeatReservationsForDate,
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
 
     const [data, activeDisplaySession] = await Promise.all([
       getDesignatedSeatAdminData(course.id),
-      getActiveDisplaySessionForCourse(course.id),
+      getActiveDisplaySessionForDisplayTarget(course.id, null),
     ])
     const reservations = parsed.data.date
       ? await listDesignatedSeatReservationsForDate(course.id, parsed.data.date)
@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
           expires_at: activeDisplaySession.expires_at,
           last_seen_at: activeDisplaySession.last_seen_at,
           source: activeDisplaySession.source ?? 'manual',
+          display_slot_id: activeDisplaySession.display_slot_id ?? null,
         }
         : null,
     })

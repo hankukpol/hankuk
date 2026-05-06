@@ -1,14 +1,45 @@
-export default function MultiDisplayDeprecatedPage() {
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-slate-950 px-6 text-center text-white">
-      <main className="max-w-xl">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">Designated Seat</p>
-        <h1 className="mt-4 text-3xl font-black">멀티 QR 표시 화면은 종료되었습니다.</h1>
-        <p className="mt-4 text-sm leading-6 text-slate-300">
-          지정좌석 QR은 이제 강좌별 고정 URL과 등록된 표시기기 쿠키로만 표시됩니다.
-          강의실 PC마다 관리자 화면의 고정 URL을 북마크하고, 각 브라우저를 표시기기로 등록해 주세요.
-        </p>
-      </main>
-    </div>
-  )
+import {
+  DesignatedSeatDisplaySurface,
+  type DesignatedSeatDisplayClientTarget,
+} from '@/components/designated-seat/DesignatedSeatDisplaySurface'
+import { MAX_MULTI_DISPLAY_TARGETS } from '@/lib/designated-seat/display-targets'
+
+function parseSlotTargets(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value.join(',') : value ?? ''
+  return raw
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item))
+    .slice(0, MAX_MULTI_DISPLAY_TARGETS)
+    .map((slotKey) => ({
+      type: 'slot' as const,
+      slotKey,
+    }))
+}
+
+function parseCourseTargets(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value.join(',') : value ?? ''
+  return raw
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((courseId) => Number.isInteger(courseId) && courseId > 0)
+    .slice(0, MAX_MULTI_DISPLAY_TARGETS)
+    .map((courseId) => ({
+      type: 'course' as const,
+      courseId,
+    }))
+}
+
+export default async function MultiDesignatedSeatDisplayPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const targets: DesignatedSeatDisplayClientTarget[] = [
+    ...parseSlotTargets(params.slots),
+    ...parseCourseTargets(params.courses),
+  ].slice(0, MAX_MULTI_DISPLAY_TARGETS)
+
+  return <DesignatedSeatDisplaySurface targets={targets} />
 }

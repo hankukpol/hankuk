@@ -10,6 +10,7 @@ import type {
   DesignatedSeat,
   DesignatedSeatAuthSession,
   DesignatedSeatDisplaySchedule,
+  DesignatedSeatDisplaySlotSchedule,
   DesignatedSeatDisplaySession,
   DesignatedSeatEvent,
   DesignatedSeatLayout,
@@ -525,16 +526,22 @@ export async function verifyStudentSeatAccess(params: {
   return { course, enrollment }
 }
 
-export async function getActiveDisplaySessionForCourse(courseId: number) {
+export async function getActiveDisplaySessionForDisplayTarget(courseId: number, slotId?: number | null) {
   const db = createServerClient()
+  let query = db
+    .from('course_seat_display_sessions')
+    .select('*')
+    .eq('course_id', courseId)
+    .is('revoked_at', null)
+    .gt('expires_at', new Date().toISOString())
+
+  query = slotId
+    ? query.eq('display_slot_id', slotId)
+    : query.is('display_slot_id', null)
+
   const row = unwrapSupabaseResult(
-    'designatedSeat.activeDisplaySessionByCourse',
-    await db
-      .from('course_seat_display_sessions')
-      .select('*')
-      .eq('course_id', courseId)
-      .is('revoked_at', null)
-      .gt('expires_at', new Date().toISOString())
+    'designatedSeat.activeDisplaySessionByDisplayTarget',
+    await query
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -598,7 +605,10 @@ function getKstScheduleClock(value: Date) {
   }
 }
 
-function getKstScheduleEndIso(schedule: Pick<DesignatedSeatDisplaySchedule, 'end_time'>, now: Date) {
+function getKstScheduleEndIso(
+  schedule: Pick<DesignatedSeatDisplaySchedule | DesignatedSeatDisplaySlotSchedule, 'end_time'>,
+  now: Date,
+) {
   const dateKey = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(now)
   return new Date(`${dateKey}T${normalizeDbTime(schedule.end_time)}+09:00`).toISOString()
 }
@@ -620,6 +630,27 @@ export async function getCurrentDisplaySchedule(courseId: number, now = new Date
       .limit(1)
       .maybeSingle(),
   ) as DesignatedSeatDisplaySchedule | null
+
+  return row
+}
+
+export async function getCurrentDisplaySlotSchedule(slotId: number, now = new Date()) {
+  const db = createServerClient()
+  const clock = getKstScheduleClock(now)
+  const row = unwrapSupabaseResult(
+    'designatedSeat.currentDisplaySlotSchedule',
+    await db
+      .from('course_seat_display_slot_schedules')
+      .select('*')
+      .eq('slot_id', slotId)
+      .eq('day_of_week', clock.dayOfWeek)
+      .eq('is_active', true)
+      .lte('start_time', clock.time)
+      .gt('end_time', clock.time)
+      .order('start_time', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ) as DesignatedSeatDisplaySlotSchedule | null
 
   return row
 }
@@ -647,7 +678,7 @@ export type DisplaySessionAvailability =
   | {
     status: 'active'
     session: DesignatedSeatDisplaySession
-    schedule: DesignatedSeatDisplaySchedule | null
+    schedule: DesignatedSeatDisplaySchedule | DesignatedSeatDisplaySlotSchedule | null
   }
   | {
     status: 'inactive'
@@ -655,23 +686,33 @@ export type DisplaySessionAvailability =
     schedule: null
   }
 
-export async function ensureDisplaySessionForCurrentSchedule(courseId: number): Promise<DisplaySessionAvailability> {
+export async function ensureDisplaySessionForCurrentSchedule(
+  courseId: number,
+  options: { slotId?: number | null } = {},
+): Promise<DisplaySessionAvailability> {
   const db = createServerClient()
   const now = new Date()
   const nowIso = now.toISOString()
+  const slotId = options.slotId ?? null
 
   await revokeExpiredDisplaySessions(db, courseId, nowIso)
 
-  const activeSession = await getActiveDisplaySessionForCourse(courseId)
+  const activeSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId)
   if (activeSession) {
     return {
       status: 'active',
       session: activeSession,
-      schedule: activeSession.schedule_id ? await getCurrentDisplaySchedule(courseId, now) : null,
+      schedule: activeSession.display_slot_id
+        ? await getCurrentDisplaySlotSchedule(activeSession.display_slot_id, now)
+        : activeSession.schedule_id
+          ? await getCurrentDisplaySchedule(courseId, now)
+          : null,
     }
   }
 
-  const schedule = await getCurrentDisplaySchedule(courseId, now)
+  const schedule = slotId
+    ? await getCurrentDisplaySlotSchedule(slotId, now)
+    : await getCurrentDisplaySchedule(courseId, now)
   if (!schedule) {
     return {
       status: 'inactive',
@@ -691,14 +732,15 @@ export async function ensureDisplaySessionForCurrentSchedule(courseId: number): 
       expires_at: expiresAt,
       last_seen_at: nowIso,
       source: 'schedule',
-      schedule_id: schedule.id,
+      schedule_id: slotId ? null : schedule.id,
+      display_slot_id: slotId,
     })
     .select('*')
     .single()
 
   if (insertResult.error) {
     if (insertResult.error.code === '23505') {
-      const concurrentSession = await getActiveDisplaySessionForCourse(courseId)
+      const concurrentSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId)
       if (concurrentSession) {
         return {
           status: 'active',
@@ -720,7 +762,8 @@ export async function ensureDisplaySessionForCurrentSchedule(courseId: number): 
       display_session_id: insertResult.data.id,
       actor: 'schedule',
       source: 'schedule',
-      schedule_id: schedule.id,
+      schedule_id: slotId ? null : schedule.id,
+      display_slot_id: slotId,
     },
   })
 

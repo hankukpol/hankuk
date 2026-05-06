@@ -1,7 +1,7 @@
 import { isAppFeatureEnabled } from '@/lib/app-config'
 import { getCourseById } from '@/lib/class-pass-data'
 import {
-  getActiveDisplaySessionForCourse,
+  getActiveDisplaySessionForDisplayTarget,
   getDesignatedSeatAdminData,
 } from '@/lib/designated-seat/service'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -23,7 +23,7 @@ async function loadInitialPayload(courseId: number): Promise<AdminPayload | null
 
   const [data, activeDisplaySession] = await Promise.all([
     getDesignatedSeatAdminData(course.id),
-    getActiveDisplaySessionForCourse(course.id),
+    getActiveDisplaySessionForDisplayTarget(course.id, null),
   ])
 
   return {
@@ -34,6 +34,8 @@ async function loadInitialPayload(courseId: number): Promise<AdminPayload | null
         id: activeDisplaySession.id,
         expires_at: activeDisplaySession.expires_at,
         last_seen_at: activeDisplaySession.last_seen_at,
+        source: activeDisplaySession.source ?? 'manual',
+        display_slot_id: activeDisplaySession.display_slot_id ?? null,
       }
       : null,
   }

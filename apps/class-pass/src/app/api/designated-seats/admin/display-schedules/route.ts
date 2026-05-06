@@ -3,14 +3,17 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
-import { getCourseById } from '@/lib/class-pass-data'
+import { resolveDesignatedSeatDisplayTarget } from '@/lib/designated-seat/display-targets'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const timeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
 
-const listSchema = z.object({
-  courseId: z.coerce.number().int().positive(),
+const targetSchema = z.object({
+  courseId: z.coerce.number().int().positive().optional().nullable(),
+  slotKey: z.string().trim().min(1).max(80).optional().nullable(),
+}).refine((value) => Boolean(value.courseId) !== Boolean(value.slotKey), {
+  message: 'Exactly one display target is required.',
 })
 
 const scheduleSchema = z.object({
@@ -22,8 +25,11 @@ const scheduleSchema = z.object({
 })
 
 const saveSchema = z.object({
-  courseId: z.number().int().positive(),
+  courseId: z.number().int().positive().optional().nullable(),
+  slotKey: z.string().trim().min(1).max(80).optional().nullable(),
   schedules: z.array(scheduleSchema).max(28),
+}).refine((value) => Boolean(value.courseId) !== Boolean(value.slotKey), {
+  message: 'Exactly one display target is required.',
 })
 
 function normalizeTime(value: string) {
@@ -40,48 +46,60 @@ function assertValidScheduleTimes(schedules: z.infer<typeof scheduleSchema>[]) {
   return true
 }
 
-async function requireCourse(req: NextRequest, courseId: number) {
+async function requireDisplayTarget(req: NextRequest, input: { courseId?: number | null; slotKey?: string | null }) {
   const { error: authError } = await authenticateAdminRequest(req)
   if (authError) {
-    return { response: authError, course: null }
+    return { response: authError, target: null }
   }
 
   const featureError = await requireAppFeature('admin_seat_management_enabled')
   if (featureError) {
-    return { response: featureError, course: null }
+    return { response: featureError, target: null }
   }
 
   const division = await getServerTenantType()
-  const course = await getCourseById(courseId, division)
-  if (!course) {
+  const target = await resolveDesignatedSeatDisplayTarget({
+    courseId: input.courseId,
+    slotKey: input.slotKey,
+    division,
+  })
+  if (!target) {
     return {
-      response: NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 }),
-      course: null,
+      response: NextResponse.json({ error: 'QR 표시 대상을 찾을 수 없습니다.' }, { status: 404 }),
+      target: null,
     }
   }
 
-  return { response: null, course }
+  return { response: null, target }
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const parsed = listSchema.safeParse({
+    const parsed = targetSchema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
+      slotKey: req.nextUrl.searchParams.get('slotKey'),
     })
     if (!parsed.success) {
       return NextResponse.json({ error: '표시 스케줄 조회 요청이 올바르지 않습니다.' }, { status: 400 })
     }
 
-    const guard = await requireCourse(req, parsed.data.courseId)
+    const guard = await requireDisplayTarget(req, parsed.data)
     if (guard.response) {
       return guard.response
     }
 
     const db = createServerClient()
-    const { data, error } = await db
-      .from('course_seat_display_schedules')
-      .select('*')
-      .eq('course_id', guard.course!.id)
+    const query = guard.target!.mode === 'slot'
+      ? db
+        .from('course_seat_display_slot_schedules')
+        .select('*')
+        .eq('slot_id', guard.target!.slot.id)
+      : db
+        .from('course_seat_display_schedules')
+        .select('*')
+        .eq('course_id', guard.target!.course.id)
+
+    const { data, error } = await query
       .order('day_of_week', { ascending: true })
       .order('start_time', { ascending: true })
 
@@ -103,7 +121,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: '표시 스케줄 저장 요청이 올바르지 않습니다.' }, { status: 400 })
     }
 
-    const guard = await requireCourse(req, parsed.data.courseId)
+    const guard = await requireDisplayTarget(req, parsed.data)
     if (guard.response) {
       return guard.response
     }
@@ -117,10 +135,15 @@ export async function PUT(req: NextRequest) {
       is_active: schedule.isActive,
     }))
 
-    const replaceResult = await db.rpc('replace_course_seat_display_schedules', {
-      p_course_id: guard.course!.id,
-      p_schedules: payload,
-    })
+    const replaceResult = guard.target!.mode === 'slot'
+      ? await db.rpc('replace_course_seat_display_slot_schedules', {
+        p_slot_id: guard.target!.slot.id,
+        p_schedules: payload,
+      })
+      : await db.rpc('replace_course_seat_display_schedules', {
+        p_course_id: guard.target!.course.id,
+        p_schedules: payload,
+      })
 
     if (replaceResult.error) {
       throw replaceResult.error

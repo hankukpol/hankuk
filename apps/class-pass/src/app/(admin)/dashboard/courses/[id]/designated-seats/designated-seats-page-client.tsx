@@ -40,6 +40,8 @@ type ManualSeatConfirmation =
 
 type DisplayDeviceRow = {
   id: number
+  course_id?: number
+  slot_id?: number | null
   device_name: string
   registered_by: string | null
   last_seen_at: string | null
@@ -53,6 +55,26 @@ type DisplayScheduleRow = {
   endTime: string
   label: string
   isActive: boolean
+}
+
+type DisplaySlotRow = {
+  id: number
+  division: string
+  slot_key: string
+  label: string
+  course_id: number | null
+  is_active: boolean
+  displayUrl: string
+  course: {
+    id: number
+    name: string
+    status: string
+    enrolled_from: string | null
+    enrolled_until: string | null
+    feature_designated_seat: boolean
+  } | null
+  created_at: string
+  updated_at: string
 }
 
 type RegistrationCodeState = {
@@ -72,6 +94,7 @@ export type AdminPayload = {
     expires_at: string
     last_seen_at: string | null
     source?: 'manual' | 'schedule'
+    display_slot_id?: number | null
   } | null
 }
 
@@ -140,6 +163,15 @@ function ensureWeeklyDisplaySchedules(schedules: DisplayScheduleRow[]) {
 
 function normalizeDisplayTime(value: string | null | undefined) {
   return (value ?? '06:00').slice(0, 5)
+}
+
+function normalizeDisplaySlotKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
 function getToday() {
@@ -254,6 +286,11 @@ export default function CourseDesignatedSeatsPage({
   )
   const [displayUrl, setDisplayUrl] = useState('')
   const [displayDuration, setDisplayDuration] = useState(24)
+  const [displaySlots, setDisplaySlots] = useState<DisplaySlotRow[]>([])
+  const [selectedDisplaySlotKey, setSelectedDisplaySlotKey] = useState('')
+  const [slotKeyInput, setSlotKeyInput] = useState('basic-theory')
+  const [slotLabelInput, setSlotLabelInput] = useState('기본이론반 QR')
+  const [multiDisplayUrl, setMultiDisplayUrl] = useState('')
   const [displayDevices, setDisplayDevices] = useState<DisplayDeviceRow[]>([])
   const [displaySchedules, setDisplaySchedules] = useState<DisplayScheduleRow[]>(getDefaultDisplaySchedules)
   const [displayDeviceName, setDisplayDeviceName] = useState('QR PC 1')
@@ -278,7 +315,7 @@ export default function CourseDesignatedSeatsPage({
   const [manualSeatConfirmation, setManualSeatConfirmation] = useState<ManualSeatConfirmation | null>(null)
   const [displayStopConfirmOpen, setDisplayStopConfirmOpen] = useState(false)
   const savedSnapshotRef = useRef(initialSnapshot)
-  const fixedDisplayUrl = useMemo(() => {
+  const courseDisplayUrl = useMemo(() => {
     if (typeof window === 'undefined' || !Number.isInteger(courseId) || courseId <= 0) {
       return ''
     }
@@ -287,10 +324,21 @@ export default function CourseDesignatedSeatsPage({
   }, [courseId, tenant.type])
 
   useEffect(() => {
-    if (fixedDisplayUrl) {
-      setDisplayUrl(fixedDisplayUrl)
+    if (courseDisplayUrl && !displayUrl) {
+      setDisplayUrl(courseDisplayUrl)
     }
-  }, [fixedDisplayUrl])
+  }, [courseDisplayUrl, displayUrl])
+
+  const selectedDisplaySlot = useMemo(
+    () => displaySlots.find((slot) => slot.slot_key === selectedDisplaySlotKey) ?? null,
+    [displaySlots, selectedDisplaySlotKey],
+  )
+
+  const activeDisplayTargetBody = useMemo(() => (
+    selectedDisplaySlotKey
+      ? { slotKey: selectedDisplaySlotKey }
+      : { courseId }
+  ), [courseId, selectedDisplaySlotKey])
 
   function markSnapshot(drafts: SeatDraft[], cols: number, rws: number, aisle: string, feat: boolean, open: boolean) {
     savedSnapshotRef.current = JSON.stringify({ drafts, cols, rws, aisle, feat, open })
@@ -342,16 +390,54 @@ export default function CourseDesignatedSeatsPage({
     applyPayload(payload)
   }
 
-  const loadDisplayConfig = useCallback(async () => {
+  const loadDisplayConfig = useCallback(async (preferredSlotKey?: string) => {
     if (!Number.isInteger(courseId) || courseId <= 0) {
       return
     }
 
     setDisplayConfigLoading(true)
     try {
-      const [devicesResponse, schedulesResponse] = await Promise.all([
-        fetch(`/api/designated-seats/admin/display-devices?courseId=${courseId}`, { cache: 'no-store' }),
-        fetch(`/api/designated-seats/admin/display-schedules?courseId=${courseId}`, { cache: 'no-store' }),
+      const slotsResponse = await fetch(`/api/designated-seats/admin/display-slots?courseId=${courseId}`, { cache: 'no-store' })
+      const slotsPayload = await slotsResponse.json().catch(() => null) as {
+        slots?: DisplaySlotRow[]
+        currentCourseSlotKey?: string | null
+        multiDisplayUrl?: string
+        error?: string
+      } | null
+
+      if (!slotsResponse.ok) {
+        throw new Error(slotsPayload?.error ?? '표시 슬롯 목록을 불러오지 못했습니다.')
+      }
+
+      const slots = slotsPayload?.slots ?? []
+      setDisplaySlots(slots)
+      setMultiDisplayUrl(slotsPayload?.multiDisplayUrl ?? '')
+
+      const nextSlotKey = preferredSlotKey !== undefined
+        ? preferredSlotKey && slots.some((slot) => slot.slot_key === preferredSlotKey)
+          ? preferredSlotKey
+          : ''
+        : selectedDisplaySlotKey && slots.some((slot) => slot.slot_key === selectedDisplaySlotKey)
+          ? selectedDisplaySlotKey
+          : slotsPayload?.currentCourseSlotKey ?? ''
+      setSelectedDisplaySlotKey(nextSlotKey)
+
+      const selectedSlot = nextSlotKey
+        ? slots.find((slot) => slot.slot_key === nextSlotKey) ?? null
+        : null
+      setDisplayUrl(selectedSlot?.displayUrl ?? courseDisplayUrl)
+      if (selectedSlot) {
+        setSlotKeyInput(selectedSlot.slot_key)
+        setSlotLabelInput(selectedSlot.label)
+      }
+
+      const targetQuery = nextSlotKey
+        ? `slotKey=${encodeURIComponent(nextSlotKey)}`
+        : `courseId=${courseId}`
+      const [devicesResponse, schedulesResponse, displayResponse] = await Promise.all([
+        fetch(`/api/designated-seats/admin/display-devices?${targetQuery}`, { cache: 'no-store' }),
+        fetch(`/api/designated-seats/admin/display-schedules?${targetQuery}`, { cache: 'no-store' }),
+        fetch(`/api/designated-seats/admin/display?${targetQuery}`, { cache: 'no-store' }),
       ])
       const devicesPayload = await devicesResponse.json().catch(() => null) as { devices?: DisplayDeviceRow[]; error?: string } | null
       const schedulesPayload = await schedulesResponse.json().catch(() => null) as {
@@ -365,6 +451,11 @@ export default function CourseDesignatedSeatsPage({
         }>
         error?: string
       } | null
+      const displayPayload = await displayResponse.json().catch(() => null) as {
+        session?: AdminPayload['activeDisplaySession']
+        displayUrl?: string
+        error?: string
+      } | null
 
       if (!devicesResponse.ok) {
         throw new Error(devicesPayload?.error ?? '표시 기기 목록을 불러오지 못했습니다.')
@@ -372,8 +463,13 @@ export default function CourseDesignatedSeatsPage({
       if (!schedulesResponse.ok) {
         throw new Error(schedulesPayload?.error ?? '표시 스케줄을 불러오지 못했습니다.')
       }
+      if (!displayResponse.ok) {
+        throw new Error(displayPayload?.error ?? '표시 세션 상태를 불러오지 못했습니다.')
+      }
 
       setDisplayDevices(devicesPayload?.devices ?? [])
+      setActiveDisplaySession(displayPayload?.session ?? null)
+      setDisplayUrl(displayPayload?.displayUrl ?? selectedSlot?.displayUrl ?? courseDisplayUrl)
       const schedules = (schedulesPayload?.schedules ?? []).map((schedule) => ({
         id: schedule.id,
         dayOfWeek: schedule.day_of_week,
@@ -388,7 +484,7 @@ export default function CourseDesignatedSeatsPage({
     } finally {
       setDisplayConfigLoading(false)
     }
-  }, [courseId])
+  }, [courseDisplayUrl, courseId, selectedDisplaySlotKey])
 
   async function loadReservationDate(nextDate: string) {
     setReservationDate(nextDate)
@@ -617,6 +713,55 @@ export default function CourseDesignatedSeatsPage({
     await refresh().catch(() => null)
   }
 
+  async function handleSelectDisplaySlot(slotKey: string) {
+    setSelectedDisplaySlotKey(slotKey)
+    setRegistrationCode(null)
+    const slot = displaySlots.find((item) => item.slot_key === slotKey)
+    if (slot) {
+      setSlotKeyInput(slot.slot_key)
+      setSlotLabelInput(slot.label)
+      setDisplayUrl(slot.displayUrl)
+    } else {
+      setDisplayUrl(courseDisplayUrl)
+    }
+    await loadDisplayConfig(slotKey)
+  }
+
+  async function handleSaveDisplaySlot() {
+    const slotKey = normalizeDisplaySlotKey(slotKeyInput)
+    if (!slotKey) {
+      setError('슬롯 키는 영문 소문자, 숫자, 하이픈만 사용할 수 있습니다.')
+      return
+    }
+
+    setDisplayConfigSaving(true)
+    setError('')
+    setMessage('')
+
+    const response = await fetch('/api/designated-seats/admin/display-slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseId,
+        slotKey,
+        label: slotLabelInput.trim() || slotKey,
+        isActive: true,
+      }),
+    })
+    const result = await response.json().catch(() => null) as { displayUrl?: string; error?: string } | null
+    setDisplayConfigSaving(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '표시 슬롯을 저장하지 못했습니다.')
+      return
+    }
+
+    setSelectedDisplaySlotKey(slotKey)
+    setDisplayUrl(result?.displayUrl ?? displayUrl)
+    setMessage('고정 표시 슬롯을 현재 강좌에 연결했습니다. 강의실 PC는 이 슬롯 URL을 계속 사용하면 됩니다.')
+    await loadDisplayConfig(slotKey)
+  }
+
   async function handleStartDisplay() {
     setWorking(true)
     setError('')
@@ -625,7 +770,7 @@ export default function CourseDesignatedSeatsPage({
     const response = await fetch('/api/designated-seats/admin/display', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId, durationHours: displayDuration }),
+      body: JSON.stringify({ ...activeDisplayTargetBody, durationHours: displayDuration }),
     })
     const result = await response.json().catch(() => null)
     setWorking(false)
@@ -635,9 +780,10 @@ export default function CourseDesignatedSeatsPage({
       return
     }
 
-    setDisplayUrl((result as { displayUrl?: string } | null)?.displayUrl ?? fixedDisplayUrl)
+    setDisplayUrl((result as { displayUrl?: string } | null)?.displayUrl ?? selectedDisplaySlot?.displayUrl ?? courseDisplayUrl)
     setMessage('현장 QR 표시 세션을 시작했습니다.')
     await refresh().catch(() => null)
+    await loadDisplayConfig(selectedDisplaySlotKey)
   }
 
   async function handleStopDisplay() {
@@ -648,7 +794,7 @@ export default function CourseDesignatedSeatsPage({
     const response = await fetch('/api/designated-seats/admin/display', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId }),
+      body: JSON.stringify(activeDisplayTargetBody),
     })
     const result = await response.json().catch(() => null)
     setWorking(false)
@@ -658,9 +804,10 @@ export default function CourseDesignatedSeatsPage({
       return
     }
 
-    setDisplayUrl(fixedDisplayUrl)
+    setDisplayUrl(selectedDisplaySlot?.displayUrl ?? courseDisplayUrl)
     setMessage('현장 QR 표시 세션을 종료했습니다.')
     await refresh().catch(() => null)
+    await loadDisplayConfig(selectedDisplaySlotKey)
   }
 
   async function handleStopDisplayConfirmed() {
@@ -678,7 +825,7 @@ export default function CourseDesignatedSeatsPage({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        courseId,
+        ...activeDisplayTargetBody,
         deviceName: displayDeviceName.trim() || `QR PC ${displayDevices.length + 1}`,
       }),
     })
@@ -707,7 +854,7 @@ export default function CourseDesignatedSeatsPage({
     const response = await fetch('/api/designated-seats/admin/display-devices', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId, deviceId }),
+      body: JSON.stringify({ ...activeDisplayTargetBody, deviceId }),
     })
     const result = await response.json().catch(() => null) as { error?: string } | null
     setDisplayConfigSaving(false)
@@ -753,7 +900,7 @@ export default function CourseDesignatedSeatsPage({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        courseId,
+        ...activeDisplayTargetBody,
         schedules: displaySchedules.map((schedule) => ({
           dayOfWeek: schedule.dayOfWeek,
           startTime: schedule.startTime,
@@ -1236,6 +1383,67 @@ export default function CourseDesignatedSeatsPage({
             <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_1.25fr]">
               <div className="flex flex-col gap-4">
                 <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="flex-1">
+                      <span className="text-xs font-semibold text-[#86868b]">고정 표시 슬롯</span>
+                      <select
+                        value={selectedDisplaySlotKey}
+                        onChange={(event) => void handleSelectDisplaySlot(event.target.value)}
+                        className="mt-1.5 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0071e3]"
+                      >
+                        <option value="">강좌 직접 URL 사용</option>
+                        {displaySlots.map((slot) => (
+                          <option key={slot.id} value={slot.slot_key}>
+                            {slot.label} · {slot.course?.name ?? '연결된 강좌 없음'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                    <label>
+                      <span className="text-xs font-semibold text-[#86868b]">슬롯 키</span>
+                      <input
+                        value={slotKeyInput}
+                        onChange={(event) => setSlotKeyInput(normalizeDisplaySlotKey(event.target.value))}
+                        className="mt-1.5 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0071e3]"
+                        placeholder="basic-theory"
+                      />
+                    </label>
+                    <label>
+                      <span className="text-xs font-semibold text-[#86868b]">슬롯 이름</span>
+                      <input
+                        value={slotLabelInput}
+                        onChange={(event) => setSlotLabelInput(event.target.value)}
+                        className="mt-1.5 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0071e3]"
+                        placeholder="기본이론반 QR"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveDisplaySlot()}
+                      disabled={displayConfigSaving}
+                      className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black active:scale-[0.97] disabled:opacity-60"
+                    >
+                      현재 강좌 연결
+                    </button>
+                  </div>
+
+                  <p className="mt-3 text-xs leading-5 text-[#86868b]">
+                    강의실 PC는 슬롯 URL을 즐겨찾기합니다. 다음 기수 강좌를 새로 만들면 이 슬롯을 새 강좌에 다시 연결하기만 하면 됩니다.
+                  </p>
+
+                  {selectedDisplaySlot ? (
+                    <div className="mt-3 rounded-[8px] bg-white px-3 py-3 text-xs text-[#86868b]">
+                      <p className="font-semibold text-[#1d1d1f]">{selectedDisplaySlot.label}</p>
+                      <p className="mt-1">현재 연결: {selectedDisplaySlot.course?.name ?? '연결된 강좌 없음'}</p>
+                      <p className="mt-1">슬롯 키: {selectedDisplaySlot.slot_key}</p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
                   <p className="text-xs font-semibold text-[#86868b]">강의실 PC 북마크 URL</p>
                   <input
                     value={displayUrl}
@@ -1263,6 +1471,39 @@ export default function CourseDesignatedSeatsPage({
                       새 창 열기
                     </a>
                   </div>
+                </div>
+
+                <div className="rounded-[8px] bg-[#f5f5f7] p-4">
+                  <p className="text-xs font-semibold text-[#86868b]">2개 이상 QR 멀티 표시 URL</p>
+                  <input
+                    value={multiDisplayUrl}
+                    readOnly
+                    className="mt-2 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-xs text-[#1d1d1f] outline-none"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(multiDisplayUrl)
+                        setMessage('멀티 표시 URL을 복사했습니다.')
+                      }}
+                      disabled={!multiDisplayUrl}
+                      className="rounded-[8px] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60"
+                    >
+                      멀티 URL 복사
+                    </button>
+                    <a
+                      href={multiDisplayUrl || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97]"
+                    >
+                      멀티 화면 열기
+                    </a>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[#86868b]">
+                    연결된 슬롯이 2개 이상이면 한 화면에서 각 강좌 QR을 나눠 표시할 수 있습니다.
+                  </p>
                 </div>
 
                 <div className="rounded-[8px] bg-[#f5f5f7] p-4">

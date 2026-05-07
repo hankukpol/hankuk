@@ -15,6 +15,7 @@ const importRowSchema = z.object({
   name: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   examNumber: z.string().optional().nullable(),
+  birthDate: z.string().optional().nullable(),
   amount: z.union([z.number(), z.string()]).optional().nullable(),
   paidAt: z.string().optional().nullable(),
   method: z.string().optional().nullable(),

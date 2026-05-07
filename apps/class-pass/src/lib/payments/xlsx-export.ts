@@ -159,6 +159,22 @@ export function downloadMonthlySettlementXlsx(report: SettlementReport, month: s
   writeWorkbook(workbook, `settlement-monthly-${month.replace(/-/g, '')}.xlsx`)
 }
 
+export function downloadPaymentImportTemplate() {
+  const workbook = XLSX.utils.book_new()
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['이름', '연락처', '응시번호', '생년월일', '수강료', '결제일', '결제방법', '분류', '비고'],
+    ['홍길동', '01012345678', '12345', '900515', 60000, '2026-05-07', '카드', '수강료', ''],
+    ['김철수', '01098765432', '', '19950322', 2900000, '2026-05-04', '카드', '수강료', '장기분납'],
+    ['이영희', '01055556666', '67890', '', 60000, '2026-05-07', '현금', '수강료', ''],
+  ])
+  sheet['!cols'] = [
+    { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 10 },
+    { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 16 },
+  ]
+  XLSX.utils.book_append_sheet(workbook, sheet, '수납가져오기양식')
+  XLSX.writeFile(workbook, 'payment-import-template.xlsx', { compression: true })
+}
+
 export function downloadSettlementCsv(rows: SettlementLedgerRow[], filename: string) {
   const header = ['구분', '일자', '시각', '학생', '학원구분', '강좌', '직렬', '방법', '분류', '결제액', '환불액', '순액', '영수증번호', '사유']
   const escapeCell = (value: unknown) => {

@@ -1,4 +1,5 @@
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
+import { normalizeBirthDate } from '@/lib/auth/student-auth'
 import { createServerClient } from '@/lib/supabase/server'
 import type { Enrollment } from '@/types/database'
 import {
@@ -12,6 +13,7 @@ export type PaymentImportRowInput = {
   name?: string | null
   phone?: string | null
   examNumber?: string | null
+  birthDate?: string | null
   amount?: number | string | null
   paidAt?: string | null
   method?: string | null
@@ -24,6 +26,7 @@ export type PaymentImportPreviewRow = {
   name: string
   phone: string
   examNumber: string | null
+  birthDate: string | null
   amount: number
   paidAt: string
   method: PaymentMethod
@@ -238,6 +241,7 @@ export function previewPaymentImportRows(params: {
     const name = normalizeName(String(row.name ?? ''))
     const phone = normalizePhone(String(row.phone ?? ''))
     const examNumber = normalizeExamNumber(row.examNumber) || null
+    const birthDate = normalizeBirthDate(row.birthDate) || null
     const amount = parseAmount(row.amount)
     const paidAt = normalizePaidAt(row.paidAt)
     const method = parseMethod(row.method)
@@ -245,15 +249,15 @@ export function previewPaymentImportRows(params: {
     const memo = String(row.memo ?? '').trim() || null
 
     if (!name) {
-      return { rowNumber, name, phone, examNumber, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '이름이 없습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '이름이 없습니다.' }
     }
 
     if (String(row.method ?? '').trim().toLowerCase() === 'mixed' || String(row.method ?? '').trim() === '복합') {
-      return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '복합 결제는 카드/현금처럼 실제 수단별 행으로 나누어 업로드해 주세요.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '복합 결제는 카드/현금처럼 실제 수단별 행으로 나누어 업로드해 주세요.' }
     }
 
     if (phone.length < 4) {
-      return { rowNumber, name, phone, examNumber, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '연락처가 없거나 너무 짧습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '연락처가 없거나 너무 짧습니다.' }
     }
 
     if (
@@ -262,12 +266,12 @@ export function previewPaymentImportRows(params: {
       || (method !== 'free' && amount <= 0)
       || (method === 'free' && amount !== 0)
     ) {
-      return { rowNumber, name, phone, examNumber, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '결제 금액이 올바르지 않습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '결제 금액이 올바르지 않습니다.' }
     }
 
     const importKey = examNumber ? `exam:${examNumber}` : `name-phone:${name}:${phone.slice(-4)}`
     if (seenImportKeys.has(importKey)) {
-      return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'duplicate', enrollmentId: null, message: '업로드 파일 안에서 중복된 학생입니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'duplicate', enrollmentId: null, message: '업로드 파일 안에서 중복된 학생입니다.' }
     }
     seenImportKeys.add(importKey)
 
@@ -277,18 +281,18 @@ export function previewPaymentImportRows(params: {
     })
 
     if (resolved.status === 'matched' && resolved.enrollment) {
-      return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'matched', enrollmentId: resolved.enrollment.id, message: resolved.message }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'matched', enrollmentId: resolved.enrollment.id, message: resolved.message }
     }
 
     if (resolved.status === 'duplicate') {
-      return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'duplicate', enrollmentId: null, message: resolved.message }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'duplicate', enrollmentId: null, message: resolved.message }
     }
 
     if (!params.createMissingEnrollment) {
-      return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '매칭 수강생이 없습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '매칭 수강생이 없습니다.' }
     }
 
-    return { rowNumber, name, phone, examNumber, amount, paidAt, method, category, memo, status: 'create', enrollmentId: null, message: resolved.message }
+    return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'create', enrollmentId: null, message: resolved.message }
   })
 }
 
@@ -353,6 +357,7 @@ export async function runPaymentImport(params: {
           name: row.name,
           phone: row.phone,
           examNumber: row.examNumber,
+          birthDate: row.birthDate,
         }, params.division)
         enrollmentId = created.enrollment.id
         row.enrollmentId = enrollmentId

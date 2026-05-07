@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { FileSpreadsheet, Upload } from 'lucide-react'
+import { Download, FileSpreadsheet, Upload } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { formatWon } from '@/lib/payments/format'
+import { downloadPaymentImportTemplate } from '@/lib/payments/xlsx-export'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course } from '@/types/database'
 
-type ImportField = 'name' | 'phone' | 'examNumber' | 'amount' | 'paidAt' | 'method' | 'category' | 'memo'
+type ImportField = 'name' | 'phone' | 'examNumber' | 'birthDate' | 'amount' | 'paidAt' | 'method' | 'category' | 'memo'
 
 type ParsedSheet = {
   headers: string[]
@@ -45,6 +46,7 @@ const FIELD_LABEL: Record<ImportField, string> = {
   name: '이름',
   phone: '연락처',
   examNumber: '응시번호',
+  birthDate: '생년월일',
   amount: '수강료',
   paidAt: '결제일',
   method: '결제방법',
@@ -60,6 +62,7 @@ function inferMapping(headers: string[]) {
     name: '',
     phone: '',
     examNumber: '',
+    birthDate: '',
     amount: '',
     paidAt: '',
     method: '',
@@ -72,6 +75,7 @@ function inferMapping(headers: string[]) {
     if (!mapping.name && /이름|성명|name/.test(normalized)) mapping.name = header
     if (!mapping.phone && /연락처|전화|휴대폰|phone|mobile/.test(normalized)) mapping.phone = header
     if (!mapping.examNumber && /응시|학번|수험|exam/.test(normalized)) mapping.examNumber = header
+    if (!mapping.birthDate && /생년월일|생일|birthdate|birthday|yymmdd/.test(normalized)) mapping.birthDate = header
     if (!mapping.amount && /수강료|금액|결제액|amount|price/.test(normalized)) mapping.amount = header
     if (!mapping.paidAt && /결제일|납부일|수납일|date|paid/.test(normalized)) mapping.paidAt = header
     if (!mapping.method && /결제방법|결제수단|방법|method/.test(normalized)) mapping.method = header
@@ -87,6 +91,7 @@ function toImportRows(sheet: ParsedSheet, mapping: Record<ImportField, string>) 
     name: mapping.name ? record[mapping.name] : '',
     phone: mapping.phone ? record[mapping.phone] : '',
     examNumber: mapping.examNumber ? record[mapping.examNumber] : '',
+    birthDate: mapping.birthDate ? record[mapping.birthDate] : '',
     amount: mapping.amount ? record[mapping.amount] : '',
     paidAt: mapping.paidAt ? record[mapping.paidAt] : '',
     method: mapping.method ? record[mapping.method] : '',
@@ -226,12 +231,22 @@ export default function SettlementImportPage() {
             <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">엑셀 수납 가져오기</h1>
             <p className="mt-2 text-sm text-slate-500">기존 운영 엑셀 또는 CSV를 읽어 수강생과 결제 기록을 한 번에 반영합니다.</p>
           </div>
-          <Link
-            href={withTenantPrefix('/dashboard/settlements', tenant.type)}
-            className="rounded-[8px] bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-          >
-            정산으로 돌아가기
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => downloadPaymentImportTemplate()}
+              className="inline-flex items-center gap-2 rounded-[8px] bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+            >
+              <Download className="h-4 w-4" />
+              양식 다운로드
+            </button>
+            <Link
+              href={withTenantPrefix('/dashboard/settlements', tenant.type)}
+              className="rounded-[8px] bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+            >
+              정산으로 돌아가기
+            </Link>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 lg:grid-cols-[1fr,260px]">

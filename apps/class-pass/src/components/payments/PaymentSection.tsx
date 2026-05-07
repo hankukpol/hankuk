@@ -313,6 +313,45 @@ export function PaymentSection({
     })
   }
 
+  function updateEntryAmount(entryId: string, nextAmountText: string) {
+    const entries = value.entries.map((entry) => (
+      entry.id === entryId ? { ...entry, amount: nextAmountText } : entry
+    ))
+    let overage = paymentTotal(entries) - dueAmount
+
+    if (overage <= 0) {
+      patch({ entries })
+      return
+    }
+
+    const editedIndex = entries.findIndex((entry) => entry.id === entryId)
+    for (let index = 0; index < entries.length && overage > 0; index += 1) {
+      if (index === editedIndex) {
+        continue
+      }
+
+      const amount = toNumber(entries[index].amount)
+      const reduction = Math.min(amount, overage)
+      const nextAmount = amount - reduction
+      entries[index] = {
+        ...entries[index],
+        amount: nextAmount > 0 ? String(nextAmount) : '',
+      }
+      overage -= reduction
+    }
+
+    if (overage > 0 && editedIndex >= 0) {
+      const editedAmount = toNumber(entries[editedIndex].amount)
+      const nextEditedAmount = Math.max(editedAmount - overage, 0)
+      entries[editedIndex] = {
+        ...entries[editedIndex],
+        amount: nextEditedAmount > 0 ? String(nextEditedAmount) : '',
+      }
+    }
+
+    patch({ entries })
+  }
+
   function updateEntryMethod(entryId: string, method: PaymentEntryMethod) {
     const otherTotal = value.entries
       .filter((entry) => entry.id !== entryId)
@@ -594,7 +633,7 @@ export function PaymentSection({
                       <input
                         inputMode="numeric"
                         value={entry.amount}
-                        onChange={(event) => updateEntry(entry.id, { amount: numberInputValue(event.target.value) })}
+                        onChange={(event) => updateEntryAmount(entry.id, numberInputValue(event.target.value))}
                         placeholder={`전액 ${formatWon(Math.max(payableAmount - paidAmount, 0))}`}
                         className={`rounded-[8px] border border-slate-200 bg-white ${controlPaddingClass} text-sm outline-none focus:border-slate-400`}
                       />

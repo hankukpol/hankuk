@@ -113,7 +113,8 @@ function formatKstShortDateTime(value: string | null | undefined) {
 
 export default function DailySettlementsPage() {
   const tenant = useTenantConfig()
-  const [date, setDate] = useState(getInitialDate)
+  const [fromDate, setFromDate] = useState(getInitialDate)
+  const [toDate, setToDate] = useState(getInitialDate)
   const [courses, setCourses] = useState<Course[]>([])
   const [courseId, setCourseId] = useState(getInitialCourseId)
   const [rawPayments, setRawPayments] = useState<EnrollmentPayment[]>([])
@@ -131,13 +132,16 @@ export default function DailySettlementsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const initialDate = params.get('date')
+    const initialFrom = params.get('from') ?? params.get('date')
+    const initialTo = params.get('to') ?? params.get('date')
     const initialCourseId = params.get('courseId')
 
-    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
-      setDate(initialDate)
+    if (initialFrom && /^\d{4}-\d{2}-\d{2}$/.test(initialFrom)) {
+      setFromDate(initialFrom)
     }
-
+    if (initialTo && /^\d{4}-\d{2}-\d{2}$/.test(initialTo)) {
+      setToDate(initialTo)
+    }
     if (initialCourseId && /^\d+$/.test(initialCourseId)) {
       setCourseId(initialCourseId)
     }
@@ -148,31 +152,37 @@ export default function DailySettlementsPage() {
     setError('')
 
     try {
-      const params = new URLSearchParams({ from: date, to: date, limit: '5000' })
+      const params = new URLSearchParams({ from: fromDate, to: toDate, limit: '5000' })
       if (courseId) {
         params.set('courseId', courseId)
       }
       const response = await fetch(`/api/payments/settlement/details?${params.toString()}`, { cache: 'no-store' })
       const result = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(result?.error ?? '일일 정산 데이터를 불러오지 못했습니다.')
+        throw new Error(result?.error ?? '정산 데이터를 불러오지 못했습니다.')
       }
 
       setRawPayments((result?.payments ?? []) as EnrollmentPayment[])
     } catch (reason) {
       setRawPayments([])
-      setError(reason instanceof Error ? reason.message : '일일 정산 데이터를 불러오지 못했습니다.')
+      setError(reason instanceof Error ? reason.message : '정산 데이터를 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [courseId, date])
+  }, [courseId, fromDate, toDate])
 
   const loadConfirmation = useCallback(async () => {
+    if (fromDate !== toDate) {
+      setConfirmation(null)
+      setConfirmationLoading(false)
+      return
+    }
+
     setConfirmationLoading(true)
     setConfirmationError('')
 
     try {
-      const response = await fetch(`/api/settlements/confirmation?date=${encodeURIComponent(date)}`, { cache: 'no-store' })
+      const response = await fetch(`/api/settlements/confirmation?date=${encodeURIComponent(fromDate)}`, { cache: 'no-store' })
       const result = await response.json().catch(() => null)
       if (!response.ok) {
         throw new Error(result?.error ?? '정산 확인 상태를 불러오지 못했습니다.')
@@ -185,7 +195,7 @@ export default function DailySettlementsPage() {
     } finally {
       setConfirmationLoading(false)
     }
-  }, [date])
+  }, [fromDate, toDate])
 
   useEffect(() => {
     fetch('/api/courses?activeOnly=1', { cache: 'no-store' })
@@ -209,13 +219,15 @@ export default function DailySettlementsPage() {
     void loadConfirmation()
   }, [loadConfirmation])
 
+  const isSingleDay = fromDate === toDate
+
   const allReport = useMemo(
-    () => buildSettlementReport(rawPayments, date, date),
-    [date, rawPayments],
+    () => buildSettlementReport(rawPayments, fromDate, toDate),
+    [fromDate, toDate, rawPayments],
   )
   const report = useMemo(
-    () => buildSettlementReport(rawPayments, date, date, parseSeriesFilter(seriesFilter)),
-    [date, rawPayments, seriesFilter],
+    () => buildSettlementReport(rawPayments, fromDate, toDate, parseSeriesFilter(seriesFilter)),
+    [fromDate, toDate, rawPayments, seriesFilter],
   )
 
   const rows = useMemo(() => {
@@ -262,11 +274,13 @@ export default function DailySettlementsPage() {
     refundRate: 0,
   }
   const hasActiveLedgerSearch = searchTerm.trim().length > 0
-  const confirmationDisabledReason = courseId || seriesFilter !== 'all'
-    ? '정산 확인은 전체 강좌·전체 직렬 조회 상태에서만 처리할 수 있습니다.'
-    : hasActiveLedgerSearch
-      ? '검색어를 지운 뒤 전체 결제 명단 기준으로 정산 확인을 처리할 수 있습니다.'
-      : ''
+  const confirmationDisabledReason = !isSingleDay
+    ? '정산 확인은 단일 날짜 조회 상태에서만 처리할 수 있습니다.'
+    : courseId || seriesFilter !== 'all'
+      ? '정산 확인은 전체 강좌·전체 직렬 조회 상태에서만 처리할 수 있습니다.'
+      : hasActiveLedgerSearch
+        ? '검색어를 지운 뒤 전체 결제 명단 기준으로 정산 확인을 처리할 수 있습니다.'
+        : ''
   const canConfirmSettlement = !confirmationDisabledReason
   const confirmationStatus = confirmation?.effectiveStatus ?? 'unconfirmed'
   const confirmationLabel = confirmationStatus === 'confirmed'
@@ -289,7 +303,7 @@ export default function DailySettlementsPage() {
     const response = await fetch('/api/settlements/confirmation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date }),
+      body: JSON.stringify({ date: fromDate }),
     })
     const result = await response.json().catch(() => null)
     setConfirmationSaving(false)
@@ -381,7 +395,7 @@ export default function DailySettlementsPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Daily Settlement</p>
             <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">일일 정산</h1>
-            <p className="mt-2 text-sm text-slate-500">하루 수납, 환불, 영수증 번호 범위와 결제자 명단을 확인합니다.</p>
+            <p className="mt-2 text-sm text-slate-500">기간별 수납, 환불, 영수증 번호 범위와 결제자 명단을 확인합니다.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -393,7 +407,11 @@ export default function DailySettlementsPage() {
             </Link>
             <button
               type="button"
-              onClick={() => report ? downloadSettlementCsv(report.ledgerRows, `settlement-daily-${date.replace(/-/g, '')}.csv`) : undefined}
+              onClick={() => {
+                if (!report) return
+                const label = isSingleDay ? fromDate.replace(/-/g, '') : `${fromDate.replace(/-/g, '')}_${toDate.replace(/-/g, '')}`
+                downloadSettlementCsv(report.ledgerRows, `settlement-${label}.csv`)
+              }}
               disabled={!report?.ledgerRows.length}
               className="inline-flex items-center gap-2 rounded-[8px] bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -402,7 +420,11 @@ export default function DailySettlementsPage() {
             </button>
             <button
               type="button"
-              onClick={() => report ? downloadDailySettlementXlsx(report, date) : undefined}
+              onClick={() => {
+                if (!report) return
+                const label = isSingleDay ? fromDate : `${fromDate}~${toDate}`
+                downloadDailySettlementXlsx(report, label)
+              }}
               disabled={!report}
               className="inline-flex items-center gap-2 rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -412,13 +434,24 @@ export default function DailySettlementsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[220px,1fr,220px,auto]">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[180px,180px,1fr,180px,auto]">
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">정산일</span>
+            <span className="text-xs font-semibold text-slate-500">시작일</span>
             <input
               type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
+              value={fromDate}
+              max={toDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-slate-500">종료일</span>
+            <input
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(event) => setToDate(event.target.value)}
               className="rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             />
           </label>
@@ -463,68 +496,76 @@ export default function DailySettlementsPage() {
           </button>
         </div>
 
-        <div className={`mt-4 rounded-[10px] border px-4 py-3 ${
-          confirmationStatus === 'needs_review'
-            ? 'border-amber-200 bg-amber-50'
-            : confirmationStatus === 'confirmed'
-              ? 'border-emerald-200 bg-emerald-50'
-              : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                {confirmationStatus === 'needs_review' ? (
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                ) : confirmationStatus === 'confirmed' ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 text-slate-400" />
-                )}
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                  confirmationStatus === 'needs_review'
-                    ? 'bg-amber-100 text-amber-700'
-                    : confirmationStatus === 'confirmed'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-white text-slate-500'
-                }`}>
-                  {confirmationLabel}
-                </span>
-                <span className="text-xs font-semibold text-slate-500">
-                  {tenant.branchName} · {date}
-                </span>
-              </div>
-              <p className="mt-2 text-sm text-slate-700">
-                {confirmationLoading
-                  ? '정산 확인 상태를 불러오는 중입니다.'
-                  : confirmationStatus === 'confirmed' && confirmation?.confirmation
-                    ? `확인 완료 · ${formatKstShortDateTime(confirmation.confirmation.confirmedAt)}${confirmerName ? ` · ${confirmerName}` : ''}`
-                  : confirmationStatus === 'needs_review' && confirmation?.confirmation
-                      ? confirmation.confirmation.latestChangedAt
-                        ? `확인 이후 수납 또는 환불 변경이 있습니다. 마지막 변경 ${formatKstShortDateTime(confirmation.confirmation.latestChangedAt)}`
-                        : '확인 당시 집계와 현재 집계가 다릅니다. 수납·환불 내역을 다시 확인해 주세요.'
-                      : '아직 이 날짜의 정산 확인 기록이 없습니다.'}
-              </p>
-              {confirmationStatus !== 'confirmed' && confirmationDisabledReason ? (
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  {confirmationDisabledReason}
+        {isSingleDay ? (
+          <div className={`mt-4 rounded-[10px] border px-4 py-3 ${
+            confirmationStatus === 'needs_review'
+              ? 'border-amber-200 bg-amber-50'
+              : confirmationStatus === 'confirmed'
+                ? 'border-emerald-200 bg-emerald-50'
+                : 'border-slate-200 bg-slate-50'
+          }`}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  {confirmationStatus === 'needs_review' ? (
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  ) : confirmationStatus === 'confirmed' ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-slate-400" />
+                  )}
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                    confirmationStatus === 'needs_review'
+                      ? 'bg-amber-100 text-amber-700'
+                      : confirmationStatus === 'confirmed'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-white text-slate-500'
+                  }`}>
+                    {confirmationLabel}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    {tenant.branchName} · {fromDate}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-slate-700">
+                  {confirmationLoading
+                    ? '정산 확인 상태를 불러오는 중입니다.'
+                    : confirmationStatus === 'confirmed' && confirmation?.confirmation
+                      ? `확인 완료 · ${formatKstShortDateTime(confirmation.confirmation.confirmedAt)}${confirmerName ? ` · ${confirmerName}` : ''}`
+                    : confirmationStatus === 'needs_review' && confirmation?.confirmation
+                        ? confirmation.confirmation.latestChangedAt
+                          ? `확인 이후 수납 또는 환불 변경이 있습니다. 마지막 변경 ${formatKstShortDateTime(confirmation.confirmation.latestChangedAt)}`
+                          : '확인 당시 집계와 현재 집계가 다릅니다. 수납·환불 내역을 다시 확인해 주세요.'
+                        : '아직 이 날짜의 정산 확인 기록이 없습니다.'}
                 </p>
-              ) : null}
-              {confirmationError ? (
-                <p className="mt-1 text-xs font-semibold text-rose-600">{confirmationError}</p>
+                {confirmationStatus !== 'confirmed' && confirmationDisabledReason ? (
+                  <p className="mt-1 text-xs font-medium text-slate-500">
+                    {confirmationDisabledReason}
+                  </p>
+                ) : null}
+                {confirmationError ? (
+                  <p className="mt-1 text-xs font-semibold text-rose-600">{confirmationError}</p>
+                ) : null}
+              </div>
+              {confirmationStatus !== 'confirmed' ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmSettlement()}
+                  disabled={!canConfirmSettlement || confirmationLoading || confirmationSaving}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {confirmationSaving ? '저장 중...' : confirmationStatus === 'needs_review' ? '재확인' : '정산 확인'}
+                </button>
               ) : null}
             </div>
-            {confirmationStatus !== 'confirmed' ? (
-              <button
-                type="button"
-                onClick={() => void handleConfirmSettlement()}
-                disabled={!canConfirmSettlement || confirmationLoading || confirmationSaving}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {confirmationSaving ? '저장 중...' : confirmationStatus === 'needs_review' ? '재확인' : '정산 확인'}
-              </button>
-            ) : null}
           </div>
-        </div>
+        ) : (
+          <div className="mt-4 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-sm text-slate-500">
+              기간 조회 중 — {fromDate} ~ {toDate} · 정산 확인은 단일 날짜 조회에서만 사용할 수 있습니다.
+            </p>
+          </div>
+        )}
       </section>
 
       {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
@@ -610,7 +651,9 @@ export default function DailySettlementsPage() {
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <h2 className="text-base font-bold text-[#1d1d1f]">결제 명단</h2>
-            <p className="mt-1 text-xs text-slate-500">시각 역순으로 수납과 환불을 함께 표시합니다.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {isSingleDay ? fromDate : `${fromDate} ~ ${toDate}`} · 시각 역순으로 수납과 환불을 함께 표시합니다.
+            </p>
           </div>
           <label className="relative w-full xl:max-w-[460px]">
             <span className="sr-only">결제 명단 검색</span>

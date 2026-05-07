@@ -173,6 +173,7 @@ export default function MonthlySettlementsPage() {
         refund: 0,
         net: 0,
       }
+      current.count += 1
       current.refund += row.refundAmount
       current.net -= row.refundAmount
       rows.set(row.originalPaymentMethod, current)

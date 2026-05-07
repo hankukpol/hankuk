@@ -536,6 +536,14 @@ function sumPaymentAmountByCategory(
   ), 0)
 }
 
+function attachCreatedPaymentIds(error: unknown, paymentIds: number[]) {
+  if (typeof error === 'object' && error !== null) {
+    ;(error as { createdPaymentIds?: number[] }).createdPaymentIds = [...paymentIds]
+  }
+
+  return error
+}
+
 async function validateStandaloneBillingPayment(params: {
   db: ServerClient
   enrollmentId: number
@@ -1038,6 +1046,34 @@ export async function createPayment(
   division: string,
   actorStaffId?: number | null,
 ) {
+  if (!input.skipBillingValidation) {
+    const [payment] = await createPaymentBundle({
+      enrollmentId: input.enrollmentId,
+      courseId: input.courseId,
+      checkoutGroupId: input.checkoutGroupId,
+      payments: [{
+        amount: input.amount,
+        method: input.method,
+        category: input.category,
+        paidAt: input.paidAt,
+        memo: input.memo,
+        cardLast4: input.cardLast4,
+        cardCompany: input.cardCompany,
+        installmentMonths: input.installmentMonths,
+        bankName: input.bankName,
+        bankAccountLast4: input.bankAccountLast4,
+        cashReceiptApprovalNo: input.cashReceiptApprovalNo,
+        items: input.items,
+      }],
+    }, division, actorStaffId)
+
+    if (!payment) {
+      throw createPaymentError('생성된 결제 내역을 확인하지 못했습니다.', 500)
+    }
+
+    return payment
+  }
+
   const db = createServerClient()
   const enrollment = await getEnrollmentForPayment(db, input.enrollmentId, division)
   const courseId = input.courseId ?? enrollment.course_id
@@ -1280,13 +1316,15 @@ export async function createPaymentBundle(
     .filter((paymentId) => Number.isInteger(paymentId) && paymentId > 0)
 
   if (paymentIds.length !== normalizedPayments.length) {
+    const countMismatchError = createPaymentError('생성된 결제 내역을 확인하지 못했습니다.', 500)
     await rollbackCreatedPaymentRows(db, paymentIds).catch((rollbackError) => {
+      attachCreatedPaymentIds(countMismatchError, paymentIds)
       console.error('createPaymentBundle rollback after payment count mismatch failed', {
         rollbackError,
         paymentIds,
       })
     })
-    throw createPaymentError('생성된 결제 내역을 확인하지 못했습니다.', 500)
+    throw countMismatchError
   }
 
   try {
@@ -1304,6 +1342,7 @@ export async function createPaymentBundle(
       await rollbackCreatedPaymentRows(db, paymentIds)
       await recalculateEnrollmentPaymentState(db, enrollment.id)
     } catch (rollbackError) {
+      attachCreatedPaymentIds(reason, paymentIds)
       console.error('createPaymentBundle rollback after post-processing failure failed', {
         reason,
         rollbackError,

@@ -6,7 +6,6 @@ import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
 import {
   createEnrollmentForPayment,
-  createPayment,
   createPaymentBundle,
   getPaymentServiceMessage,
   getPaymentServiceStatus,
@@ -248,6 +247,15 @@ export async function POST(req: NextRequest) {
     let enrollmentId = parsed.data.enrollmentId ?? null
     let generatedPin: string | null = null
 
+    if (
+      !enrollmentId
+      && parsed.data.enrollment
+      && !parsed.data.billing
+      && bundledPayments.some((payment) => (payment.category ?? 'tuition') === 'tuition' && payment.amount > 0)
+    ) {
+      return NextResponse.json({ error: '신규 수강료 결제는 청구 정보를 함께 저장해 주세요.' }, { status: 400 })
+    }
+
     if (!enrollmentId && parsed.data.enrollment) {
       const created = await createEnrollmentForPayment(parsed.data.enrollment, division)
       enrollmentId = created.enrollment.id
@@ -258,14 +266,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생 ID 또는 신규 수강생 정보가 필요합니다.' }, { status: 400 })
     }
 
-    if (parsed.data.billing || parsed.data.payments?.length || bundledPayments.length > 1) {
-      const payments = await createPaymentBundle({
-        enrollmentId,
-        courseId: parsed.data.courseId ?? parsed.data.enrollment?.courseId,
-        billing: parsed.data.billing,
-        payments: bundledPayments,
-      }, division, getActorStaffId(auth.payload))
+    const shouldReturnBundleResponse = Boolean(parsed.data.billing || parsed.data.payments?.length || bundledPayments.length > 1)
+    const payments = await createPaymentBundle({
+      enrollmentId,
+      courseId: parsed.data.courseId ?? parsed.data.enrollment?.courseId,
+      billing: parsed.data.billing,
+      payments: bundledPayments,
+    }, division, getActorStaffId(auth.payload))
 
+    if (shouldReturnBundleResponse) {
       return NextResponse.json(
         { payments, generated_pin: generatedPin ?? undefined },
         {
@@ -275,18 +284,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { billing, payments, ...paymentData } = parsed.data
-    void billing
-    void payments
-
-    const payment = await createPayment({
-      ...paymentData,
-      amount: bundledPayments[0].amount,
-      method: bundledPayments[0].method,
-      enrollmentId,
-      courseId: paymentData.courseId ?? paymentData.enrollment?.courseId,
-      requireBillingForTuition: true,
-    }, division, getActorStaffId(auth.payload))
+    const payment = payments[0]
+    if (!payment) {
+      return NextResponse.json({ error: '생성된 결제 내역을 확인하지 못했습니다.' }, { status: 500 })
+    }
 
     return NextResponse.json(
       { payment, generated_pin: generatedPin ?? undefined },

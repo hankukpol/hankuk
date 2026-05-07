@@ -944,6 +944,18 @@ async function verifyPaymentReceiptConcurrency() {
       `receipt race created duplicate display_receipt_no: ${receiptNos.join(', ')}`,
     );
   } finally {
+    if (enrollmentIds.length > 0) {
+      const remainingPayments = await selectAll(
+        () => db
+          .from('enrollment_payments')
+          .select('id')
+          .in('enrollment_id', enrollmentIds)
+          .order('id'),
+        'legacy api overpay cleanup select payments',
+      );
+      paymentIds.push(...((remainingPayments || []).map((payment) => payment.id)));
+    }
+
     if (paymentIds.length > 0) {
       await deleteInChunks('settlement_entry_confirmations', 'payment_id', paymentIds);
       await deleteInChunks('enrollment_refunds', 'payment_id', paymentIds);
@@ -1034,6 +1046,90 @@ async function verifyPaymentBundleRpcOverpayGuard() {
     paymentIds.push(...((payments || []).map((payment) => payment.id)));
     assert(payments.length === 1, `rpc overpay guard left ${payments.length} payments`);
     assert(money(payments[0].amount) === 60000, 'rpc overpay guard payment amount mismatch');
+  } finally {
+    if (paymentIds.length > 0) {
+      await deleteInChunks('settlement_entry_confirmations', 'payment_id', paymentIds);
+      await deleteInChunks('enrollment_refunds', 'payment_id', paymentIds);
+      await deleteInChunks('payment_events', 'payment_id', paymentIds);
+      await deleteInChunks('enrollment_payment_items', 'payment_id', paymentIds);
+      await deleteInChunks('enrollment_payments', 'id', paymentIds);
+    }
+    if (enrollmentIds.length > 0) {
+      await deleteInChunks('payment_events', 'enrollment_id', enrollmentIds);
+      await deleteInChunks('enrollment_billing', 'enrollment_id', enrollmentIds);
+      await deleteInChunks('enrollments', 'id', enrollmentIds);
+    }
+  }
+}
+
+async function verifyLegacyPaymentApiOverpayGuard(cookie) {
+  const basic = state.courses.basic;
+  const enrollmentIds = [];
+  const paymentIds = [];
+
+  try {
+    const enrollment = await supaQuery(
+      db
+        .from('enrollments')
+        .insert({
+          course_id: basic.id,
+          name: `Pay Legacy Race ${RUN_ID}`,
+          phone: `01099${RUN_ID.slice(-6).replace(/[^0-9]/g, '0').padStart(6, '0')}`,
+          exam_number: `P100-LEGACY-RACE-${RUN_ID}`,
+          status: 'active',
+        })
+        .select('id')
+        .single(),
+      'insert legacy api race enrollment',
+    );
+    enrollmentIds.push(enrollment.id);
+
+    await supaQuery(
+      db
+        .from('enrollment_billing')
+        .insert({
+          enrollment_id: enrollment.id,
+          course_id: basic.id,
+          expected_amount: 60000,
+          discount_amount: 0,
+          payable_amount: 60000,
+          tuition_exempt: false,
+          status: 'unpaid',
+        }),
+      'insert legacy api race billing',
+    );
+
+    const payload = {
+      enrollmentId: enrollment.id,
+      courseId: basic.id,
+      amount: 60000,
+      method: 'card',
+      category: 'tuition',
+      paidAt: dateTime(1420),
+      memo: 'legacy api overpay race',
+      cardCompany: 'KB',
+      items: [{ label: 'legacy api overpay race', amount: 60000 }],
+    };
+
+    const results = await Promise.all([
+      api(cookie, '/api/payments', payload, [201, 400]),
+      api(cookie, '/api/payments', payload, [201, 400]),
+    ]);
+    const successes = results.filter((result) => result.status === 201);
+    const failures = results.filter((result) => result.status === 400);
+    assert(successes.length === 1, `legacy api overpay guard expected 1 success, got ${successes.length}`);
+    assert(failures.length === 1, `legacy api overpay guard expected 1 failure, got ${failures.length}`);
+
+    const payments = await supaQuery(
+      db
+        .from('enrollment_payments')
+        .select('id,amount')
+        .eq('enrollment_id', enrollment.id),
+      'select legacy api race payments',
+    );
+    paymentIds.push(...((payments || []).map((payment) => payment.id)));
+    assert(payments.length === 1, `legacy api overpay guard left ${payments.length} payments`);
+    assert(money(payments[0].amount) === 60000, 'legacy api overpay guard payment amount mismatch');
   } finally {
     if (paymentIds.length > 0) {
       await deleteInChunks('settlement_entry_confirmations', 'payment_id', paymentIds);
@@ -1537,7 +1633,7 @@ async function cleanup() {
       'cleanup select enrollments',
     );
     enrollmentIds = (enrollments || []).map((row) => row.id);
-    studentIds = (enrollments || []).map((row) => row.student_id);
+    studentIds = (enrollments || []).map((row) => row.student_id).filter(Boolean);
 
     const payments = await selectAll(
       () => db.from('enrollment_payments').select('id').in('course_id', courseIds).order('id'),
@@ -1643,6 +1739,7 @@ async function main() {
   await verifyReactivatedTextbookRollback(cookie);
   await verifyPaymentReceiptConcurrency();
   await verifyPaymentBundleRpcOverpayGuard();
+  await verifyLegacyPaymentApiOverpayGuard(cookie);
   await createRegistrations(cookie);
   await createRefunds(cookie);
   await confirmSettlementEntries(cookie);

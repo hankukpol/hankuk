@@ -78,6 +78,7 @@ export type EnrollmentPayment = {
   bank_name: string | null
   bank_account_last4: string | null
   cash_receipt_approval_no: string | null
+  display_receipt_no: string | null
   series_option_id_snapshot: number | null
   series_group_snapshot: BranchSeriesGroup | null
   series_label_snapshot: string | null

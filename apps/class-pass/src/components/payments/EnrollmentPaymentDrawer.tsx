@@ -135,6 +135,7 @@ export function EnrollmentPaymentDrawer({
   const [voidTarget, setVoidTarget] = useState<EnrollmentPayment | null>(null)
   const [cancelEnrollmentPrompt, setCancelEnrollmentPrompt] = useState<EnrollmentCancellationPrompt | null>(null)
   const [notice, setNotice] = useState<DrawerNotice | null>(null)
+  const [receiptNotice, setReceiptNotice] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const lastErrorNoticeRef = useRef('')
@@ -351,13 +352,22 @@ export function EnrollmentPaymentDrawer({
     setSubmitting(false)
     setFormOpen(false)
     setPaymentDraft(createEmptyPaymentSectionValue())
-    setMessage(
-      enrollment.status === 'refunded'
-        ? '환불 완료 수강생을 다시 활성화하고 수납 내역을 저장했습니다.'
-        : payload.tuitionExempt
-          ? '수납 면제 기록을 저장했습니다.'
-          : '수납 내역을 저장했습니다.',
-    )
+
+    const receiptNos = (result?.payments ?? [])
+      .map((p: { display_receipt_no?: string | null }) => p.display_receipt_no)
+      .filter(Boolean)
+      .join(', ')
+
+    if (enrollment.status === 'refunded') {
+      setMessage('환불 완료 수강생을 다시 활성화하고 수납 내역을 저장했습니다.')
+    } else if (payload.tuitionExempt) {
+      setMessage('수납 면제 기록을 저장했습니다.')
+    } else if (receiptNos) {
+      setReceiptNotice(receiptNos)
+    } else {
+      setMessage('수납 내역을 저장했습니다.')
+    }
+
     await refreshAll()
   }
 
@@ -927,6 +937,23 @@ export function EnrollmentPaymentDrawer({
         onClose={() => setNotice(null)}
         onConfirm={() => setNotice(null)}
       />
+
+      <ConfirmationModal
+        open={Boolean(receiptNotice)}
+        title="수납 완료"
+        description="카드 영수증에 아래 번호를 기재해주세요."
+        confirmLabel="확인"
+        cancelLabel={null}
+        tone="success"
+        overlayClassName="z-[210]"
+        onClose={() => setReceiptNotice(null)}
+        onConfirm={() => setReceiptNotice(null)}
+      >
+        <div className="rounded-[10px] bg-emerald-50 px-4 py-4 text-center">
+          <p className="text-xs font-medium text-slate-500">영수증 번호</p>
+          <p className="mt-1 font-mono text-4xl font-bold tracking-widest text-emerald-700">{receiptNotice}</p>
+        </div>
+      </ConfirmationModal>
     </>
   )
 }

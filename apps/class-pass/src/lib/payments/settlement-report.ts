@@ -304,7 +304,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     discountAmount: 0,
     refundAmount: 0,
     netAmount: payment.amount,
-    receiptNo: receiptNo(payment.id),
+    receiptNo: payment.display_receipt_no ?? receiptNo(payment.id),
     cashReceiptApprovalNo: payment.cash_receipt_approval_no,
     reasonCategory: null,
     reasonCategoryLabel: null,

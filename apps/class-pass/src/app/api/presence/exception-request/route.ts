@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
+import { checkRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
 import { verifyStudentAttendanceAccess } from '@/lib/attendance/service'
 import { verifyStudentSeatAccess } from '@/lib/designated-seat/service'
 import { logPresenceExceptionRequest } from '@/lib/presence/location'
@@ -20,6 +21,15 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimit = await checkRateLimit(`presence-exception:${getClientIp(req)}`)
+    if (!rateLimit.allowed) {
+      const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
+      return NextResponse.json(
+        { error: `Too many requests. Try again in ${retryAfterSec}s.` },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
+      )
+    }
+
     const body = await req.json().catch(() => null)
     const parsed = schema.safeParse(body)
     if (!parsed.success) {

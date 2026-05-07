@@ -52,6 +52,7 @@ export type EnrollmentRefund = {
   method: RefundMethod
   reason_category: RefundReasonCategory
   reason: string | null
+  display_receipt_no: string | null
   cancel_receipt_no: string | null
   refund_account_last4: string | null
   refunded_at: string
@@ -79,6 +80,8 @@ export type EnrollmentPayment = {
   bank_account_last4: string | null
   cash_receipt_approval_no: string | null
   display_receipt_no: string | null
+  card_company: string | null
+  checkout_group_id: string | null
   series_option_id_snapshot: number | null
   series_group_snapshot: BranchSeriesGroup | null
   series_label_snapshot: string | null
@@ -86,11 +89,12 @@ export type EnrollmentPayment = {
   settlement_confirmation?: SettlementEntryConfirmation | null
   created_at: string
   updated_at: string
+  enrollment_billing?: Pick<EnrollmentBilling, 'discount_amount' | 'created_by_staff_id'> | null
   enrollments?: Pick<
     Enrollment,
     'id' | 'name' | 'phone' | 'exam_number' | 'status' | 'series_option_id' | 'series_group' | 'series' | 'student_type'
   > | null
-  courses?: Pick<Course, 'id' | 'name'> | null
+  courses?: Pick<Course, 'id' | 'name' | 'settlement_report_code'> | null
   enrollment_payment_items?: PaymentItem[]
   enrollment_refunds?: EnrollmentRefund[]
 }

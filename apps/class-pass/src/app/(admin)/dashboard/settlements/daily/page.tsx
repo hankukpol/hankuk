@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
@@ -10,7 +10,7 @@ import {
   type SettlementLedgerRow,
   type SettlementSeriesFilter,
 } from '@/lib/payments/settlement-report'
-import { downloadDailySettlementXlsx, downloadSettlementCsv } from '@/lib/payments/xlsx-export'
+import { downloadDailySettlementReportXlsx, downloadDailySettlementXlsx, downloadSettlementCsv } from '@/lib/payments/xlsx-export'
 import { formatWon } from '@/lib/payments/format'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { EnrollmentPayment, SettlementEntryConfirmation } from '@/lib/payments/types'
@@ -97,6 +97,32 @@ type DailySettlementSnapshot = {
   refund_by_method: Record<string, number>
 }
 
+type CheckoutGroupDisplayItem =
+  | { type: 'row'; row: SettlementLedgerRow }
+  | {
+    type: 'group'
+    key: string
+    checkoutGroupId: string
+    rows: SettlementLedgerRow[]
+    status: 'unconfirmed' | 'partial' | 'confirmed'
+    confirmedCount: number
+    totalAmount: number
+  }
+
+function getCheckoutGroupStatus(rows: SettlementLedgerRow[]): {
+  status: 'unconfirmed' | 'partial' | 'confirmed'
+  confirmedCount: number
+} {
+  const confirmedCount = rows.filter((row) => Boolean(row.settlementConfirmedAt)).length
+  const status = confirmedCount === 0
+    ? 'unconfirmed'
+    : confirmedCount === rows.length
+      ? 'confirmed'
+      : 'partial'
+
+  return { status, confirmedCount }
+}
+
 function formatKstShortDateTime(value: string | null | undefined) {
   if (!value) {
     return ''
@@ -129,6 +155,8 @@ export default function DailySettlementsPage() {
   const [confirmationError, setConfirmationError] = useState('')
   const [entryConfirmationSavingId, setEntryConfirmationSavingId] = useState('')
   const [entryConfirmationError, setEntryConfirmationError] = useState('')
+  const [hasAppliedInitialParams, setHasAppliedInitialParams] = useState(false)
+  const [hasLoadedInitialReport, setHasLoadedInitialReport] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -145,6 +173,7 @@ export default function DailySettlementsPage() {
     if (initialCourseId && /^\d+$/.test(initialCourseId)) {
       setCourseId(initialCourseId)
     }
+    setHasAppliedInitialParams(true)
   }, [])
 
   const loadReport = useCallback(async () => {
@@ -152,7 +181,7 @@ export default function DailySettlementsPage() {
     setError('')
 
     try {
-      const params = new URLSearchParams({ from: fromDate, to: toDate, limit: '5000' })
+      const params = new URLSearchParams({ from: fromDate, to: toDate })
       if (courseId) {
         params.set('courseId', courseId)
       }
@@ -212,12 +241,20 @@ export default function DailySettlementsPage() {
   }, [])
 
   useEffect(() => {
+    if (!hasAppliedInitialParams || hasLoadedInitialReport) {
+      return
+    }
+    setHasLoadedInitialReport(true)
     void loadReport()
-  }, [loadReport])
+    void loadConfirmation()
+  }, [hasAppliedInitialParams, hasLoadedInitialReport, loadConfirmation, loadReport])
 
   useEffect(() => {
-    void loadConfirmation()
-  }, [loadConfirmation])
+    if (hasAppliedInitialParams && hasLoadedInitialReport) {
+      setConfirmation(null)
+      setConfirmationError('')
+    }
+  }, [courseId, fromDate, hasAppliedInitialParams, hasLoadedInitialReport, toDate])
 
   const isSingleDay = fromDate === toDate
 
@@ -250,6 +287,7 @@ export default function DailySettlementsPage() {
       row.phone,
       row.studentTypeLabel,
       row.courseName,
+      row.courseReportCode,
       row.seriesLabel,
       row.methodLabel,
       row.categoryLabel,
@@ -262,6 +300,80 @@ export default function DailySettlementsPage() {
       String(row.netAmount),
     ].some((value) => String(value ?? '').toLowerCase().includes(keyword)))
   }, [filter, report, searchTerm])
+
+  const cardCompanyCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const row of report?.ledgerRows ?? []) {
+      if (row.kind !== 'payment' || row.originalPaymentMethod !== 'card') {
+        continue
+      }
+
+      const cardCompany = row.cardCompany?.trim() || '미지정'
+      counts.set(cardCompany, (counts.get(cardCompany) ?? 0) + 1)
+    }
+
+    return Array.from(counts.entries())
+      .map(([cardCompany, count]) => ({ cardCompany, count }))
+      .sort((left, right) => right.count - left.count || left.cardCompany.localeCompare(right.cardCompany, 'ko-KR'))
+  }, [report])
+
+  const refundCardCompanyCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const row of report?.ledgerRows ?? []) {
+      if (row.kind !== 'refund' || row.originalPaymentMethod !== 'card' || row.method !== 'card_cancel') {
+        continue
+      }
+
+      const cardCompany = row.cardCompany?.trim() || '미지정'
+      counts.set(cardCompany, (counts.get(cardCompany) ?? 0) + 1)
+    }
+
+    return Array.from(counts.entries())
+      .map(([cardCompany, count]) => ({ cardCompany, count }))
+      .sort((left, right) => right.count - left.count || left.cardCompany.localeCompare(right.cardCompany, 'ko-KR'))
+  }, [report])
+
+  const checkoutGroupByFirstPaymentId = useMemo(() => {
+    const groupMap = new Map<string, SettlementLedgerRow[]>()
+    for (const row of report?.ledgerRows ?? []) {
+      if (row.kind === 'payment' && row.checkoutGroupId) {
+        groupMap.set(row.checkoutGroupId, [...(groupMap.get(row.checkoutGroupId) ?? []), row])
+      }
+    }
+
+    const visitedGroups = new Set<string>()
+    const map = new Map<number, Extract<CheckoutGroupDisplayItem, { type: 'group' }>>()
+    for (const row of rows) {
+      if (row.kind !== 'payment' || !row.checkoutGroupId) {
+        continue
+      }
+
+      const groupRows = groupMap.get(row.checkoutGroupId) ?? []
+      if (groupRows.length <= 1) {
+        continue
+      }
+
+      if (visitedGroups.has(row.checkoutGroupId)) {
+        continue
+      }
+
+      visitedGroups.add(row.checkoutGroupId)
+      const status = getCheckoutGroupStatus(groupRows)
+      map.set(row.paymentId, {
+        type: 'group',
+        key: `checkout-group-${row.checkoutGroupId}`,
+        checkoutGroupId: row.checkoutGroupId,
+        rows: groupRows,
+        status: status.status,
+        confirmedCount: status.confirmedCount,
+        totalAmount: groupRows.reduce((sum, groupRow) => sum + groupRow.paymentAmount, 0),
+      })
+    }
+
+    return map
+  }, [report, rows])
 
   const summary = report?.summary ?? {
     grossAmount: 0,
@@ -300,20 +412,25 @@ export default function DailySettlementsPage() {
     setConfirmationSaving(true)
     setConfirmationError('')
 
-    const response = await fetch('/api/settlements/confirmation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: fromDate }),
-    })
-    const result = await response.json().catch(() => null)
-    setConfirmationSaving(false)
+    try {
+      const response = await fetch('/api/settlements/confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: fromDate }),
+      })
+      const result = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      setConfirmationError(result?.error ?? '정산 확인을 저장하지 못했습니다.')
-      return
+      if (!response.ok) {
+        setConfirmationError(result?.error ?? '정산 확인을 저장하지 못했습니다.')
+        return
+      }
+
+      setConfirmation(result as SettlementConfirmationPayload)
+    } catch (reason) {
+      setConfirmationError(reason instanceof Error ? reason.message : '정산 확인을 저장하지 못했습니다.')
+    } finally {
+      setConfirmationSaving(false)
     }
-
-    setConfirmation(result as SettlementConfirmationPayload)
   }
 
   function applyEntryConfirmationResult(input: {
@@ -348,6 +465,16 @@ export default function DailySettlementsPage() {
     }))
   }
 
+  function applyPaymentConfirmationEntries(entries: SettlementEntryConfirmation[]) {
+    const entryByPaymentId = new Map(entries.map((entry) => [entry.payment_id, entry]))
+    setRawPayments((current) => current.map((payment) => {
+      const confirmation = entryByPaymentId.get(payment.id)
+      return confirmation
+        ? { ...payment, settlement_confirmation: confirmation }
+        : payment
+    }))
+  }
+
   async function handleToggleEntryConfirmation(row: SettlementLedgerRow) {
     if (row.kind === 'refund' && !row.refundId) {
       setEntryConfirmationError('환불 행 정보를 확인하지 못했습니다.')
@@ -358,34 +485,81 @@ export default function DailySettlementsPage() {
     setEntryConfirmationError('')
 
     const action = row.settlementConfirmedAt ? 'cancel' : 'confirm'
-    const response = await fetch('/api/settlements/entry-confirmation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date: row.date,
+    try {
+      const response = await fetch('/api/settlements/entry-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: row.date,
+          kind: row.kind,
+          paymentId: row.paymentId,
+          refundId: row.refundId,
+          action,
+        }),
+      })
+      const result = await response.json().catch(() => null) as {
+        error?: string
+        entry?: SettlementEntryConfirmation
+      } | null
+
+      if (!response.ok || !result?.entry) {
+        setEntryConfirmationError(result?.error ?? '정산 행 확인 상태를 저장하지 못했습니다.')
+        return
+      }
+
+      applyEntryConfirmationResult({
         kind: row.kind,
         paymentId: row.paymentId,
         refundId: row.refundId,
-        action,
-      }),
-    })
-    const result = await response.json().catch(() => null) as {
-      error?: string
-      entry?: SettlementEntryConfirmation
-    } | null
-    setEntryConfirmationSavingId('')
+        confirmation: result.entry,
+      })
+      void loadConfirmation()
+    } catch (reason) {
+      setEntryConfirmationError(reason instanceof Error ? reason.message : '정산 행 확인 상태를 저장하지 못했습니다.')
+    } finally {
+      setEntryConfirmationSavingId('')
+    }
+  }
 
-    if (!response.ok || !result?.entry) {
-      setEntryConfirmationError(result?.error ?? '정산 행 확인 상태를 저장하지 못했습니다.')
+  async function handleToggleCheckoutGroupConfirmation(group: Extract<CheckoutGroupDisplayItem, { type: 'group' }>) {
+    const firstRow = group.rows[0]
+    if (!firstRow) {
       return
     }
 
-    applyEntryConfirmationResult({
-      kind: row.kind,
-      paymentId: row.paymentId,
-      refundId: row.refundId,
-      confirmation: result.entry,
-    })
+    setEntryConfirmationSavingId(group.key)
+    setEntryConfirmationError('')
+
+    const action = group.status === 'confirmed' ? 'cancel' : 'confirm'
+    try {
+      const response = await fetch('/api/settlements/entry-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: firstRow.date,
+          kind: 'payment',
+          paymentId: firstRow.paymentId,
+          checkoutGroupId: group.checkoutGroupId,
+          action,
+        }),
+      })
+      const result = await response.json().catch(() => null) as {
+        error?: string
+        entries?: SettlementEntryConfirmation[]
+      } | null
+
+      if (!response.ok || !Array.isArray(result?.entries)) {
+        setEntryConfirmationError(result?.error ?? '묶음 정산 확인 상태를 저장하지 못했습니다.')
+        return
+      }
+
+      applyPaymentConfirmationEntries(result.entries)
+      void loadConfirmation()
+    } catch (reason) {
+      setEntryConfirmationError(reason instanceof Error ? reason.message : '묶음 정산 확인 상태를 저장하지 못했습니다.')
+    } finally {
+      setEntryConfirmationSavingId('')
+    }
   }
 
   return (
@@ -417,6 +591,19 @@ export default function DailySettlementsPage() {
             >
               <FileSpreadsheet className="h-4 w-4" />
               CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!report) return
+                const label = isSingleDay ? fromDate : `${fromDate}~${toDate}`
+                downloadDailySettlementReportXlsx(report, label)
+              }}
+              disabled={!report?.ledgerRows.length}
+              className="inline-flex items-center gap-2 rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              보고용
             </button>
             <button
               type="button"
@@ -487,7 +674,10 @@ export default function DailySettlementsPage() {
           </label>
           <button
             type="button"
-            onClick={() => void loadReport()}
+            onClick={() => {
+              void loadReport()
+              void loadConfirmation()
+            }}
             disabled={loading}
             className="inline-flex items-center justify-center gap-2 self-end rounded-[8px] bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -594,6 +784,26 @@ export default function DailySettlementsPage() {
               </div>
             ))}
           </div>
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-[#1d1d1f]">카드사별 결제 건수</h3>
+              <span className="text-xs font-semibold text-slate-400">카드 결제만</span>
+            </div>
+            {cardCompanyCounts.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {cardCompanyCounts.map((item) => (
+                  <div key={item.cardCompany} className="inline-flex items-center gap-2 rounded-[8px] bg-blue-50 px-3 py-2">
+                    <span className="text-xs font-bold text-slate-700">{item.cardCompany}</span>
+                    <span className="text-xs font-bold text-blue-700">{item.count.toLocaleString('ko-KR')}건</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[8px] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-400">
+                카드 결제 내역 없음
+              </p>
+            )}
+          </div>
         </article>
 
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -609,6 +819,26 @@ export default function DailySettlementsPage() {
                 <p className="mt-1 text-xs text-rose-500">영수증 번호 {method.receiptRange}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-[#1d1d1f]">카드사별 환불 건수</h3>
+              <span className="text-xs font-semibold text-slate-400">카드 취소만</span>
+            </div>
+            {refundCardCompanyCounts.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {refundCardCompanyCounts.map((item) => (
+                  <div key={item.cardCompany} className="inline-flex items-center gap-2 rounded-[8px] bg-rose-50 px-3 py-2">
+                    <span className="text-xs font-bold text-slate-700">{item.cardCompany}</span>
+                    <span className="text-xs font-bold text-rose-700">{item.count.toLocaleString('ko-KR')}건</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-[8px] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-400">
+                카드 결제 환불 내역 없음
+              </p>
+            )}
           </div>
         </article>
       </section>
@@ -692,65 +922,119 @@ export default function DailySettlementsPage() {
           <table className="min-w-[1280px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold text-slate-500">
               <tr>
-                {['시각', '학생', '학원구분', '강좌', '직렬', '방법', '결제액', '환불', '순액', '영수증번호', '사유', '정산확인'].map((header) => (
-                  <th key={header} className="px-4 py-3">{header}</th>
+                {['시각', '학생', '학원구분', '강좌', '직렬', '방법', '카드사', '결제액', '환불', '순액', '영수증번호', '사유', '정산확인'].map((header) => (
+                  <th key={header} className="whitespace-nowrap px-3 py-2.5">{header}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((row) => (
-                <tr key={row.id} className={row.kind === 'refund' ? 'bg-rose-50/70' : 'bg-white'}>
-                  <td className="px-4 py-3 font-medium text-slate-600">{row.time}</td>
-                  <td className="px-4 py-3">
+              {rows.map((row) => {
+                const checkoutGroup = row.kind === 'payment'
+                  ? checkoutGroupByFirstPaymentId.get(row.paymentId)
+                  : undefined
+                return (
+                <Fragment key={row.id}>
+                  {checkoutGroup ? (
+                    <tr className="bg-blue-50/70">
+                      <td colSpan={13} className="px-4 py-3">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-blue-700 shadow-sm">
+                                묶음결제
+                              </span>
+                              <span className="text-sm font-bold text-[#1d1d1f]">{checkoutGroup.rows[0]?.studentName}</span>
+                              <span className="text-xs font-semibold text-slate-500">
+                                {checkoutGroup.rows.length}개 강좌 · {formatWon(checkoutGroup.totalAmount)}
+                              </span>
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                checkoutGroup.status === 'confirmed'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : checkoutGroup.status === 'partial'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-white text-slate-500'
+                              }`}>
+                                {checkoutGroup.status === 'confirmed'
+                                  ? '전체 확인'
+                                  : checkoutGroup.status === 'partial'
+                                    ? `일부 확인 ${checkoutGroup.confirmedCount}/${checkoutGroup.rows.length}`
+                                    : '미확인'}
+                              </span>
+                            </div>
+                            <p className="mt-1 truncate text-xs text-slate-500">
+                              {checkoutGroup.rows.map((groupRow) => groupRow.courseName).join(' / ')}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleCheckoutGroupConfirmation(checkoutGroup)}
+                            disabled={entryConfirmationSavingId === checkoutGroup.key}
+                            className={`inline-flex shrink-0 items-center justify-center rounded-[8px] px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                              checkoutGroup.status === 'confirmed'
+                                ? 'bg-white text-slate-600 hover:bg-rose-50 hover:text-rose-600'
+                                : 'bg-[#0071e3] text-white hover:bg-blue-700'
+                            }`}
+                          >
+                            {entryConfirmationSavingId === checkoutGroup.key
+                              ? '처리 중'
+                              : checkoutGroup.status === 'confirmed'
+                                ? '묶음 확인 취소'
+                                : '묶음 확인'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                <tr className={`${row.kind === 'refund' ? 'bg-rose-50/70' : 'bg-white'} ${row.checkoutGroupId ? 'border-l-4 border-l-blue-100' : ''}`}>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-600">{row.time}</td>
+                  <td className="px-3 py-2.5">
                     <p className="font-semibold text-[#1d1d1f]">{row.studentName}</p>
-                    <p className="mt-1 text-xs text-slate-400">{row.examNumber ?? row.phone ?? '-'}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">{row.examNumber ?? row.phone ?? '-'}</p>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex rounded-[8px] bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    <span className="inline-flex rounded-[8px] bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
                       {row.studentTypeLabel}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{row.courseName}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-[8px] px-2.5 py-1 text-xs font-bold ${
+                  <td className="max-w-[160px] px-3 py-2.5 text-sm text-slate-600">{row.courseName}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    <span className={`inline-flex rounded-[8px] px-2 py-0.5 text-xs font-bold ${
                       row.seriesGroup === 'career' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
                     }`}>
                       {row.seriesLabel}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-semibold text-slate-700">{row.methodLabel}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-[#1d1d1f]">{formatWon(row.paymentAmount)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
-                  <td className={`px-4 py-3 text-right font-bold ${row.netAmount < 0 ? 'text-rose-600' : 'text-blue-600'}`}>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-sm font-semibold text-slate-700">{row.methodLabel}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{row.cardCompany ?? '-'}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-[#1d1d1f]">{formatWon(row.paymentAmount)}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
+                  <td className={`whitespace-nowrap px-3 py-2.5 text-right font-bold ${row.netAmount < 0 ? 'text-rose-600' : 'text-blue-600'}`}>
                     {formatWon(row.netAmount)}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{row.receiptNo}</td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-500">{row.receiptNo}</td>
+                  <td className="max-w-[120px] px-3 py-2.5">
                     {row.reasonCategoryLabel ? (
-                      <span className="inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-rose-600 shadow-sm">
+                      <span className="inline-flex rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-rose-600 shadow-sm">
                         {row.reasonCategoryLabel}
                       </span>
                     ) : (
                       <span className="text-xs text-slate-400">{row.memo ?? '-'}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-3 py-2.5">
                     {row.settlementConfirmedAt ? (
-                      <div className="flex min-w-[120px] flex-col items-start gap-1.5">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          확인 완료
-                        </span>
-                        <span className="text-[11px] font-medium text-slate-400">
-                          {formatKstShortDateTime(row.settlementConfirmedAt)}
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">
+                          <CheckCircle2 className="h-3 w-3" />
+                          확인
                         </span>
                         <button
                           type="button"
                           onClick={() => void handleToggleEntryConfirmation(row)}
                           disabled={entryConfirmationSavingId === row.id}
-                          className="rounded-[8px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-[6px] bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {entryConfirmationSavingId === row.id ? '처리 중' : '확인 취소'}
+                          {entryConfirmationSavingId === row.id ? '...' : '취소'}
                         </button>
                       </div>
                     ) : (
@@ -758,17 +1042,19 @@ export default function DailySettlementsPage() {
                         type="button"
                         onClick={() => void handleToggleEntryConfirmation(row)}
                         disabled={entryConfirmationSavingId === row.id}
-                        className="inline-flex min-w-[82px] items-center justify-center rounded-[8px] bg-[#0071e3] px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-[8px] bg-[#0071e3] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {entryConfirmationSavingId === row.id ? '처리 중' : '정산 확인'}
                       </button>
                     )}
                   </td>
                 </tr>
-              ))}
+                </Fragment>
+                )
+              })}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-4 py-10 text-center text-sm text-slate-400">
+                  <td colSpan={13} className="px-4 py-10 text-center text-sm text-slate-400">
                     {searchTerm.trim() ? '검색 결과가 없습니다.' : '정산 내역이 없습니다.'}
                   </td>
                 </tr>

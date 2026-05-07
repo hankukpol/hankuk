@@ -177,7 +177,7 @@ const getCachedCourseSubjects = unstable_cache(
   ['course-subjects'],
   {
     revalidate: 15,
-    tags: ['seats'],
+    tags: ['course-subjects'],
   },
 )
 
@@ -887,8 +887,9 @@ async function loadStudentCourseAccessContext(params: {
     'loadStudentCourseAccessContext.enrollment',
     await db
       .from('enrollments')
-      .select('*,students(*)')
+      .select('*,students(*),courses!inner(id,division)')
       .eq('id', params.enrollmentId)
+      .eq('courses.division', params.division)
       .maybeSingle(),
   ) as EnrollmentWithStudentRow | null
 
@@ -986,8 +987,9 @@ export async function listStudentCourses(
       'listStudentCourses.enrollmentsByStudent',
       await db
         .from('enrollments')
-        .select('id,course_id,status,suspended_at')
+        .select('id,course_id,status,suspended_at,courses!inner(id,division)')
         .in('student_id', matchedStudentIds)
+        .eq('courses.division', division)
         .eq('status', 'active'),
     )
 
@@ -997,9 +999,10 @@ export async function listStudentCourses(
       'listStudentCourses.enrollmentsFallback',
       await db
         .from('enrollments')
-        .select('id,course_id,status,suspended_at')
+        .select('id,course_id,status,suspended_at,courses!inner(id,division)')
         .eq('name', normalizedName)
         .eq('phone', normalizedPhone)
+        .eq('courses.division', division)
         .eq('status', 'active'),
     )
 
@@ -1024,8 +1027,9 @@ export async function listStudentCoursesForStudent(
     'listStudentCoursesForStudent.enrollments',
     await db
       .from('enrollments')
-      .select('id,course_id,status,suspended_at')
+      .select('id,course_id,status,suspended_at,courses!inner(id,division)')
       .eq('student_id', studentId)
+      .eq('courses.division', division)
       .eq('status', 'active'),
   )
 

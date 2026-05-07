@@ -23,6 +23,8 @@ export function setBranchStaffSessionCookie(response: NextResponse, branchSlug: 
 
 export function setSuperAdminSessionCookie(response: NextResponse, token: string) {
   response.cookies.set(SUPER_ADMIN_COOKIE, token, cookieOptions(ADMIN_TTL_SEC))
+  response.cookies.set(ADMIN_COOKIE, '', clearCookieOptions())
+  response.cookies.set(STAFF_COOKIE, '', clearCookieOptions())
 }
 
 export function clearBranchAdminSessionCookie(response: NextResponse, branchSlug: string) {

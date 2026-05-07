@@ -19,7 +19,7 @@ export async function GET(
 ) {
   try {
     const ip = getClientIp(req)
-    const rateLimit = checkRateLimit(`receipts:${ip}`)
+    const rateLimit = await checkRateLimit(`receipts:${ip}`)
     if (!rateLimit.allowed) {
       const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
       return NextResponse.json(

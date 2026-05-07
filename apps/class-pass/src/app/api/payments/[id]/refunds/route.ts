@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
-import type { StaffJwtPayload } from '@/types/database'
 import {
   createRefund,
   getPaymentServiceMessage,
@@ -28,10 +28,6 @@ const createRefundSchema = z.object({
   refundedAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
 })
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
 
 export async function POST(
   req: NextRequest,

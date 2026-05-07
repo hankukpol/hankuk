@@ -6,7 +6,7 @@ import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
-import { Download, Search, UserCheck, X } from 'lucide-react'
+import { Download, Plus, Search, Trash2, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
 import { SeriesSelector } from '@/components/series/SeriesSelector'
@@ -18,6 +18,7 @@ import {
   normalizePaymentSectionPayload,
   type PaymentSectionValue,
 } from '@/components/payments/PaymentSection'
+import { formatWon } from '@/lib/payments/format'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import {
@@ -91,6 +92,11 @@ type StudentSearchResult = {
   } | null
 }
 
+type BundleBillingDraft = {
+  discountAmount: string
+  discountReason: string
+}
+
 function getDefaultSeriesOptionId(options: BranchSeriesOption[]) {
   const activeOptions = options.filter((option) => option.is_active)
   return (
@@ -132,6 +138,14 @@ function sanitizeDownloadFilename(value: string) {
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'course'
+}
+
+function numberInputValue(value: string) {
+  return value.replace(/[^\d]/g, '')
+}
+
+function toNumber(value: string) {
+  return Number(value.replace(/,/g, '') || 0)
 }
 
 function getEnrollmentStatusLabel(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
@@ -261,6 +275,12 @@ export default function CourseStudentsPage({
     emptyForm(getDefaultSeriesOptionId(initialData?.seriesOptions ?? []))
   ))
   const [createPaymentForm, setCreatePaymentForm] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
+  const [availableCourses, setAvailableCourses] = useState<Course[]>(initialData?.course ? [initialData.course] : [])
+  const [bundleCourseIds, setBundleCourseIds] = useState<number[]>(() => (
+    initialData?.course ? [initialData.course.id] : []
+  ))
+  const [bundleBillingDrafts, setBundleBillingDrafts] = useState<Record<number, BundleBillingDraft>>({})
+  const [bundleCourseToAdd, setBundleCourseToAdd] = useState('')
   const studentLookupInputTimerRef = useRef<number | null>(null)
   const [studentLookupQuery, setStudentLookupQuery] = useState('')
   const [studentLookupResults, setStudentLookupResults] = useState<StudentSearchResult[]>([])
@@ -307,6 +327,75 @@ export default function CourseStudentsPage({
     () => enrollments.find((enrollment) => enrollment.id === paymentDetailEnrollmentId) ?? null,
     [enrollments, paymentDetailEnrollmentId],
   )
+  const bundleSelectableCourses = useMemo(() => {
+    const byId = new Map<number, Course>()
+    if (course) {
+      byId.set(course.id, course)
+    }
+    for (const entry of availableCourses) {
+      byId.set(entry.id, entry)
+    }
+    return Array.from(byId.values())
+      .filter((entry) => entry.status === 'active' || entry.id === course?.id)
+      .sort((left, right) => left.sort_order - right.sort_order || right.created_at.localeCompare(left.created_at))
+  }, [availableCourses, course])
+  const selectedBundleCourses = useMemo(() => (
+    bundleCourseIds
+      .map((id) => bundleSelectableCourses.find((entry) => entry.id === id))
+      .filter((entry): entry is Course => Boolean(entry))
+  ), [bundleCourseIds, bundleSelectableCourses])
+  const isBundleRegistration = selectedBundleCourses.length > 1
+  const bundleBillingRows = useMemo(() => (
+    selectedBundleCourses.map((entry) => {
+      const draft = bundleBillingDrafts[entry.id]
+      const expectedAmount = Math.max(0, Number(entry.tuition_amount ?? 0))
+      const discountAmount = Math.min(toNumber(draft?.discountAmount ?? ''), expectedAmount)
+      return {
+        course: entry,
+        expectedAmount,
+        discountAmount,
+        discountReason: draft?.discountReason?.trim() ?? '',
+        payableAmount: Math.max(expectedAmount - discountAmount, 0),
+      }
+    })
+  ), [bundleBillingDrafts, selectedBundleCourses])
+  const bundleTotals = useMemo(() => (
+    bundleBillingRows.reduce((sum, row) => ({
+      expectedAmount: sum.expectedAmount + row.expectedAmount,
+      discountAmount: sum.discountAmount + row.discountAmount,
+      payableAmount: sum.payableAmount + row.payableAmount,
+    }), { expectedAmount: 0, discountAmount: 0, payableAmount: 0 })
+  ), [bundleBillingRows])
+  const bundleAddableCourses = useMemo(() => (
+    bundleSelectableCourses.filter((entry) => !bundleCourseIds.includes(entry.id))
+  ), [bundleCourseIds, bundleSelectableCourses])
+
+  useEffect(() => {
+    if (panel !== 'create' || !isBundleRegistration) {
+      return
+    }
+
+    const discountReason = bundleBillingRows
+      .filter((row) => row.discountAmount > 0)
+      .map((row) => `${row.course.name}: ${row.discountReason || '할인'}`)
+      .join('\n')
+
+    setCreatePaymentForm((current) => {
+      const firstEntry = current.entries[0]
+      const nextAmount = bundleTotals.payableAmount > 0 ? String(bundleTotals.payableAmount) : ''
+
+      return {
+        ...current,
+        expectedAmount: String(bundleTotals.expectedAmount),
+        discountAmount: bundleTotals.discountAmount > 0 ? String(bundleTotals.discountAmount) : '',
+        discountReason,
+        paidAmount: '',
+        tuitionExempt: false,
+        tuitionExemptReason: '',
+        entries: firstEntry ? [{ ...firstEntry, amount: nextAmount }] : current.entries,
+      }
+    })
+  }, [bundleBillingRows, bundleTotals, isBundleRegistration, panel])
 
   useEffect(() => {
     if (!error) {
@@ -389,6 +478,52 @@ export default function CourseStudentsPage({
     setSelectedStudent(null)
     setSelectedStudentEditable(false)
   }, [panel])
+
+  useEffect(() => {
+    if (!course) {
+      return
+    }
+
+    setAvailableCourses((current) => {
+      if (current.some((entry) => entry.id === course.id)) {
+        return current
+      }
+
+      return [course, ...current]
+    })
+    setBundleCourseIds((current) => (current.length > 0 ? current : [course.id]))
+  }, [course])
+
+  useEffect(() => {
+    if (panel !== 'create') {
+      return
+    }
+
+    let ignore = false
+    fetch('/api/courses?activeOnly=1', { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.error ?? '강좌 목록을 불러오지 못했습니다.')
+        }
+
+        if (!ignore) {
+          const courses = (payload?.courses ?? []) as Course[]
+          setAvailableCourses(course && !courses.some((entry) => entry.id === course.id)
+            ? [course, ...courses]
+            : courses)
+        }
+      })
+      .catch((reason: unknown) => {
+        if (!ignore) {
+          setError(reason instanceof Error ? reason.message : '강좌 목록을 불러오지 못했습니다.')
+        }
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [course, panel])
 
   useEffect(() => {
     if (panel !== 'create') {
@@ -509,6 +644,52 @@ export default function CourseStudentsPage({
     }))
   }
 
+  function resetCreateBundleState(nextCourse: Course) {
+    setBundleCourseIds([nextCourse.id])
+    setBundleBillingDrafts({})
+    setBundleCourseToAdd('')
+  }
+
+  function addBundleCourse() {
+    const nextCourseId = Number(bundleCourseToAdd)
+    if (!Number.isInteger(nextCourseId) || nextCourseId <= 0 || bundleCourseIds.includes(nextCourseId)) {
+      return
+    }
+
+    setBundleCourseIds((current) => [...current, nextCourseId])
+    setBundleCourseToAdd('')
+  }
+
+  function removeBundleCourse(nextCourseId: number) {
+    if (nextCourseId === course?.id) {
+      return
+    }
+
+    setBundleCourseIds((current) => {
+      const next = current.filter((id) => id !== nextCourseId)
+      if (next.length <= 1 && course) {
+        setCreatePaymentForm(createPaymentSectionValueForAmount(course.tuition_amount ?? 0))
+      }
+      return next
+    })
+    setBundleBillingDrafts((current) => {
+      const next = { ...current }
+      delete next[nextCourseId]
+      return next
+    })
+  }
+
+  function updateBundleBilling(courseIdToUpdate: number, patch: Partial<BundleBillingDraft>) {
+    setBundleBillingDrafts((current) => ({
+      ...current,
+      [courseIdToUpdate]: {
+        discountAmount: current[courseIdToUpdate]?.discountAmount ?? '',
+        discountReason: current[courseIdToUpdate]?.discountReason ?? '',
+        ...patch,
+      },
+    }))
+  }
+
   function openConfirmation(request: ConfirmationRequest) {
     setError('')
     setMessage('')
@@ -621,28 +802,33 @@ export default function CourseStudentsPage({
     setError('')
     setMessage('')
 
-    const response = await fetch('/api/students/reset-pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId: enrollment.student_id }),
-    })
-    const payload = await response.json().catch(() => null)
+    try {
+      const response = await fetch('/api/students/reset-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: enrollment.student_id }),
+      })
+      const payload = await response.json().catch(() => null)
 
-    setSubmitting(false)
-    if (!response.ok) {
-      setError(payload?.error ?? 'PIN 재발급에 실패했습니다.')
-      return
+      if (!response.ok) {
+        setError(payload?.error ?? 'PIN 재발급에 실패했습니다.')
+        return
+      }
+
+      setPinReveal({
+        title: '재발급된 학생 PIN',
+        pins: [{
+          name: enrollment.name,
+          phone: enrollment.phone,
+          pin: payload.pin as string,
+        }],
+      })
+      setMessage('학생 PIN을 재발급했습니다.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'PIN 재발급에 실패했습니다.')
+    } finally {
+      setSubmitting(false)
     }
-
-    setPinReveal({
-      title: '재발급된 학생 PIN',
-      pins: [{
-        name: enrollment.name,
-        phone: enrollment.phone,
-        pin: payload.pin as string,
-      }],
-    })
-    setMessage('학생 PIN을 재발급했습니다.')
   }
 
   function applyAttendanceDeviceState(enrollmentId: number, device: AttendanceDeviceState | null) {
@@ -1066,6 +1252,7 @@ export default function CourseStudentsPage({
       && paymentPayload.discountAmount === 0
       && paymentPayload.payableAmount === 0
     const shouldRecordPayments = shouldSavePayment && !isZeroAmountBilling
+    const shouldUseBatchRegistration = isBundleRegistration
     if (!Number.isInteger(paymentPayload.expectedAmount) || paymentPayload.expectedAmount < 0) {
       setError('강좌 정가를 확인해 주세요.')
       return
@@ -1089,6 +1276,31 @@ export default function CourseStudentsPage({
     if (paymentPayload.tuitionExempt && !createPaymentForm.tuitionExemptReason.trim()) {
       setError('무료 수강 또는 수납 면제 사유를 입력해 주세요.')
       return
+    }
+
+    if (shouldUseBatchRegistration) {
+      if (bundleBillingRows.length !== bundleCourseIds.length) {
+        setError('묶음 등록할 강좌 정보를 다시 확인해 주세요.')
+        return
+      }
+
+      const discountWithoutReason = bundleBillingRows.find((row) => (
+        row.discountAmount > 0 && !row.discountReason
+      ))
+      if (discountWithoutReason) {
+        setError(`${discountWithoutReason.course.name} 할인 사유를 입력해 주세요.`)
+        return
+      }
+
+      if (paymentPayload.tuitionExempt) {
+        setError('묶음 등록에서는 무료/면제를 결제 섹션에서 처리하지 않습니다.')
+        return
+      }
+
+      if (shouldRecordPayments && paymentPayload.payments.length > 1) {
+        setError('묶음 등록은 하나의 결제수단으로만 저장할 수 있습니다.')
+        return
+      }
     }
 
     if (!paymentPayload.tuitionExempt && paymentPayload.payableAmount <= 0 && !isZeroAmountBilling) {
@@ -1119,12 +1331,9 @@ export default function CourseStudentsPage({
     }
 
     setSubmitting(true)
-    const paymentsToSave = shouldRecordPayments ? paymentPayload.payments : []
-    const r = await fetch('/api/enrollments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId,
+    try {
+      const paymentsToSave = shouldRecordPayments ? paymentPayload.payments : []
+      const commonPayload = {
         studentId: selectedStudent?.id ?? null,
         updateSelectedStudent: Boolean(selectedStudent && selectedStudentEditable),
         name: createForm.name,
@@ -1134,68 +1343,109 @@ export default function CourseStudentsPage({
         series_option_id: createForm.series_option_id,
         student_type: createForm.student_type,
         custom_data: createForm.custom_data,
-        textbookIds: createForm.textbookIds,
-        billing: {
-          expectedAmount: paymentPayload.expectedAmount,
-          discountAmount: paymentPayload.discountAmount,
-          discountReason: createPaymentForm.discountReason.trim() || null,
-          payableAmount: paymentPayload.payableAmount,
-          tuitionExempt: paymentPayload.tuitionExempt,
-          tuitionExemptReason: createPaymentForm.tuitionExemptReason.trim() || null,
-        },
-        payments: paymentsToSave,
-      }),
-    })
-    const p = await r.json().catch(() => null)
-    if (!r.ok) {
-      setSubmitting(false)
-      setError(p?.error ?? '수강생 등록에 실패했습니다.')
-      return
-    }
-
-    setSubmitting(false)
-    setCreateForm(emptyForm(defaultSeriesOptionId))
-    setCreatePaymentForm(createPaymentSectionValueForAmount(course?.tuition_amount ?? 0))
-    setSelectedStudent(null)
-    setSelectedStudentEditable(false)
-    if (studentLookupInputTimerRef.current !== null) {
-      window.clearTimeout(studentLookupInputTimerRef.current)
-      studentLookupInputTimerRef.current = null
-    }
-    setStudentLookupQuery('')
-    setStudentLookupResults([])
-    if (p?.generated_pin) {
-      setPinReveal({
-        title: '신규 학생 PIN',
-        pins: [{
-          name: (p.enrollment as Enrollment).name,
-          phone: (p.enrollment as Enrollment).phone,
-          pin: p.generated_pin as string,
-        }],
+      }
+      const requestBody = shouldUseBatchRegistration
+        ? {
+          ...commonPayload,
+          registrations: bundleBillingRows.map((row) => ({
+            courseId: row.course.id,
+            textbookIds: row.course.id === courseId ? createForm.textbookIds : [],
+            billing: {
+              expectedAmount: row.expectedAmount,
+              discountAmount: row.discountAmount,
+              discountReason: row.discountReason || null,
+              payableAmount: row.payableAmount,
+              tuitionExempt: false,
+              tuitionExemptReason: null,
+            },
+          })),
+          payments: paymentsToSave,
+        }
+        : {
+          ...commonPayload,
+          courseId,
+          textbookIds: createForm.textbookIds,
+          billing: {
+            expectedAmount: paymentPayload.expectedAmount,
+            discountAmount: paymentPayload.discountAmount,
+            discountReason: createPaymentForm.discountReason.trim() || null,
+            payableAmount: paymentPayload.payableAmount,
+            tuitionExempt: paymentPayload.tuitionExempt,
+            tuitionExemptReason: createPaymentForm.tuitionExemptReason.trim() || null,
+          },
+          payments: paymentsToSave,
+        }
+      const r = await fetch(shouldUseBatchRegistration ? '/api/enrollments/batch' : '/api/enrollments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
       })
+      const p = await r.json().catch(() => null)
+      if (!r.ok) {
+        setError(p?.error ?? '수강생 등록에 실패했습니다.')
+        return
+      }
+
+      setCreateForm(emptyForm(defaultSeriesOptionId))
+      setCreatePaymentForm(createPaymentSectionValueForAmount(course?.tuition_amount ?? 0))
+      if (course) {
+        resetCreateBundleState(course)
+      }
+      setSelectedStudent(null)
+      setSelectedStudentEditable(false)
+      if (studentLookupInputTimerRef.current !== null) {
+        window.clearTimeout(studentLookupInputTimerRef.current)
+        studentLookupInputTimerRef.current = null
+      }
+      setStudentLookupQuery('')
+      setStudentLookupResults([])
+      if (p?.generated_pin) {
+        const pinEnrollment = shouldUseBatchRegistration
+          ? (p.enrollments?.[0] as Enrollment | undefined)
+          : (p.enrollment as Enrollment | undefined)
+        setPinReveal({
+          title: '신규 학생 PIN',
+          pins: [{
+            name: pinEnrollment?.name ?? createForm.name,
+            phone: pinEnrollment?.phone ?? createForm.phone,
+            pin: p.generated_pin as string,
+          }],
+        })
+      }
+      const wasReactivated = shouldUseBatchRegistration
+        ? Number(p?.reactivatedCount ?? 0) > 0
+        : Boolean(p?.reactivated)
+      const noChargeMessage = paymentPayload.tuitionExempt
+        ? '수강생을 등록하고 수납 면제로 기록했습니다.'
+        : '0원 강좌 수강생을 등록했습니다.'
+      const reactivatedNoChargeMessage = paymentPayload.tuitionExempt
+        ? '환불 완료 수강생을 다시 활성 등록으로 전환하고 수납 면제로 기록했습니다.'
+        : '환불 완료 수강생을 다시 활성 등록으로 전환하고 납부할 금액 없음으로 기록했습니다.'
+      const batchSuccessMessage = shouldRecordPayments
+        ? `${bundleBillingRows.length}개 강좌를 묶음 등록하고 결제를 강좌별로 저장했습니다.`
+        : `${bundleBillingRows.length}개 강좌를 묶음 미수납 등록했습니다.`
+      setMessage(
+        shouldUseBatchRegistration
+          ? batchSuccessMessage
+          : wasReactivated
+          ? shouldRecordPayments
+            ? '환불 완료 수강생을 재등록하고 수납 정보를 저장했습니다.'
+            : paymentPayload.payableAmount <= 0
+              ? reactivatedNoChargeMessage
+              : '환불 완료 수강생을 다시 활성 등록으로 전환했습니다.'
+          : shouldRecordPayments
+            ? '수강생과 수납 정보를 함께 등록했습니다.'
+            : paymentPayload.payableAmount <= 0
+              ? noChargeMessage
+              : '수강생을 등록하고 미납 청구를 남겼습니다.',
+      )
+      setPanel('none')
+      await refresh().catch(() => null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '수강생을 등록하지 못했습니다.')
+    } finally {
+      setSubmitting(false)
     }
-    const wasReactivated = Boolean(p?.reactivated)
-    const noChargeMessage = paymentPayload.tuitionExempt
-      ? '수강생을 등록하고 수납 면제로 기록했습니다.'
-      : '0원 강좌 수강생을 등록했습니다.'
-    const reactivatedNoChargeMessage = paymentPayload.tuitionExempt
-      ? '환불 완료 수강생을 다시 활성 등록으로 전환하고 수납 면제로 기록했습니다.'
-      : '환불 완료 수강생을 다시 활성 등록으로 전환하고 납부할 금액 없음으로 기록했습니다.'
-    setMessage(
-      wasReactivated
-        ? shouldRecordPayments
-          ? '환불 완료 수강생을 재등록하고 수납 정보를 저장했습니다.'
-          : paymentPayload.payableAmount <= 0
-            ? reactivatedNoChargeMessage
-            : '환불 완료 수강생을 다시 활성 등록으로 전환했습니다.'
-        : shouldRecordPayments
-          ? '수강생과 수납 정보를 함께 등록했습니다.'
-          : paymentPayload.payableAmount <= 0
-            ? noChargeMessage
-            : '수강생을 등록하고 미납 청구를 남겼습니다.',
-    )
-    setPanel('none')
-    await refresh().catch(() => null)
   }
 
   async function handleBulkImport(ev: FormEvent) {
@@ -1204,24 +1454,29 @@ export default function CourseStudentsPage({
     setSubmitting(true)
     setError('')
     setMessage('')
-    const r = await fetch('/api/enrollments/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId, text: bulkText }),
-    })
-    const p = await r.json().catch(() => null)
-    setSubmitting(false)
-    if (!r.ok) { setError(p?.error ?? '대량 등록에 실패했습니다.'); return }
-    setBulkText('')
-    if (Array.isArray(p?.generated_pins) && p.generated_pins.length > 0) {
-      setPinReveal({
-        title: '일괄 생성 학생 PIN',
-        pins: p.generated_pins as Array<{ name: string; phone: string; pin: string }>,
+    try {
+      const r = await fetch('/api/enrollments/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId, text: bulkText }),
       })
+      const p = await r.json().catch(() => null)
+      if (!r.ok) { setError(p?.error ?? '대량 등록에 실패했습니다.'); return }
+      setBulkText('')
+      if (Array.isArray(p?.generated_pins) && p.generated_pins.length > 0) {
+        setPinReveal({
+          title: '일괄 생성 학생 PIN',
+          pins: p.generated_pins as Array<{ name: string; phone: string; pin: string }>,
+        })
+      }
+      setMessage(`${p?.count ?? 0}건 반영했습니다.`)
+      setPanel('none')
+      await refresh().catch(() => null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '대량 등록에 실패했습니다.')
+    } finally {
+      setSubmitting(false)
     }
-    setMessage(`${p?.count ?? 0}건 반영했습니다.`)
-    setPanel('none')
-    await refresh().catch(() => null)
   }
 
   function startEdit(e: Enrollment) {
@@ -1245,13 +1500,18 @@ export default function CourseStudentsPage({
     setError('')
     const formData = new FormData()
     formData.append('photo', file)
-    const r = await fetch(`/api/enrollments/${editingId}/photo`, { method: 'POST', body: formData })
-    const p = await r.json().catch(() => null)
-    setPhotoUploading(false)
-    if (!r.ok) { setError(p?.error ?? '사진 업로드 실패'); return }
-    setEditPhotoUrl(p.photo_url)
-    setEnrollments((c) => c.map((x) => x.id === editingId ? { ...x, photo_url: p.photo_url } : x))
-    setMessage('사진을 업로드했습니다.')
+    try {
+      const r = await fetch(`/api/enrollments/${editingId}/photo`, { method: 'POST', body: formData })
+      const p = await r.json().catch(() => null)
+      if (!r.ok) { setError(p?.error ?? '사진 업로드 실패'); return }
+      setEditPhotoUrl(p.photo_url)
+      setEnrollments((c) => c.map((x) => x.id === editingId ? { ...x, photo_url: p.photo_url } : x))
+      setMessage('사진을 업로드했습니다.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '사진 업로드 실패')
+    } finally {
+      setPhotoUploading(false)
+    }
   }
 
   async function handlePhotoDelete() {
@@ -1281,26 +1541,31 @@ export default function CourseStudentsPage({
     setSubmitting(true)
     setError('')
     setMessage('')
-    const r = await fetch(`/api/enrollments/${editingId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: editForm.name,
-        phone: editForm.phone,
-        exam_number: editForm.exam_number || null,
-        birth_date: editForm.birth_date || null,
-        series_option_id: editForm.series_option_id,
-        student_type: editForm.student_type,
-        custom_data: editForm.custom_data,
-      }),
-    })
-    const p = await r.json().catch(() => null)
-    setSubmitting(false)
-    if (!r.ok) { setError(p?.error ?? '수정에 실패했습니다.'); return }
-    const next = p.enrollment as Enrollment
-    setEnrollments((c) => c.map((x) => (x.id === next.id ? next : x)))
-    setPanel('none'); setEditingId(null)
-    setMessage('수강생 정보를 수정했습니다.')
+    try {
+      const r = await fetch(`/api/enrollments/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editForm.name,
+          phone: editForm.phone,
+          exam_number: editForm.exam_number || null,
+          birth_date: editForm.birth_date || null,
+          series_option_id: editForm.series_option_id,
+          student_type: editForm.student_type,
+          custom_data: editForm.custom_data,
+        }),
+      })
+      const p = await r.json().catch(() => null)
+      if (!r.ok) { setError(p?.error ?? '수정에 실패했습니다.'); return }
+      const next = p.enrollment as Enrollment
+      setEnrollments((c) => c.map((x) => (x.id === next.id ? next : x)))
+      setPanel('none'); setEditingId(null)
+      setMessage('수강생 정보를 수정했습니다.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '수정에 실패했습니다.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleSuspend(reason: string) {
@@ -1413,6 +1678,7 @@ export default function CourseStudentsPage({
               if (opening) {
                 setCreatePaymentForm(createPaymentSectionValueForAmount(course.tuition_amount ?? 0))
                 setCreateForm(emptyForm(defaultSeriesOptionId))
+                resetCreateBundleState(course)
               }
               setPanel(opening ? 'create' : 'none')
             }}
@@ -1482,11 +1748,11 @@ export default function CourseStudentsPage({
               }
             }}
           >
-            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
+            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-3 sm:px-6">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">New Student</p>
-                <h3 className="mt-1.5 text-[28px] font-semibold text-[#1d1d1f]">수강생 등록</h3>
-                <p className="mt-2 truncate text-sm text-slate-500">{course.name}</p>
+                <h3 className="mt-1 text-[25px] font-semibold leading-[1.05] text-[#1d1d1f]">수강생 등록</h3>
+                <p className="mt-1 truncate text-sm text-slate-500">{course.name}</p>
               </div>
               <button
                 type="button"
@@ -1502,12 +1768,12 @@ export default function CourseStudentsPage({
                 <X className="h-4 w-4" />
               </button>
             </header>
-            <form id="create-student-form" onSubmit={handleCreate} className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-6 sm:px-6">
+            <form id="create-student-form" onSubmit={handleCreate} className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-3 sm:px-6">
           <section>
             <div className="flex items-end justify-between gap-3">
               <label className="min-w-0 flex-1">
                 <span className="text-[11px] font-medium text-slate-500">기존 수강생 검색</span>
-                <div className="mt-2 flex items-center gap-2 rounded-[8px] bg-white px-3 py-2.5 border border-slate-200 transition focus-within:border-slate-400">
+                  <div className="mt-1.5 flex items-center gap-2 rounded-[8px] bg-white px-3 py-2 border border-slate-200 transition focus-within:border-slate-400">
                   <Search className="h-4 w-4 text-slate-500" />
                   <input
                     defaultValue=""
@@ -1602,28 +1868,28 @@ export default function CourseStudentsPage({
             ) : null}
           </section>
 
-          <section className="mt-8">
+          <section className="mt-4">
             <h4 className="text-sm font-semibold text-[#1d1d1f]">인적 사항</h4>
             <p className="mt-0.5 text-xs text-slate-500">학번·이름·연락처는 필수입니다.</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">학번</span>
-                <input value={createForm.exam_number} onChange={(e) => setCreateForm((c) => ({ ...c, exam_number: e.target.value }))} disabled={selectedStudentLocked} placeholder="예: A-001" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                <input value={createForm.exam_number} onChange={(e) => setCreateForm((c) => ({ ...c, exam_number: e.target.value }))} disabled={selectedStudentLocked} placeholder="예: A-001" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">이름</span>
-                <input value={createForm.name} onChange={(e) => setCreateForm((c) => ({ ...c, name: e.target.value }))} disabled={selectedStudentLocked} placeholder="홍길동" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                <input value={createForm.name} onChange={(e) => setCreateForm((c) => ({ ...c, name: e.target.value }))} disabled={selectedStudentLocked} placeholder="홍길동" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">연락처</span>
-                <input value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="010-0000-0000" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                <input value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="010-0000-0000" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">생년월일</span>
-                <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
-              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[max-content_220px] sm:justify-start">
-                <div>
+              <div className="grid gap-3 sm:col-span-4 sm:grid-cols-4">
+                <div className="sm:col-span-2">
                   <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
                   <SeriesSelector
                     options={seriesOptions}
@@ -1631,7 +1897,7 @@ export default function CourseStudentsPage({
                     onChange={(seriesOptionId) => setCreateForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
                   />
                 </div>
-                <div>
+                <div className="sm:col-start-4">
                   <span className="mb-2 block text-[11px] font-medium text-slate-500">학원구분</span>
                   <StudentTypeSelector
                     value={createForm.student_type}
@@ -1645,8 +1911,112 @@ export default function CourseStudentsPage({
             </div>
           </section>
 
+          <section className={`${isBundleRegistration ? 'mt-3 rounded-[10px] bg-slate-50 p-2' : 'mt-4 rounded-[10px] bg-slate-50 p-3'}`}>
+            <div className={`flex flex-col sm:flex-row sm:items-end sm:justify-between ${isBundleRegistration ? 'gap-2' : 'gap-3'}`}>
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold text-[#1d1d1f]">등록 강좌</h4>
+                <p className={`${isBundleRegistration ? 'hidden' : 'mt-0.5'} text-xs text-slate-500`}>
+                  여러 강좌를 동시에 등록하면 결제는 한 번 받고 정산은 강좌별로 나뉘어 저장됩니다.
+                </p>
+              </div>
+              <div className={`flex min-w-0 gap-2 ${isBundleRegistration ? 'sm:min-w-[280px]' : 'sm:min-w-[320px]'}`}>
+                <select
+                  value={bundleCourseToAdd}
+                  onChange={(event) => setBundleCourseToAdd(event.target.value)}
+                  className="min-w-0 flex-1 rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                >
+                  <option value="">추가 강좌 선택</option>
+                  {bundleAddableCourses.map((entry) => (
+                    <option key={entry.id} value={entry.id}>{entry.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={addBundleCourse}
+                  disabled={!bundleCourseToAdd}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)] transition-all duration-200 ease-ios hover:bg-slate-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  추가
+                </button>
+              </div>
+            </div>
+
+            <div className={`${isBundleRegistration ? 'mt-2 gap-1.5' : 'mt-3 gap-2'} grid`}>
+              {bundleBillingRows.map((row) => {
+                const removable = row.course.id !== courseId
+                const draft = bundleBillingDrafts[row.course.id]
+
+                return (
+                  <div
+                    key={row.course.id}
+                    className={`grid gap-2 rounded-[8px] bg-white shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)] sm:grid-cols-[minmax(0,1.4fr)_96px_104px_minmax(0,1fr)_96px_32px] ${isBundleRegistration ? 'p-1.5 sm:items-center sm:[&>div>span]:hidden sm:[&>label>span]:hidden' : 'p-2 sm:items-end'}`}
+                  >
+                    <div className="min-w-0">
+                      <span className="block text-[11px] font-medium text-slate-500">강좌</span>
+                      <p className={`${isBundleRegistration ? 'mt-0' : 'mt-1'} truncate text-sm font-semibold text-[#1d1d1f]`}>{row.course.name}</p>
+                      <p className={`${isBundleRegistration ? 'mt-0 text-[10px]' : 'mt-0.5 text-[11px]'} text-slate-400`}>Code {row.course.settlement_report_code?.trim() || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="block text-[11px] font-medium text-slate-500">정가</span>
+                      <p className={`${isBundleRegistration ? 'mt-0 py-1.5' : 'mt-1 py-2'} rounded-[8px] bg-slate-50 px-2 text-right text-sm font-semibold text-slate-700`}>
+                        {formatWon(row.expectedAmount)}
+                      </p>
+                    </div>
+                    <label className={`flex flex-col ${isBundleRegistration ? 'gap-0' : 'gap-1'}`}>
+                      <span className="text-[11px] font-medium text-slate-500">할인</span>
+                      <input
+                        inputMode="numeric"
+                        value={draft?.discountAmount ?? ''}
+                        onChange={(event) => updateBundleBilling(row.course.id, {
+                          discountAmount: numberInputValue(event.target.value),
+                        })}
+                        placeholder="0"
+                        className={`${isBundleRegistration ? 'py-1.5' : 'py-2'} rounded-[8px] border border-slate-200 px-2 text-right text-sm outline-none focus:border-slate-400`}
+                      />
+                    </label>
+                    <label className={`flex flex-col ${isBundleRegistration ? 'gap-0' : 'gap-1'}`}>
+                      <span className="text-[11px] font-medium text-slate-500">할인 사유</span>
+                      <input
+                        value={draft?.discountReason ?? ''}
+                        onChange={(event) => updateBundleBilling(row.course.id, {
+                          discountReason: event.target.value,
+                        })}
+                        placeholder="형제 할인, 이벤트 등"
+                        className={`${isBundleRegistration ? 'py-1.5' : 'py-2'} rounded-[8px] border border-slate-200 px-2 text-sm outline-none focus:border-slate-400`}
+                      />
+                    </label>
+                    <div>
+                      <span className="block text-[11px] font-medium text-slate-500">적용</span>
+                      <p className={`${isBundleRegistration ? 'mt-0 py-1.5' : 'mt-1 py-2'} rounded-[8px] bg-blue-50 px-2 text-right text-sm font-bold text-blue-700`}>
+                        {formatWon(row.payableAmount)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeBundleCourse(row.course.id)}
+                      disabled={!removable}
+                      aria-label="강좌 제거"
+                      className={`${isBundleRegistration ? 'h-7 w-7' : 'h-8 w-8'} inline-flex items-center justify-center rounded-[8px] text-slate-400 transition-all duration-200 ease-ios hover:bg-rose-50 hover:text-rose-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 disabled:active:scale-100`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            {isBundleRegistration ? (
+              <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-semibold text-slate-500">
+                <span>정가 <span className="text-[#1d1d1f]">{formatWon(bundleTotals.expectedAmount)}</span></span>
+                <span>할인 <span className="text-rose-600">{formatWon(bundleTotals.discountAmount)}</span></span>
+                <span>결제 <span className="text-blue-700">{formatWon(bundleTotals.payableAmount)}</span></span>
+              </div>
+            ) : null}
+          </section>
+
           {visibleTextbooks.length > 0 ? (
-            <section className="mt-8">
+            <section className="mt-4">
               <div className="flex items-baseline justify-between gap-3">
                 <h4 className="text-sm font-semibold text-[#1d1d1f]">구매 교재</h4>
                 <span className="text-xs text-slate-500">등록과 동시에 교재를 배정합니다.</span>
@@ -1670,12 +2040,21 @@ export default function CourseStudentsPage({
             </section>
           ) : null}
 
-          <div className="mt-8">
-            <PaymentSection value={createPaymentForm} onChange={setCreatePaymentForm} />
+          <div className={isBundleRegistration ? 'mt-2' : 'mt-4'}>
+            <PaymentSection
+              value={createPaymentForm}
+              onChange={setCreatePaymentForm}
+              compact
+              lockedBilling={isBundleRegistration}
+              singlePaymentOnly={isBundleRegistration}
+              hideBillingControls={isBundleRegistration}
+              hidePaymentMeta={isBundleRegistration}
+              hideSummaryHeader={isBundleRegistration}
+            />
           </div>
             </form>
 
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3.5 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] sm:px-6">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] sm:px-6">
               <button
                 type="button"
                 onClick={() => setPanel('none')}
@@ -1691,7 +2070,7 @@ export default function CourseStudentsPage({
                 disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
                 className="rounded-[8px] bg-slate-50 px-4 py-2.5 text-[14px] font-medium text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
               >
-                {submitting ? '등록 중...' : '결제 없이 등록'}
+                {submitting ? '등록 중...' : '미수납 등록'}
               </button>
               <button
                 type="submit"
@@ -1780,13 +2159,13 @@ export default function CourseStudentsPage({
             </div>
           )}
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
             <input value={editForm.exam_number} onChange={(e) => setEditForm((c) => ({ ...c, exam_number: e.target.value }))} placeholder="학번" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
             <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="생년월일(YYMMDD)" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <div className="grid gap-3 sm:col-span-3 sm:grid-cols-[max-content_220px] sm:justify-start">
-              <div>
+            <div className="grid gap-3 sm:col-span-4 sm:grid-cols-4">
+              <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500">직렬</label>
                 <SeriesSelector
                   options={seriesOptions}
@@ -1794,7 +2173,7 @@ export default function CourseStudentsPage({
                   onChange={(seriesOptionId) => setEditForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
                 />
               </div>
-              <div>
+              <div className="sm:col-start-4">
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500">학원구분</label>
                 <StudentTypeSelector
                   value={editForm.student_type}

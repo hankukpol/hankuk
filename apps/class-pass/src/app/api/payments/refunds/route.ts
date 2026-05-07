@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import {
   createRefundBundle,
@@ -7,7 +8,6 @@ import {
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
-import type { StaffJwtPayload } from '@/types/database'
 
 const refundSchema = z.object({
   paymentId: z.number().int().positive(),
@@ -32,10 +32,6 @@ const refundSchema = z.object({
 const createRefundBundleSchema = z.object({
   refunds: z.array(refundSchema).min(1).max(20),
 })
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req)

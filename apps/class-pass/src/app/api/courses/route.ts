@@ -7,18 +7,27 @@ import {
   ATTENDANCE_FEATURE_WARNING,
   DESIGNATED_SEAT_FEATURE_WARNING,
   EXAM_DELIVERY_FEATURE_WARNING,
+  SETTLEMENT_REPORT_CODE_WARNING,
   isAttendanceFeatureColumnError,
   stripAttendanceFeatureFields,
   isDesignatedSeatFeatureColumnError,
   mergeFeatureWarnings,
   stripDesignatedSeatFeatureFields,
   isExamDeliveryFeatureColumnError,
+  isSettlementReportCodeColumnError,
   stripExamDeliveryFeatureFields,
+  stripSettlementReportCodeField,
 } from '@/lib/course-feature-compat'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { slugifyCourseName } from '@/lib/utils'
+import { isValidDateKey } from '@/lib/validation/primitives'
+
+const optionalDateKeySchema = z.preprocess(
+  (value) => value === '' ? null : value,
+  z.string().refine(isValidDateKey).optional().nullable(),
+)
 
 const courseSchema = z.object({
   name: z.string().min(1).max(100),
@@ -27,6 +36,7 @@ const courseSchema = z.object({
   status: z.enum(['active', 'archived']).default('active'),
   theme_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
   tuition_amount: z.number().int().min(0).max(100_000_000).default(0),
+  settlement_report_code: z.string().trim().max(20).optional().nullable(),
   feature_qr_pass: z.boolean().default(true),
   feature_qr_distribution: z.boolean().default(false),
   feature_seat_assignment: z.boolean().default(false),
@@ -42,12 +52,12 @@ const courseSchema = z.object({
   feature_anti_forgery_motion: z.boolean().default(false),
   time_window_start: z.string().optional().nullable(),
   time_window_end: z.string().optional().nullable(),
-  target_date: z.string().optional().nullable(),
+  target_date: optionalDateKeySchema,
   target_date_label: z.string().max(30).optional().nullable(),
   notice_title: z.string().max(100).optional().nullable(),
-  notice_content: z.string().optional().nullable(),
+  notice_content: z.string().max(5000).optional().nullable(),
   notice_visible: z.boolean().default(false),
-  refund_policy: z.string().optional().nullable(),
+  refund_policy: z.string().max(5000).optional().nullable(),
   kakao_chat_url: z.string().url().optional().nullable(),
   extra_site_url: z.string().url().optional().nullable(),
   extra_site_label: z.string().trim().max(40).optional().nullable(),
@@ -90,6 +100,7 @@ export async function POST(req: NextRequest) {
     ...parsed.data,
     division,
     slug: parsed.data.slug || slugifyCourseName(parsed.data.name),
+    settlement_report_code: parsed.data.settlement_report_code?.trim() || null,
     designated_seat_open: parsed.data.feature_designated_seat ? parsed.data.designated_seat_open : false,
     attendance_open: parsed.data.feature_attendance ? parsed.data.attendance_open : false,
     updated_at: new Date().toISOString(),
@@ -107,9 +118,20 @@ export async function POST(req: NextRequest) {
   let strippedExamDeliveryFeatures = false
   let strippedDesignatedSeatFeatures = false
   let strippedAttendanceFeatures = false
+  let strippedSettlementReportCode = false
   let { data, error } = await runInsert(insertPayload)
 
-  for (let attempt = 0; attempt < 3 && error; attempt += 1) {
+  for (let attempt = 0; attempt < 4 && error; attempt += 1) {
+    if (isSettlementReportCodeColumnError(error) && !strippedSettlementReportCode) {
+      insertPayload = stripSettlementReportCodeField(insertPayload)
+      strippedSettlementReportCode = true
+      warnings.push(SETTLEMENT_REPORT_CODE_WARNING)
+      const retry = await runInsert(insertPayload)
+      data = retry.data
+      error = retry.error
+      continue
+    }
+
     if (isAttendanceFeatureColumnError(error) && !strippedAttendanceFeatures) {
       insertPayload = stripAttendanceFeatureFields(insertPayload)
       strippedAttendanceFeatures = true

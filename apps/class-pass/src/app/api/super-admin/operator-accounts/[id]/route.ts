@@ -4,8 +4,10 @@ import { authenticateSuperAdminRequest } from '@/lib/auth/authenticate'
 import {
   deleteOperatorAccount,
   getOperatorAccountWithMembershipsById,
+  listOperatorAccounts,
   upsertOperatorAccount,
 } from '@/lib/branch-ops'
+import { parsePositiveInt } from '@/lib/utils'
 
 const membershipSchema = z.object({
   role: z.enum(['SUPER_ADMIN', 'BRANCH_ADMIN', 'STAFF']),
@@ -48,7 +50,11 @@ export async function PATCH(
   }
 
   const { id } = await context.params
-  const accountId = Number(id)
+  const accountId = parsePositiveInt(id)
+  if (!accountId) {
+    return NextResponse.json({ error: 'Invalid operator account id.' }, { status: 400 })
+  }
+
   const existing = await getOperatorAccountWithMembershipsById(accountId)
   if (!existing) {
     return NextResponse.json({ error: '운영자 계정을 찾을 수 없습니다.' }, { status: 404 })
@@ -90,13 +96,43 @@ export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const { error } = await authenticateSuperAdminRequest(req)
+  const { payload, error } = await authenticateSuperAdminRequest(req)
   if (error) {
     return error
   }
 
   const { id } = await context.params
-  const deleted = await deleteOperatorAccount(Number(id))
+  const accountId = parsePositiveInt(id)
+  if (!accountId) {
+    return NextResponse.json({ error: 'Invalid operator account id.' }, { status: 400 })
+  }
+
+  if (payload?.accountId === accountId) {
+    return NextResponse.json({ error: 'You cannot delete your own operator account.' }, { status: 400 })
+  }
+
+  const existing = await getOperatorAccountWithMembershipsById(accountId)
+  if (!existing) {
+    return NextResponse.json({ error: '?댁쁺??怨꾩젙??李얠쓣 ???놁뒿?덈떎.' }, { status: 404 })
+  }
+
+  const deletesSuperAdmin = existing.memberships.some(
+    (membership) => membership.role === 'SUPER_ADMIN' && membership.is_active,
+  )
+  if (deletesSuperAdmin) {
+    const activeSuperAdminCount = (await listOperatorAccounts()).filter((account) =>
+      account.is_active
+      && account.memberships.some(
+        (membership) => membership.role === 'SUPER_ADMIN' && membership.is_active,
+      ),
+    ).length
+
+    if (activeSuperAdminCount <= 1) {
+      return NextResponse.json({ error: 'At least one active super admin account is required.' }, { status: 400 })
+    }
+  }
+
+  const deleted = await deleteOperatorAccount(accountId)
   if (!deleted) {
     return NextResponse.json({ error: '운영자 계정을 찾을 수 없습니다.' }, { status: 404 })
   }

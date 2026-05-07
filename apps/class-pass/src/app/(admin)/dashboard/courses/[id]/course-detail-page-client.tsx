@@ -21,6 +21,7 @@ type CoursePatchForm = {
   status: 'active' | 'archived'
   theme_color: string
   tuition_amount: string
+  settlement_report_code: string
   sort_order: number
   feature_qr_pass: boolean
   feature_qr_distribution: boolean
@@ -99,6 +100,7 @@ function toPatchForm(course: Course): CoursePatchForm {
     status: course.status,
     theme_color: course.theme_color ?? '#1A237E',
     tuition_amount: String(course.tuition_amount ?? 0),
+    settlement_report_code: course.settlement_report_code ?? '',
     sort_order: course.sort_order,
     feature_qr_pass: course.feature_qr_pass,
     feature_qr_distribution: course.feature_qr_distribution,
@@ -217,6 +219,7 @@ export default function CourseDetailPage({
         slug: form.slug.trim(),
         theme_color: form.theme_color.trim(),
         tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
+        settlement_report_code: form.settlement_report_code.trim() || null,
         time_window_start: form.time_window_start || null,
         time_window_end: form.time_window_end || null,
         target_date: form.target_date || null,
@@ -577,6 +580,16 @@ export default function CourseDetailPage({
                   inputMode="numeric"
                   value={form.tuition_amount}
                   onChange={(e) => setForm((c) => c && { ...c, tuition_amount: e.target.value.replace(/[^\d]/g, '') })}
+                  className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-500">보고 코드</label>
+                <input
+                  value={form.settlement_report_code}
+                  onChange={(e) => setForm((c) => c && { ...c, settlement_report_code: e.target.value })}
+                  maxLength={20}
+                  placeholder="11"
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>

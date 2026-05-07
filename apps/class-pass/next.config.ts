@@ -2,6 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   experimental: {
+    webpackBuildWorker: false,
     serverActions: {
       allowedOrigins: [
         'localhost:3000',

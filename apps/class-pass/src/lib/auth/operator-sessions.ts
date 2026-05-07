@@ -12,6 +12,7 @@ import {
   type OperatorMembershipRecord,
 } from '@/lib/branch-ops'
 import { getClientIp } from '@/lib/auth/rateLimiter'
+import { normalizeTenantType } from '@/lib/tenant'
 
 const SESSION_TTL_SEC = 8 * 60 * 60
 const LAST_SEEN_UPDATE_INTERVAL_MS = 5 * 60 * 1000
@@ -167,10 +168,12 @@ export async function createOperatorSession(
     throw new Error(`Failed to create operator session: ${error?.message ?? 'unknown error'}`)
   }
 
+  const branchTenant = context.branchSlug ? normalizeTenantType(context.branchSlug) : null
+
   return {
     sub: String(data.id),
     role: context.role === 'STAFF' ? 'staff' : 'admin',
-    division: context.branchSlug ?? undefined,
+    division: branchTenant ?? undefined,
     adminId: context.role === 'STAFF' ? undefined : context.loginId,
     staffName: context.role === 'STAFF' ? context.displayName : undefined,
     authMethod:
@@ -182,7 +185,7 @@ export async function createOperatorSession(
     sessionScope: normalizeSessionScope(context.role),
     accountId: context.accountId,
     membershipId: context.membershipId,
-    branchSlug: context.branchSlug ?? undefined,
+    branchSlug: branchTenant ?? undefined,
     credentialVersion: context.credentialVersion,
     sharedUserId: context.sharedUserId ?? undefined,
     iat: Math.floor(Date.now() / 1000),

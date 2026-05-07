@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const ip = getClientIp(req)
     const rateLimitKey = `lookup:${ip}`
-    const rateLimit = peekRateLimit(rateLimitKey)
+    const rateLimit = await peekRateLimit(rateLimitKey)
 
     if (!rateLimit.allowed) {
       const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const parsed = schema.safeParse(body)
 
     if (!parsed.success) {
-      recordRateLimitFailure(rateLimitKey)
+      await recordRateLimitFailure(rateLimitKey)
       return NextResponse.json({ error: '조회 요청 형식이 올바르지 않습니다.' }, { status: 400 })
     }
 
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!student) {
-      recordRateLimitFailure(rateLimitKey)
+      await recordRateLimitFailure(rateLimitKey)
       return NextResponse.json({ error: '학생 정보를 찾을 수 없습니다.' }, { status: 401 })
     }
 
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      recordRateLimitFailure(rateLimitKey)
+      await recordRateLimitFailure(rateLimitKey)
       return NextResponse.json({ error: '인증번호가 일치하지 않습니다.' }, { status: 401 })
     }
 
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '일치하는 수강 이력을 찾지 못했습니다.' }, { status: 404 })
     }
 
-    resetRateLimit(rateLimitKey)
+    await resetRateLimit(rateLimitKey)
     return NextResponse.json({ courses })
   } catch (error) {
     return handleRouteError('enrollments.lookup.POST', '수강 정보를 조회하지 못했습니다.', error)

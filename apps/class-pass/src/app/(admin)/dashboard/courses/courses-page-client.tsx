@@ -19,6 +19,7 @@ type CreateCourseForm = {
   course_type: CourseType
   theme_color: string
   tuition_amount: string
+  settlement_report_code: string
   status: 'active' | 'archived'
   feature_qr_pass: boolean
   feature_qr_distribution: boolean
@@ -50,6 +51,7 @@ const DEFAULT_FORM: CreateCourseForm = {
   course_type: 'general',
   theme_color: '#1A237E',
   tuition_amount: '',
+  settlement_report_code: '',
   status: 'active',
   feature_qr_pass: true,
   feature_qr_distribution: false,
@@ -252,6 +254,7 @@ export default function CoursesPageClient({
         ...form,
         theme_color: form.theme_color.trim(),
         tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
+        settlement_report_code: form.settlement_report_code.trim() || null,
       }),
     })
     const payload = await response.json().catch(() => null)
@@ -542,7 +545,7 @@ export default function CoursesPageClient({
             강좌 금액은 결제 추가 시 정가와 수납 금액으로 자동 적용됩니다.
           </p>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[2fr,1fr,1fr]">
+          <div className="mt-4 grid gap-3 md:grid-cols-[2fr_1fr_1fr_120px]">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold text-[#86868b]">강좌명</span>
               <input
@@ -577,6 +580,16 @@ export default function CoursesPageClient({
                 />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#86868b]">원</span>
               </div>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">보고 코드</span>
+              <input
+                value={form.settlement_report_code}
+                onChange={(e) => setForm((c) => ({ ...c, settlement_report_code: e.target.value }))}
+                maxLength={20}
+                placeholder="11"
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+              />
             </label>
           </div>
 
@@ -705,6 +718,11 @@ export default function CoursesPageClient({
                         <p className="mt-1 truncate text-[11px] text-[#86868b]">
                           {courseTypeLabel(course.course_type)} · {course.slug}
                         </p>
+                        {course.settlement_report_code ? (
+                          <p className="mt-1 text-[11px] font-semibold text-[#0071e3]">
+                            Code {course.settlement_report_code}
+                          </p>
+                        ) : null}
                         <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
                           강좌 금액 {formatWon(course.tuition_amount ?? 0)}
                         </p>
@@ -813,6 +831,11 @@ export default function CoursesPageClient({
                               {course.slug}
                               {course.copied_from_course_name ? ` · 원본 ${course.copied_from_course_name}` : ''}
                             </p>
+                            {course.settlement_report_code ? (
+                              <p className="mt-0.5 text-[11px] font-semibold text-[#0071e3]">
+                                Code {course.settlement_report_code}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       </td>

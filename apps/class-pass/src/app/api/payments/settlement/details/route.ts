@@ -26,7 +26,6 @@ export async function GET(req: NextRequest) {
       from,
       to,
       courseId: parsePositiveInt(req.nextUrl.searchParams.get('courseId')),
-      limit: parsePositiveInt(req.nextUrl.searchParams.get('limit')) ?? 5000,
     }, division)
 
     return NextResponse.json({ payments })

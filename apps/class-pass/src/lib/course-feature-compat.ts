@@ -25,6 +25,10 @@ const PRESENCE_LOCATION_KEYS = [
   'presence_required_for_designated_seat',
 ] as const
 
+const SETTLEMENT_REPORT_CODE_KEYS = [
+  'settlement_report_code',
+] as const
+
 export const EXAM_DELIVERY_FEATURE_WARNING =
   'Exam delivery mode columns are not available yet. Apply supabase/migrations/202604100001_exam_delivery_mode.sql and save again.'
 
@@ -36,6 +40,9 @@ export const ATTENDANCE_FEATURE_WARNING =
 
 export const PRESENCE_LOCATION_WARNING =
   'Presence location columns are not available yet. Apply supabase/migrations/202604240002_presence_location.sql and save again.'
+
+export const SETTLEMENT_REPORT_CODE_WARNING =
+  'Settlement report code column is not available yet. Apply supabase/migrations/202605070006_course_settlement_report_code.sql and save again.'
 
 function stripKeys<T extends Record<string, unknown>, K extends readonly string[]>(payload: T, keys: K) {
   const next = { ...payload }
@@ -101,6 +108,45 @@ export function hasPresenceLocationColumns(record: Record<string, unknown>) {
 
 export function containsPresenceLocationFields(record: Record<string, unknown>) {
   return containsColumns(record, PRESENCE_LOCATION_KEYS)
+}
+
+export function stripSettlementReportCodeField<T extends Record<string, unknown>>(payload: T) {
+  return stripKeys(payload, SETTLEMENT_REPORT_CODE_KEYS)
+}
+
+export function hasSettlementReportCodeColumn(record: Record<string, unknown>) {
+  return hasColumns(record, SETTLEMENT_REPORT_CODE_KEYS)
+}
+
+export function containsSettlementReportCodeField(record: Record<string, unknown>) {
+  return containsColumns(record, SETTLEMENT_REPORT_CODE_KEYS)
+}
+
+export function isSettlementReportCodeColumnError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const candidate = error as {
+    code?: string
+    message?: string
+    details?: string | null
+    hint?: string | null
+  }
+
+  const text = [candidate.code, candidate.message, candidate.details, candidate.hint]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  return text.includes('settlement_report_code') && (
+    candidate.code === '42703'
+    || candidate.code === 'PGRST204'
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('does not exist')
+    || text.includes('column')
+  )
 }
 
 export function isExamDeliveryFeatureColumnError(error: unknown) {

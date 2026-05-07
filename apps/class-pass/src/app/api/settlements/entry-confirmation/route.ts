@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { getPaymentServiceMessage, getPaymentServiceStatus } from '@/lib/payments/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
-import type { StaffJwtPayload } from '@/types/database'
 import type { SettlementEntryConfirmation } from '@/lib/payments/types'
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -14,19 +14,21 @@ const schema = z.object({
   kind: z.enum(['payment', 'refund']),
   paymentId: z.number().int().positive(),
   refundId: z.number().int().positive().optional().nullable(),
+  checkoutGroupId: z.string().uuid().optional().nullable(),
   action: z.enum(['confirm', 'cancel']),
 })
 
 type ServerClient = ReturnType<typeof createServerClient>
+type PaymentSettlementRecord = {
+  id: number
+  paid_date: string | null
+  checkout_group_id?: string | null
+}
 
 function createSettlementEntryError(message: string, status = 400) {
   const error = new Error(message) as Error & { status?: number }
   error.status = status
   return error
-}
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
 }
 
 async function loadPaymentForDivision(db: ServerClient, paymentId: number, division: string) {
@@ -41,7 +43,28 @@ async function loadPaymentForDivision(db: ServerClient, paymentId: number, divis
     throw error
   }
 
-  return data as { id: number; paid_date: string } | null
+  return data as PaymentSettlementRecord | null
+}
+
+async function loadPaymentGroupForDivision(
+  db: ServerClient,
+  checkoutGroupId: string,
+  division: string,
+) {
+  // Do not filter by paid_date here. A single checkout can theoretically cross
+  // the KST date boundary, so each row is confirmed against its own paid_date.
+  const { data, error } = await db
+    .from('enrollment_payments')
+    .select('id,paid_date,checkout_group_id,courses!inner(division)')
+    .eq('checkout_group_id', checkoutGroupId)
+    .eq('courses.division', division)
+    .order('id')
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? []) as PaymentSettlementRecord[]
 }
 
 function buildPatch(action: 'confirm' | 'cancel', actorStaffId: number) {
@@ -62,10 +85,6 @@ function buildPatch(action: 'confirm' | 'cancel', actorStaffId: number) {
     canceled_at: nowIso,
     canceled_by_staff_id: actorStaffId,
   }
-}
-
-function toEntryPayload(row: SettlementEntryConfirmation) {
-  return row
 }
 
 function isUniqueViolation(error: { code?: string } | null | undefined) {
@@ -262,6 +281,40 @@ async function cancelConfirmation(input: {
   return data as SettlementEntryConfirmation
 }
 
+async function cancelPaymentConfirmationsForIds(input: {
+  db: ServerClient
+  paymentIds: number[]
+  actorStaffId: number
+}) {
+  const { data: existing, error: existingError } = await input.db
+    .from('settlement_entry_confirmations')
+    .select('*')
+    .eq('entry_kind', 'payment')
+    .in('payment_id', input.paymentIds)
+
+  if (existingError) {
+    throw existingError
+  }
+
+  const existingIds = ((existing ?? []) as SettlementEntryConfirmation[]).map((entry) => entry.payment_id)
+  if (existingIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await input.db
+    .from('settlement_entry_confirmations')
+    .update(buildPatch('cancel', input.actorStaffId))
+    .eq('entry_kind', 'payment')
+    .in('payment_id', existingIds)
+    .select('*')
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? []) as SettlementEntryConfirmation[]
+}
+
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req)
   if (auth.error) {
@@ -286,13 +339,55 @@ export async function POST(req: NextRequest) {
   try {
     const division = await getServerTenantType()
     const db = createServerClient()
+
+    if (parsed.data.kind === 'payment' && parsed.data.checkoutGroupId) {
+      const groupPayments = await loadPaymentGroupForDivision(
+        db,
+        parsed.data.checkoutGroupId,
+        division,
+      )
+      if (groupPayments.length === 0) {
+        throw createSettlementEntryError('묶음 결제 정보를 찾을 수 없습니다.', 404)
+      }
+
+      const selectedGroupPayment = groupPayments.find((entry) => entry.id === parsed.data.paymentId)
+      if (!selectedGroupPayment) {
+        throw createSettlementEntryError('묶음 결제와 선택한 결제 정보가 일치하지 않습니다.', 409)
+      }
+      if (!selectedGroupPayment.paid_date || selectedGroupPayment.paid_date !== parsed.data.date) {
+        throw createSettlementEntryError('조회 중인 정산일과 결제일이 일치하지 않습니다.', 409)
+      }
+
+      const paymentIds = groupPayments.map((entry) => entry.id)
+      const confirmations = parsed.data.action === 'confirm'
+        ? await Promise.all(groupPayments.map((payment) => upsertPaymentConfirmation({
+          db,
+          division,
+          paymentId: payment.id,
+          settlementDate: payment.paid_date ?? parsed.data.date,
+          actorStaffId,
+        })))
+        : await cancelPaymentConfirmationsForIds({
+          db,
+          paymentIds,
+          actorStaffId,
+        })
+
+      return NextResponse.json({
+        kind: 'payment_group',
+        checkoutGroupId: parsed.data.checkoutGroupId,
+        paymentIds,
+        entries: confirmations,
+      })
+    }
+
     const payment = await loadPaymentForDivision(db, parsed.data.paymentId, division)
     if (!payment) {
       throw createSettlementEntryError('정산 행의 결제 정보를 찾을 수 없습니다.', 404)
     }
 
     if (parsed.data.kind === 'payment') {
-      if (payment.paid_date !== parsed.data.date) {
+      if (!payment.paid_date || payment.paid_date !== parsed.data.date) {
         throw createSettlementEntryError('조회 중인 정산일과 결제일이 일치하지 않습니다.', 409)
       }
 
@@ -316,7 +411,7 @@ export async function POST(req: NextRequest) {
         kind: 'payment',
         paymentId: parsed.data.paymentId,
         refundId: null,
-        entry: toEntryPayload(confirmation),
+        entry: confirmation,
       })
     }
 
@@ -359,7 +454,7 @@ export async function POST(req: NextRequest) {
       kind: 'refund',
       paymentId: parsed.data.paymentId,
       refundId: parsed.data.refundId,
-      entry: toEntryPayload(confirmation),
+      entry: confirmation,
     })
   } catch (error) {
     return NextResponse.json(

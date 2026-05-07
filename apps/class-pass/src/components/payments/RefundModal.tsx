@@ -361,6 +361,7 @@ export function RefundModal({
             <input
               value={reason}
               onChange={(event) => setReason(event.target.value)}
+              maxLength={200}
               placeholder={reasonCategory === 'other' ? '기타 사유를 입력하세요' : '필요 시 사유를 보충하세요'}
               className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
             />
@@ -397,6 +398,7 @@ export function RefundModal({
             <textarea
               value={memo}
               onChange={(event) => setMemo(event.target.value)}
+              maxLength={500}
               rows={3}
               className="rounded-[8px] bg-white px-3 py-2.5 text-sm border border-slate-200 outline-none transition focus:border-slate-400"
             />

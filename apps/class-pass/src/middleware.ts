@@ -61,19 +61,6 @@ function prefixedUrl(req: NextRequest, division: TenantType, pathname: string) {
   return url
 }
 
-function parseTenantTypeFromReferer(req: NextRequest) {
-  const referer = req.headers.get('referer')
-  if (!referer) {
-    return null
-  }
-
-  try {
-    return parseTenantTypeFromPathname(new URL(referer).pathname)
-  } catch {
-    return null
-  }
-}
-
 function getCookieValue(req: NextRequest, names: string[]) {
   for (const name of names) {
     const value = req.cookies.get(name)?.value
@@ -141,28 +128,23 @@ function isPublicSuperAdminRoute(pathname: string) {
 
 export async function middleware(req: NextRequest) {
   const currentPathname = req.nextUrl.pathname
-  const forwardedOriginalPathname = req.headers.get('x-hankuk-original-pathname')
-  const originalPathname = forwardedOriginalPathname ?? currentPathname
+  const originalPathname = currentPathname
 
   if (originalPathname.startsWith('/_next') || PUBLIC_FILE.test(originalPathname)) {
     return NextResponse.next()
   }
 
   const divisionFromPath = parseTenantTypeFromPathname(currentPathname)
-  const divisionFromOriginalPath = parseTenantTypeFromPathname(originalPathname)
-  const divisionFromHeader = normalizeTenantType(req.headers.get(TENANT_HEADER))
-  const divisionFromReferer = parseTenantTypeFromReferer(req)
   const divisionCookie = req.cookies.get(TENANT_COOKIE)?.value
   const division =
     divisionFromPath
-    ?? divisionFromOriginalPath
-    ?? divisionFromHeader
-    ?? divisionFromReferer
     ?? normalizeTenantType(divisionCookie)
     ?? DEFAULT_TENANT_TYPE
 
   const pathname = divisionFromPath ? stripTenantPrefix(currentPathname) : currentPathname
   const requestHeaders = new Headers(req.headers)
+  requestHeaders.delete(TENANT_HEADER)
+  requestHeaders.delete('x-hankuk-original-pathname')
   requestHeaders.set(TENANT_HEADER, division)
   requestHeaders.set('x-hankuk-original-pathname', originalPathname)
   requestHeaders.delete(VERIFIED_ADMIN_HEADER)
@@ -171,7 +153,6 @@ export async function middleware(req: NextRequest) {
 
   if (
     !divisionFromPath
-    && !forwardedOriginalPathname
     && divisionCookie
     && req.method === 'GET'
     && !pathname.startsWith('/api')

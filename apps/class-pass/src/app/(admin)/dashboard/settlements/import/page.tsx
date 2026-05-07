@@ -9,7 +9,7 @@ import { downloadPaymentImportTemplate } from '@/lib/payments/xlsx-export'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course } from '@/types/database'
 
-type ImportField = 'name' | 'phone' | 'examNumber' | 'birthDate' | 'amount' | 'paidAt' | 'method' | 'category' | 'memo'
+type ImportField = 'name' | 'phone' | 'examNumber' | 'birthDate' | 'amount' | 'paidAt' | 'method' | 'cardCompany' | 'bankAccountLast4' | 'category' | 'memo'
 
 type ParsedSheet = {
   headers: string[]
@@ -24,6 +24,8 @@ type PreviewRow = {
   amount: number
   paidAt: string
   method: string
+  cardCompany: string | null
+  bankAccountLast4: string | null
   category: string
   memo: string | null
   status: 'matched' | 'create' | 'duplicate' | 'error'
@@ -50,6 +52,8 @@ const FIELD_LABEL: Record<ImportField, string> = {
   amount: '수강료',
   paidAt: '결제일',
   method: '결제방법',
+  cardCompany: '카드사',
+  bankAccountLast4: '계좌 마지막 4자리',
   category: '분류',
   memo: '비고',
 }
@@ -66,6 +70,8 @@ function inferMapping(headers: string[]) {
     amount: '',
     paidAt: '',
     method: '',
+    cardCompany: '',
+    bankAccountLast4: '',
     category: '',
     memo: '',
   }
@@ -79,6 +85,8 @@ function inferMapping(headers: string[]) {
     if (!mapping.amount && /수강료|금액|결제액|amount|price/.test(normalized)) mapping.amount = header
     if (!mapping.paidAt && /결제일|납부일|수납일|date|paid/.test(normalized)) mapping.paidAt = header
     if (!mapping.method && /결제방법|결제수단|방법|method/.test(normalized)) mapping.method = header
+    if (!mapping.cardCompany && /카드사|cardcompany|card_company/.test(normalized)) mapping.cardCompany = header
+    if (!mapping.bankAccountLast4 && /계좌.*4|account.*4|bankaccountlast4|bank_account_last4/.test(normalized)) mapping.bankAccountLast4 = header
     if (!mapping.category && /분류|항목|category/.test(normalized)) mapping.category = header
     if (!mapping.memo && /비고|메모|memo|note/.test(normalized)) mapping.memo = header
   }
@@ -95,6 +103,8 @@ function toImportRows(sheet: ParsedSheet, mapping: Record<ImportField, string>) 
     amount: mapping.amount ? record[mapping.amount] : '',
     paidAt: mapping.paidAt ? record[mapping.paidAt] : '',
     method: mapping.method ? record[mapping.method] : '',
+    cardCompany: mapping.cardCompany ? record[mapping.cardCompany] : '',
+    bankAccountLast4: mapping.bankAccountLast4 ? record[mapping.bankAccountLast4] : '',
     category: mapping.category ? record[mapping.category] : '',
     memo: mapping.memo ? record[mapping.memo] : '',
   }))

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateStaffRequest } from '@/lib/auth/authenticate'
 import {
   createPaymentBundle,
@@ -7,7 +8,6 @@ import {
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
-import type { StaffJwtPayload } from '@/types/database'
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
@@ -21,6 +21,7 @@ const paymentSchema = z.object({
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   cardLast4: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
@@ -51,10 +52,6 @@ const batchArraySchema = z.array(paymentSchema.extend({
 
 const createBatchSchema = z.union([batchObjectSchema, batchArraySchema])
 
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
-
 function normalizeBatchInput(input: z.infer<typeof createBatchSchema>): z.infer<typeof batchObjectSchema> {
   if (!Array.isArray(input)) {
     return input
@@ -81,6 +78,7 @@ function normalizeBatchInput(input: z.infer<typeof createBatchSchema>): z.infer<
       paidAt: payment.paidAt,
       memo: payment.memo,
       cardLast4: payment.cardLast4,
+      cardCompany: payment.cardCompany,
       installmentMonths: payment.installmentMonths,
       bankName: payment.bankName,
       bankAccountLast4: payment.bankAccountLast4,
@@ -104,6 +102,21 @@ export async function POST(req: NextRequest) {
     }
 
     const input = normalizeBatchInput(parsed.data)
+
+    const cardWithoutCompany = input.payments.find(
+      (p) => p.method === 'card' && !p.cardCompany?.trim(),
+    )
+    if (cardWithoutCompany) {
+      return NextResponse.json({ error: '카드 결제 시 카드사는 필수입니다.' }, { status: 400 })
+    }
+
+    const bankTransferWithoutAccount = input.payments.find(
+      (p) => p.method === 'bank_transfer' && !p.bankAccountLast4?.trim(),
+    )
+    if (bankTransferWithoutAccount) {
+      return NextResponse.json({ error: '계좌 결제 시 계좌 마지막 4자리는 필수입니다.' }, { status: 400 })
+    }
+
     const division = await getServerTenantType()
     const payments = await createPaymentBundle({
       enrollmentId: input.enrollmentId,

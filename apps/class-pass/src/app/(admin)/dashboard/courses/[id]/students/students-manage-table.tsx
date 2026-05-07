@@ -4,6 +4,7 @@ import {
   type Enrollment,
   type EnrollmentFieldDef,
 } from '@/types/database'
+import { getEnrollmentLifecycleStatus } from '@/lib/enrollment-status'
 import { formatDateTime } from '@/lib/utils'
 import type { EnrollmentManageStatusFilter } from './students-page-types'
 
@@ -15,7 +16,7 @@ const STATUS_FILTER_OPTIONS: Array<{ value: EnrollmentManageStatusFilter; label:
 ]
 
 function isEnrollmentSuspended(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
-  return enrollment.status === 'active' && Boolean(enrollment.suspended_at)
+  return getEnrollmentLifecycleStatus(enrollment) === 'suspended'
 }
 
 function getSuspensionTooltip(enrollment: Enrollment) {

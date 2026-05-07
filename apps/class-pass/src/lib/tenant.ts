@@ -1,5 +1,8 @@
 export type TrackType = 'police' | 'fire'
-export type TenantType = string
+
+declare const tenantTypeBrand: unique symbol
+
+export type TenantType = string & { readonly [tenantTypeBrand]: 'TenantType' }
 
 export const TENANT_HEADER = 'x-hankuk-division'
 export const TENANT_COOKIE = 'hankuk_division'
@@ -42,6 +45,10 @@ function normalizeSlugSyntax(value: string | null | undefined) {
   return normalized
 }
 
+function toTenantType(value: string): TenantType {
+  return value as TenantType
+}
+
 export function isReservedTenantSlug(value: string | null | undefined) {
   const normalized = normalizeSlugSyntax(value)
   return normalized ? RESERVED_TOP_LEVEL_SEGMENTS.has(normalized) : false
@@ -64,7 +71,7 @@ export function validateTenantSlug(value: string | null | undefined): {
     return { normalized: null, error: 'reserved' }
   }
 
-  return { normalized, error: null }
+  return { normalized: toTenantType(normalized), error: null }
 }
 
 function humanizeTenantSlug(slug: string) {
@@ -83,7 +90,7 @@ export function normalizeTrackType(value: string | null | undefined): TrackType 
   return null
 }
 
-export function inferTrackTypeFromTenant(slug: TenantType): TrackType {
+export function inferTrackTypeFromTenant(slug: TenantType | string): TrackType {
   return slug.includes('fire') ? 'fire' : 'police'
 }
 
@@ -108,7 +115,7 @@ export interface TenantConfig {
 }
 
 export const DEFAULT_TENANT_TYPE: TenantType =
-  validateTenantSlug(process.env.NEXT_PUBLIC_TENANT_TYPE).normalized ?? 'police'
+  validateTenantSlug(process.env.NEXT_PUBLIC_TENANT_TYPE).normalized ?? toTenantType('police')
 
 export function normalizeTenantType(value: string | null | undefined): TenantType | null {
   return validateTenantSlug(value).normalized
@@ -133,7 +140,7 @@ export function stripTenantPrefix(pathname: string) {
   return nextPath === '' ? '/' : nextPath
 }
 
-export function withTenantPrefix(pathname: string, tenant: TenantType) {
+export function withTenantPrefix(pathname: string, tenant: TenantType | string) {
   const sanitizedPath = pathname === '' ? '/' : pathname
   const strippedPath = stripTenantPrefix(sanitizedPath)
   const tenantSlug = normalizeTenantType(tenant) ?? DEFAULT_TENANT_TYPE
@@ -141,7 +148,7 @@ export function withTenantPrefix(pathname: string, tenant: TenantType) {
   return strippedPath === '/' ? `/${tenantSlug}` : `/${tenantSlug}${strippedPath}`
 }
 
-export function buildFallbackTenantConfig(type: TenantType): TenantConfig {
+export function buildFallbackTenantConfig(type: TenantType | string): TenantConfig {
   const tenantSlug = normalizeTenantType(type) ?? DEFAULT_TENANT_TYPE
   const trackType = inferTrackTypeFromTenant(tenantSlug)
   const trackLabel = getTrackLabel(trackType)
@@ -167,7 +174,7 @@ export function buildFallbackTenantConfig(type: TenantType): TenantConfig {
   }
 }
 
-export function getTenantConfigByType(type: TenantType): TenantConfig {
+export function getTenantConfigByType(type: TenantType | string): TenantConfig {
   return buildFallbackTenantConfig(type)
 }
 

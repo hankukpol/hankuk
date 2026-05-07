@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getClientIp(req)
-  const rateLimit = checkRateLimit(`staff:${ip}`)
+  const rateLimit = await checkRateLimit(`staff:${ip}`)
 
   if (!rateLimit.allowed) {
     const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid staff credentials.' }, { status: 401 })
       }
 
-      resetRateLimit(`staff:${ip}`)
+      await resetRateLimit(`staff:${ip}`)
       const sessionPayload = await createOperatorSession(req, {
         accountId: operatorAccount.id,
         membershipId: operatorMembership.id,
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid staff credentials.' }, { status: 401 })
       }
 
-      resetRateLimit(`staff:${ip}`)
+      await resetRateLimit(`staff:${ip}`)
       const sessionId = randomUUID()
       const sessionVersion = await getSessionVersion('staff')
       const token = await signJwt('staff', sessionId, {
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid staff PIN.' }, { status: 401 })
   }
 
-  resetRateLimit(`staff:${ip}`)
+  await resetRateLimit(`staff:${ip}`)
   const sessionId = randomUUID()
   const sessionVersion = await getSessionVersion('staff')
   const token = await signJwt('staff', sessionId, {

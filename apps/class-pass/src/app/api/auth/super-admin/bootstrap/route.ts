@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import { validateSameOriginRequest } from '@/lib/auth/request-origin'
 import {
@@ -10,7 +11,19 @@ const schema = z.object({
   loginId: z.string().min(3).max(50),
   displayName: z.string().min(1).max(80).default('Class Pass Super Admin'),
   sharedUserId: z.string().uuid(),
+  bootstrapToken: z.string().optional(),
 })
+
+function isValidBootstrapToken(input: string | null | undefined, expected: string) {
+  if (!input) {
+    return false
+  }
+
+  const inputBuffer = Buffer.from(input)
+  const expectedBuffer = Buffer.from(expected)
+  return inputBuffer.length === expectedBuffer.length
+    && timingSafeEqual(inputBuffer, expectedBuffer)
+}
 
 export async function POST(req: NextRequest) {
   const originError = validateSameOriginRequest(req)
@@ -25,6 +38,24 @@ export async function POST(req: NextRequest) {
       { error: '슈퍼 관리자 정보가 올바르지 않습니다.' },
       { status: 400 },
     )
+  }
+
+  const bootstrapToken = process.env.SUPER_ADMIN_BOOTSTRAP_TOKEN?.trim()
+  if (process.env.NODE_ENV === 'production' && !bootstrapToken) {
+    return NextResponse.json(
+      { error: 'Super admin bootstrap is not configured.' },
+      { status: 403 },
+    )
+  }
+
+  if (
+    bootstrapToken
+    && !isValidBootstrapToken(
+      parsed.data.bootstrapToken ?? req.headers.get('x-hankuk-bootstrap-token'),
+      bootstrapToken,
+    )
+  ) {
+    return NextResponse.json({ error: 'Invalid bootstrap token.' }, { status: 403 })
   }
 
   const existing = (await listOperatorAccounts()).some((account) =>

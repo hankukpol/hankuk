@@ -38,6 +38,8 @@ export type PaymentCorrectionConfirmInput = {
     category: PaymentCategory
     paidAt: string | null
     memo: string | null
+    cardCompany: string | null
+    bankAccountLast4: string | null
     cashReceiptApprovalNo: string | null
     items: Array<{ label: string; amount: number }>
   }
@@ -56,6 +58,11 @@ type PaymentCorrectionModalProps = {
 }
 
 const PAYMENT_METHODS: CorrectionPaymentMethod[] = ['card', 'homepage', 'cash', 'bank_transfer', 'point', 'other']
+
+const CARD_COMPANIES = [
+  '신한', '삼성', 'KB국민', '현대', '롯데', '우리', '하나',
+  'NH농협', 'IBK기업', 'BC', '씨티', '카카오페이', '네이버페이', '토스페이', '기타',
+]
 
 function getDefaultRefundMethod(payment: EnrollmentPayment | null): RefundMethod {
   if (!payment) {
@@ -130,6 +137,8 @@ export function PaymentCorrectionModal({
   const [paymentMethod, setPaymentMethod] = useState<CorrectionPaymentMethod>('card')
   const [category, setCategory] = useState<PaymentCategory>('tuition')
   const [occurredAt, setOccurredAt] = useState(toLocalDateTimeInputValue)
+  const [cardCompany, setCardCompany] = useState('')
+  const [bankAccountLast4, setBankAccountLast4] = useState('')
   const [cancelReceiptNo, setCancelReceiptNo] = useState('')
   const [refundAccountLast4, setRefundAccountLast4] = useState('')
   const [cashReceiptApprovalNo, setCashReceiptApprovalNo] = useState('')
@@ -148,6 +157,8 @@ export function PaymentCorrectionModal({
     setNewAmount(nextRefundableAmount > 0 ? String(nextRefundableAmount) : '')
     setRefundMethod(getDefaultRefundMethod(payment))
     setPaymentMethod(getDefaultPaymentMethod(payment))
+    setCardCompany(payment.method === 'card' ? (payment.card_company ?? '') : '')
+    setBankAccountLast4(payment.method === 'bank_transfer' ? (payment.bank_account_last4 ?? '') : '')
     setCategory(payment.category)
     setOccurredAt(toLocalDateTimeInputValue())
     setCancelReceiptNo('')
@@ -197,6 +208,8 @@ export function PaymentCorrectionModal({
   const invalidNewAmount = !Number.isInteger(parsedNewAmount) || parsedNewAmount <= 0
   const missingCardCancelReceipt = refundMethod === 'card_cancel' && !cancelReceiptNo.trim()
   const missingRefundAccount = refundMethod === 'bank_transfer' && !/^\d{4}$/.test(refundAccountLast4.trim())
+  const missingCardCompany = paymentMethod === 'card' && !cardCompany.trim()
+  const missingBankAccount = paymentMethod === 'bank_transfer' && !/^\d{4}$/.test(bankAccountLast4.trim())
   const invalidReason = !reason.trim()
   const invalid = (
     !payment
@@ -204,6 +217,8 @@ export function PaymentCorrectionModal({
     || invalidNewAmount
     || missingCardCancelReceipt
     || missingRefundAccount
+    || missingCardCompany
+    || missingBankAccount
     || invalidReason
   )
   const netChangeAmount = parsedNewAmount - parsedRefundAmount
@@ -231,6 +246,8 @@ export function PaymentCorrectionModal({
         category,
         paidAt: toIso(occurredAt),
         memo: memo.trim() || null,
+        cardCompany: paymentMethod === 'card' ? cardCompany.trim() || null : null,
+        bankAccountLast4: paymentMethod === 'bank_transfer' ? bankAccountLast4.trim() || null : null,
         cashReceiptApprovalNo: paymentMethod === 'cash' || paymentMethod === 'bank_transfer'
           ? cashReceiptApprovalNo.trim() || null
           : null,
@@ -329,6 +346,7 @@ export function PaymentCorrectionModal({
                       <span className="text-xs font-semibold text-slate-500">환불 계좌 마지막 4자리</span>
                       <input
                         value={refundAccountLast4}
+                        maxLength={4}
                         onChange={(event) => setRefundAccountLast4(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
                         className={`rounded-[8px] bg-white px-3 py-2.5 text-sm outline-none ${missingRefundAccount ? 'shadow-[inset_0_0_0_1px_rgba(180,35,24,0.4)]' : 'border border-slate-200 focus:border-slate-400'}`}
                       />
@@ -353,7 +371,12 @@ export function PaymentCorrectionModal({
                     <span className="text-xs font-semibold text-slate-500">결제 수단</span>
                     <select
                       value={paymentMethod}
-                      onChange={(event) => setPaymentMethod(event.target.value as CorrectionPaymentMethod)}
+                      onChange={(event) => {
+                        const next = event.target.value as CorrectionPaymentMethod
+                        setPaymentMethod(next)
+                        if (next !== 'card') setCardCompany('')
+                        if (next !== 'bank_transfer') setBankAccountLast4('')
+                      }}
                       className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                     >
                       {PAYMENT_METHODS.map((method) => (
@@ -361,6 +384,41 @@ export function PaymentCorrectionModal({
                       ))}
                     </select>
                   </label>
+                  {paymentMethod === 'card' ? (
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500">카드사 <span className="text-rose-500">*</span></span>
+                      <div className="relative">
+                        <select
+                          value={cardCompany}
+                          onChange={(event) => setCardCompany(event.target.value)}
+                          className={`w-full appearance-none rounded-[8px] border bg-white py-2.5 pl-3 pr-9 text-sm outline-none focus:border-slate-400 ${
+                            !cardCompany ? 'border-rose-300 text-slate-400' : 'border-slate-200 text-[#1d1d1f]'
+                          }`}
+                        >
+                          <option value="">카드사 선택</option>
+                          {CARD_COMPANIES.map((company) => (
+                            <option key={company} value={company}>{company}</option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">▾</span>
+                      </div>
+                    </label>
+                  ) : null}
+                  {paymentMethod === 'bank_transfer' ? (
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-slate-500">계좌 마지막 4자리 <span className="text-rose-500">*</span></span>
+                      <input
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={bankAccountLast4}
+                        onChange={(event) => setBankAccountLast4(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="1234"
+                        className={`rounded-[8px] border bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 ${
+                          bankAccountLast4.length !== 4 ? 'border-rose-300' : 'border-slate-200'
+                        }`}
+                      />
+                    </label>
+                  ) : null}
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold text-slate-500">분류</span>
                     <select
@@ -402,6 +460,7 @@ export function PaymentCorrectionModal({
                 <input
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
+                  maxLength={200}
                   className={`rounded-[8px] bg-white px-3 py-2.5 text-sm outline-none ${invalidReason ? 'shadow-[inset_0_0_0_1px_rgba(180,35,24,0.4)]' : 'border border-slate-200 focus:border-slate-400'}`}
                 />
               </label>
@@ -451,6 +510,7 @@ export function PaymentCorrectionModal({
                 rows={2}
                 value={memo}
                 onChange={(event) => setMemo(event.target.value)}
+                maxLength={500}
                 className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
               />
             </label>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import {
   confirmDailySettlement,
@@ -7,7 +8,6 @@ import {
 } from '@/lib/payments/settlement-confirmation'
 import { getPaymentServiceMessage, getPaymentServiceStatus } from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
-import type { StaffJwtPayload } from '@/types/database'
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
@@ -15,10 +15,6 @@ const confirmSchema = z.object({
   date: dateSchema,
   memo: z.string().max(500).optional().nullable(),
 })
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateAdminRequest(req)

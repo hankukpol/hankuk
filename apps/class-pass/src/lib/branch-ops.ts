@@ -451,6 +451,16 @@ async function replaceMemberships(
   const branches = await listBranches()
   const branchBySlug = new Map(branches.map((branch) => [branch.slug, branch]))
 
+  for (const membership of memberships) {
+    if (membership.role === 'SUPER_ADMIN') {
+      continue
+    }
+
+    if (!membership.branch_slug || !branchBySlug.has(membership.branch_slug)) {
+      throw new Error(`Invalid branch slug for ${membership.role} membership.`)
+    }
+  }
+
   const existingResult = await db
     .from('operator_memberships')
     .select('id, role, branch_id')

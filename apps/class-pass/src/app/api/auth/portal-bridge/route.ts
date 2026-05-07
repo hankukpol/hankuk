@@ -90,10 +90,8 @@ function isLocalDevelopmentOrigin(origin: string) {
 function isAllowedPortalOrigin(request: NextRequest) {
   const requestOrigin = getRequestOrigin(request)
   if (!requestOrigin) {
-    // Mobile browsers and in-app webviews may omit both Origin and Referer
-    // on cross-site form POSTs. The one-time launch token remains the
-    // primary authorization boundary for this route.
-    return true
+    return process.env.NODE_ENV !== 'production'
+      || process.env.PORTAL_BRIDGE_ALLOW_MISSING_ORIGIN === 'true'
   }
 
   if (getAllowedPortalOrigins().has(requestOrigin)) {

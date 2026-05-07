@@ -1,24 +1,26 @@
-/**
- * 간단한 메모리 기반 Rate Limiter
- * - 동일 IP에서 MAX_ATTEMPTS 초과 시 차단
- * - WINDOW_MS 경과 후 자동 초기화
- * - 주의: 다중 서버 인스턴스 환경에서는 Redis 같은 외부 스토리지를 사용해야 합니다.
- */
+import { createServerClient } from '@/lib/supabase/server'
 
 interface RateLimitEntry {
   attempts: number
   resetAt: number
 }
 
-interface RateLimitResult {
+export interface RateLimitResult {
   allowed: boolean
   remainingAttempts: number
   retryAfterMs: number
 }
 
+type DbRateLimitRow = {
+  allowed: boolean
+  remaining_attempts: number
+  retry_after_ms: number
+}
+
 const store = new Map<string, RateLimitEntry>()
 const MAX_ATTEMPTS = 5
-const WINDOW_MS = 15 * 60 * 1000 // 15분
+const WINDOW_MS = 15 * 60 * 1000
+const WINDOW_SECONDS = WINDOW_MS / 1000
 
 function getActiveEntry(key: string, now: number): RateLimitEntry | null {
   const entry = store.get(key)
@@ -59,7 +61,6 @@ function toRateLimitResult(entry: RateLimitEntry | null, now: number): RateLimit
   }
 }
 
-// 5분마다 만료된 항목 정리
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     const now = Date.now()
@@ -71,7 +72,7 @@ if (typeof setInterval !== 'undefined') {
   }, 5 * 60 * 1000)
 }
 
-export function checkRateLimit(key: string): RateLimitResult {
+function checkLocalRateLimit(key: string): RateLimitResult {
   const now = Date.now()
   const entry = getActiveEntry(key, now)
 
@@ -97,12 +98,12 @@ export function checkRateLimit(key: string): RateLimitResult {
   }
 }
 
-export function peekRateLimit(key: string): RateLimitResult {
+function peekLocalRateLimit(key: string): RateLimitResult {
   const now = Date.now()
   return toRateLimitResult(getActiveEntry(key, now), now)
 }
 
-export function recordRateLimitFailure(key: string): RateLimitResult {
+function recordLocalRateLimitFailure(key: string): RateLimitResult {
   const now = Date.now()
   const entry = getActiveEntry(key, now)
 
@@ -124,8 +125,64 @@ export function recordRateLimitFailure(key: string): RateLimitResult {
   return toRateLimitResult(entry, now)
 }
 
-export function resetRateLimit(key: string): void {
+function resetLocalRateLimit(key: string): void {
   store.delete(key)
+}
+
+function mapDbRateLimitResult(row: DbRateLimitRow | null | undefined): RateLimitResult | null {
+  if (!row) {
+    return null
+  }
+
+  return {
+    allowed: Boolean(row.allowed),
+    remainingAttempts: Number(row.remaining_attempts ?? 0),
+    retryAfterMs: Number(row.retry_after_ms ?? 0),
+  }
+}
+
+async function checkDbRateLimit(
+  key: string,
+  action: 'peek' | 'increment' | 'reset',
+): Promise<RateLimitResult | null> {
+  try {
+    const db = createServerClient()
+    const { data, error } = await db.rpc('check_rate_limit', {
+      p_key: key,
+      p_max_attempts: MAX_ATTEMPTS,
+      p_window_seconds: WINDOW_SECONDS,
+      p_increment: action === 'increment',
+      p_reset: action === 'reset',
+    })
+
+    if (error) {
+      console.warn('rateLimiter.dbFallback', error.message)
+      return null
+    }
+
+    const row = Array.isArray(data) ? data[0] : data
+    return mapDbRateLimitResult(row as DbRateLimitRow | null)
+  } catch (error) {
+    console.warn('rateLimiter.localFallback', error)
+    return null
+  }
+}
+
+export async function checkRateLimit(key: string): Promise<RateLimitResult> {
+  return await checkDbRateLimit(key, 'increment') ?? checkLocalRateLimit(key)
+}
+
+export async function peekRateLimit(key: string): Promise<RateLimitResult> {
+  return await checkDbRateLimit(key, 'peek') ?? peekLocalRateLimit(key)
+}
+
+export async function recordRateLimitFailure(key: string): Promise<RateLimitResult> {
+  return await checkDbRateLimit(key, 'increment') ?? recordLocalRateLimitFailure(key)
+}
+
+export async function resetRateLimit(key: string): Promise<void> {
+  resetLocalRateLimit(key)
+  await checkDbRateLimit(key, 'reset')
 }
 
 function normalizeIpCandidate(value: string | null): string | null {

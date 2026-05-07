@@ -161,18 +161,14 @@ function buildStudentUpsertPayload(
 async function getStudentById(
   db: DbClient,
   studentId: number,
-  division?: TenantType,
+  division: TenantType,
 ) {
-  let query = db
+  const { data, error } = await db
     .from('students')
     .select('*')
     .eq('id', studentId)
-
-  if (division) {
-    query = query.eq('division', division)
-  }
-
-  const { data, error } = await query.maybeSingle()
+    .eq('division', division)
+    .maybeSingle()
 
   if (error) {
     throw error
@@ -287,6 +283,36 @@ async function findStudentByPhone(
   return null
 }
 
+async function findCanonicalDuplicateStudent(
+  db: DbClient,
+  insertedStudent: Student,
+  normalized: NormalizedStudentSnapshot,
+) {
+  const query = db
+    .from('students')
+    .select('*')
+    .eq('division', insertedStudent.division)
+    .eq('phone', normalized.phone)
+    .eq('name', normalized.name)
+    .order('id')
+    .limit(2)
+
+  const rows = unwrapSupabaseResult(
+    'studentProfiles.findCanonicalDuplicate',
+    normalized.exam_number
+      ? await query.eq('exam_number', normalized.exam_number)
+      : await query.is('exam_number', null),
+  ) as Student[] | null
+
+  const canonical = rows?.[0] ?? null
+  if (!canonical || canonical.id === insertedStudent.id) {
+    return null
+  }
+
+  await db.from('students').delete().eq('id', insertedStudent.id)
+  return canonical
+}
+
 function findMatchingStudentFromPhoneCandidates(
   candidates: Student[] | undefined,
   name: string,
@@ -335,7 +361,7 @@ export async function findMatchingStudentProfile(
 export async function getStudentProfileById(
   db: DbClient,
   studentId: number,
-  division?: TenantType,
+  division: TenantType,
 ) {
   return getStudentById(db, studentId, division)
 }
@@ -352,9 +378,10 @@ export async function initializeStudentAuth(
   db: DbClient,
   studentOrId: Student | number,
   birthDate?: string | null,
+  division?: TenantType,
 ): Promise<StudentAuthSetupResult> {
   const student = typeof studentOrId === 'number'
-    ? await getStudentById(db, studentOrId)
+    ? (division ? await getStudentById(db, studentOrId, division) : null)
     : studentOrId
 
   if (!student) {
@@ -529,9 +556,10 @@ export async function applyStudentBirthDate(
   db: DbClient,
   studentOrId: Student | number,
   birthDate: string | null | undefined,
+  division?: TenantType,
 ): Promise<StudentAuthSetupResult> {
   const student = typeof studentOrId === 'number'
-    ? await getStudentById(db, studentOrId)
+    ? (division ? await getStudentById(db, studentOrId, division) : null)
     : studentOrId
 
   if (!student) {
@@ -576,9 +604,10 @@ export async function applyStudentBirthDate(
 export async function resetStudentPin(
   db: DbClient,
   studentOrId: Student | number,
+  division?: TenantType,
 ): Promise<StudentAuthSetupResult> {
   const student = typeof studentOrId === 'number'
-    ? await getStudentById(db, studentOrId)
+    ? (division ? await getStudentById(db, studentOrId, division) : null)
     : studentOrId
 
   if (!student) {
@@ -792,10 +821,13 @@ export async function ensureStudentProfile(
       throw error
     }
 
+    const insertedStudent = data as Student
+    const canonicalStudent = await findCanonicalDuplicateStudent(db, insertedStudent, normalized)
+
     return {
-      student: data as Student,
-      created: true,
-      changed: true,
+      student: canonicalStudent ?? insertedStudent,
+      created: canonicalStudent ? false : true,
+      changed: canonicalStudent ? false : true,
     }
   }
 
@@ -829,6 +861,22 @@ export async function ensureStudentProfilesBatch(
   const results = new Map<string, EnsureStudentProfileResult>()
 
   if (inputs.length === 0) {
+    return results
+  }
+
+  const divisionGroups = new Map<TenantType, EnsureStudentProfileBatchInput[]>()
+  for (const input of inputs) {
+    divisionGroups.set(input.division, [...(divisionGroups.get(input.division) ?? []), input])
+  }
+
+  if (divisionGroups.size > 1) {
+    for (const group of divisionGroups.values()) {
+      const groupResults = await ensureStudentProfilesBatch(db, group)
+      for (const [key, value] of groupResults.entries()) {
+        results.set(key, value)
+      }
+    }
+
     return results
   }
 
@@ -1019,9 +1067,10 @@ export async function ensureStudentProfilesBatch(
 export async function syncStudentEnrollmentSnapshots(
   db: DbClient,
   studentOrId: number | Student,
+  division?: TenantType,
 ) {
   const student = typeof studentOrId === 'number'
-    ? await getStudentById(db, studentOrId)
+    ? (division ? await getStudentById(db, studentOrId, division) : null)
     : studentOrId
 
   if (!student) {

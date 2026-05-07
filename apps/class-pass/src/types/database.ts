@@ -4,6 +4,7 @@ import type { TenantType } from '@/lib/tenant'
 export type CourseType = 'interview' | 'mock_exam' | 'lecture' | 'general'
 export type CourseStatus = 'active' | 'archived'
 export type EnrollmentStatus = 'active' | 'refunded'
+export type EnrollmentLifecycleStatus = EnrollmentStatus | 'suspended'
 export type EnrollmentStudentType = 'academy' | 'general'
 export type StudentAuthMethod = 'birth_date' | 'pin'
 export type MaterialType = 'handout' | 'textbook'
@@ -44,6 +45,7 @@ export interface Course {
   status: CourseStatus
   theme_color: string | null
   tuition_amount: number
+  settlement_report_code: string | null
   feature_qr_pass: boolean
   feature_qr_distribution: boolean
   feature_seat_assignment: boolean
@@ -456,6 +458,7 @@ export interface EnrollmentRefund {
   method: RefundMethod
   reason_category: RefundReasonCategory
   reason: string | null
+  display_receipt_no: string | null
   cancel_receipt_no: string | null
   refund_account_last4: string | null
   refunded_at: string
@@ -477,10 +480,12 @@ export interface EnrollmentPayment {
   paid_date: string
   memo: string | null
   card_last4: string | null
+  card_company: string | null
   installment_months: number
   bank_name: string | null
   bank_account_last4: string | null
   cash_receipt_approval_no: string | null
+  checkout_group_id: string | null
   series_option_id_snapshot: number | null
   series_group_snapshot: BranchSeriesGroup | null
   series_label_snapshot: string | null

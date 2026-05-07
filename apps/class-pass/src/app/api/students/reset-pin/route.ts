@@ -38,7 +38,10 @@ export async function POST(req: NextRequest) {
     }
 
     await invalidateCache('enrollments')
-    return NextResponse.json({ pin: result.generatedPin })
+    return NextResponse.json(
+      { pin: result.generatedPin },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } },
+    )
   } catch (error) {
     return handleRouteError('students.reset-pin.POST', '학생 PIN을 재설정하지 못했습니다.', error)
   }

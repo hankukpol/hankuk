@@ -12,13 +12,21 @@ import {
   getStudentProfileById,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
+import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
+import { isLikelyPhoneNumber, isValidBirthDateKey } from '@/lib/validation/primitives'
+
+const phoneSchema = z.string().trim().refine(isLikelyPhoneNumber)
+const optionalBirthDateSchema = z.preprocess(
+  (value) => value === '' ? '' : value,
+  z.union([z.string().refine(isValidBirthDateKey), z.literal('')]).optional().nullable(),
+)
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
-  phone: z.string().min(10).optional(),
+  phone: phoneSchema.optional(),
   exam_number: z.string().optional().nullable(),
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
@@ -27,56 +35,10 @@ const patchSchema = z.object({
   student_type: z.enum(['academy', 'general']).optional(),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
-  birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
+  birth_date: optionalBirthDateSchema,
   status: z.enum(['active', 'refunded']).optional(),
   custom_data: z.record(z.string()).optional(),
 })
-
-function getErrorField(error: unknown, field: string) {
-  if (typeof error !== 'object' || error === null || !(field in error)) {
-    return ''
-  }
-
-  const value = (error as Record<string, unknown>)[field]
-  return typeof value === 'string' ? value : ''
-}
-
-function getErrorText(error: unknown) {
-  if (typeof error === 'string') {
-    return error
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return [
-    getErrorField(error, 'code'),
-    getErrorField(error, 'message'),
-    getErrorField(error, 'details'),
-    getErrorField(error, 'hint'),
-  ].filter(Boolean).join(' ')
-}
-
-function isStudentTypeColumnMissing(error: unknown) {
-  const code = getErrorField(error, 'code')
-  const text = getErrorText(error).toLowerCase()
-
-  return text.includes('student_type') && (
-    code === 'PGRST204'
-    || code === '42703'
-    || text.includes('schema cache')
-    || text.includes('could not find')
-    || text.includes('does not exist')
-    || text.includes('column')
-  )
-}
-
-function omitStudentType<T extends Record<string, unknown>>(payload: T) {
-  const rest = { ...payload }
-  delete rest.student_type
-  return rest
-}
 
 async function getVerifiedEnrollment(
   db: ReturnType<typeof createServerClient>,
@@ -126,6 +88,13 @@ export async function PATCH(
   const currentEnrollment = await getVerifiedEnrollment(db, enrollmentId, division)
   if (!currentEnrollment) {
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  if (parsed.data.status !== undefined && parsed.data.status !== currentEnrollment.status) {
+    return NextResponse.json(
+      { error: '수강 상태 변경은 결제 취소 또는 환불 전용 API를 사용해 주세요.' },
+      { status: 400 },
+    )
   }
 
   const payload: Record<string, unknown> = {}
@@ -254,12 +223,16 @@ export async function DELETE(
 
   const division = await getServerTenantType()
   const db = createServerClient()
-  const { data: enrollment } = await db
+  const { data: enrollment, error: enrollmentError } = await db
     .from('enrollments')
     .select('id,student_id,courses!inner(id)')
     .eq('id', enrollmentId)
     .eq('courses.division', division)
     .maybeSingle()
+
+  if (enrollmentError) {
+    return NextResponse.json({ error: '수강생 정보를 불러오지 못했습니다.' }, { status: 500 })
+  }
 
   if (!enrollment) {
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })

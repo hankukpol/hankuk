@@ -99,7 +99,7 @@ export async function POST(
     return NextResponse.json({ error: '과목을 생성하지 못했습니다.' }, { status: 500 })
   }
 
-  await invalidateCache('seats')
+  await Promise.all([invalidateCache('course-subjects'), invalidateCache('seats')])
   return NextResponse.json({ subject: data }, { status: 201 })
 }
 
@@ -149,7 +149,7 @@ export async function PATCH(
     return NextResponse.json({ error: '과목을 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  await invalidateCache('seats')
+  await Promise.all([invalidateCache('course-subjects'), invalidateCache('seats')])
   return NextResponse.json({ subject: data })
 }
 
@@ -190,6 +190,6 @@ export async function DELETE(
     return NextResponse.json({ error: '과목을 삭제하지 못했습니다.' }, { status: 500 })
   }
 
-  await invalidateCache('seats')
+  await Promise.all([invalidateCache('course-subjects'), invalidateCache('seats')])
   return NextResponse.json({ success: true })
 }

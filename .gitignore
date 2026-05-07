@@ -39,6 +39,7 @@
 **/.codex-admin-token.txt
 **/.codex-cookies.txt
 **/.playwright-mcp/
+apps/class-pass/20260408_KSCAT_v2.4.0_*/
 **/student-pass-*.png
 **/class-pass-suspension-*.png
 **/auth-setup-*.png
@@ -52,6 +53,9 @@
 # Misc
 **/.DS_Store
 **/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
 **/.local/
 
 .vercel

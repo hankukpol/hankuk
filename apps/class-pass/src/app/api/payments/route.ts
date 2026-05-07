@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateStaffRequest } from '@/lib/auth/authenticate'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
-import type { StaffJwtPayload } from '@/types/database'
 import {
   createEnrollmentForPayment,
   createPayment,
@@ -30,6 +30,7 @@ const bundledPaymentSchema = z.object({
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   cardLast4: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
@@ -65,6 +66,7 @@ const createPaymentSchema = z.object({
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   cardLast4: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
@@ -103,6 +105,7 @@ function getTopLevelPayment(input: z.infer<typeof createPaymentSchema>): z.infer
     paidAt: input.paidAt,
     memo: input.memo,
     cardLast4: input.cardLast4,
+    cardCompany: input.cardCompany,
     installmentMonths: input.installmentMonths,
     bankName: input.bankName,
     bankAccountLast4: input.bankAccountLast4,
@@ -120,8 +123,48 @@ function getBundledPayments(input: z.infer<typeof createPaymentSchema>) {
   return topLevel ? [topLevel] : []
 }
 
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
+function getBundledPaymentPreflightError(payments: z.infer<typeof bundledPaymentSchema>[]) {
+  if (payments.length === 0) {
+    return '저장할 결제 수단이 없습니다.'
+  }
+
+  const cardWithoutCompany = payments.find(
+    (payment) => payment.method === 'card' && !payment.cardCompany?.trim(),
+  )
+  if (cardWithoutCompany) {
+    return '카드 결제 시 카드사는 필수입니다.'
+  }
+
+  const invalidCardLast4 = payments.find(
+    (payment) => payment.cardLast4 && !/^\d{4}$/.test(payment.cardLast4.trim()),
+  )
+  if (invalidCardLast4) {
+    return '카드 마지막 번호는 숫자 4자리여야 합니다.'
+  }
+
+  const bankTransferWithoutAccount = payments.find(
+    (payment) => (
+      payment.method === 'bank_transfer'
+      && !/^\d{4}$/.test(payment.bankAccountLast4?.trim() ?? '')
+    ),
+  )
+  if (bankTransferWithoutAccount) {
+    return '계좌 결제 시 계좌 마지막 4자리는 필수입니다.'
+  }
+
+  const invalidPaidAt = payments.find((payment) => {
+    if (!payment.paidAt?.trim()) {
+      return false
+    }
+
+    const timestamp = Date.parse(payment.paidAt)
+    return Number.isNaN(timestamp)
+  })
+  if (invalidPaidAt) {
+    return '수납일시를 정확히 입력해 주세요.'
+  }
+
+  return null
 }
 
 function parsePaymentMethod(value: string | null): PaymentMethod | null {
@@ -195,6 +238,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: freePaymentError }, { status: 400 })
     }
 
+    const bundledPayments = getBundledPayments(parsed.data)
+    const paymentPreflightError = getBundledPaymentPreflightError(bundledPayments)
+    if (paymentPreflightError) {
+      return NextResponse.json({ error: paymentPreflightError }, { status: 400 })
+    }
+
     const division = await getServerTenantType()
     let enrollmentId = parsed.data.enrollmentId ?? null
     let generatedPin: string | null = null
@@ -209,11 +258,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생 ID 또는 신규 수강생 정보가 필요합니다.' }, { status: 400 })
     }
 
-    const bundledPayments = getBundledPayments(parsed.data)
-    if (bundledPayments.length === 0) {
-      return NextResponse.json({ error: '저장할 결제 수단이 없습니다.' }, { status: 400 })
-    }
-
     if (parsed.data.billing || parsed.data.payments?.length || bundledPayments.length > 1) {
       const payments = await createPaymentBundle({
         enrollmentId,
@@ -222,7 +266,13 @@ export async function POST(req: NextRequest) {
         payments: bundledPayments,
       }, division, getActorStaffId(auth.payload))
 
-      return NextResponse.json({ payments, generated_pin: generatedPin ?? undefined }, { status: 201 })
+      return NextResponse.json(
+        { payments, generated_pin: generatedPin ?? undefined },
+        {
+          status: 201,
+          ...(generatedPin ? { headers: { 'Cache-Control': 'no-store, max-age=0' } } : {}),
+        },
+      )
     }
 
     const { billing, payments, ...paymentData } = parsed.data
@@ -238,7 +288,13 @@ export async function POST(req: NextRequest) {
       requireBillingForTuition: true,
     }, division, getActorStaffId(auth.payload))
 
-    return NextResponse.json({ payment, generated_pin: generatedPin ?? undefined }, { status: 201 })
+    return NextResponse.json(
+      { payment, generated_pin: generatedPin ?? undefined },
+      {
+        status: 201,
+        ...(generatedPin ? { headers: { 'Cache-Control': 'no-store, max-age=0' } } : {}),
+      },
+    )
   } catch (error) {
     return NextResponse.json(
       { error: getPaymentServiceMessage(error, '결제를 생성하지 못했습니다.') },

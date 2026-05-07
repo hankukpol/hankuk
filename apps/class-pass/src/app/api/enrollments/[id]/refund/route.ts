@@ -34,6 +34,38 @@ export async function POST(
   }
 
   const db = createServerClient()
+  const { data: paymentRows, error: paymentError } = await db
+    .from('enrollment_payments')
+    .select('amount,status,enrollment_refunds(amount)')
+    .eq('enrollment_id', enrollmentId)
+
+  if (paymentError) {
+    return NextResponse.json({ error: '?섎텋 泥섎━???ㅽ뙣?덉뒿?덈떎.' }, { status: 500 })
+  }
+
+  const remainingPaidAmount = ((paymentRows ?? []) as Array<{
+    amount: number | null
+    status: string | null
+    enrollment_refunds?: Array<{ amount: number | null }> | null
+  }>).reduce((total, payment) => {
+    if (payment.status === 'voided') {
+      return total
+    }
+
+    const refundTotal = (payment.enrollment_refunds ?? []).reduce(
+      (sum, refund) => sum + Number(refund.amount ?? 0),
+      0,
+    )
+    return total + Math.max(Number(payment.amount ?? 0) - refundTotal, 0)
+  }, 0)
+
+  if (remainingPaidAmount > 0) {
+    return NextResponse.json(
+      { error: '결제 잔액이 남아 있어 수강 상태를 환불로 변경할 수 없습니다. 먼저 결제 환불 또는 취소를 완료해 주세요.' },
+      { status: 409 },
+    )
+  }
+
   const { data, error } = await db
     .from('enrollments')
     .update({

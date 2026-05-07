@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { ADMIN_TTL_SEC, cookieOptions, getBranchAdminCookieName, signJwt } from '@/lib/auth/jwt'
 import { getPinHash, hashPin, setAdminId, setPinHash } from '@/lib/auth/pin'
 import { validateSameOriginRequest } from '@/lib/auth/request-origin'
+import { checkRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
 import { getSessionVersion } from '@/lib/auth/session-version'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -34,14 +35,22 @@ function isBootstrapAllowed(req: NextRequest) {
     return true
   }
 
-  const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-  return isLocalHost(req.nextUrl.hostname) || isLocalHost(forwardedHost)
+  return isLocalHost(req.nextUrl.hostname)
 }
 
 export async function POST(req: NextRequest) {
   const originError = validateSameOriginRequest(req)
   if (originError) {
     return originError
+  }
+
+  const rateLimit = await checkRateLimit(`admin-bootstrap:${getClientIp(req)}`)
+  if (!rateLimit.allowed) {
+    const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
+    return NextResponse.json(
+      { error: `Too many bootstrap attempts. Try again in ${retryAfterSec}s.` },
+      { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
+    )
   }
 
   const existingHash = await getPinHash('admin_pin_hash')

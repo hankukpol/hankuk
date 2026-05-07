@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache'
 
 export type CacheTag =
   | 'courses'
+  | 'course-subjects'
   | 'enrollments'
   | 'seats'
   | 'designated-seats'
@@ -19,6 +20,7 @@ export type CacheTag =
 export async function invalidateCache(tag: CacheTag | 'all') {
   if (tag === 'all') {
     revalidateTag('courses')
+    revalidateTag('course-subjects')
     revalidateTag('enrollments')
     revalidateTag('seats')
     revalidateTag('designated-seats')

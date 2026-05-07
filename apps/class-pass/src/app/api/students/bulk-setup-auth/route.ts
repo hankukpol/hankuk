@@ -127,12 +127,17 @@ export async function POST(req: NextRequest) {
     }
 
     await invalidateCache('enrollments')
-    return NextResponse.json({
-      total,
-      birth_date_count: birthDateCount,
-      pin_count: pinCount,
-      generated_pins: generatedPins,
-    })
+    return NextResponse.json(
+      {
+        total,
+        birth_date_count: birthDateCount,
+        pin_count: pinCount,
+        generated_pins: generatedPins,
+      },
+      generatedPins.length > 0
+        ? { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+        : undefined,
+    )
   } catch (error) {
     return handleRouteError('students.bulk-setup-auth.POST', '학생 인증 정보를 일괄 설정하지 못했습니다.', error)
   }

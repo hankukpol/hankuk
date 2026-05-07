@@ -309,6 +309,22 @@ export function EnrollmentPaymentDrawer({
         return
       }
 
+      const missingCardCompany = paymentDraft.entries.some(
+        (entry) => entry.method === 'card' && !entry.cardCompany?.trim(),
+      )
+      if (missingCardCompany) {
+        setError('카드사를 선택해 주세요.')
+        return
+      }
+
+      const missingBankAccountLast4 = paymentDraft.entries.some(
+        (entry) => entry.method === 'bank_transfer' && !/^\d{4}$/.test(entry.bankAccountLast4.trim()),
+      )
+      if (missingBankAccountLast4) {
+        setError('계좌 결제는 계좌 마지막 4자리를 입력해 주세요.')
+        return
+      }
+
       if (dueAmount <= 0) {
         setError('남은 수납 금액이 없습니다.')
         return
@@ -324,6 +340,7 @@ export function EnrollmentPaymentDrawer({
     setError('')
     setMessage('')
 
+    try {
     const response = await fetch('/api/payments/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -344,12 +361,10 @@ export function EnrollmentPaymentDrawer({
     const result = await response.json().catch(() => null)
 
     if (!response.ok) {
-      setSubmitting(false)
       setError(result?.error ?? '결제를 저장하지 못했습니다.')
       return
     }
 
-    setSubmitting(false)
     setFormOpen(false)
     setPaymentDraft(createEmptyPaymentSectionValue())
 
@@ -369,6 +384,11 @@ export function EnrollmentPaymentDrawer({
     }
 
     await refreshAll()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '결제를 저장하지 못했습니다.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleCreateRefund(input: {
@@ -391,13 +411,13 @@ export function EnrollmentPaymentDrawer({
     setSubmitting(true)
     setError('')
     setMessage('')
+    try {
     const response = await fetch('/api/payments/refunds', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
     const result = await response.json().catch(() => null)
-    setSubmitting(false)
 
     if (!response.ok) {
       setError(result?.error ?? '환불을 저장하지 못했습니다.')
@@ -405,24 +425,26 @@ export function EnrollmentPaymentDrawer({
     }
 
     const updatedPayments = Array.isArray(result?.payments) ? result.payments as EnrollmentPayment[] : []
-    const nextPayments = mergePaymentUpdates(payments, updatedPayments)
-    const shouldAskToCancelEnrollment = shouldPromptEnrollmentCancellation({
+    const shouldUpdateEnrollmentStatus = shouldPromptEnrollmentCancellation({
       enrollment,
-      payments: nextPayments,
+      payments: mergePaymentUpdates(payments, updatedPayments),
       payableAmount,
       changedCategory: target.category,
     })
 
     setRefundTarget(null)
-    setMessage(input.refunds.length > 1 ? '복수 결제 건의 환불 처리를 완료했습니다.' : '환불 처리를 완료했습니다.')
+    setMessage(
+      shouldUpdateEnrollmentStatus
+        ? '환불 처리를 완료했고 수강 상태를 환불로 변경했습니다.'
+        : input.refunds.length > 1
+          ? '복수 결제 건의 환불 처리를 완료했습니다.'
+          : '환불 처리를 완료했습니다.',
+    )
     await refreshAll()
-    if (shouldAskToCancelEnrollment && enrollment) {
-      setCancelEnrollmentPrompt({
-        enrollmentId: enrollment.id,
-        studentName: enrollment.name,
-        payableAmount,
-        source: 'refund',
-      })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '환불을 저장하지 못했습니다.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -434,6 +456,7 @@ export function EnrollmentPaymentDrawer({
     setSubmitting(true)
     setError('')
     setMessage('')
+    try {
     const response = await fetch('/api/payments/corrections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -444,7 +467,6 @@ export function EnrollmentPaymentDrawer({
       }),
     })
     const result = await response.json().catch(() => null)
-    setSubmitting(false)
 
     if (!response.ok) {
       setError(result?.error ?? '결제 정정을 저장하지 못했습니다.')
@@ -454,6 +476,11 @@ export function EnrollmentPaymentDrawer({
     setCorrectionTarget(null)
     setMessage('환불과 재수납 정정을 저장했습니다.')
     await refreshAll()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '결제 정정을 저장하지 못했습니다.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function handleVoidPayment(payment: EnrollmentPayment) {
@@ -469,9 +496,9 @@ export function EnrollmentPaymentDrawer({
     setSubmitting(true)
     setError('')
     setMessage('')
+    try {
     const response = await fetch(`/api/payments/${voidTarget.id}/void`, { method: 'POST' })
     const result = await response.json().catch(() => null)
-    setSubmitting(false)
 
     if (!response.ok) {
       setVoidTarget(null)
@@ -499,6 +526,11 @@ export function EnrollmentPaymentDrawer({
         source: 'void',
       })
     }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '결제를 취소하지 못했습니다.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleCancelEnrollmentConfirmed() {
@@ -508,9 +540,9 @@ export function EnrollmentPaymentDrawer({
 
     setSubmitting(true)
     setError('')
+    try {
     const response = await fetch(`/api/enrollments/${cancelEnrollmentPrompt.enrollmentId}/refund`, { method: 'POST' })
     const result = await response.json().catch(() => null)
-    setSubmitting(false)
 
     if (!response.ok) {
       setError(result?.error ?? '수강 상태를 취소하지 못했습니다.')
@@ -520,6 +552,11 @@ export function EnrollmentPaymentDrawer({
     setCancelEnrollmentPrompt(null)
     setMessage('수강 상태를 수강취소로 변경했습니다.')
     await refreshAll()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '수강 상태를 취소하지 못했습니다.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function keepEnrollmentActive() {

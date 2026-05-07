@@ -1,13 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { handleRouteError } from '@/lib/api/error-response'
 import { hashPin } from '@/lib/auth/pin'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { handleRouteError } from '@/lib/api/error-response'
 import {
+  createStaffAccount,
+  deleteStaffAccount,
   listStaffAccounts,
-  loadStoredStaffAccounts,
-  saveStoredStaffAccounts,
-  type StoredStaffAccount,
+  StaffAccountConflictError,
+  StaffAccountNotFoundError,
+  StaffAccountsChangedError,
+  updateStaffAccount,
 } from '@/lib/staff-accounts'
+
+function staffAccountMutationErrorResponse(error: unknown) {
+  if (error instanceof StaffAccountConflictError) {
+    return NextResponse.json({ error: 'A staff account with this name already exists.' }, { status: 409 })
+  }
+
+  if (error instanceof StaffAccountNotFoundError) {
+    return NextResponse.json({ error: 'Staff account not found.' }, { status: 404 })
+  }
+
+  if (error instanceof StaffAccountsChangedError) {
+    return NextResponse.json({ error: 'Staff accounts changed. Please reload and try again.' }, { status: 409 })
+  }
+
+  return null
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,7 +36,7 @@ export async function GET(req: NextRequest) {
     const accounts = await listStaffAccounts()
     return NextResponse.json({ accounts })
   } catch (error) {
-    return handleRouteError('staffAccounts.GET', '직원 계정을 불러오지 못했습니다.', error)
+    return handleRouteError('staffAccounts.GET', 'Failed to load staff accounts.', error)
   }
 }
 
@@ -31,34 +50,24 @@ export async function POST(req: NextRequest) {
     const pin = (body?.pin ?? '').trim()
 
     if (!name || !pin) {
-      return NextResponse.json({ error: '이름과 PIN을 입력해 주세요.' }, { status: 400 })
+      return NextResponse.json({ error: 'Enter name and PIN.' }, { status: 400 })
     }
 
     if (pin.length < 4) {
-      return NextResponse.json({ error: 'PIN은 최소 4자리 이상이어야 합니다.' }, { status: 400 })
+      return NextResponse.json({ error: 'PIN must be at least 4 digits.' }, { status: 400 })
     }
 
-    const accounts = await loadStoredStaffAccounts()
-
-    if (accounts.some((account) => account.name === name)) {
-      return NextResponse.json({ error: '이미 같은 이름의 직원이 있습니다.' }, { status: 409 })
-    }
-
-    const newAccount: StoredStaffAccount = {
-      id: crypto.randomUUID(),
+    const account = await createStaffAccount({
       name,
-      pin_hash: await hashPin(pin),
-      created_at: new Date().toISOString(),
-    }
-
-    accounts.push(newAccount)
-    await saveStoredStaffAccounts(accounts)
-
-    return NextResponse.json({
-      account: { id: newAccount.id, name: newAccount.name, created_at: newAccount.created_at },
+      pinHash: await hashPin(pin),
     })
+
+    return NextResponse.json({ account })
   } catch (error) {
-    return handleRouteError('staffAccounts.POST', '직원 계정을 생성하지 못했습니다.', error)
+    const response = staffAccountMutationErrorResponse(error)
+    if (response) return response
+
+    return handleRouteError('staffAccounts.POST', 'Failed to create staff account.', error)
   }
 }
 
@@ -68,40 +77,30 @@ export async function PATCH(req: NextRequest) {
     if (authError) return authError
 
     const body = await req.json().catch(() => null)
-    const id = body?.id as string | undefined
+    const id = typeof body?.id === 'string' ? body.id.trim() : ''
     const name = (body?.name ?? '').trim()
     const pin = (body?.pin ?? '').trim()
 
     if (!id) {
-      return NextResponse.json({ error: '직원 ID가 필요합니다.' }, { status: 400 })
+      return NextResponse.json({ error: 'Staff account ID is required.' }, { status: 400 })
     }
 
-    const accounts = await loadStoredStaffAccounts()
-    const index = accounts.findIndex((account) => account.id === id)
-
-    if (index === -1) {
-      return NextResponse.json({ error: '직원을 찾을 수 없습니다.' }, { status: 404 })
+    if (pin && pin.length < 4) {
+      return NextResponse.json({ error: 'PIN must be at least 4 digits.' }, { status: 400 })
     }
 
-    if (name) {
-      accounts[index].name = name
-    }
-
-    if (pin) {
-      if (pin.length < 4) {
-        return NextResponse.json({ error: 'PIN은 최소 4자리 이상이어야 합니다.' }, { status: 400 })
-      }
-
-      accounts[index].pin_hash = await hashPin(pin)
-    }
-
-    await saveStoredStaffAccounts(accounts)
-
-    return NextResponse.json({
-      account: { id: accounts[index].id, name: accounts[index].name, created_at: accounts[index].created_at },
+    const account = await updateStaffAccount({
+      id,
+      name: name || undefined,
+      pinHash: pin ? await hashPin(pin) : undefined,
     })
+
+    return NextResponse.json({ account })
   } catch (error) {
-    return handleRouteError('staffAccounts.PATCH', '직원 계정을 수정하지 못했습니다.', error)
+    const response = staffAccountMutationErrorResponse(error)
+    if (response) return response
+
+    return handleRouteError('staffAccounts.PATCH', 'Failed to update staff account.', error)
   }
 }
 
@@ -111,22 +110,18 @@ export async function DELETE(req: NextRequest) {
     if (authError) return authError
 
     const body = await req.json().catch(() => null)
-    const id = body?.id as string | undefined
+    const id = typeof body?.id === 'string' ? body.id.trim() : ''
 
     if (!id) {
-      return NextResponse.json({ error: '직원 ID가 필요합니다.' }, { status: 400 })
+      return NextResponse.json({ error: 'Staff account ID is required.' }, { status: 400 })
     }
 
-    const accounts = await loadStoredStaffAccounts()
-    const filtered = accounts.filter((account) => account.id !== id)
-
-    if (filtered.length === accounts.length) {
-      return NextResponse.json({ error: '직원을 찾을 수 없습니다.' }, { status: 404 })
-    }
-
-    await saveStoredStaffAccounts(filtered)
+    await deleteStaffAccount(id)
     return NextResponse.json({ success: true })
   } catch (error) {
-    return handleRouteError('staffAccounts.DELETE', '직원 계정을 삭제하지 못했습니다.', error)
+    const response = staffAccountMutationErrorResponse(error)
+    if (response) return response
+
+    return handleRouteError('staffAccounts.DELETE', 'Failed to delete staff account.', error)
   }
 }

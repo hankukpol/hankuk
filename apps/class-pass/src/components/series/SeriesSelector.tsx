@@ -64,7 +64,7 @@ export function SeriesSelector({
   const showDropdown = selectableOptions.length > 1 || selectedGroup === 'career'
 
   return (
-    <div className="flex flex-wrap items-stretch gap-2">
+    <div className="flex min-w-0 flex-wrap items-stretch gap-2">
       <div className="inline-flex shrink-0 gap-0.5 rounded-[10px] border border-slate-200 bg-slate-100 p-0.5">
         {([
           ['public', '공채', publicOptions.length === 0],
@@ -91,7 +91,7 @@ export function SeriesSelector({
           value={selectedOption?.id ?? ''}
           disabled={disabled || selectableOptions.length === 0}
           onChange={(event) => onChange(Number(event.target.value) || null)}
-          className="min-w-0 flex-1 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-slate-400 disabled:bg-slate-50"
+          className="min-w-[160px] flex-1 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-slate-400 disabled:bg-slate-50"
         >
           {selectableOptions.map((option) => (
             <option key={option.id} value={option.id}>

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
-import type { StaffJwtPayload } from '@/types/database'
 import {
   getPaymentServiceMessage,
   getPaymentServiceStatus,
@@ -22,16 +22,13 @@ const patchPaymentSchema = z.object({
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   cardLast4: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
 
 export async function PATCH(
   req: NextRequest,

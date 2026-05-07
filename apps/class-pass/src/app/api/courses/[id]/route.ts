@@ -9,29 +9,40 @@ import {
   DESIGNATED_SEAT_FEATURE_WARNING,
   EXAM_DELIVERY_FEATURE_WARNING,
   PRESENCE_LOCATION_WARNING,
+  SETTLEMENT_REPORT_CODE_WARNING,
   containsAttendanceFeatureFields,
   containsDesignatedSeatFeatureFields,
   containsExamDeliveryFeatureFields,
   containsPresenceLocationFields,
+  containsSettlementReportCodeField,
   hasAttendanceFeatureColumns,
   hasDesignatedSeatFeatureColumns,
   hasExamDeliveryFeatureColumns,
   hasPresenceLocationColumns,
+  hasSettlementReportCodeColumn,
   isAttendanceFeatureColumnError,
   isDesignatedSeatFeatureColumnError,
   isExamDeliveryFeatureColumnError,
   isPresenceLocationColumnError,
+  isSettlementReportCodeColumnError,
   mergeFeatureWarnings,
   stripAttendanceFeatureFields,
   stripDesignatedSeatFeatureFields,
   stripExamDeliveryFeatureFields,
   stripPresenceLocationFields,
+  stripSettlementReportCodeField,
 } from '@/lib/course-feature-compat'
 import { createServerClient } from '@/lib/supabase/server'
 import { deleteStudentIfOrphaned } from '@/lib/student-profiles'
 import { getServerTenantType } from '@/lib/tenant.server'
 import type { Course } from '@/types/database'
 import { parsePositiveInt, slugifyCourseName } from '@/lib/utils'
+import { isValidDateKey } from '@/lib/validation/primitives'
+
+const optionalDateKeySchema = z.preprocess(
+  (value) => value === '' ? null : value,
+  z.string().refine(isValidDateKey).optional().nullable(),
+)
 
 const enrollmentFieldSchema = z.object({
   key: z.string().min(1).max(50),
@@ -47,6 +58,7 @@ const patchSchema = z.object({
   status: z.enum(['active', 'archived']).optional(),
   theme_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
   tuition_amount: z.number().int().min(0).max(100_000_000).optional(),
+  settlement_report_code: z.string().trim().max(20).optional().nullable(),
   feature_qr_pass: z.boolean().optional(),
   feature_qr_distribution: z.boolean().optional(),
   feature_seat_assignment: z.boolean().optional(),
@@ -62,12 +74,12 @@ const patchSchema = z.object({
   feature_anti_forgery_motion: z.boolean().optional(),
   time_window_start: z.string().optional().nullable(),
   time_window_end: z.string().optional().nullable(),
-  target_date: z.string().optional().nullable(),
+  target_date: optionalDateKeySchema,
   target_date_label: z.string().max(30).optional().nullable(),
   notice_title: z.string().max(100).optional().nullable(),
-  notice_content: z.string().optional().nullable(),
+  notice_content: z.string().max(5000).optional().nullable(),
   notice_visible: z.boolean().optional(),
-  refund_policy: z.string().optional().nullable(),
+  refund_policy: z.string().max(5000).optional().nullable(),
   designated_seat_open: z.boolean().optional(),
   attendance_open: z.boolean().optional(),
   kakao_chat_url: z.string().url().optional().nullable(),
@@ -81,8 +93,8 @@ const patchSchema = z.object({
   presence_accuracy_max_m: z.number().int().min(30).max(2000).optional(),
   presence_required_for_attendance: z.boolean().optional(),
   presence_required_for_designated_seat: z.boolean().optional(),
-  enrolled_from: z.string().optional().nullable(),
-  enrolled_until: z.string().optional().nullable(),
+  enrolled_from: optionalDateKeySchema,
+  enrolled_until: optionalDateKeySchema,
   sort_order: z.number().int().min(0).max(999).optional(),
   enrollment_fields: z.array(enrollmentFieldSchema).optional(),
 })
@@ -219,11 +231,14 @@ export async function PATCH(
   const nextStatus = parsed.data.status ?? existingCourse.status
   const featureDesignatedSeat = parsed.data.feature_designated_seat ?? existingCourse.feature_designated_seat
   const featureAttendance = parsed.data.feature_attendance ?? existingCourse.feature_attendance
-  const rawUpdatePayload = {
+  const rawUpdatePayload: Record<string, unknown> = {
     ...parsed.data,
     slug: parsed.data.slug === undefined
       ? existingCourse.slug
       : parsed.data.slug || slugifyCourseName(nextName),
+    settlement_report_code: parsed.data.settlement_report_code === undefined
+      ? existingCourse.settlement_report_code
+      : parsed.data.settlement_report_code?.trim() || null,
     designated_seat_open: nextStatus === 'archived'
       ? false
       : featureDesignatedSeat
@@ -236,15 +251,20 @@ export async function PATCH(
         : false,
     updated_at: nowIso,
   }
+  if (parsed.data.settlement_report_code === undefined) {
+    delete rawUpdatePayload.settlement_report_code
+  }
 
   const supportsExamDeliveryFeatures = hasExamDeliveryFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsDesignatedSeatFeatures = hasDesignatedSeatFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsAttendanceFeatures = hasAttendanceFeatureColumns(existingCourse as unknown as Record<string, unknown>)
   const supportsPresenceLocation = hasPresenceLocationColumns(existingCourse as unknown as Record<string, unknown>)
+  const supportsSettlementReportCode = hasSettlementReportCodeColumn(existingCourse as unknown as Record<string, unknown>)
   const requestedExamDeliveryFeatures = containsExamDeliveryFeatureFields(parsed.data as Record<string, unknown>)
   const requestedDesignatedSeatFeatures = containsDesignatedSeatFeatureFields(parsed.data as Record<string, unknown>)
   const requestedAttendanceFeatures = containsAttendanceFeatureFields(parsed.data as Record<string, unknown>)
   const requestedPresenceLocation = containsPresenceLocationFields(parsed.data as Record<string, unknown>)
+  const requestedSettlementReportCode = containsSettlementReportCodeField(parsed.data as Record<string, unknown>)
 
   let updatePayload: Record<string, unknown> = { ...rawUpdatePayload }
   const warnings: string[] = []
@@ -252,6 +272,13 @@ export async function PATCH(
   let strippedDesignatedSeatFeatures = false
   let strippedAttendanceFeatures = false
   let strippedPresenceLocation = false
+  let strippedSettlementReportCode = false
+
+  if (!supportsSettlementReportCode && requestedSettlementReportCode) {
+    updatePayload = stripSettlementReportCodeField(updatePayload)
+    strippedSettlementReportCode = true
+    warnings.push(SETTLEMENT_REPORT_CODE_WARNING)
+  }
 
   if (!supportsExamDeliveryFeatures && requestedExamDeliveryFeatures) {
     updatePayload = stripExamDeliveryFeatureFields(updatePayload)
@@ -288,7 +315,21 @@ export async function PATCH(
 
   let { data, error } = await runUpdate(updatePayload)
 
-  for (let attempt = 0; attempt < 4 && error; attempt += 1) {
+  for (let attempt = 0; attempt < 5 && error; attempt += 1) {
+    if (
+      isSettlementReportCodeColumnError(error)
+      && !strippedSettlementReportCode
+      && containsSettlementReportCodeField(updatePayload)
+    ) {
+      updatePayload = stripSettlementReportCodeField(updatePayload)
+      strippedSettlementReportCode = true
+      warnings.push(SETTLEMENT_REPORT_CODE_WARNING)
+      const retry = await runUpdate(updatePayload)
+      data = retry.data
+      error = retry.error
+      continue
+    }
+
     if (
       isPresenceLocationColumnError(error)
       && !strippedPresenceLocation
@@ -422,6 +463,16 @@ export async function DELETE(
 
     if (enrollmentError) {
       return NextResponse.json({ error: '강좌 삭제 전 수강생 정보를 불러오지 못했습니다.' }, { status: 500 })
+    }
+
+    if ((enrollmentRows ?? []).length > 0) {
+      return NextResponse.json(
+        {
+          error: '수강 이력이 있는 강좌는 물리 삭제할 수 없습니다.',
+          reason: '정산, 환불, 출결, 자료 수령 이력 보존을 위해 강좌 보관 처리를 사용해 주세요.',
+        },
+        { status: 409 },
+      )
     }
 
     const studentIds = [...new Set(

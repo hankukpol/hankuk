@@ -77,7 +77,7 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
   if (!payload) {
     return {
       payload: null,
-      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 403 }),
+      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 401 }),
     }
   }
 
@@ -91,7 +91,7 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
   if (!(await validateLegacyAdmin(payload, division))) {
     return {
       payload: null,
-      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 403 }),
+      error: NextResponse.json({ error: '포털에서 인증이 필요합니다.' }, { status: 401 }),
     }
   }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { verifyCourseOwnership } from '@/lib/class-pass-data'
 import { runPaymentImport } from '@/lib/payments/bulk-import'
@@ -9,7 +10,6 @@ import {
   listCourseEnrollmentsForPaymentImport,
 } from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
-import type { StaffJwtPayload } from '@/types/database'
 
 const importRowSchema = z.object({
   name: z.string().optional().nullable(),
@@ -19,6 +19,8 @@ const importRowSchema = z.object({
   amount: z.union([z.number(), z.string()]).optional().nullable(),
   paidAt: z.string().optional().nullable(),
   method: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
+  bankAccountLast4: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   category: z.string().optional().nullable(),
 })
@@ -29,10 +31,6 @@ const bulkImportSchema = z.object({
   dryRun: z.boolean().default(true),
   createMissingEnrollment: z.boolean().default(true),
 })
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req)

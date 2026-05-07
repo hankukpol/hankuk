@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const rateLimitTarget = parsed.data.slotKey
       ? `slot:${normalizedSlotKey ?? 'invalid'}`
       : `course:${parsed.data.courseId}`
-    const rateLimit = checkRateLimit(`designated-seat-display-register:${rateLimitTarget}:${getClientIp(req)}`)
+    const rateLimit = await checkRateLimit(`designated-seat-display-register:${rateLimitTarget}:${getClientIp(req)}`)
     if (!rateLimit.allowed) {
       return NextResponse.json({
         error: '등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.',

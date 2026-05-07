@@ -31,6 +31,7 @@ export type SettlementLedgerRow = {
   time: string
   paymentDate: string
   paymentId: number
+  checkoutGroupId: string | null
   refundId: number | null
   enrollmentId: number
   studentName: string
@@ -40,6 +41,7 @@ export type SettlementLedgerRow = {
   studentTypeLabel: string
   courseId: number
   courseName: string
+  courseReportCode: string | null
   seriesGroup: BranchSeriesGroup
   seriesLabel: string
   method: PaymentMethod | RefundMethod
@@ -54,7 +56,10 @@ export type SettlementLedgerRow = {
   refundAmount: number
   netAmount: number
   receiptNo: string
+  cardCompany: string | null
   cashReceiptApprovalNo: string | null
+  createdByStaffId: number | null
+  processedByStaffId: number | null
   reasonCategory: string | null
   reasonCategoryLabel: string | null
   reason: string | null
@@ -192,17 +197,18 @@ function receiptNo(id: number, prefix = '#') {
   return `${prefix}${String(id).padStart(3, '0')}`
 }
 
-function receiptRange(ids: number[], prefix = '#') {
-  const normalized = ids
-    .filter((id) => Number.isInteger(id) && id > 0)
-    .sort((left, right) => left - right)
+function receiptRangeFromValues(values: string[]) {
+  const normalized = values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, 'ko-KR', { numeric: true }))
 
   if (normalized.length === 0) {
     return '-'
   }
 
-  const first = receiptNo(normalized[0], prefix)
-  const last = receiptNo(normalized[normalized.length - 1], prefix)
+  const first = normalized[0]
+  const last = normalized[normalized.length - 1]
   return first === last ? first : `${first}~${last}`
 }
 
@@ -242,6 +248,10 @@ function getCourseName(payment: EnrollmentPayment) {
   return payment.courses?.name ?? `강좌 #${payment.course_id}`
 }
 
+function getCourseReportCode(payment: EnrollmentPayment) {
+  return payment.courses?.settlement_report_code?.trim() || null
+}
+
 function getPaymentSeriesMeta(payment: EnrollmentPayment): { group: BranchSeriesGroup; label: string } {
   const group = payment.series_group_snapshot ?? payment.enrollments?.series_group ?? 'public'
   const fallbackLabel = group === 'career' ? '경채' : '공채'
@@ -253,6 +263,12 @@ function getPaymentSeriesMeta(payment: EnrollmentPayment): { group: BranchSeries
 
 function getPaymentStudentType(payment: EnrollmentPayment): EnrollmentStudentType {
   return payment.enrollments?.student_type ?? 'general'
+}
+
+function getPaymentDiscountAmount(payment: EnrollmentPayment) {
+  return payment.category === 'tuition'
+    ? Number(payment.enrollment_billing?.discount_amount ?? 0)
+    : 0
 }
 
 function matchesSeriesFilter(row: SettlementLedgerRow, filter?: SettlementSeriesFilter) {
@@ -282,6 +298,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     time: toKstTime(payment.paid_at),
     paymentDate: payment.paid_date || toKstDate(payment.paid_at),
     paymentId: payment.id,
+    checkoutGroupId: payment.checkout_group_id ?? null,
     refundId: null,
     enrollmentId: payment.enrollment_id,
     studentName: getStudentName(payment),
@@ -291,6 +308,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     studentTypeLabel: ENROLLMENT_STUDENT_TYPE_LABEL[studentType],
     courseId: payment.course_id,
     courseName: getCourseName(payment),
+    courseReportCode: getCourseReportCode(payment),
     seriesGroup: series.group,
     seriesLabel: series.label,
     method: payment.method,
@@ -301,11 +319,14 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     categoryLabel: PAYMENT_CATEGORY_LABEL[payment.category] ?? payment.category,
     paymentAmount: payment.amount,
     originalPaymentAmount: payment.amount,
-    discountAmount: 0,
+    discountAmount: getPaymentDiscountAmount(payment),
     refundAmount: 0,
     netAmount: payment.amount,
     receiptNo: payment.display_receipt_no ?? receiptNo(payment.id),
+    cardCompany: payment.card_company,
     cashReceiptApprovalNo: payment.cash_receipt_approval_no,
+    createdByStaffId: payment.created_by_staff_id,
+    processedByStaffId: null,
     reasonCategory: null,
     reasonCategoryLabel: null,
     reason: null,
@@ -328,6 +349,7 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     time: toKstTime(refund.refunded_at),
     paymentDate: payment.paid_date || toKstDate(payment.paid_at),
     paymentId: payment.id,
+    checkoutGroupId: payment.checkout_group_id ?? null,
     refundId: refund.id,
     enrollmentId: payment.enrollment_id,
     studentName: getStudentName(payment),
@@ -337,6 +359,7 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     studentTypeLabel: ENROLLMENT_STUDENT_TYPE_LABEL[studentType],
     courseId: payment.course_id,
     courseName: getCourseName(payment),
+    courseReportCode: getCourseReportCode(payment),
     seriesGroup: series.group,
     seriesLabel: series.label,
     method: refund.method,
@@ -350,8 +373,11 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     discountAmount: 0,
     refundAmount: refund.amount,
     netAmount: -refund.amount,
-    receiptNo: receiptNo(refund.id, 'R#'),
+    receiptNo: refund.display_receipt_no ?? receiptNo(refund.id, 'R#'),
+    cardCompany: payment.card_company,
     cashReceiptApprovalNo: null,
+    createdByStaffId: payment.created_by_staff_id,
+    processedByStaffId: refund.processed_by_staff_id,
     reasonCategory: refund.reason_category,
     reasonCategoryLabel: reasonCategoryLabel(refund.reason_category),
     reason: refund.reason,
@@ -364,7 +390,7 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
 }
 
 function ensureMethodSummary(
-  summaries: Map<string, SettlementMethodSummary & { receiptIds: number[] }>,
+  summaries: Map<string, SettlementMethodSummary & { receiptNos: string[] }>,
   key: string,
   label: string,
 ) {
@@ -376,16 +402,15 @@ function ensureMethodSummary(
     refundAmount: 0,
     netAmount: 0,
     receiptRange: '-',
-    receiptIds: [],
+    receiptNos: [],
   }
   summaries.set(key, current)
   return current
 }
 
 function normalizeMethodSummaries(
-  summaries: Map<string, SettlementMethodSummary & { receiptIds: number[] }>,
+  summaries: Map<string, SettlementMethodSummary & { receiptNos: string[] }>,
   order: string[],
-  receiptPrefix: string,
 ) {
   const orderedKeys = [
     ...order,
@@ -403,7 +428,7 @@ function normalizeMethodSummaries(
       refundAmount: 0,
       netAmount: 0,
       receiptRange: '-',
-      receiptIds: [],
+      receiptNos: [],
     }
 
     return {
@@ -413,7 +438,7 @@ function normalizeMethodSummaries(
       grossAmount: summary.grossAmount,
       refundAmount: summary.refundAmount,
       netAmount: summary.netAmount,
-      receiptRange: receiptRange(summary.receiptIds, receiptPrefix),
+      receiptRange: receiptRangeFromValues(summary.receiptNos),
     }
   })
 }
@@ -485,8 +510,8 @@ export function buildSettlementReport(
   const grossAmount = paymentRows.reduce((sum, row) => sum + row.paymentAmount, 0)
   const refundAmount = refundRows.reduce((sum, row) => sum + row.refundAmount, 0)
   const payerIds = new Set(paymentRows.map((row) => row.enrollmentId))
-  const paymentMethodMap = new Map<string, SettlementMethodSummary & { receiptIds: number[] }>()
-  const refundMethodMap = new Map<string, SettlementMethodSummary & { receiptIds: number[] }>()
+  const paymentMethodMap = new Map<string, SettlementMethodSummary & { receiptNos: string[] }>()
+  const refundMethodMap = new Map<string, SettlementMethodSummary & { receiptNos: string[] }>()
   const categoryMap = new Map<SettlementCategoryGroup, SettlementCategorySummary>()
   const dailyMap = new Map<string, SettlementDailySummary & { payerIds: Set<number> }>()
   const courseMap = new Map<number, SettlementCourseSummary & { studentIds: Set<number> }>()
@@ -498,7 +523,7 @@ export function buildSettlementReport(
     methodSummary.count += 1
     methodSummary.grossAmount += row.paymentAmount
     methodSummary.netAmount += row.netAmount
-    methodSummary.receiptIds.push(row.paymentId)
+    methodSummary.receiptNos.push(row.receiptNo)
   }
 
   for (const row of refundRows) {
@@ -506,9 +531,7 @@ export function buildSettlementReport(
     methodSummary.count += 1
     methodSummary.refundAmount += row.refundAmount
     methodSummary.netAmount += row.netAmount
-    if (row.refundId) {
-      methodSummary.receiptIds.push(row.refundId)
-    }
+    methodSummary.receiptNos.push(row.receiptNo)
   }
 
   for (const group of Object.keys(CATEGORY_GROUP_LABEL) as SettlementCategoryGroup[]) {
@@ -621,8 +644,8 @@ export function buildSettlementReport(
       averageDailyNet: Math.round((grossAmount - refundAmount) / daysInclusive(from, to)),
       refundRate: grossAmount > 0 ? refundAmount / grossAmount : 0,
     },
-    paymentMethods: normalizeMethodSummaries(paymentMethodMap, PAYMENT_METHOD_ORDER, '#'),
-    refundMethods: normalizeMethodSummaries(refundMethodMap, REFUND_METHOD_ORDER, 'R#'),
+    paymentMethods: normalizeMethodSummaries(paymentMethodMap, PAYMENT_METHOD_ORDER),
+    refundMethods: normalizeMethodSummaries(refundMethodMap, REFUND_METHOD_ORDER),
     categories: Array.from(categoryMap.values()),
     seriesGroups: normalizeSeriesSummaries(seriesGroupMap),
     seriesRows: normalizeSeriesSummaries(seriesDetailMap),

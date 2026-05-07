@@ -94,7 +94,7 @@ export async function POST(
       return NextResponse.json({ error: '사진 URL 저장에 실패했습니다.' }, { status: 500 })
     }
 
-    await syncStudentEnrollmentSnapshots(db, enrollment.student_id)
+    await syncStudentEnrollmentSnapshots(db, enrollment.student_id, division)
   } else {
     const { error: updateError } = await db
       .from('enrollments')
@@ -154,7 +154,7 @@ export async function DELETE(
       return NextResponse.json({ error: '사진 삭제에 실패했습니다.' }, { status: 500 })
     }
 
-    await syncStudentEnrollmentSnapshots(db, enrollment.student_id)
+    await syncStudentEnrollmentSnapshots(db, enrollment.student_id, division)
   } else {
     const { error: updateError } = await db
       .from('enrollments')

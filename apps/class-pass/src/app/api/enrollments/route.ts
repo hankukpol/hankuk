@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { resolveBranchSeriesOption } from '@/lib/branch-series'
@@ -28,10 +29,18 @@ import {
   initializeStudentAuth,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
+import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
-import type { Enrollment, StaffJwtPayload, Student } from '@/types/database'
+import { isLikelyPhoneNumber, isValidBirthDateKey } from '@/lib/validation/primitives'
+import type { Enrollment, Student } from '@/types/database'
+
+const phoneSchema = z.string().trim().refine(isLikelyPhoneNumber)
+const optionalBirthDateSchema = z.preprocess(
+  (value) => value === '' ? '' : value,
+  z.union([z.string().refine(isValidBirthDateKey), z.literal('')]).optional().nullable(),
+)
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
@@ -47,6 +56,7 @@ const paymentSchema = z.object({
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   cardLast4: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
@@ -68,7 +78,7 @@ const createSchema = z.object({
   studentId: z.number().int().positive().optional().nullable(),
   updateSelectedStudent: z.boolean().optional(),
   name: z.string().min(1),
-  phone: z.string().min(10),
+  phone: phoneSchema,
   exam_number: z.string().optional().nullable(),
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
@@ -77,7 +87,7 @@ const createSchema = z.object({
   student_type: z.enum(['academy', 'general']).default('academy'),
   memo: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
-  birth_date: z.union([z.string().regex(/^\d{6}$/), z.literal('')]).optional().nullable(),
+  birth_date: optionalBirthDateSchema,
   custom_data: z.record(z.string()).optional(),
   textbookIds: z.array(z.number().int().positive()).optional(),
   billing: billingSchema.optional(),
@@ -148,56 +158,6 @@ function getBillingValidationError(
   }
 
   return null
-}
-
-function getErrorField(error: unknown, field: string) {
-  if (typeof error !== 'object' || error === null || !(field in error)) {
-    return ''
-  }
-
-  const value = (error as Record<string, unknown>)[field]
-  return typeof value === 'string' ? value : ''
-}
-
-function getErrorText(error: unknown) {
-  if (typeof error === 'string') {
-    return error
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return [
-    getErrorField(error, 'code'),
-    getErrorField(error, 'message'),
-    getErrorField(error, 'details'),
-    getErrorField(error, 'hint'),
-  ].filter(Boolean).join(' ')
-}
-
-function isStudentTypeColumnMissing(error: unknown) {
-  const code = getErrorField(error, 'code')
-  const text = getErrorText(error).toLowerCase()
-
-  return text.includes('student_type') && (
-    code === 'PGRST204'
-    || code === '42703'
-    || text.includes('schema cache')
-    || text.includes('could not find')
-    || text.includes('does not exist')
-    || text.includes('column')
-  )
-}
-
-function omitStudentType<T extends Record<string, unknown>>(payload: T) {
-  const rest = { ...payload }
-  delete rest.student_type
-  return rest
-}
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
 }
 
 async function rollbackCreatedEnrollment(
@@ -387,6 +347,20 @@ export async function POST(req: NextRequest) {
     const billingError = getBillingValidationError(parsed.data.billing, payments)
     if (billingError) {
       return NextResponse.json({ error: billingError }, { status: 400 })
+    }
+
+    const cardWithoutCompany = payments.find(
+      (p) => p.method === 'card' && !p.cardCompany?.trim(),
+    )
+    if (cardWithoutCompany) {
+      return NextResponse.json({ error: '카드 결제 시 카드사는 필수입니다.' }, { status: 400 })
+    }
+
+    const bankTransferWithoutAccount = payments.find(
+      (p) => p.method === 'bank_transfer' && !p.bankAccountLast4?.trim(),
+    )
+    if (bankTransferWithoutAccount) {
+      return NextResponse.json({ error: '계좌 결제 시 계좌 마지막 4자리는 필수입니다.' }, { status: 400 })
     }
 
     const db = createServerClient()
@@ -592,14 +566,20 @@ export async function POST(req: NextRequest) {
     if (textbookIds.length > 0) {
       await invalidateCache('materials')
     }
-    return NextResponse.json({
-      enrollment: {
-        ...enrollment,
-        student_profile: getStudentAuthProfile(student),
+    return NextResponse.json(
+      {
+        enrollment: {
+          ...enrollment,
+          student_profile: getStudentAuthProfile(student),
+        },
+        reactivated: Boolean(reactivatedRegistration),
+        generated_pin: authSetup.generatedPin ?? undefined,
       },
-      reactivated: Boolean(reactivatedRegistration),
-      generated_pin: authSetup.generatedPin ?? undefined,
-    }, { status: reactivatedRegistration ? 200 : 201 })
+      {
+        status: reactivatedRegistration ? 200 : 201,
+        ...(authSetup.generatedPin ? { headers: { 'Cache-Control': 'no-store, max-age=0' } } : {}),
+      },
+    )
   } catch (error) {
     return handleRouteError('enrollments.POST', '수강생을 생성하지 못했습니다.', error)
   }

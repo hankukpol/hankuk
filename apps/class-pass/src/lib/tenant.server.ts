@@ -54,18 +54,6 @@ function normalizeStoredColor(value: unknown, fallback: string) {
   return fallback
 }
 
-function getPathnameFromUrlLike(value: string | null | undefined) {
-  if (!value) {
-    return null
-  }
-
-  try {
-    return new URL(value).pathname
-  } catch {
-    return value
-  }
-}
-
 export function invalidateServerTenantConfigCache(tenant?: TenantType) {
   if (!tenant) {
     tenantConfigCache.clear()
@@ -78,12 +66,10 @@ export function invalidateServerTenantConfigCache(tenant?: TenantType) {
 export async function getServerTenantType(): Promise<TenantType> {
   const headerStore = await headers()
   const cookieStore = await cookies()
-  const refererPathname = getPathnameFromUrlLike(headerStore.get('referer'))
 
   return (
-    parseTenantTypeFromPathname(headerStore.get('x-hankuk-original-pathname'))
-    ?? normalizeTenantType(headerStore.get(TENANT_HEADER))
-    ?? parseTenantTypeFromPathname(refererPathname)
+    normalizeTenantType(headerStore.get(TENANT_HEADER))
+    ?? parseTenantTypeFromPathname(headerStore.get('x-hankuk-original-pathname'))
     ?? normalizeTenantType(cookieStore.get(TENANT_COOKIE)?.value)
     ?? DEFAULT_TENANT_TYPE
   )

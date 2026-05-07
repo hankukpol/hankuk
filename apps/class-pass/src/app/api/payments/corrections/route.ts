@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import {
   createPaymentCorrection,
@@ -7,7 +8,6 @@ import {
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
 import { getServerTenantType } from '@/lib/tenant.server'
-import type { StaffJwtPayload } from '@/types/database'
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
@@ -41,6 +41,7 @@ const correctionPaymentSchema = z.object({
   paidAt: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   cardLast4: z.string().optional().nullable(),
+  cardCompany: z.string().optional().nullable(),
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
@@ -55,10 +56,6 @@ const createCorrectionSchema = z.object({
   payment: correctionPaymentSchema,
   tuitionBillingMode: z.enum(['keep', 'match_net']).optional(),
 })
-
-function getActorStaffId(payload: StaffJwtPayload | null) {
-  return payload?.accountId ?? payload?.membershipId ?? null
-}
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateAdminRequest(req)
@@ -79,6 +76,14 @@ export async function POST(req: NextRequest) {
 
     if (parsed.data.refund.method === 'bank_transfer' && !parsed.data.refund.refundAccountLast4) {
       return NextResponse.json({ error: '환불 입금 계좌 마지막 4자리를 입력해 주세요.' }, { status: 400 })
+    }
+
+    if (parsed.data.payment.method === 'card' && !parsed.data.payment.cardCompany?.trim()) {
+      return NextResponse.json({ error: '카드 결제 시 카드사는 필수입니다.' }, { status: 400 })
+    }
+
+    if (parsed.data.payment.method === 'bank_transfer' && !parsed.data.payment.bankAccountLast4?.trim()) {
+      return NextResponse.json({ error: '계좌 결제 시 계좌 마지막 4자리는 필수입니다.' }, { status: 400 })
     }
 
     const division = await getServerTenantType()

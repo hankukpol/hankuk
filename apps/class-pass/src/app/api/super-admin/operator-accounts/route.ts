@@ -65,6 +65,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: portalLinkError }, { status: 400 })
   }
 
-  const account = await upsertOperatorAccount(parsed.data)
+  const loginId = parsed.data.login_id.trim()
+  const existingAccount = (await listOperatorAccounts()).find((account) => account.login_id === loginId)
+  if (existingAccount) {
+    return NextResponse.json({ error: 'Operator account login id already exists.' }, { status: 409 })
+  }
+
+  const account = await upsertOperatorAccount({ ...parsed.data, login_id: loginId })
   return NextResponse.json({ account }, { status: 201 })
 }

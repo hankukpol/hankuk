@@ -244,9 +244,14 @@ export async function POST(req: NextRequest) {
   }
 
   await invalidateCache('enrollments')
-  return NextResponse.json({
-    success: true,
-    count: latestRowByStudentId.size,
-    generated_pins: generatedPins.length > 0 ? generatedPins : undefined,
-  })
+  return NextResponse.json(
+    {
+      success: true,
+      count: latestRowByStudentId.size,
+      generated_pins: generatedPins.length > 0 ? generatedPins : undefined,
+    },
+    generatedPins.length > 0
+      ? { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      : undefined,
+  )
 }

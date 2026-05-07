@@ -17,6 +17,8 @@ export type PaymentImportRowInput = {
   amount?: number | string | null
   paidAt?: string | null
   method?: string | null
+  cardCompany?: string | null
+  bankAccountLast4?: string | null
   memo?: string | null
   category?: string | null
 }
@@ -30,6 +32,8 @@ export type PaymentImportPreviewRow = {
   amount: number
   paidAt: string
   method: PaymentMethod
+  cardCompany: string | null
+  bankAccountLast4: string | null
   category: PaymentCategory
   memo: string | null
   status: 'matched' | 'create' | 'duplicate' | 'error'
@@ -105,7 +109,7 @@ function parseAmount(value: number | string | null | undefined) {
 
 function parseMethod(value: string | null | undefined): PaymentMethod {
   const key = String(value ?? '').trim().toLowerCase()
-  return METHOD_MAP[key] ?? 'card'
+  return METHOD_MAP[key] ?? 'other'
 }
 
 function parseCategory(value: string | null | undefined): PaymentCategory {
@@ -245,19 +249,21 @@ export function previewPaymentImportRows(params: {
     const amount = parseAmount(row.amount)
     const paidAt = normalizePaidAt(row.paidAt)
     const method = parseMethod(row.method)
+    const cardCompany = String(row.cardCompany ?? '').trim() || null
+    const bankAccountLast4 = String(row.bankAccountLast4 ?? '').replace(/\D/g, '').slice(-4) || null
     const category = parseCategory(row.category)
     const memo = String(row.memo ?? '').trim() || null
 
     if (!name) {
-      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '이름이 없습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '이름이 없습니다.' }
     }
 
     if (String(row.method ?? '').trim().toLowerCase() === 'mixed' || String(row.method ?? '').trim() === '복합') {
-      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '복합 결제는 카드/현금처럼 실제 수단별 행으로 나누어 업로드해 주세요.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '복합 결제는 카드/현금처럼 실제 수단별 행으로 나누어 업로드해 주세요.' }
     }
 
     if (phone.length < 4) {
-      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '연락처가 없거나 너무 짧습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '연락처가 없거나 너무 짧습니다.' }
     }
 
     if (
@@ -266,12 +272,20 @@ export function previewPaymentImportRows(params: {
       || (method !== 'free' && amount <= 0)
       || (method === 'free' && amount !== 0)
     ) {
-      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '결제 금액이 올바르지 않습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount: 0, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '결제 금액이 올바르지 않습니다.' }
+    }
+
+    if (method === 'card' && !cardCompany) {
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '카드 결제는 카드사를 입력해 주세요.' }
+    }
+
+    if (method === 'bank_transfer' && !/^\d{4}$/.test(bankAccountLast4 ?? '')) {
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '계좌 결제는 계좌 마지막 4자리를 입력해 주세요.' }
     }
 
     const importKey = examNumber ? `exam:${examNumber}` : `name-phone:${name}:${phone.slice(-4)}`
     if (seenImportKeys.has(importKey)) {
-      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'duplicate', enrollmentId: null, message: '업로드 파일 안에서 중복된 학생입니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'duplicate', enrollmentId: null, message: '업로드 파일 안에서 중복된 학생입니다.' }
     }
     seenImportKeys.add(importKey)
 
@@ -281,18 +295,18 @@ export function previewPaymentImportRows(params: {
     })
 
     if (resolved.status === 'matched' && resolved.enrollment) {
-      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'matched', enrollmentId: resolved.enrollment.id, message: resolved.message }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'matched', enrollmentId: resolved.enrollment.id, message: resolved.message }
     }
 
     if (resolved.status === 'duplicate') {
-      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'duplicate', enrollmentId: null, message: resolved.message }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'duplicate', enrollmentId: null, message: resolved.message }
     }
 
     if (!params.createMissingEnrollment) {
-      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'error', enrollmentId: null, message: '매칭 수강생이 없습니다.' }
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'error', enrollmentId: null, message: '매칭 수강생이 없습니다.' }
     }
 
-    return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, category, memo, status: 'create', enrollmentId: null, message: resolved.message }
+    return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, category, memo, status: 'create', enrollmentId: null, message: resolved.message }
   })
 }
 
@@ -370,6 +384,8 @@ export async function runPaymentImport(params: {
         enrollmentId,
         amount: row.amount,
         method: row.method,
+        cardCompany: row.cardCompany,
+        bankAccountLast4: row.bankAccountLast4,
         category: row.category,
         paidAt: row.paidAt,
         memo: row.memo,

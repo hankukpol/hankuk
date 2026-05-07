@@ -208,66 +208,162 @@ function getBillingValidationError(billing: ParsedBilling, payments: ParsedPayme
 }
 
 function validateBatchPayments(registrations: ParsedRegistration[], payments: ParsedPayment[]) {
-  // A bundled checkout is one external checkout event. Mixed methods stay course-by-course for now.
-  if (payments.length > 1) {
-    return '묶음 등록은 카드+현금 같은 복합 결제를 지원하지 않습니다. 한 가지 결제수단으로만 저장해 주세요.'
-  }
-
   if (payments.some((payment) => payment.category !== 'tuition')) {
     return '묶음 등록 결제는 수강료 결제만 지원합니다.'
   }
 
-  const [payment] = payments
-  if (!payment) {
+  if (payments.length === 0) {
     return null
   }
 
-  if (payment.method === 'card' && !payment.cardCompany?.trim()) {
+  const cardWithoutCompany = payments.find((payment) => (
+    payment.method === 'card' && !payment.cardCompany?.trim()
+  ))
+  if (cardWithoutCompany) {
     return '카드 결제 시 카드사는 필수입니다.'
   }
 
-  if (payment.cardLast4 && !/^\d{4}$/.test(payment.cardLast4.trim())) {
+  const invalidCardLast4 = payments.find((payment) => (
+    payment.cardLast4 && !/^\d{4}$/.test(payment.cardLast4.trim())
+  ))
+  if (invalidCardLast4) {
     return '카드 마지막 번호는 숫자 4자리여야 합니다.'
   }
 
-  if (
+  const bankTransferWithoutAccount = payments.find((payment) => (
     payment.method === 'bank_transfer'
     && !/^\d{4}$/.test(payment.bankAccountLast4?.trim() ?? '')
-  ) {
+  ))
+  if (bankTransferWithoutAccount) {
     return '계좌 결제 시 계좌 마지막 4자리는 필수입니다.'
   }
 
-  const totalPayable = registrations.reduce((sum, registration) => (
-    sum + (registration.billing.tuitionExempt ? 0 : registration.billing.payableAmount)
-  ), 0)
+  const totalPayable = getBatchTotalPayable(registrations)
   const allExempt = registrations.every((registration) => registration.billing.tuitionExempt)
+  const paymentTotal = payments.reduce((sum, payment) => sum + payment.amount, 0)
 
   if (allExempt) {
-    return payment.method === 'free' && payment.amount === 0
+    return payments.every((payment) => payment.method === 'free' && payment.amount === 0)
       ? null
       : '무료/면제 묶음 등록은 무료 수단과 0원 금액으로만 저장할 수 있습니다.'
   }
 
-  if (payment.method === 'free') {
+  if (payments.some((payment) => payment.method === 'free')) {
     return '유료 묶음 등록은 무료 결제수단으로 저장할 수 없습니다.'
   }
 
-  if (payment.amount !== totalPayable) {
+  if (payments.some((payment) => payment.amount <= 0)) {
+    return '결제 수단별 수납 금액을 입력해 주세요.'
+  }
+
+  if (paymentTotal !== totalPayable) {
     return '묶음 결제 총액은 선택한 강좌들의 적용 금액 합계와 일치해야 합니다.'
   }
 
   return null
 }
 
-function buildPaymentForRegistration(payment: ParsedPayment, billing: ParsedBilling, courseName: string): ParsedPayment {
-  const amount = billing.tuitionExempt ? 0 : billing.payableAmount
+function getBatchTotalPayable(registrations: ParsedRegistration[]) {
+  return registrations.reduce((sum, registration) => (
+    sum + (registration.billing.tuitionExempt ? 0 : registration.billing.payableAmount)
+  ), 0)
+}
 
-  return {
-    ...payment,
-    amount,
-    category: 'tuition',
-    items: [{ label: courseName, amount }],
+function getPaymentAllocationKey(payment: ParsedPayment, index: number) {
+  return `${index}:${payment.method}`
+}
+
+function createRemainingByMethod(payments: ParsedPayment[]) {
+  return new Map(payments.map((payment, index) => [
+    getPaymentAllocationKey(payment, index),
+    payment.amount,
+  ]))
+}
+
+function applyAllocationDelta(
+  allocations: Array<{
+    amount: number
+    key: string
+    remainingAmount: number
+  }>,
+  delta: number,
+) {
+  let remainingDelta = delta
+
+  if (remainingDelta > 0) {
+    for (const allocation of [...allocations].reverse()) {
+      if (remainingDelta <= 0) {
+        break
+      }
+
+      const headroom = allocation.remainingAmount - allocation.amount
+      const adjustment = Math.min(headroom, remainingDelta)
+      allocation.amount += adjustment
+      remainingDelta -= adjustment
+    }
+  } else if (remainingDelta < 0) {
+    for (const allocation of [...allocations].reverse()) {
+      if (remainingDelta >= 0) {
+        break
+      }
+
+      const adjustment = Math.min(allocation.amount, Math.abs(remainingDelta))
+      allocation.amount -= adjustment
+      remainingDelta += adjustment
+    }
   }
+
+  if (remainingDelta !== 0) {
+    throw new Error('BATCH_PAYMENT_ALLOCATION_MISMATCH')
+  }
+}
+
+function buildPaymentsForRegistration(
+  payments: ParsedPayment[],
+  billing: ParsedBilling,
+  course: Course,
+  totalPayable: number,
+  isLast: boolean,
+  remainingByMethod: Map<string, number>,
+): ParsedPayment[] {
+  const coursePayable = billing.tuitionExempt ? 0 : billing.payableAmount
+  if (coursePayable <= 0 || totalPayable <= 0 || payments.length === 0) {
+    return []
+  }
+
+  const allocations = payments.map((payment, index) => {
+    const key = getPaymentAllocationKey(payment, index)
+    const remainingAmount = remainingByMethod.get(key) ?? 0
+    const proportionalAmount = isLast
+      ? remainingAmount
+      : Math.round(payment.amount * coursePayable / totalPayable)
+
+    return {
+      payment,
+      key,
+      remainingAmount,
+      amount: Math.min(Math.max(proportionalAmount, 0), remainingAmount),
+    }
+  })
+
+  const allocatedTotal = allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
+  applyAllocationDelta(allocations, coursePayable - allocatedTotal)
+
+  return allocations
+    .filter((allocation) => allocation.amount > 0)
+    .map((allocation) => {
+      remainingByMethod.set(
+        allocation.key,
+        Math.max(allocation.remainingAmount - allocation.amount, 0),
+      )
+
+      return {
+        ...allocation.payment,
+        amount: allocation.amount,
+        category: 'tuition',
+        items: [{ label: course.name, amount: allocation.amount }],
+      }
+    })
 }
 
 function readSupabaseErrorMessage(error: unknown) {
@@ -348,23 +444,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: paymentError }, { status: 400 })
     }
 
-    for (const registration of registrations) {
-      const shouldCreateRegistrationPayment = payments[0]
-        && !registration.billing.tuitionExempt
-        && registration.billing.payableAmount > 0
-      const registrationPayment = shouldCreateRegistrationPayment
-        ? [buildPaymentForRegistration(
-          payments[0],
-          registration.billing,
-          'course',
-        )]
-        : []
-      const billingError = getBillingValidationError(registration.billing, registrationPayment)
-      if (billingError) {
-        return NextResponse.json({ error: billingError }, { status: 400 })
-      }
-    }
-
     const division = await getServerTenantType()
     const courses = new Map<number, Course>()
     for (const registration of registrations) {
@@ -373,6 +452,38 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
       }
       courses.set(course.id, course)
+    }
+
+    const totalPayable = getBatchTotalPayable(registrations)
+    const lastBillableRegistrationIndex = registrations.findLastIndex((registration) => (
+      !registration.billing.tuitionExempt
+      && registration.billing.payableAmount > 0
+    ))
+    const remainingByMethod = createRemainingByMethod(payments)
+    const registrationPaymentAllocations = registrations.map((registration, index) => {
+      const course = courses.get(registration.courseId)
+      if (!course) {
+        throw new Error('BATCH_ENROLLMENT_MISMATCH')
+      }
+
+      return buildPaymentsForRegistration(
+        payments,
+        registration.billing,
+        course,
+        totalPayable,
+        index === lastBillableRegistrationIndex,
+        remainingByMethod,
+      )
+    })
+
+    for (const [index, registration] of registrations.entries()) {
+      const billingError = getBillingValidationError(
+        registration.billing,
+        registrationPaymentAllocations[index] ?? [],
+      )
+      if (billingError) {
+        return NextResponse.json({ error: billingError }, { status: 400 })
+      }
     }
 
     for (const registration of registrations) {
@@ -446,11 +557,7 @@ export async function POST(req: NextRequest) {
     }
 
     const actorStaffId = getActorStaffId(auth.payload)
-    const hasBillablePayment = payments.length > 0
-      && registrations.some((registration) => (
-        !registration.billing.tuitionExempt
-        && registration.billing.payableAmount > 0
-      ))
+    const hasBillablePayment = registrationPaymentAllocations.some((allocation) => allocation.length > 0)
     const checkoutGroupId = hasBillablePayment ? randomUUID() : null
     const studentSnapshot = {
       name: student.name,
@@ -466,25 +573,17 @@ export async function POST(req: NextRequest) {
       photoUrl: student.photo_url,
       customData: parsed.data.custom_data ?? {},
     }
-    const rpcRegistrations = registrations.map((registration) => {
+    const rpcRegistrations = registrations.map((registration, index) => {
       const course = courses.get(registration.courseId)
       if (!course) {
         throw new Error('BATCH_ENROLLMENT_MISMATCH')
       }
 
-      const shouldCreateRegistrationPayment = Boolean(
-        payments[0]
-        && !registration.billing.tuitionExempt
-        && registration.billing.payableAmount > 0,
-      )
-
       return {
         courseId: registration.courseId,
         textbookIds: Array.from(new Set(registration.textbookIds ?? [])),
         billing: registration.billing,
-        payments: shouldCreateRegistrationPayment
-          ? [buildPaymentForRegistration(payments[0], registration.billing, course.name)]
-          : [],
+        payments: registrationPaymentAllocations[index] ?? [],
       }
     })
 

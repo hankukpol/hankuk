@@ -148,6 +148,34 @@ function toNumber(value: string) {
   return Number(value.replace(/,/g, '') || 0)
 }
 
+function rebalancePaymentEntriesForTotal(
+  entries: PaymentSectionValue['entries'],
+  totalAmount: number,
+) {
+  if (entries.length <= 1) {
+    return entries.map((entry) => ({
+      ...entry,
+      amount: totalAmount > 0 ? String(totalAmount) : '',
+    }))
+  }
+
+  let remainingAmount = Math.max(0, totalAmount)
+
+  return entries.map((entry, index) => {
+    const entryAmount = toNumber(entry.amount)
+    const nextAmount = index === entries.length - 1
+      ? remainingAmount
+      : Math.min(entryAmount, remainingAmount)
+
+    remainingAmount = Math.max(remainingAmount - nextAmount, 0)
+
+    return {
+      ...entry,
+      amount: nextAmount > 0 ? String(nextAmount) : '',
+    }
+  })
+}
+
 function getEnrollmentStatusLabel(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
   if (enrollment.status === 'active' && enrollment.suspended_at) {
     return '정지'
@@ -381,8 +409,12 @@ export default function CourseStudentsPage({
       .join('\n')
 
     setCreatePaymentForm((current) => {
-      const firstEntry = current.entries[0]
-      const nextAmount = bundleTotals.payableAmount > 0 ? String(bundleTotals.payableAmount) : ''
+      const previousPayableAmount = Math.max(
+        toNumber(current.expectedAmount) - toNumber(current.discountAmount),
+        0,
+      )
+      const currentPaymentTotal = current.entries.reduce((sum, entry) => sum + toNumber(entry.amount), 0)
+      const shouldRebalanceEntries = current.entries.length <= 1 || currentPaymentTotal === previousPayableAmount
 
       return {
         ...current,
@@ -392,7 +424,9 @@ export default function CourseStudentsPage({
         paidAmount: '',
         tuitionExempt: false,
         tuitionExemptReason: '',
-        entries: firstEntry ? [{ ...firstEntry, amount: nextAmount }] : current.entries,
+        entries: shouldRebalanceEntries
+          ? rebalancePaymentEntriesForTotal(current.entries, bundleTotals.payableAmount)
+          : current.entries,
       }
     })
   }, [bundleBillingRows, bundleTotals, isBundleRegistration, panel])
@@ -1297,8 +1331,8 @@ export default function CourseStudentsPage({
         return
       }
 
-      if (shouldRecordPayments && paymentPayload.payments.length > 1) {
-        setError('묶음 등록은 하나의 결제수단으로만 저장할 수 있습니다.')
+      if (shouldRecordPayments && paymentPayload.payments.length > 20) {
+        setError('결제 수단은 최대 20개까지 입력할 수 있습니다.')
         return
       }
     }
@@ -2046,7 +2080,6 @@ export default function CourseStudentsPage({
               onChange={setCreatePaymentForm}
               compact
               lockedBilling={isBundleRegistration}
-              singlePaymentOnly={isBundleRegistration}
               hideBillingControls={isBundleRegistration}
               hidePaymentMeta={isBundleRegistration}
               hideSummaryHeader={isBundleRegistration}

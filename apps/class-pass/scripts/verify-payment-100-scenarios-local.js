@@ -617,49 +617,96 @@ async function createRegistrations(cookie) {
   assert(state.createdStudents.length === 145, 'student row references should follow enrollment count');
 }
 
-async function verifyMixedBundleRejected(cookie) {
+async function verifyMixedBundleAccepted(cookie) {
   const basic = state.courses.basic;
   const studio = state.courses.studio;
-  const total = money(basic.tuition) + money(studio.tuition);
-  const payload = {
-    ...studentPayload(999),
-    exam_number: `P100-BAD-${RUN_ID}`,
-      name: 'Pay Test Bad Mixed',
-    registrations: [
-      {
-        courseId: basic.id,
-        billing: {
-          expectedAmount: money(basic.tuition),
-          discountAmount: 0,
-          discountReason: null,
-          payableAmount: money(basic.tuition),
-          tuitionExempt: false,
-        },
-      },
-      {
-        courseId: studio.id,
-        billing: {
-          expectedAmount: money(studio.tuition),
-          discountAmount: 0,
-          discountReason: null,
-          payableAmount: money(studio.tuition),
-          tuitionExempt: false,
-        },
-      },
-    ],
-    payments: [
-      methodPayload('card', total - 40000, 998),
-      methodPayload('cash', 40000, 999),
-    ],
+  const marker = `P100-MIXED-${RUN_ID}`;
+  const cleanupState = {
+    enrollmentIds: [],
+    paymentIds: [],
+    studentIds: [],
   };
 
-  const result = await api(cookie, '/api/enrollments/batch', payload, [400]);
-  assert(result.status === 400, 'mixed payment bundle should be rejected');
-  const badStudents = await supaQuery(
-    db.from('students').select('id').eq('division', DIVISION).eq('exam_number', `P100-BAD-${RUN_ID}`),
-    'select rejected mixed bundle student',
-  );
-  assert((badStudents || []).length === 0, 'rejected mixed bundle left a student row behind');
+  try {
+    const payload = {
+      ...studentPayload(999),
+      exam_number: marker,
+      name: 'Pay Test Mixed Bundle',
+      registrations: [
+        {
+          courseId: basic.id,
+          billing: {
+            expectedAmount: money(basic.tuition),
+            discountAmount: 0,
+            discountReason: null,
+            payableAmount: money(basic.tuition),
+            tuitionExempt: false,
+          },
+        },
+        {
+          courseId: studio.id,
+          billing: {
+            expectedAmount: money(studio.tuition),
+            discountAmount: 0,
+            discountReason: null,
+            payableAmount: money(studio.tuition),
+            tuitionExempt: false,
+          },
+        },
+      ],
+      payments: [
+        methodPayload('card', money(basic.tuition), 998),
+        methodPayload('cash', money(studio.tuition), 999),
+      ],
+    };
+
+    const result = await api(cookie, '/api/enrollments/batch', payload, [201]);
+    const enrollments = result.json?.enrollments || [];
+    assert(enrollments.length === 2, 'mixed payment bundle should create two enrollments');
+    cleanupState.enrollmentIds.push(...enrollments.map((enrollment) => enrollment.id));
+    cleanupState.studentIds.push(...enrollments.map((enrollment) => enrollment.student_id).filter(Boolean));
+
+    const payments = await supaQuery(
+      db
+        .from('enrollment_payments')
+        .select('id,course_id,amount,method,card_company,checkout_group_id')
+        .in('enrollment_id', cleanupState.enrollmentIds)
+        .order('course_id', { ascending: true })
+        .order('id', { ascending: true }),
+      'select accepted mixed bundle payments',
+    );
+    cleanupState.paymentIds.push(...(payments || []).map((payment) => payment.id));
+
+    assert((payments || []).length === 4, 'mixed payment bundle should create payment rows for each course and method');
+    assert(
+      payments.some((payment) => payment.course_id === basic.id && payment.method === 'card' && money(payment.amount) === 25714 && payment.card_company),
+      'mixed bundle should save the proportional card payment on the basic course',
+    );
+    assert(
+      payments.some((payment) => payment.course_id === basic.id && payment.method === 'cash' && money(payment.amount) === 34286),
+      'mixed bundle should save the proportional cash payment on the basic course',
+    );
+    assert(
+      payments.some((payment) => payment.course_id === studio.id && payment.method === 'card' && money(payment.amount) === 34286 && payment.card_company),
+      'mixed bundle should save the remaining card payment on the studio course',
+    );
+    assert(
+      payments.some((payment) => payment.course_id === studio.id && payment.method === 'cash' && money(payment.amount) === 45714),
+      'mixed bundle should save the remaining cash payment on the studio course',
+    );
+    assert(new Set(payments.map((payment) => payment.checkout_group_id)).size === 1, 'mixed bundle payment rows should share one checkout group');
+  } finally {
+    await deleteInChunks('settlement_entry_confirmations', 'payment_id', cleanupState.paymentIds);
+    await deleteInChunks('enrollment_refunds', 'payment_id', cleanupState.paymentIds);
+    await deleteInChunks('payment_events', 'payment_id', cleanupState.paymentIds);
+    await deleteInChunks('enrollment_payment_items', 'payment_id', cleanupState.paymentIds);
+    await deleteInChunks('enrollment_payments', 'id', cleanupState.paymentIds);
+    await deleteInChunks('payment_events', 'enrollment_id', cleanupState.enrollmentIds);
+    await deleteInChunks('textbook_assignments', 'enrollment_id', cleanupState.enrollmentIds);
+    await deleteInChunks('enrollment_billing', 'enrollment_id', cleanupState.enrollmentIds);
+    await deleteInChunks('enrollments', 'id', cleanupState.enrollmentIds);
+    await deleteInChunks('students', 'id', cleanupState.studentIds);
+  }
 }
 
 async function verifyReactivatedTextbookRollback(cookie) {
@@ -1661,7 +1708,7 @@ async function cleanup() {
       .from('students')
       .select('id')
       .eq('division', DIVISION)
-      .or(`exam_number.like.P100-${RUN_ID}-%,exam_number.eq.P100-BAD-${RUN_ID}`)
+      .or(`exam_number.like.P100-${RUN_ID}-%,exam_number.eq.P100-BAD-${RUN_ID},exam_number.eq.P100-MIXED-${RUN_ID}`)
       .order('id'),
     'cleanup select direct students',
   );
@@ -1735,7 +1782,7 @@ async function main() {
   await setupBranchAndAdmin();
   await createCourses();
   const cookie = await devLogin();
-  await verifyMixedBundleRejected(cookie);
+  await verifyMixedBundleAccepted(cookie);
   await verifyReactivatedTextbookRollback(cookie);
   await verifyPaymentReceiptConcurrency();
   await verifyPaymentBundleRpcOverpayGuard();

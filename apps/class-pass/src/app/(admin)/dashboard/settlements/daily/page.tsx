@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
@@ -933,7 +933,7 @@ export default function DailySettlementsPage() {
                   ? checkoutGroupByFirstPaymentId.get(row.paymentId)
                   : undefined
                 return (
-                <Fragment key={row.id}>
+                <React.Fragment key={row.id}>
                   {checkoutGroup ? (
                     <tr className="bg-blue-50/70">
                       <td colSpan={13} className="px-4 py-3">
@@ -1049,7 +1049,7 @@ export default function DailySettlementsPage() {
                     )}
                   </td>
                 </tr>
-                </Fragment>
+                </React.Fragment>
                 )
               })}
               {!loading && rows.length === 0 ? (

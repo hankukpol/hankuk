@@ -5,6 +5,7 @@ import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { getCourseById } from '@/lib/class-pass-data'
 import { getServerTenantType } from '@/lib/tenant.server'
 import type { Course, StaffJwtPayload } from '@/types/database'
+export { hasCourseAttendanceStarted } from '@/lib/attendance/date'
 
 export const ATTENDANCE_ERROR_MESSAGES = {
   invalidDisplayRequest: '출석 화면 요청 형식이 올바르지 않습니다.',
@@ -42,20 +43,6 @@ type AttendanceAdminCourseContext = AttendanceCourseContext & {
 type GuardResult<T> =
   | { response: NextResponse; context: null }
   | { response: null; context: T }
-
-function getAttendanceDateKey(value: Date = new Date()) {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Seoul',
-  }).format(value)
-}
-
-export function hasCourseAttendanceStarted(course: Pick<Course, 'enrolled_from'>, targetDate = getAttendanceDateKey()) {
-  if (!course.enrolled_from) {
-    return true
-  }
-
-  return targetDate >= course.enrolled_from.slice(0, 10)
-}
 
 export async function requireAttendanceCourse(courseId: number): Promise<GuardResult<AttendanceCourseContext>> {
   const featureError = await requireAppFeature('attendance_enabled')

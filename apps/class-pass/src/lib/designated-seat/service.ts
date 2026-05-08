@@ -270,13 +270,38 @@ export function resolveActiveRoomId(rooms: CourseRoom[], requestedRoomId?: numbe
   return rooms[0]?.id ?? null
 }
 
+function isUsableStudentAuthSession(params: {
+  auth: DesignatedSeatAuthSession | null
+  deviceKeyHash?: string | null
+  requiresEnforcedPresence: boolean
+  nowMs?: number
+}) {
+  return Boolean(
+    params.auth
+    && params.deviceKeyHash
+    && params.auth.device_key_hash === params.deviceKeyHash
+    && params.auth.is_active
+    && !params.auth.used_for_reservation_at
+    && new Date(params.auth.expires_at).getTime() > (params.nowMs ?? Date.now())
+    && (!params.requiresEnforcedPresence || params.auth.presence_location_verified)
+  )
+}
+
 function resolveStudentActiveRoomId(
   rooms: CourseRoom[],
   requestedRoomId?: number | null,
+  currentAuthRoomId?: number | null,
   currentReservationRoomId?: number | null,
 ) {
   if (requestedRoomId) {
     return resolveActiveRoomId(rooms, requestedRoomId)
+  }
+
+  if (currentAuthRoomId) {
+    const room = rooms.find((entry) => entry.id === currentAuthRoomId)
+    if (room) {
+      return room.id
+    }
   }
 
   if (currentReservationRoomId) {
@@ -491,22 +516,46 @@ export async function getDesignatedSeatStudentState(params: {
   const rooms = params.course.designated_seat_open
     ? allRooms.filter((room) => room.is_open)
     : []
-  const existingReservationData = unwrapSupabaseResult(
-    'designatedSeat.studentCurrentReservation',
-    await db
+  const requiresEnforcedPresence = isPresenceLocationEnforced(params.course, 'designated_seat')
+  const [existingReservationResult, authResult] = await Promise.all([
+    db
       .from('course_seat_reservations')
       .select('*,course_seats(id,room_id,label,position_x,position_y,is_active)')
       .eq('course_id', params.course.id)
       .eq('enrollment_id', params.enrollmentId)
       .gte('updated_at', todayStart)
       .maybeSingle(),
+    params.deviceKeyHash
+      ? db
+        .from('course_seat_auth_sessions')
+        .select('*')
+        .eq('course_id', params.course.id)
+        .eq('enrollment_id', params.enrollmentId)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+  const existingReservationData = unwrapSupabaseResult(
+    'designatedSeat.studentCurrentReservation',
+    existingReservationResult,
   ) as Record<string, unknown> | null
+  const authData = unwrapSupabaseResult(
+    'designatedSeat.studentAuth',
+    authResult,
+  ) as Record<string, unknown> | null
+  const auth = authData as unknown as DesignatedSeatAuthSession | null
   const currentReservation = existingReservationData ? mapReservationRow(existingReservationData) : null
   const visibleReservation = currentReservation && allRooms.some((room) => room.id === currentReservation.room_id)
     ? currentReservation
     : null
 
-  const activeRoomId = resolveStudentActiveRoomId(rooms, params.roomId, visibleReservation?.room_id)
+  const activeAuthRoomId = isUsableStudentAuthSession({
+    auth,
+    deviceKeyHash: params.deviceKeyHash,
+    requiresEnforcedPresence,
+  })
+    ? Number(auth?.room_id)
+    : null
+  const activeRoomId = resolveStudentActiveRoomId(rooms, params.roomId, activeAuthRoomId, visibleReservation?.room_id)
   const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? null
   const roomOpen = Boolean(params.course.designated_seat_open && activeRoom?.is_open)
 
@@ -534,7 +583,7 @@ export async function getDesignatedSeatStudentState(params: {
     }
   }
 
-  const [layoutRow, seatsRows, authRow, occupiedRows] = await Promise.all([
+  const [layoutRow, seatsRows, occupiedRows] = await Promise.all([
     db
       .from('course_seat_layouts')
       .select('*')
@@ -548,14 +597,6 @@ export async function getDesignatedSeatStudentState(params: {
       .eq('room_id', activeRoomId)
       .order('position_y')
       .order('position_x'),
-    params.deviceKeyHash
-      ? db
-        .from('course_seat_auth_sessions')
-        .select('*')
-        .eq('course_id', params.course.id)
-        .eq('enrollment_id', params.enrollmentId)
-        .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
     db
       .from('course_seat_reservations')
       .select('seat_id')
@@ -570,25 +611,20 @@ export async function getDesignatedSeatStudentState(params: {
   const seats = (
     unwrapSupabaseResult('designatedSeat.studentSeats', seatsRows) as Array<Record<string, unknown>> | null
   )?.map(mapSeatRow) ?? []
-  const authData = unwrapSupabaseResult(
-    'designatedSeat.studentAuth',
-    authRow,
-  ) as Record<string, unknown> | null
-  const auth = authData as unknown as DesignatedSeatAuthSession | null
   const occupiedSeatIds = (
     unwrapSupabaseResult('designatedSeat.occupiedSeats', occupiedRows) as Array<{ seat_id: number }> | null
   )?.map((row) => Number(row.seat_id)) ?? []
 
-  const requiresEnforcedPresence = isPresenceLocationEnforced(params.course, 'designated_seat')
+  const nowMs = Date.now()
   const verified = Boolean(
     auth
-    && params.deviceKeyHash
-    && auth.device_key_hash === params.deviceKeyHash
-    && auth.is_active
     && Number(auth.room_id) === activeRoomId
-    && !auth.used_for_reservation_at
-    && new Date(auth.expires_at).getTime() > Date.now()
-    && (!requiresEnforcedPresence || auth.presence_location_verified)
+    && isUsableStudentAuthSession({
+      auth,
+      deviceKeyHash: params.deviceKeyHash,
+      requiresEnforcedPresence,
+      nowMs,
+    })
   )
 
   const restrictionReason = getDesignatedSeatRestrictionMessage({

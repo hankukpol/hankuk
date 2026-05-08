@@ -71,6 +71,14 @@ export function pickPendingDeviceBinding(rows: AttendanceDeviceBindingPolicyRow[
   return sortBindingsByResetRequestDesc(rows.filter(hasPendingDeviceRequest))[0] ?? null
 }
 
+export function shouldPreservePendingDeviceRequest(
+  row: AttendanceDeviceBindingPolicyRow,
+  deviceKeyHash: string,
+) {
+  const requestedDeviceHash = row.reset_requested_device_key_hash?.trim()
+  return Boolean(row.reset_requested_at && requestedDeviceHash && requestedDeviceHash !== deviceKeyHash)
+}
+
 export function pickDeviceBindingForNewRequest(
   rows: AttendanceDeviceBindingPolicyRow[],
   deviceKeyHash: string,

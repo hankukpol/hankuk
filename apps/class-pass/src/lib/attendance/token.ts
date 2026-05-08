@@ -7,12 +7,12 @@ import {
 
 function getSecretValue() {
   const secret =
-    process.env.DESIGNATED_SEAT_SECRET?.trim()
+    process.env.ATTENDANCE_HMAC_SECRET?.trim()
     || process.env.QR_HMAC_SECRET?.trim()
     || process.env.JWT_SECRET?.trim()
 
   if (!secret || secret.length < 32) {
-    throw new Error('An attendance signing secret of at least 32 characters is required.')
+    throw new Error('ATTENDANCE_HMAC_SECRET, QR_HMAC_SECRET, or JWT_SECRET of at least 32 characters is required.')
   }
 
   return secret

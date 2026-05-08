@@ -201,6 +201,12 @@ export async function POST(req: NextRequest) {
     })
 
     if (rpcResult.error) {
+      console.error('designatedSeats.reserve.rpc', {
+        code: rpcResult.error.code,
+        message: rpcResult.error.message,
+        details: rpcResult.error.details,
+        hint: rpcResult.error.hint,
+      })
       return NextResponse.json({ error: '좌석을 지정하지 못했습니다.' }, { status: 500 })
     }
 

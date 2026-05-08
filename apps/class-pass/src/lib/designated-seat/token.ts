@@ -36,6 +36,8 @@ export function createOpaqueDisplayToken() {
   return randomBytes(32).toString('base64url')
 }
 
+// Legacy DB-compatible hash for display tokens and device bindings.
+// Do not switch this to HMAC without a dual-read/backfill migration.
 export function hashToken(value: string) {
   return createHash('sha256').update(value).digest('hex')
 }

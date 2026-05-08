@@ -2,12 +2,18 @@ import { normalizeName, normalizePhone } from '@/lib/utils'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import {
+  getAttendanceDateKey,
+  hasAttendanceStartedForDate,
+  hasCourseAttendanceStarted,
+} from '@/lib/attendance/date'
+import {
   ATTENDANCE_DEVICE_BINDING_LIMIT,
   getAttendanceDeviceBindingDecision,
   hasPendingDeviceRequest,
   isDeviceBindingConflictError,
   mapAttendanceDeviceState,
   pickPendingDeviceBinding,
+  shouldPreservePendingDeviceRequest,
   type AttendanceDeviceBindingPolicyRow,
 } from '@/lib/attendance/device-binding-policy'
 import type {
@@ -21,9 +27,7 @@ import type {
 } from '@/types/database'
 
 function getKstDateKey(value: string | number | Date = new Date()) {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Seoul',
-  }).format(new Date(value))
+  return getAttendanceDateKey(value)
 }
 
 function getKstDateRange(dateKey: string) {
@@ -40,20 +44,7 @@ export function getAttendanceTodayKey() {
   return getKstDateKey()
 }
 
-function hasAttendanceStartedForDate(targetDate: string, attendanceStartDate?: string | null) {
-  if (!attendanceStartDate) {
-    return true
-  }
-
-  return targetDate >= attendanceStartDate.slice(0, 10)
-}
-
-export function hasCourseAttendanceStarted(
-  course: Pick<Course, 'enrolled_from'>,
-  targetDate = getAttendanceTodayKey(),
-) {
-  return hasAttendanceStartedForDate(targetDate, course.enrolled_from)
-}
+export { hasCourseAttendanceStarted }
 
 function getEffectiveAttendanceStartDate(
   courseAttendanceStartDate?: string | null,
@@ -278,13 +269,35 @@ async function listActiveAttendanceDeviceBindingsByHash(
     .eq('course_id', params.courseId)
     .eq('device_key_hash', params.deviceKeyHash)
     .eq('is_active', true)
-    .limit(2)
+    .limit(1)
+    .maybeSingle()
 
   if (result.error) {
     throw normalizeAttendanceDeviceBindingDependencyError(result.error)
   }
 
-  return (result.data ?? []) as AttendanceDeviceBindingRow[]
+  return result.data ? [result.data as AttendanceDeviceBindingRow] : []
+}
+
+async function logAttendanceDeviceApprovalConflict(params: {
+  courseId: number
+  enrollmentId: number
+  actor: string
+  requestedAt: string | null
+  registeredEnrollmentId?: number | null
+}) {
+  await tryLogAttendanceEvent({
+    course_id: params.courseId,
+    event_type: 'attendance_device_locked',
+    details: {
+      action: 'rebind_approval_failed',
+      actor: params.actor,
+      enrollment_id: params.enrollmentId,
+      registered_enrollment_id: params.registeredEnrollmentId ?? null,
+      requested_at: params.requestedAt,
+      reason: 'requested_device_already_registered',
+    },
+  })
 }
 
 export async function listAttendanceDeviceStatesForCourse(
@@ -515,6 +528,26 @@ export async function enforceAttendanceDeviceBinding(params: {
     }
 
     const targetBinding = decision.binding
+    if (shouldPreservePendingDeviceRequest(targetBinding, deviceKeyHash)) {
+      await logAttendanceEvent({
+        course_id: params.courseId,
+        event_type: 'attendance_device_rebind_requested',
+        details: {
+          enrollment_id: params.enrollmentId,
+          requested_at: targetBinding.reset_requested_at,
+          registered_count: ownBindings.length,
+          max_registered_count: ATTENDANCE_DEVICE_BINDING_LIMIT,
+          preserved_pending: true,
+        },
+      })
+
+      return {
+        ok: false,
+        code: 'DEVICE_REBIND_REQUIRED',
+        state: mapAttendanceDeviceState(ownBindings),
+      }
+    }
+
     const nextResetRequestedAt = targetBinding.reset_requested_device_key_hash === deviceKeyHash
       ? targetBinding.reset_requested_at ?? nowIso
       : nowIso
@@ -603,7 +636,16 @@ export async function approveAttendanceDeviceReRegistration(params: {
     throw normalizeAttendanceDeviceBindingDependencyError(deviceOwnerResult.error)
   }
 
-  if ((deviceOwnerResult.data ?? []).length > 0) {
+  const existingDeviceOwner = (deviceOwnerResult.data ?? [])[0]
+  if (existingDeviceOwner) {
+    await logAttendanceDeviceApprovalConflict({
+      courseId: params.courseId,
+      enrollmentId: params.enrollmentId,
+      actor: params.actor,
+      requestedAt: binding.reset_requested_at,
+      registeredEnrollmentId: Number(existingDeviceOwner.enrollment_id),
+    })
+
     throw new AttendanceServiceError('요청된 기기가 이미 다른 수강생에게 등록되어 있습니다.', 409)
   }
 
@@ -627,6 +669,26 @@ export async function approveAttendanceDeviceReRegistration(params: {
 
   if (updateResult.error) {
     if (updateResult.error.code === '23505') {
+      const conflictOwnerResult = await db
+        .from('attendance_device_bindings')
+        .select('enrollment_id')
+        .eq('course_id', params.courseId)
+        .eq('device_key_hash', requestedDeviceHash)
+        .eq('is_active', true)
+        .neq('enrollment_id', params.enrollmentId)
+        .limit(1)
+        .maybeSingle()
+
+      await logAttendanceDeviceApprovalConflict({
+        courseId: params.courseId,
+        enrollmentId: params.enrollmentId,
+        actor: params.actor,
+        requestedAt: binding.reset_requested_at,
+        registeredEnrollmentId: conflictOwnerResult.data?.enrollment_id == null
+          ? null
+          : Number(conflictOwnerResult.data.enrollment_id),
+      })
+
       throw new AttendanceServiceError('요청된 기기가 이미 다른 수강생에게 등록되어 있습니다.', 409)
     }
 

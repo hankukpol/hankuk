@@ -7,6 +7,7 @@ import {
   mapAttendanceDeviceState,
   pickDeviceBindingForNewRequest,
   pickPendingDeviceBinding,
+  shouldPreservePendingDeviceRequest,
   type AttendanceDeviceBindingPolicyRow,
 } from '../../src/lib/attendance/device-binding-policy'
 
@@ -102,6 +103,7 @@ describe('attendance device binding policy', () => {
 
     assert.equal(pickPendingDeviceBinding(bindings)?.id, 2)
     assert.equal(pickDeviceBindingForNewRequest(bindings, 'new-hash')?.id, 2)
+    assert.equal(shouldPreservePendingDeviceRequest(bindings[1], 'new-hash'), true)
   })
 
   it('picks the oldest active binding when a fourth device needs admin approval', () => {
@@ -112,6 +114,26 @@ describe('attendance device binding policy', () => {
     ]
 
     assert.equal(pickDeviceBindingForNewRequest(bindings, 'new-hash')?.id, 1)
+  })
+
+  it('preserves an existing pending request when a different new device retries', () => {
+    const pending = row({
+      reset_requested_at: '2026-04-30T10:05:00.000Z',
+      reset_requested_device_key_hash: 'pending-hash',
+    })
+    const decision = getAttendanceDeviceBindingDecision([
+      pending,
+      row({ id: 2 }),
+      row({ id: 3 }),
+    ], 'another-hash')
+
+    assert.equal(shouldPreservePendingDeviceRequest(pending, 'another-hash'), true)
+    assert.equal(shouldPreservePendingDeviceRequest(pending, 'pending-hash'), false)
+    assert.equal(shouldPreservePendingDeviceRequest(row(), 'another-hash'), false)
+    assert.equal(decision.type, 'request_rebind')
+    if (decision.type === 'request_rebind') {
+      assert.equal(decision.binding.id, pending.id)
+    }
   })
 
   it('decides whether to touch, register, or request rebind', () => {

@@ -10,7 +10,6 @@ import {
 import {
   ensureCourseRooms,
   ensureDisplaySessionForCurrentSchedule,
-  resolveActiveRoomId,
 } from '@/lib/designated-seat/service'
 import {
   generateRotationToken,
@@ -18,6 +17,7 @@ import {
 } from '@/lib/designated-seat/token'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+import type { CourseRoom } from '@/types/database'
 
 const schema = z.object({
   courseId: z.coerce.number().int().positive().optional().nullable(),
@@ -35,6 +35,30 @@ function toSlotPayload(target: Awaited<ReturnType<typeof resolveDesignatedSeatDi
       label: target.slot.label,
     }
     : null
+}
+
+function resolveDisplayRoom(rooms: CourseRoom[], requestedRoomId?: number | null) {
+  if (requestedRoomId) {
+    const requestedRoom = rooms.find((room) => room.id === requestedRoomId) ?? null
+    return requestedRoom
+      ? { kind: 'resolved' as const, room: requestedRoom }
+      : { kind: 'not_found' as const }
+  }
+
+  const openRooms = rooms.filter((room) => room.is_open)
+  if (openRooms.length === 1) {
+    return { kind: 'resolved' as const, room: openRooms[0] }
+  }
+
+  if (openRooms.length > 1) {
+    return { kind: 'room_required' as const }
+  }
+
+  if (rooms.length === 1) {
+    return { kind: 'resolved' as const, room: rooms[0] }
+  }
+
+  return { kind: 'room_required' as const }
 }
 
 export async function GET(req: NextRequest) {
@@ -64,13 +88,23 @@ export async function GET(req: NextRequest) {
     }
 
     const rooms = await ensureCourseRooms(course.id)
-    const activeRoomId = parsed.data.roomId
-      ? resolveActiveRoomId(rooms, parsed.data.roomId)
-      : rooms.find((room) => room.is_open)?.id ?? resolveActiveRoomId(rooms)
-    const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? null
-    if (!activeRoom || (parsed.data.roomId && activeRoom.id !== parsed.data.roomId)) {
+    const roomResolution = resolveDisplayRoom(rooms, parsed.data.roomId)
+    if (roomResolution.kind === 'room_required') {
+      return NextResponse.json({
+        status: 'inactive',
+        reason: 'ROOM_REQUIRED',
+        message: '여러 강의실이 열려 있습니다. 강의실별 표시 URL을 다시 열어 주세요.',
+        course: {
+          id: course.id,
+          name: course.name,
+        },
+        slot: toSlotPayload(target),
+      })
+    }
+    if (roomResolution.kind === 'not_found') {
       return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
     }
+    const activeRoom = roomResolution.room
     const device = await resolveDisplayDevice(req, course.id, {
       slotId: target.slot?.id ?? null,
       slotKey: target.slot?.slot_key ?? null,

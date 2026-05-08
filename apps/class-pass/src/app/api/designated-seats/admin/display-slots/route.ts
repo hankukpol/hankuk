@@ -22,6 +22,7 @@ const listSchema = z.object({
 
 const saveSchema = z.object({
   courseId: z.number().int().positive(),
+  roomId: z.number().int().positive().optional().nullable(),
   slotKey: z.string().trim().min(1).max(80),
   label: z.string().trim().min(1).max(80),
   isActive: z.boolean().optional(),
@@ -204,9 +205,11 @@ export async function POST(req: NextRequest) {
       throw deviceSlotMigration.error
     }
 
+    const roomQuery = parsed.data.roomId ? `?roomId=${encodeURIComponent(String(parsed.data.roomId))}` : ''
+
     return NextResponse.json({
       slot: data,
-      displayUrl: `${req.nextUrl.origin}${withTenantPrefix(buildSlotDisplayPath(slotKey), division)}`,
+      displayUrl: `${req.nextUrl.origin}${withTenantPrefix(`${buildSlotDisplayPath(slotKey)}${roomQuery}`, division)}`,
     })
   } catch (error) {
     return handleRouteError('designatedSeats.admin.displaySlots.POST', '표시 슬롯을 저장하지 못했습니다.', error)

@@ -10,7 +10,6 @@ import {
 import {
   ensureCourseRooms,
   getActiveDisplaySessionForDisplayTarget,
-  resolveActiveRoomId,
 } from '@/lib/designated-seat/service'
 import {
   createOpaqueDisplayToken,
@@ -18,6 +17,7 @@ import {
 } from '@/lib/designated-seat/token'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+import type { CourseRoom } from '@/types/database'
 
 const schema = z.object({
   courseId: z.number().int().positive().optional().nullable(),
@@ -36,17 +36,33 @@ const querySchema = z.object({
   message: 'Exactly one display target is required.',
 })
 
-async function resolveDisplayRoom(courseId: number, roomId?: number | null) {
-  const rooms = await ensureCourseRooms(courseId)
-  const activeRoomId = roomId
-    ? resolveActiveRoomId(rooms, roomId)
-    : rooms.find((entry) => entry.is_open)?.id ?? resolveActiveRoomId(rooms)
-  const room = rooms.find((entry) => entry.id === activeRoomId) ?? null
-  if (!room || (roomId && room.id !== roomId)) {
-    return null
+function pickDisplayRoom(rooms: CourseRoom[], roomId?: number | null) {
+  if (roomId) {
+    const room = rooms.find((entry) => entry.id === roomId) ?? null
+    return room
+      ? { kind: 'resolved' as const, room }
+      : { kind: 'not_found' as const }
   }
 
-  return room
+  const openRooms = rooms.filter((entry) => entry.is_open)
+  if (openRooms.length === 1) {
+    return { kind: 'resolved' as const, room: openRooms[0] }
+  }
+
+  if (openRooms.length > 1) {
+    return { kind: 'room_required' as const }
+  }
+
+  if (rooms.length === 1) {
+    return { kind: 'resolved' as const, room: rooms[0] }
+  }
+
+  return { kind: 'room_required' as const }
+}
+
+async function resolveDisplayRoom(courseId: number, roomId?: number | null) {
+  const rooms = await ensureCourseRooms(courseId)
+  return pickDisplayRoom(rooms, roomId)
 }
 
 async function requireDisplayTarget(req: NextRequest, input: { courseId?: number | null; slotKey?: string | null }) {
@@ -95,10 +111,14 @@ export async function GET(req: NextRequest) {
     }
 
     const target = guard.target!
-    const room = await resolveDisplayRoom(target.course.id, parsed.data.roomId)
-    if (!room) {
+    const roomResolution = await resolveDisplayRoom(target.course.id, parsed.data.roomId)
+    if (roomResolution.kind === 'room_required') {
+      return NextResponse.json({ error: '여러 강의실이 열려 있습니다. 강의실을 선택해 주세요.' }, { status: 400 })
+    }
+    if (roomResolution.kind === 'not_found') {
       return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
     }
+    const room = roomResolution.room
     const session = await getActiveDisplaySessionForDisplayTarget(
       target.course.id,
       target.slot?.id ?? null,
@@ -138,10 +158,14 @@ export async function POST(req: NextRequest) {
 
     const target = guard.target!
     const course = target.course
-    const room = await resolveDisplayRoom(course.id, parsed.data.roomId)
-    if (!room) {
+    const roomResolution = await resolveDisplayRoom(course.id, parsed.data.roomId)
+    if (roomResolution.kind === 'room_required') {
+      return NextResponse.json({ error: '여러 강의실이 열려 있습니다. 강의실을 선택해 주세요.' }, { status: 400 })
+    }
+    if (roomResolution.kind === 'not_found') {
       return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
     }
+    const room = roomResolution.room
     if (!room.is_open) {
       return NextResponse.json({ error: '강의실 좌석 신청을 먼저 열어 주세요.' }, { status: 409 })
     }
@@ -242,10 +266,14 @@ export async function DELETE(req: NextRequest) {
     }
 
     const target = guard.target!
-    const room = await resolveDisplayRoom(target.course.id, parsed.data.roomId)
-    if (!room) {
+    const roomResolution = await resolveDisplayRoom(target.course.id, parsed.data.roomId)
+    if (roomResolution.kind === 'room_required') {
+      return NextResponse.json({ error: '여러 강의실이 열려 있습니다. 강의실을 선택해 주세요.' }, { status: 400 })
+    }
+    if (roomResolution.kind === 'not_found') {
       return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
     }
+    const room = roomResolution.room
     const actor = guard.payload?.adminId ?? guard.payload?.staffName ?? 'admin'
     const db = createServerClient()
     const nowIso = new Date().toISOString()

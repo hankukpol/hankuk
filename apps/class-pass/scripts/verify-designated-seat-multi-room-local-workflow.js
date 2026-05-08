@@ -498,6 +498,9 @@ async function runCoreStudentFlows(context) {
   await assertReservation(context, enrollments[1].id, roomA.id, aSeats[2].id, 'blocked cross-room move')
 
   await authenticate(context, enrollments[1], roomB, device1, jar1)
+  const stateAfterRoomBQr = await loadStudentState(context, enrollments[1], null, jar1)
+  assert.equal(Number(stateAfterRoomBQr.active_room_id), Number(roomB.id), 'fresh room B QR should drive unscoped student state to room B')
+  assert.equal(stateAfterRoomBQr.verified, true, 'fresh room B QR should remain verified after unscoped state refresh')
   await expectReserveOk(context, enrollments[1], roomB, bSeats[0], device1, jar1, 'changed')
 
   await authenticate(context, enrollments[1], roomA, device1, jar1)
@@ -723,6 +726,15 @@ async function main() {
     const sessionA = await startDisplay(context, context.roomA)
     const sessionB = await startDisplay(context, context.roomB)
     assert.notEqual(Number(sessionA.id), Number(sessionB.id), 'display sessions should be room-scoped')
+    const unscopedDisplay = await requestJson(
+      context,
+      `/api/designated-seats/display?courseId=${context.course.id}`,
+      { method: 'GET' },
+      context.displayJar,
+    )
+    assert.equal(unscopedDisplay.response.ok, true, `unscoped display guard failed: ${unscopedDisplay.response.status} ${JSON.stringify(unscopedDisplay.payload)}`)
+    assert.equal(unscopedDisplay.payload?.status, 'inactive', 'unscoped multi-room display should not show an active QR')
+    assert.equal(unscopedDisplay.payload?.reason, 'ROOM_REQUIRED', 'unscoped multi-room display should require a room')
     console.log('room-scoped display QR sessions passed')
 
     await runCoreStudentFlows(context)

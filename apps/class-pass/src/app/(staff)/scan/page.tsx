@@ -14,7 +14,7 @@ import {
   OVERLAY_TIMEOUT_MS,
   SCAN_COOLDOWN_MS,
   fetchBootstrapData,
-  getScanReasonMessage,
+  getScanFailureDescription,
   normalizeToken,
   summarizeDistributedMaterials,
 } from './scan-page-utils'
@@ -293,6 +293,11 @@ export default function StaffScanPage() {
         return
       }
 
+      if (!selectedCourseId) {
+        setError('강좌를 먼저 선택해 주세요.')
+        return
+      }
+
       lastScanRef.current = { token, at: now }
       processingRef.current = true
       setScanState('processing')
@@ -306,7 +311,7 @@ export default function StaffScanPage() {
         const response = await fetch('/api/distribution/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token, courseId: selectedCourseId }),
         })
         const payload = (await response.json().catch(() => null)) as ScanResponse | null
 
@@ -338,7 +343,7 @@ export default function StaffScanPage() {
 
         if (payload?.needsSelection && payload.unreceived?.length) {
           setSelectOptions(payload.unreceived)
-          setSelectedSelectionMaterialIds(payload.unreceived.map((material) => material.id))
+          setSelectedSelectionMaterialIds([])
           setScanState('selecting')
           processingRef.current = true
           return
@@ -362,7 +367,7 @@ export default function StaffScanPage() {
           {
             success: false,
             title: '스캔을 완료하지 못했습니다.',
-            description: payload?.studentName || getScanReasonMessage(payload?.reason),
+            description: getScanFailureDescription(payload),
           },
           ERROR_OVERLAY_TIMEOUT_MS,
         )
@@ -372,7 +377,7 @@ export default function StaffScanPage() {
         setError('스캔 요청에 실패했습니다. 다시 시도해 주세요.')
       }
     },
-    [showOverlay],
+    [selectedCourseId, showOverlay],
   )
 
   const startScanner = useCallback(async () => {
@@ -548,6 +553,11 @@ export default function StaffScanPage() {
       return
     }
 
+    if (!selectedCourseId) {
+      setError('강좌를 먼저 선택해 주세요.')
+      return
+    }
+
     if (selectedSelectionMaterialIds.length === 0) {
       setError('배부할 자료를 하나 이상 선택해 주세요.')
       return
@@ -563,6 +573,7 @@ export default function StaffScanPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: pendingToken,
+          courseId: selectedCourseId,
           materialIds: selectedSelectionMaterialIds,
         }),
       })
@@ -594,7 +605,7 @@ export default function StaffScanPage() {
 
       if (payload?.needsSelection && payload.unreceived?.length) {
         setSelectOptions(payload.unreceived)
-        setSelectedSelectionMaterialIds(payload.unreceived.map((material) => material.id))
+        setSelectedSelectionMaterialIds([])
         setPendingToken(pendingToken)
         setScanState('selecting')
         processingRef.current = true
@@ -619,7 +630,7 @@ export default function StaffScanPage() {
         {
           success: false,
           title: '자료 선택을 완료하지 못했습니다.',
-          description: payload?.studentName || getScanReasonMessage(payload?.reason),
+          description: getScanFailureDescription(payload),
         },
         ERROR_OVERLAY_TIMEOUT_MS,
       )
@@ -628,7 +639,7 @@ export default function StaffScanPage() {
       setScanState('selecting')
       setError('자료 선택 요청에 실패했습니다. 다시 시도해 주세요.')
     }
-  }, [pendingToken, selectedSelectionMaterialIds, showOverlay])
+  }, [pendingToken, selectedCourseId, selectedSelectionMaterialIds, showOverlay])
 
   async function handleQuickDistribute() {
     if (!selectedCourseId || !quickPhone.trim()) {

@@ -1,4 +1,4 @@
-import type { BootstrapResponse } from './scan-page-types'
+import type { BootstrapResponse, ScanResponse } from './scan-page-types'
 
 export const OVERLAY_TIMEOUT_MS = 1800
 export const ERROR_OVERLAY_TIMEOUT_MS = 2200
@@ -42,6 +42,8 @@ export function getScanReasonMessage(reason?: string) {
       return '모든 자료를 이미 수령했습니다.'
     case 'SELECT_MATERIAL':
       return '배부할 자료를 선택해 주세요.'
+    case 'COURSE_MISMATCH':
+      return '선택한 강좌와 QR 수강증의 강좌가 다릅니다.'
     case 'NOT_ASSIGNED':
       return '해당 학생에게 배정되지 않은 교재입니다.'
     case 'DISTRIBUTION_FAILED':
@@ -49,6 +51,20 @@ export function getScanReasonMessage(reason?: string) {
     default:
       return reason || '요청을 처리하지 못했습니다.'
   }
+}
+
+export function getScanFailureDescription(payload?: ScanResponse | null) {
+  if (payload?.reason === 'COURSE_MISMATCH') {
+    if (payload.selectedCourseName && payload.courseName) {
+      return `선택 강좌(${payload.selectedCourseName})와 QR 수강증 강좌(${payload.courseName})가 다릅니다.`
+    }
+
+    if (payload.courseName) {
+      return `현재 선택한 강좌와 QR 수강증 강좌(${payload.courseName})가 다릅니다.`
+    }
+  }
+
+  return payload?.studentName || getScanReasonMessage(payload?.reason)
 }
 
 export function formatMaterialLabel(name: string, materialType?: 'handout' | 'textbook') {

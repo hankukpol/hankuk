@@ -1042,6 +1042,7 @@ export default function CourseDesignatedSeatsPage({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         courseId,
+        roomId: activeRoomId ?? undefined,
         slotKey,
         label: slotLabelInput.trim() || slotKey,
         isActive: true,

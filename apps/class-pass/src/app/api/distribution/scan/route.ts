@@ -14,6 +14,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
   token: z.string().min(1),
+  courseId: z.number().int().positive(),
   materialId: z.number().int().positive().optional(),
   materialIds: z.array(z.number().int().positive()).optional(),
 })
@@ -43,7 +44,8 @@ export async function POST(req: NextRequest) {
 
     const division = await getServerTenantType()
     const db = createServerClient()
-    const [courseResult, enrollmentResult] = await Promise.all([
+    const selectedCourseId = parsed.data.courseId
+    const [courseResult, enrollmentResult, selectedCourseResult] = await Promise.all([
       db
         .from('courses')
         .select('*')
@@ -58,13 +60,39 @@ export async function POST(req: NextRequest) {
         .eq('course_id', payload.courseId)
         .eq('status', 'active')
         .maybeSingle(),
+      selectedCourseId && selectedCourseId !== payload.courseId
+        ? db
+            .from('courses')
+            .select('id, name')
+            .eq('id', selectedCourseId)
+            .eq('division', division)
+            .eq('status', 'active')
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ])
 
     const course = unwrapSupabaseResult('distributionScan.course', courseResult)
     const enrollment = unwrapSupabaseResult('distributionScan.enrollment', enrollmentResult)
+    const selectedCourse = unwrapSupabaseResult(
+      'distributionScan.selectedCourse',
+      selectedCourseResult,
+    )
 
     if (!course || !enrollment) {
       return NextResponse.json({ success: false, reason: 'ENROLLMENT_NOT_FOUND' }, { status: 404 })
+    }
+
+    if (selectedCourseId && selectedCourseId !== payload.courseId) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: 'COURSE_MISMATCH',
+          studentName: enrollment.name,
+          courseName: course.name,
+          selectedCourseName: selectedCourse?.name ?? null,
+        },
+        { status: 409 },
+      )
     }
 
     if (!course.feature_qr_distribution) {

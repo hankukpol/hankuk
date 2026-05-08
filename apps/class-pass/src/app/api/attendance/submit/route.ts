@@ -60,6 +60,20 @@ function getAttendanceFailureMessage(code: string | undefined) {
   }
 }
 
+function jsonWithStudentDeviceCookie(
+  body: unknown,
+  init: ResponseInit,
+  cookieToSet: string | null | undefined,
+) {
+  const response = NextResponse.json(body, init)
+
+  if (cookieToSet) {
+    attachStudentDeviceCookie(response, cookieToSet)
+  }
+
+  return response
+}
+
 export async function POST(req: NextRequest) {
   try {
     const featureError = await requireAppFeature('attendance_enabled')
@@ -87,28 +101,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '학생 정보를 확인하지 못했습니다.' }, { status: 404 })
     }
 
-    if (!access.course.feature_attendance) {
-      return NextResponse.json(
-        { error: '이 강의는 출석 기능을 사용하지 않습니다.', code: 'FEATURE_DISABLED' },
-        { status: 403 },
-      )
-    }
-
-    if (!hasCourseAttendanceStarted(access.course)) {
-      const failure = getAttendanceFailureMessage('ATTENDANCE_NOT_STARTED')
-      return NextResponse.json(
-        { error: failure.message, code: 'ATTENDANCE_NOT_STARTED' },
-        { status: failure.status },
-      )
-    }
-
-    if (!access.course.attendance_open) {
-      return NextResponse.json(
-        { error: '현재 출석 체크가 열려 있지 않습니다.', code: 'ATTENDANCE_CLOSED' },
-        { status: 403 },
-      )
-    }
-
     const device = await resolveStudentDevice(req, parsed.data.localDeviceKey)
     if (!device.ok) {
       return NextResponse.json({
@@ -119,11 +111,37 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    const displaySession = await getActiveAttendanceDisplaySessionForCourse(access.course.id)
-    if (!displaySession) {
-      return NextResponse.json(
+    if (!access.course.feature_attendance) {
+      return jsonWithStudentDeviceCookie(
+        { error: '이 강의는 출석 기능을 사용하지 않습니다.', code: 'FEATURE_DISABLED' },
+        { status: 403 },
+        device.cookieToSet,
+      )
+    }
+
+    if (!hasCourseAttendanceStarted(access.course)) {
+      const failure = getAttendanceFailureMessage('ATTENDANCE_NOT_STARTED')
+      return jsonWithStudentDeviceCookie(
+        { error: failure.message, code: 'ATTENDANCE_NOT_STARTED' },
+        { status: failure.status },
+        device.cookieToSet,
+      )
+    }
+
+    if (!access.course.attendance_open) {
+      return jsonWithStudentDeviceCookie(
         { error: '현재 출석 체크가 열려 있지 않습니다.', code: 'ATTENDANCE_CLOSED' },
         { status: 403 },
+        device.cookieToSet,
+      )
+    }
+
+    const displaySession = await getActiveAttendanceDisplaySessionForCourse(access.course.id)
+    if (!displaySession) {
+      return jsonWithStudentDeviceCookie(
+        { error: '현재 출석 체크가 열려 있지 않습니다.', code: 'ATTENDANCE_CLOSED' },
+        { status: 403 },
+        device.cookieToSet,
       )
     }
 
@@ -134,12 +152,13 @@ export async function POST(req: NextRequest) {
       })
 
       if (!hasValidSeatAssignment) {
-        return NextResponse.json(
+        return jsonWithStudentDeviceCookie(
           {
             error: '이 과목은 좌석 번호가 있는 수강생만 출석 대상입니다.',
             code: 'SUBJECT_SEAT_REQUIRED',
           },
           { status: 403 },
+          device.cookieToSet,
         )
       }
     }
@@ -171,9 +190,10 @@ export async function POST(req: NextRequest) {
         }),
       })
 
-      return NextResponse.json(
+      return jsonWithStudentDeviceCookie(
         { error: '출석 코드가 올바르지 않거나 만료되었습니다.', code: 'INVALID_CODE' },
         { status: 400 },
+        device.cookieToSet,
       )
     }
 
@@ -192,37 +212,16 @@ export async function POST(req: NextRequest) {
       })
 
       if (presence.shouldBlock) {
-        return NextResponse.json(
+        return jsonWithStudentDeviceCookie(
           {
             error: presence.message ?? '위치 확인이 필요합니다. 다시 시도해 주세요.',
             code: `PRESENCE_${presence.code ?? 'FAILED'}`.toUpperCase(),
             presence,
           },
           { status: presence.code === 'config_required' ? 503 : 403 },
+          device.cookieToSet,
         )
       }
-    }
-
-    const deviceBinding = await enforceAttendanceDeviceBinding({
-      courseId: access.course.id,
-      enrollmentId: access.enrollment.id,
-      deviceKeyHash: device.deviceHash,
-      userAgent: req.headers.get('user-agent'),
-    })
-
-    if (!deviceBinding.ok) {
-      const failure = getAttendanceFailureMessage(deviceBinding.code)
-      await invalidateCache('enrollments')
-      const response = NextResponse.json(
-        { error: failure.message, code: deviceBinding.code, device: deviceBinding.state },
-        { status: failure.status },
-      )
-
-      if (device.cookieToSet) {
-        attachStudentDeviceCookie(response, device.cookieToSet)
-      }
-
-      return response
     }
 
     const db = createServerClient()
@@ -251,19 +250,57 @@ export async function POST(req: NextRequest) {
         .maybeSingle(),
     ])
 
+    if (existingAttendance.error || existingDeviceAttendance.error) {
+      return jsonWithStudentDeviceCookie(
+        { error: '출석 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.' },
+        { status: 500 },
+        device.cookieToSet,
+      )
+    }
+
     if (existingAttendance.data?.id) {
       const failure = getAttendanceFailureMessage('ALREADY_ATTENDED')
-      return NextResponse.json(
+      return jsonWithStudentDeviceCookie(
         { error: failure.message, code: 'ALREADY_ATTENDED' },
         { status: failure.status },
+        device.cookieToSet,
       )
     }
 
     if (existingDeviceAttendance.data?.id) {
+      await tryLogAttendanceEvent({
+        course_id: access.course.id,
+        event_type: 'attendance_device_locked',
+        details: {
+          enrollment_id: access.enrollment.id,
+          registered_enrollment_id: Number(existingDeviceAttendance.data.enrollment_id),
+          date: attendedDate,
+          reason: 'attendance_record_device_collision',
+        },
+      })
+
       const failure = getAttendanceFailureMessage('DEVICE_LOCKED')
-      return NextResponse.json(
+      return jsonWithStudentDeviceCookie(
         { error: failure.message, code: 'DEVICE_LOCKED' },
         { status: failure.status },
+        device.cookieToSet,
+      )
+    }
+
+    const deviceBinding = await enforceAttendanceDeviceBinding({
+      courseId: access.course.id,
+      enrollmentId: access.enrollment.id,
+      deviceKeyHash: device.deviceHash,
+      userAgent: req.headers.get('user-agent'),
+    })
+
+    if (!deviceBinding.ok) {
+      const failure = getAttendanceFailureMessage(deviceBinding.code)
+      await invalidateCache('enrollments')
+      return jsonWithStudentDeviceCookie(
+        { error: failure.message, code: deviceBinding.code, device: deviceBinding.state },
+        { status: failure.status },
+        device.cookieToSet,
       )
     }
 
@@ -283,13 +320,18 @@ export async function POST(req: NextRequest) {
     if (insertResult.error) {
       if (insertResult.error.code === '23505') {
         const failure = getAttendanceFailureMessage('ALREADY_ATTENDED')
-        return NextResponse.json(
+        return jsonWithStudentDeviceCookie(
           { error: failure.message, code: 'ALREADY_ATTENDED' },
           { status: failure.status },
+          device.cookieToSet,
         )
       }
 
-      return NextResponse.json({ error: '출석 처리에 실패했습니다.' }, { status: 500 })
+      return jsonWithStudentDeviceCookie(
+        { error: '출석 처리에 실패했습니다.' },
+        { status: 500 },
+        device.cookieToSet,
+      )
     }
 
     await logAttendanceEvent({
@@ -306,16 +348,10 @@ export async function POST(req: NextRequest) {
     await invalidateCache('attendance')
     await invalidateCache('enrollments')
 
-    const response = NextResponse.json({
+    return jsonWithStudentDeviceCookie({
       ok: true,
       date: attendedDate,
-    })
-
-    if (device.cookieToSet) {
-      attachStudentDeviceCookie(response, device.cookieToSet)
-    }
-
-    return response
+    }, { status: 200 }, device.cookieToSet)
   } catch (error) {
     return handleRouteError('attendance.submit.POST', '출석 처리에 실패했습니다.', error)
   }

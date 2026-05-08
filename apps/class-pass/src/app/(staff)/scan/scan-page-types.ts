@@ -17,6 +17,8 @@ export type ScanResponse = {
   success: boolean
   reason?: string
   studentName?: string
+  courseName?: string
+  selectedCourseName?: string | null
   materialName?: string
   materialType?: 'handout' | 'textbook'
   distributedMaterials?: MaterialItem[]

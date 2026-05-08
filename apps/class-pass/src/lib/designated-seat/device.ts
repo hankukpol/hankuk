@@ -7,10 +7,7 @@ export const DESIGNATED_SEAT_DEVICE_COOKIE = 'class_pass_designated_device'
 const DEVICE_COOKIE_TTL_SEC = 60 * 60 * 24 * 90
 
 function getSecretValue() {
-  const secret =
-    process.env.DESIGNATED_SEAT_SECRET?.trim()
-    || process.env.JWT_SECRET?.trim()
-    || process.env.QR_HMAC_SECRET?.trim()
+  const [secret] = getSecretCandidates()
 
   if (!secret || secret.length < 32) {
     throw new Error('A designated-seat device secret of at least 32 characters is required.')
@@ -19,8 +16,21 @@ function getSecretValue() {
   return secret
 }
 
-async function getSecretKey() {
-  return new TextEncoder().encode(getSecretValue())
+function getSecretCandidates() {
+  return [
+    process.env.DESIGNATED_SEAT_SECRET?.trim()
+    || '',
+    process.env.QR_HMAC_SECRET?.trim()
+    || '',
+    process.env.JWT_SECRET?.trim()
+    || '',
+  ].filter((secret, index, secrets) => (
+    secret.length >= 32 && secrets.indexOf(secret) === index
+  ))
+}
+
+async function getSecretKey(secret = getSecretValue()) {
+  return new TextEncoder().encode(secret)
 }
 
 function isValidDeviceKey(value: string) {
@@ -37,13 +47,18 @@ async function signDeviceCookie(deviceKey: string) {
 }
 
 async function verifyDeviceCookie(token: string) {
-  try {
-    const { payload } = await jwtVerify(token, await getSecretKey())
-    const deviceKey = payload.sub
-    return typeof deviceKey === 'string' && isValidDeviceKey(deviceKey) ? deviceKey : null
-  } catch {
-    return null
+  for (const secret of getSecretCandidates()) {
+    try {
+      const { payload } = await jwtVerify(token, await getSecretKey(secret))
+      const deviceKey = payload.sub
+      return typeof deviceKey === 'string' && isValidDeviceKey(deviceKey) ? deviceKey : null
+    } catch {
+      // Try the next configured secret. This preserves 90-day cookies signed
+      // before the fallback order was aligned.
+    }
   }
+
+  return null
 }
 
 export type DeviceResolutionResult =

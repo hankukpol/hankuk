@@ -8,8 +8,6 @@ type QuickDistributionPanelProps = {
   quickMaterials: MaterialItem[]
   selectedMaterialId: number | null
   selectedCourseName: string | null
-  courseMaterials: MaterialItem[]
-  materialsCount: number
   onQuickPhoneChange: (value: string) => void
   onSelectedMaterialChange: (materialId: number | null) => void
   onSubmit: () => void
@@ -22,8 +20,6 @@ export function QuickDistributionPanel({
   quickMaterials,
   selectedMaterialId,
   selectedCourseName,
-  courseMaterials,
-  materialsCount,
   onQuickPhoneChange,
   onSelectedMaterialChange,
   onSubmit,
@@ -32,11 +28,11 @@ export function QuickDistributionPanel({
     <>
       <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
         <h2 className="student-eyebrow student-eyebrow-light">수동 배부</h2>
-        <p className="mt-2 text-[20px] font-semibold leading-[1.15] tracking-[-0.04em] text-[var(--student-text)]">
-          전화번호로 바로 배부합니다
+        <p className="mt-1 text-[15px] font-semibold text-[var(--student-text)]">
+          {selectedCourseName ?? '강의 선택 필요'}
         </p>
         <p className="student-body mt-2">
-          QR 스캔이 어려운 경우에도 학생 모바일 화면과 같은 자료 흐름으로 배부할 수 있습니다.
+          휴대폰 번호로 학생을 찾은 뒤, 배부할 교재나 자료를 바로 선택합니다.
         </p>
 
         <form
@@ -47,7 +43,7 @@ export function QuickDistributionPanel({
           }}
         >
           <label className="block">
-            <span className="mb-2 block text-[13px] font-medium text-[var(--student-text-muted)]">전화번호</span>
+            <span className="mb-2 block text-[13px] font-medium text-[var(--student-text-muted)]">휴대폰 번호</span>
             <input
               value={quickPhone}
               onChange={(event) => onQuickPhoneChange(event.target.value.replace(/\D/g, ''))}
@@ -62,63 +58,14 @@ export function QuickDistributionPanel({
             disabled={quickLoading}
             className="student-pill-button student-pill-primary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {quickLoading ? '처리 중...' : '배부 실행'}
+            {quickLoading ? '조회 중...' : '학생 조회'}
           </button>
         </form>
       </section>
 
-      <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
-        <h2 className="student-eyebrow student-eyebrow-light mb-3">스캔 정보</h2>
-        <table className="w-full text-[14px]">
-          <tbody>
-            <tr>
-              <td className="w-[88px] py-2 pr-3 text-[var(--student-text-muted)]">현재 강좌</td>
-              <td className="py-2 font-medium text-[var(--student-text)]">{selectedCourseName ?? '선택된 강좌 없음'}</td>
-            </tr>
-            <tr>
-              <td className="w-[88px] py-2 pr-3 text-[var(--student-text-muted)]">활성 자료</td>
-              <td className="py-2 font-medium text-[var(--student-text)]">{materialsCount}건</td>
-            </tr>
-            <tr>
-              <td className="w-[88px] py-2 pr-3 text-[var(--student-text-muted)]">조회 범위</td>
-              <td className="py-2 font-medium text-[var(--student-text)]">선택한 강좌의 수강생만 검색</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
+      <section className="student-card mx-4 mt-3 px-4 py-4 sm:mx-5">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="student-eyebrow student-eyebrow-light">강좌 자료</h2>
-          <span className="student-chip bg-[rgba(0,113,227,0.08)] text-[var(--student-blue)]">
-            {materialsCount}건
-          </span>
-        </div>
-
-        {courseMaterials.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {courseMaterials.map((material) => (
-              <li
-                key={material.id}
-                className="flex items-center gap-3 rounded-[24px] bg-[var(--student-surface-soft)] px-4 py-3"
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-[var(--student-line-strong)] text-transparent">
-                  ·
-                </span>
-                <span className="text-[14px] font-medium text-[var(--student-text)]">
-                  {formatMaterialLabel(material.name, material.material_type)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="student-body py-2">이 강좌에는 현재 활성화된 자료나 교재가 없습니다.</p>
-        )}
-      </section>
-
-      <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="student-eyebrow student-eyebrow-light">학생 확인</h2>
+          <h2 className="student-eyebrow student-eyebrow-light">배부 선택</h2>
           {quickStudentName ? (
             <span className="student-chip bg-[#eefaf1] text-[#19703a]">조회 완료</span>
           ) : null}
@@ -129,7 +76,7 @@ export function QuickDistributionPanel({
             <p className="text-[20px] font-semibold leading-[1.15] tracking-[-0.04em] text-[var(--student-text)]">
               {quickStudentName}
             </p>
-            <p className="student-body mt-2">배부 가능한 자료가 여러 개면 아래 목록에서 한 건을 선택한 뒤 실행해 주세요.</p>
+            <p className="student-body mt-2">자료를 선택하고 배부 처리를 누르세요.</p>
 
             {quickMaterials.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-2">
@@ -141,26 +88,17 @@ export function QuickDistributionPanel({
                       <button
                         type="button"
                         onClick={() => onSelectedMaterialChange(material.id)}
-                        className={`flex w-full items-center gap-3 rounded-[24px] px-4 py-3 text-left ${
+                        className={`flex min-h-[56px] w-full items-center justify-between gap-3 rounded-[16px] px-4 py-3 text-left ${
                           selected
                             ? 'bg-[rgba(0,113,227,0.08)]'
                             : 'bg-[var(--student-surface-soft)]'
                         }`}
                       >
-                        <span
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                            selected
-                              ? 'bg-[var(--student-blue)] text-transparent'
-                              : 'border-2 border-[var(--student-line-strong)] text-transparent'
-                          }`}
-                        >
-                          ·
-                        </span>
-                        <span className={`text-[14px] ${selected ? 'font-semibold text-[var(--student-blue)]' : 'font-medium text-[var(--student-text)]'}`}>
+                        <span className={`truncate text-[15px] ${selected ? 'font-semibold text-[var(--student-blue)]' : 'font-medium text-[var(--student-text)]'}`}>
                           {formatMaterialLabel(material.name, material.material_type)}
                         </span>
-                        <span className="ml-auto text-[12px] text-[var(--student-text-muted)]">
-                          {selected ? '배부 예정' : '선택 가능'}
+                        <span className="student-chip shrink-0 bg-white text-[var(--student-blue)]">
+                          {selected ? '선택됨' : '선택'}
                         </span>
                       </button>
                     </li>
@@ -170,10 +108,19 @@ export function QuickDistributionPanel({
             ) : (
               <p className="student-body mt-3">배부 가능한 자료를 확인하는 중입니다.</p>
             )}
+
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={quickLoading || quickMaterials.length > 1 && !selectedMaterialId}
+              className="student-pill-button student-pill-primary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {quickLoading ? '처리 중...' : '배부 처리'}
+            </button>
           </>
         ) : (
           <p className="student-body">
-            전화번호를 입력하고 배부 실행을 누르면 학생을 찾은 뒤, 필요한 자료가 여러 개인 경우 이 영역에 선택 목록이 나타납니다.
+            번호를 입력하고 학생을 조회하면 이 영역에 배부할 교재와 자료가 표시됩니다.
           </p>
         )}
       </section>

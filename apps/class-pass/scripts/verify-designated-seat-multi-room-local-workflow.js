@@ -301,7 +301,7 @@ async function startDisplay(context, room) {
     durationHours: 1,
   })
   assert.equal(result.response.ok, true, `start display ${room.name} failed: ${result.response.status} ${JSON.stringify(result.payload)}`)
-  assert.ok(result.payload.displayUrl.includes(`roomId=${room.id}`), `display URL is not room-scoped: ${result.payload.displayUrl}`)
+  assert.ok(!result.payload.displayUrl.includes('roomId='), `display URL should be course-scoped: ${result.payload.displayUrl}`)
   return result.payload.session
 }
 
@@ -468,6 +468,45 @@ async function runCoreStudentFlows(context) {
   const { roomA, roomB, seatsByRoom, enrollments } = context
   const aSeats = seatsByRoom.get(roomA.id)
   const bSeats = seatsByRoom.get(roomB.id)
+
+  const unselectedState = await loadStudentState(context, enrollments[0], null, new Map())
+  assert.equal(unselectedState.rooms.length, 2, 'student should see two open rooms before room selection')
+  assert.equal(unselectedState.active_room_id, null, 'multi-room student state should require explicit room selection')
+  assert.equal(unselectedState.writable, false, 'student should not write before room selection')
+  assert.equal(unselectedState.seats.length, 0, 'student should not receive a default room layout before room selection')
+
+  const commonDisplay = await requestJson(
+    context,
+    `/api/designated-seats/display?courseId=${context.course.id}`,
+    { method: 'GET' },
+    context.displayJar,
+  )
+  assert.equal(commonDisplay.response.ok, true, `common display for missing-room auth failed: ${commonDisplay.response.status} ${JSON.stringify(commonDisplay.payload)}`)
+  const missingRoomAuth = await requestJson(
+    context,
+    '/api/designated-seats/auth',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        courseId: context.course.id,
+        enrollmentId: enrollments[0].id,
+        name: enrollments[0].name,
+        phone: enrollments[0].phone,
+        localDeviceKey: makeDeviceKey(0, 'missing-room'),
+        verificationMethod: 'qr',
+        rotationToken: commonDisplay.payload.rotationToken,
+        deviceSignature: {
+          userAgent: 'codex-multi-room-verifier',
+          platform: 'node',
+          language: 'ko-KR',
+          screen: '1920x1080',
+          timezone: 'Asia/Seoul',
+        },
+      }),
+    },
+    new Map(),
+  )
+  assert.equal(missingRoomAuth.response.status, 409, `common QR auth without room should require room selection: ${JSON.stringify(missingRoomAuth.payload)}`)
 
   const initialState = await loadStudentState(context, enrollments[0], roomA, new Map())
   assert.equal(initialState.rooms.length, 2, 'student should see two open rooms')
@@ -732,10 +771,12 @@ async function main() {
       { method: 'GET' },
       context.displayJar,
     )
-    assert.equal(unscopedDisplay.response.ok, true, `unscoped display guard failed: ${unscopedDisplay.response.status} ${JSON.stringify(unscopedDisplay.payload)}`)
-    assert.equal(unscopedDisplay.payload?.status, 'inactive', 'unscoped multi-room display should not show an active QR')
-    assert.equal(unscopedDisplay.payload?.reason, 'ROOM_REQUIRED', 'unscoped multi-room display should require a room')
-    console.log('room-scoped display QR sessions passed')
+    assert.equal(unscopedDisplay.response.ok, true, `unscoped display failed: ${unscopedDisplay.response.status} ${JSON.stringify(unscopedDisplay.payload)}`)
+    assert.equal(unscopedDisplay.payload?.status, 'active', 'unscoped multi-room display should show a shared course QR')
+    assert.equal(unscopedDisplay.payload?.room, null, 'unscoped multi-room display QR should not be room-scoped')
+    assert.equal(Number(unscopedDisplay.payload?.session?.id), Number(sessionB.id), 'unscoped display should follow the latest active manual display session')
+    assert.ok(unscopedDisplay.payload?.rotationToken?.length > 20, 'unscoped display QR token missing')
+    console.log('shared course display QR passed')
 
     await runCoreStudentFlows(context)
     await runConflictFlow(context)

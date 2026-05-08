@@ -294,7 +294,7 @@ function resolveStudentActiveRoomId(
   currentReservationRoomId?: number | null,
 ) {
   if (requestedRoomId) {
-    return resolveActiveRoomId(rooms, requestedRoomId)
+    return rooms.find((entry) => entry.id === requestedRoomId)?.id ?? null
   }
 
   if (currentAuthRoomId) {
@@ -311,7 +311,7 @@ function resolveStudentActiveRoomId(
     }
   }
 
-  return rooms.find((room) => room.is_open)?.id ?? null
+  return rooms.length === 1 ? rooms[0]?.id ?? null : null
 }
 
 const getCachedDesignatedSeats = unstable_cache(
@@ -560,19 +560,22 @@ export async function getDesignatedSeatStudentState(params: {
   const roomOpen = Boolean(params.course.designated_seat_open && activeRoom?.is_open)
 
   if (!activeRoomId) {
+    const roomSelectionAvailable = Boolean(params.course.designated_seat_open && rooms.length > 0)
     return {
       enabled: params.course.feature_designated_seat,
-      open: false,
+      open: roomSelectionAvailable,
       verified: false,
       writable: false,
       requires_reauth: false,
-      restriction_reason: getDesignatedSeatRestrictionMessage({
-        enabled: params.course.feature_designated_seat,
-        open: false,
-        verified: false,
-        hasReservation: Boolean(visibleReservation),
-        hasLayout: false,
-      }),
+      restriction_reason: roomSelectionAvailable
+        ? '강의실을 먼저 선택해 주세요.'
+        : getDesignatedSeatRestrictionMessage({
+          enabled: params.course.feature_designated_seat,
+          open: false,
+          verified: false,
+          hasReservation: Boolean(visibleReservation),
+          hasLayout: false,
+        }),
       auth_expires_at: null,
       rooms,
       active_room_id: null,

@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
           room_id: session.room_id,
         }
         : null,
-      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target, room.id),
+      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target),
     })
   } catch (error) {
     return handleRouteError('designatedSeats.admin.display.GET', '현장 QR 표시 상태를 불러오지 못했습니다.', error)
@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
         id: insertResult.data.id,
         expires_at: expiresAt,
       },
-      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target, room.id),
+      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target),
     })
   } catch (error) {
     return handleRouteError('designatedSeats.admin.display.POST', '현장 QR 표시를 시작하지 못했습니다.', error)

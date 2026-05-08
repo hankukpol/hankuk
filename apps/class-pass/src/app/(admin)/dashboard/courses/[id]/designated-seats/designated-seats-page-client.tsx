@@ -346,9 +346,8 @@ export default function CourseDesignatedSeatsPage({
       return ''
     }
 
-    const roomQuery = activeRoomId ? `?roomId=${encodeURIComponent(String(activeRoomId))}` : ''
-    return `${window.location.origin}${withTenantPrefix(`/designated-seat-display/${courseId}${roomQuery}`, tenant.type)}`
-  }, [activeRoomId, courseId, tenant.type])
+    return `${window.location.origin}${withTenantPrefix(`/designated-seat-display/${courseId}`, tenant.type)}`
+  }, [courseId, tenant.type])
 
   useEffect(() => {
     if (courseDisplayUrl && !displayUrl) {
@@ -669,9 +668,7 @@ export default function CourseDesignatedSeatsPage({
 
     setDisplayConfigLoading(true)
     try {
-      const slotsQuery = activeRoomId
-        ? `courseId=${courseId}&roomId=${encodeURIComponent(String(activeRoomId))}`
-        : `courseId=${courseId}`
+      const slotsQuery = `courseId=${courseId}`
       const slotsResponse = await fetch(`/api/designated-seats/admin/display-slots?${slotsQuery}`, { cache: 'no-store' })
       const slotsPayload = await slotsResponse.json().catch(() => null) as {
         slots?: DisplaySlotRow[]
@@ -1042,7 +1039,6 @@ export default function CourseDesignatedSeatsPage({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         courseId,
-        roomId: activeRoomId ?? undefined,
         slotKey,
         label: slotLabelInput.trim() || slotKey,
         isActive: true,

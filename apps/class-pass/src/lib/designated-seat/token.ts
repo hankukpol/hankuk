@@ -45,18 +45,27 @@ export function hashToken(value: string) {
 export async function generateRotationToken(params: {
   courseId: number
   displaySessionId: number
-  roomId: number
+  roomId?: number | null
   rotation?: number
 }) {
   const rotation = params.rotation ?? getRotationBucket()
   const issuedAtSeconds = Math.floor((rotation * DESIGNATED_SEAT_ROTATION_MS) / 1000)
-
-  return new SignJWT({
+  const payload: {
+    courseId: number
+    displaySessionId: number
+    roomId?: number
+    rotation: number
+  } = {
     courseId: params.courseId,
     displaySessionId: params.displaySessionId,
-    roomId: params.roomId,
     rotation,
-  })
+  }
+
+  if (Number.isInteger(params.roomId) && Number(params.roomId) > 0) {
+    payload.roomId = Number(params.roomId)
+  }
+
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt(issuedAtSeconds)
     .setExpirationTime(Math.floor(getRotationTokenExpiresAt(rotation) / 1000))

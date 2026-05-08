@@ -1,9 +1,16 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { STAFF_TTL_SEC, cookieOptions, getBranchStaffCookieName, signJwt } from '@/lib/auth/jwt'
+import {
+  ADMIN_TTL_SEC,
+  STAFF_TTL_SEC,
+  cookieOptions,
+  getBranchAdminCookieName,
+  getBranchStaffCookieName,
+  signJwt,
+} from '@/lib/auth/jwt'
 import { createOperatorSession } from '@/lib/auth/operator-sessions'
-import { getPinHash, verifyPin } from '@/lib/auth/pin'
+import { getAdminId, getPinHash, verifyPin } from '@/lib/auth/pin'
 import { validateSameOriginRequest } from '@/lib/auth/request-origin'
 import { checkRateLimit, getClientIp, resetRateLimit } from '@/lib/auth/rateLimiter'
 import { getSessionVersion } from '@/lib/auth/session-version'
@@ -54,6 +61,47 @@ export async function POST(req: NextRequest) {
 
   if (loginId) {
     const operatorAccount = await getOperatorAccountWithMembershipsByLoginId(loginId)
+    const operatorAdminMembership = operatorAccount?.memberships.find(
+      (membership) =>
+        membership.role === 'BRANCH_ADMIN'
+        && membership.is_active
+        && membership.branch?.slug === division,
+    )
+
+    if (operatorAccount && operatorAdminMembership) {
+      if (!operatorAccount.is_active || operatorAdminMembership.branch?.is_active === false) {
+        return NextResponse.json({ error: 'This branch is not active.' }, { status: 403 })
+      }
+
+      if (!(await verifyOperatorPin(parsed.data.pin, operatorAccount.pin_hash))) {
+        return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 401 })
+      }
+
+      await resetRateLimit(`staff:${ip}`)
+      const sessionPayload = await createOperatorSession(req, {
+        accountId: operatorAccount.id,
+        membershipId: operatorAdminMembership.id,
+        branchSlug: division,
+        role: 'BRANCH_ADMIN',
+        credentialVersion: operatorAccount.credential_version,
+        loginId: operatorAccount.login_id,
+        displayName: operatorAccount.display_name,
+        sharedUserId: operatorAccount.shared_user_id,
+      })
+      const { role, sub, claims } = toClaims(sessionPayload)
+      const token = await signJwt(role, sub, claims)
+
+      const response = NextResponse.json({
+        success: true,
+        division,
+        role: 'admin',
+        authMode: 'operator',
+        adminId: operatorAccount.login_id,
+      })
+      response.cookies.set(getBranchAdminCookieName(division), token, cookieOptions(ADMIN_TTL_SEC))
+      return response
+    }
+
     const operatorMembership = operatorAccount?.memberships.find(
       (membership) =>
         membership.role === 'STAFF'
@@ -92,6 +140,44 @@ export async function POST(req: NextRequest) {
         staffName: operatorAccount.display_name,
       })
       response.cookies.set(getBranchStaffCookieName(division), token, cookieOptions(STAFF_TTL_SEC))
+      return response
+    }
+
+    let legacyAdminId = ''
+    try {
+      legacyAdminId = await getAdminId()
+    } catch (error) {
+      console.warn('[staff.login] Failed to load legacy admin ID.', error)
+    }
+
+    if (legacyAdminId && loginId === legacyAdminId) {
+      const adminHash = await getPinHash('admin_pin_hash')
+      if (!adminHash) {
+        return NextResponse.json({ error: 'Admin PIN is not configured yet.' }, { status: 503 })
+      }
+
+      if (!(await verifyPin(parsed.data.pin, adminHash))) {
+        return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 401 })
+      }
+
+      await resetRateLimit(`staff:${ip}`)
+      const sessionId = randomUUID()
+      const sessionVersion = await getSessionVersion('admin')
+      const token = await signJwt('admin', sessionId, {
+        division,
+        adminId: legacyAdminId,
+        authMethod: 'admin_pin',
+        sessionVersion,
+      })
+
+      const response = NextResponse.json({
+        success: true,
+        division,
+        role: 'admin',
+        authMode: 'admin_pin',
+        adminId: legacyAdminId,
+      })
+      response.cookies.set(getBranchAdminCookieName(division), token, cookieOptions(ADMIN_TTL_SEC))
       return response
     }
 

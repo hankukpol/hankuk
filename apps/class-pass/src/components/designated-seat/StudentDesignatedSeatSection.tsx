@@ -66,6 +66,18 @@ function buildDeviceSignature() {
   }
 }
 
+function resolveClientRoomId(state: DesignatedSeatStudentState, selectedRoomId: number | null) {
+  if (selectedRoomId && state.rooms.some((room) => room.id === selectedRoomId)) {
+    return selectedRoomId
+  }
+
+  if (state.active_room_id) {
+    return state.active_room_id
+  }
+
+  return state.rooms.length === 1 ? state.rooms[0]?.id ?? null : null
+}
+
 export function StudentDesignatedSeatSection({
   data,
   courseTheme,
@@ -92,8 +104,9 @@ export function StudentDesignatedSeatSection({
   const tenant = useTenantConfig()
 
   const state = stateOverride ?? data.designatedSeat
-  const activeRoomId = selectedRoomId ?? state.active_room_id ?? state.rooms[0]?.id ?? null
+  const activeRoomId = resolveClientRoomId(state, selectedRoomId)
   const activeRoom = state.rooms.find((room) => room.id === activeRoomId) ?? null
+  const needsRoomSelection = state.rooms.length > 1 && !activeRoomId
   const currentSeatRoom = state.reservation
     ? state.rooms.find((room) => room.id === state.reservation?.room_id) ?? null
     : activeRoom
@@ -104,14 +117,13 @@ export function StudentDesignatedSeatSection({
   }, [])
 
   useEffect(() => {
-    const nextRoomId = data.designatedSeat.active_room_id ?? data.designatedSeat.rooms[0]?.id ?? null
     setStateOverride(null)
-    setSelectedRoomId(nextRoomId)
-  }, [data.course.id, data.enrollment.id, data.designatedSeat.active_room_id, data.designatedSeat.rooms])
+    setSelectedRoomId((current) => resolveClientRoomId(data.designatedSeat, current))
+  }, [data.course.id, data.enrollment.id, data.designatedSeat])
 
   const applyState = useCallback((nextState: DesignatedSeatStudentState) => {
     setStateOverride(nextState)
-    setSelectedRoomId(nextState.active_room_id ?? null)
+    setSelectedRoomId(resolveClientRoomId(nextState, null))
   }, [])
 
   const refreshDesignatedSeatState = useCallback(async (roomId: number | null = activeRoomId, requestId?: number) => {
@@ -188,7 +200,7 @@ export function StudentDesignatedSeatSection({
       return
     }
     if (!activeRoomId) {
-      setError('강의실을 찾을 수 없습니다.')
+      setError('강의실을 먼저 선택해 주세요.')
       return
     }
 
@@ -321,7 +333,7 @@ export function StudentDesignatedSeatSection({
       return
     }
     if (!activeRoomId) {
-      setError('강의실을 찾을 수 없습니다.')
+      setError('강의실을 먼저 선택해 주세요.')
       return
     }
 
@@ -439,6 +451,7 @@ export function StudentDesignatedSeatSection({
           </div>
 
           {state.rooms.length > 1 ? (
+            <>
             <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
               {state.rooms.map((room) => {
                 const selected = room.id === activeRoomId
@@ -447,7 +460,7 @@ export function StudentDesignatedSeatSection({
                     key={room.id}
                     type="button"
                     onClick={() => void handleSelectRoom(room.id)}
-                  disabled={working || roomLoading || selected || !room.is_open}
+                    disabled={working || roomLoading || selected || !room.is_open}
                     className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-200 ease-ios ${
                       selected
                         ? 'border-slate-900 bg-slate-900 text-white'
@@ -461,6 +474,10 @@ export function StudentDesignatedSeatSection({
                 )
               })}
             </div>
+            {needsRoomSelection ? (
+              <p className="mt-2 text-xs font-semibold text-blue-700">QR 인증 전에 강의실을 선택해 주세요.</p>
+            ) : null}
+            </>
           ) : null}
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -504,7 +521,7 @@ export function StudentDesignatedSeatSection({
                 <button
                   type="button"
                   onClick={() => void handleVerify({ verificationMethod: 'code', rotationCode: codeInput })}
-                  disabled={working || codeInput.length < 4}
+                  disabled={working || needsRoomSelection || codeInput.length < 4}
                   className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
                 >
                   코드 인증
@@ -514,7 +531,7 @@ export function StudentDesignatedSeatSection({
               <button
                 type="button"
                 onClick={() => setScannerOpen(true)}
-                disabled={working}
+                disabled={working || needsRoomSelection}
                 className="mt-3 w-full rounded-xl border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
               >
                 카메라로 QR 스캔
@@ -529,6 +546,10 @@ export function StudentDesignatedSeatSection({
 
           {!selectedRoomStateReady || roomLoading ? (
             <p className="mt-5 text-sm text-gray-500">강의실 좌석을 불러오는 중입니다.</p>
+          ) : needsRoomSelection ? (
+            <p className="mt-5 rounded-2xl bg-blue-50 px-4 py-6 text-center text-sm font-semibold text-blue-700">
+              강의실을 선택하면 좌석 배치가 표시됩니다.
+            </p>
           ) : state.rooms.length === 0 ? (
             <p className="mt-5 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
               모든 강의실의 좌석 신청이 마감되었습니다.

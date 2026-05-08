@@ -59,20 +59,15 @@ export async function GET(req: NextRequest) {
       .filter((slot) => slot.is_active && slot.course_id)
       .map((slot) => ({
         slotKey: slot.slot_key,
-        roomId: parsed.data.roomId && slot.course_id === parsed.data.courseId
-          ? parsed.data.roomId
-          : null,
+        roomId: null,
       }))
 
     return NextResponse.json({
       slots: slots.map((slot) => {
-        const slotRoomId = parsed.data.roomId && slot.course_id === parsed.data.courseId
-          ? parsed.data.roomId
-          : null
         return {
           ...slot,
           displayUrl: `${origin}${withTenantPrefix(
-            `${buildSlotDisplayPath(slot.slot_key)}${slotRoomId ? `?roomId=${encodeURIComponent(String(slotRoomId))}` : ''}`,
+            buildSlotDisplayPath(slot.slot_key),
             division,
           )}`,
         }
@@ -205,11 +200,9 @@ export async function POST(req: NextRequest) {
       throw deviceSlotMigration.error
     }
 
-    const roomQuery = parsed.data.roomId ? `?roomId=${encodeURIComponent(String(parsed.data.roomId))}` : ''
-
     return NextResponse.json({
       slot: data,
-      displayUrl: `${req.nextUrl.origin}${withTenantPrefix(`${buildSlotDisplayPath(slotKey)}${roomQuery}`, division)}`,
+      displayUrl: `${req.nextUrl.origin}${withTenantPrefix(buildSlotDisplayPath(slotKey), division)}`,
     })
   } catch (error) {
     return handleRouteError('designatedSeats.admin.displaySlots.POST', '표시 슬롯을 저장하지 못했습니다.', error)

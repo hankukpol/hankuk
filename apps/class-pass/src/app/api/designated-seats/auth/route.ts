@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { attachStudentDeviceCookie, resolveStudentDevice } from '@/lib/designated-seat/device'
 import {
+  ensureCourseRooms,
   getActiveDisplaySessionById,
   getDesignatedSeatStudentState,
   logDesignatedSeatEvent,
@@ -137,7 +138,21 @@ export async function POST(req: NextRequest) {
     if (tokenPayload.roomId && tokenPayload.roomId !== displayRoomId) {
       return authFailure('현장 QR 강의실 정보가 일치하지 않습니다.', 409)
     }
-    const activeRoomId = displayRoomId
+    const requestedRoomId = parsed.data.roomId ?? null
+    let fallbackRoomId = displayRoomId
+    if (!tokenPayload.roomId && !requestedRoomId) {
+      const openRooms = (await ensureCourseRooms(access.course.id)).filter((room) => room.is_open)
+      if (openRooms.length > 1) {
+        return authFailure('강의실을 먼저 선택해 주세요.', 409)
+      }
+      if (openRooms.length === 1) {
+        fallbackRoomId = openRooms[0].id
+      }
+    }
+    const activeRoomId = tokenPayload.roomId ?? requestedRoomId ?? fallbackRoomId
+    if (!Number.isInteger(activeRoomId) || activeRoomId <= 0) {
+      return authFailure('현장 QR 강의실 정보를 확인하지 못했습니다.', 409)
+    }
     const db = createServerClient()
     const roomResult = await db
       .from('course_rooms')

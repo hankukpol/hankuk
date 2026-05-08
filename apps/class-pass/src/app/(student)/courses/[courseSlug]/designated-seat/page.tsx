@@ -70,6 +70,22 @@ function buildDeviceSignature() {
   }
 }
 
+function resolveClientRoomId(state: DesignatedSeatStudentState | null | undefined, selectedRoomId: number | null) {
+  if (!state) {
+    return null
+  }
+
+  if (selectedRoomId && state.rooms.some((room) => room.id === selectedRoomId)) {
+    return selectedRoomId
+  }
+
+  if (state.active_room_id) {
+    return state.active_room_id
+  }
+
+  return state.rooms.length === 1 ? state.rooms[0]?.id ?? null : null
+}
+
 export default function DesignatedSeatPage() {
   const params = useParams<{ courseSlug: string }>()
   const searchParams = useSearchParams()
@@ -131,15 +147,16 @@ export default function DesignatedSeatPage() {
 
   const state = data?.designatedSeat
   const courseTheme = data?.course.theme_color || '#0071e3'
-  const activeRoomId = selectedRoomId ?? state?.active_room_id ?? state?.rooms[0]?.id ?? null
+  const activeRoomId = resolveClientRoomId(state, selectedRoomId)
   const activeRoom = state?.rooms.find((room) => room.id === activeRoomId) ?? null
+  const needsRoomSelection = Boolean(state && state.rooms.length > 1 && !activeRoomId)
   const currentSeatRoom = state?.reservation
     ? state.rooms.find((room) => room.id === state.reservation?.room_id) ?? null
     : activeRoom
   const selectedRoomStateReady = !state || !activeRoomId || state.active_room_id === activeRoomId
 
   const applyDesignatedSeatState = useCallback((nextState: DesignatedSeatStudentState) => {
-    setSelectedRoomId(nextState.active_room_id ?? null)
+    setSelectedRoomId(resolveClientRoomId(nextState, null))
     setData((current) => {
       if (!current) {
         return current
@@ -162,7 +179,7 @@ export default function DesignatedSeatPage() {
         return current
       }
 
-      return state.active_room_id ?? state.rooms[0]?.id ?? null
+      return resolveClientRoomId(state, null)
     })
   }, [state])
 
@@ -241,6 +258,10 @@ export default function DesignatedSeatPage() {
   const handleVerify = useCallback(async (payload: DesignatedSeatVerificationPayload) => {
     if (!data || !deviceKey) {
       setError('기기 정보를 준비하고 있습니다. 잠시 후 다시 시도해 주세요.')
+      return
+    }
+    if (!activeRoomId) {
+      setError('강의실을 먼저 선택해 주세요.')
       return
     }
 
@@ -596,6 +617,9 @@ export default function DesignatedSeatPage() {
                 </button>
               ))}
             </div>
+            {needsRoomSelection ? (
+              <p className="mt-2 text-[12px] font-semibold text-[var(--student-link)]">QR 인증 전에 강의실을 선택해 주세요.</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -629,7 +653,7 @@ export default function DesignatedSeatPage() {
             <button
               type="button"
               onClick={() => setScannerOpen(true)}
-              disabled={working}
+              disabled={working || needsRoomSelection}
               className="student-pill-button student-pill-primary mt-3 w-full disabled:opacity-40"
               style={{ backgroundColor: courseTheme, borderColor: courseTheme }}
             >
@@ -646,7 +670,7 @@ export default function DesignatedSeatPage() {
               <button
                 type="button"
                 onClick={() => void handleVerify({ verificationMethod: 'code', rotationCode: codeInput })}
-                disabled={working || codeInput.length < 4}
+                disabled={working || needsRoomSelection || codeInput.length < 4}
                 className="student-pill-button student-pill-outline w-full disabled:opacity-40 sm:w-auto"
               >
                 코드 인증
@@ -664,6 +688,10 @@ export default function DesignatedSeatPage() {
           <section className="student-card px-4 py-5 text-center">
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--student-blue)] border-t-transparent" />
             <p className="mt-3 text-[14px] text-[var(--student-text-muted)]">강의실 좌석을 불러오는 중입니다.</p>
+          </section>
+        ) : needsRoomSelection ? (
+          <section className="student-card px-4 py-5 text-center">
+            <p className="text-[14px] font-semibold text-[var(--student-link)]">강의실을 선택하면 좌석 배치가 표시됩니다.</p>
           </section>
         ) : state.rooms.length === 0 ? (
           <section className="student-card px-4 py-6 text-center">

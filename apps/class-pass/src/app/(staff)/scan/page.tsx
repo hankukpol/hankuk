@@ -532,23 +532,13 @@ export default function StaffScanPage() {
     optimizeScannerVideo,
   ])
 
-  const handleToggleSelectionMaterial = useCallback((materialId: number) => {
-    setSelectedSelectionMaterialIds((current) => (
-      current.includes(materialId)
-        ? current.filter((id) => id !== materialId)
-        : [...current, materialId]
-    ))
-  }, [])
+  const handleCancelSelection = useCallback(() => {
+    processingRef.current = false
+    setScanState('scanning')
+    clearPendingSelection()
+  }, [clearPendingSelection])
 
-  const handleSelectAllSelectionMaterials = useCallback(() => {
-    setSelectedSelectionMaterialIds(selectOptions.map((material) => material.id))
-  }, [selectOptions])
-
-  const handleClearSelectionMaterials = useCallback(() => {
-    setSelectedSelectionMaterialIds([])
-  }, [])
-
-  const handleConfirmSelection = useCallback(async () => {
+  const handleConfirmSelection = useCallback(async (materialIds?: number[]) => {
     if (!pendingToken) {
       return
     }
@@ -558,7 +548,8 @@ export default function StaffScanPage() {
       return
     }
 
-    if (selectedSelectionMaterialIds.length === 0) {
+    const targetMaterialIds = materialIds ?? selectedSelectionMaterialIds
+    if (targetMaterialIds.length === 0) {
       setError('배부할 자료를 하나 이상 선택해 주세요.')
       return
     }
@@ -574,7 +565,9 @@ export default function StaffScanPage() {
         body: JSON.stringify({
           token: pendingToken,
           courseId: selectedCourseId,
-          materialIds: selectedSelectionMaterialIds,
+          ...(targetMaterialIds.length === 1
+            ? { materialId: targetMaterialIds[0] }
+            : { materialIds: targetMaterialIds }),
         }),
       })
       const payload = (await response.json().catch(() => null)) as ScanResponse | null
@@ -979,21 +972,16 @@ export default function StaffScanPage() {
           overlay={overlay}
           lastStudentName={lastStudentName}
           selectedCourseName={selectedCourseName}
-          courseMaterials={courseMaterials}
-          materialsCount={materialsCount}
           selectOptions={selectOptions}
-          selectedMaterialIds={selectedSelectionMaterialIds}
           containerRef={containerRef}
           onRestartScanner={() => {
             setError('')
             void stopScanner().then(() => startScanner())
           }}
-          onToggleMaterial={handleToggleSelectionMaterial}
-          onSelectAllMaterials={handleSelectAllSelectionMaterials}
-          onClearSelection={handleClearSelectionMaterials}
-          onConfirmSelection={() => {
-            void handleConfirmSelection()
+          onDistributeMaterial={(materialId) => {
+            void handleConfirmSelection([materialId])
           }}
+          onCancelSelection={handleCancelSelection}
         />
       ) : (
         <QuickDistributionPanel
@@ -1003,8 +991,6 @@ export default function StaffScanPage() {
           quickMaterials={quickMaterials}
           selectedMaterialId={selectedMaterialId}
           selectedCourseName={selectedCourseName}
-          courseMaterials={courseMaterials}
-          materialsCount={materialsCount}
           onQuickPhoneChange={(nextPhone) => {
             setQuickPhone(nextPhone)
             setQuickStudentName('')

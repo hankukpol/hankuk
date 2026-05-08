@@ -10,6 +10,7 @@ import {
 import {
   ensureCourseRooms,
   ensureDisplaySessionForCurrentSchedule,
+  getActiveDisplaySessionForDisplayTarget,
 } from '@/lib/designated-seat/service'
 import {
   generateRotationToken,
@@ -46,12 +47,8 @@ function resolveDisplayRoom(rooms: CourseRoom[], requestedRoomId?: number | null
   }
 
   const openRooms = rooms.filter((room) => room.is_open)
-  if (openRooms.length === 1) {
+  if (openRooms.length > 0) {
     return { kind: 'resolved' as const, room: openRooms[0] }
-  }
-
-  if (openRooms.length > 1) {
-    return { kind: 'room_required' as const }
   }
 
   if (rooms.length === 1) {
@@ -59,6 +56,45 @@ function resolveDisplayRoom(rooms: CourseRoom[], requestedRoomId?: number | null
   }
 
   return { kind: 'room_required' as const }
+}
+
+async function getActiveSeatCount(
+  db: ReturnType<typeof createServerClient>,
+  courseId: number,
+  roomId: number,
+) {
+  const seatCountResult = await db
+    .from('course_seats')
+    .select('id', { count: 'exact', head: true })
+    .eq('course_id', courseId)
+    .eq('room_id', roomId)
+    .eq('is_active', true)
+
+  if (seatCountResult.error) {
+    throw seatCountResult.error
+  }
+
+  return seatCountResult.count ?? 0
+}
+
+async function findOpenRoomWithActiveSeats(
+  db: ReturnType<typeof createServerClient>,
+  courseId: number,
+  rooms: CourseRoom[],
+  skippedRoomId?: number | null,
+) {
+  for (const room of rooms) {
+    if (!room.is_open || room.id === skippedRoomId) {
+      continue
+    }
+
+    const seatCount = await getActiveSeatCount(db, courseId, room.id)
+    if (seatCount > 0) {
+      return { room, seatCount }
+    }
+  }
+
+  return null
 }
 
 export async function GET(req: NextRequest) {
@@ -87,6 +123,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '지정좌석 기능이 활성화되지 않은 강좌입니다.' }, { status: 409 })
     }
 
+    const isRoomScopedDisplay = Boolean(parsed.data.roomId)
     const rooms = await ensureCourseRooms(course.id)
     const roomResolution = resolveDisplayRoom(rooms, parsed.data.roomId)
     if (roomResolution.kind === 'room_required') {
@@ -104,7 +141,7 @@ export async function GET(req: NextRequest) {
     if (roomResolution.kind === 'not_found') {
       return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
     }
-    const activeRoom = roomResolution.room
+    let activeRoom = roomResolution.room
     const device = await resolveDisplayDevice(req, course.id, {
       slotId: target.slot?.id ?? null,
       slotKey: target.slot?.slot_key ?? null,
@@ -139,6 +176,22 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    const db = createServerClient()
+    if (!isRoomScopedDisplay) {
+      const existingSession = await getActiveDisplaySessionForDisplayTarget(
+        course.id,
+        target.slot?.id ?? null,
+        null,
+      )
+      const sessionRoom = existingSession
+        ? rooms.find((room) => room.id === existingSession.room_id) ?? null
+        : null
+
+      if (sessionRoom?.is_open) {
+        activeRoom = sessionRoom
+      }
+    }
+
     if (!activeRoom.is_open) {
       return NextResponse.json({
         status: 'inactive',
@@ -156,19 +209,16 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const db = createServerClient()
-    const seatCountResult = await db
-      .from('course_seats')
-      .select('id', { count: 'exact', head: true })
-      .eq('course_id', course.id)
-      .eq('room_id', activeRoom.id)
-      .eq('is_active', true)
-
-    if (seatCountResult.error) {
-      throw seatCountResult.error
+    let activeSeatCount = await getActiveSeatCount(db, course.id, activeRoom.id)
+    if (activeSeatCount === 0 && !isRoomScopedDisplay) {
+      const fallback = await findOpenRoomWithActiveSeats(db, course.id, rooms, activeRoom.id)
+      if (fallback) {
+        activeRoom = fallback.room
+        activeSeatCount = fallback.seatCount
+      }
     }
 
-    if ((seatCountResult.count ?? 0) === 0) {
+    if (activeSeatCount === 0) {
       return NextResponse.json({
         status: 'inactive',
         reason: 'NO_ACTIVE_SEATS',
@@ -223,7 +273,7 @@ export async function GET(req: NextRequest) {
     const rotationToken = await generateRotationToken({
       courseId: course.id,
       displaySessionId: session.id,
-      roomId: activeRoom.id,
+      roomId: isRoomScopedDisplay ? activeRoom.id : null,
       rotation,
     })
     const rotationExpiresAt = getRotationExpiresAt(rotation)
@@ -235,10 +285,12 @@ export async function GET(req: NextRequest) {
         name: course.name,
       },
       slot: toSlotPayload(target),
-      room: {
-        id: activeRoom.id,
-        name: activeRoom.name,
-      },
+      room: isRoomScopedDisplay
+        ? {
+          id: activeRoom.id,
+          name: activeRoom.name,
+        }
+        : null,
       session: {
         id: session.id,
         expires_at: session.expires_at,

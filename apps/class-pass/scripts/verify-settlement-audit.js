@@ -117,6 +117,16 @@ const nextDay = '2026-04-16'
 const monthFrom = '2026-04-01'
 const monthTo = '2026-04-30'
 const marker = 'codex-settlement-audit'
+const refundReceiptBase = Number(process.env.CODEX_SETTLEMENT_AUDIT_RECEIPT_BASE || (800000 + (Date.now() % 100000)))
+const paymentReceiptBase = Number(process.env.CODEX_SETTLEMENT_AUDIT_PAYMENT_RECEIPT_BASE || (700000 + (Date.now() % 100000)))
+
+function refundReceiptNo(mmdd, offset) {
+  return `${mmdd}-R${String(refundReceiptBase + offset).padStart(3, '0')}`
+}
+
+function paymentReceiptNo(mmdd, offset) {
+  return `${mmdd}-${String(paymentReceiptBase + offset).padStart(3, '0')}`
+}
 
 async function must(result, label) {
   const resolved = await result
@@ -265,6 +275,7 @@ async function seedAuditData() {
     status: 'partial_refunded',
     category: 'tuition',
     paid_at: '2026-04-15T08:00:00+09:00',
+    display_receipt_no: paymentReceiptNo('0415', 0),
     memo: marker,
     installment_months: 0,
     series_group_snapshot: 'public',
@@ -277,16 +288,17 @@ async function seedAuditData() {
     reason_category: 'other',
     reason: `noise refund ${index + 1}`,
     refunded_at: '2026-04-15T08:30:00+09:00',
+    display_receipt_no: refundReceiptNo('0415', index),
     memo: marker,
   })), 'insert noise refunds')
 
   const basePayments = await insertRows('enrollment_payments', [
-    { enrollment_id: byExam['AUD-A'].id, course_id: courseA.id, amount: 300000, method: 'card', status: 'partial_refunded', category: 'tuition', paid_at: '2026-04-15T09:00:00+09:00', memo: marker, card_last4: '1111', installment_months: 0, series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
-    { enrollment_id: byExam['AUD-B'].id, course_id: courseA.id, amount: 200000, method: 'cash', status: 'fully_refunded', category: 'tuition', paid_at: '2026-04-15T10:00:00+09:00', memo: marker, installment_months: 0, series_group_snapshot: 'career', series_label_snapshot: CAREER_DETAIL_LABEL },
-    { enrollment_id: byExam['AUD-C'].id, course_id: courseA.id, amount: 50000, method: 'bank_transfer', status: 'partial_refunded', category: 'textbook', paid_at: '2026-04-15T11:00:00+09:00', memo: marker, installment_months: 0, bank_name: 'Audit Bank', bank_account_last4: '3333', series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
-    { enrollment_id: byExam['AUD-D'].id, course_id: courseA.id, amount: 80000, method: 'card', status: 'partial_refunded', category: 'tuition', paid_at: '2026-03-31T23:30:00+09:00', memo: marker, installment_months: 0, card_last4: '4444', series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
-    { enrollment_id: byExam['AUD-E'].id, course_id: courseA.id, amount: 99999, method: 'card', status: 'voided', category: 'tuition', paid_at: '2026-04-15T12:00:00+09:00', memo: marker, installment_months: 0, card_last4: '5555', series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
-    { enrollment_id: byExam['AUD-G'].id, course_id: courseB.id, amount: 120000, method: 'card', status: 'partial_refunded', category: 'exam_fee', paid_at: '2026-04-20T13:00:00+09:00', memo: marker, installment_months: 0, card_last4: '7777', series_group_snapshot: 'career', series_label_snapshot: CAREER_LABEL },
+    { enrollment_id: byExam['AUD-A'].id, course_id: courseA.id, amount: 300000, method: 'card', status: 'partial_refunded', category: 'tuition', paid_at: '2026-04-15T09:00:00+09:00', display_receipt_no: paymentReceiptNo('0415', 1000), memo: marker, card_last4: '1111', card_company: 'KB', installment_months: 0, series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
+    { enrollment_id: byExam['AUD-B'].id, course_id: courseA.id, amount: 200000, method: 'cash', status: 'fully_refunded', category: 'tuition', paid_at: '2026-04-15T10:00:00+09:00', display_receipt_no: paymentReceiptNo('0415', 1001), memo: marker, installment_months: 0, series_group_snapshot: 'career', series_label_snapshot: CAREER_DETAIL_LABEL },
+    { enrollment_id: byExam['AUD-C'].id, course_id: courseA.id, amount: 50000, method: 'bank_transfer', status: 'partial_refunded', category: 'textbook', paid_at: '2026-04-15T11:00:00+09:00', display_receipt_no: paymentReceiptNo('0415', 1002), memo: marker, installment_months: 0, bank_name: 'Audit Bank', bank_account_last4: '3333', depositor_name: 'Audit C', series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
+    { enrollment_id: byExam['AUD-D'].id, course_id: courseA.id, amount: 80000, method: 'card', status: 'partial_refunded', category: 'tuition', paid_at: '2026-03-31T23:30:00+09:00', display_receipt_no: paymentReceiptNo('0331', 1003), memo: marker, installment_months: 0, card_last4: '4444', card_company: 'NH', series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
+    { enrollment_id: byExam['AUD-E'].id, course_id: courseA.id, amount: 99999, method: 'card', status: 'voided', category: 'tuition', paid_at: '2026-04-15T12:00:00+09:00', display_receipt_no: paymentReceiptNo('0415', 1004), memo: marker, installment_months: 0, card_last4: '5555', card_company: 'SAMSUNG', series_group_snapshot: 'public', series_label_snapshot: PUBLIC_LABEL },
+    { enrollment_id: byExam['AUD-G'].id, course_id: courseB.id, amount: 120000, method: 'card', status: 'partial_refunded', category: 'exam_fee', paid_at: '2026-04-20T13:00:00+09:00', display_receipt_no: paymentReceiptNo('0420', 1005), memo: marker, installment_months: 0, card_last4: '7777', card_company: 'HYUNDAI', series_group_snapshot: 'career', series_label_snapshot: CAREER_LABEL },
   ], 'insert base payments')
   const byEnrollment = new Map(basePayments.map((payment) => [payment.enrollment_id, payment]))
 
@@ -298,6 +310,7 @@ async function seedAuditData() {
     status: 'paid',
     category: 'etc',
     paid_at: `2026-04-15T14:${String(index % 60).padStart(2, '0')}:00+09:00`,
+    display_receipt_no: paymentReceiptNo('0415', 3000 + index),
     memo: `${marker} bulk ${index + 1}`,
     installment_months: 0,
     series_group_snapshot: 'public',
@@ -305,11 +318,11 @@ async function seedAuditData() {
   })), 'insert bulk target payments')
 
   await insertRows('enrollment_refunds', [
-    { payment_id: byEnrollment.get(byExam['AUD-A'].id).id, amount: 100000, method: 'card_cancel', reason_category: 'policy_application', reason: 'same day partial refund', cancel_receipt_no: 'CANCEL-A', refunded_at: '2026-04-15T15:00:00+09:00', memo: marker },
-    { payment_id: byEnrollment.get(byExam['AUD-B'].id).id, amount: 200000, method: 'cash', reason_category: 'withdrawal', reason: 'next day full refund', refunded_at: '2026-04-16T09:00:00+09:00', memo: marker },
-    { payment_id: byEnrollment.get(byExam['AUD-C'].id).id, amount: 10000, method: 'cash', reason_category: 'payment_correction', reason: 'textbook partial refund', refunded_at: '2026-04-15T16:00:00+09:00', memo: marker },
-    { payment_id: byEnrollment.get(byExam['AUD-D'].id).id, amount: 30000, method: 'bank_transfer', reason_category: 'other', reason: 'prior month payment refunded in current month', refund_account_last4: '4444', refunded_at: '2026-04-15T17:00:00+09:00', memo: marker },
-    { payment_id: byEnrollment.get(byExam['AUD-G'].id).id, amount: 20000, method: 'card_cancel', reason_category: 'schedule_change', reason: 'other course monthly refund', cancel_receipt_no: 'CANCEL-G', refunded_at: '2026-04-21T10:00:00+09:00', memo: marker },
+    { payment_id: byEnrollment.get(byExam['AUD-A'].id).id, amount: 100000, method: 'card_cancel', reason_category: 'policy_application', reason: 'same day partial refund', cancel_receipt_no: 'CANCEL-A', refunded_at: '2026-04-15T15:00:00+09:00', display_receipt_no: refundReceiptNo('0415', 2000), memo: marker },
+    { payment_id: byEnrollment.get(byExam['AUD-B'].id).id, amount: 200000, method: 'cash', reason_category: 'withdrawal', reason: 'next day full refund', refunded_at: '2026-04-16T09:00:00+09:00', display_receipt_no: refundReceiptNo('0416', 3000), memo: marker },
+    { payment_id: byEnrollment.get(byExam['AUD-C'].id).id, amount: 10000, method: 'cash', reason_category: 'payment_correction', reason: 'textbook partial refund', refunded_at: '2026-04-15T16:00:00+09:00', display_receipt_no: refundReceiptNo('0415', 2001), memo: marker },
+    { payment_id: byEnrollment.get(byExam['AUD-D'].id).id, amount: 30000, method: 'bank_transfer', reason_category: 'other', reason: 'prior month payment refunded in current month', refund_account_last4: '4444', refunded_at: '2026-04-15T17:00:00+09:00', display_receipt_no: refundReceiptNo('0415', 2002), memo: marker },
+    { payment_id: byEnrollment.get(byExam['AUD-G'].id).id, amount: 20000, method: 'card_cancel', reason_category: 'schedule_change', reason: 'other course monthly refund', cancel_receipt_no: 'CANCEL-G', refunded_at: '2026-04-21T10:00:00+09:00', display_receipt_no: refundReceiptNo('0421', 4000), memo: marker },
   ], 'insert target refunds')
 
   return { courseA, courseB }

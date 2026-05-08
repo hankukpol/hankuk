@@ -66,11 +66,13 @@ function paymentPayload(method, amount, overrides = {}) {
 
   if (method === 'card') {
     payload.cardLast4 = overrides.cardLast4 || '1234'
+    payload.cardCompany = overrides.cardCompany || 'KB'
     payload.installmentMonths = overrides.installmentMonths || 0
   }
   if (method === 'bank_transfer') {
     payload.bankName = overrides.bankName || '국민은행'
     payload.bankAccountLast4 = overrides.bankAccountLast4 || '9876'
+    payload.depositorName = overrides.depositorName || overrides.bankAccountLast4 || 'Codex Depositor'
   }
   if (method === 'cash' && overrides.cashReceiptApprovalNo) {
     payload.cashReceiptApprovalNo = overrides.cashReceiptApprovalNo
@@ -199,8 +201,10 @@ async function main() {
     return cookie
   }
 
-  async function setupCourse() {
-    const slug = `codex-payment-workflow-${runId}`
+  async function setupCourse(suffix = '', tuitionAmount = 100000) {
+    const slug = suffix
+      ? `codex-payment-workflow-${suffix}-${runId}`
+      : `codex-payment-workflow-${runId}`
     const courseResult = await db
       .from('courses')
       .insert({
@@ -209,7 +213,7 @@ async function main() {
         slug,
         course_type: 'lecture',
         status: 'active',
-        tuition_amount: 100000,
+        tuition_amount: tuitionAmount,
       })
       .select('*')
       .single()
@@ -217,7 +221,7 @@ async function main() {
     return courseResult.data
   }
 
-  async function createEnrollment(cookie, course, index, payments, billingOverrides = {}, expect = [201]) {
+  async function createEnrollment(cookie, course, index, payments, billingOverrides = {}, expect = [201], overrides = {}) {
     const payableAmount = billingOverrides.payableAmount ?? payments
       .filter((payment) => payment.category === 'tuition')
       .reduce((sum, payment) => sum + payment.amount, 0)
@@ -241,6 +245,12 @@ async function main() {
       },
       payments,
     }
+
+    if (overrides.studentId) body.studentId = overrides.studentId
+    if (overrides.updateSelectedStudent !== undefined) body.updateSelectedStudent = overrides.updateSelectedStudent
+    if (overrides.name) body.name = overrides.name
+    if (overrides.phone) body.phone = overrides.phone
+    if (overrides.exam_number) body.exam_number = overrides.exam_number
 
     const result = await api('/api/enrollments', {
       method: 'POST',
@@ -279,8 +289,12 @@ async function main() {
   }
 
   function netTuition(payments) {
+    return netByCategory(payments, 'tuition')
+  }
+
+  function netByCategory(payments, category) {
     return payments
-      .filter((payment) => payment.category === 'tuition' && payment.status !== 'voided')
+      .filter((payment) => payment.category === category && payment.status !== 'voided')
       .reduce((sum, payment) => {
         const refunds = payment.enrollment_refunds || []
         return sum + payment.amount - refunds.reduce((refundSum, refund) => refundSum + refund.amount, 0)
@@ -328,9 +342,34 @@ async function main() {
     })
   }
 
+  async function confirmPaymentEntry(cookie, payment) {
+    return api('/api/settlements/entry-confirmation', {
+      method: 'POST',
+      cookie,
+      expect: [200],
+      body: {
+        date: payment.paid_date,
+        kind: 'payment',
+        paymentId: payment.id,
+        action: 'confirm',
+      },
+    })
+  }
+
+  async function settlementDetails(cookie, from, to) {
+    const params = new URLSearchParams({ from, to, limit: '10000' })
+    const result = await api(`/api/payments/settlement/details?${params.toString()}`, {
+      method: 'GET',
+      cookie,
+      expect: [200],
+    })
+    return result.json?.payments || []
+  }
+
   async function run() {
     const cookie = await setupAuth()
     const course = await setupCourse()
+    const transferCourse = await setupCourse('transfer', 120000)
 
     const fullPayMethods = ['cash', 'bank_transfer', 'card', 'point']
     for (let i = 0; i < fullPayMethods.length; i += 1) {
@@ -467,6 +506,56 @@ async function main() {
     })
     pass('19. 부분 환불')
 
+    const correctionCase = await createEnrollment(cookie, course, 191, [
+      paymentPayload('card', 100000, { cardLast4: '3333', cardCompany: 'NH' }),
+    ])
+    state = await assertEnrollmentState(correctionCase.enrollment.id, { paymentCount: 1, billingStatus: 'paid' })
+    const correctionTarget = state.payments[0]
+    await api('/api/payments/corrections', {
+      method: 'POST',
+      cookie,
+      expect: [201],
+      body: {
+        enrollmentId: correctionCase.enrollment.id,
+        courseId: course.id,
+        refund: {
+          paymentId: correctionTarget.id,
+          amount: 30000,
+          method: 'card_cancel',
+          cancelReceiptNo: `CORR-${runId}`,
+          reasonCategory: 'payment_correction',
+          reason: 'payment correction verification',
+        },
+        payment: {
+          ...paymentPayload('bank_transfer', 30000, {
+            bankName: 'Correction Bank',
+            bankAccountLast4: '1357',
+            memo: 'payment correction repayment',
+          }),
+          depositorName: 'Correction Depositor',
+        },
+        tuitionBillingMode: 'keep',
+      },
+    })
+    state = await assertEnrollmentState(correctionCase.enrollment.id, {
+      paymentCount: 2,
+      billingStatus: 'paid',
+      enrollmentStatus: 'active',
+      netTuition: 100000,
+    })
+    const correctedOriginal = state.payments.find((payment) => payment.id === correctionTarget.id)
+    const correctionPayment = state.payments.find((payment) => payment.id !== correctionTarget.id)
+    assert(correctedOriginal?.status === 'partial_refunded', 'Expected corrected original payment to be partially refunded.')
+    assert(correctionPayment?.method === 'bank_transfer', 'Expected correction repayment to be bank transfer.')
+    assert(correctionPayment?.depositor_name === 'Correction Depositor', 'Expected correction depositor name to be stored.')
+    assert(
+      (correctedOriginal?.enrollment_refunds || []).some((refund) => (
+        refund.reason_category === 'payment_correction' && refund.amount === 30000
+      )),
+      'Expected correction refund reason and amount to be stored.',
+    )
+    pass('19A. 결제 정정')
+
     const fullRefund = await createEnrollment(cookie, course, 20, [
       paymentPayload('card', 100000, { cardLast4: '2222' }),
     ])
@@ -481,7 +570,7 @@ async function main() {
     await assertEnrollmentState(fullRefund.enrollment.id, {
       paymentCount: 1,
       billingStatus: 'refunded',
-      enrollmentStatus: 'active',
+      enrollmentStatus: 'refunded',
       netTuition: 0,
     })
     pass('20. 카드 전액 환불')
@@ -509,7 +598,7 @@ async function main() {
     await assertEnrollmentState(splitRefund.enrollment.id, {
       paymentCount: 2,
       billingStatus: 'refunded',
-      enrollmentStatus: 'active',
+      enrollmentStatus: 'refunded',
       netTuition: 0,
     })
     pass('21. 이중 결제 묶음 환불')
@@ -656,6 +745,43 @@ async function main() {
     assert(state.payments[0].amount === 0, 'Expected free payment amount 0.')
     pass('29. 무료 수강/수납 면제')
 
+    await voidPayment(cookie, state.payments[0].id)
+    state = await assertEnrollmentState(freeCase.enrollment.id, {
+      paymentCount: 1,
+      billingStatus: 'unpaid',
+      enrollmentStatus: 'active',
+      netTuition: 0,
+    })
+    assert(state.payments[0].status === 'voided', 'Expected free payment to be voided.')
+    assert(state.billing?.tuition_exempt === false, 'Expected voided free payment to clear tuition exemption.')
+    assert(state.billing?.payable_amount === 100000, `Expected payable amount 100000 after free payment void, got ${state.billing?.payable_amount}`)
+
+    await api('/api/payments/batch', {
+      method: 'POST',
+      cookie,
+      expect: [201],
+      body: {
+        enrollmentId: freeCase.enrollment.id,
+        courseId: course.id,
+        billing: {
+          expectedAmount: 100000,
+          discountAmount: 0,
+          discountReason: null,
+          payableAmount: 100000,
+          tuitionExempt: false,
+          tuitionExemptReason: null,
+        },
+        payments: [paymentPayload('cash', 100000, { memo: '무료 취소 후 재수납' })],
+      },
+    })
+    await assertEnrollmentState(freeCase.enrollment.id, {
+      paymentCount: 2,
+      billingStatus: 'paid',
+      enrollmentStatus: 'active',
+      netTuition: 100000,
+    })
+    pass('29A. 무료/면제 수납 취소 후 재수납')
+
     const cashReceipt = await createEnrollment(cookie, course, 30, [
       paymentPayload('cash', 100000, { cashReceiptApprovalNo: `CR-${runId}` }),
     ])
@@ -709,6 +835,252 @@ async function main() {
       netTuition: 0,
     })
     pass('32. 비면제 0원 강좌 결제내역 없이 등록')
+
+    const reCourseAfterRefund = await createEnrollment(cookie, course, 33, [
+      paymentPayload('cash', 100000),
+    ])
+    state = await assertEnrollmentState(reCourseAfterRefund.enrollment.id, { paymentCount: 1, billingStatus: 'paid' })
+    await refundPayment(cookie, state.payments[0].id, {
+      amount: 100000,
+      method: 'cash',
+      reasonCategory: 'withdrawal',
+      reason: 'full refund before another course',
+    })
+    await assertEnrollmentState(reCourseAfterRefund.enrollment.id, {
+      paymentCount: 1,
+      billingStatus: 'refunded',
+      enrollmentStatus: 'refunded',
+      netTuition: 0,
+    })
+    const sameStudentOtherCourse = await createEnrollment(
+      cookie,
+      transferCourse,
+      331,
+      [paymentPayload('card', 120000, { cardLast4: '3310', cardCompany: 'SINHAN' })],
+      { expectedAmount: 120000, payableAmount: 120000 },
+      [201],
+      {
+        studentId: reCourseAfterRefund.enrollment.student_id,
+        name: reCourseAfterRefund.requestBody.name,
+        phone: reCourseAfterRefund.requestBody.phone,
+        exam_number: reCourseAfterRefund.requestBody.exam_number,
+      },
+    )
+    assert(sameStudentOtherCourse.enrollment.id !== reCourseAfterRefund.enrollment.id, 'Expected a new enrollment for another course.')
+    assert(sameStudentOtherCourse.enrollment.student_id === reCourseAfterRefund.enrollment.student_id, 'Expected same student profile for another course.')
+    await assertEnrollmentState(sameStudentOtherCourse.enrollment.id, {
+      paymentCount: 1,
+      billingStatus: 'paid',
+      enrollmentStatus: 'active',
+      netTuition: 120000,
+    })
+    pass('33. refund then same student other course')
+
+    const partialTransfer = await createEnrollment(cookie, course, 34, [
+      paymentPayload('cash', 100000),
+    ])
+    state = await assertEnrollmentState(partialTransfer.enrollment.id, { paymentCount: 1, billingStatus: 'paid' })
+    await refundPayment(cookie, state.payments[0].id, {
+      amount: 40000,
+      method: 'cash',
+      reasonCategory: 'transfer',
+      reason: 'partial refund before course transfer',
+    })
+    await assertEnrollmentState(partialTransfer.enrollment.id, {
+      paymentCount: 1,
+      billingStatus: 'partial',
+      enrollmentStatus: 'active',
+      netTuition: 60000,
+    })
+    const partialTransferNewCourse = await createEnrollment(
+      cookie,
+      transferCourse,
+      341,
+      [paymentPayload('bank_transfer', 120000, { depositorName: 'Transfer Student' })],
+      { expectedAmount: 120000, payableAmount: 120000 },
+      [201],
+      {
+        studentId: partialTransfer.enrollment.student_id,
+        name: partialTransfer.requestBody.name,
+        phone: partialTransfer.requestBody.phone,
+        exam_number: partialTransfer.requestBody.exam_number,
+      },
+    )
+    await assertEnrollmentState(partialTransferNewCourse.enrollment.id, {
+      paymentCount: 1,
+      billingStatus: 'paid',
+      enrollmentStatus: 'active',
+      netTuition: 120000,
+    })
+    pass('34. partial refund then other course registration')
+
+    const addonRemain = await createEnrollment(cookie, course, 35, [
+      paymentPayload('cash', 100000),
+    ])
+    await api('/api/payments', {
+      method: 'POST',
+      cookie,
+      expect: [201],
+      body: {
+        enrollmentId: addonRemain.enrollment.id,
+        courseId: course.id,
+        ...paymentPayload('cash', 30000, { category: 'textbook', label: 'textbook' }),
+      },
+    })
+    state = await assertEnrollmentState(addonRemain.enrollment.id, { paymentCount: 2, billingStatus: 'paid' })
+    const addonTuitionPayment = state.payments.find((payment) => payment.category === 'tuition')
+    await refundPayment(cookie, addonTuitionPayment.id, {
+      amount: 100000,
+      method: 'cash',
+      reasonCategory: 'withdrawal',
+      reason: 'tuition refunded with textbook remaining',
+    })
+    state = await assertEnrollmentState(addonRemain.enrollment.id, {
+      paymentCount: 2,
+      billingStatus: 'refunded',
+      enrollmentStatus: 'refunded',
+      netTuition: 0,
+    })
+    assert(netByCategory(state.payments, 'textbook') === 30000, `Expected textbook net 30000, got ${netByCategory(state.payments, 'textbook')}`)
+    pass('35. tuition refund with addon remaining')
+
+    const confirmedRefundCase = await createEnrollment(cookie, course, 36, [
+      paymentPayload('card', 100000, { cardLast4: '3636', cardCompany: 'HYUNDAI' }),
+    ])
+    state = await assertEnrollmentState(confirmedRefundCase.enrollment.id, { paymentCount: 1, billingStatus: 'paid' })
+    const confirmedPayment = state.payments[0]
+    await confirmPaymentEntry(cookie, confirmedPayment)
+    await refundPayment(cookie, confirmedPayment.id, {
+      amount: 20000,
+      method: 'card_cancel',
+      cancelReceiptNo: `CONF-R-${runId}`,
+      reasonCategory: 'payment_correction',
+      reason: 'refund after settlement confirmation',
+    })
+    state = await assertEnrollmentState(confirmedRefundCase.enrollment.id, {
+      paymentCount: 1,
+      billingStatus: 'partial',
+      enrollmentStatus: 'active',
+      netTuition: 80000,
+    })
+    let settlementPayments = await settlementDetails(cookie, confirmedPayment.paid_date, confirmedPayment.paid_date)
+    let settledPayment = settlementPayments.find((payment) => payment.id === confirmedPayment.id)
+    assert(settledPayment?.settlement_confirmation?.status === 'confirmed', 'Expected confirmed payment settlement entry to remain confirmed after refund.')
+    assert(
+      (settledPayment?.enrollment_refunds || []).some((refund) => (
+        refund.amount === 20000 && !refund.settlement_confirmation
+      )),
+      'Expected refund after settlement confirmation to appear as an unconfirmed refund row.',
+    )
+
+    const confirmedCorrectionCase = await createEnrollment(cookie, course, 361, [
+      paymentPayload('card', 100000, { cardLast4: '3661', cardCompany: 'SAMSUNG' }),
+    ])
+    state = await assertEnrollmentState(confirmedCorrectionCase.enrollment.id, { paymentCount: 1, billingStatus: 'paid' })
+    const confirmedCorrectionPayment = state.payments[0]
+    await confirmPaymentEntry(cookie, confirmedCorrectionPayment)
+    await api('/api/payments/corrections', {
+      method: 'POST',
+      cookie,
+      expect: [201],
+      body: {
+        enrollmentId: confirmedCorrectionCase.enrollment.id,
+        courseId: course.id,
+        refund: {
+          paymentId: confirmedCorrectionPayment.id,
+          amount: 30000,
+          method: 'card_cancel',
+          cancelReceiptNo: `CONF-C-${runId}`,
+          reasonCategory: 'payment_correction',
+          reason: 'correction after settlement confirmation',
+        },
+        payment: paymentPayload('bank_transfer', 30000, {
+          bankName: 'Confirmed Correction Bank',
+          bankAccountLast4: '3631',
+          depositorName: 'Confirmed Correction',
+          memo: 'correction after settlement confirmation',
+        }),
+        tuitionBillingMode: 'keep',
+      },
+    })
+    state = await assertEnrollmentState(confirmedCorrectionCase.enrollment.id, {
+      paymentCount: 2,
+      billingStatus: 'paid',
+      enrollmentStatus: 'active',
+      netTuition: 100000,
+    })
+    settlementPayments = await settlementDetails(cookie, confirmedCorrectionPayment.paid_date, confirmedCorrectionPayment.paid_date)
+    settledPayment = settlementPayments.find((payment) => payment.id === confirmedCorrectionPayment.id)
+    const correctionRepayment = state.payments.find((payment) => payment.id !== confirmedCorrectionPayment.id)
+    const settledRepayment = settlementPayments.find((payment) => payment.id === correctionRepayment.id)
+    assert(settledPayment?.settlement_confirmation?.status === 'confirmed', 'Expected confirmed correction target to remain confirmed.')
+    assert(
+      (settledPayment?.enrollment_refunds || []).some((refund) => refund.reason_category === 'payment_correction' && refund.amount === 30000),
+      'Expected correction refund after settlement confirmation to be stored.',
+    )
+    assert(settledRepayment && !settledRepayment.settlement_confirmation, 'Expected correction repayment to be a new unconfirmed settlement row.')
+    pass('36. refund/correction after settlement confirmation')
+
+    const mixedPartialRepay = await createEnrollment(cookie, course, 37, [
+      paymentPayload('cash', 40000),
+      paymentPayload('card', 60000, { cardLast4: '3737', cardCompany: 'KB' }),
+    ])
+    state = await assertEnrollmentState(mixedPartialRepay.enrollment.id, { paymentCount: 2, billingStatus: 'paid' })
+    const mixedCash = state.payments.find((payment) => payment.method === 'cash')
+    const mixedCard = state.payments.find((payment) => payment.method === 'card')
+    await api('/api/payments/refunds', {
+      method: 'POST',
+      cookie,
+      expect: [201],
+      body: {
+        refunds: [
+          {
+            paymentId: mixedCash.id,
+            amount: 10000,
+            method: 'cash',
+            reasonCategory: 'payment_correction',
+            reason: 'mixed partial cash refund',
+          },
+          {
+            paymentId: mixedCard.id,
+            amount: 20000,
+            method: 'card_cancel',
+            cancelReceiptNo: `MIX-${runId}`,
+            reasonCategory: 'payment_correction',
+            reason: 'mixed partial card refund',
+          },
+        ],
+      },
+    })
+    await assertEnrollmentState(mixedPartialRepay.enrollment.id, {
+      paymentCount: 2,
+      billingStatus: 'partial',
+      enrollmentStatus: 'active',
+      netTuition: 70000,
+    })
+    await api('/api/payments/batch', {
+      method: 'POST',
+      cookie,
+      expect: [201],
+      body: {
+        enrollmentId: mixedPartialRepay.enrollment.id,
+        courseId: course.id,
+        payments: [paymentPayload('bank_transfer', 30000, {
+          bankName: 'Mixed Repay Bank',
+          bankAccountLast4: '3730',
+          depositorName: 'Mixed Repay',
+        })],
+      },
+    })
+    state = await assertEnrollmentState(mixedPartialRepay.enrollment.id, {
+      paymentCount: 3,
+      billingStatus: 'paid',
+      enrollmentStatus: 'active',
+      netTuition: 100000,
+    })
+    assert(state.payments.filter((payment) => payment.status === 'partial_refunded').length === 2, 'Expected both mixed original payments to be partially refunded.')
+    assert(state.payments.some((payment) => payment.method === 'bank_transfer' && payment.amount === 30000), 'Expected mixed partial repayment row.')
+    pass('37. mixed payment partial refund then repayment')
 
     const allPaymentIds = []
     for (const enrollmentId of createdEnrollments) {

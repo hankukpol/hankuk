@@ -265,6 +265,96 @@ export function createPaymentSchemaMissingError() {
   return createPaymentError(PAYMENT_SCHEMA_MISSING_MESSAGE, 503)
 }
 
+function createPaymentRpcError(error: unknown) {
+  const text = getPaymentErrorText(error).toLowerCase()
+  if (!text) {
+    return null
+  }
+
+  if (text.includes('enrollment not found for payment bundle')) {
+    return createPaymentError('수강생을 찾을 수 없습니다.', 404)
+  }
+
+  if (text.includes('payment not found for refund')) {
+    return createPaymentError('환불 대상 결제를 찾을 수 없습니다.', 404)
+  }
+
+  if (text.includes('payment not found for correction')) {
+    return createPaymentError('정정 대상 결제를 찾을 수 없습니다.', 404)
+  }
+
+  if (text.includes('refund amount exceeds remaining payment amount')) {
+    return createPaymentError('환불 금액은 남은 결제 금액보다 클 수 없습니다.')
+  }
+
+  if (text.includes('tuition payment total does not match remaining payable amount')) {
+    return createPaymentError('수납 금액이 현재 남은 적용 금액과 일치하지 않습니다. 새로고침 후 다시 확인해 주세요.')
+  }
+
+  if (text.includes('tuition payment requires enrollment billing')) {
+    return createPaymentError('수강료 결제는 수납 정보와 함께 저장해야 합니다.')
+  }
+
+  if (text.includes('tuition payment is not allowed for exempt enrollment')) {
+    return createPaymentError('이미 무료 수강 또는 수납 면제로 기록된 수강생입니다.')
+  }
+
+  if (text.includes('voided payment cannot be refunded')) {
+    return createPaymentError('취소된 결제는 환불할 수 없습니다.')
+  }
+
+  if (text.includes('voided payment cannot be corrected')) {
+    return createPaymentError('취소된 결제는 정정할 수 없습니다.')
+  }
+
+  if (text.includes('refund bundle must use one enrollment')) {
+    return createPaymentError('같은 수강생의 결제 건만 한 번에 환불할 수 있습니다.')
+  }
+
+  if (text.includes('card cancel receipt number is required')) {
+    return createPaymentError('카드 취소 승인번호를 입력해 주세요.')
+  }
+
+  if (text.includes('refund bank account last4 is required')) {
+    return createPaymentError('환불 입금 계좌 마지막 4자리를 입력해 주세요.')
+  }
+
+  if (
+    text.includes('payment bundle is empty')
+    || text.includes('refund bundle is empty')
+    || text.includes('refund payload is required')
+    || text.includes('payment payload is required')
+  ) {
+    return createPaymentError('저장할 결제 또는 환불 내역이 없습니다.')
+  }
+
+  if (text.includes('free payment amount must be zero')) {
+    return createPaymentError('무료 수강은 결제 금액이 0원이어야 합니다.')
+  }
+
+  if (text.includes('payment amount must be positive')) {
+    return createPaymentError('결제 금액은 0보다 커야 합니다.')
+  }
+
+  if (text.includes('refund amount must be positive')) {
+    return createPaymentError('환불 금액은 0보다 커야 합니다.')
+  }
+
+  if (
+    text.includes('unsupported payment method')
+    || text.includes('unsupported payment category')
+    || text.includes('unsupported refund method')
+  ) {
+    return createPaymentError('지원하지 않는 결제 또는 환불 형식입니다.')
+  }
+
+  return null
+}
+
+function throwPaymentRpcError(error: unknown): never {
+  throw createPaymentRpcError(error) ?? error
+}
+
 function toPositiveInteger(value: number, fieldLabel: string) {
   if (!Number.isInteger(value) || value <= 0) {
     throw createPaymentError(`${fieldLabel}은 0보다 큰 정수여야 합니다.`)
@@ -808,6 +898,48 @@ async function recalculateEnrollmentPaymentState(
   }
 }
 
+async function restoreBillableTuitionAfterFreePaymentVoid(
+  db: ServerClient,
+  enrollmentId: number,
+) {
+  const { data: activeFreePayments, error: activeFreeError } = await db
+    .from('enrollment_payments')
+    .select('id')
+    .eq('enrollment_id', enrollmentId)
+    .eq('category', 'tuition')
+    .eq('method', 'free')
+    .neq('status', 'voided')
+    .limit(1)
+
+  if (activeFreeError) {
+    throw activeFreeError
+  }
+
+  if ((activeFreePayments ?? []).length > 0) {
+    return
+  }
+
+  const billing = await loadEnrollmentBilling(db, enrollmentId)
+  if (!billing?.tuition_exempt) {
+    return
+  }
+
+  const payableAmount = Math.max(Number(billing.expected_amount) - Number(billing.discount_amount), 0)
+  const { error } = await db
+    .from('enrollment_billing')
+    .update({
+      payable_amount: payableAmount,
+      tuition_exempt: false,
+      tuition_exempt_reason: null,
+      status: payableAmount <= 0 ? 'paid' : 'unpaid',
+    })
+    .eq('id', billing.id)
+
+  if (error) {
+    throw error
+  }
+}
+
 async function recalculatePaymentStatus(
   db: ServerClient,
   paymentId: number,
@@ -1325,7 +1457,7 @@ export async function createPaymentBundle(
   })
 
   if (rpcError) {
-    throw rpcError
+    throwPaymentRpcError(rpcError)
   }
 
   const paymentIds = ((rpcRows ?? []) as Array<{ payment_id: number | string }>)
@@ -1791,6 +1923,10 @@ export async function voidPayment(
     throw error
   }
 
+  if (before.category === 'tuition' && before.method === 'free') {
+    await restoreBillableTuitionAfterFreePaymentVoid(db, before.enrollment_id)
+  }
+
   const after = await loadPaymentById(db, paymentId, division)
   await recordPaymentEvent(db, {
     paymentId,
@@ -1802,7 +1938,6 @@ export async function voidPayment(
   })
   await recalculateEnrollmentPaymentState(db, before.enrollment_id, {
     allowRefundStatus: before.category === 'tuition',
-    allowZeroPaymentRefundStatus: before.category === 'tuition',
   })
   await invalidateCache('enrollments')
 
@@ -1906,7 +2041,7 @@ export async function createRefundBundle(
     })
 
     if (rpcError) {
-      throw rpcError
+      throwPaymentRpcError(rpcError)
     }
 
     const createdRows = ((rpcRows ?? []) as Array<{ refund_id: number | string; payment_id: number | string }>)
@@ -2103,7 +2238,7 @@ export async function createPaymentCorrection(
   })
 
   if (rpcError) {
-    throw rpcError
+    throwPaymentRpcError(rpcError)
   }
 
   const result = ((rpcRows ?? []) as Array<{ refund_id: number | string; payment_id: number | string }>)[0]

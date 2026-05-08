@@ -59,6 +59,8 @@ const state = {
   createdEnrollments: [],
   createdPayments: [],
   createdRefunds: [],
+  deductionFlow: null,
+  correctionFlow: null,
   createdBranch: false,
   expected: {
     students: 100,
@@ -165,6 +167,7 @@ function methodPayload(method, amount, index) {
       amount,
       bankName: ['KB', 'NH', 'SINHAN'][index % 3],
       bankAccountLast4: String(1000 + index).slice(-4),
+      depositorName: `Pay100 ${index}`,
       memo: `bank-${index}`,
     };
   }
@@ -242,6 +245,17 @@ async function selectAll(buildQuery, label, pageSize = 1000) {
     if (!page || page.length < pageSize) break;
   }
   return rows;
+}
+
+async function collectPaymentIdsByEnrollment(enrollmentIds, label) {
+  const ids = [...new Set(enrollmentIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const rows = await selectAll(
+    () => db.from('enrollment_payments').select('id').in('enrollment_id', ids).order('id'),
+    label,
+  );
+  return (rows || []).map((payment) => payment.id);
 }
 
 async function setupBranchAndAdmin() {
@@ -1094,6 +1108,13 @@ async function verifyPaymentBundleRpcOverpayGuard() {
     assert(payments.length === 1, `rpc overpay guard left ${payments.length} payments`);
     assert(money(payments[0].amount) === 60000, 'rpc overpay guard payment amount mismatch');
   } finally {
+    if (enrollmentIds.length > 0) {
+      paymentIds.push(...await collectPaymentIdsByEnrollment(
+        enrollmentIds,
+        'rpc overpay cleanup select payments by enrollment',
+      ));
+    }
+
     if (paymentIds.length > 0) {
       await deleteInChunks('settlement_entry_confirmations', 'payment_id', paymentIds);
       await deleteInChunks('enrollment_refunds', 'payment_id', paymentIds);
@@ -1178,6 +1199,13 @@ async function verifyLegacyPaymentApiOverpayGuard(cookie) {
     assert(payments.length === 1, `legacy api overpay guard left ${payments.length} payments`);
     assert(money(payments[0].amount) === 60000, 'legacy api overpay guard payment amount mismatch');
   } finally {
+    if (enrollmentIds.length > 0) {
+      paymentIds.push(...await collectPaymentIdsByEnrollment(
+        enrollmentIds,
+        'legacy api overpay cleanup select payments by enrollment',
+      ));
+    }
+
     if (paymentIds.length > 0) {
       await deleteInChunks('settlement_entry_confirmations', 'payment_id', paymentIds);
       await deleteInChunks('enrollment_refunds', 'payment_id', paymentIds);
@@ -1198,7 +1226,7 @@ async function captureCreatedPayments() {
     db
       .from('enrollment_payments')
       .select(
-        'id, enrollment_id, course_id, amount, method, card_company, bank_account_last4, checkout_group_id, paid_at, paid_date, status',
+        'id, enrollment_id, course_id, amount, method, card_company, bank_account_last4, depositor_name, checkout_group_id, paid_at, paid_date, status',
       )
       .in('enrollment_id', state.createdEnrollments)
       .order('created_at', { ascending: true }),
@@ -1260,6 +1288,217 @@ async function createRefunds(cookie) {
   assert(saved.length === refunds.length, `refund count mismatch: expected ${refunds.length}, got ${saved.length}`);
   state.createdRefunds = saved;
   state.expected.refundAmount = refunds.reduce((sum, row) => sum + money(row.amount), 0);
+}
+
+async function fetchTuitionSnapshot(enrollmentId, label) {
+  const [enrollment, billing, payments] = await Promise.all([
+    supaQuery(
+      db.from('enrollments').select('id, status, course_id').eq('id', enrollmentId).single(),
+      `${label} select enrollment`,
+    ),
+    supaQuery(
+      db
+        .from('enrollment_billing')
+        .select('enrollment_id, expected_amount, discount_amount, payable_amount, tuition_exempt, status')
+        .eq('enrollment_id', enrollmentId)
+        .single(),
+      `${label} select billing`,
+    ),
+    supaQuery(
+      db
+        .from('enrollment_payments')
+        .select('id, amount, method, status, category, card_company, depositor_name, enrollment_refunds(id, amount, reason_category)')
+        .eq('enrollment_id', enrollmentId)
+        .eq('category', 'tuition')
+        .order('id'),
+      `${label} select payments`,
+    ),
+  ]);
+
+  const activePayments = (payments || []).filter((payment) => payment.status !== 'voided');
+  const netTuition = activePayments.reduce((sum, payment) => {
+    const refundTotal = (payment.enrollment_refunds || []).reduce((refundSum, refund) => (
+      refundSum + money(refund.amount)
+    ), 0);
+    return sum + money(payment.amount) - refundTotal;
+  }, 0);
+
+  return { enrollment, billing, payments: payments || [], netTuition };
+}
+
+async function verifyRefundDeductionRepayment(cookie) {
+  log('verifying refund deduction and repayment flow');
+  const course = state.courses.basic;
+  const tuition = money(course.tuition);
+  const deductionAmount = 10000;
+  const refundAmount = tuition - deductionAmount;
+  const repaymentAmount = tuition - deductionAmount;
+
+  state.expected.students += 1;
+  const created = await createSingleRegistration(
+    cookie,
+    100,
+    course,
+    [methodPayload('card', tuition, 100)],
+    { tuitionAmount: tuition },
+  );
+  const enrollmentId = created.enrollment.id;
+
+  let snapshot = await fetchTuitionSnapshot(enrollmentId, 'deduction before refund');
+  const initialPayment = snapshot.payments.find((payment) => money(payment.amount) === tuition);
+  assert(initialPayment?.id, 'deduction flow initial payment was not created');
+  assert(snapshot.billing.status === 'paid', `deduction flow initial billing should be paid, got ${snapshot.billing.status}`);
+  assert(snapshot.netTuition === tuition, `deduction flow initial net mismatch: ${snapshot.netTuition}`);
+
+  const refundResult = await api(
+    cookie,
+    '/api/payments/refunds',
+    {
+      refunds: [{
+        paymentId: initialPayment.id,
+        amount: refundAmount,
+        method: 'card_cancel',
+        reasonCategory: 'policy_application',
+        reason: 'refund deduction retained',
+        cancelReceiptNo: `DED${RUN_ID.slice(-8).toUpperCase()}`,
+        refundedAt: refundDateTime(360),
+        memo: 'deduction flow partial refund',
+      }],
+    },
+    [201],
+  );
+  const refund = refundResult.json?.refunds?.[0];
+  assert(refund?.id, 'deduction flow refund was not created');
+  state.createdRefunds.push(refund);
+  state.expected.refundAmount += refundAmount;
+
+  snapshot = await fetchTuitionSnapshot(enrollmentId, 'deduction after partial refund');
+  assert(snapshot.enrollment.status === 'active', `deduction flow enrollment should stay active after partial refund, got ${snapshot.enrollment.status}`);
+  assert(snapshot.billing.status === 'partial', `deduction flow billing should be partial after refund, got ${snapshot.billing.status}`);
+  assert(snapshot.netTuition === deductionAmount, `deduction flow retained net mismatch: expected ${deductionAmount}, got ${snapshot.netTuition}`);
+
+  const repaymentResult = await api(
+    cookie,
+    '/api/payments/batch',
+    {
+      enrollmentId,
+      courseId: course.id,
+      payments: [{
+        ...methodPayload('cash', repaymentAmount, 1010),
+        paidAt: dateTime(720),
+        memo: 'deduction flow repayment',
+      }],
+    },
+    [201],
+  );
+  const repayment = repaymentResult.json?.payments?.[0];
+  assert(repayment?.id, 'deduction flow repayment was not created');
+  state.expected.payments += 1;
+  state.expected.grossAmount += repaymentAmount;
+
+  snapshot = await fetchTuitionSnapshot(enrollmentId, 'deduction after repayment');
+  assert(snapshot.enrollment.status === 'active', `deduction flow enrollment should be active after repayment, got ${snapshot.enrollment.status}`);
+  assert(snapshot.billing.status === 'paid', `deduction flow billing should be paid after repayment, got ${snapshot.billing.status}`);
+  assert(snapshot.netTuition === tuition, `deduction flow final net mismatch: expected ${tuition}, got ${snapshot.netTuition}`);
+
+  state.deductionFlow = {
+    enrollmentId,
+    initialPaymentId: initialPayment.id,
+    repaymentPaymentId: repayment.id,
+    refundId: refund.id,
+    tuition,
+    deductionAmount,
+    refundAmount,
+    repaymentAmount,
+  };
+}
+
+async function verifyPaymentCorrectionFlow(cookie) {
+  log('verifying payment correction flow');
+  const course = state.courses.basic;
+  const tuition = money(course.tuition);
+  const correctionAmount = 20000;
+
+  state.expected.students += 1;
+  const created = await createSingleRegistration(
+    cookie,
+    101,
+    course,
+    [methodPayload('card', tuition, 101)],
+    { tuitionAmount: tuition },
+  );
+  const enrollmentId = created.enrollment.id;
+
+  let snapshot = await fetchTuitionSnapshot(enrollmentId, 'correction before change');
+  const originalPayment = snapshot.payments.find((payment) => money(payment.amount) === tuition);
+  assert(originalPayment?.id, 'correction flow original payment was not created');
+  assert(snapshot.billing.status === 'paid', `correction flow initial billing should be paid, got ${snapshot.billing.status}`);
+  assert(snapshot.netTuition === tuition, `correction flow initial net mismatch: ${snapshot.netTuition}`);
+
+  const correctionResult = await api(
+    cookie,
+    '/api/payments/corrections',
+    {
+      enrollmentId,
+      courseId: course.id,
+      refund: {
+        paymentId: originalPayment.id,
+        amount: correctionAmount,
+        method: 'card_cancel',
+        cancelReceiptNo: `CORR${RUN_ID.slice(-8).toUpperCase()}`,
+        reasonCategory: 'payment_correction',
+        reason: 'pay100 payment correction',
+        refundedAt: refundDateTime(420),
+        memo: 'correction refund',
+      },
+      payment: {
+        ...methodPayload('bank_transfer', correctionAmount, 1011),
+        paidAt: dateTime(421),
+        bankName: 'Correction Bank',
+        bankAccountLast4: '2468',
+        depositorName: 'Correction Depositor',
+        memo: 'correction repayment',
+      },
+      tuitionBillingMode: 'keep',
+    },
+    [201],
+  );
+
+  const refund = correctionResult.json?.refunds?.[0];
+  const repayment = correctionResult.json?.payments?.[0];
+  assert(refund?.id, 'correction flow refund was not created');
+  assert(repayment?.id, 'correction flow repayment was not created');
+  state.createdRefunds.push(refund);
+  state.expected.refundAmount += correctionAmount;
+  state.expected.payments += 1;
+  state.expected.grossAmount += correctionAmount;
+
+  snapshot = await fetchTuitionSnapshot(enrollmentId, 'correction after change');
+  const originalAfter = snapshot.payments.find((payment) => payment.id === originalPayment.id);
+  const repaymentAfter = snapshot.payments.find((payment) => payment.id === repayment.id);
+  assert(snapshot.enrollment.status === 'active', `correction flow enrollment should stay active, got ${snapshot.enrollment.status}`);
+  assert(snapshot.billing.status === 'paid', `correction flow billing should stay paid, got ${snapshot.billing.status}`);
+  assert(snapshot.netTuition === tuition, `correction flow final net mismatch: expected ${tuition}, got ${snapshot.netTuition}`);
+  assert(originalAfter?.status === 'partial_refunded', `correction flow original status mismatch: ${originalAfter?.status}`);
+  assert(
+    (originalAfter?.enrollment_refunds || []).some((entry) => (
+      entry.id === refund.id
+      && money(entry.amount) === correctionAmount
+      && entry.reason_category === 'payment_correction'
+    )),
+    'correction flow refund reason was not stored',
+  );
+  assert(repaymentAfter?.method === 'bank_transfer', `correction flow repayment method mismatch: ${repaymentAfter?.method}`);
+  assert(repaymentAfter?.depositor_name === 'Correction Depositor', 'correction flow depositor name was not stored');
+
+  state.correctionFlow = {
+    enrollmentId,
+    originalPaymentId: originalPayment.id,
+    repaymentPaymentId: repayment.id,
+    refundId: refund.id,
+    tuition,
+    correctionAmount,
+  };
 }
 
 async function confirmSettlementEntries(cookie) {
@@ -1394,7 +1633,7 @@ async function verifyDatabase() {
       .like('exam_number', `P100-${RUN_ID}-%`),
     'select students',
   );
-  assert(students.length === state.expected.students, `student count mismatch: expected 100, got ${students.length}`);
+  assert(students.length === state.expected.students, `student count mismatch: expected ${state.expected.students}, got ${students.length}`);
 
   assert(
     state.createdPayments.length === state.expected.payments,
@@ -1409,8 +1648,24 @@ async function verifyDatabase() {
       assert(payment.card_company, `card payment ${payment.id} is missing card_company`);
     }
     if (payment.method === 'bank_transfer') {
-      assert(payment.bank_account_last4, `bank transfer payment ${payment.id} is missing bank_account_last4`);
+      assert(
+        payment.depositor_name || payment.bank_account_last4,
+        `bank transfer payment ${payment.id} is missing depositor_name`,
+      );
     }
+  }
+
+  const refunds = await supaQuery(
+    db.from('enrollment_refunds').select('id, payment_id, amount, method, refund_date').in('payment_id', state.createdPayments.map((row) => row.id)),
+    'select refunds',
+  );
+  assert(refunds.length === state.createdRefunds.length, `refund row count mismatch: expected ${state.createdRefunds.length}, got ${refunds.length}`);
+  const refundTotal = refunds.reduce((sum, refund) => sum + money(refund.amount), 0);
+  assert(refundTotal === state.expected.refundAmount, `refund amount mismatch: expected ${state.expected.refundAmount}, got ${refundTotal}`);
+
+  const refundByPayment = new Map();
+  for (const refund of refunds) {
+    refundByPayment.set(refund.payment_id, (refundByPayment.get(refund.payment_id) || 0) + money(refund.amount));
   }
 
   const groupCounts = new Map();
@@ -1425,31 +1680,55 @@ async function verifyDatabase() {
   assert(twoRowGroups >= 35, `paid bundles should create two paid rows per group, got ${twoRowGroups}`);
 
   const billingRows = await supaQuery(
-    db.from('enrollment_billing').select('enrollment_id, expected_amount, discount_amount, payable_amount').in('enrollment_id', state.createdEnrollments),
+    db
+      .from('enrollment_billing')
+      .select('enrollment_id, expected_amount, discount_amount, payable_amount, tuition_exempt, status')
+      .in('enrollment_id', state.createdEnrollments),
     'select billing rows',
   );
   const billingByEnrollment = new Map(billingRows.map((row) => [row.enrollment_id, row]));
-  const paymentByEnrollment = new Map();
+  const netByEnrollment = new Map();
+  const activePaymentCountByEnrollment = new Map();
   for (const payment of state.createdPayments) {
-    paymentByEnrollment.set(payment.enrollment_id, (paymentByEnrollment.get(payment.enrollment_id) || 0) + money(payment.amount));
+    if (payment.status === 'voided') continue;
+    const netAmount = money(payment.amount) - (refundByPayment.get(payment.id) || 0);
+    netByEnrollment.set(payment.enrollment_id, (netByEnrollment.get(payment.enrollment_id) || 0) + netAmount);
+    activePaymentCountByEnrollment.set(
+      payment.enrollment_id,
+      (activePaymentCountByEnrollment.get(payment.enrollment_id) || 0) + 1,
+    );
   }
   for (const enrollment of enrollments) {
     const billing = billingByEnrollment.get(enrollment.id);
     assert(billing, `missing billing for enrollment ${enrollment.id}`);
-    const paymentTotal = paymentByEnrollment.get(enrollment.id) || 0;
-    assert(
-      paymentTotal === money(billing.payable_amount),
-      `payment/billing mismatch for enrollment ${enrollment.id}: payment=${paymentTotal}, payable=${billing.payable_amount}`,
-    );
-  }
+    const netTuition = netByEnrollment.get(enrollment.id) || 0;
+    const payable = money(billing.payable_amount);
+    const activePaymentCount = activePaymentCountByEnrollment.get(enrollment.id) || 0;
+    const expectedStatus = billing.tuition_exempt
+      ? 'exempt'
+      : payable <= 0
+        ? 'paid'
+        : netTuition <= 0
+          ? activePaymentCount > 0 ? 'refunded' : 'unpaid'
+          : netTuition >= payable
+            ? 'paid'
+            : 'partial';
 
-  const refunds = await supaQuery(
-    db.from('enrollment_refunds').select('id, payment_id, amount, method, refund_date').in('payment_id', state.createdPayments.map((row) => row.id)),
-    'select refunds',
-  );
-  assert(refunds.length === state.createdRefunds.length, `refund row count mismatch: expected ${state.createdRefunds.length}, got ${refunds.length}`);
-  const refundTotal = refunds.reduce((sum, refund) => sum + money(refund.amount), 0);
-  assert(refundTotal === state.expected.refundAmount, `refund amount mismatch: expected ${state.expected.refundAmount}, got ${refundTotal}`);
+    assert(netTuition <= payable, `net tuition exceeds billing for enrollment ${enrollment.id}: net=${netTuition}, payable=${payable}`);
+    assert(
+      billing.status === expectedStatus,
+      `billing status mismatch for enrollment ${enrollment.id}: expected ${expectedStatus}, got ${billing.status}`,
+    );
+    if (expectedStatus === 'paid') {
+      assert(netTuition === payable, `paid enrollment ${enrollment.id} net/payable mismatch: net=${netTuition}, payable=${payable}`);
+    }
+    if (expectedStatus === 'partial') {
+      assert(netTuition > 0 && netTuition < payable, `partial enrollment ${enrollment.id} has invalid net=${netTuition}, payable=${payable}`);
+    }
+    if (expectedStatus === 'refunded') {
+      assert(netTuition === 0, `refunded enrollment ${enrollment.id} should have zero net, got ${netTuition}`);
+    }
+  }
 }
 
 function makeTsLoader() {
@@ -1557,6 +1836,56 @@ async function verifySettlementReportAndXlsx() {
     report.summary.netAmount === state.expected.grossAmount - state.expected.refundAmount,
     `report net mismatch: ${report.summary.netAmount}`,
   );
+
+  if (state.deductionFlow) {
+    const deductionRows = report.ledgerRows.filter((row) => row.enrollmentId === state.deductionFlow.enrollmentId);
+    const deductionPayments = deductionRows.filter((row) => row.kind === 'payment');
+    const deductionRefunds = deductionRows.filter((row) => row.kind === 'refund');
+    const deductionGross = deductionPayments.reduce((sum, row) => sum + row.paymentAmount, 0);
+    const deductionRefundTotal = deductionRefunds.reduce((sum, row) => sum + row.refundAmount, 0);
+    const deductionNet = deductionRows.reduce((sum, row) => sum + row.netAmount, 0);
+
+    assert(deductionPayments.length === 2, `deduction flow settlement payment rows mismatch: ${deductionPayments.length}`);
+    assert(deductionRefunds.length === 1, `deduction flow settlement refund rows mismatch: ${deductionRefunds.length}`);
+    assert(
+      deductionGross === state.deductionFlow.tuition + state.deductionFlow.repaymentAmount,
+      `deduction flow settlement gross mismatch: ${deductionGross}`,
+    );
+    assert(
+      deductionRefundTotal === state.deductionFlow.refundAmount,
+      `deduction flow settlement refund mismatch: ${deductionRefundTotal}`,
+    );
+    assert(deductionNet === state.deductionFlow.tuition, `deduction flow settlement net mismatch: ${deductionNet}`);
+  }
+
+  if (state.correctionFlow) {
+    const correctionRows = report.ledgerRows.filter((row) => row.enrollmentId === state.correctionFlow.enrollmentId);
+    const correctionPayments = correctionRows.filter((row) => row.kind === 'payment');
+    const correctionRefunds = correctionRows.filter((row) => row.kind === 'refund');
+    const correctionGross = correctionPayments.reduce((sum, row) => sum + row.paymentAmount, 0);
+    const correctionRefundTotal = correctionRefunds.reduce((sum, row) => sum + row.refundAmount, 0);
+    const correctionNet = correctionRows.reduce((sum, row) => sum + row.netAmount, 0);
+
+    assert(correctionPayments.length === 2, `correction flow settlement payment rows mismatch: ${correctionPayments.length}`);
+    assert(correctionRefunds.length === 1, `correction flow settlement refund rows mismatch: ${correctionRefunds.length}`);
+    assert(
+      correctionGross === state.correctionFlow.tuition + state.correctionFlow.correctionAmount,
+      `correction flow settlement gross mismatch: ${correctionGross}`,
+    );
+    assert(
+      correctionRefundTotal === state.correctionFlow.correctionAmount,
+      `correction flow settlement refund mismatch: ${correctionRefundTotal}`,
+    );
+    assert(correctionNet === state.correctionFlow.tuition, `correction flow settlement net mismatch: ${correctionNet}`);
+    assert(
+      correctionRefunds.some((row) => row.reasonCategory === 'payment_correction'),
+      'correction flow settlement refund reason mismatch',
+    );
+    assert(
+      correctionPayments.some((row) => row.method === 'bank_transfer' && row.paymentAmount === state.correctionFlow.correctionAmount),
+      'correction flow settlement repayment row missing',
+    );
+  }
 
   const missingCodes = report.ledgerRows.filter((row) => !row.courseReportCode);
   assert(missingCodes.length === 0, `ledger rows missing course report code: ${missingCodes.length}`);
@@ -1666,7 +1995,7 @@ async function verifySettlementReportAndXlsx() {
 async function cleanup() {
   log('cleaning test data');
   const courses = await selectAll(
-    () => db.from('courses').select('id').eq('division', DIVISION).like('slug', `pay100-%-${RUN_ID}`).order('id'),
+    () => db.from('courses').select('id').eq('division', DIVISION).like('slug', 'pay100-%').order('id'),
     'cleanup select courses',
   );
   const courseIds = (courses || []).map((row) => row.id);
@@ -1708,7 +2037,7 @@ async function cleanup() {
       .from('students')
       .select('id')
       .eq('division', DIVISION)
-      .or(`exam_number.like.P100-${RUN_ID}-%,exam_number.eq.P100-BAD-${RUN_ID},exam_number.eq.P100-MIXED-${RUN_ID}`)
+      .like('exam_number', 'P100-%')
       .order('id'),
     'cleanup select direct students',
   );
@@ -1789,6 +2118,8 @@ async function main() {
   await verifyLegacyPaymentApiOverpayGuard(cookie);
   await createRegistrations(cookie);
   await createRefunds(cookie);
+  await verifyRefundDeductionRepayment(cookie);
+  await verifyPaymentCorrectionFlow(cookie);
   await confirmSettlementEntries(cookie);
   await verifyDatabase();
   const result = await verifySettlementReportAndXlsx();

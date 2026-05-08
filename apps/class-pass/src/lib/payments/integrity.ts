@@ -69,6 +69,7 @@ export type PaymentIntegrityIssue = {
     | 'billing_status_mismatch'
     | 'refunded_enrollment_has_net_amount'
     | 'active_enrollment_fully_refunded'
+    | 'exempt_billing_without_active_free_payment'
     | 'payment_refund_status_mismatch'
   message: string
   recommendation: string
@@ -386,6 +387,9 @@ export async function checkPaymentIntegrity(
     const activeTuitionPayments = enrollmentPayments.filter(
       (payment) => payment.category === 'tuition' && payment.status !== 'voided',
     )
+    const activeFreeTuitionPaymentCount = activeTuitionPayments.filter(
+      (payment) => payment.method === 'free',
+    ).length
     const paymentGrossAmount = activeTuitionPayments.reduce((sum, payment) => sum + normalizeAmount(payment.amount), 0)
     const paymentCount = activeTuitionPayments.length
     const refundAmount = activeTuitionPayments.reduce((sum, payment) => {
@@ -528,6 +532,28 @@ export async function checkPaymentIntegrity(
         code: 'billing_amount_mismatch',
         message: '청구 금액 계산값과 저장된 적용 금액이 일치하지 않습니다.',
         recommendation: '청구 정가, 할인액, 적용 금액을 다시 저장해 주세요.',
+        course,
+        enrollment,
+        billing,
+        expectedStatus,
+        paymentGrossAmount,
+        refundAmount,
+        paymentCount,
+        latestActivityAt,
+      }))
+    }
+
+    if (billing.tuition_exempt && activeFreeTuitionPaymentCount === 0) {
+      const isRefundedEnrollment = enrollment.status === 'refunded'
+      issues.push(createBaseIssue({
+        severity: isRefundedEnrollment ? 'error' : 'warning',
+        code: 'exempt_billing_without_active_free_payment',
+        message: isRefundedEnrollment
+          ? '수강 상태는 환불완료인데 청구 정보가 무료/면제로 남아 있습니다.'
+          : '무료/면제 청구인데 활성 무료 수납 기록이 없습니다.',
+        recommendation: isRefundedEnrollment
+          ? '무료/면제 수납 취소 후 청구 상태가 복구되지 않은 상태일 수 있습니다. 정가/적용 금액과 환불 상태를 다시 저장해 주세요.'
+          : '결제 상세에서 무료/면제 기록이 의도된 상태인지 확인하고, 필요하면 무료 수납 기록을 다시 저장해 주세요.',
         course,
         enrollment,
         billing,

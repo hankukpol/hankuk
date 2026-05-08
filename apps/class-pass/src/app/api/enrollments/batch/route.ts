@@ -15,6 +15,8 @@ import {
   getPaymentServiceMessage,
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
+import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
+import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
 import {
   deleteStudentIfOrphaned,
   ensureStudentProfile,
@@ -53,6 +55,7 @@ const paymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
@@ -189,6 +192,15 @@ function getBillingValidationError(billing: ParsedBilling, payments: ParsedPayme
       return '무료 수강 또는 수납 면제 사유를 입력해 주세요.'
     }
 
+    const exemptRuleError = getTuitionExemptBillingRuleError({
+      tuitionExempt: billing.tuitionExempt,
+      discountAmount: billing.discountAmount,
+      tuitionExemptReason: billing.tuitionExemptReason,
+    })
+    if (exemptRuleError) {
+      return exemptRuleError
+    }
+
     if (payments.some((payment) => payment.method !== 'free' || payment.amount !== 0)) {
       return '무료 수강 결제 기록은 금액 0원과 무료 수단으로만 저장할 수 있습니다.'
     }
@@ -232,10 +244,10 @@ function validateBatchPayments(registrations: ParsedRegistration[], payments: Pa
 
   const bankTransferWithoutAccount = payments.find((payment) => (
     payment.method === 'bank_transfer'
-    && !/^\d{4}$/.test(payment.bankAccountLast4?.trim() ?? '')
+    && !resolveDepositorName(payment.depositorName, payment.bankAccountLast4)
   ))
   if (bankTransferWithoutAccount) {
-    return '계좌 결제 시 계좌 마지막 4자리는 필수입니다.'
+    return '계좌 결제 시 입금자명은 필수입니다.'
   }
 
   const totalPayable = getBatchTotalPayable(registrations)
@@ -438,7 +450,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '같은 강좌를 묶음 등록에 중복 선택할 수 없습니다.' }, { status: 400 })
     }
 
-    const payments = parsed.data.payments ?? []
+    const payments = (parsed.data.payments ?? []).map((payment) => ({
+      ...payment,
+      cardCompany: payment.method === 'card' ? normalizeCardCompanyInput(payment.cardCompany) : null,
+      depositorName: resolveDepositorName(payment.depositorName, payment.bankAccountLast4),
+    }))
     const paymentError = validateBatchPayments(registrations, payments)
     if (paymentError) {
       return NextResponse.json({ error: paymentError }, { status: 400 })

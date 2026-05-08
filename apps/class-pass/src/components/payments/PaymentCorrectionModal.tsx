@@ -39,7 +39,7 @@ export type PaymentCorrectionConfirmInput = {
     paidAt: string | null
     memo: string | null
     cardCompany: string | null
-    bankAccountLast4: string | null
+    depositorName: string | null
     cashReceiptApprovalNo: string | null
     items: Array<{ label: string; amount: number }>
   }
@@ -60,9 +60,14 @@ type PaymentCorrectionModalProps = {
 const PAYMENT_METHODS: CorrectionPaymentMethod[] = ['card', 'homepage', 'cash', 'bank_transfer', 'point', 'other']
 
 const CARD_COMPANIES = [
-  '신한', '삼성', 'KB국민', '현대', '롯데', '우리', '하나',
+  '신한', '삼성', 'KB', '현대', '롯데', '우리', '하나',
   'NH농협', 'IBK기업', 'BC', '씨티', '카카오페이', '네이버페이', '토스페이', '기타',
 ]
+
+function normalizeCardCompanyLabel(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? ''
+  return trimmed.startsWith('KB') ? 'KB' : trimmed
+}
 
 function getDefaultRefundMethod(payment: EnrollmentPayment | null): RefundMethod {
   if (!payment) {
@@ -138,7 +143,7 @@ export function PaymentCorrectionModal({
   const [category, setCategory] = useState<PaymentCategory>('tuition')
   const [occurredAt, setOccurredAt] = useState(toLocalDateTimeInputValue)
   const [cardCompany, setCardCompany] = useState('')
-  const [bankAccountLast4, setBankAccountLast4] = useState('')
+  const [depositorName, setDepositorName] = useState('')
   const [cancelReceiptNo, setCancelReceiptNo] = useState('')
   const [refundAccountLast4, setRefundAccountLast4] = useState('')
   const [cashReceiptApprovalNo, setCashReceiptApprovalNo] = useState('')
@@ -157,8 +162,8 @@ export function PaymentCorrectionModal({
     setNewAmount(nextRefundableAmount > 0 ? String(nextRefundableAmount) : '')
     setRefundMethod(getDefaultRefundMethod(payment))
     setPaymentMethod(getDefaultPaymentMethod(payment))
-    setCardCompany(payment.method === 'card' ? (payment.card_company ?? '') : '')
-    setBankAccountLast4(payment.method === 'bank_transfer' ? (payment.bank_account_last4 ?? '') : '')
+    setCardCompany(payment.method === 'card' ? normalizeCardCompanyLabel(payment.card_company) : '')
+    setDepositorName(payment.method === 'bank_transfer' ? (payment.depositor_name ?? payment.bank_account_last4 ?? '') : '')
     setCategory(payment.category)
     setOccurredAt(toLocalDateTimeInputValue())
     setCancelReceiptNo('')
@@ -209,7 +214,7 @@ export function PaymentCorrectionModal({
   const missingCardCancelReceipt = refundMethod === 'card_cancel' && !cancelReceiptNo.trim()
   const missingRefundAccount = refundMethod === 'bank_transfer' && !/^\d{4}$/.test(refundAccountLast4.trim())
   const missingCardCompany = paymentMethod === 'card' && !cardCompany.trim()
-  const missingBankAccount = paymentMethod === 'bank_transfer' && !/^\d{4}$/.test(bankAccountLast4.trim())
+  const missingDepositorName = paymentMethod === 'bank_transfer' && !depositorName.trim()
   const invalidReason = !reason.trim()
   const invalid = (
     !payment
@@ -218,7 +223,7 @@ export function PaymentCorrectionModal({
     || missingCardCancelReceipt
     || missingRefundAccount
     || missingCardCompany
-    || missingBankAccount
+    || missingDepositorName
     || invalidReason
   )
   const netChangeAmount = parsedNewAmount - parsedRefundAmount
@@ -247,7 +252,7 @@ export function PaymentCorrectionModal({
         paidAt: toIso(occurredAt),
         memo: memo.trim() || null,
         cardCompany: paymentMethod === 'card' ? cardCompany.trim() || null : null,
-        bankAccountLast4: paymentMethod === 'bank_transfer' ? bankAccountLast4.trim() || null : null,
+        depositorName: paymentMethod === 'bank_transfer' ? depositorName.trim() || null : null,
         cashReceiptApprovalNo: paymentMethod === 'cash' || paymentMethod === 'bank_transfer'
           ? cashReceiptApprovalNo.trim() || null
           : null,
@@ -375,7 +380,7 @@ export function PaymentCorrectionModal({
                         const next = event.target.value as CorrectionPaymentMethod
                         setPaymentMethod(next)
                         if (next !== 'card') setCardCompany('')
-                        if (next !== 'bank_transfer') setBankAccountLast4('')
+                        if (next !== 'bank_transfer') setDepositorName('')
                       }}
                       className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                     >
@@ -406,15 +411,14 @@ export function PaymentCorrectionModal({
                   ) : null}
                   {paymentMethod === 'bank_transfer' ? (
                     <label className="flex flex-col gap-1.5">
-                      <span className="text-xs font-semibold text-slate-500">계좌 마지막 4자리 <span className="text-rose-500">*</span></span>
+                      <span className="text-xs font-semibold text-slate-500">입금자명 <span className="text-rose-500">*</span></span>
                       <input
-                        inputMode="numeric"
-                        maxLength={4}
-                        value={bankAccountLast4}
-                        onChange={(event) => setBankAccountLast4(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                        placeholder="1234"
+                        maxLength={80}
+                        value={depositorName}
+                        onChange={(event) => setDepositorName(event.target.value)}
+                        placeholder="예: 홍길동"
                         className={`rounded-[8px] border bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 ${
-                          bankAccountLast4.length !== 4 ? 'border-rose-300' : 'border-slate-200'
+                          depositorName.trim() ? 'border-slate-200' : 'border-rose-300'
                         }`}
                       />
                     </label>

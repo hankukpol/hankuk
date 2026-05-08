@@ -107,7 +107,7 @@ export function SeatGrid({
       const isOccupied = occupied.has(seat.id) && !isMine
       const isInactive = !seat.is_active
       const studentInfo = seatStudentMap?.get(seat.id)
-      const clickable = Boolean(onSeatClick) && (mode === 'admin' || !isOccupied)
+      const clickable = Boolean(onSeatClick) && (mode === 'admin' || (!isOccupied && !isInactive))
 
       const sizeClass = mode === 'admin' ? 'aspect-square' : 'h-10'
       let className = `flex ${sizeClass} flex-col items-center justify-center rounded-lg border px-1 text-center transition `

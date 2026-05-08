@@ -33,6 +33,7 @@ const deviceSignatureSchema = z.object({
 const schema = z.object({
   courseId: z.number().int().positive(),
   enrollmentId: z.number().int().positive(),
+  roomId: z.number().int().positive().optional().nullable(),
   name: z.string().min(1),
   phone: z.string().min(10),
   localDeviceKey: z.string().min(16).max(128),
@@ -129,6 +130,40 @@ export async function POST(req: NextRequest) {
     if (!displaySession) {
       return authFailure('현장 QR 표시 세션이 만료되었습니다.')
     }
+    const displayRoomId = Number(displaySession.room_id)
+    if (!Number.isInteger(displayRoomId) || displayRoomId <= 0) {
+      return authFailure('현장 QR 강의실 정보를 확인하지 못했습니다.', 409)
+    }
+    if (tokenPayload.roomId && tokenPayload.roomId !== displayRoomId) {
+      return authFailure('현장 QR 강의실 정보가 일치하지 않습니다.', 409)
+    }
+    const activeRoomId = displayRoomId
+    const db = createServerClient()
+    const roomResult = await db
+      .from('course_rooms')
+      .select('id')
+      .eq('course_id', access.course.id)
+      .eq('id', activeRoomId)
+      .eq('is_active', true)
+      .eq('is_open', true)
+      .maybeSingle()
+    if (roomResult.error) {
+      return authFailure('현장 QR 강의실 상태를 확인하지 못했습니다.', 500)
+    }
+    if (!roomResult.data) {
+      const state = await getDesignatedSeatStudentState({
+        course: access.course,
+        enrollmentId: access.enrollment.id,
+        roomId: activeRoomId,
+        deviceKeyHash: device.deviceHash,
+      })
+
+      return NextResponse.json({
+        error: '선택한 강의실의 좌석 신청이 닫혀 있습니다.',
+        reason: 'ROOM_CLOSED',
+        state,
+      }, { status: 403 })
+    }
 
     const verifiedRotation = tokenPayload.rotation
     const displaySessionId = displaySession.id
@@ -158,7 +193,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const db = createServerClient()
     const existingAuthResult = await db
       .from('course_seat_auth_sessions')
       .select('device_key_hash')
@@ -187,6 +221,7 @@ export async function POST(req: NextRequest) {
       .upsert({
         course_id: access.course.id,
         enrollment_id: access.enrollment.id,
+        room_id: activeRoomId,
         device_key_hash: device.deviceHash,
         device_signature: parsed.data.deviceSignature ?? {},
         verification_method: 'qr',
@@ -202,6 +237,7 @@ export async function POST(req: NextRequest) {
         presence_accuracy_m: presence?.accuracyM ?? null,
         updated_at: new Date().toISOString(),
       }, {
+        // 한 수강생은 강좌 안에서 하나의 현장 인증만 유지합니다. 다른 강의실 QR을 찍으면 인증 강의실이 이동합니다.
         onConflict: 'course_id,enrollment_id',
       })
 
@@ -216,6 +252,7 @@ export async function POST(req: NextRequest) {
       event_type: 'student_auth_success',
       details: {
         verification_method: 'qr',
+        room_id: activeRoomId,
         display_session_id: displaySessionId,
         rotation: verifiedRotation,
       },
@@ -224,6 +261,7 @@ export async function POST(req: NextRequest) {
     const state = await getDesignatedSeatStudentState({
       course: access.course,
       enrollmentId: access.enrollment.id,
+      roomId: activeRoomId,
       deviceKeyHash: device.deviceHash,
     })
 

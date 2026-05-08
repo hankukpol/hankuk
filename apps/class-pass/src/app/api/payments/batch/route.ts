@@ -7,6 +7,7 @@ import {
   getPaymentServiceMessage,
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
+import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const paymentItemSchema = z.object({
@@ -25,6 +26,7 @@ const paymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
@@ -78,10 +80,10 @@ function normalizeBatchInput(input: z.infer<typeof createBatchSchema>): z.infer<
       paidAt: payment.paidAt,
       memo: payment.memo,
       cardLast4: payment.cardLast4,
-      cardCompany: payment.cardCompany,
+      cardCompany: payment.method === 'card' ? normalizeCardCompanyInput(payment.cardCompany) : null,
       installmentMonths: payment.installmentMonths,
       bankName: payment.bankName,
-      bankAccountLast4: payment.bankAccountLast4,
+      depositorName: resolveDepositorName(payment.depositorName, payment.bankAccountLast4),
       cashReceiptApprovalNo: payment.cashReceiptApprovalNo,
       items: payment.items,
     })),
@@ -111,10 +113,10 @@ export async function POST(req: NextRequest) {
     }
 
     const bankTransferWithoutAccount = input.payments.find(
-      (p) => p.method === 'bank_transfer' && !p.bankAccountLast4?.trim(),
+      (p) => p.method === 'bank_transfer' && !resolveDepositorName(p.depositorName, p.bankAccountLast4),
     )
     if (bankTransferWithoutAccount) {
-      return NextResponse.json({ error: '계좌 결제 시 계좌 마지막 4자리는 필수입니다.' }, { status: 400 })
+      return NextResponse.json({ error: '계좌 결제 시 입금자명은 필수입니다.' }, { status: 400 })
     }
 
     const division = await getServerTenantType()
@@ -122,7 +124,11 @@ export async function POST(req: NextRequest) {
       enrollmentId: input.enrollmentId,
       courseId: input.courseId,
       billing: input.billing,
-      payments: input.payments,
+      payments: input.payments.map((payment) => ({
+        ...payment,
+        cardCompany: payment.method === 'card' ? normalizeCardCompanyInput(payment.cardCompany) : null,
+        depositorName: resolveDepositorName(payment.depositorName, payment.bankAccountLast4),
+      })),
     }, division, getActorStaffId(auth.payload))
 
     return NextResponse.json({ payments }, { status: 201 })

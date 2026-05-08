@@ -7,6 +7,7 @@ import {
   getPaymentServiceMessage,
   getPaymentServiceStatus,
 } from '@/lib/payments/service'
+import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const paymentItemSchema = z.object({
@@ -45,6 +46,7 @@ const correctionPaymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
@@ -82,12 +84,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '카드 결제 시 카드사는 필수입니다.' }, { status: 400 })
     }
 
-    if (parsed.data.payment.method === 'bank_transfer' && !parsed.data.payment.bankAccountLast4?.trim()) {
-      return NextResponse.json({ error: '계좌 결제 시 계좌 마지막 4자리는 필수입니다.' }, { status: 400 })
+    if (parsed.data.payment.method === 'bank_transfer' && !resolveDepositorName(parsed.data.payment.depositorName, parsed.data.payment.bankAccountLast4)) {
+      return NextResponse.json({ error: '계좌 결제 시 입금자명은 필수입니다.' }, { status: 400 })
     }
 
     const division = await getServerTenantType()
-    const result = await createPaymentCorrection(parsed.data, division, getActorStaffId(auth.payload))
+    const result = await createPaymentCorrection({
+      ...parsed.data,
+      payment: {
+        ...parsed.data.payment,
+        cardCompany: parsed.data.payment.method === 'card' ? normalizeCardCompanyInput(parsed.data.payment.cardCompany) : null,
+        depositorName: resolveDepositorName(parsed.data.payment.depositorName, parsed.data.payment.bankAccountLast4),
+      },
+    }, division, getActorStaffId(auth.payload))
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     return NextResponse.json(

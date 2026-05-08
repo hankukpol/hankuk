@@ -14,11 +14,13 @@ export type DesignatedSeatDisplayClientTarget =
   | {
     type: 'course'
     courseId: number
+    roomId?: number | null
     label?: string
   }
   | {
     type: 'slot'
     slotKey: string
+    roomId?: number | null
     label?: string
   }
 
@@ -37,6 +39,10 @@ type ActiveDisplayPayload = {
     id: number
     expires_at: string
   }
+  room?: {
+    id: number
+    name: string
+  } | null
   rotationToken: string
   rotationExpiresAt: string
   device: {
@@ -85,6 +91,9 @@ function buildTargetQuery(target: DesignatedSeatDisplayClientTarget) {
     query.set('slotKey', target.slotKey)
   } else {
     query.set('courseId', String(target.courseId))
+  }
+  if (target.roomId) {
+    query.set('roomId', String(target.roomId))
   }
 
   return query.toString()
@@ -243,6 +252,7 @@ function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDi
 
   const slotLabel = payload?.slot?.label ?? registrationRequired?.slot?.label ?? (target.type === 'slot' ? getTargetFallbackLabel(target) : null)
   const courseName = payload?.course.name ?? registrationRequired?.course?.name ?? getTargetFallbackLabel(target)
+  const roomLabel = payload?.status === 'active' ? payload.room?.name ?? null : null
   const qrSize = compact ? 300 : 520
 
   if (registrationRequired) {
@@ -322,6 +332,7 @@ function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDi
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">Designated Seat</p>
           {slotLabel ? <p className="mt-3 text-lg font-bold text-sky-100">{slotLabel}</p> : null}
+          {roomLabel ? <p className="mt-2 text-base font-bold text-emerald-200">{roomLabel}</p> : null}
           <h1 className={`${compact ? 'mt-2 text-2xl' : 'mt-3 text-4xl'} font-black`}>{payload.course.name}</h1>
           <p className={`${compact ? 'mt-2 text-sm' : 'mt-3 text-lg'} text-slate-300`}>학생에게 보여줄 지정좌석 인증 QR입니다.</p>
           {!compact ? (

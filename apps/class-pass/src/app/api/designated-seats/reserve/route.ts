@@ -13,6 +13,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 const schema = z.object({
   courseId: z.number().int().positive(),
   enrollmentId: z.number().int().positive(),
+  roomId: z.number().int().positive().optional().nullable(),
   seatId: z.number().int().positive(),
   name: z.string().min(1),
   phone: z.string().min(10),
@@ -40,6 +41,10 @@ function getReserveFailure(reason: string | undefined) {
         status: 409,
         message: '같은 기기로 다른 학생 좌석을 먼저 확정했습니다. 대리 좌석 방지를 위해 차단되었습니다.',
       }
+    case 'ROOM_REQUIRED':
+      return { status: 400, message: '강의실을 찾을 수 없습니다.' }
+    case 'ROOM_CLOSED':
+      return { status: 403, message: '선택한 강의실의 좌석 신청이 닫혀 있습니다.' }
     case 'SEAT_INACTIVE':
     case 'SEAT_NOT_FOUND':
       return { status: 404, message: '선택한 좌석을 다시 확인해주세요.' }
@@ -81,6 +86,78 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServerClient()
+    const seatResult = await db
+      .from('course_seats')
+      .select('id,room_id,is_active')
+      .eq('course_id', access.course.id)
+      .eq('id', parsed.data.seatId)
+      .maybeSingle()
+
+    if (seatResult.error) {
+      return NextResponse.json({ error: '좌석 정보를 확인하지 못했습니다.' }, { status: 500 })
+    }
+    if (!seatResult.data) {
+      return NextResponse.json({ error: '선택한 좌석을 다시 확인해주세요.' }, { status: 404 })
+    }
+
+    const seatRoomId = Number(seatResult.data.room_id)
+    const activeRoomId = parsed.data.roomId ?? seatRoomId
+    if (activeRoomId !== seatRoomId) {
+      return NextResponse.json({ error: '선택한 강의실의 좌석이 아닙니다.' }, { status: 400 })
+    }
+
+    const roomResult = await db
+      .from('course_rooms')
+      .select('id')
+      .eq('course_id', access.course.id)
+      .eq('id', activeRoomId)
+      .eq('is_active', true)
+      .eq('is_open', true)
+      .maybeSingle()
+    if (roomResult.error) {
+      return NextResponse.json({ error: '강의실 정보를 확인하지 못했습니다.' }, { status: 500 })
+    }
+    if (!roomResult.data) {
+      const state = await getDesignatedSeatStudentState({
+        course: access.course,
+        enrollmentId: access.enrollment.id,
+        roomId: activeRoomId,
+        deviceKeyHash: device.deviceHash,
+      })
+
+      return NextResponse.json({
+        error: '선택한 강의실의 좌석 신청이 닫혀 있습니다.',
+        reason: 'ROOM_CLOSED',
+        state,
+      }, { status: 403 })
+    }
+
+    const authSessionResult = await db
+      .from('course_seat_auth_sessions')
+      .select('room_id')
+      .eq('course_id', access.course.id)
+      .eq('enrollment_id', access.enrollment.id)
+      .maybeSingle()
+
+    if (authSessionResult.error) {
+      return NextResponse.json({ error: '현장 인증 상태를 확인하지 못했습니다.' }, { status: 500 })
+    }
+
+    if (!authSessionResult.data?.room_id || Number(authSessionResult.data.room_id) !== activeRoomId) {
+      const state = await getDesignatedSeatStudentState({
+        course: access.course,
+        enrollmentId: access.enrollment.id,
+        roomId: activeRoomId,
+        deviceKeyHash: device.deviceHash,
+      })
+
+      return NextResponse.json({
+        error: '선택한 강의실에서 다시 현장 QR 인증이 필요합니다.',
+        reason: 'AUTH_REQUIRED',
+        state,
+      }, { status: 403 })
+    }
+
     const throttleSince = new Date(Date.now() - 5_000).toISOString()
     const throttleResult = await db
       .from('course_seat_events')
@@ -97,6 +174,7 @@ export async function POST(req: NextRequest) {
         seat_id: parsed.data.seatId,
         event_type: 'seat_request_throttled',
         details: {
+          room_id: activeRoomId,
           limit_window_ms: 5000,
         },
       })
@@ -111,13 +189,14 @@ export async function POST(req: NextRequest) {
       enrollment_id: access.enrollment.id,
       seat_id: parsed.data.seatId,
       event_type: 'seat_request',
-      details: {},
+      details: { room_id: activeRoomId },
     })
 
     const rpcResult = await db.rpc('claim_designated_seat', {
       p_course_id: access.course.id,
       p_enrollment_id: access.enrollment.id,
       p_seat_id: parsed.data.seatId,
+      p_room_id: activeRoomId,
       p_device_key_hash: device.deviceHash,
     })
 
@@ -140,11 +219,13 @@ export async function POST(req: NextRequest) {
         || result?.reason === 'AUTH_DEVICE_MISMATCH'
         || result?.reason === 'LOCATION_REQUIRED'
         || result?.reason === 'DEVICE_LOCKED'
+        || result?.reason === 'ROOM_CLOSED'
 
       const state = shouldIncludeState
         ? await getDesignatedSeatStudentState({
           course: access.course,
           enrollmentId: access.enrollment.id,
+          roomId: activeRoomId,
           deviceKeyHash: device.deviceHash,
         })
         : null
@@ -159,6 +240,7 @@ export async function POST(req: NextRequest) {
     const state = await getDesignatedSeatStudentState({
       course: access.course,
       enrollmentId: access.enrollment.id,
+      roomId: activeRoomId,
       deviceKeyHash: device.deviceHash,
     })
 

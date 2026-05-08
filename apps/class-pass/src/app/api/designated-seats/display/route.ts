@@ -7,7 +7,11 @@ import {
   getRotationExpiresAt,
   shouldUpdateDisplayHeartbeat,
 } from '@/lib/designated-seat/display-runtime'
-import { ensureDisplaySessionForCurrentSchedule } from '@/lib/designated-seat/service'
+import {
+  ensureCourseRooms,
+  ensureDisplaySessionForCurrentSchedule,
+  resolveActiveRoomId,
+} from '@/lib/designated-seat/service'
 import {
   generateRotationToken,
   getRotationBucket,
@@ -18,6 +22,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 const schema = z.object({
   courseId: z.coerce.number().int().positive().optional().nullable(),
   slotKey: z.string().trim().min(1).max(80).optional().nullable(),
+  roomId: z.coerce.number().int().positive().optional().nullable(),
 }).refine((value) => Boolean(value.courseId) !== Boolean(value.slotKey), {
   message: 'Exactly one display target is required.',
 })
@@ -37,6 +42,7 @@ export async function GET(req: NextRequest) {
     const parsed = schema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
       slotKey: req.nextUrl.searchParams.get('slotKey'),
+      roomId: req.nextUrl.searchParams.get('roomId') ?? undefined,
     })
     if (!parsed.success) {
       return NextResponse.json({ error: '표시 QR 요청 형식이 올바르지 않습니다.' }, { status: 400 })
@@ -57,6 +63,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '지정좌석 기능이 활성화되지 않은 강좌입니다.' }, { status: 409 })
     }
 
+    const rooms = await ensureCourseRooms(course.id)
+    const activeRoomId = parsed.data.roomId
+      ? resolveActiveRoomId(rooms, parsed.data.roomId)
+      : rooms.find((room) => room.is_open)?.id ?? resolveActiveRoomId(rooms)
+    const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? null
+    if (!activeRoom || (parsed.data.roomId && activeRoom.id !== parsed.data.roomId)) {
+      return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
+    }
     const device = await resolveDisplayDevice(req, course.id, {
       slotId: target.slot?.id ?? null,
       slotKey: target.slot?.slot_key ?? null,
@@ -74,11 +88,46 @@ export async function GET(req: NextRequest) {
       }, { status: device.reason === 'MISSING_COOKIE' ? 401 : 403 })
     }
 
+    if (!course.designated_seat_open) {
+      return NextResponse.json({
+        status: 'inactive',
+        reason: 'RESERVATION_CLOSED',
+        message: '이 강좌의 좌석 신청이 닫혀 있습니다.',
+        course: {
+          id: course.id,
+          name: course.name,
+        },
+        slot: toSlotPayload(target),
+        room: {
+          id: activeRoom.id,
+          name: activeRoom.name,
+        },
+      })
+    }
+
+    if (!activeRoom.is_open) {
+      return NextResponse.json({
+        status: 'inactive',
+        reason: 'ROOM_CLOSED',
+        message: '이 강의실의 좌석 신청이 닫혀 있습니다.',
+        course: {
+          id: course.id,
+          name: course.name,
+        },
+        slot: toSlotPayload(target),
+        room: {
+          id: activeRoom.id,
+          name: activeRoom.name,
+        },
+      })
+    }
+
     const db = createServerClient()
     const seatCountResult = await db
       .from('course_seats')
       .select('id', { count: 'exact', head: true })
       .eq('course_id', course.id)
+      .eq('room_id', activeRoom.id)
       .eq('is_active', true)
 
     if (seatCountResult.error) {
@@ -100,6 +149,7 @@ export async function GET(req: NextRequest) {
 
     const sessionAvailability = await ensureDisplaySessionForCurrentSchedule(course.id, {
       slotId: target.slot?.id ?? null,
+      roomId: activeRoom.id,
     })
     if (sessionAvailability.status === 'inactive') {
       return NextResponse.json({
@@ -139,6 +189,7 @@ export async function GET(req: NextRequest) {
     const rotationToken = await generateRotationToken({
       courseId: course.id,
       displaySessionId: session.id,
+      roomId: activeRoom.id,
       rotation,
     })
     const rotationExpiresAt = getRotationExpiresAt(rotation)
@@ -150,6 +201,10 @@ export async function GET(req: NextRequest) {
         name: course.name,
       },
       slot: toSlotPayload(target),
+      room: {
+        id: activeRoom.id,
+        name: activeRoom.name,
+      },
       session: {
         id: session.id,
         expires_at: session.expires_at,

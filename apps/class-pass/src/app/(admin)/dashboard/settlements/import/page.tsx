@@ -9,7 +9,7 @@ import { downloadPaymentImportTemplate } from '@/lib/payments/xlsx-export'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course } from '@/types/database'
 
-type ImportField = 'name' | 'phone' | 'examNumber' | 'birthDate' | 'amount' | 'paidAt' | 'method' | 'cardCompany' | 'bankAccountLast4' | 'category' | 'memo'
+type ImportField = 'name' | 'phone' | 'examNumber' | 'birthDate' | 'amount' | 'paidAt' | 'method' | 'cardCompany' | 'depositorName' | 'category' | 'memo'
 
 type ParsedSheet = {
   headers: string[]
@@ -25,7 +25,7 @@ type PreviewRow = {
   paidAt: string
   method: string
   cardCompany: string | null
-  bankAccountLast4: string | null
+  depositorName: string | null
   category: string
   memo: string | null
   status: 'matched' | 'create' | 'duplicate' | 'error'
@@ -53,7 +53,7 @@ const FIELD_LABEL: Record<ImportField, string> = {
   paidAt: '결제일',
   method: '결제방법',
   cardCompany: '카드사',
-  bankAccountLast4: '계좌 마지막 4자리',
+  depositorName: '입금자명',
   category: '분류',
   memo: '비고',
 }
@@ -71,7 +71,7 @@ function inferMapping(headers: string[]) {
     paidAt: '',
     method: '',
     cardCompany: '',
-    bankAccountLast4: '',
+    depositorName: '',
     category: '',
     memo: '',
   }
@@ -86,7 +86,7 @@ function inferMapping(headers: string[]) {
     if (!mapping.paidAt && /결제일|납부일|수납일|date|paid/.test(normalized)) mapping.paidAt = header
     if (!mapping.method && /결제방법|결제수단|방법|method/.test(normalized)) mapping.method = header
     if (!mapping.cardCompany && /카드사|cardcompany|card_company/.test(normalized)) mapping.cardCompany = header
-    if (!mapping.bankAccountLast4 && /계좌.*4|account.*4|bankaccountlast4|bank_account_last4/.test(normalized)) mapping.bankAccountLast4 = header
+    if (!mapping.depositorName && /입금자|depositor|sender|payer|계좌.*4|account.*4|bankaccountlast4|bank_account_last4/.test(normalized)) mapping.depositorName = header
     if (!mapping.category && /분류|항목|category/.test(normalized)) mapping.category = header
     if (!mapping.memo && /비고|메모|memo|note/.test(normalized)) mapping.memo = header
   }
@@ -104,7 +104,7 @@ function toImportRows(sheet: ParsedSheet, mapping: Record<ImportField, string>) 
     paidAt: mapping.paidAt ? record[mapping.paidAt] : '',
     method: mapping.method ? record[mapping.method] : '',
     cardCompany: mapping.cardCompany ? record[mapping.cardCompany] : '',
-    bankAccountLast4: mapping.bankAccountLast4 ? record[mapping.bankAccountLast4] : '',
+    depositorName: mapping.depositorName ? record[mapping.depositorName] : '',
     category: mapping.category ? record[mapping.category] : '',
     memo: mapping.memo ? record[mapping.memo] : '',
   }))

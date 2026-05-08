@@ -21,6 +21,7 @@ const importRowSchema = z.object({
   method: z.string().optional().nullable(),
   cardCompany: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().optional().nullable(),
   memo: z.string().optional().nullable(),
   category: z.string().optional().nullable(),
 })

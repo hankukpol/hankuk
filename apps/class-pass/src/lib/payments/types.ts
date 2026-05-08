@@ -78,6 +78,7 @@ export type EnrollmentPayment = {
   installment_months: number
   bank_name: string | null
   bank_account_last4: string | null
+  depositor_name: string | null
   cash_receipt_approval_no: string | null
   display_receipt_no: string | null
   card_company: string | null

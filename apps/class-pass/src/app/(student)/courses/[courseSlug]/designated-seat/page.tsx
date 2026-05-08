@@ -31,6 +31,7 @@ const STATE_REFRESH_REASONS = new Set([
   'AUTH_DEVICE_MISMATCH',
   'LOCATION_REQUIRED',
   'DEVICE_LOCKED',
+  'ROOM_CLOSED',
 ])
 
 type ScannerInstance = {
@@ -89,7 +90,10 @@ export default function DesignatedSeatPage() {
   const [presenceFailure, setPresenceFailure] = useState<ClientPresenceError | null>(null)
   const [lastScanDebug, setLastScanDebug] = useState('')
   const [reserveTarget, setReserveTarget] = useState<DesignatedSeat | null>(null)
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null)
+  const [roomLoading, setRoomLoading] = useState(false)
   const scannerRef = useRef<ScannerInstance | null>(null)
+  const roomStateRequestRef = useRef(0)
 
   useEffect(() => {
     setDeviceKey(ensureLocalDeviceKey())
@@ -127,8 +131,15 @@ export default function DesignatedSeatPage() {
 
   const state = data?.designatedSeat
   const courseTheme = data?.course.theme_color || '#0071e3'
+  const activeRoomId = selectedRoomId ?? state?.active_room_id ?? state?.rooms[0]?.id ?? null
+  const activeRoom = state?.rooms.find((room) => room.id === activeRoomId) ?? null
+  const currentSeatRoom = state?.reservation
+    ? state.rooms.find((room) => room.id === state.reservation?.room_id) ?? null
+    : activeRoom
+  const selectedRoomStateReady = !state || !activeRoomId || state.active_room_id === activeRoomId
 
   const applyDesignatedSeatState = useCallback((nextState: DesignatedSeatStudentState) => {
+    setSelectedRoomId(nextState.active_room_id ?? null)
     setData((current) => {
       if (!current) {
         return current
@@ -141,7 +152,21 @@ export default function DesignatedSeatPage() {
     })
   }, [])
 
-  const refreshDesignatedSeatState = useCallback(async () => {
+  useEffect(() => {
+    if (!state) {
+      return
+    }
+
+    setSelectedRoomId((current) => {
+      if (current && state.rooms.some((room) => room.id === current)) {
+        return current
+      }
+
+      return state.active_room_id ?? state.rooms[0]?.id ?? null
+    })
+  }, [state])
+
+  const refreshDesignatedSeatState = useCallback(async (roomId: number | null = activeRoomId, requestId?: number) => {
     if (!data) {
       return null
     }
@@ -150,13 +175,47 @@ export default function DesignatedSeatPage() {
       tenantType: tenant.type,
       courseId: data.course.id,
       enrollmentId: data.enrollment.id,
+      roomId,
       name: data.enrollment.name,
       phone: data.enrollment.phone,
     })
 
+    if (requestId && requestId !== roomStateRequestRef.current) {
+      return null
+    }
+
     applyDesignatedSeatState(nextState)
     return nextState
-  }, [applyDesignatedSeatState, data, tenant.type])
+  }, [activeRoomId, applyDesignatedSeatState, data, tenant.type])
+
+  const handleSelectRoom = useCallback(async (roomId: number) => {
+    if (roomId === activeRoomId) {
+      return
+    }
+
+    const targetRoom = state?.rooms.find((room) => room.id === roomId)
+    if (targetRoom && !targetRoom.is_open) {
+      setError(`${targetRoom.name} 좌석 신청은 아직 열리지 않았습니다.`)
+      return
+    }
+
+    setReserveTarget(null)
+    setError('')
+    setMessage('')
+    setRoomLoading(true)
+    const requestId = ++roomStateRequestRef.current
+    try {
+      await refreshDesignatedSeatState(roomId, requestId)
+    } catch (reason) {
+      if (requestId === roomStateRequestRef.current) {
+        setError(reason instanceof Error ? reason.message : '강의실 좌석 상태를 불러오지 못했습니다.')
+      }
+    } finally {
+      if (requestId === roomStateRequestRef.current) {
+        setRoomLoading(false)
+      }
+    }
+  }, [activeRoomId, refreshDesignatedSeatState, state?.rooms])
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current
@@ -209,6 +268,7 @@ export default function DesignatedSeatPage() {
       body: JSON.stringify({
         courseId: data.course.id,
         enrollmentId: data.enrollment.id,
+        roomId: activeRoomId,
         name: data.enrollment.name,
         phone: data.enrollment.phone,
         localDeviceKey: deviceKey,
@@ -226,8 +286,12 @@ export default function DesignatedSeatPage() {
         error?: string
         code?: string
         presence?: { code?: string; message?: string }
+        state?: DesignatedSeatStudentState | null
       } | null
       setError(failure?.error ?? '현장 인증에 실패했습니다.')
+      if (failure?.state) {
+        applyDesignatedSeatState(failure.state)
+      }
       if (failure?.code?.startsWith('PRESENCE_')) {
         setPresenceFailure({
           errorCode: (failure.presence?.code ?? 'position_unavailable') as ClientPresenceError['errorCode'],
@@ -249,7 +313,7 @@ export default function DesignatedSeatPage() {
 
     setPresenceFailure(null)
     setMessage('현장 인증이 완료되었습니다. 원하시는 좌석을 선택해 주세요.')
-  }, [applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
+  }, [activeRoomId, applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
 
   useEffect(() => {
     if (!scannerOpen) {
@@ -360,6 +424,7 @@ export default function DesignatedSeatPage() {
       body: JSON.stringify({
         courseId: data.course.id,
         enrollmentId: data.enrollment.id,
+        roomId: activeRoomId,
         seatId,
         name: data.enrollment.name,
         phone: data.enrollment.phone,
@@ -382,7 +447,7 @@ export default function DesignatedSeatPage() {
         if (failureResult.state) {
           applyDesignatedSeatState(failureResult.state)
         } else {
-          await refreshDesignatedSeatState().catch(() => null)
+          await refreshDesignatedSeatState(null).catch(() => null)
         }
       }
 
@@ -492,6 +557,9 @@ export default function DesignatedSeatPage() {
               <p className="mt-2 text-[26px] font-semibold leading-[1.07] tracking-[-0.02em] text-[var(--student-text)]">
                 {currentSeatLabel ?? '미정'}
               </p>
+              {currentSeatRoom ? (
+                <p className="mt-1 text-[12px] text-[var(--student-text-muted)]">{currentSeatRoom.name}</p>
+              ) : null}
             </div>
             <div className="text-right">
               <p className="student-eyebrow student-eyebrow-light">상태</p>
@@ -505,6 +573,31 @@ export default function DesignatedSeatPage() {
             </div>
           </div>
         </section>
+
+        {state.rooms.length > 1 ? (
+          <section className="student-card px-4 py-4">
+            <p className="student-eyebrow student-eyebrow-light">강의실</p>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {state.rooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => void handleSelectRoom(room.id)}
+                  disabled={working || roomLoading || room.id === activeRoomId || !room.is_open}
+                  className={`shrink-0 rounded-[999px] px-4 py-2 text-[13px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100 ${
+                    room.id === activeRoomId
+                      ? 'bg-[var(--student-text)] text-white disabled:opacity-100'
+                      : !room.is_open
+                        ? 'bg-[var(--student-surface-soft)] text-[var(--student-text-muted)] opacity-60'
+                      : 'bg-[var(--student-surface-soft)] text-[var(--student-text)]'
+                  }`}
+                >
+                  {room.name}{room.is_open ? '' : ' · 마감'}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {(error || message) ? (
           <section className="student-card px-4 py-3">
@@ -567,7 +660,16 @@ export default function DesignatedSeatPage() {
           </section>
         ) : null}
 
-        {state.layout && state.seats.length > 0 ? (
+        {!selectedRoomStateReady || roomLoading ? (
+          <section className="student-card px-4 py-5 text-center">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--student-blue)] border-t-transparent" />
+            <p className="mt-3 text-[14px] text-[var(--student-text-muted)]">강의실 좌석을 불러오는 중입니다.</p>
+          </section>
+        ) : state.rooms.length === 0 ? (
+          <section className="student-card px-4 py-6 text-center">
+            <p className="student-body">모든 강의실의 좌석 신청이 마감되었습니다.</p>
+          </section>
+        ) : state.layout && state.seats.length > 0 ? (
           <section className="student-card px-4 py-4">
             <div className="overflow-x-auto rounded-[12px] bg-[var(--student-surface-soft)] p-3">
               <SeatGrid
@@ -578,7 +680,7 @@ export default function DesignatedSeatPage() {
                 occupiedSeatIds={state.occupied_seat_ids}
                 currentSeatId={currentSeatId}
                 onSeatClick={(seat) => {
-                  if (!state.writable || working) {
+                  if (!selectedRoomStateReady || !state.writable || working) {
                     return
                   }
 

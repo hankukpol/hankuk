@@ -113,7 +113,7 @@ export async function DELETE(
 
   const existing = await getOperatorAccountWithMembershipsById(accountId)
   if (!existing) {
-    return NextResponse.json({ error: '?댁쁺??怨꾩젙??李얠쓣 ???놁뒿?덈떎.' }, { status: 404 })
+    return NextResponse.json({ error: '운영자 계정을 찾을 수 없습니다.' }, { status: 404 })
   }
 
   const deletesSuperAdmin = existing.memberships.some(

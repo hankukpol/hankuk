@@ -6,6 +6,7 @@ export async function fetchDesignatedSeatState(params: {
   tenantType: TenantType
   courseId: number
   enrollmentId: number
+  roomId?: number | null
   name: string
   phone: string
 }) {
@@ -16,6 +17,7 @@ export async function fetchDesignatedSeatState(params: {
     body: JSON.stringify({
       courseId: params.courseId,
       enrollmentId: params.enrollmentId,
+      roomId: params.roomId ?? null,
       name: params.name,
       phone: params.phone,
     }),

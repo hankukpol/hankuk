@@ -3,6 +3,7 @@ import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import type {
   Course,
+  CourseRoom,
   DesignatedSeatAttendanceDashboard,
   DesignatedSeatAttendanceEventType,
   DesignatedSeatAttendanceRecord,
@@ -77,6 +78,7 @@ function mapLayoutRow(row: Record<string, unknown> | null): DesignatedSeatLayout
 
   return {
     course_id: Number(row.course_id),
+    room_id: Number(row.room_id),
     columns: Number(row.columns),
     rows: Number(row.rows),
     aisle_columns: normalizeAisleColumns(row.aisle_columns),
@@ -89,6 +91,7 @@ function mapSeatRow(row: Record<string, unknown>): DesignatedSeat {
   return {
     id: Number(row.id),
     course_id: Number(row.course_id),
+    room_id: Number(row.room_id),
     label: String(row.label ?? ''),
     position_x: Number(row.position_x),
     position_y: Number(row.position_y),
@@ -105,6 +108,7 @@ function mapReservationRow(row: Record<string, unknown>): DesignatedSeatReservat
   return {
     id: Number(row.id),
     course_id: Number(row.course_id),
+    room_id: Number(row.room_id),
     seat_id: Number(row.seat_id),
     enrollment_id: Number(row.enrollment_id),
     device_key_hash: row.device_key_hash ? String(row.device_key_hash) : null,
@@ -113,6 +117,7 @@ function mapReservationRow(row: Record<string, unknown>): DesignatedSeatReservat
     seat: seatRow
       ? {
         id: Number(seatRow.id),
+        room_id: Number(seatRow.room_id),
         label: String(seatRow.label ?? ''),
         position_x: Number(seatRow.position_x),
         position_y: Number(seatRow.position_y),
@@ -130,6 +135,19 @@ function mapReservationRow(row: Record<string, unknown>): DesignatedSeatReservat
   }
 }
 
+function mapRoomRow(row: Record<string, unknown>): CourseRoom {
+  return {
+    id: Number(row.id),
+    course_id: Number(row.course_id),
+    name: String(row.name ?? ''),
+    sort_order: Number(row.sort_order ?? 0),
+    is_active: Boolean(row.is_active),
+    is_open: row.is_open == null ? false : Boolean(row.is_open),
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? ''),
+  }
+}
+
 function mapHistoricalReservationRow(row: Record<string, unknown>): DesignatedSeatReservation | null {
   if (row.enrollment_id == null || row.seat_id == null) {
     return null
@@ -138,6 +156,7 @@ function mapHistoricalReservationRow(row: Record<string, unknown>): DesignatedSe
   const mapped = mapReservationRow({
     id: row.id,
     course_id: row.course_id,
+    room_id: row.room_id ?? (row.course_seats as Record<string, unknown> | null)?.room_id,
     seat_id: row.seat_id,
     enrollment_id: row.enrollment_id,
     device_key_hash: null,
@@ -161,12 +180,12 @@ export function getDesignatedSeatRestrictionMessage(state: {
     return '지정좌석 기능이 아직 열리지 않았습니다.'
   }
 
-  if (!state.hasLayout) {
-    return '관리자가 아직 좌석 배치를 준비하지 않았습니다.'
-  }
-
   if (!state.open) {
     return '현재 좌석 신청이 닫혀 있습니다.'
+  }
+
+  if (!state.hasLayout) {
+    return '관리자가 아직 좌석 배치를 준비하지 않았습니다.'
   }
 
   if (!state.verified && state.hasReservation) {
@@ -181,7 +200,7 @@ export function getDesignatedSeatRestrictionMessage(state: {
 }
 
 const getCachedDesignatedSeatLayout = unstable_cache(
-  async (courseId: number) => {
+  async (courseId: number, roomId: number) => {
     const db = createServerClient()
     const row = unwrapSupabaseResult(
       'designatedSeat.layout',
@@ -189,6 +208,7 @@ const getCachedDesignatedSeatLayout = unstable_cache(
         .from('course_seat_layouts')
         .select('*')
         .eq('course_id', courseId)
+        .eq('room_id', roomId)
         .maybeSingle(),
     ) as Record<string, unknown> | null
 
@@ -201,8 +221,76 @@ const getCachedDesignatedSeatLayout = unstable_cache(
   },
 )
 
+export async function ensureCourseRooms(courseId: number) {
+  const db = createServerClient()
+  const existingRows = unwrapSupabaseResult(
+    'designatedSeat.rooms',
+    await db
+      .from('course_rooms')
+      .select('*')
+      .eq('course_id', courseId)
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('id'),
+  ) as Array<Record<string, unknown>> | null
+
+  if (existingRows && existingRows.length > 0) {
+    return existingRows.map(mapRoomRow)
+  }
+
+  const inserted = unwrapSupabaseResult(
+    'designatedSeat.createDefaultRoom',
+    await db
+      .from('course_rooms')
+      .upsert({
+        course_id: courseId,
+        name: '기본 강의실',
+        sort_order: 0,
+        is_active: true,
+        is_open: false,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'course_id,name',
+      })
+      .select('*')
+      .single(),
+  ) as Record<string, unknown>
+
+  return [mapRoomRow(inserted)]
+}
+
+export function resolveActiveRoomId(rooms: CourseRoom[], requestedRoomId?: number | null) {
+  if (requestedRoomId) {
+    const room = rooms.find((entry) => entry.id === requestedRoomId)
+    if (room) {
+      return room.id
+    }
+  }
+
+  return rooms[0]?.id ?? null
+}
+
+function resolveStudentActiveRoomId(
+  rooms: CourseRoom[],
+  requestedRoomId?: number | null,
+  currentReservationRoomId?: number | null,
+) {
+  if (requestedRoomId) {
+    return resolveActiveRoomId(rooms, requestedRoomId)
+  }
+
+  if (currentReservationRoomId) {
+    const room = rooms.find((entry) => entry.id === currentReservationRoomId)
+    if (room) {
+      return room.id
+    }
+  }
+
+  return rooms.find((room) => room.is_open)?.id ?? null
+}
+
 const getCachedDesignatedSeats = unstable_cache(
-  async (courseId: number) => {
+  async (courseId: number, roomId: number) => {
     const db = createServerClient()
     const rows = unwrapSupabaseResult(
       'designatedSeat.seats',
@@ -210,6 +298,7 @@ const getCachedDesignatedSeats = unstable_cache(
         .from('course_seats')
         .select('*')
         .eq('course_id', courseId)
+        .eq('room_id', roomId)
         .order('position_y')
         .order('position_x'),
     ) as Array<Record<string, unknown>> | null
@@ -224,15 +313,16 @@ const getCachedDesignatedSeats = unstable_cache(
 )
 
 const getCachedDesignatedSeatReservations = unstable_cache(
-  async (courseId: number) => {
+  async (courseId: number, roomId: number) => {
     const db = createServerClient()
     const todayStart = getTodayStartKST()
     const rows = unwrapSupabaseResult(
       'designatedSeat.reservations',
       await db
         .from('course_seat_reservations')
-        .select('*,course_seats(id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
+        .select('*,course_seats(id,room_id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
         .eq('course_id', courseId)
+        .eq('room_id', roomId)
         .gte('updated_at', todayStart)
         .order('updated_at', { ascending: false }),
     ) as Array<Record<string, unknown>> | null
@@ -247,11 +337,11 @@ const getCachedDesignatedSeatReservations = unstable_cache(
 )
 
 const getCachedDesignatedSeatAdminData = unstable_cache(
-  async (courseId: number) => {
+  async (courseId: number, roomId: number) => {
     const [layout, seats, reservations] = await Promise.all([
-      getCachedDesignatedSeatLayout(courseId),
-      getCachedDesignatedSeats(courseId),
-      getCachedDesignatedSeatReservations(courseId),
+      getCachedDesignatedSeatLayout(courseId, roomId),
+      getCachedDesignatedSeats(courseId, roomId),
+      getCachedDesignatedSeatReservations(courseId, roomId),
     ])
 
     const db = createServerClient()
@@ -279,21 +369,21 @@ const getCachedDesignatedSeatAdminData = unstable_cache(
   },
 )
 
-export async function getDesignatedSeatLayout(courseId: number) {
-  return getCachedDesignatedSeatLayout(courseId)
+export async function getDesignatedSeatLayout(courseId: number, roomId: number) {
+  return getCachedDesignatedSeatLayout(courseId, roomId)
 }
 
-export async function listDesignatedSeats(courseId: number) {
-  return getCachedDesignatedSeats(courseId)
+export async function listDesignatedSeats(courseId: number, roomId: number) {
+  return getCachedDesignatedSeats(courseId, roomId)
 }
 
-export async function listDesignatedSeatReservations(courseId: number) {
-  return getCachedDesignatedSeatReservations(courseId)
+export async function listDesignatedSeatReservations(courseId: number, roomId: number) {
+  return getCachedDesignatedSeatReservations(courseId, roomId)
 }
 
-export async function listDesignatedSeatReservationsForDate(courseId: number, date: string) {
+export async function listDesignatedSeatReservationsForDate(courseId: number, roomId: number, date: string) {
   if (date === getTodayKSTDateKey()) {
-    return getCachedDesignatedSeatReservations(courseId)
+    return getCachedDesignatedSeatReservations(courseId, roomId)
   }
 
   const { startIso, endIso } = getKstDateBounds(date)
@@ -302,7 +392,7 @@ export async function listDesignatedSeatReservationsForDate(courseId: number, da
     'designatedSeat.reservationsForDate',
     await db
       .from('course_seat_events')
-      .select('id,course_id,enrollment_id,seat_id,event_type,details,created_at,course_seats(id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
+      .select('id,course_id,enrollment_id,seat_id,event_type,details,created_at,course_seats(id,room_id,label,position_x,position_y,is_active),enrollments(id,name,exam_number,status)')
       .eq('course_id', courseId)
       .in('event_type', [
         ...DESIGNATED_SEAT_ATTENDANCE_EVENT_TYPES,
@@ -318,6 +408,11 @@ export async function listDesignatedSeatReservationsForDate(courseId: number, da
   const seatOwner = new Map<number, number>()
 
   for (const row of rows ?? []) {
+    const seatRow = row.course_seats as Record<string, unknown> | null
+    if (seatRow && Number(seatRow.room_id) !== roomId) {
+      continue
+    }
+
     const enrollmentId = row.enrollment_id == null ? null : Number(row.enrollment_id)
     const seatId = row.seat_id == null ? null : Number(row.seat_id)
     if (!Number.isFinite(enrollmentId) || enrollmentId == null) {
@@ -355,14 +450,15 @@ export async function listDesignatedSeatReservationsForDate(courseId: number, da
   return [...byEnrollment.values()].sort((left, right) => left.updated_at.localeCompare(right.updated_at))
 }
 
-export async function getDesignatedSeatAdminData(courseId: number) {
-  return getCachedDesignatedSeatAdminData(courseId)
+export async function getDesignatedSeatAdminData(courseId: number, roomId: number) {
+  return getCachedDesignatedSeatAdminData(courseId, roomId)
 }
 
 
 export async function getDesignatedSeatStudentState(params: {
   course: Course
   enrollmentId: number
+  roomId?: number | null
   deviceKeyHash?: string | null
 }): Promise<DesignatedSeatStudentState> {
   if (!params.course.feature_designated_seat) {
@@ -380,6 +476,8 @@ export async function getDesignatedSeatStudentState(params: {
         hasLayout: false,
       }),
       auth_expires_at: null,
+      rooms: [],
+      active_room_id: null,
       layout: null,
       seats: [],
       occupied_seat_ids: [],
@@ -389,25 +487,67 @@ export async function getDesignatedSeatStudentState(params: {
 
   const db = createServerClient()
   const todayStart = getTodayStartKST()
-  const [layoutRow, seatsRows, reservationRow, authRow, occupiedRows] = await Promise.all([
+  const allRooms = await ensureCourseRooms(params.course.id)
+  const rooms = params.course.designated_seat_open
+    ? allRooms.filter((room) => room.is_open)
+    : []
+  const existingReservationData = unwrapSupabaseResult(
+    'designatedSeat.studentCurrentReservation',
+    await db
+      .from('course_seat_reservations')
+      .select('*,course_seats(id,room_id,label,position_x,position_y,is_active)')
+      .eq('course_id', params.course.id)
+      .eq('enrollment_id', params.enrollmentId)
+      .gte('updated_at', todayStart)
+      .maybeSingle(),
+  ) as Record<string, unknown> | null
+  const currentReservation = existingReservationData ? mapReservationRow(existingReservationData) : null
+  const visibleReservation = currentReservation && allRooms.some((room) => room.id === currentReservation.room_id)
+    ? currentReservation
+    : null
+
+  const activeRoomId = resolveStudentActiveRoomId(rooms, params.roomId, visibleReservation?.room_id)
+  const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? null
+  const roomOpen = Boolean(params.course.designated_seat_open && activeRoom?.is_open)
+
+  if (!activeRoomId) {
+    return {
+      enabled: params.course.feature_designated_seat,
+      open: false,
+      verified: false,
+      writable: false,
+      requires_reauth: false,
+      restriction_reason: getDesignatedSeatRestrictionMessage({
+        enabled: params.course.feature_designated_seat,
+        open: false,
+        verified: false,
+        hasReservation: Boolean(visibleReservation),
+        hasLayout: false,
+      }),
+      auth_expires_at: null,
+      rooms,
+      active_room_id: null,
+      layout: null,
+      seats: [],
+      occupied_seat_ids: [],
+      reservation: visibleReservation,
+    }
+  }
+
+  const [layoutRow, seatsRows, authRow, occupiedRows] = await Promise.all([
     db
       .from('course_seat_layouts')
       .select('*')
       .eq('course_id', params.course.id)
+      .eq('room_id', activeRoomId)
       .maybeSingle(),
     db
       .from('course_seats')
       .select('*')
       .eq('course_id', params.course.id)
+      .eq('room_id', activeRoomId)
       .order('position_y')
       .order('position_x'),
-    db
-      .from('course_seat_reservations')
-      .select('*,course_seats(id,label,position_x,position_y,is_active)')
-      .eq('course_id', params.course.id)
-      .eq('enrollment_id', params.enrollmentId)
-      .gte('updated_at', todayStart)
-      .maybeSingle(),
     params.deviceKeyHash
       ? db
         .from('course_seat_auth_sessions')
@@ -420,6 +560,7 @@ export async function getDesignatedSeatStudentState(params: {
       .from('course_seat_reservations')
       .select('seat_id')
       .eq('course_id', params.course.id)
+      .eq('room_id', activeRoomId)
       .gte('updated_at', todayStart),
   ])
 
@@ -429,11 +570,6 @@ export async function getDesignatedSeatStudentState(params: {
   const seats = (
     unwrapSupabaseResult('designatedSeat.studentSeats', seatsRows) as Array<Record<string, unknown>> | null
   )?.map(mapSeatRow) ?? []
-  const reservationData = unwrapSupabaseResult(
-    'designatedSeat.studentReservation',
-    reservationRow,
-  ) as Record<string, unknown> | null
-  const reservation = reservationData ? mapReservationRow(reservationData) : null
   const authData = unwrapSupabaseResult(
     'designatedSeat.studentAuth',
     authRow,
@@ -449,6 +585,7 @@ export async function getDesignatedSeatStudentState(params: {
     && params.deviceKeyHash
     && auth.device_key_hash === params.deviceKeyHash
     && auth.is_active
+    && Number(auth.room_id) === activeRoomId
     && !auth.used_for_reservation_at
     && new Date(auth.expires_at).getTime() > Date.now()
     && (!requiresEnforcedPresence || auth.presence_location_verified)
@@ -456,24 +593,26 @@ export async function getDesignatedSeatStudentState(params: {
 
   const restrictionReason = getDesignatedSeatRestrictionMessage({
     enabled: params.course.feature_designated_seat,
-    open: params.course.designated_seat_open,
+    open: roomOpen,
     verified,
-    hasReservation: Boolean(reservation),
+    hasReservation: Boolean(visibleReservation),
     hasLayout: Boolean(layout) && seats.length > 0,
   })
 
   return {
     enabled: params.course.feature_designated_seat,
-    open: params.course.designated_seat_open,
+    open: roomOpen,
     verified,
-    writable: Boolean(params.course.designated_seat_open && verified && layout && seats.length > 0),
-    requires_reauth: Boolean(params.course.designated_seat_open && reservation && !verified),
+    writable: Boolean(roomOpen && verified && layout && seats.length > 0),
+    requires_reauth: Boolean(roomOpen && visibleReservation && !verified),
     restriction_reason: restrictionReason,
     auth_expires_at: verified ? auth?.expires_at ?? null : null,
+    rooms,
+    active_room_id: activeRoomId,
     layout,
     seats,
     occupied_seat_ids: occupiedSeatIds,
-    reservation,
+    reservation: visibleReservation,
   }
 }
 
@@ -526,7 +665,7 @@ export async function verifyStudentSeatAccess(params: {
   return { course, enrollment }
 }
 
-export async function getActiveDisplaySessionForDisplayTarget(courseId: number, slotId?: number | null) {
+export async function getActiveDisplaySessionForDisplayTarget(courseId: number, slotId?: number | null, roomId?: number | null) {
   const db = createServerClient()
   let query = db
     .from('course_seat_display_sessions')
@@ -538,6 +677,9 @@ export async function getActiveDisplaySessionForDisplayTarget(courseId: number, 
   query = slotId
     ? query.eq('display_slot_id', slotId)
     : query.is('display_slot_id', null)
+  if (roomId) {
+    query = query.eq('room_id', roomId)
+  }
 
   const row = unwrapSupabaseResult(
     'designatedSeat.activeDisplaySessionByDisplayTarget',
@@ -688,16 +830,20 @@ export type DisplaySessionAvailability =
 
 export async function ensureDisplaySessionForCurrentSchedule(
   courseId: number,
-  options: { slotId?: number | null } = {},
+  options: { slotId?: number | null; roomId?: number | null } = {},
 ): Promise<DisplaySessionAvailability> {
   const db = createServerClient()
   const now = new Date()
   const nowIso = now.toISOString()
   const slotId = options.slotId ?? null
+  const roomId = options.roomId ?? null
+  if (!roomId) {
+    throw new Error('Display room is required.')
+  }
 
   await revokeExpiredDisplaySessions(db, courseId, nowIso)
 
-  const activeSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId)
+  const activeSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId, roomId)
   if (activeSession) {
     return {
       status: 'active',
@@ -727,6 +873,7 @@ export async function ensureDisplaySessionForCurrentSchedule(
     .from('course_seat_display_sessions')
     .insert({
       course_id: courseId,
+      room_id: roomId,
       display_token_hash: hashToken(rawToken),
       created_by: 'schedule',
       expires_at: expiresAt,
@@ -740,7 +887,7 @@ export async function ensureDisplaySessionForCurrentSchedule(
 
   if (insertResult.error) {
     if (insertResult.error.code === '23505') {
-      const concurrentSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId)
+      const concurrentSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId, roomId)
       if (concurrentSession) {
         return {
           status: 'active',
@@ -764,6 +911,7 @@ export async function ensureDisplaySessionForCurrentSchedule(
       source: 'schedule',
       schedule_id: slotId ? null : schedule.id,
       display_slot_id: slotId,
+      room_id: roomId,
     },
   })
 

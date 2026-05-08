@@ -15,6 +15,7 @@ import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import type {
   Course,
+  CourseRoom,
   DesignatedSeat,
   DesignatedSeatLayout,
   DesignatedSeatReservation,
@@ -22,7 +23,7 @@ import type {
 } from '@/types/database'
 import { DesignatedSeatAttendancePanel } from './designated-seat-attendance-panel'
 
-type TabMode = 'editor' | 'status' | 'attendance'
+type TabMode = 'editor' | 'status' | 'attendance' | 'rooms'
 type ManualSeatConfirmation =
   | {
     type: 'clear'
@@ -85,6 +86,8 @@ type RegistrationCodeState = {
 
 export type AdminPayload = {
   course: Course
+  rooms: CourseRoom[]
+  activeRoomId: number
   layout: DesignatedSeatLayout | null
   seats: DesignatedSeat[]
   reservations: DesignatedSeatReservation[]
@@ -95,6 +98,7 @@ export type AdminPayload = {
     last_seen_at: string | null
     source?: 'manual' | 'schedule'
     display_slot_id?: number | null
+    room_id?: number | null
   } | null
 }
 
@@ -104,6 +108,8 @@ type SeatDraft = DesignatedSeat & {
 
 type InitialViewState = {
   course: Course
+  rooms: CourseRoom[]
+  activeRoomId: number
   columns: number
   rows: number
   aisleInput: string
@@ -191,6 +197,7 @@ function buildSeatDrafts(columns: number, rows: number, seats: DesignatedSeat[])
         id: existingDbId ?? -(y * 100 + x),
         persistedId,
         course_id: existing?.course_id ?? 0,
+        room_id: existing?.room_id ?? 0,
         label: existing?.label ?? defaultSeatLabel(x, y),
         position_x: x,
         position_y: y,
@@ -217,6 +224,8 @@ function getInitialViewState(payload: AdminPayload | null | undefined): InitialV
 
   return {
     course: payload.course,
+    rooms: payload.rooms,
+    activeRoomId: payload.activeRoomId,
     columns,
     rows,
     aisleInput,
@@ -229,8 +238,11 @@ function getInitialViewState(payload: AdminPayload | null | undefined): InitialV
   }
 }
 
-async function fetchAdminData(courseId: number, date?: string) {
+async function fetchAdminData(courseId: number, date?: string, roomId?: number | null) {
   const query = new URLSearchParams({ courseId: String(courseId) })
+  if (roomId) {
+    query.set('roomId', String(roomId))
+  }
   if (date) {
     query.set('date', date)
   }
@@ -247,6 +259,7 @@ const TAB_ITEMS: Array<{ key: TabMode; label: string }> = [
   { key: 'editor', label: '좌석 맵 편집' },
   { key: 'status', label: '배정 현황' },
   { key: 'attendance', label: '출석 현황' },
+  { key: 'rooms', label: '강의실 관리' },
 ]
 
 export default function CourseDesignatedSeatsPage({
@@ -273,6 +286,14 @@ export default function CourseDesignatedSeatsPage({
 
   const [tab, setTab] = useState<TabMode>('editor')
   const [course, setCourse] = useState<Course | null>(initialState?.course ?? null)
+  const [rooms, setRooms] = useState<CourseRoom[]>(initialState?.rooms ?? [])
+  const [activeRoomId, setActiveRoomId] = useState<number | null>(initialState?.activeRoomId ?? null)
+  const [roomNameInputs, setRoomNameInputs] = useState<Record<number, string>>(() => (
+    Object.fromEntries((initialState?.rooms ?? []).map((room) => [room.id, room.name]))
+  ))
+  const [newRoomName, setNewRoomName] = useState('')
+  const [roomWorking, setRoomWorking] = useState(false)
+  const [roomDeleteTarget, setRoomDeleteTarget] = useState<CourseRoom | null>(null)
   const [columns, setColumns] = useState(initialState?.columns ?? DEFAULT_COLUMNS)
   const [rows, setRows] = useState(initialState?.rows ?? DEFAULT_ROWS)
   const [aisleInput, setAisleInput] = useState(initialState?.aisleInput ?? '')
@@ -312,22 +333,34 @@ export default function CourseDesignatedSeatsPage({
   const [error, setError] = useState(initialError)
   const [isDirty, setIsDirty] = useState(false)
   const [pendingTab, setPendingTab] = useState<TabMode | null>(null)
+  const [confirmingPendingTab, setConfirmingPendingTab] = useState(false)
   const [manualSeatConfirmation, setManualSeatConfirmation] = useState<ManualSeatConfirmation | null>(null)
   const [displayStopConfirmOpen, setDisplayStopConfirmOpen] = useState(false)
   const savedSnapshotRef = useRef(initialSnapshot)
+  const roomRequestRef = useRef(0)
+  const displayConfigRequestRef = useRef(0)
+  const activeRoomIdRef = useRef<number | null>(activeRoomId)
+  activeRoomIdRef.current = activeRoomId
   const courseDisplayUrl = useMemo(() => {
     if (typeof window === 'undefined' || !Number.isInteger(courseId) || courseId <= 0) {
       return ''
     }
 
-    return `${window.location.origin}${withTenantPrefix(`/designated-seat-display/${courseId}`, tenant.type)}`
-  }, [courseId, tenant.type])
+    const roomQuery = activeRoomId ? `?roomId=${encodeURIComponent(String(activeRoomId))}` : ''
+    return `${window.location.origin}${withTenantPrefix(`/designated-seat-display/${courseId}${roomQuery}`, tenant.type)}`
+  }, [activeRoomId, courseId, tenant.type])
 
   useEffect(() => {
     if (courseDisplayUrl && !displayUrl) {
       setDisplayUrl(courseDisplayUrl)
     }
   }, [courseDisplayUrl, displayUrl])
+
+  useEffect(() => {
+    setDisplayUrl(courseDisplayUrl)
+    setActiveDisplaySession(null)
+    setRegistrationCode(null)
+  }, [activeRoomId, courseDisplayUrl])
 
   const selectedDisplaySlot = useMemo(
     () => displaySlots.find((slot) => slot.slot_key === selectedDisplaySlotKey) ?? null,
@@ -336,9 +369,17 @@ export default function CourseDesignatedSeatsPage({
 
   const activeDisplayTargetBody = useMemo(() => (
     selectedDisplaySlotKey
-      ? { slotKey: selectedDisplaySlotKey }
-      : { courseId }
-  ), [courseId, selectedDisplaySlotKey])
+      ? { slotKey: selectedDisplaySlotKey, roomId: activeRoomId ?? undefined }
+      : { courseId, roomId: activeRoomId ?? undefined }
+  ), [activeRoomId, courseId, selectedDisplaySlotKey])
+  const activeRoom = useMemo(
+    () => rooms.find((room) => room.id === activeRoomId) ?? rooms[0] ?? null,
+    [activeRoomId, rooms],
+  )
+  const sortedRooms = useMemo(
+    () => [...rooms].sort((left, right) => left.sort_order - right.sort_order || left.id - right.id),
+    [rooms],
+  )
 
   function markSnapshot(drafts: SeatDraft[], cols: number, rws: number, aisle: string, feat: boolean, open: boolean) {
     savedSnapshotRef.current = JSON.stringify({ drafts, cols, rws, aisle, feat, open })
@@ -369,6 +410,9 @@ export default function CourseDesignatedSeatsPage({
     const drafts = buildSeatDrafts(cols, rws, payload.seats)
 
     setCourse(payload.course)
+    setRooms(payload.rooms)
+    setActiveRoomId(payload.activeRoomId)
+    setRoomNameInputs(Object.fromEntries(payload.rooms.map((room) => [room.id, room.name])))
     setColumns(cols)
     setRows(rws)
     setAisleInput(aisle)
@@ -385,9 +429,233 @@ export default function CourseDesignatedSeatsPage({
     setIsDirty(false)
   }, [])
 
-  async function refresh(date = reservationDate) {
-    const payload = await fetchAdminData(courseId, date)
+  async function refresh(date = reservationDate, roomId = activeRoomId) {
+    const payload = await fetchAdminData(courseId, date, roomId)
+    if (payload.activeRoomId !== activeRoomIdRef.current) {
+      return
+    }
     applyPayload(payload)
+  }
+
+  async function loadRoom(roomId: number, date = reservationDate) {
+    const requestId = ++roomRequestRef.current
+    setStatusLoading(true)
+    setError('')
+    setMessage('')
+    try {
+      const payload = await fetchAdminData(courseId, date, roomId)
+      if (requestId !== roomRequestRef.current) {
+        return
+      }
+      applyPayload(payload)
+    } catch (reason) {
+      if (requestId === roomRequestRef.current) {
+        setError(reason instanceof Error ? reason.message : '강의실 정보를 불러오지 못했습니다.')
+      }
+    } finally {
+      if (requestId === roomRequestRef.current) {
+        setStatusLoading(false)
+      }
+    }
+  }
+
+  async function handleSelectRoom(roomId: number) {
+    if (roomId === activeRoomId) {
+      return
+    }
+    if (isDirty) {
+      setError('좌석 맵 변경 사항을 저장하거나 탭을 이동해 되돌린 뒤 강의실을 변경해 주세요.')
+      return
+    }
+
+    await loadRoom(roomId)
+  }
+
+  async function handleEditRoom(roomId: number) {
+    if (roomId !== activeRoomId) {
+      if (isDirty) {
+        setError('좌석 맵 변경 사항을 저장하거나 탭을 이동해 되돌린 뒤 강의실을 변경해 주세요.')
+        return
+      }
+      await loadRoom(roomId)
+    }
+    applyTabChange('editor')
+  }
+
+  async function handleCreateRoom(event: FormEvent) {
+    event.preventDefault()
+    const name = newRoomName.trim()
+    if (!name) {
+      setError('강의실 이름을 입력해 주세요.')
+      return
+    }
+
+    setRoomWorking(true)
+    setError('')
+    setMessage('')
+    const response = await fetch(`/api/courses/${courseId}/rooms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const result = await response.json().catch(() => null) as { room?: CourseRoom; rooms?: CourseRoom[]; error?: string } | null
+    setRoomWorking(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '강의실을 생성하지 못했습니다.')
+      return
+    }
+
+    setNewRoomName('')
+    setMessage('강의실을 추가했습니다.')
+    setRooms(result?.rooms ?? rooms)
+    setRoomNameInputs(Object.fromEntries((result?.rooms ?? rooms).map((room) => [room.id, room.name])))
+    const nextRoomId = result?.room?.id ?? activeRoomId ?? rooms[0]?.id
+    if (nextRoomId) {
+      await loadRoom(nextRoomId)
+    }
+  }
+
+  async function handleSaveRoom(room: CourseRoom) {
+    const name = (roomNameInputs[room.id] ?? room.name).trim()
+    if (!name) {
+      setError('강의실 이름을 입력해 주세요.')
+      return
+    }
+
+    setRoomWorking(true)
+    setError('')
+    setMessage('')
+    const response = await fetch(`/api/courses/${courseId}/rooms`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId: room.id, name }),
+    })
+    const result = await response.json().catch(() => null) as { rooms?: CourseRoom[]; error?: string } | null
+    setRoomWorking(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '강의실을 수정하지 못했습니다.')
+      return
+    }
+
+    const nextRooms = result?.rooms ?? rooms.map((entry) => (entry.id === room.id ? { ...entry, name } : entry))
+    setRooms(nextRooms)
+    setRoomNameInputs(Object.fromEntries(nextRooms.map((entry) => [entry.id, entry.name])))
+    setMessage('강의실 이름을 저장했습니다.')
+    if (room.id === activeRoomId) {
+      await refresh(reservationDate, room.id).catch(() => null)
+    }
+  }
+
+  async function handleToggleRoomOpen(room: CourseRoom, isOpen: boolean) {
+    setRoomWorking(true)
+    setError('')
+    setMessage('')
+    const response = await fetch(`/api/courses/${courseId}/rooms`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId: room.id, isOpen }),
+    })
+    const result = await response.json().catch(() => null) as { rooms?: CourseRoom[]; error?: string } | null
+    setRoomWorking(false)
+
+    if (!response.ok) {
+      setError(result?.error ?? '강의실 신청 상태를 변경하지 못했습니다.')
+      return
+    }
+
+    const nextRooms = result?.rooms ?? rooms.map((entry) => (
+      entry.id === room.id ? { ...entry, is_open: isOpen } : entry
+    ))
+    setRooms(nextRooms)
+    setMessage(isOpen ? '강의실 좌석 신청을 열었습니다.' : '강의실 좌석 신청을 마감했습니다.')
+    if (room.id === activeRoomId) {
+      await refresh(reservationDate, room.id).catch(() => null)
+      await loadDisplayConfig(selectedDisplaySlotKey).catch(() => null)
+    }
+  }
+
+  async function handleMoveRoom(room: CourseRoom, direction: -1 | 1) {
+    const sortedRooms = [...rooms].sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
+    const currentIndex = sortedRooms.findIndex((entry) => entry.id === room.id)
+    const target = sortedRooms[currentIndex + direction]
+    if (!target) {
+      return
+    }
+
+    setRoomWorking(true)
+    setError('')
+    setMessage('')
+    const currentResponse = await fetch(`/api/courses/${courseId}/rooms`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId: room.id, sortOrder: target.sort_order }),
+    })
+    const currentResult = await currentResponse.json().catch(() => null) as { rooms?: CourseRoom[]; error?: string } | null
+    if (!currentResponse.ok) {
+      setRoomWorking(false)
+      setError(currentResult?.error ?? '강의실 순서를 변경하지 못했습니다.')
+      return
+    }
+
+    const targetResponse = await fetch(`/api/courses/${courseId}/rooms`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId: target.id, sortOrder: room.sort_order }),
+    })
+    const targetResult = await targetResponse.json().catch(() => null) as { rooms?: CourseRoom[]; error?: string } | null
+    if (!targetResponse.ok) {
+      await fetch(`/api/courses/${courseId}/rooms`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId: room.id, sortOrder: room.sort_order }),
+      }).catch(() => null)
+      setRoomWorking(false)
+      setError(targetResult?.error ?? '강의실 순서를 변경하지 못했습니다.')
+      return
+    }
+    setRoomWorking(false)
+
+    const nextRooms = targetResult?.rooms ?? currentResult?.rooms ?? sortedRooms
+    setRooms(nextRooms)
+    setRoomNameInputs(Object.fromEntries(nextRooms.map((entry) => [entry.id, entry.name])))
+    setMessage('강의실 순서를 변경했습니다.')
+  }
+
+  async function handleDeleteRoomConfirmed() {
+    const room = roomDeleteTarget
+    if (!room) {
+      return
+    }
+
+    setRoomWorking(true)
+    setError('')
+    setMessage('')
+    const response = await fetch(`/api/courses/${courseId}/rooms`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId: room.id }),
+    })
+    const result = await response.json().catch(() => null) as { rooms?: CourseRoom[]; error?: string } | null
+    setRoomWorking(false)
+    setRoomDeleteTarget(null)
+
+    if (!response.ok) {
+      setError(result?.error ?? '강의실을 삭제하지 못했습니다.')
+      return
+    }
+
+    const nextRooms = result?.rooms ?? rooms.filter((entry) => entry.id !== room.id)
+    setRooms(nextRooms)
+    setRoomNameInputs(Object.fromEntries(nextRooms.map((entry) => [entry.id, entry.name])))
+    setMessage('강의실을 삭제했습니다.')
+    if (room.id === activeRoomId) {
+      const nextRoomId = nextRooms[0]?.id
+      if (nextRoomId) {
+        await loadRoom(nextRoomId)
+      }
+    }
   }
 
   const loadDisplayConfig = useCallback(async (preferredSlotKey?: string) => {
@@ -395,9 +663,16 @@ export default function CourseDesignatedSeatsPage({
       return
     }
 
+    const requestId = ++displayConfigRequestRef.current
+    const requestRoomId = activeRoomId
+    const isStale = () => requestId !== displayConfigRequestRef.current || activeRoomIdRef.current !== requestRoomId
+
     setDisplayConfigLoading(true)
     try {
-      const slotsResponse = await fetch(`/api/designated-seats/admin/display-slots?courseId=${courseId}`, { cache: 'no-store' })
+      const slotsQuery = activeRoomId
+        ? `courseId=${courseId}&roomId=${encodeURIComponent(String(activeRoomId))}`
+        : `courseId=${courseId}`
+      const slotsResponse = await fetch(`/api/designated-seats/admin/display-slots?${slotsQuery}`, { cache: 'no-store' })
       const slotsPayload = await slotsResponse.json().catch(() => null) as {
         slots?: DisplaySlotRow[]
         currentCourseSlotKey?: string | null
@@ -410,9 +685,6 @@ export default function CourseDesignatedSeatsPage({
       }
 
       const slots = slotsPayload?.slots ?? []
-      setDisplaySlots(slots)
-      setMultiDisplayUrl(slotsPayload?.multiDisplayUrl ?? '')
-
       const nextSlotKey = preferredSlotKey !== undefined
         ? preferredSlotKey && slots.some((slot) => slot.slot_key === preferredSlotKey)
           ? preferredSlotKey
@@ -425,19 +697,17 @@ export default function CourseDesignatedSeatsPage({
       const selectedSlot = nextSlotKey
         ? slots.find((slot) => slot.slot_key === nextSlotKey) ?? null
         : null
-      setDisplayUrl(selectedSlot?.displayUrl ?? courseDisplayUrl)
-      if (selectedSlot) {
-        setSlotKeyInput(selectedSlot.slot_key)
-        setSlotLabelInput(selectedSlot.label)
-      }
 
       const targetQuery = nextSlotKey
         ? `slotKey=${encodeURIComponent(nextSlotKey)}`
         : `courseId=${courseId}`
+      const roomScopedTargetQuery = activeRoomId
+        ? `${targetQuery}&roomId=${encodeURIComponent(String(activeRoomId))}`
+        : targetQuery
       const [devicesResponse, schedulesResponse, displayResponse] = await Promise.all([
         fetch(`/api/designated-seats/admin/display-devices?${targetQuery}`, { cache: 'no-store' }),
         fetch(`/api/designated-seats/admin/display-schedules?${targetQuery}`, { cache: 'no-store' }),
-        fetch(`/api/designated-seats/admin/display?${targetQuery}`, { cache: 'no-store' }),
+        fetch(`/api/designated-seats/admin/display?${roomScopedTargetQuery}`, { cache: 'no-store' }),
       ])
       const devicesPayload = await devicesResponse.json().catch(() => null) as { devices?: DisplayDeviceRow[]; error?: string } | null
       const schedulesPayload = await schedulesResponse.json().catch(() => null) as {
@@ -467,6 +737,16 @@ export default function CourseDesignatedSeatsPage({
         throw new Error(displayPayload?.error ?? '표시 세션 상태를 불러오지 못했습니다.')
       }
 
+      if (isStale()) {
+        return
+      }
+      setDisplaySlots(slots)
+      setMultiDisplayUrl(slotsPayload?.multiDisplayUrl ?? '')
+      setSelectedDisplaySlotKey(nextSlotKey)
+      if (selectedSlot) {
+        setSlotKeyInput(selectedSlot.slot_key)
+        setSlotLabelInput(selectedSlot.label)
+      }
       setDisplayDevices(devicesPayload?.devices ?? [])
       setActiveDisplaySession(displayPayload?.session ?? null)
       setDisplayUrl(displayPayload?.displayUrl ?? selectedSlot?.displayUrl ?? courseDisplayUrl)
@@ -480,11 +760,15 @@ export default function CourseDesignatedSeatsPage({
       }))
       setDisplaySchedules(ensureWeeklyDisplaySchedules(schedules))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '표시 설정을 불러오지 못했습니다.')
+      if (!isStale()) {
+        setError(reason instanceof Error ? reason.message : '표시 설정을 불러오지 못했습니다.')
+      }
     } finally {
-      setDisplayConfigLoading(false)
+      if (!isStale()) {
+        setDisplayConfigLoading(false)
+      }
     }
-  }, [courseDisplayUrl, courseId, selectedDisplaySlotKey])
+  }, [activeRoomId, courseDisplayUrl, courseId, selectedDisplaySlotKey])
 
   async function loadReservationDate(nextDate: string) {
     setReservationDate(nextDate)
@@ -521,7 +805,7 @@ export default function CourseDesignatedSeatsPage({
     if (tab === 'status') {
       void loadDisplayConfig()
     }
-  }, [loadDisplayConfig, tab])
+  }, [activeRoomId, loadDisplayConfig, tab])
 
   const aisleColumnsParsed = useMemo(
     () => aisleInput.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0),
@@ -660,17 +944,25 @@ export default function CourseDesignatedSeatsPage({
     deferInteractionWork(() => applyTabChange(nextTab))
   }
 
-  function confirmPendingTabChange() {
+  async function confirmPendingTabChange() {
     const nextTab = pendingTab
     if (!nextTab) {
       return
     }
 
-    setPendingTab(null)
-    if (isDirty) {
-      void refresh().catch(() => null)
+    const roomId = activeRoomId
+    setConfirmingPendingTab(true)
+    try {
+      if (isDirty) {
+        await refresh(reservationDate, roomId)
+      }
+      setPendingTab(null)
+      applyTabChange(nextTab)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '좌석 정보를 다시 불러오지 못했습니다.')
+    } finally {
+      setConfirmingPendingTab(false)
     }
-    applyTabChange(nextTab)
   }
 
   async function handleSaveLayout(event: FormEvent) {
@@ -679,8 +971,15 @@ export default function CourseDesignatedSeatsPage({
     setError('')
     setMessage('')
 
+    if (!activeRoomId) {
+      setSaving(false)
+      setError('강의실을 먼저 선택해 주세요.')
+      return
+    }
+
     const payload = {
       courseId,
+      roomId: activeRoomId,
       columns,
       rows,
       aisleColumns: aisleColumnsParsed,
@@ -1035,8 +1334,9 @@ export default function CourseDesignatedSeatsPage({
         confirmLabel="계속"
         pendingLabel="전환 중..."
         tone="danger"
+        submitting={confirmingPendingTab}
         onClose={() => setPendingTab(null)}
-        onConfirm={confirmPendingTabChange}
+        onConfirm={() => void confirmPendingTabChange()}
       />
       <ConfirmationModal
         open={Boolean(manualSeatConfirmation)}
@@ -1074,6 +1374,23 @@ export default function CourseDesignatedSeatsPage({
         }}
         onConfirm={() => {
           void handleStopDisplayConfirmed()
+        }}
+      />
+      <ConfirmationModal
+        open={Boolean(roomDeleteTarget)}
+        title="강의실을 삭제할까요?"
+        description={roomDeleteTarget ? `${roomDeleteTarget.name} 강의실과 좌석 배치를 삭제합니다. 좌석 배정 이력이 있으면 삭제할 수 없습니다.` : undefined}
+        confirmLabel="삭제"
+        pendingLabel="삭제 중..."
+        tone="danger"
+        submitting={roomWorking}
+        onClose={() => {
+          if (!roomWorking) {
+            setRoomDeleteTarget(null)
+          }
+        }}
+        onConfirm={() => {
+          void handleDeleteRoomConfirmed()
         }}
       />
       <div className="flex flex-col gap-6">
@@ -1140,14 +1457,43 @@ export default function CourseDesignatedSeatsPage({
         ))}
       </div>
 
+      {tab !== 'attendance' && sortedRooms.length > 0 ? (
+        <section className="rounded-[8px] bg-white px-4 py-3 sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold text-[#86868b]">현재 강의실</p>
+              <p className="mt-1 text-base font-semibold text-[#1d1d1f]">{activeRoom?.name ?? '-'}</p>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {sortedRooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => void handleSelectRoom(room.id)}
+                  disabled={statusLoading || room.id === activeRoomId}
+                  className={`shrink-0 rounded-[8px] px-3 py-2 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100 ${
+                    room.id === activeRoomId
+                      ? 'bg-[#1d1d1f] text-white disabled:opacity-100'
+                      : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed] disabled:opacity-60'
+                  }`}
+                >
+                  {room.name}
+                  {!room.is_open ? <span className="ml-1 text-xs opacity-70">마감</span> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* Summary stats */}
-      {tab !== 'attendance' ? (
+      {tab !== 'attendance' && tab !== 'rooms' ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             { label: '활성 좌석', value: summary.activeSeatCount },
             { label: '배정 완료', value: summary.reservedCount },
             { label: '잔여 좌석', value: summary.availableCount },
-            { label: '신청 상태', value: seatOpen ? 'OPEN' : 'CLOSED' },
+            { label: '신청 상태', value: seatOpen && activeRoom?.is_open ? 'OPEN' : 'CLOSED' },
           ].map((item) => (
             <article key={item.label} className="rounded-[8px] bg-white px-4 py-3 sm:p-5">
               <p className="text-xs font-semibold text-[#86868b] sm:text-sm">{item.label}</p>
@@ -1204,6 +1550,33 @@ export default function CourseDesignatedSeatsPage({
                   학생 신청 열기
                 </label>
               </div>
+
+              {activeRoom ? (
+                <div className="flex flex-col gap-3 rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[#1d1d1f]">{activeRoom.name}</p>
+                    <p className="mt-1 text-xs text-[#86868b]">
+                      {seatOpen
+                        ? activeRoom.is_open
+                          ? '학생에게 이 강의실 좌석 선택이 노출됩니다.'
+                          : '현재 이 강의실은 학생 탭에서 숨김 처리됩니다.'
+                        : '강좌 전체 신청이 닫혀 있어 강의실을 열어도 학생에게는 노출되지 않습니다.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleRoomOpen(activeRoom, !activeRoom.is_open)}
+                    disabled={roomWorking || !featureEnabled}
+                    className={`shrink-0 rounded-[8px] px-4 py-2.5 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:opacity-50 ${
+                      activeRoom.is_open
+                        ? 'bg-white text-[#1d1d1f] hover:bg-[#e8e8ed]'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    {activeRoom.is_open ? '현재 강의실 마감' : '현재 강의실 열기'}
+                  </button>
+                </div>
+              ) : null}
 
               {/* Grid config */}
               <div className="grid gap-3 md:grid-cols-3">
@@ -1457,13 +1830,13 @@ export default function CourseDesignatedSeatsPage({
                         await navigator.clipboard.writeText(displayUrl)
                         setMessage('표시 URL을 복사했습니다.')
                       }}
-                      disabled={!displayUrl}
+                      disabled={displayConfigLoading || !displayUrl}
                       className="rounded-[8px] bg-white px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-60"
                     >
                       URL 복사
                     </button>
                     <a
-                      href={displayUrl || '#'}
+                      href={!displayConfigLoading && displayUrl ? displayUrl : '#'}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97]"
@@ -1767,6 +2140,130 @@ export default function CourseDesignatedSeatsPage({
 
       {tab === 'attendance' && course ? (
         <DesignatedSeatAttendancePanel courseId={course.id} />
+      ) : null}
+
+      {tab === 'rooms' ? (
+        <section className="rounded-[8px] bg-white p-4 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-[#1d1d1f]">강의실 관리</h3>
+              <p className="mt-1 text-sm text-[#86868b]">
+                강의실별로 좌석 배치와 배정 현황이 분리됩니다.
+              </p>
+            </div>
+            <span className="text-xs font-semibold text-[#86868b]">{sortedRooms.length}개</span>
+          </div>
+
+          {!seatOpen ? (
+            <div className="mt-4 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+              강좌 전체 신청이 닫혀 있습니다. 강의실을 열어도 강좌 신청을 열기 전까지 학생은 좌석을 선택할 수 없습니다.
+            </div>
+          ) : null}
+
+          <form onSubmit={handleCreateRoom} className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="flex-1">
+              <span className="text-xs font-semibold text-[#86868b]">새 강의실</span>
+              <input
+                value={newRoomName}
+                onChange={(event) => setNewRoomName(event.target.value)}
+                maxLength={60}
+                placeholder="예: 301호"
+                className="mt-1.5 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0071e3]"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={roomWorking}
+              className="rounded-[8px] bg-[#1d1d1f] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-black active:scale-[0.97] disabled:opacity-60"
+            >
+              추가
+            </button>
+          </form>
+
+          <div className="mt-5 flex flex-col gap-3">
+            {sortedRooms.map((room, index) => (
+              <div key={room.id} className="grid gap-3 rounded-[8px] border border-[#d2d2d7] bg-[#f5f5f7] p-3 lg:grid-cols-[1fr_auto_auto_auto] lg:items-center">
+                <label>
+                  <span className="text-xs font-semibold text-[#86868b]">강의실 이름</span>
+                  <input
+                    value={roomNameInputs[room.id] ?? room.name}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setRoomNameInputs((current) => ({ ...current, [room.id]: value }))
+                    }}
+                    maxLength={60}
+                    className="mt-1.5 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0071e3]"
+                  />
+                </label>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className={`rounded-full px-3 py-1 ${
+                    room.is_open
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {room.is_open ? '신청 열림' : '신청 마감'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleRoomOpen(room, !room.is_open)}
+                    disabled={roomWorking || !featureEnabled || !seatOpen}
+                    className={`rounded-[8px] px-3 py-2 transition-all duration-200 ease-ios active:scale-[0.97] disabled:opacity-50 ${
+                      room.is_open
+                        ? 'bg-white text-[#1d1d1f] hover:bg-[#e8e8ed]'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    {room.is_open ? '마감' : '열기'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleMoveRoom(room, -1)}
+                    disabled={roomWorking || index === 0}
+                    className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-50"
+                  >
+                    위로
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleMoveRoom(room, 1)}
+                    disabled={roomWorking || index === sortedRooms.length - 1}
+                    className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-50"
+                  >
+                    아래로
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveRoom(room)}
+                    disabled={roomWorking || (roomNameInputs[room.id] ?? room.name).trim() === room.name}
+                    className="rounded-[8px] bg-[#0071e3] px-3 py-2 text-xs font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] disabled:opacity-50"
+                  >
+                    저장
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoomDeleteTarget(room)}
+                    disabled={roomWorking || sortedRooms.length <= 1}
+                    className="rounded-[8px] bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-all duration-200 ease-ios hover:bg-red-100 active:scale-[0.97] disabled:opacity-50"
+                  >
+                    삭제
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleEditRoom(room.id)}
+                    disabled={roomWorking}
+                    className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97] disabled:opacity-50"
+                  >
+                    좌석 편집
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       {/* ───── Seat Assignment Modal ───── */}

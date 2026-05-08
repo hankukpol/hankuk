@@ -19,6 +19,7 @@ import {
   type PaymentSectionValue,
 } from '@/components/payments/PaymentSection'
 import { formatWon } from '@/lib/payments/format'
+import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import {
@@ -1310,6 +1311,18 @@ export default function CourseStudentsPage({
     if (paymentPayload.tuitionExempt && !createPaymentForm.tuitionExemptReason.trim()) {
       setError('무료 수강 또는 수납 면제 사유를 입력해 주세요.')
       return
+    }
+
+    if (paymentPayload.tuitionExempt) {
+      const exemptRuleError = getTuitionExemptBillingRuleError({
+        tuitionExempt: paymentPayload.tuitionExempt,
+        discountAmount: paymentPayload.discountAmount,
+        tuitionExemptReason: createPaymentForm.tuitionExemptReason,
+      })
+      if (exemptRuleError) {
+        setError(exemptRuleError)
+        return
+      }
     }
 
     if (shouldUseBatchRegistration) {

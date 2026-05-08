@@ -902,6 +902,7 @@ function DesignatedSeatSummary({ data }: { data: PassPayload }) {
   const enrollmentId = Number(searchParams.get('enrollmentId'))
   const state = data.designatedSeat
   const seatLabel = state.reservation?.seat?.label ?? null
+  const roomName = state.rooms.find((room) => room.id === (state.reservation?.room_id ?? state.active_room_id))?.name ?? null
   const href = withTenantPrefix(`/courses/${params.courseSlug}/designated-seat?enrollmentId=${enrollmentId}`, tenant.type)
 
   return (
@@ -912,7 +913,9 @@ function DesignatedSeatSummary({ data }: { data: PassPayload }) {
           <p className="text-[20px] font-semibold leading-[1.07] tracking-[-0.02em] text-[var(--student-text)]">{seatLabel ?? '미정'}</p>
           <p className="mt-1.5 text-[12px] leading-[1.47] text-[var(--student-text-muted)]">
             {seatLabel
-              ? '좌석이 배정되어 있습니다.'
+              ? roomName
+                ? `${roomName}에 좌석이 배정되어 있습니다.`
+                : '좌석이 배정되어 있습니다.'
               : state.open
                 ? 'QR 인증 후 좌석을 선택해 주세요.'
                 : '좌석 요청이 아직 열리지 않았습니다.'}

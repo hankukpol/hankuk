@@ -9,6 +9,7 @@ import {
   getPaymentServiceStatus,
   updatePayment,
 } from '@/lib/payments/service'
+import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
@@ -26,6 +27,7 @@ const patchPaymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
@@ -53,7 +55,15 @@ export async function PATCH(
     }
 
     const division = await getServerTenantType()
-    const payment = await updatePayment(paymentId, parsed.data, division, getActorStaffId(auth.payload))
+    const payment = await updatePayment(paymentId, {
+      ...parsed.data,
+      cardCompany: parsed.data.method === 'card' || (!parsed.data.method && parsed.data.cardCompany !== undefined)
+        ? normalizeCardCompanyInput(parsed.data.cardCompany)
+        : parsed.data.cardCompany,
+      depositorName: parsed.data.depositorName !== undefined || parsed.data.bankAccountLast4 !== undefined
+        ? resolveDepositorName(parsed.data.depositorName, parsed.data.bankAccountLast4)
+        : undefined,
+    }, division, getActorStaffId(auth.payload))
     return NextResponse.json({ payment })
   } catch (error) {
     return NextResponse.json(

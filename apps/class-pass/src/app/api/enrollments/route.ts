@@ -20,6 +20,8 @@ import {
   getPaymentServiceStatus,
   upsertEnrollmentBilling,
 } from '@/lib/payments/service'
+import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
+import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
 import {
   deleteStudentIfOrphaned,
   ensureStudentProfile,
@@ -60,6 +62,7 @@ const paymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
@@ -140,6 +143,15 @@ function getBillingValidationError(
   if (billing.tuitionExempt) {
     if (!billing.tuitionExemptReason?.trim()) {
       return '무료 수강 또는 수납 면제 사유를 입력해 주세요.'
+    }
+
+    const exemptRuleError = getTuitionExemptBillingRuleError({
+      tuitionExempt: billing.tuitionExempt,
+      discountAmount: billing.discountAmount,
+      tuitionExemptReason: billing.tuitionExemptReason,
+    })
+    if (exemptRuleError) {
+      return exemptRuleError
     }
 
     if (payments.some((payment) => payment.method !== 'free' || payment.amount !== 0)) {
@@ -343,7 +355,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const payments = parsed.data.payments ?? []
+    const payments = (parsed.data.payments ?? []).map((payment) => ({
+      ...payment,
+      cardCompany: payment.method === 'card' ? normalizeCardCompanyInput(payment.cardCompany) : null,
+      depositorName: resolveDepositorName(payment.depositorName, payment.bankAccountLast4),
+    }))
     const billingError = getBillingValidationError(parsed.data.billing, payments)
     if (billingError) {
       return NextResponse.json({ error: billingError }, { status: 400 })
@@ -357,10 +373,10 @@ export async function POST(req: NextRequest) {
     }
 
     const bankTransferWithoutAccount = payments.find(
-      (p) => p.method === 'bank_transfer' && !p.bankAccountLast4?.trim(),
+      (p) => p.method === 'bank_transfer' && !resolveDepositorName(p.depositorName, p.bankAccountLast4),
     )
     if (bankTransferWithoutAccount) {
-      return NextResponse.json({ error: '계좌 결제 시 계좌 마지막 4자리는 필수입니다.' }, { status: 400 })
+      return NextResponse.json({ error: '계좌 결제 시 입금자명은 필수입니다.' }, { status: 400 })
     }
 
     const db = createServerClient()

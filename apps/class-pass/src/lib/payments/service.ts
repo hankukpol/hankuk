@@ -13,6 +13,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { normalizeTenantType } from '@/lib/tenant'
 import { normalizeName, normalizePhone } from '@/lib/utils'
 import type { Enrollment, Student } from '@/types/database'
+import { getTuitionExemptBillingRuleError } from './billing-rules'
 import {
   PAYMENT_CATEGORY_LABEL,
   type BillingStatus,
@@ -47,7 +48,7 @@ export type CreatePaymentInput = {
   cardCompany?: string | null
   installmentMonths?: number | null
   bankName?: string | null
-  bankAccountLast4?: string | null
+  depositorName?: string | null
   cashReceiptApprovalNo?: string | null
   checkoutGroupId?: string | null
   items?: PaymentItemInput[]
@@ -174,6 +175,7 @@ const PAYMENT_SCHEMA_OBJECTS = [
   'student_type',
   'settlement_entry_confirmations',
   'checkout_group_id',
+  'depositor_name',
 ]
 
 function createPaymentError(message: string, status = 400) {
@@ -284,6 +286,11 @@ function normalizeOptionalText(value: string | null | undefined) {
   return trimmed ? trimmed : null
 }
 
+function normalizeCardCompany(value: string | null | undefined) {
+  const normalized = normalizeOptionalText(value)
+  return normalized?.startsWith('KB') ? 'KB' : normalized
+}
+
 function normalizeLast4(value: string | null | undefined, fieldLabel: string) {
   const normalized = normalizeOptionalText(value)
   if (!normalized) {
@@ -299,22 +306,22 @@ function normalizeLast4(value: string | null | undefined, fieldLabel: string) {
 
 function normalizePaymentInstrument(
   method: PaymentMethod,
-  input: Pick<CreatePaymentInput, 'cardCompany' | 'bankAccountLast4'>,
+  input: Pick<CreatePaymentInput, 'cardCompany' | 'depositorName'>,
 ) {
-  const cardCompany = normalizeOptionalText(input.cardCompany)
-  const bankAccountLast4 = method === 'bank_transfer'
-    ? normalizeLast4(input.bankAccountLast4, '계좌 마지막 번호')
+  const cardCompany = normalizeCardCompany(input.cardCompany)
+  const depositorName = method === 'bank_transfer'
+    ? normalizeOptionalText(input.depositorName)
     : null
 
   if (method === 'card' && !cardCompany) {
     throw createPaymentError('카드 결제 시 카드사는 필수입니다.')
   }
 
-  if (method === 'bank_transfer' && !bankAccountLast4) {
-    throw createPaymentError('계좌 결제 시 계좌 마지막 4자리는 필수입니다.')
+  if (method === 'bank_transfer' && !depositorName) {
+    throw createPaymentError('계좌 결제 시 입금자명은 필수입니다.')
   }
 
-  return { cardCompany, bankAccountLast4 }
+  return { cardCompany, depositorName }
 }
 
 function normalizeRefundReasonCategory(value: RefundReasonCategory | null | undefined): RefundReasonCategory {
@@ -402,6 +409,15 @@ function normalizeBillingInput(input: UpsertEnrollmentBillingInput) {
   const tuitionExemptReason = normalizeOptionalText(input.tuitionExemptReason)
   if (tuitionExempt && !tuitionExemptReason) {
     throw createPaymentError('무료 수강 또는 수납 면제 사유를 입력해 주세요.')
+  }
+
+  const exemptRuleError = getTuitionExemptBillingRuleError({
+    tuitionExempt,
+    discountAmount,
+    tuitionExemptReason,
+  })
+  if (exemptRuleError) {
+    throw createPaymentError(exemptRuleError)
   }
 
   return {
@@ -1061,7 +1077,7 @@ export async function createPayment(
         cardCompany: input.cardCompany,
         installmentMonths: input.installmentMonths,
         bankName: input.bankName,
-        bankAccountLast4: input.bankAccountLast4,
+        depositorName: input.depositorName,
         cashReceiptApprovalNo: input.cashReceiptApprovalNo,
         items: input.items,
       }],
@@ -1121,7 +1137,8 @@ export async function createPayment(
       card_company: instrument.cardCompany,
       installment_months: Math.max(0, Number(input.installmentMonths ?? 0) || 0),
       bank_name: normalizeOptionalText(input.bankName),
-      bank_account_last4: instrument.bankAccountLast4,
+      bank_account_last4: null,
+      depositor_name: instrument.depositorName,
       cash_receipt_approval_no: normalizeOptionalText(input.cashReceiptApprovalNo),
       checkout_group_id: input.checkoutGroupId ?? null,
       series_option_id_snapshot: enrollment.series_option_id ?? null,
@@ -1205,7 +1222,7 @@ export async function createPaymentBundle(
       cardCompany: instrument.cardCompany,
       installmentMonths: Math.max(0, Number(payment.installmentMonths ?? 0) || 0),
       bankName: normalizeOptionalText(payment.bankName),
-      bankAccountLast4: instrument.bankAccountLast4,
+      depositorName: instrument.depositorName,
       cashReceiptApprovalNo: normalizeOptionalText(payment.cashReceiptApprovalNo),
       items,
     }
@@ -1296,7 +1313,7 @@ export async function createPaymentBundle(
       cardCompany: payment.cardCompany,
       installmentMonths: payment.installmentMonths,
       bankName: payment.bankName,
-      bankAccountLast4: payment.bankAccountLast4,
+      depositorName: payment.depositorName,
       cashReceiptApprovalNo: payment.cashReceiptApprovalNo,
       items: payment.items.map((item) => ({
         label: item.label,
@@ -1682,7 +1699,7 @@ export async function updatePayment(
   const nextCategory = input.category ?? before.category
   const nextInstrument = normalizePaymentInstrument(nextMethod, {
     cardCompany: input.cardCompany !== undefined ? input.cardCompany : before.card_company,
-    bankAccountLast4: input.bankAccountLast4 !== undefined ? input.bankAccountLast4 : before.bank_account_last4,
+    depositorName: input.depositorName !== undefined ? input.depositorName : before.depositor_name ?? before.bank_account_last4,
   })
   const updatePayload: Record<string, unknown> = {}
 
@@ -1699,8 +1716,9 @@ export async function updatePayment(
     updatePayload.installment_months = Math.max(0, Number(input.installmentMonths ?? 0) || 0)
   }
   if (input.bankName !== undefined) updatePayload.bank_name = normalizeOptionalText(input.bankName)
-  if (input.bankAccountLast4 !== undefined || input.method !== undefined) {
-    updatePayload.bank_account_last4 = nextMethod === 'bank_transfer' ? nextInstrument.bankAccountLast4 : null
+  if (input.depositorName !== undefined || input.method !== undefined) {
+    updatePayload.bank_account_last4 = null
+    updatePayload.depositor_name = nextMethod === 'bank_transfer' ? nextInstrument.depositorName : null
   }
   if (input.cashReceiptApprovalNo !== undefined) {
     updatePayload.cash_receipt_approval_no = normalizeOptionalText(input.cashReceiptApprovalNo)
@@ -2015,7 +2033,7 @@ export async function createPaymentCorrection(
     cardCompany: paymentInstrument.cardCompany,
     installmentMonths: Math.max(0, Number(input.payment.installmentMonths ?? 0) || 0),
     bankName: normalizeOptionalText(input.payment.bankName),
-    bankAccountLast4: paymentInstrument.bankAccountLast4,
+    depositorName: paymentInstrument.depositorName,
     cashReceiptApprovalNo: normalizeOptionalText(input.payment.cashReceiptApprovalNo),
     items: normalizePaymentItems(paymentAmount, paymentCategory, input.payment.items),
   }
@@ -2063,7 +2081,7 @@ export async function createPaymentCorrection(
       cardCompany: normalizedPayment.cardCompany,
       installmentMonths: normalizedPayment.installmentMonths,
       bankName: normalizedPayment.bankName,
-      bankAccountLast4: normalizedPayment.bankAccountLast4,
+      depositorName: normalizedPayment.depositorName,
       cashReceiptApprovalNo: normalizedPayment.cashReceiptApprovalNo,
       items: normalizedPayment.items.map((item) => ({
         label: item.label,

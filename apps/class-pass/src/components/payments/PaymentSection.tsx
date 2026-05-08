@@ -9,6 +9,7 @@ import {
   type PaymentMethod,
 } from '@/lib/payments/types'
 import { formatWon } from '@/lib/payments/format'
+import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 
 type PaymentEntryMethod = Exclude<PaymentMethod, 'mixed' | 'free'>
 
@@ -18,7 +19,7 @@ export type PaymentEntryDraft = {
   amount: string
   memo: string
   cardCompany: string
-  bankAccountLast4: string
+  depositorName: string
   cashReceiptApprovalNo: string
 }
 
@@ -29,7 +30,7 @@ export type NormalizedPaymentDraft = {
   paidAt?: string
   memo: string | null
   cardCompany?: string | null
-  bankAccountLast4?: string | null
+  depositorName?: string | null
   cashReceiptApprovalNo?: string | null
   items: Array<{ label: string; amount: number }>
 }
@@ -93,7 +94,7 @@ function toLocalDateTimeInputValue(date = new Date()) {
 }
 
 const CARD_COMPANIES = [
-  '신한', '삼성', 'KB국민', '현대', '롯데', '우리', '하나',
+  '신한', '삼성', 'KB', '현대', '롯데', '우리', '하나',
   'NH농협', 'IBK기업', 'BC', '씨티', '카카오페이', '네이버페이', '토스페이', '기타',
 ]
 
@@ -104,7 +105,7 @@ function createEmptyEntry(options?: Partial<Omit<PaymentEntryDraft, 'id'>>): Pay
     amount: options?.amount ?? '',
     memo: options?.memo ?? '',
     cardCompany: options?.cardCompany ?? '',
-    bankAccountLast4: options?.bankAccountLast4 ?? '',
+    depositorName: options?.depositorName ?? '',
     cashReceiptApprovalNo: options?.cashReceiptApprovalNo ?? '',
   }
 }
@@ -229,7 +230,7 @@ export function normalizePaymentSectionPayload(value: PaymentSectionValue): Norm
         paidAt,
         memo: memo || null,
         cardCompany: entry.method === 'card' ? entry.cardCompany?.trim() || null : null,
-        bankAccountLast4: entry.method === 'bank_transfer' ? entry.bankAccountLast4.trim() || null : null,
+        depositorName: entry.method === 'bank_transfer' ? entry.depositorName.trim() || null : null,
         cashReceiptApprovalNo: usesCashReceipt(entry.method) ? entry.cashReceiptApprovalNo.trim() || null : null,
         items: [{ label: PAYMENT_CATEGORY_LABEL[value.category], amount }],
       } satisfies NormalizedPaymentDraft
@@ -267,9 +268,14 @@ export function PaymentSection({
   const dueAmount = Math.max(payableAmount - paidAmount, 0)
   const remainingAmount = Math.max(dueAmount - total, 0)
   const discountExceeded = discountAmount > expectedAmount && discountAmount > 0
+  const tuitionExemptRuleError = getTuitionExemptBillingRuleError({
+    tuitionExempt: value.tuitionExempt,
+    discountAmount,
+    tuitionExemptReason: value.tuitionExemptReason,
+  })
   const totalOverPayable = !value.tuitionExempt && dueAmount >= 0 && total > dueAmount
   const noChargeTuition = !value.tuitionExempt && expectedAmount === 0 && discountAmount === 0 && payableAmount === 0
-  const totalAccepted = value.tuitionExempt || noChargeTuition || (dueAmount > 0 && total === dueAmount)
+  const totalAccepted = !tuitionExemptRuleError && (value.tuitionExempt || noChargeTuition || (dueAmount > 0 && total === dueAmount))
   const flatSingleEntry = singlePaymentOnly && hideBillingControls
   const totalBadgeText = value.tuitionExempt
     ? '무료 수강'
@@ -299,6 +305,30 @@ export function PaymentSection({
     }
 
     const nextValue = { ...value, ...next }
+    const nextExpectedAmount = toNumber(nextValue.expectedAmount)
+    const nextDiscountAmount = toNumber(nextValue.discountAmount)
+    const nextPaidAmount = toNumber(nextValue.paidAmount)
+    const nextPayableAmount = Math.max(nextExpectedAmount - nextDiscountAmount, 0)
+    const nextDueAmount = Math.max(nextPayableAmount - nextPaidAmount, 0)
+    onChange({ ...nextValue, entries: fillSingleEntryAmount(nextValue, nextDueAmount) })
+  }
+
+  function handleTuitionExemptChange(checked: boolean) {
+    if (lockedBilling) {
+      return
+    }
+
+    if (checked) {
+      patch({
+        tuitionExempt: true,
+        discountAmount: '',
+        discountReason: '',
+        entries: value.entries.map((entry) => ({ ...entry, amount: '' })),
+      })
+      return
+    }
+
+    const nextValue = { ...value, tuitionExempt: false, tuitionExemptReason: '' }
     const nextExpectedAmount = toNumber(nextValue.expectedAmount)
     const nextDiscountAmount = toNumber(nextValue.discountAmount)
     const nextPaidAmount = toNumber(nextValue.paidAmount)
@@ -369,7 +399,7 @@ export function PaymentSection({
           method,
           amount: entry.amount.trim() ? entry.amount : remaining > 0 ? String(remaining) : '',
           cardCompany: method === 'card' ? entry.cardCompany : '',
-          bankAccountLast4: method === 'bank_transfer' ? entry.bankAccountLast4 : '',
+          depositorName: method === 'bank_transfer' ? entry.depositorName : '',
           cashReceiptApprovalNo: usesCashReceipt(method) ? entry.cashReceiptApprovalNo : '',
         }
       }),
@@ -419,7 +449,7 @@ export function PaymentSection({
               <input
                 type="checkbox"
                 checked={value.tuitionExempt}
-                onChange={(event) => patch({ tuitionExempt: event.target.checked })}
+                onChange={(event) => handleTuitionExemptChange(event.target.checked)}
                 disabled={lockedBilling}
                 className="h-3.5 w-3.5 accent-[#0071e3] disabled:cursor-not-allowed"
               />
@@ -444,7 +474,7 @@ export function PaymentSection({
           <input
             type="checkbox"
             checked={value.tuitionExempt}
-            onChange={(event) => patch({ tuitionExempt: event.target.checked })}
+            onChange={(event) => handleTuitionExemptChange(event.target.checked)}
             disabled={lockedBilling}
             className="mt-1 h-4 w-4 accent-[#0071e3] disabled:cursor-not-allowed"
           />
@@ -477,7 +507,7 @@ export function PaymentSection({
             inputMode="numeric"
             value={value.discountAmount}
             onChange={(event) => patchWithAutoAmount({ discountAmount: numberInputValue(event.target.value) })}
-            disabled={lockedBilling}
+            disabled={lockedBilling || value.tuitionExempt}
             placeholder="0"
             className={`rounded-[8px] border bg-white ${controlPaddingClass} text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${
               discountExceeded ? 'shadow-[inset_0_0_0_1.5px_#b42318]' : 'border border-slate-200'
@@ -490,7 +520,7 @@ export function PaymentSection({
           <input
             value={value.discountReason}
             onChange={(event) => patch({ discountReason: event.target.value })}
-            disabled={lockedBilling}
+            disabled={lockedBilling || value.tuitionExempt}
             placeholder="형제 할인, 이벤트 등"
             className={`rounded-[8px] border bg-white border border-slate-200 ${controlPaddingClass} text-sm outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500`}
           />
@@ -567,6 +597,9 @@ export function PaymentSection({
             placeholder="예: 장학생, 무료 체험, 운영 지원"
             className={`rounded-[8px] border bg-white border border-slate-200 ${controlPaddingClass} text-sm outline-none focus:border-slate-400`}
           />
+          {tuitionExemptRuleError ? (
+            <span className="text-xs font-medium text-rose-600">{tuitionExemptRuleError}</span>
+          ) : null}
         </label>
       ) : (
         <div className={flatSingleEntry ? 'mt-0' : compact ? 'mt-3' : 'mt-5'}>
@@ -662,15 +695,14 @@ export function PaymentSection({
 
                     {entry.method === 'bank_transfer' ? (
                       <label className="flex flex-col gap-1.5">
-                        <span className="text-xs font-semibold text-slate-500">계좌 마지막 4자리 <span className="text-rose-500">*</span></span>
+                        <span className="text-xs font-semibold text-slate-500">입금자명 <span className="text-rose-500">*</span></span>
                         <input
-                          inputMode="numeric"
-                          maxLength={4}
-                          value={entry.bankAccountLast4}
-                          onChange={(event) => updateEntry(entry.id, { bankAccountLast4: event.target.value.replace(/\D/g, '').slice(0, 4) })}
-                          placeholder="1234"
+                          maxLength={80}
+                          value={entry.depositorName}
+                          onChange={(event) => updateEntry(entry.id, { depositorName: event.target.value })}
+                          placeholder="예: 홍길동"
                           className={`rounded-[8px] border bg-white ${controlPaddingClass} text-sm outline-none focus:border-slate-400 ${
-                            entry.bankAccountLast4.length !== 4 ? 'border-rose-300' : 'border-slate-200'
+                            entry.depositorName.trim() ? 'border-slate-200' : 'border-rose-300'
                           }`}
                         />
                       </label>
@@ -681,7 +713,7 @@ export function PaymentSection({
                       <input
                         value={entry.memo}
                         onChange={(event) => updateEntry(entry.id, { memo: event.target.value })}
-                        placeholder={`예: ${PAYMENT_METHOD_LABEL[entry.method]} 마지막 4자리`}
+                        placeholder={`예: ${PAYMENT_METHOD_LABEL[entry.method]} 메모`}
                         className={`rounded-[8px] border border-slate-200 bg-white ${controlPaddingClass} text-sm outline-none focus:border-slate-400`}
                       />
                     </label>

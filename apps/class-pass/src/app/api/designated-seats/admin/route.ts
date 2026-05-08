@@ -9,14 +9,22 @@ import {
   getActiveDisplaySessionForDisplayTarget,
   getDesignatedSeatAdminData,
   getTodayStartKST,
+  ensureCourseRooms,
   listDesignatedSeatReservationsForDate,
   normalizeAisleColumns,
+  resolveActiveRoomId,
 } from '@/lib/designated-seat/service'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
+function writeError(message: string, error?: { code?: string; message?: string } | null) {
+  console.error('designatedSeats.admin.PUT', { message, error })
+  return NextResponse.json({ error: message }, { status: 500 })
+}
+
 const searchSchema = z.object({
   courseId: z.coerce.number().int().positive(),
+  roomId: z.coerce.number().int().positive().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
@@ -30,6 +38,7 @@ const seatSchema = z.object({
 
 const layoutSchema = z.object({
   courseId: z.number().int().positive(),
+  roomId: z.number().int().positive(),
   columns: z.number().int().min(1).max(30),
   rows: z.number().int().min(1).max(30),
   aisleColumns: z.array(z.number().int().min(1).max(30)).default([]),
@@ -52,6 +61,7 @@ export async function GET(req: NextRequest) {
 
     const parsed = searchSchema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
+      roomId: req.nextUrl.searchParams.get('roomId') ?? undefined,
       date: req.nextUrl.searchParams.get('date') ?? undefined,
     })
     if (!parsed.success) {
@@ -64,16 +74,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
     }
 
+    const rooms = await ensureCourseRooms(course.id)
+    const activeRoomId = resolveActiveRoomId(rooms, parsed.data.roomId)
+    if (!activeRoomId || (parsed.data.roomId && activeRoomId !== parsed.data.roomId)) {
+      return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
+    }
+
     const [data, activeDisplaySession] = await Promise.all([
-      getDesignatedSeatAdminData(course.id),
-      getActiveDisplaySessionForDisplayTarget(course.id, null),
+      getDesignatedSeatAdminData(course.id, activeRoomId),
+      getActiveDisplaySessionForDisplayTarget(course.id, null, activeRoomId),
     ])
     const reservations = parsed.data.date
-      ? await listDesignatedSeatReservationsForDate(course.id, parsed.data.date)
+      ? await listDesignatedSeatReservationsForDate(course.id, activeRoomId, parsed.data.date)
       : data.reservations
 
     return NextResponse.json({
       course,
+      rooms,
+      activeRoomId,
       ...data,
       reservations,
       activeDisplaySession: activeDisplaySession
@@ -83,6 +101,7 @@ export async function GET(req: NextRequest) {
           last_seen_at: activeDisplaySession.last_seen_at,
           source: activeDisplaySession.source ?? 'manual',
           display_slot_id: activeDisplaySession.display_slot_id ?? null,
+          room_id: activeDisplaySession.room_id,
         }
         : null,
     })
@@ -114,6 +133,11 @@ export async function PUT(req: NextRequest) {
     const course = await getCourseById(parsed.data.courseId, division)
     if (!course) {
       return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
+    }
+    const rooms = await ensureCourseRooms(course.id)
+    const activeRoomId = resolveActiveRoomId(rooms, parsed.data.roomId)
+    if (!activeRoomId || activeRoomId !== parsed.data.roomId) {
+      return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
     }
 
     const normalizedAisles = normalizeAisleColumns(parsed.data.aisleColumns).filter(
@@ -149,8 +173,12 @@ export async function PUT(req: NextRequest) {
       .from('course_seats')
       .select('id,label')
       .eq('course_id', course.id)
+      .eq('room_id', activeRoomId)
       .order('position_y')
       .order('position_x')
+    if (currentSeatsResult.error) {
+      return writeError('현재 좌석 정보를 불러오지 못했습니다.', currentSeatsResult.error)
+    }
     const currentSeats = currentSeatsResult.data ?? []
     const currentSeatIds = new Set(currentSeats.map((seat) => Number(seat.id)))
     const retainedSeatIds = new Set(nextSeats.filter((seat) => seat.id).map((seat) => Number(seat.id)))
@@ -166,7 +194,11 @@ export async function PUT(req: NextRequest) {
       .from('course_seat_reservations')
       .select('seat_id')
       .eq('course_id', course.id)
+      .eq('room_id', activeRoomId)
       .gte('updated_at', todayStart)
+    if (reservationsResult.error) {
+      return writeError('현재 좌석 예약 정보를 불러오지 못했습니다.', reservationsResult.error)
+    }
     const reservedSeatIds = new Set((reservationsResult.data ?? []).map((row) => Number(row.seat_id)))
 
     const deactivatedReserved = nextSeats
@@ -187,37 +219,42 @@ export async function PUT(req: NextRequest) {
       }, { status: 409 })
     }
 
-    await db.from('course_seat_layouts').upsert({
-      course_id: course.id,
-      columns: parsed.data.columns,
-      rows: parsed.data.rows,
-      aisle_columns: normalizedAisles,
-      updated_at: new Date().toISOString(),
-    })
-
     const seatIdsToDelete = currentSeats
       .map((seat) => Number(seat.id))
       .filter((seatId) => !retainedSeatIds.has(seatId))
 
     if (seatIdsToDelete.length > 0) {
-      await db.from('course_seats').delete().in('id', seatIdsToDelete).eq('course_id', course.id)
+      const eventHistoryResult = await db
+        .from('course_seat_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('course_id', course.id)
+        .in('seat_id', seatIdsToDelete)
+      if (eventHistoryResult.error) {
+        return writeError('좌석 이력을 확인하지 못했습니다.', eventHistoryResult.error)
+      }
+      if ((eventHistoryResult.count ?? 0) > 0) {
+        return NextResponse.json({
+          error: '배정 이력이 있는 좌석은 삭제할 수 없습니다. 운영 대상에서 제외하려면 좌석을 비활성화해 주세요.',
+        }, { status: 409 })
+      }
     }
 
-    for (const seat of nextSeats) {
-      const payload = {
-        course_id: course.id,
+    const layoutSaveResult = await db.rpc('save_course_room_seat_layout', {
+      p_course_id: course.id,
+      p_room_id: activeRoomId,
+      p_columns: parsed.data.columns,
+      p_rows: parsed.data.rows,
+      p_aisle_columns: normalizedAisles,
+      p_seats: nextSeats.map((seat) => ({
+        id: seat.id ?? null,
         label: seat.label,
         position_x: seat.position_x,
         position_y: seat.position_y,
         is_active: seat.is_active,
-        updated_at: new Date().toISOString(),
-      }
-
-      if (seat.id) {
-        await db.from('course_seats').update(payload).eq('id', seat.id).eq('course_id', course.id)
-      } else {
-        await db.from('course_seats').insert(payload)
-      }
+      })),
+    })
+    if (layoutSaveResult.error) {
+      return writeError('좌석 레이아웃을 저장하지 못했습니다.', layoutSaveResult.error)
     }
 
     const courseUpdate: Record<string, unknown> = {
@@ -233,17 +270,22 @@ export async function PUT(req: NextRequest) {
     }
 
     if (Object.keys(courseUpdate).length > 1) {
-      await db.from('courses').update(courseUpdate).eq('id', course.id).eq('division', division)
+      const courseUpdateResult = await db.from('courses').update(courseUpdate).eq('id', course.id).eq('division', division)
+      if (courseUpdateResult.error) {
+        return writeError('강좌 지정좌석 설정을 저장하지 못했습니다.', courseUpdateResult.error)
+      }
     }
 
     await invalidateCache('courses')
     await invalidateCache('designated-seats')
 
     const refreshedCourse = await getCourseById(course.id, division)
-    const data = await getDesignatedSeatAdminData(course.id)
+    const data = await getDesignatedSeatAdminData(course.id, activeRoomId)
 
     return NextResponse.json({
       course: refreshedCourse,
+      rooms,
+      activeRoomId,
       ...data,
     })
   } catch (error) {

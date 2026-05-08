@@ -40,7 +40,7 @@ export async function POST(
     .eq('enrollment_id', enrollmentId)
 
   if (paymentError) {
-    return NextResponse.json({ error: '?섎텋 泥섎━???ㅽ뙣?덉뒿?덈떎.' }, { status: 500 })
+    return NextResponse.json({ error: '환불 처리에 실패했습니다.' }, { status: 500 })
   }
 
   const remainingPaidAmount = ((paymentRows ?? []) as Array<{

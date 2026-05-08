@@ -7,7 +7,11 @@ import {
   buildDisplayUrlForTarget,
   resolveDesignatedSeatDisplayTarget,
 } from '@/lib/designated-seat/display-targets'
-import { getActiveDisplaySessionForDisplayTarget } from '@/lib/designated-seat/service'
+import {
+  ensureCourseRooms,
+  getActiveDisplaySessionForDisplayTarget,
+  resolveActiveRoomId,
+} from '@/lib/designated-seat/service'
 import {
   createOpaqueDisplayToken,
   hashToken,
@@ -18,6 +22,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 const schema = z.object({
   courseId: z.number().int().positive().optional().nullable(),
   slotKey: z.string().trim().min(1).max(80).optional().nullable(),
+  roomId: z.number().int().positive().optional().nullable(),
   durationHours: z.number().int().min(1).max(72).default(24),
 }).refine((value) => Boolean(value.courseId) !== Boolean(value.slotKey), {
   message: 'Exactly one display target is required.',
@@ -26,9 +31,23 @@ const schema = z.object({
 const querySchema = z.object({
   courseId: z.coerce.number().int().positive().optional().nullable(),
   slotKey: z.string().trim().min(1).max(80).optional().nullable(),
+  roomId: z.coerce.number().int().positive().optional().nullable(),
 }).refine((value) => Boolean(value.courseId) !== Boolean(value.slotKey), {
   message: 'Exactly one display target is required.',
 })
+
+async function resolveDisplayRoom(courseId: number, roomId?: number | null) {
+  const rooms = await ensureCourseRooms(courseId)
+  const activeRoomId = roomId
+    ? resolveActiveRoomId(rooms, roomId)
+    : rooms.find((entry) => entry.is_open)?.id ?? resolveActiveRoomId(rooms)
+  const room = rooms.find((entry) => entry.id === activeRoomId) ?? null
+  if (!room || (roomId && room.id !== roomId)) {
+    return null
+  }
+
+  return room
+}
 
 async function requireDisplayTarget(req: NextRequest, input: { courseId?: number | null; slotKey?: string | null }) {
   const { error: authError, payload } = await authenticateAdminRequest(req)
@@ -64,6 +83,7 @@ export async function GET(req: NextRequest) {
     const parsed = querySchema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
       slotKey: req.nextUrl.searchParams.get('slotKey'),
+      roomId: req.nextUrl.searchParams.get('roomId') ?? undefined,
     })
     if (!parsed.success) {
       return NextResponse.json({ error: '현장 QR 표시 조회 요청 형식이 올바르지 않습니다.' }, { status: 400 })
@@ -75,9 +95,14 @@ export async function GET(req: NextRequest) {
     }
 
     const target = guard.target!
+    const room = await resolveDisplayRoom(target.course.id, parsed.data.roomId)
+    if (!room) {
+      return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
+    }
     const session = await getActiveDisplaySessionForDisplayTarget(
       target.course.id,
       target.slot?.id ?? null,
+      room.id,
     )
 
     return NextResponse.json({
@@ -88,9 +113,10 @@ export async function GET(req: NextRequest) {
           last_seen_at: session.last_seen_at,
           source: session.source ?? 'manual',
           display_slot_id: session.display_slot_id ?? null,
+          room_id: session.room_id,
         }
         : null,
-      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target),
+      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target, room.id),
     })
   } catch (error) {
     return handleRouteError('designatedSeats.admin.display.GET', '현장 QR 표시 상태를 불러오지 못했습니다.', error)
@@ -112,8 +138,18 @@ export async function POST(req: NextRequest) {
 
     const target = guard.target!
     const course = target.course
+    const room = await resolveDisplayRoom(course.id, parsed.data.roomId)
+    if (!room) {
+      return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
+    }
+    if (!room.is_open) {
+      return NextResponse.json({ error: '강의실 좌석 신청을 먼저 열어 주세요.' }, { status: 409 })
+    }
     if (!course.feature_designated_seat) {
       return NextResponse.json({ error: '지정좌석 기능을 먼저 활성화해야 합니다.' }, { status: 409 })
+    }
+    if (!course.designated_seat_open) {
+      return NextResponse.json({ error: '강좌 전체 학생 신청을 먼저 열어 주세요.' }, { status: 409 })
     }
 
     const db = createServerClient()
@@ -121,6 +157,7 @@ export async function POST(req: NextRequest) {
       .from('course_seats')
       .select('id', { count: 'exact', head: true })
       .eq('course_id', course.id)
+      .eq('room_id', room.id)
       .eq('is_active', true)
 
     if ((seatCountResult.count ?? 0) === 0) {
@@ -138,6 +175,7 @@ export async function POST(req: NextRequest) {
     revokeQuery = target.mode === 'slot'
       ? revokeQuery.eq('display_slot_id', target.slot.id)
       : revokeQuery.is('display_slot_id', null)
+    revokeQuery = revokeQuery.eq('room_id', room.id)
 
     const revokeActive = await revokeQuery
     if (revokeActive.error) {
@@ -151,6 +189,7 @@ export async function POST(req: NextRequest) {
       .from('course_seat_display_sessions')
       .insert({
         course_id: course.id,
+        room_id: room.id,
         display_slot_id: target.slot?.id ?? null,
         display_token_hash: hashToken(rawToken),
         created_by: actor,
@@ -173,6 +212,7 @@ export async function POST(req: NextRequest) {
         actor,
         display_target: target.mode,
         slot_key: target.slot?.slot_key ?? null,
+        room_id: room.id,
       },
     })
 
@@ -181,7 +221,7 @@ export async function POST(req: NextRequest) {
         id: insertResult.data.id,
         expires_at: expiresAt,
       },
-      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target),
+      displayUrl: buildDisplayUrlForTarget(req.nextUrl.origin, guard.division!, target, room.id),
     })
   } catch (error) {
     return handleRouteError('designatedSeats.admin.display.POST', '현장 QR 표시를 시작하지 못했습니다.', error)
@@ -202,6 +242,10 @@ export async function DELETE(req: NextRequest) {
     }
 
     const target = guard.target!
+    const room = await resolveDisplayRoom(target.course.id, parsed.data.roomId)
+    if (!room) {
+      return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
+    }
     const actor = guard.payload?.adminId ?? guard.payload?.staffName ?? 'admin'
     const db = createServerClient()
     const nowIso = new Date().toISOString()
@@ -214,6 +258,7 @@ export async function DELETE(req: NextRequest) {
     query = target.mode === 'slot'
       ? query.eq('display_slot_id', target.slot.id)
       : query.is('display_slot_id', null)
+    query = query.eq('room_id', room.id)
 
     const revoke = await query
     if (revoke.error) {
@@ -227,6 +272,7 @@ export async function DELETE(req: NextRequest) {
         actor,
         display_target: target.mode,
         slot_key: target.slot?.slot_key ?? null,
+        room_id: room.id,
       },
     })
 

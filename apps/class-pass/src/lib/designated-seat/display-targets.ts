@@ -35,21 +35,46 @@ export function buildSlotDisplayPath(slotKey: string) {
   return `/designated-seat-display/slot/${slotKey}`
 }
 
-export function buildMultiDisplayPath(slotKeys: string[]) {
-  const uniqueKeys = (Array.from(new Set(slotKeys.map(normalizeDisplaySlotKey).filter(Boolean))) as string[])
-    .slice(0, MAX_MULTI_DISPLAY_TARGETS)
-  const query = uniqueKeys.length > 0 ? `?slots=${encodeURIComponent(uniqueKeys.join(','))}` : ''
-  return `/designated-seat-display/multi${query}`
+export type MultiDisplaySlotTarget = string | {
+  slotKey: string
+  roomId?: number | null
 }
 
-export function buildDisplayPathForTarget(target: DesignatedSeatDisplayTarget) {
-  return target.mode === 'slot'
+function normalizeMultiDisplaySlotTarget(target: MultiDisplaySlotTarget) {
+  const slotKey = normalizeDisplaySlotKey(typeof target === 'string' ? target : target.slotKey)
+  if (!slotKey) {
+    return null
+  }
+
+  const roomId = typeof target === 'string' ? null : target.roomId
+  return Number.isInteger(roomId) && Number(roomId) > 0
+    ? `${slotKey}:${roomId}`
+    : slotKey
+}
+
+export function buildMultiDisplayPath(slotKeys: MultiDisplaySlotTarget[], roomId?: number | null) {
+  const uniqueKeys = Array.from(new Set(slotKeys.map(normalizeMultiDisplaySlotTarget).filter(Boolean) as string[]))
+    .slice(0, MAX_MULTI_DISPLAY_TARGETS)
+  const query = new URLSearchParams()
+  if (uniqueKeys.length > 0) {
+    query.set('slots', uniqueKeys.join(','))
+  }
+  if (roomId) {
+    query.set('roomId', String(roomId))
+  }
+  const queryString = query.toString()
+  return `/designated-seat-display/multi${queryString ? `?${queryString}` : ''}`
+}
+
+export function buildDisplayPathForTarget(target: DesignatedSeatDisplayTarget, roomId?: number | null) {
+  const path = target.mode === 'slot'
     ? buildSlotDisplayPath(target.slot.slot_key)
     : buildCourseDisplayPath(target.course.id)
+  return roomId ? `${path}?roomId=${encodeURIComponent(String(roomId))}` : path
 }
 
-export function buildDisplayUrlForTarget(origin: string, division: TenantType, target: DesignatedSeatDisplayTarget) {
-  return `${origin}${withTenantPrefix(buildDisplayPathForTarget(target), division)}`
+export function buildDisplayUrlForTarget(origin: string, division: TenantType, target: DesignatedSeatDisplayTarget, roomId?: number | null) {
+  return `${origin}${withTenantPrefix(buildDisplayPathForTarget(target, roomId), division)}`
 }
 
 export async function getDisplaySlotByKey(slotKey: string, division: TenantType) {

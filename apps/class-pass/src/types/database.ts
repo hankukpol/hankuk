@@ -183,6 +183,7 @@ export interface SeatAssignment {
 
 export interface DesignatedSeatLayout {
   course_id: number
+  room_id: number
   columns: number
   rows: number
   aisle_columns: number[]
@@ -193,6 +194,7 @@ export interface DesignatedSeatLayout {
 export interface DesignatedSeat {
   id: number
   course_id: number
+  room_id: number
   label: string
   position_x: number
   position_y: number
@@ -204,19 +206,32 @@ export interface DesignatedSeat {
 export interface DesignatedSeatReservation {
   id: number
   course_id: number
+  room_id: number
   seat_id: number
   enrollment_id: number
   device_key_hash: string | null
   reserved_at: string
   updated_at: string
-  seat?: Pick<DesignatedSeat, 'id' | 'label' | 'position_x' | 'position_y' | 'is_active'>
+  seat?: Pick<DesignatedSeat, 'id' | 'room_id' | 'label' | 'position_x' | 'position_y' | 'is_active'>
   enrollments?: Pick<Enrollment, 'id' | 'name' | 'exam_number' | 'status'>
+}
+
+export interface CourseRoom {
+  id: number
+  course_id: number
+  name: string
+  sort_order: number
+  is_active: boolean
+  is_open: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface DesignatedSeatAuthSession {
   id: number
   course_id: number
   enrollment_id: number
+  room_id: number
   device_key_hash: string
   device_signature: Record<string, string>
   verification_method: 'qr' | 'code'
@@ -237,6 +252,7 @@ export interface DesignatedSeatAuthSession {
 export interface DesignatedSeatDisplaySession {
   id: number
   course_id: number
+  room_id: number
   display_token_hash: string
   created_by: string | null
   expires_at: string
@@ -353,6 +369,8 @@ export interface DesignatedSeatStudentState {
   requires_reauth: boolean
   restriction_reason: string | null
   auth_expires_at: string | null
+  rooms: CourseRoom[]
+  active_room_id: number | null
   layout: DesignatedSeatLayout | null
   seats: DesignatedSeat[]
   occupied_seat_ids: number[]
@@ -484,6 +502,7 @@ export interface EnrollmentPayment {
   installment_months: number
   bank_name: string | null
   bank_account_last4: string | null
+  depositor_name: string | null
   cash_receipt_approval_no: string | null
   checkout_group_id: string | null
   series_option_id_snapshot: number | null
@@ -658,6 +677,7 @@ export interface QrTokenPayload {
 export interface DesignatedSeatRotationTokenPayload {
   courseId: number
   displaySessionId: number
+  roomId?: number
   rotation: number
   iat: number
   exp: number

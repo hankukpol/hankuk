@@ -6,14 +6,26 @@ import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { getCameraReadinessError } from '@/lib/camera/access'
 import { getStrictMainRearCamera } from '@/lib/camera/main-rear-camera'
+import { fetchDesignatedSeatState } from '@/lib/designated-seat/client-state'
 import {
   parseDesignatedSeatScanValue,
   type DesignatedSeatVerificationPayload,
 } from '@/lib/designated-seat/scan'
 import { withTenantPrefix } from '@/lib/tenant'
-import type { DesignatedSeat, PassPayload } from '@/types/database'
+import type { DesignatedSeat, DesignatedSeatStudentState, PassPayload } from '@/types/database'
 
 const DEVICE_KEY_STORAGE = 'class_pass_designated_seat_device'
+
+const STATE_REFRESH_REASONS = new Set([
+  'SEAT_TAKEN',
+  'AUTH_REQUIRED',
+  'AUTH_EXPIRED',
+  'AUTH_ALREADY_USED',
+  'AUTH_DEVICE_MISMATCH',
+  'LOCATION_REQUIRED',
+  'DEVICE_LOCKED',
+  'ROOM_CLOSED',
+])
 
 type ScannerInstance = {
   start: (
@@ -73,13 +85,81 @@ export function StudentDesignatedSeatSection({
   const [message, setMessage] = useState('')
   const [lastScanDebug, setLastScanDebug] = useState('')
   const [reserveTarget, setReserveTarget] = useState<DesignatedSeat | null>(null)
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null)
+  const [stateOverride, setStateOverride] = useState<DesignatedSeatStudentState | null>(null)
+  const [roomLoading, setRoomLoading] = useState(false)
+  const roomStateRequestRef = useRef(0)
   const tenant = useTenantConfig()
 
-  const state = data.designatedSeat
+  const state = stateOverride ?? data.designatedSeat
+  const activeRoomId = selectedRoomId ?? state.active_room_id ?? state.rooms[0]?.id ?? null
+  const activeRoom = state.rooms.find((room) => room.id === activeRoomId) ?? null
+  const currentSeatRoom = state.reservation
+    ? state.rooms.find((room) => room.id === state.reservation?.room_id) ?? null
+    : activeRoom
+  const selectedRoomStateReady = !activeRoomId || state.active_room_id === activeRoomId
 
   useEffect(() => {
     setDeviceKey(ensureLocalDeviceKey())
   }, [])
+
+  useEffect(() => {
+    const nextRoomId = data.designatedSeat.active_room_id ?? data.designatedSeat.rooms[0]?.id ?? null
+    setStateOverride(null)
+    setSelectedRoomId(nextRoomId)
+  }, [data.course.id, data.enrollment.id, data.designatedSeat.active_room_id, data.designatedSeat.rooms])
+
+  const applyState = useCallback((nextState: DesignatedSeatStudentState) => {
+    setStateOverride(nextState)
+    setSelectedRoomId(nextState.active_room_id ?? null)
+  }, [])
+
+  const refreshDesignatedSeatState = useCallback(async (roomId: number | null = activeRoomId, requestId?: number) => {
+    const nextState = await fetchDesignatedSeatState({
+      tenantType: tenant.type,
+      courseId: data.course.id,
+      enrollmentId: data.enrollment.id,
+      roomId,
+      name: data.enrollment.name,
+      phone: data.enrollment.phone,
+    })
+
+    if (requestId && requestId !== roomStateRequestRef.current) {
+      return null
+    }
+
+    applyState(nextState)
+    return nextState
+  }, [activeRoomId, applyState, data.course.id, data.enrollment.id, data.enrollment.name, data.enrollment.phone, tenant.type])
+
+  const handleSelectRoom = useCallback(async (roomId: number) => {
+    if (roomId === activeRoomId) {
+      return
+    }
+
+    const targetRoom = state.rooms.find((room) => room.id === roomId)
+    if (targetRoom && !targetRoom.is_open) {
+      setError(`${targetRoom.name} 좌석 신청은 아직 열리지 않았습니다.`)
+      return
+    }
+
+    setReserveTarget(null)
+    setError('')
+    setMessage('')
+    setRoomLoading(true)
+    const requestId = ++roomStateRequestRef.current
+    try {
+      await refreshDesignatedSeatState(roomId, requestId)
+    } catch (reason) {
+      if (requestId === roomStateRequestRef.current) {
+        setError(reason instanceof Error ? reason.message : '강의실 좌석 상태를 불러오지 못했습니다.')
+      }
+    } finally {
+      if (requestId === roomStateRequestRef.current) {
+        setRoomLoading(false)
+      }
+    }
+  }, [activeRoomId, refreshDesignatedSeatState, state.rooms])
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current
@@ -107,6 +187,10 @@ export function StudentDesignatedSeatSection({
       setError('기기 정보를 준비하는 중입니다. 잠시 후 다시 시도해주세요.')
       return
     }
+    if (!activeRoomId) {
+      setError('강의실을 찾을 수 없습니다.')
+      return
+    }
 
     setWorking(true)
     setError('')
@@ -118,6 +202,7 @@ export function StudentDesignatedSeatSection({
       body: JSON.stringify({
         courseId: data.course.id,
         enrollmentId: data.enrollment.id,
+        roomId: activeRoomId,
         name: data.enrollment.name,
         phone: data.enrollment.phone,
         localDeviceKey: deviceKey,
@@ -129,14 +214,25 @@ export function StudentDesignatedSeatSection({
     setWorking(false)
 
     if (!response.ok) {
-      setError((result as { error?: string } | null)?.error ?? '현장 인증에 실패했습니다.')
+      const failure = result as { error?: string; state?: DesignatedSeatStudentState | null } | null
+      setError(failure?.error ?? '현장 인증에 실패했습니다.')
+      if (failure?.state) {
+        applyState(failure.state)
+      }
       return
+    }
+
+    const nextState = (result as { state?: DesignatedSeatStudentState } | null)?.state
+    if (nextState) {
+      applyState(nextState)
+    } else {
+      await refreshDesignatedSeatState(activeRoomId)
     }
 
     setMessage('현장 인증이 완료되었습니다. 2분 안에 좌석을 선택해주세요.')
     setCodeInput('')
     await onRefresh()
-  }, [data.course.id, data.enrollment.id, data.enrollment.name, data.enrollment.phone, deviceKey, onRefresh, tenant.type])
+  }, [activeRoomId, applyState, data.course.id, data.enrollment.id, data.enrollment.name, data.enrollment.phone, deviceKey, onRefresh, refreshDesignatedSeatState, tenant.type])
 
   useEffect(() => {
     if (!scannerOpen) {
@@ -224,6 +320,10 @@ export function StudentDesignatedSeatSection({
       setError('기기 정보를 준비하는 중입니다. 잠시 후 다시 시도해주세요.')
       return
     }
+    if (!activeRoomId) {
+      setError('강의실을 찾을 수 없습니다.')
+      return
+    }
 
     setWorking(true)
     setError('')
@@ -235,6 +335,7 @@ export function StudentDesignatedSeatSection({
       body: JSON.stringify({
         courseId: data.course.id,
         enrollmentId: data.enrollment.id,
+        roomId: activeRoomId,
         seatId,
         name: data.enrollment.name,
         phone: data.enrollment.phone,
@@ -245,11 +346,31 @@ export function StudentDesignatedSeatSection({
     setWorking(false)
 
     if (!response.ok) {
-      setError((result as { error?: string } | null)?.error ?? '좌석 지정에 실패했습니다.')
+      const failureResult = result as {
+        error?: string
+        reason?: string
+        state?: DesignatedSeatStudentState | null
+      } | null
+
+      setError(failureResult?.error ?? '좌석 지정에 실패했습니다.')
+      if (failureResult?.reason && STATE_REFRESH_REASONS.has(failureResult.reason)) {
+        if (failureResult.state) {
+          applyState(failureResult.state)
+        } else {
+          await refreshDesignatedSeatState(null).catch(() => null)
+        }
+      }
       return
     }
 
-    const action = (result as { action?: string } | null)?.action ?? 'reserved'
+    const nextResult = result as { action?: string; state?: DesignatedSeatStudentState } | null
+    if (nextResult?.state) {
+      applyState(nextResult.state)
+    } else {
+      await refreshDesignatedSeatState(activeRoomId)
+    }
+
+    const action = nextResult?.action ?? 'reserved'
     setMessage(action === 'changed' ? '좌석을 변경했습니다. 다음 변경은 다시 QR 인증이 필요합니다.' : '좌석을 확정했습니다.')
     await onRefresh()
   }
@@ -317,10 +438,36 @@ export function StudentDesignatedSeatSection({
             </span>
           </div>
 
+          {state.rooms.length > 1 ? (
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+              {state.rooms.map((room) => {
+                const selected = room.id === activeRoomId
+                return (
+                  <button
+                    key={room.id}
+                    type="button"
+                    onClick={() => void handleSelectRoom(room.id)}
+                  disabled={working || roomLoading || selected || !room.is_open}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-200 ease-ios ${
+                      selected
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : !room.is_open
+                          ? 'border-slate-200 bg-slate-50 text-slate-400'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    } disabled:opacity-60`}
+                  >
+                    {room.name}{room.is_open ? '' : ' · 마감'}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
+
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl bg-slate-50 px-4 py-3">
               <p className="text-xs font-semibold text-slate-500">현재 좌석</p>
               <p className="mt-1 text-2xl font-black text-slate-900">{currentSeatLabel ?? '미지정'}</p>
+              {currentSeatRoom ? <p className="mt-1 text-xs text-slate-500">{currentSeatRoom.name}</p> : null}
             </div>
             <div className="rounded-2xl bg-slate-50 px-4 py-3">
               <p className="text-xs font-semibold text-slate-500">현재 상태</p>
@@ -380,7 +527,13 @@ export function StudentDesignatedSeatSection({
             </div>
           ) : null}
 
-          {state.layout && state.seats.length > 0 ? (
+          {!selectedRoomStateReady || roomLoading ? (
+            <p className="mt-5 text-sm text-gray-500">강의실 좌석을 불러오는 중입니다.</p>
+          ) : state.rooms.length === 0 ? (
+            <p className="mt-5 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              모든 강의실의 좌석 신청이 마감되었습니다.
+            </p>
+          ) : state.layout && state.seats.length > 0 ? (
             <>
               <div className="mt-5 rounded-2xl border border-slate-200 p-4">
                 <SeatGrid
@@ -391,7 +544,7 @@ export function StudentDesignatedSeatSection({
                   occupiedSeatIds={state.occupied_seat_ids}
                   currentSeatId={currentSeatId}
                   onSeatClick={(seat) => {
-                    if (!state.writable || working) {
+                    if (!selectedRoomStateReady || !state.writable || working) {
                       return
                     }
 

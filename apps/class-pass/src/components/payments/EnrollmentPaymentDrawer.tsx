@@ -17,6 +17,7 @@ import {
   type RefundReasonCategory,
 } from '@/lib/payments/types'
 import { formatPaymentDate, formatWon } from '@/lib/payments/format'
+import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 import { getRefundTotal, summarizePayments } from '@/lib/payments/summary'
 import {
   PaymentSection,
@@ -289,6 +290,16 @@ export function EnrollmentPaymentDrawer({
         return
       }
 
+      const exemptRuleError = getTuitionExemptBillingRuleError({
+        tuitionExempt: payload.tuitionExempt,
+        discountAmount: payload.discountAmount,
+        tuitionExemptReason: paymentDraft.tuitionExemptReason,
+      })
+      if (exemptRuleError) {
+        setError(exemptRuleError)
+        return
+      }
+
       if (tuitionSummary.net > 0) {
         setError('이미 수납 내역이 있는 수강생은 무료 수강으로 변경할 수 없습니다.')
         return
@@ -317,11 +328,11 @@ export function EnrollmentPaymentDrawer({
         return
       }
 
-      const missingBankAccountLast4 = paymentDraft.entries.some(
-        (entry) => entry.method === 'bank_transfer' && !/^\d{4}$/.test(entry.bankAccountLast4.trim()),
+      const missingDepositorName = paymentDraft.entries.some(
+        (entry) => entry.method === 'bank_transfer' && !entry.depositorName.trim(),
       )
-      if (missingBankAccountLast4) {
-        setError('계좌 결제는 계좌 마지막 4자리를 입력해 주세요.')
+      if (missingDepositorName) {
+        setError('계좌 결제는 입금자명을 입력해 주세요.')
         return
       }
 

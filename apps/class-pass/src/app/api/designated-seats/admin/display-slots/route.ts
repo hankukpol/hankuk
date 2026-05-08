@@ -17,6 +17,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 
 const listSchema = z.object({
   courseId: z.coerce.number().int().positive().optional().nullable(),
+  roomId: z.coerce.number().int().positive().optional().nullable(),
 })
 
 const saveSchema = z.object({
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
 
     const parsed = listSchema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
+      roomId: req.nextUrl.searchParams.get('roomId') ?? undefined,
     })
     if (!parsed.success) {
       return NextResponse.json({ error: '표시 슬롯 조회 요청이 올바르지 않습니다.' }, { status: 400 })
@@ -52,20 +54,33 @@ export async function GET(req: NextRequest) {
     const division = await getServerTenantType()
     const slots = await listDisplaySlotsWithCourses(division)
     const origin = req.nextUrl.origin
-    const activeSlotKeys = slots
+    const activeSlotTargets = slots
       .filter((slot) => slot.is_active && slot.course_id)
-      .map((slot) => slot.slot_key)
+      .map((slot) => ({
+        slotKey: slot.slot_key,
+        roomId: parsed.data.roomId && slot.course_id === parsed.data.courseId
+          ? parsed.data.roomId
+          : null,
+      }))
 
     return NextResponse.json({
-      slots: slots.map((slot) => ({
-        ...slot,
-        displayUrl: `${origin}${withTenantPrefix(buildSlotDisplayPath(slot.slot_key), division)}`,
-      })),
+      slots: slots.map((slot) => {
+        const slotRoomId = parsed.data.roomId && slot.course_id === parsed.data.courseId
+          ? parsed.data.roomId
+          : null
+        return {
+          ...slot,
+          displayUrl: `${origin}${withTenantPrefix(
+            `${buildSlotDisplayPath(slot.slot_key)}${slotRoomId ? `?roomId=${encodeURIComponent(String(slotRoomId))}` : ''}`,
+            division,
+          )}`,
+        }
+      }),
       currentCourseSlotKey: parsed.data.courseId
         ? slots.find((slot) => slot.course_id === parsed.data.courseId && slot.is_active)?.slot_key ?? null
         : null,
-      multiDisplayUrl: activeSlotKeys.length > 0
-        ? `${origin}${withTenantPrefix(buildMultiDisplayPath(activeSlotKeys.slice(0, MAX_MULTI_DISPLAY_TARGETS)), division)}`
+      multiDisplayUrl: activeSlotTargets.length > 0
+        ? `${origin}${withTenantPrefix(buildMultiDisplayPath(activeSlotTargets.slice(0, MAX_MULTI_DISPLAY_TARGETS)), division)}`
         : '',
     })
   } catch (error) {

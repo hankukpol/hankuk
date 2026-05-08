@@ -43,6 +43,7 @@ export function hashToken(value: string) {
 export async function generateRotationToken(params: {
   courseId: number
   displaySessionId: number
+  roomId: number
   rotation?: number
 }) {
   const rotation = params.rotation ?? getRotationBucket()
@@ -51,6 +52,7 @@ export async function generateRotationToken(params: {
   return new SignJWT({
     courseId: params.courseId,
     displaySessionId: params.displaySessionId,
+    roomId: params.roomId,
     rotation,
   })
     .setProtectedHeader({ alg: 'HS256' })

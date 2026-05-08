@@ -11,6 +11,7 @@ import {
   getPaymentServiceStatus,
   listPayments,
 } from '@/lib/payments/service'
+import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
 import type { PaymentMethod, PaymentStatus } from '@/lib/payments/types'
 
 const paymentItemSchema = z.object({
@@ -33,6 +34,7 @@ const bundledPaymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   items: z.array(paymentItemSchema).optional(),
 })
@@ -69,6 +71,7 @@ const createPaymentSchema = z.object({
   installmentMonths: z.number().int().min(0).max(60).optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountLast4: z.string().optional().nullable(),
+  depositorName: z.string().trim().max(80).optional().nullable(),
   cashReceiptApprovalNo: z.string().trim().max(80).optional().nullable(),
   billing: billingSchema.optional(),
   payments: z.array(bundledPaymentSchema).optional(),
@@ -104,10 +107,10 @@ function getTopLevelPayment(input: z.infer<typeof createPaymentSchema>): z.infer
     paidAt: input.paidAt,
     memo: input.memo,
     cardLast4: input.cardLast4,
-    cardCompany: input.cardCompany,
+    cardCompany: input.method === 'card' ? normalizeCardCompanyInput(input.cardCompany) : null,
     installmentMonths: input.installmentMonths,
     bankName: input.bankName,
-    bankAccountLast4: input.bankAccountLast4,
+    depositorName: resolveDepositorName(input.depositorName, input.bankAccountLast4),
     cashReceiptApprovalNo: input.cashReceiptApprovalNo,
     items: input.items,
   }
@@ -144,11 +147,11 @@ function getBundledPaymentPreflightError(payments: z.infer<typeof bundledPayment
   const bankTransferWithoutAccount = payments.find(
     (payment) => (
       payment.method === 'bank_transfer'
-      && !/^\d{4}$/.test(payment.bankAccountLast4?.trim() ?? '')
+      && !resolveDepositorName(payment.depositorName, payment.bankAccountLast4)
     ),
   )
   if (bankTransferWithoutAccount) {
-    return '계좌 결제 시 계좌 마지막 4자리는 필수입니다.'
+    return '계좌 결제 시 입금자명은 필수입니다.'
   }
 
   const invalidPaidAt = payments.find((payment) => {
@@ -271,7 +274,11 @@ export async function POST(req: NextRequest) {
       enrollmentId,
       courseId: parsed.data.courseId ?? parsed.data.enrollment?.courseId,
       billing: parsed.data.billing,
-      payments: bundledPayments,
+      payments: bundledPayments.map((payment) => ({
+        ...payment,
+        cardCompany: payment.method === 'card' ? normalizeCardCompanyInput(payment.cardCompany) : null,
+        depositorName: resolveDepositorName(payment.depositorName, payment.bankAccountLast4),
+      })),
     }, division, getActorStaffId(auth.payload))
 
     if (shouldReturnBundleResponse) {

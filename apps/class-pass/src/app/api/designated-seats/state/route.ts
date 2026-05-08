@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { readStudentDeviceHashFromRequest } from '@/lib/designated-seat/device'
 import {
+  ensureCourseRooms,
   getDesignatedSeatStudentState,
   verifyStudentSeatAccess,
 } from '@/lib/designated-seat/service'
@@ -11,6 +12,7 @@ import { getServerTenantType } from '@/lib/tenant.server'
 const schema = z.object({
   courseId: z.number().int().positive(),
   enrollmentId: z.number().int().positive(),
+  roomId: z.number().int().positive().optional().nullable(),
   name: z.string().min(1),
   phone: z.string().min(10),
 })
@@ -36,9 +38,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '학생 정보를 다시 확인해주세요.' }, { status: 404 })
     }
 
+    if (parsed.data.roomId) {
+      const rooms = await ensureCourseRooms(access.course.id)
+      if (!rooms.some((room) => room.id === parsed.data.roomId)) {
+        return NextResponse.json({ error: '강의실을 찾을 수 없습니다.' }, { status: 404 })
+      }
+    }
+
     const state = await getDesignatedSeatStudentState({
       course: access.course,
       enrollmentId: access.enrollment.id,
+      roomId: parsed.data.roomId ?? null,
       deviceKeyHash: await readStudentDeviceHashFromRequest(req),
     })
 

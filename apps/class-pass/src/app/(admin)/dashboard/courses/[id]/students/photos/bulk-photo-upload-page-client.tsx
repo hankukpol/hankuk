@@ -72,7 +72,7 @@ export default function BulkPhotoUploadPage({
 
     Promise.all([
       fetch(`/api/courses/${courseId}`, { cache: 'no-store' }).then((response) => response.json()),
-      fetch(`/api/enrollments?courseId=${courseId}`, { cache: 'no-store' }).then((response) => response.json()),
+      fetch(`/api/enrollments?courseId=${courseId}&noLimit=1`, { cache: 'no-store' }).then((response) => response.json()),
     ])
       .then(([coursePayload, enrollmentPayload]) => {
         setCourse(coursePayload.course as Course)

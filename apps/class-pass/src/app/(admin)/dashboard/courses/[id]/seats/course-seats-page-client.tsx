@@ -62,7 +62,7 @@ async function fetchSeatsPageData(courseId: number): Promise<SeatsPageData> {
   const [courseResponse, seatsResponse, enrollmentsResponse] = await Promise.all([
     fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
     fetch(`/api/seats?courseId=${courseId}`, { cache: 'no-store' }),
-    fetch(`/api/enrollments?courseId=${courseId}`, { cache: 'no-store' }),
+    fetch(`/api/enrollments?courseId=${courseId}&noLimit=1`, { cache: 'no-store' }),
   ])
 
   const coursePayload = await courseResponse.json().catch(() => null)

@@ -121,6 +121,12 @@ type StudentsManageTableProps = {
   statusFilter: EnrollmentManageStatusFilter
   customFields: EnrollmentFieldDef[]
   attendanceEnabled: boolean
+  currentPage: number
+  pageCount: number
+  pageSize: number
+  totalCount: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
   onSearchChange: (value: string) => void
   onStatusFilterChange: (value: EnrollmentManageStatusFilter) => void
   onOpenDetail: (enrollment: Enrollment) => void
@@ -133,6 +139,54 @@ type StudentsManageTableProps = {
   onDelete: (enrollment: Enrollment) => void
 }
 
+function PaginationControls({
+  currentPage, pageCount, pageSize, totalCount, onPageChange, onPageSizeChange,
+}: {
+  currentPage: number; pageCount: number; pageSize: number; totalCount: number
+  onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void
+}) {
+  const start = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const end = Math.min(currentPage * pageSize, totalCount)
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 text-sm text-slate-500">
+        <span>{start}–{end} / {totalCount}명</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none"
+        >
+          <option value={20}>20명</option>
+          <option value={50}>50명</option>
+          <option value={100}>100명</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+        >
+          이전
+        </button>
+        <span className="text-sm font-medium text-slate-600">
+          {currentPage} / {pageCount}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage >= pageCount}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+        >
+          다음
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function StudentsManageTable({
   filtered,
   summary,
@@ -140,6 +194,12 @@ export function StudentsManageTable({
   statusFilter,
   customFields,
   attendanceEnabled,
+  currentPage,
+  pageCount,
+  pageSize,
+  totalCount,
+  onPageChange,
+  onPageSizeChange,
   onSearchChange,
   onStatusFilterChange,
   onOpenDetail,
@@ -529,6 +589,14 @@ export function StudentsManageTable({
         </div>
         </>
       )}
+      <PaginationControls
+        currentPage={currentPage}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />
     </section>
   )
 }

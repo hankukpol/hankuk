@@ -35,6 +35,7 @@ type MaterialSnapshot = Pick<Material, 'id' | 'course_id' | 'material_type'>
 type AttendanceSummaryRow = AttendanceHistoryEntry
 type StudentCourseAccessContext = { course: Course; enrollment: Enrollment }
 type CourseEnrollmentCountRow = Pick<Enrollment, 'course_id' | 'status' | 'suspended_at'>
+const ENROLLMENT_FETCH_CHUNK_SIZE = 1000
 
 export type StudentPassLookupResult =
   | { kind: 'ok'; payload: PassPayload }
@@ -178,29 +179,6 @@ const getCachedCourseSubjects = unstable_cache(
   {
     revalidate: 15,
     tags: ['course-subjects'],
-  },
-)
-
-const getCachedCourseEnrollments = unstable_cache(
-  async (courseId: number) => {
-    const db = createServerClient()
-    const joinedRows = unwrapSupabaseResult(
-      'listCourseEnrollments.withStudents',
-      await db
-        .from('enrollments')
-        .select('*,students(*)')
-        .eq('course_id', courseId)
-        .order('created_at', { ascending: false }),
-    ) as EnrollmentWithStudentRow[] | null
-
-    return attachEnrollmentBilling(
-      (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row)),
-    )
-  },
-  ['course-enrollments'],
-  {
-    revalidate: 10,
-    tags: ['enrollments'],
   },
 )
 
@@ -441,19 +419,41 @@ export async function listCourseEnrollments(
   if (options?.columns || options?.limit !== undefined || options?.offset !== undefined) {
     const db = createServerClient()
     if (options?.columns) {
-      let query = db
-        .from('enrollments')
-        .select(options.columns)
-        .eq('course_id', courseId)
-        .order('created_at', { ascending: false })
-
       if (options.limit) {
         const offset = options.offset ?? 0
-        query = query.range(offset, offset + options.limit - 1)
+        const data = unwrapSupabaseResult(
+          'listCourseEnrollments',
+          await db
+            .from('enrollments')
+            .select(options.columns)
+            .eq('course_id', courseId)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(offset, offset + options.limit - 1),
+        )
+        return ((data ?? []) as unknown) as Enrollment[]
       }
 
-      const data = unwrapSupabaseResult('listCourseEnrollments', await query)
-      return ((data ?? []) as unknown) as Enrollment[]
+      const rows: unknown[] = []
+      for (let offset = 0; ; offset += ENROLLMENT_FETCH_CHUNK_SIZE) {
+        const data = unwrapSupabaseResult(
+          'listCourseEnrollments',
+          await db
+            .from('enrollments')
+            .select(options.columns)
+            .eq('course_id', courseId)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(offset, offset + ENROLLMENT_FETCH_CHUNK_SIZE - 1),
+        ) as unknown[] | null
+        const pageRows = data ?? []
+        rows.push(...pageRows)
+        if (pageRows.length < ENROLLMENT_FETCH_CHUNK_SIZE) {
+          break
+        }
+      }
+
+      return rows as Enrollment[]
     }
 
     const joinedRows = unwrapSupabaseResult(
@@ -464,6 +464,7 @@ export async function listCourseEnrollments(
           .select('*,students(*)')
           .eq('course_id', courseId)
           .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
 
         if (options?.limit) {
           const offset = options.offset ?? 0
@@ -481,7 +482,144 @@ export async function listCourseEnrollments(
     return attachAttendanceDeviceStates(courseId, enrollments)
   }
 
-  return attachAttendanceDeviceStates(courseId, await getCachedCourseEnrollments(courseId))
+  const { enrollments } = await listCourseEnrollmentsPaged(courseId, { noLimit: true })
+  return enrollments
+}
+
+export async function listCourseEnrollmentsPaged(
+  courseId: number,
+  options?: {
+    limit?: number
+    offset?: number
+    search?: string
+    status?: 'all' | 'active' | 'refunded' | 'suspended'
+    noLimit?: boolean
+  },
+): Promise<{
+  enrollments: Enrollment[]
+  total: number
+  summary: { active: number; refunded: number; suspended: number }
+}> {
+  const db = createServerClient()
+  const limit = options?.limit ?? 50
+  const offset = options?.offset ?? 0
+  const search = options?.search?.trim() || undefined
+  const status = options?.status
+  const noLimit = options?.noLimit ?? false
+  const safeSearch = search?.replace(/[%_,()]/g, '') || undefined
+
+  function buildDataQuery(range?: { from: number; to: number }) {
+    let query = db
+      .from('enrollments')
+      .select('*,students(*)')
+      .eq('course_id', courseId)
+
+    if (status === 'active') {
+      query = query.eq('status', 'active').is('suspended_at', null)
+    } else if (status === 'refunded') {
+      query = query.eq('status', 'refunded')
+    } else if (status === 'suspended') {
+      query = query.eq('status', 'active').not('suspended_at', 'is', null)
+    }
+
+    if (safeSearch) {
+      query = query.or(`name.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,exam_number.ilike.%${safeSearch}%`)
+    }
+
+    query = query.order('created_at', { ascending: false }).order('id', { ascending: false })
+
+    if (range) {
+      query = query.range(range.from, range.to)
+    }
+
+    return query
+  }
+
+  async function fetchAllRows() {
+    const rows: EnrollmentWithStudentRow[] = []
+    for (let chunkOffset = 0; ; chunkOffset += ENROLLMENT_FETCH_CHUNK_SIZE) {
+      const { data, error } = await buildDataQuery({
+        from: chunkOffset,
+        to: chunkOffset + ENROLLMENT_FETCH_CHUNK_SIZE - 1,
+      })
+      if (error) {
+        throw error
+      }
+
+      const pageRows = (data ?? []) as EnrollmentWithStudentRow[]
+      rows.push(...pageRows)
+      if (pageRows.length < ENROLLMENT_FETCH_CHUNK_SIZE) {
+        break
+      }
+    }
+
+    return rows
+  }
+
+  async function fetchDataRows() {
+    if (noLimit) {
+      return fetchAllRows()
+    }
+
+    const { data, error } = await buildDataQuery({ from: offset, to: offset + limit - 1 })
+    if (error) {
+      throw error
+    }
+
+    return (data ?? []) as EnrollmentWithStudentRow[]
+  }
+
+  let countQuery = db
+    .from('enrollments')
+    .select('*', { count: 'exact', head: true })
+    .eq('course_id', courseId)
+
+  if (status === 'active') {
+    countQuery = countQuery.eq('status', 'active').is('suspended_at', null)
+  } else if (status === 'refunded') {
+    countQuery = countQuery.eq('status', 'refunded')
+  } else if (status === 'suspended') {
+    countQuery = countQuery.eq('status', 'active').not('suspended_at', 'is', null)
+  }
+
+  if (safeSearch) {
+    countQuery = countQuery.or(`name.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,exam_number.ilike.%${safeSearch}%`)
+  }
+
+  const [joinedRows, countResult, activeResult, refundedResult, suspendedResult] = await Promise.all([
+    fetchDataRows(),
+    countQuery,
+    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'active').is('suspended_at', null),
+    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'refunded'),
+    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'active').not('suspended_at', 'is', null),
+  ])
+
+  if (countResult.error) {
+    throw countResult.error
+  }
+  if (activeResult.error) {
+    throw activeResult.error
+  }
+  if (refundedResult.error) {
+    throw refundedResult.error
+  }
+  if (suspendedResult.error) {
+    throw suspendedResult.error
+  }
+
+  const merged = joinedRows.map((row) => mergeEnrollmentStudentSnapshot(row))
+  const withBilling = await attachEnrollmentBilling(merged)
+  const enriched = await attachAttendanceDeviceStates(courseId, withBilling)
+
+  return {
+    enrollments: enriched,
+    total: countResult.count ?? 0,
+    summary: {
+      active: activeResult.count ?? 0,
+      refunded: refundedResult.count ?? 0,
+      suspended: suspendedResult.count ?? 0,
+    },
+  }
 }
 
 export async function listMaterialsForCourse(

@@ -246,10 +246,28 @@ function StudentTypeSelector({
   )
 }
 
-async function fetchStudentsPageData(courseId: number) {
+async function fetchStudentsPageData(
+  courseId: number,
+  opts: { page: number; pageSize: number; search: string; status: string; noLimit?: boolean },
+) {
+  const offset = (opts.page - 1) * opts.pageSize
+  const params = new URLSearchParams({ courseId: String(courseId) })
+  if (opts.noLimit) {
+    params.set('noLimit', '1')
+  } else {
+    params.set('limit', String(opts.pageSize))
+    params.set('offset', String(offset))
+  }
+  if (opts.search) {
+    params.set('search', opts.search)
+  }
+  if (opts.status && opts.status !== 'all') {
+    params.set('status', opts.status)
+  }
+
   const [courseRes, enrollRes, textbookRes, seriesRes] = await Promise.all([
     fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
-    fetch(`/api/enrollments?courseId=${courseId}`, { cache: 'no-store' }),
+    fetch(`/api/enrollments?${params}`, { cache: 'no-store' }),
     fetch(`/api/materials?courseId=${courseId}&materialType=textbook`, { cache: 'no-store' }),
     fetch('/api/config/series-options', { cache: 'no-store' }),
   ])
@@ -264,6 +282,10 @@ async function fetchStudentsPageData(courseId: number) {
   return {
     course: coursePay.course as Course,
     enrollments: (enrollPay.enrollments ?? []) as Enrollment[],
+    total: (enrollPay.total ?? 0) as number,
+    summary: (enrollPay.summary ?? { active: 0, refunded: 0, suspended: 0 }) as {
+      active: number; refunded: number; suspended: number
+    },
     textbooks: (textbookPay.materials ?? []) as Material[],
     seriesOptions: (seriesPay.options ?? []) as BranchSeriesOption[],
   }
@@ -289,6 +311,13 @@ export default function CourseStudentsPage({
   const [seriesOptions, setSeriesOptions] = useState<BranchSeriesOption[]>(initialData?.seriesOptions ?? [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<EnrollmentManageStatusFilter>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [totalCount, setTotalCount] = useState(0)
+  const [pageSummary, setPageSummary] = useState({ active: 0, refunded: 0, suspended: 0 })
+  const searchTimerRef = useRef<number | null>(null)
+  const paginationRef = useRef({ currentPage: 1, pageSize: 50, search: '', statusFilter: 'all' as EnrollmentManageStatusFilter })
+  const fetchSeqRef = useRef(0)
 
   const [matrixMaterials, setMatrixMaterials] = useState<Material[]>([])
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([])
@@ -338,12 +367,6 @@ export default function CourseStudentsPage({
   const [error, setError] = useState(initialError)
 
   const customFields = useMemo(() => course?.enrollment_fields ?? [], [course?.enrollment_fields])
-  const activeEnrollments = useMemo(
-    () => enrollments.filter((enrollment) => enrollment.status === 'active'),
-    [enrollments],
-  )
-  const activeEnrollmentsRef = useRef(activeEnrollments)
-  activeEnrollmentsRef.current = activeEnrollments
   const visibleTextbooks = useMemo(
     () => textbooks.filter((textbook) => textbook.is_active),
     [textbooks],
@@ -493,6 +516,9 @@ export default function CourseStudentsPage({
     return () => {
       if (studentLookupInputTimerRef.current !== null) {
         window.clearTimeout(studentLookupInputTimerRef.current)
+      }
+      if (searchTimerRef.current !== null) {
+        window.clearTimeout(searchTimerRef.current)
       }
     }
   }, [])
@@ -802,6 +828,7 @@ export default function CourseStudentsPage({
       setEditingId(null)
     }
     setMessage('수강생을 삭제했습니다.')
+    void refresh().catch(() => null)
   }
 
   async function handleUnsuspendConfirmed(enrollment: Enrollment) {
@@ -819,6 +846,7 @@ export default function CourseStudentsPage({
     }
 
     const nextEnrollment = payload.enrollment as Enrollment
+    await refresh().catch(() => null)
     setEnrollments((current) => current.map((entry) => (
       entry.id === nextEnrollment.id
         ? { ...entry, ...nextEnrollment }
@@ -933,13 +961,49 @@ export default function CourseStudentsPage({
     setMessage(`출석 기기 전체 초기화 완료: ${payload?.resetCount ?? 0}건 초기화`)
   }
 
-  const refresh = useCallback(async () => {
-    const data = await fetchStudentsPageData(courseId)
+  paginationRef.current = { currentPage, pageSize, search, statusFilter }
+
+  const applyStudentsPageData = useCallback((data: Awaited<ReturnType<typeof fetchStudentsPageData>>, resolvedPage?: number) => {
+    if (resolvedPage !== undefined) {
+      setCurrentPage(resolvedPage)
+      paginationRef.current = { ...paginationRef.current, currentPage: resolvedPage }
+    }
     setCourse(data.course)
     setEnrollments(data.enrollments)
+    setTotalCount(data.total)
+    setPageSummary(data.summary)
     setTextbooks(data.textbooks)
     setSeriesOptions(data.seriesOptions)
+  }, [])
+
+  const loadStudentsPageData = useCallback(async (
+    params: Parameters<typeof fetchStudentsPageData>[1],
+  ) => {
+    let resolvedPage = params.page
+    let data = await fetchStudentsPageData(courseId, params)
+
+    if (!params.noLimit) {
+      const pageCount = Math.max(1, Math.ceil(data.total / params.pageSize))
+      if (params.page > pageCount) {
+        resolvedPage = pageCount
+        data = await fetchStudentsPageData(courseId, { ...params, page: resolvedPage })
+      }
+    }
+
+    return { data, resolvedPage }
   }, [courseId])
+
+  const refresh = useCallback(async (opts?: { noLimit?: boolean }) => {
+    const { currentPage: page, pageSize: size, search: q, statusFilter: st } = paginationRef.current
+    const { data, resolvedPage } = await loadStudentsPageData({
+      page,
+      pageSize: size,
+      search: q,
+      status: st,
+      noLimit: opts?.noLimit,
+    })
+    applyStudentsPageData(data, resolvedPage !== page ? resolvedPage : undefined)
+  }, [applyStudentsPageData, loadStudentsPageData])
 
   useEffect(() => {
     if (!Number.isInteger(courseId) || courseId <= 0) {
@@ -956,42 +1020,110 @@ export default function CourseStudentsPage({
       })
   }, [courseId, refresh, initialLoaded])
 
-  // Filter + search
-  const filtered = useMemo(() => {
-    let list = enrollments
-    if (statusFilter === 'active') {
-      list = list.filter((e) => e.status === 'active' && !e.suspended_at)
-    } else if (statusFilter === 'refunded') {
-      list = list.filter((e) => e.status === 'refunded')
-    } else if (statusFilter === 'suspended') {
-      list = list.filter((e) => e.status === 'active' && Boolean(e.suspended_at))
-    }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      list = list.filter(
-        (e) =>
-          e.name.toLowerCase().includes(q) ||
-          e.phone.includes(q) ||
-          (e.exam_number ?? '').toLowerCase().includes(q) ||
-          ENROLLMENT_STUDENT_TYPE_LABEL[e.student_type ?? 'general'].includes(search.trim()),
-      )
-    }
-    return list
-  }, [enrollments, statusFilter, search])
+  const summary = {
+    total: totalCount,
+    active: pageSummary.active,
+    refunded: pageSummary.refunded,
+    suspended: pageSummary.suspended,
+  }
 
-  const summary = useMemo(() => {
-    const active = enrollments.filter((e) => e.status === 'active' && !e.suspended_at).length
-    const refunded = enrollments.filter((e) => e.status === 'refunded').length
-    const suspended = enrollments.filter((e) => e.status === 'active' && Boolean(e.suspended_at)).length
-    return { total: enrollments.length, active, refunded, suspended }
-  }, [enrollments])
+  const applyEnrollmentFetch = useCallback((
+    params: Parameters<typeof fetchStudentsPageData>[1],
+  ) => {
+    fetchSeqRef.current += 1
+    const seq = fetchSeqRef.current
+    loadStudentsPageData(params)
+      .then(({ data, resolvedPage }) => {
+        if (seq !== fetchSeqRef.current) return
+        applyStudentsPageData(data, resolvedPage !== params.page ? resolvedPage : undefined)
+      })
+      .catch((reason: unknown) => {
+        if (seq !== fetchSeqRef.current) return
+        setError(reason instanceof Error ? reason.message : '불러오기 실패')
+      })
+  }, [applyStudentsPageData, loadStudentsPageData])
 
-  const handleDownloadStudentList = useCallback(() => {
+  const handlePageChange = useCallback((page: number) => {
+    const pageCount = Math.max(1, Math.ceil(totalCount / paginationRef.current.pageSize))
+    const nextPage = Math.min(Math.max(1, page), pageCount)
+    setCurrentPage(nextPage)
+    paginationRef.current = { ...paginationRef.current, currentPage: nextPage }
+    applyEnrollmentFetch({
+      page: nextPage,
+      pageSize: paginationRef.current.pageSize,
+      search: paginationRef.current.search,
+      status: paginationRef.current.statusFilter,
+    })
+  }, [applyEnrollmentFetch, totalCount])
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+    paginationRef.current = { ...paginationRef.current, pageSize: size, currentPage: 1 }
+    applyEnrollmentFetch({
+      page: 1,
+      pageSize: size,
+      search: paginationRef.current.search,
+      status: paginationRef.current.statusFilter,
+    })
+  }, [applyEnrollmentFetch])
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value)
+    if (searchTimerRef.current !== null) {
+      window.clearTimeout(searchTimerRef.current)
+    }
+    searchTimerRef.current = window.setTimeout(() => {
+      searchTimerRef.current = null
+      setCurrentPage(1)
+      paginationRef.current = { ...paginationRef.current, search: value, currentPage: 1 }
+      applyEnrollmentFetch({
+        page: 1,
+        pageSize: paginationRef.current.pageSize,
+        search: value,
+        status: paginationRef.current.statusFilter,
+      })
+    }, 500)
+  }, [applyEnrollmentFetch])
+
+  const handleStatusFilterChange = useCallback((value: EnrollmentManageStatusFilter) => {
+    setStatusFilter(value)
+    setCurrentPage(1)
+    paginationRef.current = { ...paginationRef.current, statusFilter: value, currentPage: 1 }
+    applyEnrollmentFetch({
+      page: 1,
+      pageSize: paginationRef.current.pageSize,
+      search: paginationRef.current.search,
+      status: value,
+    })
+  }, [applyEnrollmentFetch])
+
+  const handleDownloadStudentList = useCallback(async () => {
     if (!course) {
       return
     }
 
-    if (enrollments.length === 0) {
+    if (totalCount === 0) {
+      setError('다운로드할 수강생이 없습니다.')
+      return
+    }
+
+    let allEnrollments: Enrollment[]
+    try {
+      const data = await fetchStudentsPageData(courseId, {
+        page: 1,
+        pageSize: 50,
+        search: paginationRef.current.search,
+        status: paginationRef.current.statusFilter,
+        noLimit: true,
+      })
+      allEnrollments = data.enrollments
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '전체 수강생 목록을 불러오지 못했습니다.')
+      return
+    }
+
+    if (allEnrollments.length === 0) {
       setError('다운로드할 수강생이 없습니다.')
       return
     }
@@ -1007,7 +1139,7 @@ export default function CourseStudentsPage({
       '상태',
       '등록일',
     ]
-    const rows = enrollments.map((enrollment, index) => [
+    const rows = allEnrollments.map((enrollment, index) => [
       index + 1,
       enrollment.exam_number ?? '',
       enrollment.name,
@@ -1032,7 +1164,7 @@ export default function CourseStudentsPage({
     URL.revokeObjectURL(url)
     setError('')
     setMessage(`${course.name} 수강생 명단 CSV를 다운로드했습니다.`)
-  }, [course, customFields, enrollments])
+  }, [course, courseId, customFields, totalCount])
 
   const loadMatrixData = useCallback(async (mode: MatrixMode) => {
     setMatrixLoading(true)
@@ -1040,17 +1172,28 @@ export default function CourseStudentsPage({
 
     try {
       const meta = MATRIX_TAB_META[mode]
-      const response = await fetch(
-        `/api/distribution/receipt-matrix?courseId=${courseId}&materialType=${meta.materialType}`,
-        { cache: 'no-store' },
-      )
+      const enrollmentParams = new URLSearchParams({ courseId: String(courseId), noLimit: '1' })
+      const [response, enrollmentResponse] = await Promise.all([
+        fetch(
+          `/api/distribution/receipt-matrix?courseId=${courseId}&materialType=${meta.materialType}`,
+          { cache: 'no-store' },
+        ),
+        fetch(`/api/enrollments?${enrollmentParams}`, { cache: 'no-store' }),
+      ])
       const payload = await response.json().catch(() => null)
+      const enrollmentPayload = await enrollmentResponse.json().catch(() => null)
 
       if (!response.ok) {
         throw new Error(payload?.error ?? '매트릭스 데이터를 불러오지 못했습니다.')
       }
 
+      if (!enrollmentResponse.ok) {
+        throw new Error(enrollmentPayload?.error ?? '?섍컯??紐⑸줉??遺덈윭?ㅼ? 紐삵뻽?듬땲??')
+      }
+
       const materials = (payload?.materials ?? []) as Material[]
+      const matrixEnrollments = ((enrollmentPayload?.enrollments ?? []) as Enrollment[])
+        .filter((enrollment) => enrollment.status === 'active')
       const logs = (payload?.logs ?? []) as Array<{
         id: number
         enrollment_id: number
@@ -1082,7 +1225,7 @@ export default function CourseStudentsPage({
 
       setMatrixMaterials(materials)
       setMatrixRows(
-        activeEnrollmentsRef.current.map((enrollment) => ({
+        matrixEnrollments.map((enrollment) => ({
           enrollment,
           receipts: receiptMap.get(enrollment.id) ?? {},
           assignments: assignmentMap.get(enrollment.id) ?? {},
@@ -1605,6 +1748,7 @@ export default function CourseStudentsPage({
       const p = await r.json().catch(() => null)
       if (!r.ok) { setError(p?.error ?? '수정에 실패했습니다.'); return }
       const next = p.enrollment as Enrollment
+      await refresh().catch(() => null)
       setEnrollments((c) => c.map((x) => (x.id === next.id ? next : x)))
       setPanel('none'); setEditingId(null)
       setMessage('수강생 정보를 수정했습니다.')
@@ -1638,6 +1782,7 @@ export default function CourseStudentsPage({
     }
 
     const nextEnrollment = payload.enrollment as Enrollment
+    await refresh().catch(() => null)
     setEnrollments((current) => current.map((entry) => (
       entry.id === nextEnrollment.id
         ? { ...entry, ...nextEnrollment }
@@ -1743,8 +1888,8 @@ export default function CourseStudentsPage({
           <button
             type="button"
             onClick={handleDownloadStudentList}
-            disabled={enrollments.length === 0}
-            title={enrollments.length === 0 ? '다운로드할 수강생이 없습니다.' : '현재 강좌의 전체 수강생 명단을 CSV로 다운로드'}
+            disabled={totalCount === 0}
+            title={totalCount === 0 ? '다운로드할 수강생이 없습니다.' : '현재 강좌의 전체 수강생 명단을 CSV로 다운로드'}
             className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-50 disabled:active:scale-100"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
@@ -2315,14 +2460,20 @@ export default function CourseStudentsPage({
       {/* ── Manage tab ── */}
       {tab === 'manage' && (
         <StudentsManageTable
-          filtered={filtered}
+          filtered={enrollments}
           summary={summary}
           search={search}
           statusFilter={statusFilter}
           customFields={customFields}
           attendanceEnabled={course.feature_attendance}
-          onSearchChange={setSearch}
-          onStatusFilterChange={setStatusFilter}
+          currentPage={currentPage}
+          pageCount={Math.max(1, Math.ceil(totalCount / pageSize))}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          onSearchChange={handleSearchChange}
+          onStatusFilterChange={handleStatusFilterChange}
           onOpenDetail={openPaymentDetail}
           onEdit={startEdit}
           onResetPin={(enrollment) => {

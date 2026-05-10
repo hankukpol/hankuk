@@ -1,4 +1,4 @@
-import { getCourseById, listCourseEnrollments, listMaterialsForCourse } from '@/lib/class-pass-data'
+import { getCourseById, listMaterialsForCourse } from '@/lib/class-pass-data'
 import { listBranchSeriesOptions } from '@/lib/branch-series'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
@@ -16,13 +16,12 @@ async function loadInitialData(courseId: number): Promise<StudentsPageData | nul
     return null
   }
 
-  const [enrollments, textbooks, seriesOptions] = await Promise.all([
-    listCourseEnrollments(courseId),
+  const [textbooks, seriesOptions] = await Promise.all([
     listMaterialsForCourse(courseId, { materialType: 'textbook' }),
     listBranchSeriesOptions({ includeInactive: true }),
   ])
 
-  return { course, enrollments, textbooks, seriesOptions }
+  return { course, enrollments: [], textbooks, seriesOptions }
 }
 
 export default async function CourseStudentsPage({ params }: CourseStudentsPageProps) {
@@ -39,7 +38,7 @@ export default async function CourseStudentsPage({ params }: CourseStudentsPageP
       return <CourseStudentsPageClient initialError="강의를 찾을 수 없습니다." initialLoaded />
     }
 
-    return <CourseStudentsPageClient initialData={data} />
+    return <CourseStudentsPageClient initialData={data} initialLoaded={false} />
   } catch {
     return <CourseStudentsPageClient initialError="수강생 관리 페이지를 불러오지 못했습니다." initialLoaded={false} />
   }

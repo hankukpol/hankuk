@@ -10,7 +10,7 @@ import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   bulkAssignTextbooks,
   getCourseById,
-  listCourseEnrollments,
+  listCourseEnrollmentsPaged,
   listMaterialsForCourse,
   verifyCourseOwnership,
 } from '@/lib/class-pass-data'
@@ -267,55 +267,40 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'courseId가 필요합니다.' }, { status: 400 })
     }
 
-    const limit = parsePositiveInt(req.nextUrl.searchParams.get('limit')) ?? undefined
-    const offset = parsePositiveInt(req.nextUrl.searchParams.get('offset'))
+    const limit = parsePositiveInt(req.nextUrl.searchParams.get('limit')) ?? 50
+    const offset = parsePositiveInt(req.nextUrl.searchParams.get('offset')) ?? 0
+    const search = req.nextUrl.searchParams.get('search')?.trim() || undefined
+    const statusParam = req.nextUrl.searchParams.get('status') ?? undefined
+    const status = (['active', 'refunded', 'suspended', 'all'] as const).includes(statusParam as 'active')
+      ? statusParam as 'active' | 'refunded' | 'suspended' | 'all'
+      : undefined
+    const noLimit = req.nextUrl.searchParams.get('noLimit') === '1'
+
     const division = await getServerTenantType()
     if (!(await verifyCourseOwnership(courseId, division))) {
       return NextResponse.json({ error: '과정을 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const enrollments = await listCourseEnrollments(courseId, {
+    const { enrollments, total, summary } = await listCourseEnrollmentsPaged(courseId, {
       limit,
-      offset: offset ?? undefined,
+      offset,
+      search,
+      status,
+      noLimit,
     })
 
-    const studentIds = Array.from(new Set(
-      enrollments
-        .map((enrollment) => enrollment.student_id)
-        .filter((studentId): studentId is number => Number.isInteger(studentId)),
-    ))
-
-    let studentProfileMap = new Map<number, Pick<Student, 'id' | 'birth_date' | 'auth_method'>>()
-    if (studentIds.length > 0) {
-      const db = createServerClient()
-      const { data: students, error } = await db
-        .from('students')
-        .select('*')
-        .in('id', studentIds)
-
-      if (error) {
-        return NextResponse.json({ error: '수강생 목록을 불러오지 못했습니다.' }, { status: 500 })
-      }
-
-      studentProfileMap = new Map(
-        ((students ?? []) as Student[]).map((student) => [
-          student.id,
-          {
-            id: student.id,
-            birth_date: student.birth_date ?? null,
-            auth_method: student.auth_method ?? null,
-          },
-        ]),
-      )
-    }
-
     return NextResponse.json({
-      enrollments: enrollments.map((enrollment) => ({
-        ...enrollment,
-        student_profile: enrollment.student_id
-          ? studentProfileMap.get(enrollment.student_id) ?? null
-          : null,
-      })),
+      enrollments: enrollments.map((enrollment) => {
+        const student = (enrollment as unknown as { students?: Student | null }).students ?? null
+        return {
+          ...enrollment,
+          student_profile: student
+            ? { id: student.id, birth_date: student.birth_date ?? null, auth_method: student.auth_method ?? null }
+            : enrollment.student_profile ?? null,
+        }
+      }),
+      total,
+      summary,
     })
   } catch (error) {
     return handleRouteError('enrollments.GET', '수강생 목록을 불러오지 못했습니다.', error)

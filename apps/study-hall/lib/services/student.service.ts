@@ -58,6 +58,11 @@ export type StudentListItem = DivisionStudent & {
 
 export type StudentDetail = StudentListItem;
 
+export type StudentPointMetricOptions = {
+  pointDateFrom?: string;
+  pointDateTo?: string;
+};
+
 export type StudentUpsertInput = {
   name: string;
   studentNumber: string;
@@ -482,6 +487,40 @@ function toNetPoints(rawPointsSum: number) {
   return rawPointsSum;
 }
 
+function resolvePointMetricRange(options?: StudentPointMetricOptions) {
+  const dateFrom = options?.pointDateFrom
+    ? normalizeYmdDate(options.pointDateFrom, "시작일")
+    : null;
+  const dateTo = options?.pointDateTo
+    ? normalizeYmdDate(options.pointDateTo, "종료일")
+    : null;
+
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    throw badRequest("종료일은 시작일 이후로 선택해주세요.");
+  }
+
+  const from = dateFrom ? parseUtcDateFromYmd(dateFrom, "시작일") : null;
+  const to = dateTo ? parseUtcDateFromYmd(dateTo, "종료일") : null;
+
+  if (to) {
+    to.setUTCDate(to.getUTCDate() + 1);
+  }
+
+  return { dateFrom, dateTo, from, to };
+}
+
+function isPointRecordInMetricRange(
+  record: { date: string },
+  range: ReturnType<typeof resolvePointMetricRange>,
+) {
+  const dateKey = record.date.slice(0, 10);
+
+  return (
+    (!range.dateFrom || dateKey >= range.dateFrom) &&
+    (!range.dateTo || dateKey <= range.dateTo)
+  );
+}
+
 function formatSeatDisplay(studyRoomName: string | null, seatLabel: string | null) {
   if (!seatLabel) {
     return null;
@@ -671,7 +710,10 @@ async function readCompatibleStudents(
   `);
 }
 
-async function getMockStudentsWithMetrics(divisionSlug: string) {
+async function getMockStudentsWithMetrics(
+  divisionSlug: string,
+  options?: StudentPointMetricOptions,
+) {
   const [state, settings] = await Promise.all([
     readMockState(),
     getDivisionSettings(divisionSlug),
@@ -681,8 +723,13 @@ async function getMockStudentsWithMetrics(divisionSlug: string) {
   const rooms = state.studyRoomsByDivision[divisionSlug] ?? [];
   const pointTotals = new Map<string, number>();
   const planById = new Map((state.tuitionPlansByDivision[divisionSlug] ?? []).map((plan) => [plan.id, plan.name]));
+  const pointRange = resolvePointMetricRange(options);
 
   for (const record of state.pointRecordsByDivision[divisionSlug] ?? []) {
+    if (!isPointRecordInMetricRange(record, pointRange)) {
+      continue;
+    }
+
     pointTotals.set(record.studentId, (pointTotals.get(record.studentId) ?? 0) + record.points);
   }
 
@@ -711,18 +758,32 @@ async function getMockStudentsWithMetrics(divisionSlug: string) {
   );
 }
 
-async function getDbStudentsWithMetrics(divisionSlug: string) {
+async function getDbStudentsWithMetrics(
+  divisionSlug: string,
+  options?: StudentPointMetricOptions,
+) {
   const prisma = await getPrismaClient();
   const division = await prisma.division.findUnique({
     where: { slug: divisionSlug },
     select: { id: true },
   });
   const divisionId = division?.id;
+  const pointRange = resolvePointMetricRange(options);
   const settingsPromise = getDivisionSettings(divisionSlug);
   const pointAggregatesPromise = divisionId
     ? prisma.pointRecord.groupBy({
         by: ["studentId"],
-        where: { student: { divisionId } },
+        where: {
+          student: { divisionId },
+          ...(pointRange.from || pointRange.to
+            ? {
+                date: {
+                  ...(pointRange.from ? { gte: pointRange.from } : {}),
+                  ...(pointRange.to ? { lt: pointRange.to } : {}),
+                },
+              }
+            : {}),
+        },
         _sum: { points: true },
       })
     : Promise.resolve([] as { studentId: string; _sum: { points: number | null } }[]);
@@ -1020,8 +1081,13 @@ async function resolveDbTuitionPlan(
 }
 
 
-export const listStudents = cache(async function listStudents(divisionSlug: string): Promise<StudentListItem[]> {
-  return isMockMode() ? getMockStudentsWithMetrics(divisionSlug) : getDbStudentsWithMetrics(divisionSlug);
+export const listStudents = cache(async function listStudents(
+  divisionSlug: string,
+  options?: StudentPointMetricOptions,
+): Promise<StudentListItem[]> {
+  return isMockMode()
+    ? getMockStudentsWithMetrics(divisionSlug, options)
+    : getDbStudentsWithMetrics(divisionSlug, options);
 });
 
 export async function getDivisionStudents(divisionSlug: string): Promise<DivisionStudent[]> {

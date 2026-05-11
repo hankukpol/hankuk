@@ -2,22 +2,29 @@
 
 import { memo, useEffect, useMemo, useState } from "react";
 import {
+  CalendarDays,
   CheckSquare,
   LoaderCircle,
   RefreshCcw,
   Save,
+  Search,
   Trophy,
   Trash2,
   UserPlus,
   Users,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "@/lib/sonner";
 
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
+import {
+  appendPointDateRangeParams,
+  getKstCurrentMonthRange,
+  getKstTodayYmd,
+  type PointDateRange,
+} from "@/lib/point-date-range";
 import type { PointRecordItem, PointRuleItem } from "@/lib/services/point.service";
 import type { StudentListItem } from "@/lib/services/student.service";
 import { getStudentStatusLabel } from "@/lib/student-meta";
@@ -27,6 +34,8 @@ type PointGrantManagerProps = {
   students: StudentListItem[];
   rules: PointRuleItem[];
   initialRecords: PointRecordItem[];
+  initialDateFrom: string;
+  initialDateTo: string;
 };
 
 type GrantMode = "single" | "batch";
@@ -44,14 +53,9 @@ type PointRecordsResponse = {
   error?: string;
 };
 
-function getKstToday() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+type PointOverviewResponse = PointRecordsResponse & {
+  students?: StudentListItem[];
+};
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
@@ -66,16 +70,24 @@ export const PointGrantManager = memo(function PointGrantManager({
   students,
   rules,
   initialRecords,
+  initialDateFrom,
+  initialDateTo,
 }: PointGrantManagerProps) {
-  const router = useRouter();
   const activeRules = useMemo(() => rules.filter((rule) => rule.isActive), [rules]);
   const activeStudents = useMemo(
     () => students.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
     [students],
   );
+  const initialRange = useMemo(
+    () => ({ dateFrom: initialDateFrom, dateTo: initialDateTo }),
+    [initialDateFrom, initialDateTo],
+  );
 
   const [records, setRecords] = useState(initialRecords);
   const [rankStudents, setRankStudents] = useState(activeStudents);
+  const [appliedRange, setAppliedRange] = useState<PointDateRange>(initialRange);
+  const [draftDateFrom, setDraftDateFrom] = useState(initialDateFrom);
+  const [draftDateTo, setDraftDateTo] = useState(initialDateTo);
   const [panelMode, setPanelMode] = useState<GrantMode | null>(null);
   const [rankingOrder, setRankingOrder] = useState<"top" | "bottom">("top");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -95,7 +107,7 @@ export const PointGrantManager = memo(function PointGrantManager({
   const [batchRuleId, setBatchRuleId] = useState(activeRules[0]?.id ?? "");
   const [batchManualPoints, setBatchManualPoints] = useState("");
   const [batchNotes, setBatchNotes] = useState("");
-  const [batchDate, setBatchDate] = useState(getKstToday());
+  const [batchDate, setBatchDate] = useState(getKstTodayYmd());
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBatchSaving, setIsBatchSaving] = useState(false);
 
@@ -145,58 +157,118 @@ export const PointGrantManager = memo(function PointGrantManager({
     });
   }, [activeStudents, search]);
 
-  function applyPointDelta(studentIds: string[], delta: number) {
-    if (studentIds.length === 0 || delta === 0) {
-      return;
-    }
-
-    const targetIds = new Set(studentIds);
-
-    setRankStudents((current) =>
-      current.map((student) =>
-        targetIds.has(student.id)
-          ? {
-              ...student,
-              netPoints: student.netPoints + delta,
-            }
-          : student,
-      ),
-    );
+  function buildPointQuery(range: PointDateRange) {
+    return appendPointDateRangeParams(new URLSearchParams(), range).toString();
   }
 
-  async function refreshRecords(showToast = false) {
-    setIsRefreshing(true);
+  function getValidatedDraftRange() {
+    if (!draftDateFrom || !draftDateTo) {
+      toast.error("시작일과 종료일을 선택해주세요.");
+      return null;
+    }
+
+    if (draftDateFrom > draftDateTo) {
+      toast.error("종료일은 시작일 이후로 선택해주세요.");
+      return null;
+    }
+
+    return { dateFrom: draftDateFrom, dateTo: draftDateTo } satisfies PointDateRange;
+  }
+
+  async function loadStudentHistory(student: PointHistoryStudent, range = appliedRange) {
+    setHistoryStudent(student);
+    setHistoryRecords([]);
+    setIsHistoryLoading(true);
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/points`, {
-        cache: "no-store",
-      });
+      const params = appendPointDateRangeParams(new URLSearchParams(), range);
+      params.set("studentId", student.id);
+      const response = await fetch(
+        `/api/${divisionSlug}/points?${params.toString()}`,
+        { cache: "no-store" },
+      );
       const data = (await response.json()) as PointRecordsResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "상벌점 기록을 불러오지 못했습니다.");
+        throw new Error(data.error ?? "학생 상벌점 이력을 불러오지 못했습니다.");
+      }
+
+      setHistoryRecords(data.records ?? []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "학생 상벌점 이력을 불러오지 못했습니다.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }
+
+  async function refreshData(showToast = false, range = appliedRange) {
+    setIsRefreshing(true);
+
+    try {
+      const query = buildPointQuery(range);
+      const response = await fetch(`/api/${divisionSlug}/points/overview?${query}`, {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as PointOverviewResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "상벌점 조회 데이터를 불러오지 못했습니다.");
       }
 
       setRecords(data.records ?? []);
+      setRankStudents(
+        (data.students ?? []).filter(
+          (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
+        ),
+      );
+      setAppliedRange(range);
 
       if (showToast) {
-        toast.success("전체 상벌점 기록을 새로고침했습니다.");
+        toast.success("상벌점 조회 데이터를 새로고침했습니다.");
       }
+      return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "상벌점 기록을 불러오지 못했습니다.");
+      toast.error(error instanceof Error ? error.message : "상벌점 조회 데이터를 불러오지 못했습니다.");
+      return false;
     } finally {
       setIsRefreshing(false);
     }
   }
 
+  async function handleRangeSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextRange = getValidatedDraftRange();
+
+    if (!nextRange) {
+      return;
+    }
+
+    const refreshed = await refreshData(true, nextRange);
+
+    if (refreshed && historyStudent) {
+      await loadStudentHistory(historyStudent, nextRange);
+    }
+  }
+
+  async function handleThisMonthClick() {
+    const nextRange = getKstCurrentMonthRange();
+    setDraftDateFrom(nextRange.dateFrom);
+    setDraftDateTo(nextRange.dateTo);
+    const refreshed = await refreshData(true, nextRange);
+
+    if (refreshed && historyStudent) {
+      await loadStudentHistory(historyStudent, nextRange);
+    }
+  }
+
   function getStudentPointTotal(studentId: string) {
-    return records
-      .filter((record) => record.studentId === studentId)
-      .reduce((total, record) => total + record.points, 0);
+    return rankStudents.find((student) => student.id === studentId)?.netPoints ?? 0;
   }
 
   function getHistoryStudentFromRecord(record: PointRecordItem): PointHistoryStudent {
-    const student = students.find((candidate) => candidate.id === record.studentId);
+    const student =
+      rankStudents.find((candidate) => candidate.id === record.studentId) ??
+      students.find((candidate) => candidate.id === record.studentId);
 
     if (student) {
       return student;
@@ -212,27 +284,7 @@ export const PointGrantManager = memo(function PointGrantManager({
   }
 
   async function openStudentHistory(student: PointHistoryStudent) {
-    setHistoryStudent(student);
-    setHistoryRecords([]);
-    setIsHistoryLoading(true);
-
-    try {
-      const response = await fetch(
-        `/api/${divisionSlug}/points?studentId=${encodeURIComponent(student.id)}`,
-        { cache: "no-store" },
-      );
-      const data = (await response.json()) as PointRecordsResponse;
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "학생 상벌점 이력을 불러오지 못했습니다.");
-      }
-
-      setHistoryRecords(data.records ?? []);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "학생 상벌점 이력을 불러오지 못했습니다.");
-    } finally {
-      setIsHistoryLoading(false);
-    }
+    await loadStudentHistory(student);
   }
 
   function closeStudentHistory() {
@@ -276,18 +328,13 @@ export const PointGrantManager = memo(function PointGrantManager({
       }
 
       toast.success("상벌점을 기록했습니다.");
-      applyPointDelta([singleStudentId], data.record.points);
-      if (historyStudent?.id === singleStudentId) {
-        setHistoryRecords((current) => [data.record, ...current]);
-        setHistoryStudent((current) =>
-          current ? { ...current, netPoints: current.netPoints + data.record.points } : current,
-        );
-      }
       setSingleNotes("");
       setSingleManualPoints("");
       setPanelMode(null);
-      await refreshRecords();
-      router.refresh();
+      const refreshed = await refreshData();
+      if (refreshed && historyStudent?.id === singleStudentId) {
+        await loadStudentHistory(historyStudent);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "상벌점 기록에 실패했습니다.");
     } finally {
@@ -333,13 +380,14 @@ export const PointGrantManager = memo(function PointGrantManager({
       toast.success(
         `${data.result.createdCount}명에게 ${data.result.points > 0 ? "+" : ""}${data.result.points}점을 적용했습니다.`,
       );
-      applyPointDelta(selectedStudentIds, data.result.points);
       setSelectedStudentIds([]);
       setBatchNotes("");
       setBatchManualPoints("");
       setPanelMode(null);
-      await refreshRecords();
-      router.refresh();
+      const refreshed = await refreshData();
+      if (refreshed && historyStudent && selectedStudentIds.includes(historyStudent.id)) {
+        await loadStudentHistory(historyStudent);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "일괄 상벌점 부여에 실패했습니다.");
     } finally {
@@ -350,10 +398,6 @@ export const PointGrantManager = memo(function PointGrantManager({
   async function handleDelete() {
     const recordId = confirmDeleteId;
     if (!recordId) return;
-    const targetRecord =
-      records.find((record) => record.id === recordId) ??
-      historyRecords.find((record) => record.id === recordId) ??
-      null;
     setDeletingId(recordId);
     setConfirmDeleteId(null);
 
@@ -368,17 +412,10 @@ export const PointGrantManager = memo(function PointGrantManager({
       }
 
       toast.success("상벌점 기록을 삭제했습니다.");
-      setRecords((current) => current.filter((record) => record.id !== recordId));
-      setHistoryRecords((current) => current.filter((record) => record.id !== recordId));
-      if (targetRecord) {
-        applyPointDelta([targetRecord.studentId], -targetRecord.points);
-        setHistoryStudent((current) =>
-          current?.id === targetRecord.studentId
-            ? { ...current, netPoints: current.netPoints - targetRecord.points }
-            : current,
-        );
+      const refreshed = await refreshData();
+      if (refreshed && historyStudent) {
+        await loadStudentHistory(historyStudent);
       }
-      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "상벌점 기록 삭제에 실패했습니다.");
     } finally {
@@ -418,7 +455,7 @@ export const PointGrantManager = memo(function PointGrantManager({
             </div>
             <div className="h-10 w-px bg-slate-100" />
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">전체 기록</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">최근 기록</p>
               <p className="mt-1 text-2xl font-bold text-slate-950">
                 {records.length}<span className="ml-1 text-base font-medium text-slate-500">건</span>
               </p>
@@ -443,9 +480,56 @@ export const PointGrantManager = memo(function PointGrantManager({
             </button>
           </div>
         </div>
+
+        <form
+          onSubmit={handleRangeSubmit}
+          className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-5"
+        >
+          <label className="block min-w-[150px]">
+            <span className="mb-1.5 block text-xs font-semibold text-slate-500">시작일</span>
+            <input
+              type="date"
+              value={draftDateFrom}
+              onChange={(event) => setDraftDateFrom(event.target.value)}
+              className="h-10 rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-slate-400"
+              required
+            />
+          </label>
+          <label className="block min-w-[150px]">
+            <span className="mb-1.5 block text-xs font-semibold text-slate-500">종료일</span>
+            <input
+              type="date"
+              value={draftDateTo}
+              onChange={(event) => setDraftDateTo(event.target.value)}
+              className="h-10 rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-slate-400"
+              required
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={isRefreshing}
+            className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--division-color)] px-4 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+          >
+            {isRefreshing ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            조회
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleThisMonthClick()}
+            disabled={isRefreshing}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            <CalendarDays className="h-4 w-4" />
+            이번 달
+          </button>
+        </form>
       </section>
 
-      {/* 메인: 순위(좌/주) + 전체 기록(우/보조) */}
+      {/* 메인: 순위(좌/주) + 최근 기록(우/보조) */}
       <div className="grid gap-6 xl:grid-cols-2">
         {/* 상벌점 순위 (Primary) */}
         <section className="flex rounded-[10px] border border-slate-200/60 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)] xl:h-[680px] xl:flex-col">
@@ -457,6 +541,9 @@ export const PointGrantManager = memo(function PointGrantManager({
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">순위</p>
                 <h3 className="mt-1 text-2xl font-bold text-slate-950">상벌점 순위</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  {appliedRange.dateFrom} ~ {appliedRange.dateTo}
+                </p>
               </div>
             </div>
             <div className="flex rounded-[10px] border border-slate-200 bg-slate-50 p-1">
@@ -513,16 +600,17 @@ export const PointGrantManager = memo(function PointGrantManager({
           </div>
         </section>
 
-        {/* 전체 상벌점 기록 (Secondary, compact) */}
+        {/* 최근 상벌점 기록 (Secondary, compact) */}
         <section className="flex rounded-[10px] border border-slate-200/60 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)] xl:h-[680px] xl:flex-col">
           <div className="flex shrink-0 items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">전체 내역</p>
-              <h3 className="mt-1 text-2xl font-bold text-slate-950">전체 기록</h3>
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">최근 내역</p>
+              <h3 className="mt-1 text-2xl font-bold text-slate-950">최근 기록</h3>
+              <p className="mt-1 text-xs text-slate-400">최대 50건</p>
             </div>
             <button
               type="button"
-              onClick={() => void refreshRecords(true)}
+              onClick={() => void refreshData(true)}
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
               disabled={isRefreshing}
             >
@@ -615,7 +703,7 @@ export const PointGrantManager = memo(function PointGrantManager({
                 { label: "현재 점수", value: `${historyRecords.length > 0 ? historyTotals.netPoints : historyStudent.netPoints}점` },
                 { label: "상점 합계", value: `+${historyTotals.rewardPoints}점` },
                 { label: "벌점 합계", value: `-${historyTotals.demeritPoints}점` },
-                { label: "전체 기록", value: `${historyRecords.length}건` },
+                { label: "조회 기록", value: `${historyRecords.length}건` },
               ].map((item) => (
                 <div key={item.label} className="border-b border-slate-200 px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
                   <p className="text-xs font-semibold text-slate-500">{item.label}</p>

@@ -7,6 +7,7 @@ import {
   createPayment,
   getPaymentServiceMessage,
 } from './service'
+import { normalizeCardCompanyName } from './card-companies'
 import { resolveDepositorName } from './request-normalizers'
 import type { PaymentCategory, PaymentMethod } from './types'
 
@@ -121,12 +122,7 @@ function parseCategory(value: string | null | undefined): PaymentCategory {
 }
 
 function normalizeCardCompany(value: string | null | undefined) {
-  const raw = String(value ?? '').trim()
-  if (!raw) {
-    return null
-  }
-
-  return raw.startsWith('KB') ? 'KB' : raw
+  return normalizeCardCompanyName(value)
 }
 
 function normalizePaidAt(value: string | null | undefined) {

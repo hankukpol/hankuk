@@ -14,6 +14,7 @@ import { normalizeTenantType } from '@/lib/tenant'
 import { normalizeName, normalizePhone } from '@/lib/utils'
 import type { Enrollment, Student } from '@/types/database'
 import { getTuitionExemptBillingRuleError } from './billing-rules'
+import { normalizeCardCompanyName } from './card-companies'
 import {
   PAYMENT_CATEGORY_LABEL,
   type BillingStatus,
@@ -377,8 +378,18 @@ function normalizeOptionalText(value: string | null | undefined) {
 }
 
 function normalizeCardCompany(value: string | null | undefined) {
-  const normalized = normalizeOptionalText(value)
-  return normalized?.startsWith('KB') ? 'KB' : normalized
+  return normalizeCardCompanyName(value)
+}
+
+function normalizePaymentCardCompany(payment: EnrollmentPayment): EnrollmentPayment {
+  const cardCompany = normalizeCardCompanyName(payment.card_company)
+  return payment.card_company === cardCompany
+    ? payment
+    : { ...payment, card_company: cardCompany }
+}
+
+function normalizePaymentCardCompanies(payments: EnrollmentPayment[]) {
+  return payments.map(normalizePaymentCardCompany)
 }
 
 function normalizeLast4(value: string | null | undefined, fieldLabel: string) {
@@ -723,7 +734,8 @@ async function loadPaymentById(db: ServerClient, paymentId: number, division: st
     throw result.error
   }
 
-  return result.data as EnrollmentPayment | null
+  const payment = result.data as EnrollmentPayment | null
+  return payment ? normalizePaymentCardCompany(payment) : null
 }
 
 async function rollbackCreatedPaymentRows(
@@ -1485,7 +1497,7 @@ export async function createPaymentBundle(
       throw createPaymentError('생성된 결제 내역을 확인하지 못했습니다.', 500)
     }
     await invalidateCache('enrollments')
-    return createdPayments as EnrollmentPayment[]
+    return normalizePaymentCardCompanies(createdPayments as EnrollmentPayment[])
   } catch (reason) {
     try {
       await rollbackCreatedPaymentRows(db, paymentIds)
@@ -1552,7 +1564,7 @@ export async function listPayments(
     throw result.error
   }
 
-  return ((result.data ?? []) as unknown) as EnrollmentPayment[]
+  return normalizePaymentCardCompanies(((result.data ?? []) as unknown) as EnrollmentPayment[])
 }
 
 export async function listPaymentsByIds(paymentIds: number[], division: string) {
@@ -1589,7 +1601,7 @@ export async function listPaymentsByIds(paymentIds: number[], division: string) 
       throw result.error
     }
 
-    payments.push(...(((result.data ?? []) as unknown) as EnrollmentPayment[]))
+    payments.push(...normalizePaymentCardCompanies(((result.data ?? []) as unknown) as EnrollmentPayment[]))
   }
 
   return payments.sort((left, right) => {
@@ -1723,7 +1735,7 @@ async function listSettlementPaidPayments(
       throw result.error
     }
 
-    const page = ((result.data ?? []) as unknown) as EnrollmentPayment[]
+    const page = normalizePaymentCardCompanies(((result.data ?? []) as unknown) as EnrollmentPayment[])
     payments.push(...page)
     if (page.length < pageSize) {
       break

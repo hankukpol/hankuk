@@ -1,6 +1,9 @@
+import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '@/lib/utils'
 import type { Material } from '@/types/database'
 import { MATRIX_TAB_META, type BulkProgressState, type MatrixMode, type MatrixRow } from './students-page-types'
+
+const MATRIX_PAGE_SIZE = 50
 
 type StudentsMatrixPanelProps = {
   tab: MatrixMode
@@ -107,6 +110,53 @@ function renderMatrixCell(
   )
 }
 
+function MatrixPaginationControls({
+  currentPage,
+  pageCount,
+  totalCount,
+  onPageChange,
+}: {
+  currentPage: number
+  pageCount: number
+  totalCount: number
+  onPageChange: (page: number) => void
+}) {
+  const start = totalCount === 0 ? 0 : (currentPage - 1) * MATRIX_PAGE_SIZE + 1
+  const end = Math.min(currentPage * MATRIX_PAGE_SIZE, totalCount)
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 text-sm text-slate-500">
+        <span>{start}~{end} / {totalCount}명</span>
+        <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700">
+          50명씩 보기
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+        >
+          이전
+        </button>
+        <span className="text-sm font-medium text-slate-600">
+          {currentPage} / {pageCount}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage >= pageCount}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+        >
+          다음
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function StudentsMatrixPanel({
   tab,
   matrixLoading,
@@ -129,17 +179,59 @@ export function StudentsMatrixPanel({
   onAssignAllTextbooks,
   onRunBulkAction,
 }: StudentsMatrixPanelProps) {
+  const [currentPage, setCurrentPage] = useState(1)
   const showAllAssignColumn = tab === 'textbook-assign' && typeof onAssignAllTextbooks === 'function'
+  const pageCount = Math.max(1, Math.ceil(filteredMatrixRows.length / MATRIX_PAGE_SIZE))
+  const visiblePage = Math.min(currentPage, pageCount)
+  const pageStart = (visiblePage - 1) * MATRIX_PAGE_SIZE
+  const pagedMatrixRows = useMemo(
+    () => filteredMatrixRows.slice(pageStart, pageStart + MATRIX_PAGE_SIZE),
+    [filteredMatrixRows, pageStart],
+  )
+  const visiblePageIds = useMemo(
+    () => pagedMatrixRows.map((row) => row.enrollment.id),
+    [pagedMatrixRows],
+  )
+  const allVisibleSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedIds.has(id))
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [tab, matrixSearch, filterMatId])
+
+  useEffect(() => {
+    if (currentPage > pageCount) {
+      setCurrentPage(pageCount)
+    }
+  }, [currentPage, pageCount])
+
+  function handlePageChange(page: number) {
+    const nextPage = Math.min(Math.max(page, 1), pageCount)
+    if (nextPage !== currentPage) {
+      onReplaceSelectedIds(new Set())
+    }
+    setCurrentPage(nextPage)
+  }
+
+  function handleSearchChange(value: string) {
+    onMatrixSearchChange(value)
+    onReplaceSelectedIds(new Set())
+    setCurrentPage(1)
+  }
   return (
-    <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-bold text-gray-700">{MATRIX_TAB_META[tab].title}</h3>
+    <section className="overflow-hidden rounded-[8px] bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <h3 className="text-sm font-bold text-gray-700">{MATRIX_TAB_META[tab].title}</h3>
+          <span className="w-fit rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-slate-600">
+            전체 {filteredMatrixRows.length.toLocaleString('ko-KR')}명
+          </span>
+        </div>
         <input
           type="text"
           value={matrixSearch}
-          onChange={(event) => onMatrixSearchChange(event.target.value)}
+          onChange={(event) => handleSearchChange(event.target.value)}
           placeholder="이름, 연락처, 응시번호 검색"
-          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 sm:w-56"
+          className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-64 sm:py-2"
         />
       </div>
 
@@ -166,6 +258,7 @@ export function StudentsMatrixPanel({
           {tab === 'receipts' ? '활성 배부자료가 없습니다.' : '활성 교재가 없습니다.'}
         </p>
       ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -174,10 +267,10 @@ export function StudentsMatrixPanel({
                   <th className="px-3 py-3 text-center">
                     <input
                       type="checkbox"
-                      checked={filteredMatrixRows.length > 0 && selectedIds.size === filteredMatrixRows.length}
+                      checked={allVisibleSelected}
                       onChange={(event) => {
                         if (event.target.checked) {
-                          onReplaceSelectedIds(new Set(filteredMatrixRows.map((row) => row.enrollment.id)))
+                          onReplaceSelectedIds(new Set(visiblePageIds))
                           return
                         }
 
@@ -211,7 +304,7 @@ export function StudentsMatrixPanel({
                     {matrixSearch.trim() || filterMatId !== null ? '검색 결과가 없습니다.' : '데이터가 없습니다.'}
                   </td>
                 </tr>
-              ) : filteredMatrixRows.map((row) => (
+              ) : pagedMatrixRows.map((row) => (
                 <tr key={row.enrollment.id} className="hover:bg-slate-50/60">
                   {bulkActionEnabled ? (
                     <td className="px-3 py-3 text-center">
@@ -268,6 +361,13 @@ export function StudentsMatrixPanel({
             </tbody>
           </table>
         </div>
+        <MatrixPaginationControls
+          currentPage={visiblePage}
+          pageCount={pageCount}
+          totalCount={filteredMatrixRows.length}
+          onPageChange={handlePageChange}
+        />
+        </>
       )}
 
       {bulkActionEnabled && selectedIds.size > 0 ? (

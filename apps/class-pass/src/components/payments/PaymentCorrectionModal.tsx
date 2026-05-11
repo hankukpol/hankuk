@@ -16,6 +16,7 @@ import {
 import { formatPaymentDate, formatWon } from '@/lib/payments/format'
 import { getRefundTotal } from '@/lib/payments/summary'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
+import { CARD_COMPANIES, normalizeCardCompanyName } from '@/lib/payments/card-companies'
 
 type CorrectionPaymentMethod = Exclude<PaymentMethod, 'mixed' | 'free'>
 type TuitionBillingMode = 'keep' | 'match_net'
@@ -58,16 +59,6 @@ type PaymentCorrectionModalProps = {
 }
 
 const PAYMENT_METHODS: CorrectionPaymentMethod[] = ['card', 'homepage', 'cash', 'bank_transfer', 'point', 'other']
-
-const CARD_COMPANIES = [
-  '신한', '삼성', 'KB', '현대', '롯데', '우리', '하나',
-  'NH농협', 'IBK기업', 'BC', '씨티', '카카오페이', '네이버페이', '토스페이', '기타',
-]
-
-function normalizeCardCompanyLabel(value: string | null | undefined) {
-  const trimmed = value?.trim() ?? ''
-  return trimmed.startsWith('KB') ? 'KB' : trimmed
-}
 
 function getDefaultRefundMethod(payment: EnrollmentPayment | null): RefundMethod {
   if (!payment) {
@@ -162,7 +153,7 @@ export function PaymentCorrectionModal({
     setNewAmount(nextRefundableAmount > 0 ? String(nextRefundableAmount) : '')
     setRefundMethod(getDefaultRefundMethod(payment))
     setPaymentMethod(getDefaultPaymentMethod(payment))
-    setCardCompany(payment.method === 'card' ? normalizeCardCompanyLabel(payment.card_company) : '')
+    setCardCompany(payment.method === 'card' ? (normalizeCardCompanyName(payment.card_company) ?? '') : '')
     setDepositorName(payment.method === 'bank_transfer' ? (payment.depositor_name ?? payment.bank_account_last4 ?? '') : '')
     setCategory(payment.category)
     setOccurredAt(toLocalDateTimeInputValue())
@@ -251,7 +242,7 @@ export function PaymentCorrectionModal({
         category,
         paidAt: toIso(occurredAt),
         memo: memo.trim() || null,
-        cardCompany: paymentMethod === 'card' ? cardCompany.trim() || null : null,
+        cardCompany: paymentMethod === 'card' ? normalizeCardCompanyName(cardCompany) : null,
         depositorName: paymentMethod === 'bank_transfer' ? depositorName.trim() || null : null,
         cashReceiptApprovalNo: paymentMethod === 'cash' || paymentMethod === 'bank_transfer'
           ? cashReceiptApprovalNo.trim() || null

@@ -8,6 +8,7 @@ import {
   type PaymentCategory,
   type PaymentMethod,
 } from '@/lib/payments/types'
+import { CARD_COMPANIES, normalizeCardCompanyName } from '@/lib/payments/card-companies'
 import { formatWon } from '@/lib/payments/format'
 import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 
@@ -93,18 +94,13 @@ function toLocalDateTimeInputValue(date = new Date()) {
   return localTime.toISOString().slice(0, 16)
 }
 
-const CARD_COMPANIES = [
-  '신한', '삼성', 'KB', '현대', '롯데', '우리', '하나',
-  'NH농협', 'IBK기업', 'BC', '씨티', '카카오페이', '네이버페이', '토스페이', '기타',
-]
-
 function createEmptyEntry(options?: Partial<Omit<PaymentEntryDraft, 'id'>>): PaymentEntryDraft {
   return {
     id: createEntryId(),
     method: options?.method ?? 'card',
     amount: options?.amount ?? '',
     memo: options?.memo ?? '',
-    cardCompany: options?.cardCompany ?? '',
+    cardCompany: normalizeCardCompanyName(options?.cardCompany) ?? '',
     depositorName: options?.depositorName ?? '',
     cashReceiptApprovalNo: options?.cashReceiptApprovalNo ?? '',
   }
@@ -229,7 +225,7 @@ export function normalizePaymentSectionPayload(value: PaymentSectionValue): Norm
         category: value.category,
         paidAt,
         memo: memo || null,
-        cardCompany: entry.method === 'card' ? entry.cardCompany?.trim() || null : null,
+        cardCompany: entry.method === 'card' ? normalizeCardCompanyName(entry.cardCompany) : null,
         depositorName: entry.method === 'bank_transfer' ? entry.depositorName.trim() || null : null,
         cashReceiptApprovalNo: usesCashReceipt(entry.method) ? entry.cashReceiptApprovalNo.trim() || null : null,
         items: [{ label: PAYMENT_CATEGORY_LABEL[value.category], amount }],

@@ -9,6 +9,7 @@ import {
   type RefundMethod,
 } from './types'
 import { reasonCategoryLabel } from './format'
+import { normalizeCardCompanyName } from './card-companies'
 import {
   ENROLLMENT_STUDENT_TYPE_LABEL,
   type BranchSeriesGroup,
@@ -323,7 +324,7 @@ function createPaymentRow(payment: EnrollmentPayment): SettlementLedgerRow {
     refundAmount: 0,
     netAmount: payment.amount,
     receiptNo: payment.display_receipt_no ?? receiptNo(payment.id),
-    cardCompany: payment.card_company,
+    cardCompany: normalizeCardCompanyName(payment.card_company),
     cashReceiptApprovalNo: payment.cash_receipt_approval_no,
     createdByStaffId: payment.created_by_staff_id,
     processedByStaffId: null,
@@ -374,7 +375,7 @@ function createRefundRow(payment: EnrollmentPayment, refund: EnrollmentRefund): 
     refundAmount: refund.amount,
     netAmount: -refund.amount,
     receiptNo: refund.display_receipt_no ?? receiptNo(refund.id, 'R#'),
-    cardCompany: payment.card_company,
+    cardCompany: normalizeCardCompanyName(payment.card_company),
     cashReceiptApprovalNo: null,
     createdByStaffId: payment.created_by_staff_id,
     processedByStaffId: refund.processed_by_staff_id,

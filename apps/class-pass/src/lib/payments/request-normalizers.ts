@@ -1,3 +1,5 @@
+import { normalizeCardCompanyName } from './card-companies'
+
 export function resolveDepositorName(
   depositorName: string | null | undefined,
   bankAccountLast4: string | null | undefined,
@@ -12,10 +14,5 @@ export function resolveDepositorName(
 }
 
 export function normalizeCardCompanyInput(value: string | null | undefined) {
-  const trimmed = value?.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  return trimmed.startsWith('KB') ? 'KB' : trimmed
+  return normalizeCardCompanyName(value)
 }

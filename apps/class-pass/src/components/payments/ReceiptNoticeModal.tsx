@@ -35,7 +35,7 @@ export function ReceiptNoticeModal({ receiptNo, onClose }: ReceiptNoticeModalPro
 
   if (typeof document === 'undefined') return null
 
-  return createPortal(
+  return <>{createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -94,5 +94,5 @@ export function ReceiptNoticeModal({ receiptNo, onClose }: ReceiptNoticeModalPro
       )}
     </AnimatePresence>,
     document.body,
-  )
+  )}</>
 }

@@ -1631,6 +1631,9 @@ export default function CourseStudentsPage({
       )
       setPanel('none')
       await refresh().catch(() => null)
+      if (isMatrixTab(tab)) {
+        await reloadCurrentMatrix().catch(() => null)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '수강생을 등록하지 못했습니다.')
     } finally {

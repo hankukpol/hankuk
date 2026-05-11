@@ -6,6 +6,10 @@ import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
 
 export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+  }
+
   try {
     const authError = await requireAdminApi(req)
     if (authError) {

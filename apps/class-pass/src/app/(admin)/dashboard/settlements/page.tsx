@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { CalendarDays, FileSpreadsheet, ReceiptText, ShieldAlert } from 'lucide-react'
+import { CalendarDays, FileSpreadsheet, ReceiptText } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { withTenantPrefix } from '@/lib/tenant'
 
@@ -27,13 +27,6 @@ const SETTLEMENT_LINKS = [
     icon: FileSpreadsheet,
     cta: '가져오기 열기',
   },
-  {
-    href: '/dashboard/settlements/integrity',
-    title: '정합성 점검',
-    description: '수강 등록, 청구, 수납·환불 합계가 서로 맞지 않는 항목을 확인합니다.',
-    icon: ShieldAlert,
-    cta: '점검 열기',
-  },
 ] as const
 
 export default function SettlementsHubPage() {
@@ -47,7 +40,7 @@ export default function SettlementsHubPage() {
         <p className="mt-2 text-sm text-slate-500">데스크 결제 기록을 일일 정산과 월별 정산으로 나누어 확인합니다.</p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-3">
         {SETTLEMENT_LINKS.map((item) => {
           const Icon = item.icon
 

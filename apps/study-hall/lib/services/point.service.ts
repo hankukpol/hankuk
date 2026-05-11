@@ -120,6 +120,13 @@ type PointDisplayContext = {
 
 const DAILY_PERFECT_ATTENDANCE_LABEL = "일일 개근 상점";
 const DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX = "[자동] 개근 상점 (";
+const AUTO_ATTENDANCE_PENALTY_NOTE_PATTERN =
+  /^\[자동\]\[출결벌점\]\[(\d{4}-\d{2}-\d{2})\]\[[^\]]+\]\[(TARDY|ABSENT)\]\s*(.*)$/;
+
+const ATTENDANCE_PENALTY_STATUS_LABELS = {
+  TARDY: "지각 벌점",
+  ABSENT: "결석 벌점",
+} as const;
 
 function normalizeText(value: string) {
   return value.trim();
@@ -191,6 +198,23 @@ function isDailyPerfectAttendanceRecord(record: {
   notes: string | null;
 }) {
   return record.ruleId === null && Boolean(record.notes?.startsWith(DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX));
+}
+
+function getPointRecordDisplayNotes(notes: string | null) {
+  if (!notes) {
+    return null;
+  }
+
+  const attendancePenaltyMatch = notes.match(AUTO_ATTENDANCE_PENALTY_NOTE_PATTERN);
+
+  if (attendancePenaltyMatch) {
+    const [, date, status, detail] = attendancePenaltyMatch;
+    const penaltyStatus = status as keyof typeof ATTENDANCE_PENALTY_STATUS_LABELS;
+    const displayDetail = detail.trim() || ATTENDANCE_PENALTY_STATUS_LABELS[penaltyStatus];
+    return `[자동] ${displayDetail} (${date})`;
+  }
+
+  return notes;
 }
 
 function getLatestMandatoryPeriodEndTime(
@@ -515,7 +539,7 @@ function serializePointRecordFromMock(
     category: toLegacyPointCategoryLabel(rule?.category),
     categoryLabel: getPointCategoryLabel(toLegacyPointCategoryLabel(rule?.category)),
     points: record.points,
-    notes: record.notes,
+    notes: getPointRecordDisplayNotes(record.notes),
     recordedById: record.recordedById,
     recordedByName: getMockAdminSession(divisionSlug).name,
     createdAt: record.createdAt,
@@ -1357,7 +1381,7 @@ export async function listPointRecords(
     category: record.ruleId ? categoryMap.get(record.ruleId) ?? "기타" : "기타",
     categoryLabel: getPointCategoryLabel(record.ruleId ? categoryMap.get(record.ruleId) ?? "기타" : "기타"),
     points: record.points,
-    notes: record.notes,
+    notes: getPointRecordDisplayNotes(record.notes),
     recordedById: record.recordedBy.id,
     recordedByName: record.recordedBy.name,
     createdAt: record.createdAt.toISOString(),
@@ -1517,7 +1541,7 @@ export async function createPointRecord(
     category: recordCategory,
     categoryLabel: getPointCategoryLabel(recordCategory),
     points: record.points,
-    notes: record.notes,
+    notes: getPointRecordDisplayNotes(record.notes),
     recordedById: record.recordedBy.id,
     recordedByName: record.recordedBy.name,
     createdAt: record.createdAt.toISOString(),

@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 
+import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { isMockMode } from "@/lib/mock-data";
 import { normalizeYmMonth, normalizeYmdDate } from "@/lib/date-utils";
@@ -712,7 +713,7 @@ async function listAttendanceEditLogs(
           studentId: student.id,
           studentName: student.name,
           studentNumber: student.studentNumber,
-          detail: `${record.date} · ${record.status}${record.reason ? ` · ${record.reason}` : ""}`,
+          detail: `${record.date} · ${getAttendanceStatusLabel(record.status)}${record.reason ? ` · ${record.reason}` : ""}`,
         } satisfies ActivityLogItem;
       })
       .filter(Boolean) as ActivityLogItem[];
@@ -766,7 +767,7 @@ async function listAttendanceEditLogs(
       studentId: record.student.id,
       studentName: record.student.name,
       studentNumber: record.student.studentNumber,
-      detail: `${record.date.toISOString().slice(0, 10)} · ${record.status}${record.reason ? ` · ${record.reason}` : ""}`,
+      detail: `${record.date.toISOString().slice(0, 10)} · ${getAttendanceStatusLabel(record.status)}${record.reason ? ` · ${record.reason}` : ""}`,
     })) satisfies ActivityLogItem[];
 }
 

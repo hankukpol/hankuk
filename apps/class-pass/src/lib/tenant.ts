@@ -121,6 +121,12 @@ export function normalizeTenantType(value: string | null | undefined): TenantTyp
   return validateTenantSlug(value).normalized
 }
 
+// 119sobang 도메인 → 소방(fire) 테넌트로 자동 매핑
+export function inferTenantFromHostname(hostname: string): TenantType | null {
+  if (hostname.includes('119sobang')) return toTenantType('fire')
+  return null
+}
+
 export function parseTenantTypeFromPathname(pathname: string | null | undefined): TenantType | null {
   if (!pathname) {
     return null

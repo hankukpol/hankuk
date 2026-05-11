@@ -16,6 +16,7 @@ import {
   DEFAULT_TENANT_TYPE,
   TENANT_COOKIE,
   TENANT_HEADER,
+  inferTenantFromHostname,
   normalizeTenantType,
   parseTenantTypeFromPathname,
   stripTenantPrefix,
@@ -136,8 +137,11 @@ export async function middleware(req: NextRequest) {
 
   const divisionFromPath = parseTenantTypeFromPathname(currentPathname)
   const divisionCookie = req.cookies.get(TENANT_COOKIE)?.value
+  const hostname = req.headers.get('host') ?? req.nextUrl.hostname
+  const divisionFromHostname = inferTenantFromHostname(hostname)
   const division =
     divisionFromPath
+    ?? divisionFromHostname
     ?? normalizeTenantType(divisionCookie)
     ?? DEFAULT_TENANT_TYPE
 
@@ -153,7 +157,7 @@ export async function middleware(req: NextRequest) {
 
   if (
     !divisionFromPath
-    && divisionCookie
+    && (divisionCookie || divisionFromHostname)
     && req.method === 'GET'
     && !pathname.startsWith('/api')
     && !pathname.startsWith('/super-admin')

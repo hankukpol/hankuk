@@ -526,9 +526,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let createdPayments: Awaited<ReturnType<typeof createPaymentBundle>> = []
     try {
       if (payments.length > 0) {
-        await createPaymentBundle({
+        createdPayments = await createPaymentBundle({
           enrollmentId: enrollment.id,
           courseId: parsed.data.courseId,
           billing: parsed.data.billing,
@@ -574,6 +575,7 @@ export async function POST(req: NextRequest) {
           student_profile: getStudentAuthProfile(student),
         },
         reactivated: Boolean(reactivatedRegistration),
+        payments: createdPayments,
         generated_pin: authSetup.generatedPin ?? undefined,
       },
       {

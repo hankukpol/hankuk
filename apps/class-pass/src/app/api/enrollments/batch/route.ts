@@ -14,6 +14,7 @@ import {
 import {
   getPaymentServiceMessage,
   getPaymentServiceStatus,
+  listPaymentsByIds,
 } from '@/lib/payments/service'
 import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 import { normalizeCardCompanyInput, resolveDepositorName } from '@/lib/payments/request-normalizers'
@@ -644,6 +645,18 @@ export async function POST(req: NextRequest) {
       student_type: (row.enrollment_row as Enrollment).student_type ?? parsed.data.student_type,
     }))
     const reactivatedCount = rpcRows.filter((row) => row.reactivated).length
+    const paymentIds = rpcRows.flatMap((row) => row.payment_ids ?? [])
+    let createdPayments: Awaited<ReturnType<typeof listPaymentsByIds>> = []
+    if (paymentIds.length > 0) {
+      try {
+        createdPayments = await listPaymentsByIds(paymentIds, division)
+      } catch (paymentLoadError) {
+        console.error('enrollments.batch.POST payment receipt load failed', {
+          paymentLoadError,
+          paymentIds,
+        })
+      }
+    }
 
     try {
       if (studentResult.changed || studentResult.created) {
@@ -668,6 +681,7 @@ export async function POST(req: NextRequest) {
         })),
         checkoutGroupId,
         reactivatedCount,
+        payments: createdPayments,
         generated_pin: authSetup.generatedPin ?? undefined,
       },
       {

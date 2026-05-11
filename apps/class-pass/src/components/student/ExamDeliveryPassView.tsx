@@ -17,13 +17,13 @@ type ThemeTone = {
 const DEFAULT_ACCENT = '#0071e3'
 
 const WEEKDAY_PALETTE = [
-  { bg: '#f97316', text: '#111827' }, // 일
-  { bg: '#ef4444', text: '#ffffff' }, // 월
-  { bg: '#facc15', text: '#111827' }, // 화
-  { bg: '#22c55e', text: '#052e16' }, // 수
-  { bg: '#3b82f6', text: '#ffffff' }, // 목
-  { bg: '#1d4ed8', text: '#ffffff' }, // 금
-  { bg: '#7c3aed', text: '#ffffff' }, // 토
+  { bg: '#ff5500', text: '#ffffff' }, // 일 — 주황
+  { bg: '#ff1111', text: '#ffffff' }, // 월 — 빨강
+  { bg: '#ffd000', text: '#111827' }, // 화 — 노랑
+  { bg: '#00bb3f', text: '#ffffff' }, // 수 — 초록
+  { bg: '#0066ff', text: '#ffffff' }, // 목 — 파랑
+  { bg: '#00ccee', text: '#111827' }, // 금 — 청록(시안)
+  { bg: '#cc00ff', text: '#ffffff' }, // 토 — 마젠타 보라
 ] as const
 
 function hexToRgb(value: string) {
@@ -342,10 +342,10 @@ export function ExamDeliveryPassView({
   const hasExtraSiteLink = Boolean(data.course.extra_site_url)
   const dday = data.course.feature_dday ? calculateDday(data.course.target_date) : null
   const ddayLabel = data.course.target_date_label || '시험일'
-  const flashAccent = theme.text === '#ffffff' ? 'rgba(255,255,255,0.92)' : toRgba(theme.bg, 0.96)
-  const flashWash = theme.text === '#ffffff' ? 'rgba(255,255,255,0.24)' : toRgba(theme.bg, 0.28)
-  const flashOverlay = theme.text === '#ffffff' ? 'rgba(255,255,255,0.26)' : toRgba(theme.bg, 0.3)
-  const flashOverlayPeak = theme.text === '#ffffff' ? 'rgba(255,255,255,0.46)' : toRgba(theme.bg, 0.54)
+  const flashAccent = toRgba(theme.bg, 0.96)
+  const flashWash = toRgba(theme.bg, 0.55)
+  const flashOverlay = toRgba(theme.bg, 0.62)
+  const flashOverlayPeak = toRgba(theme.bg, 0.92)
 
   const statusConfig = {
     eligible: {
@@ -391,44 +391,44 @@ export function ExamDeliveryPassView({
         '--exam-accent-flash-wash': flashWash,
         '--exam-accent-overlay': flashOverlay,
         '--exam-accent-overlay-peak': flashOverlayPeak,
-        '--exam-accent-tint': toRgba(theme.bg, 0.16),
-        '--exam-accent-tint-mid': toRgba(theme.bg, 0.28),
-        '--exam-accent-tint-peak': toRgba(theme.bg, 0.4),
+        '--exam-accent-tint': toRgba(theme.bg, 0.32),
+        '--exam-accent-tint-mid': toRgba(theme.bg, 0.55),
+        '--exam-accent-tint-peak': toRgba(theme.bg, 0.72),
       } as React.CSSProperties}
     >
       <style>{`
         @keyframes exam-screen-breathe {
           0%, 100% {
-            opacity: 0.44;
-            filter: saturate(1.04) brightness(1.03);
+            opacity: 0.5;
+            filter: saturate(1.1) brightness(1.05);
             box-shadow:
-              inset 0 0 0 0 transparent,
-              inset 0 0 180px 42px var(--exam-accent-overlay);
+              inset 0 0 0 2px var(--exam-accent-overlay),
+              inset 0 0 240px 60px var(--exam-accent-overlay);
           }
           50% {
-            opacity: 0.98;
-            filter: saturate(1.24) brightness(1.16);
+            opacity: 1;
+            filter: saturate(1.5) brightness(1.28);
             box-shadow:
-              inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-              inset 0 0 440px 156px var(--exam-accent-overlay-peak);
+              inset 0 0 0 3px var(--exam-accent-overlay-peak),
+              inset 0 0 560px 220px var(--exam-accent-overlay-peak);
           }
         }
         @keyframes exam-hero-glow-breathe {
           0%, 100% {
-            opacity: 0.78;
-            transform: scale(0.94);
-            filter: saturate(1.02);
+            opacity: 0.72;
+            transform: scale(0.9);
+            filter: saturate(1.1);
           }
           50% {
             opacity: 1;
-            transform: scale(1.22);
-            filter: saturate(1.3);
+            transform: scale(1.35);
+            filter: saturate(1.6);
           }
         }
         .exam-delivery-breathe {
           background:
-            radial-gradient(circle at top, var(--exam-accent-flash-wash) 0%, transparent 38%),
-            linear-gradient(180deg, #050505 0%, #131316 52%, #09090b 100%) !important;
+            radial-gradient(circle at top, var(--exam-accent-flash-wash) 0%, transparent 55%),
+            linear-gradient(180deg, #030303 0%, #0e0e11 52%, #060608 100%) !important;
         }
         .exam-delivery-page-glow {
           position: absolute;
@@ -436,12 +436,12 @@ export function ExamDeliveryPassView({
           z-index: 6;
           pointer-events: none;
           background:
-            radial-gradient(circle at 50% 16%, var(--exam-accent-overlay-peak) 0%, transparent 52%),
-            radial-gradient(circle at 20% 70%, var(--exam-accent-tint-mid) 0%, transparent 38%),
-            radial-gradient(circle at 80% 78%, var(--exam-accent-tint-peak) 0%, transparent 42%),
-            linear-gradient(180deg, var(--exam-accent-overlay) 0%, var(--exam-accent-flash-wash) 28%, var(--exam-accent-flash-wash) 72%, var(--exam-accent-overlay) 100%);
+            radial-gradient(circle at 50% 12%, var(--exam-accent-overlay-peak) 0%, transparent 60%),
+            radial-gradient(circle at 15% 65%, var(--exam-accent-tint-mid) 0%, transparent 45%),
+            radial-gradient(circle at 85% 72%, var(--exam-accent-tint-peak) 0%, transparent 48%),
+            linear-gradient(180deg, var(--exam-accent-overlay) 0%, var(--exam-accent-flash-wash) 25%, var(--exam-accent-flash-wash) 75%, var(--exam-accent-overlay) 100%);
           background-color: var(--exam-accent-overlay);
-          animation: exam-screen-breathe 1.3s ease-in-out infinite;
+          animation: exam-screen-breathe 1s ease-in-out infinite;
           will-change: opacity, filter, box-shadow;
         }
         .exam-delivery-page-glow::before {
@@ -449,15 +449,15 @@ export function ExamDeliveryPassView({
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.14) 0%, transparent 36%),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 22%, rgba(255, 255, 255, 0.06) 78%, rgba(255, 255, 255, 0.16) 100%);
+            radial-gradient(circle at 50% 16%, rgba(255, 255, 255, 0.18) 0%, transparent 40%),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.06) 20%, rgba(255, 255, 255, 0.06) 80%, rgba(255, 255, 255, 0.2) 100%);
           opacity: 1;
         }
         .exam-delivery-signal {
           border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .exam-delivery-breathe .student-hero::after {
-          animation: exam-hero-glow-breathe 1.3s ease-in-out infinite;
+          animation: exam-hero-glow-breathe 1s ease-in-out infinite;
           transform-origin: center;
         }
         .exam-delivery-breathe .student-hero,

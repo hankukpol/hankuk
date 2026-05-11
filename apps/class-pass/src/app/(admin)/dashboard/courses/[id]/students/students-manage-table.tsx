@@ -5,7 +5,7 @@ import {
   type EnrollmentFieldDef,
 } from '@/types/database'
 import { getEnrollmentLifecycleStatus } from '@/lib/enrollment-status'
-import { formatDateTime } from '@/lib/utils'
+import { formatDateTime, formatShortDate } from '@/lib/utils'
 import type { EnrollmentManageStatusFilter } from './students-page-types'
 
 const STATUS_FILTER_OPTIONS: Array<{ value: EnrollmentManageStatusFilter; label: string }> = [
@@ -450,7 +450,7 @@ export function StudentsManageTable({
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <p className="text-[11px] font-semibold text-slate-400">등록일</p>
-                            <p className="mt-0.5 text-slate-700">{formatDateTime(enrollment.created_at).split(' ')[0]}</p>
+                            <p className="mt-0.5 text-slate-700">{formatShortDate(enrollment.created_at)}</p>
                           </div>
                           <div>
                             <p className="text-[11px] font-semibold text-slate-400">출석 기기</p>
@@ -574,7 +574,7 @@ export function StudentsManageTable({
                       </td>
                     ) : null}
                     <td className="hidden px-3 py-3 text-xs text-gray-400 md:table-cell">
-                      {formatDateTime(enrollment.created_at).split(' ')[0]}
+                      {formatShortDate(enrollment.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion'
 import { Plus, ReceiptText, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { ReceiptNoticeModal } from '@/components/payments/ReceiptNoticeModal'
 import type { Course, Enrollment } from '@/types/database'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import { PaymentCorrectionModal, type PaymentCorrectionConfirmInput } from './PaymentCorrectionModal'
@@ -986,22 +987,7 @@ export function EnrollmentPaymentDrawer({
         onConfirm={() => setNotice(null)}
       />
 
-      <ConfirmationModal
-        open={Boolean(receiptNotice)}
-        title="수납 완료"
-        description="카드 영수증에 아래 번호를 기재해주세요."
-        confirmLabel="확인"
-        cancelLabel={null}
-        tone="success"
-        overlayClassName="z-[210]"
-        onClose={() => setReceiptNotice(null)}
-        onConfirm={() => setReceiptNotice(null)}
-      >
-        <div className="rounded-[10px] bg-emerald-50 px-4 py-4 text-center">
-          <p className="text-xs font-medium text-slate-500">영수증 번호</p>
-          <p className="mt-1 font-mono text-4xl font-bold tracking-widest text-emerald-700">{receiptNotice}</p>
-        </div>
-      </ConfirmationModal>
+      <ReceiptNoticeModal receiptNo={receiptNotice} onClose={() => setReceiptNotice(null)} />
     </>
   )
 }

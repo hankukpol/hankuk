@@ -16,6 +16,7 @@ type ConfirmationModalProps = {
   pendingLabel?: string
   cancelLabel?: string | null
   overlayClassName?: string
+  panelClassName?: string
   children?: React.ReactNode
   tone?: ConfirmationTone
   submitting?: boolean
@@ -37,6 +38,7 @@ export function ConfirmationModal({
   pendingLabel,
   cancelLabel = '취소',
   overlayClassName = 'z-[220]',
+  panelClassName = 'max-w-md p-6',
   children,
   tone = 'default',
   submitting = false,
@@ -88,7 +90,7 @@ export function ConfirmationModal({
             aria-modal="true"
             aria-labelledby={titleId}
             aria-describedby={description ? descriptionId : undefined}
-            className="max-h-[90vh] w-full max-w-md overflow-auto rounded-[12px] bg-white p-6 shadow-[3px_5px_30px_0px_rgba(0,0,0,0.22)]"
+            className={`max-h-[90vh] w-full overflow-auto rounded-[12px] bg-white shadow-[3px_5px_30px_0px_rgba(0,0,0,0.22)] ${panelClassName}`}
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -115,7 +117,7 @@ export function ConfirmationModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-full px-2 py-1 text-xs font-semibold text-slate-400 transition-all duration-200 ease-ios hover:bg-slate-100 hover:text-slate-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            className="shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold text-slate-400 transition-all duration-200 ease-ios hover:bg-slate-100 hover:text-slate-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             닫기
           </button>

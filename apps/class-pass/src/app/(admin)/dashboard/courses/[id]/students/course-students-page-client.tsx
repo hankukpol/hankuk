@@ -9,6 +9,7 @@ import { useParams } from 'next/navigation'
 import { Download, Plus, Search, Trash2, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
+import { ReceiptNoticeModal } from '@/components/payments/ReceiptNoticeModal'
 import { SeriesSelector } from '@/components/series/SeriesSelector'
 import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
 import {
@@ -19,6 +20,7 @@ import {
   type PaymentSectionValue,
 } from '@/components/payments/PaymentSection'
 import { formatWon } from '@/lib/payments/format'
+import { formatPhoneNumber } from '@/lib/utils'
 import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
@@ -91,6 +93,29 @@ type StudentSearchResult = {
     status: Enrollment['status']
     createdAt: string
   } | null
+}
+
+function getReceiptNoticeFromPayload(payload: unknown) {
+  if (typeof payload !== 'object' || payload === null || !('payments' in payload)) {
+    return ''
+  }
+
+  const payments = (payload as { payments?: unknown }).payments
+  if (!Array.isArray(payments)) {
+    return ''
+  }
+
+  return payments
+    .map((payment) => {
+      if (typeof payment !== 'object' || payment === null || !('display_receipt_no' in payment)) {
+        return null
+      }
+
+      const receiptNo = (payment as { display_receipt_no?: unknown }).display_receipt_no
+      return typeof receiptNo === 'string' && receiptNo.trim() ? receiptNo.trim() : null
+    })
+    .filter((receiptNo): receiptNo is string => Boolean(receiptNo))
+    .join(', ')
 }
 
 type BundleBillingDraft = {
@@ -355,6 +380,7 @@ export default function CourseStudentsPage({
   const [suspensionSubmitting, setSuspensionSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
   const [notice, setNotice] = useState<NoticeRequest | null>(null)
+  const [receiptNotice, setReceiptNotice] = useState('')
   const [confirmSubmitting, setConfirmSubmitting] = useState(false)
   const lastErrorNoticeRef = useRef('')
   const lastLookupNoticeRef = useRef('')
@@ -1143,7 +1169,7 @@ export default function CourseStudentsPage({
       index + 1,
       enrollment.exam_number ?? '',
       enrollment.name,
-      formatExcelTextCell(enrollment.phone),
+      formatExcelTextCell(formatPhoneNumber(enrollment.phone)),
       enrollment.series?.trim() || (enrollment.series_group === 'career' ? '경채' : '공채'),
       ENROLLMENT_STUDENT_TYPE_LABEL[enrollment.student_type ?? 'general'],
       ...customFields.map((field) => (enrollment.custom_data ?? {})[field.key] ?? ''),
@@ -1601,6 +1627,10 @@ export default function CourseStudentsPage({
             pin: p.generated_pin as string,
           }],
         })
+      }
+      const receiptNos = getReceiptNoticeFromPayload(p)
+      if (shouldRecordPayments && !paymentPayload.tuitionExempt && receiptNos) {
+        setReceiptNotice(receiptNos)
       }
       const wasReactivated = shouldUseBatchRegistration
         ? Number(p?.reactivatedCount ?? 0) > 0
@@ -2407,6 +2437,7 @@ export default function CourseStudentsPage({
         }}
       />
       {noticeModal}
+      <ReceiptNoticeModal receiptNo={receiptNotice} onClose={() => setReceiptNotice('')} />
       <PinRevealModal reveal={pinReveal} onClose={() => setPinReveal(null)} onCopyPin={copyPin} />
       <SuspensionModal
         courseName={course.name}

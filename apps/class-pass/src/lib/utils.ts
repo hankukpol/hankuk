@@ -41,6 +41,28 @@ export function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value))
 }
 
+// "26.05.11" 형식 (YY.MM.DD, 서울 시간 기준)
+export function formatShortDate(value: string | null | undefined) {
+  if (!value) return '-'
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value))
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${get('year').slice(2)}.${get('month')}.${get('day')}`
+}
+
+// "010-9001-0012" 형식으로 변환 (숫자만 추출 후 구간 분리)
+export function formatPhoneNumber(value: string | null | undefined): string {
+  const digits = (value ?? '').replace(/\D/g, '')
+  if (digits.length === 11) return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+  if (digits.length === 10 && digits.startsWith('02')) return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`
+  if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+  return value ?? ''
+}
+
 export function getTodayKey(tz = 'Asia/Seoul'): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: tz })
 }

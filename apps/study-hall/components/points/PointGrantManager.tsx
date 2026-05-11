@@ -31,6 +31,19 @@ type PointGrantManagerProps = {
 
 type GrantMode = "single" | "batch";
 
+type PointHistoryStudent = {
+  id: string;
+  name: string;
+  studentNumber: string;
+  studyTrack: string | null;
+  netPoints: number;
+};
+
+type PointRecordsResponse = {
+  records?: PointRecordItem[];
+  error?: string;
+};
+
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -68,6 +81,9 @@ export const PointGrantManager = memo(function PointGrantManager({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [historyStudent, setHistoryStudent] = useState<PointHistoryStudent | null>(null);
+  const [historyRecords, setHistoryRecords] = useState<PointRecordItem[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   const [singleStudentId, setSingleStudentId] = useState(activeStudents[0]?.id ?? "");
   const [singleRuleId, setSingleRuleId] = useState(activeRules[0]?.id ?? "");
@@ -85,6 +101,18 @@ export const PointGrantManager = memo(function PointGrantManager({
 
   const selectedSingleRule = activeRules.find((rule) => rule.id === singleRuleId) ?? null;
   const selectedBatchRule = activeRules.find((rule) => rule.id === batchRuleId) ?? null;
+  const historyTotals = useMemo(
+    () =>
+      historyRecords.reduce(
+        (totals, record) => ({
+          netPoints: totals.netPoints + record.points,
+          rewardPoints: totals.rewardPoints + (record.points > 0 ? record.points : 0),
+          demeritPoints: totals.demeritPoints + (record.points < 0 ? Math.abs(record.points) : 0),
+        }),
+        { netPoints: 0, rewardPoints: 0, demeritPoints: 0 },
+      ),
+    [historyRecords],
+  );
 
   useEffect(() => {
     setRankStudents(activeStudents);
@@ -140,25 +168,77 @@ export const PointGrantManager = memo(function PointGrantManager({
     setIsRefreshing(true);
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/points?limit=12`, {
+      const response = await fetch(`/api/${divisionSlug}/points`, {
         cache: "no-store",
       });
-      const data = await response.json();
+      const data = (await response.json()) as PointRecordsResponse;
 
       if (!response.ok) {
         throw new Error(data.error ?? "상벌점 기록을 불러오지 못했습니다.");
       }
 
-      setRecords(data.records);
+      setRecords(data.records ?? []);
 
       if (showToast) {
-        toast.success("최근 상벌점 기록을 새로고침했습니다.");
+        toast.success("전체 상벌점 기록을 새로고침했습니다.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "상벌점 기록을 불러오지 못했습니다.");
     } finally {
       setIsRefreshing(false);
     }
+  }
+
+  function getStudentPointTotal(studentId: string) {
+    return records
+      .filter((record) => record.studentId === studentId)
+      .reduce((total, record) => total + record.points, 0);
+  }
+
+  function getHistoryStudentFromRecord(record: PointRecordItem): PointHistoryStudent {
+    const student = students.find((candidate) => candidate.id === record.studentId);
+
+    if (student) {
+      return student;
+    }
+
+    return {
+      id: record.studentId,
+      name: record.studentName,
+      studentNumber: record.studentNumber,
+      studyTrack: null,
+      netPoints: getStudentPointTotal(record.studentId),
+    };
+  }
+
+  async function openStudentHistory(student: PointHistoryStudent) {
+    setHistoryStudent(student);
+    setHistoryRecords([]);
+    setIsHistoryLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/${divisionSlug}/points?studentId=${encodeURIComponent(student.id)}`,
+        { cache: "no-store" },
+      );
+      const data = (await response.json()) as PointRecordsResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "학생 상벌점 이력을 불러오지 못했습니다.");
+      }
+
+      setHistoryRecords(data.records ?? []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "학생 상벌점 이력을 불러오지 못했습니다.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }
+
+  function closeStudentHistory() {
+    setHistoryStudent(null);
+    setHistoryRecords([]);
+    setIsHistoryLoading(false);
   }
 
   async function handleSingleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -197,6 +277,12 @@ export const PointGrantManager = memo(function PointGrantManager({
 
       toast.success("상벌점을 기록했습니다.");
       applyPointDelta([singleStudentId], data.record.points);
+      if (historyStudent?.id === singleStudentId) {
+        setHistoryRecords((current) => [data.record, ...current]);
+        setHistoryStudent((current) =>
+          current ? { ...current, netPoints: current.netPoints + data.record.points } : current,
+        );
+      }
       setSingleNotes("");
       setSingleManualPoints("");
       setPanelMode(null);
@@ -264,7 +350,10 @@ export const PointGrantManager = memo(function PointGrantManager({
   async function handleDelete() {
     const recordId = confirmDeleteId;
     if (!recordId) return;
-    const targetRecord = records.find((record) => record.id === recordId) ?? null;
+    const targetRecord =
+      records.find((record) => record.id === recordId) ??
+      historyRecords.find((record) => record.id === recordId) ??
+      null;
     setDeletingId(recordId);
     setConfirmDeleteId(null);
 
@@ -280,8 +369,14 @@ export const PointGrantManager = memo(function PointGrantManager({
 
       toast.success("상벌점 기록을 삭제했습니다.");
       setRecords((current) => current.filter((record) => record.id !== recordId));
+      setHistoryRecords((current) => current.filter((record) => record.id !== recordId));
       if (targetRecord) {
         applyPointDelta([targetRecord.studentId], -targetRecord.points);
+        setHistoryStudent((current) =>
+          current?.id === targetRecord.studentId
+            ? { ...current, netPoints: current.netPoints - targetRecord.points }
+            : current,
+        );
       }
       router.refresh();
     } catch (error) {
@@ -323,7 +418,7 @@ export const PointGrantManager = memo(function PointGrantManager({
             </div>
             <div className="h-10 w-px bg-slate-100" />
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">최근 기록</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">전체 기록</p>
               <p className="mt-1 text-2xl font-bold text-slate-950">
                 {records.length}<span className="ml-1 text-base font-medium text-slate-500">건</span>
               </p>
@@ -350,11 +445,11 @@ export const PointGrantManager = memo(function PointGrantManager({
         </div>
       </section>
 
-      {/* 메인: 순위(좌/주) + 최근 기록(우/보조) */}
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+      {/* 메인: 순위(좌/주) + 전체 기록(우/보조) */}
+      <div className="grid gap-6 xl:grid-cols-2">
         {/* 상벌점 순위 (Primary) */}
-        <section className="rounded-[10px] border border-slate-200/60 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
-          <div className="flex items-center justify-between gap-3">
+        <section className="flex rounded-[10px] border border-slate-200/60 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)] xl:h-[680px] xl:flex-col">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
                 <Trophy className="h-5 w-5" />
@@ -382,16 +477,18 @@ export const PointGrantManager = memo(function PointGrantManager({
             </div>
           </div>
 
-          <div className="mt-5 space-y-2">
+          <div className="mt-5 space-y-2 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
             {rankedStudents.length > 0 ? (
               rankedStudents.map((student, index) => {
                 const isPositive = student.netPoints > 0;
                 const isNegative = student.netPoints < 0;
                 const isFirst = index === 0;
                 return (
-                  <div
+                  <button
                     key={student.id}
-                    className={`flex items-center gap-4 rounded-[10px] border px-5 py-3 ${isFirst ? "border-slate-200 bg-slate-50" : "border-slate-100 bg-white"}`}
+                    type="button"
+                    onClick={() => void openStudentHistory(student)}
+                    className={`flex w-full items-center gap-4 rounded-[10px] border px-5 py-3 text-left transition hover:border-[var(--division-color)] hover:bg-slate-50 ${isFirst ? "border-slate-200 bg-slate-50" : "border-slate-100 bg-white"}`}
                   >
                     <span className={`w-7 shrink-0 text-center text-sm font-bold ${isFirst ? "text-slate-950" : index < 3 ? "text-slate-700" : "text-slate-400"}`}>
                       {index + 1}
@@ -405,7 +502,7 @@ export const PointGrantManager = memo(function PointGrantManager({
                     <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${isPositive ? "bg-emerald-50 text-emerald-700" : isNegative ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-500"}`}>
                       {isPositive ? "+" : ""}{student.netPoints}점
                     </span>
-                  </div>
+                  </button>
                 );
               })
             ) : (
@@ -416,12 +513,12 @@ export const PointGrantManager = memo(function PointGrantManager({
           </div>
         </section>
 
-        {/* 최근 상벌점 기록 (Secondary, compact) */}
-        <section className="rounded-[10px] border border-slate-200/60 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
-          <div className="flex items-center justify-between gap-3">
+        {/* 전체 상벌점 기록 (Secondary, compact) */}
+        <section className="flex rounded-[10px] border border-slate-200/60 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)] xl:h-[680px] xl:flex-col">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">최근 내역</p>
-              <h3 className="mt-1 text-2xl font-bold text-slate-950">최근 기록</h3>
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">전체 내역</p>
+              <h3 className="mt-1 text-2xl font-bold text-slate-950">전체 기록</h3>
             </div>
             <button
               type="button"
@@ -438,7 +535,7 @@ export const PointGrantManager = memo(function PointGrantManager({
             </button>
           </div>
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
             {records.length > 0 ? (
               records.map((record) => (
                 <article
@@ -447,10 +544,14 @@ export const PointGrantManager = memo(function PointGrantManager({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-900">
+                      <button
+                        type="button"
+                        onClick={() => void openStudentHistory(getHistoryStudentFromRecord(record))}
+                        className="block max-w-full truncate text-left text-sm font-semibold text-slate-900 transition hover:text-[var(--division-color)]"
+                      >
                         {record.studentName}
                         <span className="ml-1.5 text-xs font-normal text-slate-400">{record.studentNumber}</span>
-                      </p>
+                      </button>
                       <p className="mt-0.5 truncate text-xs text-slate-500">
                         {record.ruleName || "직접 입력"}
                       </p>
@@ -494,6 +595,93 @@ export const PointGrantManager = memo(function PointGrantManager({
         onConfirm={() => void handleDelete()}
         onCancel={() => setConfirmDeleteId(null)}
       />
+
+      <Modal
+        open={historyStudent !== null}
+        onClose={closeStudentHistory}
+        title={`${historyStudent?.name ?? ""} 상벌점 히스토리`}
+        badge="학생 이력"
+        description={
+          historyStudent
+            ? `${historyStudent.studentNumber} · ${historyStudent.studyTrack || "직렬 미지정"}`
+            : undefined
+        }
+        widthClassName="max-w-5xl"
+      >
+        {historyStudent ? (
+          <div className="space-y-4">
+            <div className="grid overflow-hidden rounded-[10px] border border-slate-200 sm:grid-cols-4">
+              {[
+                { label: "현재 점수", value: `${historyRecords.length > 0 ? historyTotals.netPoints : historyStudent.netPoints}점` },
+                { label: "상점 합계", value: `+${historyTotals.rewardPoints}점` },
+                { label: "벌점 합계", value: `-${historyTotals.demeritPoints}점` },
+                { label: "전체 기록", value: `${historyRecords.length}건` },
+              ].map((item) => (
+                <div key={item.label} className="border-b border-slate-200 px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+                  <p className="text-xs font-semibold text-slate-500">{item.label}</p>
+                  <p className="mt-1 text-xl font-bold text-slate-950">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-hidden rounded-[10px] border border-slate-200">
+              {isHistoryLoading ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-slate-500">
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                  이력을 불러오는 중입니다.
+                </div>
+              ) : (
+                <div className="max-h-[520px] overflow-auto">
+                  <table className="w-full min-w-[780px] border-collapse text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold text-slate-500">
+                      <tr>
+                        <th className="border-b border-slate-200 px-4 py-3">일시</th>
+                        <th className="border-b border-slate-200 px-4 py-3">구분</th>
+                        <th className="border-b border-slate-200 px-4 py-3">규칙</th>
+                        <th className="border-b border-slate-200 px-4 py-3">점수</th>
+                        <th className="border-b border-slate-200 px-4 py-3">메모</th>
+                        <th className="border-b border-slate-200 px-4 py-3">처리자</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyRecords.length > 0 ? (
+                        historyRecords.map((record) => (
+                          <tr key={record.id} className="border-b border-slate-100 last:border-b-0">
+                            <td className="px-4 py-3 text-slate-600">{formatDateTime(record.displayDateTime)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                record.points > 0
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-rose-200 bg-rose-50 text-rose-700"
+                              }`}>
+                                {record.points > 0 ? "상점" : "벌점"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-700">{record.ruleName || "직접 입력"}</td>
+                            <td className="px-4 py-3">
+                              <PointValueBadge points={record.points} />
+                            </td>
+                            <td className="max-w-[280px] px-4 py-3 text-slate-600">
+                              {record.notes || <span className="text-slate-400">-</span>}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">{record.recordedByName}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
+                            상벌점 이력이 없습니다.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={panelMode === "single"}

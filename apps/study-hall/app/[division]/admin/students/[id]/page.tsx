@@ -6,6 +6,7 @@ import { StudentDetailView } from "@/components/students/StudentDetailView";
 import { requireDivisionAdminAccess } from "@/lib/auth";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
 import { isNotFoundError } from "@/lib/errors";
+import { listStudentAttendanceHistory } from "@/lib/services/attendance.service";
 import { listExamTypes, listStudentExamResults } from "@/lib/services/exam.service";
 import { listInterviews } from "@/lib/services/interview.service";
 import { listLeavePermissions } from "@/lib/services/leave.service";
@@ -52,6 +53,7 @@ export default async function StudentDetailPage({ params }: StudentDetailPagePro
       tuitionPlans,
       ruleSettings,
       pointRules,
+      attendanceHistory,
     ] = await Promise.all([
       pointManagementEnabled
         ? listPointRecords(params.division, { studentId: params.id })
@@ -80,6 +82,9 @@ export default async function StudentDetailPage({ params }: StudentDetailPagePro
       listTuitionPlans(params.division),
       getDivisionRuleSettings(params.division),
       pointManagementEnabled ? listPointRules(params.division) : Promise.resolve([]),
+      attendanceManagementEnabled
+        ? listStudentAttendanceHistory(params.division, params.id)
+        : Promise.resolve([]),
     ]);
 
     return (
@@ -110,6 +115,7 @@ export default async function StudentDetailPage({ params }: StudentDetailPagePro
           paymentManagementEnabled={paymentManagementEnabled}
           attendanceSummary={dashboardData.summary}
           weeklyAttendance={dashboardData.weeklyAttendance}
+          attendanceHistory={attendanceHistory}
           leavePermissions={leavePermissions}
           pointRecords={pointRecords}
           examResults={examResults}

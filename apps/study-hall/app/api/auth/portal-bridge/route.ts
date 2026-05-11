@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { HANKUK_APP_KEYS, getHankukServiceOrigins, isHankukPortalBridgeRoleAllowed } from "@hankuk/config";
 import { applyAdminContextCookies } from "@/lib/auth";
+import { assertLocalRuntimeDoesNotUseRemoteSupabase } from "@/lib/local-env-guard";
 import { prisma } from "@/lib/prisma";
 
 const APP_KEY = HANKUK_APP_KEYS.STUDY_HALL;
@@ -21,6 +22,8 @@ function createRootServiceClient() {
   if (!url || !key) {
     throw new Error("Supabase environment variables are not configured.");
   }
+
+  assertLocalRuntimeDoesNotUseRemoteSupabase(url);
 
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },

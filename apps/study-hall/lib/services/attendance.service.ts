@@ -31,6 +31,26 @@ type AttendanceInputRecord = {
   reason?: string | null;
 };
 
+type RecurringAttendanceInput = {
+  studentId: string;
+  dateFrom: string;
+  dateTo: string;
+  weekdays: number[];
+  startPeriodId: string;
+  endPeriodId: string;
+  status: AttendanceStatus;
+  reason?: string | null;
+  overwriteExisting?: boolean;
+};
+
+export type RecurringAttendanceResult = {
+  appliedCount: number;
+  updatedExistingCount: number;
+  skippedExistingCount: number;
+  targetDateCount: number;
+  targetCellCount: number;
+};
+
 type AttendanceActor = {
   id: string;
   role: "SUPER_ADMIN" | "ADMIN" | "ASSISTANT";
@@ -82,6 +102,9 @@ export type StudentAttendanceHistoryItem = {
   periodLabel: string | null;
   status: AttendanceStatus;
   reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recordedByName: string | null;
 };
 
 function normalizeDate(input: string) {
@@ -111,6 +134,27 @@ function parseDateKey(date: string) {
 
 function getDateDiffInDays(fromDate: string, toDate: string) {
   return Math.round((parseDateKey(toDate).getTime() - parseDateKey(fromDate).getTime()) / 86_400_000);
+}
+
+function addDays(date: string, offsetDays: number) {
+  const next = parseDateKey(date);
+  next.setUTCDate(next.getUTCDate() + offsetDays);
+  return next.toISOString().slice(0, 10);
+}
+
+function enumerateDatesInclusive(dateFrom: string, dateTo: string) {
+  const dates: string[] = [];
+  const totalDays = getDateDiffInDays(dateFrom, dateTo);
+
+  for (let offset = 0; offset <= totalDays; offset += 1) {
+    dates.push(addDays(dateFrom, offset));
+  }
+
+  return dates;
+}
+
+function getWeekday(date: string) {
+  return parseDateKey(date).getUTCDay();
 }
 
 function createEmptyCounts() {
@@ -426,15 +470,29 @@ export async function getAttendanceSnapshots(
 export async function listStudentAttendanceHistory(
   divisionSlug: string,
   studentId: string,
+  options?: {
+    dateFrom?: string;
+    dateTo?: string;
+  },
 ): Promise<StudentAttendanceHistoryItem[]> {
+  const normalizedFrom = options?.dateFrom ? normalizeDate(options.dateFrom) : null;
+  const normalizedTo = options?.dateTo ? normalizeDate(options.dateTo) : null;
+
+  if (normalizedFrom && normalizedTo && normalizedFrom > normalizedTo) {
+    throw badRequest("종료일은 시작일보다 빠를 수 없습니다.");
+  }
+
   const periods = await getPeriods(divisionSlug);
   const periodMap = new Map(periods.map((period) => [period.id, period]));
 
   if (isMockMode()) {
     const state = await readMockState();
+    const adminNameById = new Map(state.admins.map((admin) => [admin.id, admin.name]));
 
     return [...(state.attendanceByDivision[divisionSlug] ?? [])]
       .filter((record) => record.studentId === studentId)
+      .filter((record) => !normalizedFrom || record.date >= normalizedFrom)
+      .filter((record) => !normalizedTo || record.date <= normalizedTo)
       .sort((left, right) => {
         const dateDiff = right.date.localeCompare(left.date);
 
@@ -456,13 +514,26 @@ export async function listStudentAttendanceHistory(
         periodLabel: periodMap.get(record.periodId)?.label ?? null,
         status: record.status,
         reason: record.reason,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        recordedByName: record.recordedById ? adminNameById.get(record.recordedById) ?? null : null,
       }));
   }
 
   const prisma = await getPrismaClient();
+  const dateFrom = normalizedFrom ? toUtcDateRange(normalizedFrom).start : null;
+  const dateTo = normalizedTo ? toUtcDateRange(normalizedTo).end : null;
   const records = await prisma.attendance.findMany({
     where: {
       studentId,
+      ...(dateFrom || dateTo
+        ? {
+            date: {
+              ...(dateFrom ? { gte: dateFrom } : {}),
+              ...(dateTo ? { lt: dateTo } : {}),
+            },
+          }
+        : {}),
       student: {
         division: {
           slug: divisionSlug,
@@ -476,6 +547,13 @@ export async function listStudentAttendanceHistory(
       date: true,
       status: true,
       reason: true,
+      createdAt: true,
+      updatedAt: true,
+      recordedBy: {
+        select: {
+          name: true,
+        },
+      },
     },
     orderBy: [{ date: "desc" }],
   });
@@ -490,6 +568,9 @@ export async function listStudentAttendanceHistory(
       periodLabel: periodMap.get(record.periodId)?.label ?? null,
       status: record.status,
       reason: record.reason,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      recordedByName: record.recordedBy?.name ?? null,
     }))
     .sort((left, right) => {
       const dateDiff = right.date.localeCompare(left.date);
@@ -1183,6 +1264,275 @@ export async function upsertAttendanceBatch(
     studentIds: input.records.map((record) => record.studentId),
   });
   return snapshot;
+}
+
+export async function applyRecurringAttendance(
+  divisionSlug: string,
+  actor: AttendanceActor,
+  input: RecurringAttendanceInput,
+): Promise<RecurringAttendanceResult> {
+  const normalizedFrom = normalizeDate(input.dateFrom);
+  const normalizedTo = normalizeDate(input.dateTo);
+  const totalDays = getDateDiffInDays(normalizedFrom, normalizedTo);
+
+  if (totalDays < 0) {
+    throw badRequest("종료일은 시작일보다 빠를 수 없습니다.");
+  }
+
+  if (totalDays > 119) {
+    throw badRequest("반복 적용 기간은 최대 120일까지 선택할 수 있습니다.");
+  }
+
+  const weekdays = Array.from(new Set(input.weekdays));
+  if (weekdays.length === 0 || weekdays.some((weekday) => !Number.isInteger(weekday) || weekday < 0 || weekday > 6)) {
+    throw badRequest("적용할 요일을 하나 이상 선택해 주세요.");
+  }
+
+  if ((input.status === "ABSENT" || input.status === "EXCUSED") && !input.reason?.trim()) {
+    throw badRequest("결석 또는 사유결석은 사유를 입력해야 합니다.");
+  }
+
+  const [students, periods] = await Promise.all([
+    getSeatedStudents(divisionSlug),
+    getPeriods(divisionSlug),
+  ]);
+  const targetStudent = students.find((student) => student.id === input.studentId);
+
+  if (!targetStudent) {
+    throw badRequest("출석 대상 학생을 찾을 수 없습니다.");
+  }
+
+  const startIndex = periods.findIndex((period) => period.id === input.startPeriodId);
+  const endIndex = periods.findIndex((period) => period.id === input.endPeriodId);
+
+  if (startIndex === -1 || endIndex === -1) {
+    throw notFound("교시 정보를 찾을 수 없습니다.");
+  }
+
+  const [fromPeriodIndex, toPeriodIndex] =
+    startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+  const targetPeriods = periods.slice(fromPeriodIndex, toPeriodIndex + 1);
+
+  if (targetPeriods.length === 0) {
+    throw badRequest("적용할 교시를 찾을 수 없습니다.");
+  }
+
+  if (targetPeriods.some((period) => !period.isActive)) {
+    throw badRequest("비활성 교시는 반복 적용할 수 없습니다.");
+  }
+
+  const targetDates = enumerateDatesInclusive(normalizedFrom, normalizedTo).filter((date) =>
+    weekdays.includes(getWeekday(date)),
+  );
+  const targetCellCount = targetDates.length * targetPeriods.length;
+
+  if (targetCellCount === 0) {
+    return {
+      appliedCount: 0,
+      updatedExistingCount: 0,
+      skippedExistingCount: 0,
+      targetDateCount: 0,
+      targetCellCount: 0,
+    };
+  }
+
+  await Promise.all(
+    targetDates.map((date) => ensureAssistantAllowed(divisionSlug, actor, date)),
+  );
+
+  const reason =
+    input.status === "ABSENT" || input.status === "EXCUSED" ? input.reason?.trim() ?? null : null;
+  const overwriteExisting = input.overwriteExisting ?? false;
+  const now = new Date();
+
+  if (isMockMode()) {
+    const result = await updateMockState(async (state) => {
+      const current = state.attendanceByDivision[divisionSlug] ?? [];
+      const touchedMap = new Map(current.map((record) => [buildRecordId(record), record]));
+      let appliedCount = 0;
+      let updatedExistingCount = 0;
+      let skippedExistingCount = 0;
+
+      for (const date of targetDates) {
+        for (const period of targetPeriods) {
+          const id = buildRecordId({
+            studentId: input.studentId,
+            periodId: period.id,
+            date,
+          });
+          const checkInTime = resolveCheckInTime(input.status, date, period.startTime, now);
+          const existingRecord = touchedMap.get(id);
+
+          if (existingRecord && !overwriteExisting) {
+            skippedExistingCount += 1;
+            continue;
+          }
+
+          touchedMap.set(id, {
+            id,
+            studentId: input.studentId,
+            periodId: period.id,
+            date,
+            status: input.status as MockAttendanceStatus,
+            reason,
+            checkInTime: checkInTime ? checkInTime.toISOString() : null,
+            recordedById: actor.id,
+            createdAt: existingRecord?.createdAt ?? now.toISOString(),
+            updatedAt: now.toISOString(),
+          });
+
+          if (existingRecord) {
+            updatedExistingCount += 1;
+          } else {
+            appliedCount += 1;
+          }
+        }
+      }
+
+      state.attendanceByDivision[divisionSlug] = Array.from(touchedMap.values());
+
+      return {
+        appliedCount,
+        updatedExistingCount,
+        skippedExistingCount,
+        targetDateCount: targetDates.length,
+        targetCellCount,
+      };
+    });
+
+    for (const date of targetDates) {
+      await syncAttendanceDerivedPoints(divisionSlug, date, actor.id);
+    }
+
+    revalidateDivisionOperationalViews(divisionSlug, {
+      studentIds: [input.studentId],
+    });
+
+    return result;
+  }
+
+  const prisma = await getPrismaClient();
+  const division = await getDivisionOrThrow(divisionSlug);
+  const periodIds = targetPeriods.map((period) => period.id);
+  const dateValues = targetDates.map((date) => parseDateKey(date));
+  const existingRecords = await prisma.attendance.findMany({
+    where: {
+      studentId: input.studentId,
+      periodId: {
+        in: periodIds,
+      },
+      date: {
+        in: dateValues,
+      },
+      student: {
+        divisionId: division.id,
+      },
+    },
+    select: {
+      id: true,
+      studentId: true,
+      periodId: true,
+      date: true,
+    },
+  });
+  const existingRecordByKey = new Map(
+    existingRecords.map((record) => [
+      `${record.studentId}:${record.periodId}:${record.date.toISOString().slice(0, 10)}`,
+      record,
+    ]),
+  );
+  const createData = targetDates.flatMap((date) =>
+    targetPeriods.flatMap((period) => {
+      const key = `${input.studentId}:${period.id}:${date}`;
+
+      if (existingRecordByKey.has(key)) {
+        return [];
+      }
+
+      return [
+        {
+          studentId: input.studentId,
+          periodId: period.id,
+          date: parseDateKey(date),
+          status: input.status,
+          reason,
+          checkInTime: resolveCheckInTime(input.status, date, period.startTime, now),
+          recordedById: actor.id,
+        },
+      ];
+    }),
+  );
+  const updateData = overwriteExisting
+    ? targetDates.flatMap((date) =>
+        targetPeriods.flatMap((period) => {
+          const key = `${input.studentId}:${period.id}:${date}`;
+          const existingRecord = existingRecordByKey.get(key);
+
+          if (!existingRecord) {
+            return [];
+          }
+
+          return [
+            {
+              id: existingRecord.id,
+              date,
+              status: input.status,
+              reason,
+              checkInTime: resolveCheckInTime(input.status, date, period.startTime, now),
+              recordedById: actor.id,
+            },
+          ];
+        }),
+      )
+    : [];
+
+  if (createData.length > 0 || updateData.length > 0) {
+    await prisma.$transaction([
+      ...(createData.length > 0
+        ? [
+            prisma.attendance.createMany({
+              data: createData,
+            }),
+          ]
+        : []),
+      ...updateData.map((record) =>
+        prisma.attendance.update({
+          where: {
+            id: record.id,
+          },
+          data: {
+            status: record.status,
+            reason: record.reason,
+            checkInTime: record.checkInTime,
+            recordedById: record.recordedById,
+          },
+        }),
+      ),
+    ]);
+  }
+
+  const changedDates = Array.from(
+    new Set([
+      ...createData.map((record) => record.date.toISOString().slice(0, 10)),
+      ...updateData.map((record) => record.date),
+    ].filter(Boolean)),
+  );
+
+  for (const date of changedDates) {
+    await syncAttendanceDerivedPoints(divisionSlug, date, actor.id);
+  }
+
+  revalidateDivisionOperationalViews(divisionSlug, {
+    studentIds: [input.studentId],
+  });
+
+  return {
+    appliedCount: createData.length,
+    updatedExistingCount: updateData.length,
+    skippedExistingCount: overwriteExisting ? 0 : targetCellCount - createData.length,
+    targetDateCount: targetDates.length,
+    targetCellCount,
+  };
 }
 
 function enumerateDates(dateFrom: string, dateTo: string) {

@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+import { assertLocalRuntimeDoesNotUseRemoteSupabase } from "@/lib/local-env-guard";
+
 type SupabaseAuthUser = {
   id: string;
   email: string | null;
@@ -12,6 +14,8 @@ function getSupabaseAdminEnv() {
   if (!url || !serviceRoleKey) {
     throw new Error("Supabase admin environment variables are not configured.");
   }
+
+  assertLocalRuntimeDoesNotUseRemoteSupabase(url);
 
   return { url, serviceRoleKey };
 }

@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { defineConfig } from "prisma/config";
 
-function loadEnvFile(filename: string) {
+function loadEnvFile(filename: string, options: { override?: boolean } = {}) {
   const filePath = path.resolve(process.cwd(), filename);
 
   if (!fs.existsSync(filePath)) {
@@ -35,14 +35,14 @@ function loadEnvFile(filename: string) {
       value = value.slice(1, -1);
     }
 
-    if (!(key in process.env)) {
+    if (options.override || !(key in process.env)) {
       process.env[key] = value;
     }
   }
 }
 
 loadEnvFile(".env");
-loadEnvFile(".env.local");
+loadEnvFile(".env.local", { override: true });
 
 export default defineConfig({
   schema: "./prisma/schema.prisma",

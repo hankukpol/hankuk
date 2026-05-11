@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client/index";
 
+import { assertLocalRuntimeDoesNotUseRemoteDatabase } from "@/lib/local-env-guard";
+
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
@@ -20,6 +22,8 @@ function getRuntimeDatabaseUrl() {
   if (!value) {
     return undefined;
   }
+
+  assertLocalRuntimeDoesNotUseRemoteDatabase(value);
 
   if (isLocalRuntime()) {
     return value;

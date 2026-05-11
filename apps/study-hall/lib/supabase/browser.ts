@@ -2,6 +2,8 @@
 
 import { createBrowserClient as createSupabaseBrowserClient } from "@supabase/ssr";
 
+import { assertLocalRuntimeDoesNotUseRemoteSupabase } from "@/lib/local-env-guard";
+
 let browserClient: ReturnType<typeof createSupabaseBrowserClient> | null = null;
 
 export function createBrowserClient() {
@@ -11,6 +13,8 @@ export function createBrowserClient() {
   if (!url || !anonKey) {
     throw new Error("Supabase environment variables are not configured.");
   }
+
+  assertLocalRuntimeDoesNotUseRemoteSupabase(url);
 
   if (!browserClient) {
     browserClient = createSupabaseBrowserClient(url, anonKey);

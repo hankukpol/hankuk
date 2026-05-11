@@ -2,6 +2,7 @@ import { createServerClient as createSupabaseServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers";
 
 import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
+import { assertLocalRuntimeDoesNotUseRemoteSupabase } from "@/lib/local-env-guard";
 
 function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -10,6 +11,8 @@ function getSupabaseEnv() {
   if (!url || !anonKey) {
     throw new Error("Supabase environment variables are not configured.");
   }
+
+  assertLocalRuntimeDoesNotUseRemoteSupabase(url);
 
   return { url, anonKey };
 }

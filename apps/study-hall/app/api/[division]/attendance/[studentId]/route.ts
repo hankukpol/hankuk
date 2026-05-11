@@ -6,7 +6,7 @@ import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { listStudentAttendanceHistory } from "@/lib/services/attendance.service";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: { division: string; studentId: string } },
 ) {
   const auth = await requireApiAuth(params.division, ["ADMIN", "SUPER_ADMIN"]);
@@ -25,7 +25,11 @@ export async function GET(
   }
 
   try {
-    const records = await listStudentAttendanceHistory(params.division, params.studentId);
+    const { searchParams } = new URL(request.url);
+    const records = await listStudentAttendanceHistory(params.division, params.studentId, {
+      dateFrom: searchParams.get("dateFrom")?.trim() || undefined,
+      dateTo: searchParams.get("dateTo")?.trim() || undefined,
+    });
     return NextResponse.json({ records }, { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" } });
   } catch (error) {
     return toApiErrorResponse(error, "출석 이력을 불러오는 중 오류가 발생했습니다.");

@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
+import { assertLocalRuntimeDoesNotUseRemoteSupabase } from "@/lib/local-env-guard";
 import { isMockMode } from "@/lib/mock-data";
 
 type SessionUpdateResult = {
@@ -27,6 +28,8 @@ export async function updateSession(request: NextRequest): Promise<SessionUpdate
       user: null,
     };
   }
+
+  assertLocalRuntimeDoesNotUseRemoteSupabase(url);
 
   let response = NextResponse.next({
     request: {

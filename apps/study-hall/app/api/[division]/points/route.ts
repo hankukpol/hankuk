@@ -26,11 +26,21 @@ export async function GET(
   }
 
   const limitParam = request.nextUrl.searchParams.get("limit");
-  const limit = limitParam ? Number(limitParam) : undefined;
+  const parsedLimit = limitParam ? Number(limitParam) : undefined;
+  const limit =
+    parsedLimit && Number.isInteger(parsedLimit) && parsedLimit > 0
+      ? parsedLimit
+      : undefined;
+  const studentId = request.nextUrl.searchParams.get("studentId")?.trim() || undefined;
+  const dateFrom = request.nextUrl.searchParams.get("dateFrom")?.trim() || undefined;
+  const dateTo = request.nextUrl.searchParams.get("dateTo")?.trim() || undefined;
 
   try {
     const records = await listPointRecords(params.division, {
-      limit: Number.isFinite(limit) ? limit : undefined,
+      studentId,
+      limit,
+      dateFrom,
+      dateTo,
     });
     return NextResponse.json({ records }, { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" } });
   } catch (error) {

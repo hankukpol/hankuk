@@ -9,11 +9,11 @@ import { toast } from "@/lib/sonner";
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { RefundModal } from "@/components/payments/RefundModal";
-import { AttendanceCalendar } from "@/components/student-view/AttendanceCalendar";
 import { Modal } from "@/components/ui/Modal";
 import { getInterviewResultTypeClasses, getInterviewResultTypeLabel } from "@/lib/interview-meta";
 import { getLeaveStatusClasses, getLeaveStatusLabel, getLeaveTypeLabel } from "@/lib/leave-meta";
 import { formatPaymentMethod } from "@/lib/payment-meta";
+import type { StudentAttendanceHistoryItem } from "@/lib/services/attendance.service";
 import type { ExamTypeItem, StudentExamResultItem } from "@/lib/services/exam.service";
 import type { InterviewItem } from "@/lib/services/interview.service";
 import type { LeavePermissionItem } from "@/lib/services/leave.service";
@@ -41,6 +41,7 @@ type StudentDetailTabsProps = {
   activeTab: StudentDetailTabId;
   attendanceSummary: StudentDashboardData["summary"];
   weeklyAttendance: StudentDashboardData["weeklyAttendance"];
+  attendanceHistory: StudentAttendanceHistoryItem[];
   leavePermissions: LeavePermissionItem[];
   pointRecords: PointRecordItem[];
   examResults: StudentExamResultItem[];
@@ -94,9 +95,111 @@ function formatDateTime(value: string) {
   });
 }
 
+function formatFullDateTime(value: string) {
+  return new Date(value).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getKstDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function getMonthStartDateKey(dateKey: string) {
+  return `${dateKey.slice(0, 7)}-01`;
+}
+
+function addDateDays(dateKey: string, offsetDays: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day));
+  next.setUTCDate(next.getUTCDate() + offsetDays);
+  return next.toISOString().slice(0, 10);
+}
+
+function formatDateWithWeekday(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).format(new Date(`${value}T00:00:00+09:00`));
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("ko-KR").format(value);
 }
+
+type WeeklyAttendanceCellStatus =
+  StudentDashboardData["weeklyAttendance"]["rows"][number]["cells"][number]["status"];
+
+function getAttendanceStatusClasses(status: WeeklyAttendanceCellStatus) {
+  switch (status) {
+    case "PRESENT":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "TARDY":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "ABSENT":
+      return "border-rose-200 bg-rose-50 text-rose-700";
+    case "EXCUSED":
+      return "border-sky-200 bg-sky-50 text-sky-700";
+    case "HOLIDAY":
+    case "HALF_HOLIDAY":
+      return "border-slate-300 bg-slate-100 text-slate-700";
+    case "UPCOMING":
+    case "NOT_APPLICABLE":
+      return "border-slate-200 bg-slate-50 text-slate-500";
+    case "OFF":
+      return "border-slate-200 bg-slate-100 text-slate-500";
+    default:
+      return "border-orange-200 bg-orange-50 text-orange-700";
+  }
+}
+
+function getAttendanceHistoryStatusClasses(status: StudentAttendanceHistoryItem["status"]) {
+  return getAttendanceStatusClasses(status);
+}
+
+function getAttendanceHistoryStatusLabel(status: StudentAttendanceHistoryItem["status"]) {
+  switch (status) {
+    case "PRESENT":
+      return "출석";
+    case "TARDY":
+      return "지각";
+    case "ABSENT":
+      return "결석";
+    case "EXCUSED":
+      return "사유결석";
+    case "HOLIDAY":
+      return "휴무";
+    case "HALF_HOLIDAY":
+      return "반휴";
+    case "NOT_APPLICABLE":
+      return "해당없음";
+    default:
+      return status;
+  }
+}
+
+const attendanceHistoryFilters = [
+  { value: "ALL", label: "전체" },
+  { value: "ABSENT", label: "결석" },
+  { value: "EXCUSED", label: "사유결석" },
+  { value: "HOLIDAY", label: "휴무" },
+  { value: "HALF_HOLIDAY", label: "반휴" },
+  { value: "REASONED", label: "사유 있음" },
+] as const;
+
+type AttendanceHistoryFilter = (typeof attendanceHistoryFilters)[number]["value"];
 
 export function StudentDetailTabs({
   divisionSlug,
@@ -114,6 +217,7 @@ export function StudentDetailTabs({
   activeTab,
   attendanceSummary,
   weeklyAttendance,
+  attendanceHistory,
   leavePermissions,
   pointRecords,
   examResults,
@@ -153,6 +257,59 @@ export function StudentDetailTabs({
   const [isSubmittingPoints, setIsSubmittingPoints] = useState(false);
 
   const selectedRule = pointRules.find((r) => r.id === pointRuleId) ?? null;
+  const [attendanceDateFrom, setAttendanceDateFrom] = useState(() =>
+    getMonthStartDateKey(getKstDateKey()),
+  );
+  const [attendanceDateTo, setAttendanceDateTo] = useState(() => getKstDateKey());
+  const [attendanceHistoryFilter, setAttendanceHistoryFilter] =
+    useState<AttendanceHistoryFilter>("ALL");
+  const weeklyDateRows = weeklyAttendance.dates.map((date, dateIndex) => ({
+    ...date,
+    cells: weeklyAttendance.rows.map((row) => ({
+      periodId: row.periodId,
+      periodName: row.periodName,
+      label: row.label,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      status: row.cells[dateIndex].status,
+      statusLabel: row.cells[dateIndex].label,
+      reason: row.cells[dateIndex].reason,
+    })),
+  }));
+  const attendanceRangeFrom =
+    attendanceDateFrom && attendanceDateTo && attendanceDateFrom > attendanceDateTo
+      ? attendanceDateTo
+      : attendanceDateFrom;
+  const attendanceRangeTo =
+    attendanceDateFrom && attendanceDateTo && attendanceDateFrom > attendanceDateTo
+      ? attendanceDateFrom
+      : attendanceDateTo;
+  const attendanceHistoryInRange = attendanceHistory.filter((record) => {
+    if (attendanceRangeFrom && record.date < attendanceRangeFrom) {
+      return false;
+    }
+
+    if (attendanceRangeTo && record.date > attendanceRangeTo) {
+      return false;
+    }
+
+    return true;
+  });
+  const filteredAttendanceHistory = attendanceHistoryInRange.filter((record) => {
+    if (attendanceHistoryFilter === "ALL") {
+      return true;
+    }
+
+    if (attendanceHistoryFilter === "REASONED") {
+      return Boolean(record.reason?.trim());
+    }
+
+    return record.status === attendanceHistoryFilter;
+  });
+  const attendanceRangeLabel =
+    attendanceRangeFrom || attendanceRangeTo
+      ? `${attendanceRangeFrom || "처음"} ~ ${attendanceRangeTo || "오늘"}`
+      : "전체 기간";
 
   function closeAddPayment() {
     if (isSubmittingPayment) return;
@@ -171,6 +328,31 @@ export function StudentDetailTabs({
     setPointRuleId("");
     setManualPoints("");
     setPointsNotes("");
+  }
+
+  function applyAttendanceRangePreset(preset: "month" | "last7" | "last30" | "all") {
+    const today = getKstDateKey();
+
+    if (preset === "month") {
+      setAttendanceDateFrom(getMonthStartDateKey(today));
+      setAttendanceDateTo(today);
+      return;
+    }
+
+    if (preset === "last7") {
+      setAttendanceDateFrom(addDateDays(today, -6));
+      setAttendanceDateTo(today);
+      return;
+    }
+
+    if (preset === "last30") {
+      setAttendanceDateFrom(addDateDays(today, -29));
+      setAttendanceDateTo(today);
+      return;
+    }
+
+    setAttendanceDateFrom("");
+    setAttendanceDateTo("");
   }
 
   async function handleAddPoints(event: FormEvent<HTMLFormElement>) {
@@ -247,78 +429,255 @@ export function StudentDetailTabs({
     }
 
     return (
-      <div className="space-y-5">
-        <div className="flex items-center gap-2 text-slate-600">
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-slate-700">
           <CalendarDays className="h-4 w-4" />
-          <span className="text-sm font-medium">출결 현황</span>
+          <span className="text-sm font-semibold">출결 현황</span>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-            <p className="text-sm text-slate-500">이번 달 출석률</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">
-              {attendanceSummary.monthlyAttendanceRate}%
-            </p>
-            </article>
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-            <p className="text-sm text-slate-500">월간 출석</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">
-              {attendanceSummary.monthlyAttendedCount}/{attendanceSummary.monthlyExpectedCount}
-            </p>
-            </article>
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-            <p className="text-sm text-slate-500">주간 출석</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">
-              {attendanceSummary.weeklyAttendedCount}/{attendanceSummary.weeklyExpectedCount}
-            </p>
-            </article>
-          <article
-            className={`rounded-[10px] border border-slate-200-slate-200 bg-white p-4 ${
-              leaveManagementEnabled ? "" : "hidden"
-            }`}
-          >
-            <p className="text-sm text-slate-500">외출/휴가 기록</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">{leavePermissions.length}건</p>
-          </article>
-        </div>
+        <section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+              <tr>
+                <th className="border-b border-slate-200 px-4 py-3">이번 달 출석률</th>
+                <th className="border-b border-slate-200 px-4 py-3">월간 출석</th>
+                <th className="border-b border-slate-200 px-4 py-3">주간 출석</th>
+                <th className={`border-b border-slate-200 px-4 py-3 ${leaveManagementEnabled ? "" : "hidden"}`}>
+                  외출/휴가 기록
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="px-4 py-4 text-2xl font-bold text-slate-950">
+                  {attendanceSummary.monthlyAttendanceRate}%
+                </td>
+                <td className="px-4 py-4 text-2xl font-bold text-slate-950">
+                  {attendanceSummary.monthlyAttendedCount}/{attendanceSummary.monthlyExpectedCount}
+                </td>
+                <td className="px-4 py-4 text-2xl font-bold text-slate-950">
+                  {attendanceSummary.weeklyAttendedCount}/{attendanceSummary.weeklyExpectedCount}
+                </td>
+                <td className={`px-4 py-4 text-2xl font-bold text-slate-950 ${leaveManagementEnabled ? "" : "hidden"}`}>
+                  {leavePermissions.length}건
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-          <AttendanceCalendar weeklyAttendance={weeklyAttendance} />
+        <section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-900">이번 주 출결표</p>
           </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] border-collapse text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+                <tr>
+                  <th className="sticky left-0 z-10 w-[120px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3">
+                    날짜
+                  </th>
+                  {weeklyAttendance.rows.map((row) => (
+                    <th key={row.periodId} className="min-w-[120px] border-b border-r border-slate-200 px-3 py-3 last:border-r-0">
+                      <span className="block text-slate-900">{row.periodName}</span>
+                      <span className="mt-1 block font-normal text-slate-500">
+                        {row.startTime}-{row.endTime}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {weeklyDateRows.map((row) => (
+                  <tr key={row.date} className={row.isToday ? "bg-[color-mix(in_srgb,var(--division-color)_6%,white)]" : ""}>
+                    <th className="sticky left-0 z-10 border-b border-r border-slate-100 bg-inherit px-4 py-3 text-left align-top">
+                      <span className="block font-semibold text-slate-950">{formatDateWithWeekday(row.date)}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {row.isToday ? "오늘" : row.isOperatingDay ? "운영" : "휴무"}
+                      </span>
+                    </th>
+                    {row.cells.map((cell) => (
+                      <td key={`${row.date}-${cell.periodId}`} className="border-b border-r border-slate-100 px-3 py-3 align-top last:border-r-0">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAttendanceStatusClasses(cell.status)}`}>
+                          {cell.statusLabel}
+                        </span>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                          {cell.reason || `${cell.startTime}-${cell.endTime}`}
+                        </p>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white">
+          <div className="space-y-3 border-b border-slate-200 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">출결 상세 이력</p>
+              <p className="mt-1 text-xs text-slate-500">
+                결석, 사유결석, 휴무와 사유 작성 및 수정 시점을 확인합니다.
+              </p>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-600">
+                  시작일
+                  <input
+                    type="date"
+                    value={attendanceDateFrom}
+                    onChange={(event) => setAttendanceDateFrom(event.target.value)}
+                    className="mt-1.5 h-10 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-slate-600">
+                  종료일
+                  <input
+                    type="date"
+                    value={attendanceDateTo}
+                    onChange={(event) => setAttendanceDateTo(event.target.value)}
+                    className="mt-1.5 h-10 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { key: "month" as const, label: "이번 달" },
+                  { key: "last7" as const, label: "최근 7일" },
+                  { key: "last30" as const, label: "최근 30일" },
+                  { key: "all" as const, label: "전체" },
+                ].map((preset) => (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => applyAttendanceRangePreset(preset.key)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+              <p className="text-xs font-medium text-slate-500">
+                {attendanceRangeLabel} · {filteredAttendanceHistory.length}건 표시
+                {filteredAttendanceHistory.length !== attendanceHistoryInRange.length
+                  ? ` / 기간 내 ${attendanceHistoryInRange.length}건`
+                  : ""}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {attendanceHistoryFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setAttendanceHistoryFilter(filter.value)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      attendanceHistoryFilter === filter.value
+                        ? "border-[var(--division-color)] bg-[var(--division-color)] text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="max-h-[520px] overflow-auto">
+            <table className="w-full min-w-[960px] border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold text-slate-500">
+                <tr>
+                  <th className="border-b border-slate-200 px-4 py-3">날짜</th>
+                  <th className="border-b border-slate-200 px-4 py-3">교시</th>
+                  <th className="border-b border-slate-200 px-4 py-3">상태</th>
+                  <th className="border-b border-slate-200 px-4 py-3">사유</th>
+                  <th className="border-b border-slate-200 px-4 py-3">작성 / 수정</th>
+                  <th className="border-b border-slate-200 px-4 py-3">처리자</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAttendanceHistory.length > 0 ? (
+                  filteredAttendanceHistory.map((record) => (
+                    <tr key={record.id} className="border-b border-slate-100 last:border-b-0">
+                      <td className="px-4 py-3 font-medium text-slate-900">{formatDate(record.date)}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <span className="font-medium">{record.periodName}</span>
+                        {record.periodLabel ? (
+                          <span className="ml-1 text-xs text-slate-400">{record.periodLabel}</span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAttendanceHistoryStatusClasses(record.status)}`}>
+                          {getAttendanceHistoryStatusLabel(record.status)}
+                        </span>
+                      </td>
+                      <td className="max-w-[280px] px-4 py-3 text-slate-700">
+                        {record.reason || <span className="text-slate-400">-</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs leading-5 text-slate-500">
+                        <div>작성 {formatFullDateTime(record.createdAt)}</div>
+                        <div>수정 {formatFullDateTime(record.updatedAt)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{record.recordedByName || "시스템"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                      조건에 맞는 출결 이력이 없습니다.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         {leaveManagementEnabled ? (
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-          <p className="text-sm font-semibold text-slate-900">최근 외출/휴가</p>
-          {leavePermissions.length > 0 ? (
-            <div className="mt-4 space-y-3">
-              {leavePermissions.slice(0, 5).map((permission) => (
-                <div
-                  key={permission.id}
-                  className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {getLeaveTypeLabel(permission.type)}
-                    </span>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getLeaveStatusClasses(permission.status)}`}
-                    >
-                      {getLeaveStatusLabel(permission.status)}
-                    </span>
-                    <span className="text-xs text-slate-500">{formatDate(permission.date)}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {permission.reason || "사유 없음"}
-                  </p>
-                </div>
-              ))}
+          <section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-900">최근 외출/휴가</p>
             </div>
-          ) : (
-            <div className="mt-4 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
-              등록된 외출/휴가 기록이 없습니다.
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] border-collapse text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+                  <tr>
+                    <th className="border-b border-slate-200 px-4 py-3">날짜</th>
+                    <th className="border-b border-slate-200 px-4 py-3">유형</th>
+                    <th className="border-b border-slate-200 px-4 py-3">상태</th>
+                    <th className="border-b border-slate-200 px-4 py-3">사유</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leavePermissions.length > 0 ? (
+                    leavePermissions.slice(0, 5).map((permission) => (
+                      <tr key={permission.id} className="border-b border-slate-100 last:border-b-0">
+                        <td className="px-4 py-3 font-medium text-slate-900">{formatDate(permission.date)}</td>
+                        <td className="px-4 py-3 text-slate-700">{getLeaveTypeLabel(permission.type)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getLeaveStatusClasses(permission.status)}`}>
+                            {getLeaveStatusLabel(permission.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{permission.reason || "-"}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
+                        등록된 외출/휴가 기록이 없습니다.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
-          </div>
+          </section>
         ) : null}
       </div>
     );

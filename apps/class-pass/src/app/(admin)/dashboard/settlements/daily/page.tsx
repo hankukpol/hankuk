@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { SortableHeader, sortRows, useSortState } from '@/components/admin/sortable-header'
 import { AlertTriangle, CalendarDays, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
@@ -146,6 +147,9 @@ export default function DailySettlementsPage() {
   const [rawPayments, setRawPayments] = useState<EnrollmentPayment[]>([])
   const [filter, setFilter] = useState<SettlementFilterKind>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const { sort: settlementSort, toggle: toggleSettlementSort } = useSortState<
+    'occurredAt' | 'studentName' | 'studentTypeLabel' | 'courseName' | 'seriesLabel' | 'methodLabel' | 'cardCompany' | 'paymentAmount' | 'refundAmount' | 'netAmount'
+  >('occurredAt', 'desc')
   const [seriesFilter, setSeriesFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -300,6 +304,11 @@ export default function DailySettlementsPage() {
       String(row.netAmount),
     ].some((value) => String(value ?? '').toLowerCase().includes(keyword)))
   }, [filter, report, searchTerm])
+
+  const sortedRows = useMemo(
+    () => sortRows(rows as unknown as Record<string, unknown>[], settlementSort.key, settlementSort.dir) as unknown as SettlementLedgerRow[],
+    [rows, settlementSort.key, settlementSort.dir],
+  )
 
   const cardCompanyCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -922,13 +931,23 @@ export default function DailySettlementsPage() {
           <table className="min-w-[1280px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold text-slate-500">
               <tr>
-                {['시각', '학생', '학원구분', '강좌', '직렬', '방법', '카드사', '결제액', '환불', '순액', '영수증번호', '사유', '정산확인'].map((header) => (
-                  <th key={header} className="whitespace-nowrap px-3 py-2.5">{header}</th>
-                ))}
+                <SortableHeader label="시각" sortKey="occurredAt" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="학생" sortKey="studentName" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="학원구분" sortKey="studentTypeLabel" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="강좌" sortKey="courseName" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="직렬" sortKey="seriesLabel" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="방법" sortKey="methodLabel" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="카드사" sortKey="cardCompany" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" />
+                <SortableHeader label="결제액" sortKey="paymentAmount" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" align="right" />
+                <SortableHeader label="환불" sortKey="refundAmount" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" align="right" />
+                <SortableHeader label="순액" sortKey="netAmount" sort={settlementSort} onSort={toggleSettlementSort} className="px-3 py-2.5" align="right" />
+                <th className="whitespace-nowrap px-3 py-2.5">영수증번호</th>
+                <th className="whitespace-nowrap px-3 py-2.5">사유</th>
+                <th className="whitespace-nowrap px-3 py-2.5">정산확인</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((row) => {
+              {sortedRows.map((row) => {
                 const checkoutGroup = row.kind === 'payment'
                   ? checkoutGroupByFirstPaymentId.get(row.paymentId)
                   : undefined

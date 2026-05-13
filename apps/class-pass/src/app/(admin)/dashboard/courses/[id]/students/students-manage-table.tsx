@@ -6,6 +6,7 @@ import {
 } from '@/types/database'
 import { getEnrollmentLifecycleStatus } from '@/lib/enrollment-status'
 import { formatDateTime, formatShortDate } from '@/lib/utils'
+import { SortableHeader, sortRows, useSortState } from '@/components/admin/sortable-header'
 import type { EnrollmentManageStatusFilter } from './students-page-types'
 
 const STATUS_FILTER_OPTIONS: Array<{ value: EnrollmentManageStatusFilter; label: string }> = [
@@ -212,6 +213,10 @@ export function StudentsManageTable({
   onDelete,
 }: StudentsManageTableProps) {
   const [expandedMobileId, setExpandedMobileId] = useState<number | null>(null)
+  const { sort, toggle } = useSortState<
+    'exam_number' | 'name' | 'phone' | 'series' | 'student_type' | 'status' | 'created_at'
+  >('created_at', 'desc')
+  const sorted = sortRows(filtered as unknown as Record<string, unknown>[], sort.key, sort.dir) as unknown as typeof filtered
 
   function handleActionClick(event: MouseEvent<HTMLButtonElement>, action: () => void) {
     event.stopPropagation()
@@ -429,6 +434,14 @@ export function StudentsManageTable({
                       <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${authMethodMeta.className}`}>
                         {authMethodMeta.label}
                       </span>
+                      {enrollment.student_profile?.identity_mismatch ? (
+                        <span
+                          title="수강 정보와 연결된 학생 프로필의 이름/연락처/수험번호가 다릅니다."
+                          className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                        >
+                          연결 확인
+                        </span>
+                      ) : null}
                       <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>
                         {seriesMeta.label}
                       </span>
@@ -487,24 +500,24 @@ export function StudentsManageTable({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">
-                <th className="px-5 py-3">응시번호</th>
-                <th className="px-3 py-3">이름</th>
-                <th className="px-3 py-3">연락처</th>
-                <th className="px-3 py-3">직렬</th>
-                <th className="px-3 py-3">학원구분</th>
+                <SortableHeader label="응시번호" sortKey="exam_number" sort={sort} onSort={toggle} className="px-5 py-3" />
+                <SortableHeader label="이름" sortKey="name" sort={sort} onSort={toggle} className="px-3 py-3" />
+                <SortableHeader label="연락처" sortKey="phone" sort={sort} onSort={toggle} className="px-3 py-3" />
+                <SortableHeader label="직렬" sortKey="series" sort={sort} onSort={toggle} className="px-3 py-3" />
+                <SortableHeader label="학원구분" sortKey="student_type" sort={sort} onSort={toggle} className="px-3 py-3" />
                 {customFields.map((field) => (
                   <th key={field.key} className="hidden px-3 py-3 lg:table-cell">
                     {field.label}
                   </th>
                 ))}
-                <th className="px-3 py-3">상태</th>
+                <SortableHeader label="상태" sortKey="status" sort={sort} onSort={toggle} className="px-3 py-3" />
                 {attendanceEnabled ? <th className="hidden px-3 py-3 xl:table-cell">출석 기기</th> : null}
-                <th className="hidden px-3 py-3 md:table-cell">등록일</th>
+                <SortableHeader label="등록일" sortKey="created_at" sort={sort} onSort={toggle} className="hidden px-3 py-3 md:table-cell" />
                 <th className="px-5 py-3 text-right">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.map((enrollment) => {
+              {sorted.map((enrollment) => {
                 const suspended = isEnrollmentSuspended(enrollment)
                 const attendanceDeviceMeta = getAttendanceDeviceMeta(enrollment)
                 const authMethodMeta = getAuthMethodMeta(enrollment)
@@ -527,6 +540,14 @@ export function StudentsManageTable({
                         >
                           {authMethodMeta.label}
                         </span>
+                        {enrollment.student_profile?.identity_mismatch ? (
+                          <span
+                            title="수강 정보와 연결된 학생 프로필의 이름/연락처/수험번호가 다릅니다."
+                            className="inline-flex w-fit rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                          >
+                            연결 확인
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-3 py-3 text-gray-500">{enrollment.phone}</td>

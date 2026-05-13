@@ -6,6 +6,7 @@ import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { parseEnrollmentBulkText } from '@/lib/bulk'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
+import { normalizeCohortNumber, resolveStudentCohortOptionByNumber } from '@/lib/student-cohorts'
 import {
   ensureStudentProfilesBatch,
   initializeStudentAuthBatch,
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
 
   const latestRowByKey = new Map<string, (typeof rows)[number]>()
   const generatedPins: Array<{ name: string; phone: string; pin: string }> = []
+  const cohortIdByKey = new Map<string, number | null | undefined>()
 
   for (const row of rows) {
     const key = row.exam_number?.trim()
@@ -144,6 +146,39 @@ export async function POST(req: NextRequest) {
     latestRowByKey.set(key, row)
   }
 
+  const cohortLabels = Array.from(new Set(
+    Array.from(latestRowByKey.values())
+      .map((row) => row.cohort_label?.trim())
+      .filter((label): label is string => Boolean(label)),
+  ))
+  const cohortByLabel = new Map<string, number>()
+  for (const label of cohortLabels) {
+    let cohortNumber: number | null | undefined
+    try {
+      cohortNumber = normalizeCohortNumber(label)
+    } catch {
+      return NextResponse.json({
+        error: `기수는 숫자만 입력해 주세요. 문제가 있는 값: ${label}`,
+      }, { status: 400 })
+    }
+    const option = await resolveStudentCohortOptionByNumber(cohortNumber)
+    if (!option) {
+      return NextResponse.json({
+        error: `기수 '${label}'를 처리하지 못했습니다.`,
+      }, { status: 400 })
+    }
+    cohortByLabel.set(label, option.id)
+  }
+
+  for (const [key, row] of latestRowByKey.entries()) {
+    if (row.cohort_label === undefined) {
+      cohortIdByKey.set(key, undefined)
+      continue
+    }
+    const label = row.cohort_label.trim()
+    cohortIdByKey.set(key, label ? cohortByLabel.get(label) ?? null : null)
+  }
+
   let studentResults: Awaited<ReturnType<typeof ensureStudentProfilesBatch>>
   try {
     studentResults = await ensureStudentProfilesBatch(
@@ -154,6 +189,7 @@ export async function POST(req: NextRequest) {
         name: row.name,
         phone: row.phone,
         exam_number: row.exam_number,
+        ...(cohortIdByKey.get(key) !== undefined ? { cohort_option_id: cohortIdByKey.get(key) } : {}),
         birth_date: row.birth_date,
         photo_url: row.photo_url,
       })),

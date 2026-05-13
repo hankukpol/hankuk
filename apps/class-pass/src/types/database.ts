@@ -106,6 +106,8 @@ export interface Student {
   name: string
   phone: string
   exam_number: string | null
+  cohort_option_id: number | null
+  cohort_label?: string | null
   birth_date: string | null
   pin_hash: string | null
   auth_method: StudentAuthMethod | null
@@ -127,10 +129,14 @@ export interface Enrollment {
     profile_name?: string | null
     profile_phone?: string | null
     profile_exam_number?: string | null
+    cohort_option_id?: number | null
+    cohort_label?: string | null
   } | null
   name: string
   phone: string
   exam_number: string | null
+  cohort_option_id?: number | null
+  cohort_label?: string | null
   gender: string | null
   region: string | null
   series_option_id: number | null
@@ -644,6 +650,16 @@ export interface BranchSeriesOption {
   group_key: BranchSeriesGroup
   label: string
   is_default: boolean
+  is_active: boolean
+  display_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface StudentCohortOption {
+  id: number
+  branch_id: number
+  label: string
   is_active: boolean
   display_order: number
   created_at: string

@@ -1,10 +1,12 @@
 import { normalizeBirthDate } from '@/lib/auth/student-auth'
+import { normalizeGenderLabel } from '@/lib/gender'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 
 export type ParsedEnrollmentRow = {
   name: string
   phone: string
   exam_number?: string
+  cohort_label?: string
   birth_date?: string
   gender?: string
   region?: string
@@ -45,6 +47,11 @@ function isEnrollmentExamHeader(value: string) {
   )
 }
 
+function isEnrollmentCohortHeader(value: string) {
+  const normalized = normalizeHeaderLabel(value)
+  return normalized === '기수' || normalized === '期수' || normalized === 'cohort'
+}
+
 function isEnrollmentNameHeader(value: string) {
   const normalized = normalizeHeaderLabel(value)
   return normalized === '이름' || normalized === '성명'
@@ -70,6 +77,20 @@ function isEnrollmentBirthDateHeader(value: string) {
     || normalized === 'birthday'
     || normalized === 'yymmdd'
   )
+}
+
+function isEnrollmentGenderHeader(value: string) {
+  const normalized = normalizeHeaderLabel(value)
+  return normalized === '성별' || normalized === '남녀' || normalized === '남여' || normalized === 'gender'
+}
+
+function normalizeKnownGender(value: string) {
+  const gender = normalizeGenderLabel(value)
+  return gender === '남' || gender === '여' ? gender : undefined
+}
+
+function normalizeGender(value: string) {
+  return normalizeGenderLabel(value) || undefined
 }
 
 function splitEnrollmentLine(line: string) {
@@ -119,6 +140,29 @@ function isEnrollmentHeaderRow(cells: string[]) {
   return false
 }
 
+type EnrollmentHeaderMap = {
+  cohort?: number
+  exam?: number
+  name?: number
+  phone?: number
+  birthDate?: number
+  gender?: number
+}
+
+function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
+  const map: EnrollmentHeaderMap = {}
+  cells.forEach((cell, index) => {
+    if (isEnrollmentCohortHeader(cell)) map.cohort = index
+    else if (isEnrollmentExamHeader(cell)) map.exam = index
+    else if (isEnrollmentNameHeader(cell)) map.name = index
+    else if (isEnrollmentPhoneHeader(cell)) map.phone = index
+    else if (isEnrollmentBirthDateHeader(cell)) map.birthDate = index
+    else if (isEnrollmentGenderHeader(cell)) map.gender = index
+  })
+
+  return map.name !== undefined && map.phone !== undefined ? map : null
+}
+
 /**
  * Parse bulk enrollment text.
  * Column order: 수험번호, 이름, 연락처, ...customFieldKeys
@@ -127,22 +171,59 @@ export function parseEnrollmentBulkText(
   input: string,
   customFieldKeys?: string[],
 ): ParsedEnrollmentRow[] {
-  return input
+  const lines = input
     .split(/\r?\n/)
     .map((line) => splitEnrollmentLine(line))
     .filter((cells) => cells.some(Boolean))
-    .filter((cells) => !isEnrollmentHeaderRow(cells))
+
+  const headerMap = lines.length > 0 ? getEnrollmentHeaderMap(lines[0] ?? []) : null
+  const bodyLines = headerMap ? lines.slice(1) : lines.filter((cells) => !isEnrollmentHeaderRow(cells))
+
+  return bodyLines
     .filter((cells) => cells.length >= 2)
     .map((cells) => {
+      if (headerMap) {
+        const row: ParsedEnrollmentRow = {
+          cohort_label: headerMap.cohort !== undefined ? (cells[headerMap.cohort] ?? '').trim() : undefined,
+          exam_number: headerMap.exam !== undefined ? normalizeExamNumber(cells[headerMap.exam] ?? '') || undefined : undefined,
+          birth_date: headerMap.birthDate !== undefined ? normalizeBirthDate(cells[headerMap.birthDate] ?? '') ?? undefined : undefined,
+          gender: headerMap.gender !== undefined ? normalizeGender(cells[headerMap.gender] ?? '') : undefined,
+          name: normalizeName(cells[headerMap.name ?? -1] ?? ''),
+          phone: normalizePhone(cells[headerMap.phone ?? -1] ?? ''),
+        }
+
+        if (customFieldKeys?.length) {
+          const usedIndexes = new Set(Object.values(headerMap).filter((value): value is number => value !== undefined))
+          const customValues = cells.filter((_, index) => !usedIndexes.has(index))
+          const customData: Record<string, string> = {}
+          customFieldKeys.forEach((key, index) => {
+            const value = customValues[index]
+            if (value) {
+              customData[key] = value
+            }
+          })
+          if (Object.keys(customData).length > 0) {
+            row.custom_data = customData
+          }
+        }
+
+        return row
+      }
+
       const looksLikePhone = (value: string) => normalizePhone(value).length >= 8
-      const hasLeadingExamNumber = cells.length >= 3 && looksLikePhone(cells[2] ?? '')
-      const nameIndex = hasLeadingExamNumber ? 1 : 0
-      const phoneIndex = hasLeadingExamNumber ? 2 : 1
-      const customStartIndex = hasLeadingExamNumber ? 3 : 2
+      const hasLeadingCohortAndExamNumber = cells.length >= 4 && looksLikePhone(cells[3] ?? '')
+      const hasLeadingExamNumber = !hasLeadingCohortAndExamNumber && cells.length >= 3 && looksLikePhone(cells[2] ?? '')
+      const nameIndex = hasLeadingCohortAndExamNumber ? 2 : hasLeadingExamNumber ? 1 : 0
+      const phoneIndex = hasLeadingCohortAndExamNumber ? 3 : hasLeadingExamNumber ? 2 : 1
+      const customStartIndex = hasLeadingCohortAndExamNumber ? 4 : hasLeadingExamNumber ? 3 : 2
       const trailingValues = cells.slice(customStartIndex)
       let examNumber = hasLeadingExamNumber
         ? normalizeExamNumber(cells[0] ?? '') || undefined
         : undefined
+      const cohortLabel = hasLeadingCohortAndExamNumber ? (cells[0] ?? '').trim() || undefined : undefined
+      if (hasLeadingCohortAndExamNumber) {
+        examNumber = normalizeExamNumber(cells[1] ?? '') || undefined
+      }
       let birthDate: string | undefined
       const customValues = [...trailingValues]
 
@@ -165,9 +246,18 @@ export function parseEnrollmentBulkText(
         }
       }
 
+      let gender: string | undefined
+      const firstExtraGender = normalizeKnownGender(customValues[0] ?? '')
+      if (firstExtraGender) {
+        gender = firstExtraGender
+        customValues.shift()
+      }
+
       const row: ParsedEnrollmentRow = {
+        cohort_label: cohortLabel,
         exam_number: examNumber,
         birth_date: birthDate,
+        gender,
         name: normalizeName(cells[nameIndex] ?? ''),
         phone: normalizePhone(cells[phoneIndex] ?? ''),
       }

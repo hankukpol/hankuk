@@ -26,6 +26,7 @@ export type StudentProfileSnapshot = {
   name: string
   phone: string
   exam_number?: string | null
+  cohort_option_id?: number | null
   birth_date?: string | null
   photo_url?: string | null
 }
@@ -87,6 +88,7 @@ type NormalizedStudentSnapshot = {
   name: string
   phone: string
   exam_number?: string | null
+  cohort_option_id?: number | null
   birth_date?: string | null
   photo_url?: string | null
 }
@@ -129,6 +131,9 @@ function normalizeStudentSnapshot(snapshot: StudentProfileSnapshot): NormalizedS
     exam_number: snapshot.exam_number === undefined
       ? undefined
       : normalizeExamNumber(snapshot.exam_number) || null,
+    cohort_option_id: hasOwnField(snapshot, 'cohort_option_id')
+      ? snapshot.cohort_option_id ?? null
+      : undefined,
     birth_date: hasOwnField(snapshot, 'birth_date')
       ? normalizeBirthDate(snapshot.birth_date) || null
       : undefined,
@@ -265,6 +270,7 @@ function shouldUpdateStudent(
     student.name !== normalized.name
     || student.phone !== normalized.phone
     || (normalized.exam_number !== undefined && student.exam_number !== normalized.exam_number)
+    || (normalized.cohort_option_id !== undefined && student.cohort_option_id !== normalized.cohort_option_id)
     || (normalized.birth_date !== undefined && normalized.birth_date !== null && student.birth_date !== normalized.birth_date)
     || (normalized.photo_url !== undefined && student.photo_url !== normalized.photo_url)
   )
@@ -272,7 +278,7 @@ function shouldUpdateStudent(
 
 function buildStudentUpsertPayload(
   student: Student,
-  overrides: Partial<Pick<Student, 'name' | 'phone' | 'exam_number' | 'birth_date' | 'pin_hash' | 'auth_method' | 'photo_url' | 'updated_at'>>,
+  overrides: Partial<Pick<Student, 'name' | 'phone' | 'exam_number' | 'cohort_option_id' | 'birth_date' | 'pin_hash' | 'auth_method' | 'photo_url' | 'updated_at'>>,
 ) {
   return {
     id: student.id,
@@ -280,6 +286,9 @@ function buildStudentUpsertPayload(
     name: overrides.name ?? student.name,
     phone: overrides.phone ?? student.phone,
     exam_number: overrides.exam_number ?? student.exam_number,
+    cohort_option_id: hasOwnField(overrides, 'cohort_option_id')
+      ? overrides.cohort_option_id ?? null
+      : student.cohort_option_id ?? null,
     birth_date: overrides.birth_date ?? student.birth_date,
     pin_hash: overrides.pin_hash ?? student.pin_hash,
     auth_method: overrides.auth_method ?? student.auth_method,
@@ -336,7 +345,7 @@ async function listStudentsByIds(
 async function updateStudentRecord(
   db: DbClient,
   studentId: number,
-  payload: Partial<Pick<Student, 'name' | 'phone' | 'exam_number' | 'birth_date' | 'pin_hash' | 'auth_method' | 'photo_url' | 'updated_at'>>,
+  payload: Partial<Pick<Student, 'name' | 'phone' | 'exam_number' | 'cohort_option_id' | 'birth_date' | 'pin_hash' | 'auth_method' | 'photo_url' | 'updated_at'>>,
 ) {
   const { data, error } = await db
     .from('students')
@@ -566,6 +575,8 @@ export function getStudentAuthProfile(student: Student) {
     id: student.id,
     birth_date: student.birth_date,
     auth_method: student.auth_method,
+    cohort_option_id: student.cohort_option_id ?? null,
+    cohort_label: student.cohort_label ?? null,
   }
 }
 
@@ -834,6 +845,41 @@ export async function applyStudentBirthDate(
   }
 }
 
+export async function applyStudentCohortOption(
+  db: DbClient,
+  studentOrId: Student | number,
+  cohortOptionId: number | null | undefined,
+  division?: TenantType,
+): Promise<EnsureStudentProfileResult> {
+  const student = typeof studentOrId === 'number'
+    ? (division ? await getStudentById(db, studentOrId, division) : null)
+    : studentOrId
+
+  if (!student) {
+    throw new Error('student_profiles.applyStudentCohortOption: student not found')
+  }
+
+  const nextCohortOptionId = cohortOptionId ?? null
+  if ((student.cohort_option_id ?? null) === nextCohortOptionId) {
+    return {
+      student,
+      created: false,
+      changed: false,
+    }
+  }
+
+  const updatedStudent = await updateStudentRecord(db, student.id, {
+    cohort_option_id: nextCohortOptionId,
+    updated_at: new Date().toISOString(),
+  })
+
+  return {
+    student: updatedStudent,
+    created: false,
+    changed: true,
+  }
+}
+
 export async function resetStudentPin(
   db: DbClient,
   studentOrId: Student | number,
@@ -1035,11 +1081,12 @@ export async function ensureStudentProfile(
   if (!student) {
     await assertNoStudentIdentityCollision(db, params.division, normalized)
 
-    const insertPayload: Record<string, string | null> = {
+    const insertPayload: Record<string, string | number | null> = {
       division: params.division,
       name: normalized.name,
       phone: normalized.phone,
       exam_number: normalized.exam_number ?? null,
+      cohort_option_id: normalized.cohort_option_id ?? null,
       birth_date: normalized.birth_date ?? null,
       photo_url: normalized.photo_url ?? null,
     }
@@ -1081,6 +1128,9 @@ export async function ensureStudentProfile(
     name: normalized.name,
     phone: normalized.phone,
     exam_number: normalized.exam_number !== undefined ? normalized.exam_number : student.exam_number,
+    cohort_option_id: normalized.cohort_option_id !== undefined
+      ? normalized.cohort_option_id
+      : student.cohort_option_id,
     birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
       ? normalized.birth_date
       : student.birth_date,
@@ -1273,6 +1323,7 @@ export async function ensureStudentProfilesBatch(
             name: input.normalized.name,
             phone: input.normalized.phone,
             exam_number: input.normalized.exam_number ?? null,
+            cohort_option_id: input.normalized.cohort_option_id ?? null,
             birth_date: input.normalized.birth_date ?? null,
             photo_url: input.normalized.photo_url ?? null,
             updated_at: nowIso,
@@ -1297,6 +1348,9 @@ export async function ensureStudentProfilesBatch(
               name: normalized.name,
               phone: normalized.phone,
               exam_number: normalized.exam_number !== undefined ? normalized.exam_number : student.exam_number,
+              cohort_option_id: normalized.cohort_option_id !== undefined
+                ? normalized.cohort_option_id
+                : student.cohort_option_id,
               birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
                 ? normalized.birth_date
                 : student.birth_date,
@@ -1487,10 +1541,14 @@ export function mergeEnrollmentStudentSnapshot(row: EnrollmentWithStudentRow): E
       profile_name: student.name,
       profile_phone: student.phone,
       profile_exam_number: student.exam_number,
+      cohort_option_id: student.cohort_option_id ?? null,
+      cohort_label: student.cohort_label ?? null,
     },
     name: enrollment.name || (compatible ? student.name : enrollment.name),
     phone: enrollment.phone || (compatible ? student.phone : enrollment.phone),
     exam_number: enrollment.exam_number ?? (compatible ? student.exam_number : enrollment.exam_number),
+    cohort_option_id: student.cohort_option_id ?? null,
+    cohort_label: student.cohort_label ?? null,
     photo_url: enrollment.photo_url ?? (compatible ? student.photo_url : enrollment.photo_url),
   }
 }

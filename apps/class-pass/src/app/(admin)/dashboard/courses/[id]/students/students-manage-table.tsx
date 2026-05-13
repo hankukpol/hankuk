@@ -5,6 +5,7 @@ import {
   type EnrollmentFieldDef,
 } from '@/types/database'
 import { getEnrollmentLifecycleStatus } from '@/lib/enrollment-status'
+import { normalizeGenderLabel } from '@/lib/gender'
 import { formatDateTime, formatShortDate } from '@/lib/utils'
 import { SortableHeader, sortRows, useSortState } from '@/components/admin/sortable-header'
 import type { EnrollmentManageStatusFilter } from './students-page-types'
@@ -125,6 +126,14 @@ function getStudentTypeMeta(enrollment: Enrollment) {
   }
 }
 
+function getCohortLabel(enrollment: Enrollment) {
+  return enrollment.cohort_label?.trim() || '-'
+}
+
+function getGenderLabel(enrollment: Enrollment) {
+  return normalizeGenderLabel(enrollment.gender) || '-'
+}
+
 type StudentsManageTableProps = {
   filtered: Enrollment[]
   summary: {
@@ -146,6 +155,7 @@ type StudentsManageTableProps = {
   onSearchChange: (value: string) => void
   onStatusFilterChange: (value: EnrollmentManageStatusFilter) => void
   onOpenDetail: (enrollment: Enrollment) => void
+  onOpenStudentHistory: (enrollment: Enrollment) => void
   onEdit: (enrollment: Enrollment) => void
   onResetPin: (enrollment: Enrollment) => void
   onApproveDeviceReRegistration: (enrollment: Enrollment) => void
@@ -219,6 +229,7 @@ export function StudentsManageTable({
   onSearchChange,
   onStatusFilterChange,
   onOpenDetail,
+  onOpenStudentHistory,
   onEdit,
   onResetPin,
   onApproveDeviceReRegistration,
@@ -229,7 +240,7 @@ export function StudentsManageTable({
 }: StudentsManageTableProps) {
   const [expandedMobileId, setExpandedMobileId] = useState<number | null>(null)
   const { sort, toggle } = useSortState<
-    'exam_number' | 'name' | 'phone' | 'series' | 'student_type' | 'status' | 'created_at'
+    'cohort_label' | 'exam_number' | 'name' | 'gender' | 'phone' | 'series' | 'student_type' | 'status' | 'created_at'
   >('created_at', 'desc')
   const sorted = sortRows(filtered as unknown as Record<string, unknown>[], sort.key, sort.dir) as unknown as typeof filtered
 
@@ -405,17 +416,26 @@ export function StudentsManageTable({
               <article
                 key={enrollment.id}
                 title={getSuspensionTooltip(enrollment)}
-                onClick={() => onOpenDetail(enrollment)}
-                className={suspended ? 'cursor-pointer bg-amber-50/30 px-4 py-3 transition-transform duration-200 ease-ios hover:bg-amber-50/70 active:scale-[0.98]' : 'cursor-pointer px-4 py-3 transition-transform duration-200 ease-ios hover:bg-slate-50/70 active:scale-[0.98]'}
+                className={suspended ? 'bg-amber-50/30 px-4 py-3' : 'px-4 py-3'}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 min-w-11 items-center justify-center rounded-[8px] bg-slate-100 px-2 text-xs font-bold text-slate-700">
-                    {enrollment.exam_number || '-'}
+                    {getCohortLabel(enrollment)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900">{enrollment.name}</p>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenStudentHistory(enrollment)
+                          }}
+                          className="max-w-full truncate text-left text-sm font-semibold text-gray-900 transition hover:text-[#0071e3]"
+                        >
+                          {enrollment.name}
+                        </button>
+                        <p className="mt-0.5 truncate text-xs text-gray-400">수험번호 {enrollment.exam_number || '-'}</p>
                         <p className="mt-0.5 truncate text-xs text-gray-500">{enrollment.phone || '연락처 없음'}</p>
                       </div>
                       <button
@@ -477,6 +497,10 @@ export function StudentsManageTable({
                       <div className="mt-3 rounded-[8px] bg-slate-50 p-3">
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
+                            <p className="text-[11px] font-semibold text-slate-400">기수</p>
+                            <p className="mt-0.5 text-slate-700">{getCohortLabel(enrollment)}</p>
+                          </div>
+                          <div>
                             <p className="text-[11px] font-semibold text-slate-400">등록일</p>
                             <p className="mt-0.5 text-slate-700">{formatShortDate(enrollment.created_at)}</p>
                           </div>
@@ -491,6 +515,10 @@ export function StudentsManageTable({
                           <div>
                             <p className="text-[11px] font-semibold text-slate-400">학원구분</p>
                             <p className="mt-0.5 text-slate-700">{studentTypeMeta.label}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-400">성별</p>
+                            <p className="mt-0.5 text-slate-700">{getGenderLabel(enrollment)}</p>
                           </div>
                           {visibleCustomFields.map((field) => (
                             <div key={field.key} className="min-w-0">
@@ -516,7 +544,9 @@ export function StudentsManageTable({
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">
                 <SortableHeader label="응시번호" sortKey="exam_number" sort={sort} onSort={toggle} className="px-5 py-3" />
+                <SortableHeader label="기수" sortKey="cohort_label" sort={sort} onSort={toggle} className="px-3 py-3" />
                 <SortableHeader label="이름" sortKey="name" sort={sort} onSort={toggle} className="px-3 py-3" />
+                <SortableHeader label="성별" sortKey="gender" sort={sort} onSort={toggle} className="px-3 py-3" />
                 <SortableHeader label="연락처" sortKey="phone" sort={sort} onSort={toggle} className="px-3 py-3" />
                 <SortableHeader label="직렬" sortKey="series" sort={sort} onSort={toggle} className="px-3 py-3" />
                 <SortableHeader label="학원구분" sortKey="student_type" sort={sort} onSort={toggle} className="px-3 py-3" />
@@ -543,13 +573,22 @@ export function StudentsManageTable({
                   <tr
                     key={enrollment.id}
                     title={getSuspensionTooltip(enrollment)}
-                    onClick={() => onOpenDetail(enrollment)}
-                    className={suspended ? 'cursor-pointer bg-amber-50/40 transition hover:bg-amber-50/70' : 'cursor-pointer transition hover:bg-slate-50/60'}
+                    className={suspended ? 'bg-amber-50/40 transition hover:bg-amber-50/70' : 'transition hover:bg-slate-50/60'}
                   >
                     <td className="px-5 py-3 text-gray-500">{enrollment.exam_number || '-'}</td>
+                    <td className="px-3 py-3 text-gray-500">{getCohortLabel(enrollment)}</td>
                     <td className="px-3 py-3 font-semibold text-gray-900">
                       <div className="flex flex-col gap-1">
-                        <span>{enrollment.name}</span>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenStudentHistory(enrollment)
+                          }}
+                          className="w-fit text-left transition hover:text-[#0071e3]"
+                        >
+                          {enrollment.name}
+                        </button>
                         <span
                           className={`inline-flex w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${authMethodMeta.className}`}
                         >
@@ -565,6 +604,7 @@ export function StudentsManageTable({
                         ) : null}
                       </div>
                     </td>
+                    <td className="px-3 py-3 text-gray-500">{getGenderLabel(enrollment)}</td>
                     <td className="px-3 py-3 text-gray-500">{enrollment.phone}</td>
                     <td className="px-3 py-3">
                       <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>

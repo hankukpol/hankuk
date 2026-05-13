@@ -9,6 +9,7 @@ import {
 } from '@/lib/class-pass-data-pass'
 import { getDesignatedSeatStudentState } from '@/lib/designated-seat/service'
 import { mergeEnrollmentStudentSnapshot } from '@/lib/student-profiles'
+import { attachCohortLabelsToEnrollments } from '@/lib/student-cohorts'
 import { createServerClient } from '@/lib/supabase/server'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import type {
@@ -475,9 +476,10 @@ export async function listCourseEnrollments(
       })(),
     ) as EnrollmentWithStudentRow[] | null
 
-    const enrollments = await attachEnrollmentBilling(
+    const withCohorts = await attachCohortLabelsToEnrollments(
       (joinedRows ?? []).map((row) => mergeEnrollmentStudentSnapshot(row)),
     )
+    const enrollments = await attachEnrollmentBilling(withCohorts)
 
     return attachAttendanceDeviceStates(courseId, enrollments)
   }
@@ -607,7 +609,9 @@ export async function listCourseEnrollmentsPaged(
     throw suspendedResult.error
   }
 
-  const merged = joinedRows.map((row) => mergeEnrollmentStudentSnapshot(row))
+  const merged = await attachCohortLabelsToEnrollments(
+    joinedRows.map((row) => mergeEnrollmentStudentSnapshot(row)),
+  )
   const withBilling = await attachEnrollmentBilling(merged)
   const enriched = await attachAttendanceDeviceStates(courseId, withBilling)
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { DragEvent, FormEvent } from 'react'
+import type { DragEvent, FormEvent, KeyboardEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDown, ArrowUp, GripVertical, Loader2 } from 'lucide-react'
@@ -35,7 +35,7 @@ type CreateCourseForm = {
   feature_anti_forgery_motion: boolean
 }
 
-type CourseFilter = 'all' | 'active' | 'archived'
+type CourseFilter = 'active' | 'archived'
 type MoveDirection = 'up' | 'down'
 type ConfirmationRequest = {
   title: string
@@ -105,24 +105,8 @@ function getActiveEnrollmentCount(course: Course) {
   return course.active_enrollment_count ?? 0
 }
 
-function EnrollmentCountBadge({ course, compact = false }: { course: Course; compact?: boolean }) {
-  const count = getActiveEnrollmentCount(course)
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-[8px] bg-[#f5f5f7] font-semibold text-[#1d1d1f] ${
-        compact ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-[11px]'
-      }`}
-      title={`현재 수강중 ${count.toLocaleString('ko-KR')}명`}
-    >
-      <span className="text-[#86868b]">수강중</span>
-      <span>{count.toLocaleString('ko-KR')}명</span>
-    </span>
-  )
-}
-
 function isVisibleForFilter(course: Course, filter: CourseFilter) {
-  return filter === 'all' || course.status === filter
+  return course.status === filter
 }
 
 function normalizeSortOrder(courseList: Course[]) {
@@ -207,7 +191,7 @@ export default function CoursesPageClient({
   const [courses, setCourses] = useState<Course[]>(initialCourses)
   const [form, setForm] = useState<CreateCourseForm>(DEFAULT_FORM)
   const [showForm, setShowForm] = useState(false)
-  const [filter, setFilter] = useState<CourseFilter>('all')
+  const [filter, setFilter] = useState<CourseFilter>('active')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicatingCourseId, setDuplicatingCourseId] = useState<number | null>(null)
@@ -237,9 +221,26 @@ export default function CoursesPageClient({
       .finally(() => setLoading(false))
   }, [initialLoaded])
 
-  const filtered = filter === 'all'
-    ? courses
-    : courses.filter((c) => c.status === filter)
+  const activeCoursesCount = courses.filter((course) => course.status === 'active').length
+  const archivedCoursesCount = courses.filter((course) => course.status === 'archived').length
+  const filtered = courses.filter((course) => course.status === filter)
+
+  function handleOpenCourseDetail(courseId: number) {
+    router.push(withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type))
+  }
+
+  function handleCourseCardKeyDown(event: KeyboardEvent<HTMLElement>, courseId: number) {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return
+    }
+
+    event.preventDefault()
+    handleOpenCourseDetail(courseId)
+  }
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
@@ -269,6 +270,7 @@ export default function CoursesPageClient({
     setMessage('강좌를 생성했습니다.')
     setError(payload?.warning ?? '')
     setShowForm(false)
+    setFilter('active')
     await loadCourses().catch(() => {})
   }
 
@@ -442,7 +444,10 @@ export default function CoursesPageClient({
     const iconButtonClassName = 'flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100'
 
     return (
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div
+        className="flex shrink-0 items-center gap-1.5"
+        onClick={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
           draggable={!disabled}
@@ -516,7 +521,7 @@ export default function CoursesPageClient({
         <div>
           <h2 className="text-xl font-semibold text-[#1d1d1f]">강좌 관리</h2>
           <p className="mt-1 text-sm text-[#86868b]">
-            전체 {courses.length}개 · 운영중 {courses.filter((c) => c.status === 'active').length}개
+            운영강좌 {activeCoursesCount}개 · 보관강좌 {archivedCoursesCount}개
           </p>
         </div>
         <button
@@ -630,41 +635,47 @@ export default function CoursesPageClient({
         </div>
       ) : null}
 
-      <motion.div layout className="flex gap-1 rounded-[10px] border border-slate-200 bg-slate-200/70 p-1">
-        {(['all', 'active', 'archived'] as const).map((f) => (
+      <motion.div layout className="grid grid-cols-2 gap-1 rounded-[10px] bg-[#e8e8ed] p-1">
+        {([
+          { key: 'active', label: '운영강좌', count: activeCoursesCount },
+          { key: 'archived', label: '보관강좌', count: archivedCoursesCount },
+        ] satisfies Array<{ key: CourseFilter; label: string; count: number }>).map((item) => (
           <button
-            key={f}
+            key={item.key}
             type="button"
-            onClick={() => setFilter(f)}
+            onClick={() => setFilter(item.key)}
             className={`relative flex-1 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.98] ${
-              filter === f
+              filter === item.key
                 ? 'text-white'
-                : 'text-slate-700 hover:bg-white/70 hover:text-[#1d1d1f]'
+                : 'text-[#1d1d1f] hover:bg-white/70'
             }`}
           >
-            {filter === f ? (
+            {filter === item.key ? (
               <motion.div
                 layoutId="courses-filter-tabs"
                 className="absolute inset-0 rounded-[8px] bg-[#1d1d1f] shadow-sm"
                 transition={motionConfig.tab}
               />
             ) : null}
-            <span className="relative z-10">
-              {f === 'all' ? '전체' : f === 'active' ? '운영중' : '보관됨'}
+            <span className="relative z-10 inline-flex items-center justify-center gap-2">
+              <span>{item.label}</span>
+              <span className={filter === item.key ? 'text-white/70' : 'text-[#86868b]'}>
+                {item.count.toLocaleString('ko-KR')}
+              </span>
             </span>
           </button>
         ))}
       </motion.div>
 
-      {/* ── Course table ── */}
-      <motion.section layout transition={motionConfig.tab} className="overflow-hidden rounded-[8px] bg-white">
+      {/* ── Course cards ── */}
+      <motion.section layout transition={motionConfig.tab}>
         {loading ? (
           <motion.p
             key="loading"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={motionConfig.modal}
-            className="px-5 py-12 text-center text-sm text-[#86868b]"
+            className="rounded-[8px] bg-white px-5 py-12 text-center text-sm text-[#86868b] shadow-sm"
           >
             불러오는 중...
           </motion.p>
@@ -674,9 +685,9 @@ export default function CoursesPageClient({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={motionConfig.modal}
-            className="px-5 py-12 text-center text-sm text-[#86868b]"
+            className="rounded-[8px] bg-white px-5 py-12 text-center text-sm text-[#86868b] shadow-sm"
           >
-            해당 강좌가 없습니다.
+            {filter === 'active' ? '운영 중인 강좌가 없습니다.' : '보관된 강좌가 없습니다.'}
           </motion.p>
         ) : (
           <motion.div
@@ -684,74 +695,110 @@ export default function CoursesPageClient({
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={motionConfig.modal}
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
           >
-          <div className="grid gap-3 p-3 md:hidden">
             {filtered.map((course, index) => {
               const tags = getCourseFeatureTags(course)
               const isActive = course.status === 'active'
+              const activeEnrollmentCount = getActiveEnrollmentCount(course)
               const isDragTarget = dragOverCourseId === course.id
               const isDragging = draggedCourseId === course.id
 
               return (
                 <motion.article
                   key={course.id}
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`${course.name} 상세로 이동`}
+                  onClick={() => handleOpenCourseDetail(course.id)}
+                  onKeyDown={(event) => handleCourseCardKeyDown(event, course.id)}
                   onDragOver={(event) => handleDragOver(event, course.id)}
                   onDrop={(event) => handleDrop(event, course.id)}
-                  whileTap={{ scale: 0.985 }}
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.992 }}
                   transition={motionConfig.tab}
-                  className={`rounded-[8px] bg-[#f5f5f7] p-4 transition-all duration-200 ease-ios active:scale-[0.98] ${
-                    isDragTarget ? 'ring-2 ring-[#0071e3]/40' : ''
+                  className={`group flex min-h-[278px] min-w-0 cursor-pointer flex-col rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-slate-100 transition-all duration-200 ease-ios hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#0071e3]/35 ${
+                    isDragTarget ? 'ring-2 ring-[#0071e3]/45' : ''
                   } ${isDragging ? 'opacity-55' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     {renderOrderControls(course, index, filtered.length)}
                     <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-[#1d1d1f]">{course.name}</p>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="shrink-0 rounded-[6px] bg-[#f5f5f7] px-2 py-1 text-[11px] font-semibold text-[#1d1d1f]">
+                            {courseTypeLabel(course.course_type)}
+                          </span>
                           {course.copied_from_course_id ? (
-                            <span className="shrink-0 rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                            <span className="shrink-0 rounded-[6px] bg-[#f5f5f7] px-2 py-1 text-[11px] font-semibold text-[#86868b]">
                               복사본
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 truncate text-[11px] text-[#86868b]">
-                          {courseTypeLabel(course.course_type)} · {course.slug}
+                        <h3 className="mt-2 line-clamp-2 text-[15px] font-semibold leading-5 text-[#1d1d1f]">
+                          {course.name}
+                        </h3>
+                        <p className="mt-1 truncate text-xs text-[#86868b]">
+                          {course.slug}
                         </p>
-                        {course.settlement_report_code ? (
-                          <p className="mt-1 text-[11px] font-semibold text-[#0071e3]">
-                            Code {course.settlement_report_code}
+                        {course.copied_from_course_name ? (
+                          <p className="mt-1 truncate text-[11px] text-[#86868b]">
+                            원본 {course.copied_from_course_name}
                           </p>
                         ) : null}
-                        <p className="mt-1 text-[11px] font-semibold text-[#1d1d1f]">
-                          강좌 금액 {formatWon(course.tuition_amount ?? 0)}
-                        </p>
-                        <div className="mt-2">
-                          <EnrollmentCountBadge course={course} compact />
-                        </div>
                       </div>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                        isActive ? 'bg-white text-[#1b7a1b]' : 'bg-white text-[#86868b]'
+                      <span className={`shrink-0 rounded-[8px] px-2.5 py-1 text-[11px] font-semibold ${
+                        isActive ? 'bg-[#f5f5f7] text-[#1b7a1b]' : 'bg-[#f5f5f7] text-[#86868b]'
                       }`}>
                         {isActive ? '운영중' : '보관됨'}
                       </span>
                     </div>
                   </div>
 
+                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-[#f5f5f7] py-3">
+                    <div>
+                      <dt className="text-[11px] font-semibold text-[#86868b]">수강중</dt>
+                      <dd className="mt-1 text-lg font-semibold leading-none text-[#1d1d1f]">
+                        {activeEnrollmentCount.toLocaleString('ko-KR')}명
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-semibold text-[#86868b]">강좌 금액</dt>
+                      <dd className="mt-1 truncate text-sm font-semibold text-[#1d1d1f]">
+                        {formatWon(course.tuition_amount ?? 0)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-semibold text-[#86868b]">보고 코드</dt>
+                      <dd className="mt-1 text-sm font-semibold text-[#1d1d1f]">
+                        {course.settlement_report_code || '-'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-semibold text-[#86868b]">순서</dt>
+                      <dd className="mt-1 text-sm font-semibold text-[#1d1d1f]">
+                        {index + 1}
+                      </dd>
+                    </div>
+                  </dl>
+
                   {tags.length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {tags.map((tag) => (
-                        <span key={tag} className="rounded-[4px] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[#86868b]">
+                        <span key={tag} className="rounded-[5px] bg-[#f5f5f7] px-1.5 py-0.5 text-[10px] font-medium text-[#86868b]">
                           {tag}
                         </span>
                       ))}
                     </div>
                   ) : null}
 
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div
+                    className="mt-auto grid grid-cols-2 gap-2 pt-4"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <Link
                       href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
-                      className="rounded-[8px] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+                      className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-center text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                     >
                       수강생
                     </Link>
@@ -759,7 +806,7 @@ export default function CoursesPageClient({
                       href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
                       className="rounded-[8px] bg-[#1d1d1f] px-3 py-2 text-center text-xs font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
                     >
-                      설정
+                      상세
                     </Link>
                     <button
                       type="button"
@@ -773,7 +820,7 @@ export default function CoursesPageClient({
                       <button
                         type="button"
                         onClick={() => requestArchive(course)}
-                        className="rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+                        className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
                       >
                         보관
                       </button>
@@ -782,127 +829,6 @@ export default function CoursesPageClient({
                 </motion.article>
               )
             })}
-          </div>
-
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#f5f5f7] text-left text-xs font-medium text-[#86868b]">
-                  <th className="w-[112px] px-5 py-3">순서</th>
-                  <th className="px-3 py-3">강좌</th>
-                  <th className="px-3 py-3">유형</th>
-                  <th className="px-3 py-3">수강중</th>
-                  <th className="px-3 py-3 text-right">금액</th>
-                  <th className="px-3 py-3">상태</th>
-                  <th className="hidden px-3 py-3 md:table-cell">기능</th>
-                  <th className="px-5 py-3 text-right">관리</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f5f5f7]">
-                {filtered.map((course, index) => {
-                  const tags = getCourseFeatureTags(course)
-                  const isDragTarget = dragOverCourseId === course.id
-                  const isDragging = draggedCourseId === course.id
-
-                  return (
-                    <tr
-                      key={course.id}
-                      onDragOver={(event) => handleDragOver(event, course.id)}
-                      onDrop={(event) => handleDrop(event, course.id)}
-                      className={`transition-all duration-200 ease-ios hover:bg-[#f5f5f7]/60 ${
-                        isDragTarget ? 'bg-blue-50/70' : ''
-                      } ${isDragging ? 'opacity-55' : ''}`}
-                    >
-                      <td className="px-5 py-3.5">
-                        {renderOrderControls(course, index, filtered.length)}
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate font-semibold text-[#1d1d1f]">{course.name}</p>
-                              {course.copied_from_course_id ? (
-                                <span className="rounded-[4px] bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                                  복사본
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="text-[11px] text-[#86868b]">
-                              {course.slug}
-                              {course.copied_from_course_name ? ` · 원본 ${course.copied_from_course_name}` : ''}
-                            </p>
-                            {course.settlement_report_code ? (
-                              <p className="mt-0.5 text-[11px] font-semibold text-[#0071e3]">
-                                Code {course.settlement_report_code}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3.5 text-[#86868b]">{courseTypeLabel(course.course_type)}</td>
-                      <td className="px-3 py-3.5">
-                        <EnrollmentCountBadge course={course} />
-                      </td>
-                      <td className="px-3 py-3.5 text-right font-semibold text-[#1d1d1f]">
-                        {formatWon(course.tuition_amount ?? 0)}
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <span className={`inline-block rounded-[4px] px-2 py-0.5 text-[11px] font-semibold ${
-                          course.status === 'active'
-                            ? 'bg-[#f5f5f7] text-[#1b7a1b]'
-                            : 'bg-[#f5f5f7] text-[#86868b]'
-                        }`}>
-                          {course.status === 'active' ? '운영중' : '보관됨'}
-                        </span>
-                      </td>
-                      <td className="hidden px-3 py-3.5 md:table-cell">
-                        <div className="flex flex-wrap gap-1">
-                          {tags.map((t) => (
-                            <span key={t as string} className="rounded-[4px] bg-[#f5f5f7] px-1.5 py-0.5 text-[10px] font-medium text-[#86868b]">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Link
-                            href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
-                            className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
-                          >
-                            수강생
-                          </Link>
-                          <Link
-                            href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-                            className="rounded-[8px] bg-[#1d1d1f] px-2.5 py-1.5 text-[11px] font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
-                          >
-                            설정
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => requestDuplicate(course)}
-                            disabled={duplicatingCourseId === course.id}
-                            className="rounded-[8px] bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
-                          >
-                            {duplicatingCourseId === course.id ? '복사중' : '복사'}
-                          </button>
-                          {course.status === 'active' && (
-                            <button
-                              type="button"
-                              onClick={() => requestArchive(course)}
-                              className="rounded-[8px] bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
-                            >
-                              보관
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
           </motion.div>
         )}
       </motion.section>

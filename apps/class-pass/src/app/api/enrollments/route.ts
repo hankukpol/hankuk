@@ -8,6 +8,13 @@ import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
+  assertCohortOptionBelongsToCurrentBranch,
+  attachCohortLabelsToEnrollments,
+  attachCohortLabelsToStudents,
+  normalizeCohortNumber,
+  resolveStudentCohortOptionByNumber,
+} from '@/lib/student-cohorts'
+import {
   bulkAssignTextbooks,
   getCourseById,
   listCourseEnrollmentsPaged,
@@ -44,6 +51,13 @@ const optionalBirthDateSchema = z.preprocess(
   (value) => value === '' ? '' : value,
   z.union([z.string().refine(isValidBirthDateKey), z.literal('')]).optional().nullable(),
 )
+const cohortNumberSchema = z.preprocess((value) => {
+  try {
+    return normalizeCohortNumber(value)
+  } catch {
+    return Number.NaN
+  }
+}, z.number().int().min(1).max(999).optional().nullable())
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
@@ -84,6 +98,8 @@ const createSchema = z.object({
   name: z.string().min(1),
   phone: phoneSchema,
   exam_number: z.string().optional().nullable(),
+  cohort_option_id: z.number().int().positive().optional().nullable(),
+  cohort_number: cohortNumberSchema,
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
@@ -292,7 +308,7 @@ export async function GET(req: NextRequest) {
     })
 
     return NextResponse.json({
-      enrollments: enrollments.map((enrollment) => {
+      enrollments: await attachCohortLabelsToEnrollments(enrollments.map((enrollment) => {
         const student = (enrollment as unknown as { students?: Student | null }).students ?? null
         return {
           ...enrollment,
@@ -300,7 +316,7 @@ export async function GET(req: NextRequest) {
             ? { id: student.id, birth_date: student.birth_date ?? null, auth_method: student.auth_method ?? null }
             : enrollment.student_profile ?? null,
         }
-      }),
+      })),
       total,
       summary,
     })
@@ -381,6 +397,22 @@ export async function POST(req: NextRequest) {
     const selectedStudent = parsed.data.studentId
       ? await getStudentProfileById(db, parsed.data.studentId, division)
       : null
+    let cohortOption: Awaited<ReturnType<typeof assertCohortOptionBelongsToCurrentBranch>>
+    try {
+      cohortOption = parsed.data.cohort_number !== undefined
+        ? await resolveStudentCohortOptionByNumber(parsed.data.cohort_number)
+        : await assertCohortOptionBelongsToCurrentBranch(parsed.data.cohort_option_id)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : '선택한 기수는 현재 지점에서 사용할 수 없습니다.' },
+        { status: 400 },
+      )
+    }
+    const cohortOptionId = parsed.data.cohort_number !== undefined
+      ? cohortOption?.id ?? null
+      : parsed.data.cohort_option_id !== undefined
+        ? parsed.data.cohort_option_id
+        : undefined
 
     if (parsed.data.studentId && !selectedStudent) {
       return NextResponse.json({ error: '선택한 수강생을 찾을 수 없습니다.' }, { status: 404 })
@@ -407,6 +439,7 @@ export async function POST(req: NextRequest) {
         name: parsed.data.name,
         phone: parsed.data.phone,
         exam_number: parsed.data.exam_number,
+        ...(cohortOptionId !== undefined ? { cohort_option_id: cohortOptionId } : {}),
         birth_date: parsed.data.birth_date,
         photo_url: parsed.data.photo_url,
       })
@@ -420,7 +453,8 @@ export async function POST(req: NextRequest) {
       studentResult.student,
       parsed.data.birth_date || null,
     )
-    const student = authSetup.student
+    const [studentWithCohort] = await attachCohortLabelsToStudents([authSetup.student])
+    const student = studentWithCohort ?? authSetup.student
 
     const existingRegistrations = await listExistingCourseRegistrations(
       db,
@@ -584,6 +618,8 @@ export async function POST(req: NextRequest) {
       {
         enrollment: {
           ...enrollment,
+          cohort_option_id: student.cohort_option_id ?? null,
+          cohort_label: student.cohort_label ?? null,
           student_profile: getStudentAuthProfile(student),
         },
         reactivated: Boolean(reactivatedRegistration),

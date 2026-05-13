@@ -8,6 +8,13 @@ import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
+  assertCohortOptionBelongsToCurrentBranch,
+  attachCohortLabelsToEnrollments,
+  attachCohortLabelsToStudents,
+  normalizeCohortNumber,
+  resolveStudentCohortOptionByNumber,
+} from '@/lib/student-cohorts'
+import {
   getCourseById,
   listMaterialsForCourse,
 } from '@/lib/class-pass-data'
@@ -38,6 +45,13 @@ const optionalBirthDateSchema = z.preprocess(
   (value) => value === '' ? '' : value,
   z.union([z.string().refine(isValidBirthDateKey), z.literal('')]).optional().nullable(),
 )
+const cohortNumberSchema = z.preprocess((value) => {
+  try {
+    return normalizeCohortNumber(value)
+  } catch {
+    return Number.NaN
+  }
+}, z.number().int().min(1).max(999).optional().nullable())
 
 const paymentItemSchema = z.object({
   label: z.string().min(1),
@@ -83,6 +97,8 @@ const createBatchSchema = z.object({
   name: z.string().min(1),
   phone: phoneSchema,
   exam_number: z.string().optional().nullable(),
+  cohort_option_id: z.number().int().positive().optional().nullable(),
+  cohort_number: cohortNumberSchema,
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
@@ -526,6 +542,22 @@ export async function POST(req: NextRequest) {
     if (parsed.data.series_option_id && seriesOption?.id !== parsed.data.series_option_id) {
       return NextResponse.json({ error: '선택한 직렬은 현재 지점에서 사용할 수 없습니다.' }, { status: 400 })
     }
+    let cohortOption: Awaited<ReturnType<typeof assertCohortOptionBelongsToCurrentBranch>>
+    try {
+      cohortOption = parsed.data.cohort_number !== undefined
+        ? await resolveStudentCohortOptionByNumber(parsed.data.cohort_number)
+        : await assertCohortOptionBelongsToCurrentBranch(parsed.data.cohort_option_id)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : '선택한 기수는 현재 지점에서 사용할 수 없습니다.' },
+        { status: 400 },
+      )
+    }
+    const cohortOptionId = parsed.data.cohort_number !== undefined
+      ? cohortOption?.id ?? null
+      : parsed.data.cohort_option_id !== undefined
+        ? parsed.data.cohort_option_id
+        : undefined
 
     const selectedStudent = parsed.data.studentId
       ? await getStudentProfileById(db, parsed.data.studentId, division)
@@ -544,6 +576,7 @@ export async function POST(req: NextRequest) {
       name: parsed.data.name,
       phone: parsed.data.phone,
       exam_number: parsed.data.exam_number,
+      ...(cohortOptionId !== undefined ? { cohort_option_id: cohortOptionId } : {}),
       birth_date: parsed.data.birth_date,
       photo_url: parsed.data.photo_url,
     })
@@ -556,6 +589,7 @@ export async function POST(req: NextRequest) {
         name: parsed.data.name,
         phone: parsed.data.phone,
         exam_number: parsed.data.exam_number,
+        ...(cohortOptionId !== undefined ? { cohort_option_id: cohortOptionId } : {}),
         birth_date: parsed.data.birth_date,
         photo_url: parsed.data.photo_url,
       })
@@ -565,7 +599,8 @@ export async function POST(req: NextRequest) {
       studentResult.student,
       parsed.data.birth_date || null,
     )
-    const student = authSetup.student
+    const [studentWithCohort] = await attachCohortLabelsToStudents([authSetup.student])
+    const student = studentWithCohort ?? authSetup.student
 
     for (const registration of registrations) {
       const existingRegistrations = await listExistingCourseRegistrations(
@@ -648,10 +683,11 @@ export async function POST(req: NextRequest) {
       throw new Error('BATCH_ENROLLMENT_RPC_RESULT_MISMATCH')
     }
 
-    const createdEnrollments = rpcRows.map((row) => ({
+    const createdEnrollments = await attachCohortLabelsToEnrollments(rpcRows.map((row) => ({
       ...(row.enrollment_row as Enrollment),
+      cohort_option_id: student.cohort_option_id ?? null,
       student_type: (row.enrollment_row as Enrollment).student_type ?? parsed.data.student_type,
-    }))
+    })))
     const reactivatedCount = rpcRows.filter((row) => row.reactivated).length
     const paymentIds = rpcRows.flatMap((row) => row.payment_ids ?? [])
     let createdPayments: Awaited<ReturnType<typeof listPaymentsByIds>> = []

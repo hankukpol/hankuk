@@ -121,6 +121,12 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
         match: matches(`${basePath}/students`),
       },
       {
+        label: '현황',
+        href: `${basePath}/analytics`,
+        enabled: true,
+        match: matches(`${basePath}/analytics`),
+      },
+      {
         label: '좌석 배정',
         href: `${basePath}/seats`,
         enabled: course ? course.feature_seat_assignment : true,

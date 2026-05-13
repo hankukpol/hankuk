@@ -32,6 +32,10 @@ type DashboardStats = {
   overview: {
     activeCourses: number
     activeStudents: number
+    activeUniqueStudents: number
+    activeEnrollmentCount: number
+    duplicateEnrollmentCount: number
+    suspendedEnrollmentCount: number
     pendingAuthStudents: number
     actionRequiredCourses: number
   }
@@ -156,7 +160,12 @@ export default function AdminDashboardPage() {
 
   const overviewCards = [
     { label: '운영 중 강좌', value: stats.overview.activeCourses, accent: 'text-slate-900' },
-    { label: '활성 수강생', value: stats.overview.activeStudents, accent: 'text-blue-600' },
+    {
+      label: '실제 활성 학생',
+      value: stats.overview.activeUniqueStudents,
+      accent: 'text-blue-600',
+      helper: `활성 수강 ${stats.overview.activeEnrollmentCount}건 · 중복 ${stats.overview.duplicateEnrollmentCount}건`,
+    },
     { label: '인증 미설정 학생', value: stats.overview.pendingAuthStudents, accent: 'text-amber-600' },
     { label: '즉시 확인 필요 강좌', value: stats.overview.actionRequiredCourses, accent: 'text-red-600' },
   ]
@@ -166,6 +175,11 @@ export default function AdminDashboardPage() {
       label: '인증 미설정 학생',
       value: stats.actionItems.pendingStudentAuth,
       helper: `생년월일 준비 ${stats.auth.birthDateReadyCount}명 / PIN 필요 ${stats.auth.pinRequiredCount}명`,
+    },
+    {
+      label: '정지 수강 건수',
+      value: stats.overview.suspendedEnrollmentCount,
+      helper: '정지 처리되어 실제 활성 학생 수에서 제외된 수강',
     },
     {
       label: '출석 세션 필요',
@@ -224,6 +238,9 @@ export default function AdminDashboardPage() {
           <article key={card.label} className="rounded-2xl bg-white px-5 py-4 shadow-sm">
             <p className="text-xs font-medium text-slate-400">{card.label}</p>
             <p className={`mt-1 text-2xl font-extrabold ${card.accent}`}>{card.value}</p>
+            {'helper' in card && card.helper ? (
+              <p className="mt-2 text-xs leading-5 text-slate-500">{card.helper}</p>
+            ) : null}
           </article>
         ))}
       </section>
@@ -265,7 +282,7 @@ export default function AdminDashboardPage() {
           <div>
             <h3 className="text-sm font-bold text-slate-800">운영 중 강좌 현황</h3>
             <p className="mt-1 text-xs text-slate-500">
-              강좌별 활성 수강생, 환불 수강생, 기능 사용 여부, 출석·지정좌석 상태를 한 번에 확인합니다.
+              강좌별 활성 수강, 환불 수강, 기능 사용 여부, 출석·지정좌석 상태를 한 번에 확인합니다.
             </p>
           </div>
           <span className="text-xs font-semibold text-slate-400">{stats.courses.length}개 강좌</span>
@@ -281,8 +298,8 @@ export default function AdminDashboardPage() {
               const statusBadges = getStatusBadges(course)
 
               return (
-                <article key={course.id} className="rounded-[8px] bg-slate-50 p-4">
-                  <div className="flex items-start gap-3">
+                <article key={course.id} className="min-w-0 overflow-hidden rounded-[8px] bg-slate-50 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
                     <span
                       className={`mt-0.5 inline-flex h-8 min-w-8 items-center justify-center rounded-[8px] px-2 text-xs font-bold text-white ${
                         course.needsAttention ? 'bg-red-500' : 'bg-slate-800'
@@ -295,7 +312,7 @@ export default function AdminDashboardPage() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-900">{course.name}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {formatCourseTypeLabel(course.courseType)} · 활성 {course.activeStudents}명 / 환불 {course.refundedStudents}명
+                            {formatCourseTypeLabel(course.courseType)} · 활성 수강 {course.activeStudents}명 / 환불 {course.refundedStudents}명
                           </p>
                         </div>
                         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
@@ -380,7 +397,7 @@ export default function AdminDashboardPage() {
                 <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-400">
                   <th className="px-5 py-3">강좌</th>
                   <th className="px-3 py-3">유형</th>
-                  <th className="px-3 py-3">수강생</th>
+                  <th className="px-3 py-3">수강 현황</th>
                   <th className="px-3 py-3">기능</th>
                   <th className="px-3 py-3">운영 상태</th>
                   <th className="px-5 py-3 text-right">관리</th>
@@ -413,7 +430,7 @@ export default function AdminDashboardPage() {
                       <td className="px-3 py-4 text-slate-600">{formatCourseTypeLabel(course.courseType)}</td>
                       <td className="px-3 py-4">
                         <div className="flex flex-col gap-1 text-xs">
-                          <span className="font-semibold text-slate-900">활성 {course.activeStudents}명</span>
+                          <span className="font-semibold text-slate-900">활성 수강 {course.activeStudents}명</span>
                           <span className="text-slate-500">환불 {course.refundedStudents}명</span>
                         </div>
                       </td>

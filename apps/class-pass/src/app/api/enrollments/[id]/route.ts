@@ -5,6 +5,12 @@ import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { resolveBranchSeriesOption } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
+  assertCohortOptionBelongsToCurrentBranch,
+  attachCohortLabelsToEnrollments,
+  normalizeCohortNumber,
+  resolveStudentCohortOptionByNumber,
+} from '@/lib/student-cohorts'
+import {
   applyStudentBirthDate,
   deleteStudentIfOrphaned,
   ensureStudentProfile,
@@ -18,17 +24,27 @@ import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
 import { isLikelyPhoneNumber, isValidBirthDateKey } from '@/lib/validation/primitives'
+import type { Enrollment } from '@/types/database'
 
 const phoneSchema = z.string().trim().refine(isLikelyPhoneNumber)
 const optionalBirthDateSchema = z.preprocess(
   (value) => value === '' ? '' : value,
   z.union([z.string().refine(isValidBirthDateKey), z.literal('')]).optional().nullable(),
 )
+const cohortNumberSchema = z.preprocess((value) => {
+  try {
+    return normalizeCohortNumber(value)
+  } catch {
+    return Number.NaN
+  }
+}, z.number().int().min(1).max(999).optional().nullable())
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   phone: phoneSchema.optional(),
   exam_number: z.string().optional().nullable(),
+  cohort_option_id: z.number().int().positive().optional().nullable(),
+  cohort_number: cohortNumberSchema,
   gender: z.string().optional().nullable(),
   region: z.string().optional().nullable(),
   series: z.string().optional().nullable(),
@@ -105,10 +121,25 @@ export async function PATCH(
     || parsed.data.name !== undefined
     || parsed.data.phone !== undefined
     || parsed.data.exam_number !== undefined
+    || parsed.data.cohort_option_id !== undefined
+    || parsed.data.cohort_number !== undefined
     || parsed.data.birth_date !== undefined
     || parsed.data.photo_url !== undefined
 
   if (shouldSyncStudent) {
+    try {
+      const cohortOption = parsed.data.cohort_number !== undefined
+        ? await resolveStudentCohortOptionByNumber(parsed.data.cohort_number)
+        : await assertCohortOptionBelongsToCurrentBranch(parsed.data.cohort_option_id)
+      parsed.data.cohort_option_id = parsed.data.cohort_number !== undefined
+        ? cohortOption?.id ?? null
+        : parsed.data.cohort_option_id
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : '선택한 기수는 현재 지점에서 사용할 수 없습니다.' },
+        { status: 400 },
+      )
+    }
     let studentResult: Awaited<ReturnType<typeof ensureStudentProfile>>
     try {
       studentResult = await ensureStudentProfile(db, {
@@ -119,6 +150,7 @@ export async function PATCH(
         exam_number: parsed.data.exam_number !== undefined
           ? parsed.data.exam_number
           : currentEnrollment.exam_number,
+        ...(parsed.data.cohort_option_id !== undefined ? { cohort_option_id: parsed.data.cohort_option_id } : {}),
         birth_date: parsed.data.birth_date,
         photo_url: parsed.data.photo_url,
       })
@@ -208,11 +240,13 @@ export async function PATCH(
   }
 
   await invalidateCache('enrollments')
+  const [enrichedEnrollment] = await attachCohortLabelsToEnrollments([{
+    ...(data as Enrollment),
+    cohort_option_id: studentProfile?.cohort_option_id ?? undefined,
+    student_profile: studentProfile,
+  } as Enrollment])
   return NextResponse.json({
-    enrollment: {
-      ...data,
-      student_profile: studentProfile,
-    },
+    enrollment: enrichedEnrollment ?? { ...data, student_profile: studentProfile },
   })
 }
 

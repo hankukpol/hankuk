@@ -22,8 +22,13 @@ type DashboardCourseRow = {
 }
 
 type DashboardEnrollmentRow = {
+  id: number
   course_id: number
+  student_id: number | null
+  name: string
+  phone: string
   status: 'active' | 'refunded'
+  suspended_at: string | null
 }
 
 type DashboardSessionRow = {
@@ -69,6 +74,10 @@ export type DashboardStats = {
   overview: {
     activeCourses: number
     activeStudents: number
+    activeUniqueStudents: number
+    activeEnrollmentCount: number
+    duplicateEnrollmentCount: number
+    suspendedEnrollmentCount: number
     pendingAuthStudents: number
     actionRequiredCourses: number
   }
@@ -98,6 +107,10 @@ function makeEmptyDashboardStats(): DashboardStats {
     overview: {
       activeCourses: 0,
       activeStudents: 0,
+      activeUniqueStudents: 0,
+      activeEnrollmentCount: 0,
+      duplicateEnrollmentCount: 0,
+      suspendedEnrollmentCount: 0,
       pendingAuthStudents: 0,
       actionRequiredCourses: 0,
     },
@@ -138,6 +151,28 @@ function getLatestSessionMap(rows: DashboardSessionRow[]) {
   }
 
   return sessionMap
+}
+
+function normalizeStudentIdentity(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, ' ') ?? ''
+}
+
+function normalizePhoneIdentity(value: string | null | undefined) {
+  return value?.replace(/\D/g, '') ?? ''
+}
+
+function getActiveStudentKey(enrollment: DashboardEnrollmentRow) {
+  if (enrollment.student_id != null) {
+    return `student:${enrollment.student_id}`
+  }
+
+  const name = normalizeStudentIdentity(enrollment.name)
+  const phone = normalizePhoneIdentity(enrollment.phone)
+  if (name && phone) {
+    return `legacy:${name}:${phone}`
+  }
+
+  return `enrollment:${enrollment.id}`
 }
 
 export async function getDashboardStats(division: TenantType): Promise<DashboardStats> {
@@ -204,7 +239,7 @@ export async function getDashboardStats(division: TenantType): Promise<Dashboard
   ] = await Promise.all([
     db
       .from('enrollments')
-      .select('course_id,status')
+      .select('id,course_id,student_id,name,phone,status,suspended_at')
       .in('course_id', courseIds),
     db
       .from('attendance_display_sessions')
@@ -252,16 +287,28 @@ export async function getDashboardStats(division: TenantType): Promise<Dashboard
     designatedSeatsResult,
   ) ?? []) as DashboardSeatRow[]
 
-  const enrollmentCountMap = new Map<number, { active: number; refunded: number }>()
+  const enrollmentCountMap = new Map<number, { active: number; refunded: number; suspended: number }>()
+  const activeStudentKeys = new Set<string>()
+  let activeEnrollmentCount = 0
+  let suspendedEnrollmentCount = 0
+
   for (const enrollment of enrollments) {
-    const current = enrollmentCountMap.get(enrollment.course_id) ?? { active: 0, refunded: 0 }
+    const current = enrollmentCountMap.get(enrollment.course_id) ?? { active: 0, refunded: 0, suspended: 0 }
     if (enrollment.status === 'refunded') {
       current.refunded += 1
+    } else if (enrollment.suspended_at) {
+      current.suspended += 1
+      suspendedEnrollmentCount += 1
     } else {
       current.active += 1
+      activeEnrollmentCount += 1
+      activeStudentKeys.add(getActiveStudentKey(enrollment))
     }
     enrollmentCountMap.set(enrollment.course_id, current)
   }
+
+  const activeUniqueStudents = activeStudentKeys.size
+  const duplicateEnrollmentCount = Math.max(activeEnrollmentCount - activeUniqueStudents, 0)
 
   const attendanceSessionMap = getLatestSessionMap(attendanceSessions)
   const designatedSeatSessionMap = getLatestSessionMap(designatedSeatSessions)
@@ -277,7 +324,7 @@ export async function getDashboardStats(division: TenantType): Promise<Dashboard
 
   const courseSummaries = courses
     .map((course) => {
-      const enrollmentCounts = enrollmentCountMap.get(course.id) ?? { active: 0, refunded: 0 }
+      const enrollmentCounts = enrollmentCountMap.get(course.id) ?? { active: 0, refunded: 0, suspended: 0 }
       const attendanceSession = attendanceSessionMap.get(course.id)
       const designatedSeatSession = designatedSeatSessionMap.get(course.id)
       const designatedSeatLayoutReady = designatedSeatLayoutCourseIds.has(course.id)
@@ -344,7 +391,11 @@ export async function getDashboardStats(division: TenantType): Promise<Dashboard
   return {
     overview: {
       activeCourses: courses.length,
-      activeStudents: courseSummaries.reduce((sum, course) => sum + course.activeStudents, 0),
+      activeStudents: activeUniqueStudents,
+      activeUniqueStudents,
+      activeEnrollmentCount,
+      duplicateEnrollmentCount,
+      suspendedEnrollmentCount,
       pendingAuthStudents: authStats.total,
       actionRequiredCourses,
     },

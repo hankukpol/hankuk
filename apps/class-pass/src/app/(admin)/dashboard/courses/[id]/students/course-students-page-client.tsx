@@ -8,10 +8,12 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
 import { Download, Plus, Search, Trash2, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { StudentHistoryPanel } from '@/components/admin/student-history-panel'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
 import { ReceiptNoticeModal } from '@/components/payments/ReceiptNoticeModal'
 import { SeriesSelector } from '@/components/series/SeriesSelector'
 import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
+import { normalizeGenderLabel } from '@/lib/gender'
 import {
   PaymentSection,
   createEmptyPaymentSectionValue,
@@ -83,6 +85,8 @@ type StudentSearchResult = {
   name: string
   phone: string
   exam_number: string | null
+  cohort_option_id: number | null
+  cohort_label: string | null
   birth_date: string | null
   photo_url: string | null
   alreadyEnrolled: boolean
@@ -251,14 +255,14 @@ function StudentTypeSelector({
   return (
     <div
       aria-label="학원구분"
-      className="grid grid-cols-2 gap-1 rounded-[10px] bg-[#f5f5f7] p-1"
+      className="grid min-w-[136px] grid-cols-2 gap-1 rounded-[10px] bg-[#f5f5f7] p-1"
     >
       {options.map((option) => (
         <button
           key={option}
           type="button"
           onClick={() => onChange(option)}
-          className={`rounded-[8px] px-3 py-2 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] ${
+          className={`whitespace-nowrap rounded-[8px] px-3 py-2 text-center text-sm font-semibold leading-none transition-all duration-200 ease-ios active:scale-[0.97] ${
             value === option
               ? 'bg-white text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
               : 'text-slate-500 hover:text-[#1d1d1f]'
@@ -270,6 +274,34 @@ function StudentTypeSelector({
     </div>
   )
 }
+
+function GenderSelect({
+  value,
+  onChange,
+  disabled = false,
+  className = '',
+}: {
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  className?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      disabled={disabled}
+      className={`rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${className}`}
+    >
+      <option value="">미입력</option>
+      <option value="남">남</option>
+      <option value="여">여</option>
+    </select>
+  )
+}
+
+const editModalInputClass = 'h-11 rounded-[10px] border border-slate-200 bg-[#fafafc] px-3 text-sm text-[#1d1d1f] outline-none transition focus:border-[#0071e3] focus:bg-white focus:ring-4 focus:ring-[#0071e3]/10'
+const editModalLabelClass = 'text-[11px] font-semibold text-slate-500'
 
 async function fetchStudentsPageData(
   courseId: number,
@@ -314,6 +346,15 @@ async function fetchStudentsPageData(
     textbooks: (textbookPay.materials ?? []) as Material[],
     seriesOptions: (seriesPay.options ?? []) as BranchSeriesOption[],
   }
+}
+
+function cohortLabelToNumberString(label: string | null | undefined) {
+  const match = label?.trim().match(/^(\d{1,3})\s*기?$/)
+  return match ? match[1] : ''
+}
+
+function normalizeCohortNumberInput(value: string) {
+  return value.replace(/\D/g, '').slice(0, 3)
 }
 
 export default function CourseStudentsPage({
@@ -374,6 +415,7 @@ export default function CourseStudentsPage({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<EnrollmentForm>(emptyForm())
   const [paymentDetailEnrollmentId, setPaymentDetailEnrollmentId] = useState<number | null>(null)
+  const [historyEnrollmentId, setHistoryEnrollmentId] = useState<number | null>(null)
   const [bulkText, setBulkText] = useState('')
   const [pinReveal, setPinReveal] = useState<PinRevealState | null>(null)
   const [suspensionTarget, setSuspensionTarget] = useState<Enrollment | null>(null)
@@ -696,7 +738,9 @@ export default function CourseStudentsPage({
       name: student.name,
       phone: student.phone,
       exam_number: student.exam_number ?? '',
+      cohort_number: cohortLabelToNumberString(student.cohort_label),
       birth_date: student.birth_date ?? '',
+      gender: '',
     }))
     setStudentLookupError('')
   }
@@ -709,7 +753,9 @@ export default function CourseStudentsPage({
       name: '',
       phone: '',
       exam_number: '',
+      cohort_number: '',
       birth_date: '',
+      gender: '',
     }))
   }
 
@@ -1156,8 +1202,10 @@ export default function CourseStudentsPage({
 
     const header = [
       '번호',
+      '기수',
       '응시번호',
       '이름',
+      '성별',
       '연락처',
       '직렬',
       '학원구분',
@@ -1167,8 +1215,10 @@ export default function CourseStudentsPage({
     ]
     const rows = allEnrollments.map((enrollment, index) => [
       index + 1,
+      enrollment.cohort_label ?? '',
       enrollment.exam_number ?? '',
       enrollment.name,
+      normalizeGenderLabel(enrollment.gender),
       formatExcelTextCell(formatPhoneNumber(enrollment.phone)),
       enrollment.series?.trim() || (enrollment.series_group === 'career' ? '경채' : '공채'),
       ENROLLMENT_STUDENT_TYPE_LABEL[enrollment.student_type ?? 'general'],
@@ -1560,7 +1610,9 @@ export default function CourseStudentsPage({
         name: createForm.name,
         phone: createForm.phone,
         exam_number: createForm.exam_number || null,
+        cohort_number: createForm.cohort_number ? Number(createForm.cohort_number) : null,
         birth_date: createForm.birth_date || null,
+        gender: createForm.gender || null,
         series_option_id: createForm.series_option_id,
         student_type: createForm.student_type,
         custom_data: createForm.custom_data,
@@ -1722,6 +1774,13 @@ export default function CourseStudentsPage({
     setMessage('')
   }
 
+  function openStudentHistory(enrollment: Enrollment) {
+    setHistoryEnrollmentId(enrollment.id)
+    setPanel('none')
+    setError('')
+    setMessage('')
+  }
+
   async function handlePhotoUpload(file: File) {
     if (!editingId) return
     setPhotoUploading(true)
@@ -1777,7 +1836,9 @@ export default function CourseStudentsPage({
           name: editForm.name,
           phone: editForm.phone,
           exam_number: editForm.exam_number || null,
+          cohort_number: editForm.cohort_number ? Number(editForm.cohort_number) : null,
           birth_date: editForm.birth_date || null,
+          gender: editForm.gender || null,
           series_option_id: editForm.series_option_id,
           student_type: editForm.student_type,
           custom_data: editForm.custom_data,
@@ -2043,7 +2104,9 @@ export default function CourseStudentsPage({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-[#1d1d1f]">
                           {student.name}
-                          <span className="ml-2 text-xs font-medium text-slate-500">{student.exam_number || '-'}</span>
+                          <span className="ml-2 text-xs font-medium text-slate-500">
+                            {[student.cohort_label, student.exam_number].filter(Boolean).join(' · ') || '-'}
+                          </span>
                         </p>
                         <p className="mt-1 truncate text-xs text-slate-500">{student.phone}</p>
                         <p className="mt-1 truncate text-xs text-slate-500">
@@ -2101,10 +2164,24 @@ export default function CourseStudentsPage({
           <section className="mt-4">
             <h4 className="text-sm font-semibold text-[#1d1d1f]">인적 사항</h4>
             <p className="mt-0.5 text-xs text-slate-500">학번·이름·연락처는 필수입니다.</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-4">
+            <div className="mt-3 grid gap-3 sm:grid-cols-6">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">학번</span>
                 <input value={createForm.exam_number} onChange={(e) => setCreateForm((c) => ({ ...c, exam_number: e.target.value }))} disabled={selectedStudentLocked} placeholder="예: A-001" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">기수</span>
+                <input
+                  value={createForm.cohort_number}
+                  onChange={(event) => setCreateForm((current) => ({
+                    ...current,
+                    cohort_number: normalizeCohortNumberInput(event.target.value),
+                  }))}
+                  disabled={selectedStudentLocked}
+                  inputMode="numeric"
+                  placeholder="예: 50"
+                  className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500">이름</span>
@@ -2118,7 +2195,14 @@ export default function CourseStudentsPage({
                 <span className="text-[11px] font-medium text-slate-500">생년월일</span>
                 <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
-              <div className="grid gap-3 sm:col-span-4 sm:grid-cols-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500">성별</span>
+                <GenderSelect
+                  value={createForm.gender}
+                  onChange={(gender) => setCreateForm((current) => ({ ...current, gender }))}
+                />
+              </label>
+              <div className="grid gap-3 sm:col-span-6 sm:grid-cols-6">
                 <div className="sm:col-span-2">
                   <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
                   <SeriesSelector
@@ -2127,7 +2211,7 @@ export default function CourseStudentsPage({
                     onChange={(seriesOptionId) => setCreateForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
                   />
                 </div>
-                <div className="sm:col-start-4">
+                <div className="sm:col-span-2 sm:col-start-5">
                   <span className="mb-2 block text-[11px] font-medium text-slate-500">학원구분</span>
                   <StudentTypeSelector
                     value={createForm.student_type}
@@ -2320,13 +2404,13 @@ export default function CourseStudentsPage({
         <form onSubmit={handleBulkImport} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
           <p className="mt-1 text-xs text-slate-500">
-            탭 구분 · 순서: <span className="font-semibold text-slate-700">학번, 이름, 연락처, 생년월일{customFields.map((f) => `, ${f.label}`).join('')}</span>
+            탭 구분 · 순서: <span className="font-semibold text-slate-700">기수, 학번, 이름, 연락처, 생년월일, 성별{customFields.map((f) => `, ${f.label}`).join('')}</span>
           </p>
           <textarea
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             rows={6}
-            placeholder={`A-001\t홍길동\t01012345678\t990315\nA-002\t김소방\t01087654321`}
+            placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\n51\tA-002\t김소방\t01087654321\t990704\t여`}
             className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-slate-400"
           />
           <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>
@@ -2337,15 +2421,52 @@ export default function CourseStudentsPage({
         </form>
       )}
 
-      {panel === 'edit' && editingId && (
-        <form onSubmit={handleSaveEdit} className="rounded-2xl bg-slate-50 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-700">수강생 편집</h3>
-            <button type="button" onClick={() => { setPanel('none'); setEditingId(null) }} className="text-xs text-slate-500 transition-all duration-200 ease-ios hover:underline active:scale-[0.97]">닫기</button>
-          </div>
+      <AnimatePresence>
+      {panel === 'edit' && editingId ? (
+        <>
+          <motion.div
+            className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-[2px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: panelBackdropDuration }}
+            onClick={() => {
+              if (!submitting && !photoUploading) {
+                setPanel('none')
+                setEditingId(null)
+              }
+            }}
+          />
+          <motion.form
+            onSubmit={handleSaveEdit}
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-x-4 top-8 z-[101] mx-auto max-h-[calc(100dvh-64px)] max-w-3xl overflow-hidden rounded-[18px] bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] ring-1 ring-black/5 sm:top-16"
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.98 }}
+            transition={motionConfig.modal}
+          >
+            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Edit Student</p>
+                <h3 className="mt-1 truncate text-xl font-semibold leading-tight text-[#1d1d1f]">수강생 편집</h3>
+                <p className="mt-1 truncate text-sm text-slate-500">{editForm.name || course.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPanel('none'); setEditingId(null) }}
+                disabled={submitting || photoUploading}
+                aria-label="닫기"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-slate-500 transition-all duration-200 ease-ios hover:bg-slate-200 hover:text-[#1d1d1f] active:scale-[0.94] disabled:opacity-50 disabled:active:scale-100"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </header>
 
+            <div className="max-h-[calc(100dvh-220px)] overflow-y-auto px-6 py-5">
           {course.feature_photo && (
-            <div className="mt-3 flex items-center gap-4">
+            <div className="mb-5 flex items-center gap-4 border-b border-slate-100 pb-5">
               <div className="h-[80px] w-[60px] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
                 {editPhotoUrl ? (
                   <Image src={editPhotoUrl} alt="증명사진" width={60} height={80} unoptimized className="h-full w-full object-cover" />
@@ -2354,7 +2475,7 @@ export default function CourseStudentsPage({
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="cursor-pointer rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]">
+                <label className="w-fit cursor-pointer rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]">
                   {photoUploading ? '업로드 중...' : '사진 업로드'}
                   <input
                     type="file"
@@ -2388,22 +2509,55 @@ export default function CourseStudentsPage({
             </div>
           )}
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-4">
-            <input value={editForm.exam_number} onChange={(e) => setEditForm((c) => ({ ...c, exam_number: e.target.value }))} placeholder="학번" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="생년월일(YYMMDD)" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" />
-            <div className="grid gap-3 sm:col-span-4 sm:grid-cols-4">
-              <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500">직렬</label>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="flex flex-col gap-1.5">
+              <span className={editModalLabelClass}>학번</span>
+              <input value={editForm.exam_number} onChange={(e) => setEditForm((c) => ({ ...c, exam_number: e.target.value }))} placeholder="학번" className={editModalInputClass} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={editModalLabelClass}>기수</span>
+              <input
+                value={editForm.cohort_number}
+                onChange={(event) => setEditForm((current) => ({
+                  ...current,
+                  cohort_number: normalizeCohortNumberInput(event.target.value),
+                }))}
+                inputMode="numeric"
+                placeholder="예: 50"
+                className={editModalInputClass}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={editModalLabelClass}>이름</span>
+              <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className={editModalInputClass} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={editModalLabelClass}>연락처</span>
+              <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className={editModalInputClass} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={editModalLabelClass}>생년월일</span>
+              <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="YYMMDD" className={editModalInputClass} />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className={editModalLabelClass}>성별</span>
+              <GenderSelect
+                value={editForm.gender}
+                onChange={(gender) => setEditForm((current) => ({ ...current, gender }))}
+                className={editModalInputClass}
+              />
+            </label>
+            <div className="grid gap-4 border-t border-slate-100 pt-4 sm:col-span-2 sm:grid-cols-2 lg:col-span-3">
+              <div>
+                <label className={`mb-1.5 block ${editModalLabelClass}`}>직렬</label>
                 <SeriesSelector
                   options={seriesOptions}
                   valueId={editForm.series_option_id}
                   onChange={(seriesOptionId) => setEditForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
                 />
               </div>
-              <div className="sm:col-start-4">
-                <label className="mb-1.5 block text-xs font-semibold text-slate-500">학원구분</label>
+              <div>
+                <label className={`mb-1.5 block ${editModalLabelClass}`}>학원구분</label>
                 <StudentTypeSelector
                   value={editForm.student_type}
                   onChange={(studentType) => setEditForm((current) => ({ ...current, student_type: studentType }))}
@@ -2414,11 +2568,28 @@ export default function CourseStudentsPage({
               <DynamicFieldInput key={f.key} field={f} value={editForm.custom_data[f.key] ?? ''} onChange={(v) => setEditForm((c) => ({ ...c, custom_data: { ...c.custom_data, [f.key]: v } }))} />
             ))}
           </div>
-          <div className="mt-3">
-            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100">{submitting ? '저장 중...' : '저장'}</button>
-          </div>
-        </form>
-      )}
+            </div>
+            <footer className="flex items-center justify-end gap-2 border-t border-slate-100 bg-[#fafafc] px-6 py-4">
+              <button
+                type="button"
+                onClick={() => { setPanel('none'); setEditingId(null) }}
+                disabled={submitting || photoUploading}
+                className="rounded-[8px] px-4 py-2 text-sm font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 hover:text-[#1d1d1f] active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-[#0066cc] active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+              >
+                {submitting ? '저장 중...' : '저장'}
+              </button>
+            </footer>
+          </motion.form>
+        </>
+      ) : null}
+      </AnimatePresence>
 
       {/* Messages */}
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -2514,6 +2685,7 @@ export default function CourseStudentsPage({
           onSearchChange={handleSearchChange}
           onStatusFilterChange={handleStatusFilterChange}
           onOpenDetail={openPaymentDetail}
+          onOpenStudentHistory={openStudentHistory}
           onEdit={startEdit}
           onResetPin={(enrollment) => {
             openConfirmation({
@@ -2632,6 +2804,10 @@ export default function CourseStudentsPage({
         enrollment={paymentDetailEnrollment}
         onClose={() => setPaymentDetailEnrollmentId(null)}
         onDataChanged={refresh}
+      />
+      <StudentHistoryPanel
+        enrollmentId={historyEnrollmentId}
+        onClose={() => setHistoryEnrollmentId(null)}
       />
     </div>
   )

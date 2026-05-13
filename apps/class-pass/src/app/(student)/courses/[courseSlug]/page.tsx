@@ -81,6 +81,39 @@ function calculateDday(targetDate: string | null) {
   return diff > 0 ? `D-${diff}` : `D+${Math.abs(diff)}`
 }
 
+function normalizeCourseAccent(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? ''
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : '#0071e3'
+}
+
+function hexToRgb(value: string) {
+  const normalized = value.replace('#', '').trim()
+  const hex = normalized.length === 3
+    ? normalized.split('').map((char) => `${char}${char}`).join('')
+    : normalized
+
+  if (!/^[0-9a-f]{6}$/i.test(hex)) {
+    return null
+  }
+
+  const parsed = Number.parseInt(hex, 16)
+  return {
+    r: (parsed >> 16) & 255,
+    g: (parsed >> 8) & 255,
+    b: parsed & 255,
+  }
+}
+
+function buildPastelBackground(value: string | null | undefined) {
+  const rgb = hexToRgb(normalizeCourseAccent(value))
+  if (!rgb) {
+    return '#eef6ff'
+  }
+
+  const mix = (channel: number) => Math.round(channel * 0.16 + 255 * 0.84)
+  return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`
+}
+
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
 
 export default function StudentCoursePassPage() {
@@ -256,6 +289,8 @@ export default function StudentCoursePassPage() {
   }, [enrollmentId, params.courseSlug, router, tenant.type])
 
   const courseTheme = data?.course.theme_color ?? data?.appConfig.theme_color ?? 'var(--student-blue)'
+  const courseAccentColor = normalizeCourseAccent(courseTheme)
+  const coursePastelBackground = buildPastelBackground(courseTheme)
   const dday = useMemo(() => calculateDday(data?.course.target_date ?? null), [data?.course.target_date])
   const qrValue = data?.qrToken ?? ''
 
@@ -425,6 +460,15 @@ export default function StudentCoursePassPage() {
   const textbookCount = data.textbooks.length
   const allTextbooksReceived = textbookCount > 0 && textbookReceiptCount === textbookCount
   const nextTextbookId = data.textbooks.find((material) => !data.textbookReceipts[material.id])?.id
+  const appName = data.appConfig.app_name || tenant.defaultAppName
+  const courseTypeLabel = formatCourseTypeLabel(data.course.course_type)
+  const passIdentityTags = [
+    data.course.feature_qr_pass ? 'QR 수강증' : null,
+    data.course.feature_qr_distribution ? '자료 배부' : null,
+    showSeatAssignments ? '좌석' : null,
+    data.attendance.enabled ? '출석' : null,
+    data.course.feature_time_window ? '시간 제한' : null,
+  ].filter(Boolean) as string[]
 
   const studentFields = [
     { label: '수험번호', value: data.enrollment.exam_number || '-' },
@@ -446,37 +490,53 @@ export default function StudentCoursePassPage() {
     : null
 
   return (
-    <div className="student-page student-safe-bottom flex min-h-dvh flex-col">
-      <section className="student-hero px-4 pb-6 pt-4 sm:px-5">
+    <div
+      className="student-page student-safe-bottom flex min-h-dvh flex-col"
+      style={{ backgroundColor: coursePastelBackground }}
+    >
+      <section
+        className="student-hero px-4 pb-6 pt-4 sm:px-5"
+        style={{ backgroundColor: coursePastelBackground }}
+      >
         <div className="flex items-center justify-between gap-3">
-          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-white/72 transition-all duration-200 ease-ios hover:text-white active:scale-[0.97]">
+          <button onClick={goBack} className="text-[13px] font-semibold tracking-[-0.02em] text-[rgba(29,29,31,0.72)] transition-all duration-200 ease-ios hover:text-[#1d1d1f] active:scale-[0.97]">
             목록으로
           </button>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {dday ? <span className="student-chip student-chip-dark">{dday}</span> : null}
-            <span className="student-chip student-chip-dark">{formatCourseTypeLabel(data.course.course_type)}</span>
+            {dday ? <span className="student-chip bg-white/70 text-[#1d1d1f]">{dday}</span> : null}
+            <span className="student-chip bg-white/70 text-[#1d1d1f]">{courseTypeLabel}</span>
           </div>
         </div>
 
         <div className="mt-5 text-center">
-          {hasPhoto ? (
-            <>
-              <p className="student-eyebrow student-eyebrow-dark">{data.appConfig.app_name || tenant.defaultAppName}</p>
-              <h1 className="student-display mt-2">모바일 수강증</h1>
-              <p className="student-body student-body-dark mt-2">{data.course.name}</p>
-            </>
-          ) : (
-            <>
-              <p className="student-eyebrow student-eyebrow-dark">모바일 수강증</p>
-              <h1 className="student-display mt-2 break-keep">{data.course.name}</h1>
-              <p className="student-body student-body-dark mt-2">
-                {formattedDate} ({DAY_NAMES[currentTime.getDay()]}) {formattedTime}
-              </p>
-            </>
-          )}
+          <p className="student-eyebrow text-[rgba(29,29,31,0.58)]">모바일 수강증</p>
+          <h1 className="student-display mx-auto mt-2 max-w-[340px] break-keep text-[#1d1d1f]">
+            {data.course.name}
+          </h1>
+          <p className="student-body mt-2 break-keep text-[rgba(29,29,31,0.72)]">
+            {appName} · {data.enrollment.name}
+          </p>
+          <p className="mt-1 text-[12px] font-medium tracking-[-0.01em] text-[rgba(29,29,31,0.52)]">
+            {formattedDate} ({DAY_NAMES[currentTime.getDay()]}) {formattedTime}
+          </p>
+          <div
+            className="mx-auto mt-3 h-1 w-16 rounded-full"
+            style={{ backgroundColor: courseAccentColor }}
+            aria-hidden="true"
+          />
+
+          {passIdentityTags.length > 0 ? (
+            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+              {passIdentityTags.map((tag) => (
+                <span key={tag} className="student-chip bg-white/70 text-[#1d1d1f]">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           {data.course.feature_time_window ? (
-            <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-[12px] font-medium text-white/82">
+            <div className="mt-3 inline-flex rounded-full border border-black/10 bg-white/55 px-3 py-1.5 text-[12px] font-medium text-[rgba(29,29,31,0.78)]">
               입장 가능 {data.course.time_window_start || '--:--'} ~ {data.course.time_window_end || '--:--'}
             </div>
           ) : null}

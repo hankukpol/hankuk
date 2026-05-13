@@ -53,6 +53,16 @@ function toRgba(hex: string, alpha: number) {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`
 }
 
+function buildPastelBackground(value: string) {
+  const rgb = hexToRgb(value)
+  if (!rgb) {
+    return '#eef6ff'
+  }
+
+  const mix = (channel: number) => Math.round(channel * 0.16 + 255 * 0.84)
+  return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`
+}
+
 function normalizeThemeColor(value: string) {
   const trimmed = value.trim()
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed) ? trimmed : DEFAULT_ACCENT
@@ -342,6 +352,13 @@ export function ExamDeliveryPassView({
   const hasExtraSiteLink = Boolean(data.course.extra_site_url)
   const dday = data.course.feature_dday ? calculateDday(data.course.target_date) : null
   const ddayLabel = data.course.target_date_label || '시험일'
+  const courseTypeLabel = formatCourseTypeLabel(data.course.course_type)
+  const passIdentityTags = [
+    '모바일 수강증',
+    showSeatAssignments ? '좌석' : null,
+    data.course.feature_time_window ? '시간 제한' : null,
+    data.course.feature_anti_forgery_motion ? '보안 효과' : null,
+  ].filter(Boolean) as string[]
   const flashAccent = toRgba(theme.bg, 0.96)
   const flashWash = toRgba(theme.bg, 0.55)
   const flashOverlay = toRgba(theme.bg, 0.62)
@@ -394,6 +411,7 @@ export function ExamDeliveryPassView({
         '--exam-accent-tint': toRgba(theme.bg, 0.32),
         '--exam-accent-tint-mid': toRgba(theme.bg, 0.55),
         '--exam-accent-tint-peak': toRgba(theme.bg, 0.72),
+        backgroundColor: buildPastelBackground(theme.bg),
       } as React.CSSProperties}
     >
       <style>{`
@@ -485,14 +503,23 @@ export function ExamDeliveryPassView({
             >
               목록으로
             </button>
-            <span className="student-chip student-chip-dark">{formatCourseTypeLabel(data.course.course_type)}</span>
+            <span className="student-chip student-chip-dark">{courseTypeLabel}</span>
           </div>
 
           <div className="relative z-[1] mt-5">
-            <p className="student-eyebrow student-eyebrow-dark">{tenantAppName}</p>
-            <h1 className="student-display mt-2">모바일 수강증</h1>
-            <p className="student-body student-body-dark mt-2 break-keep">{data.course.name}</p>
+            <p className="student-eyebrow student-eyebrow-dark">현장 확인 수강증</p>
+            <h1 className="student-display mt-2 max-w-[340px] break-keep text-white">
+              {data.course.name}
+            </h1>
+            <p className="student-body student-body-dark mt-2 break-keep">
+              {tenantAppName} · {data.enrollment.name}
+            </p>
             <p className="student-body student-body-dark mt-1">{formatLiveDateTime(currentTime)}</p>
+            <div
+              className="mt-3 h-1 w-16 rounded-full"
+              style={{ backgroundColor: theme.bg }}
+              aria-hidden="true"
+            />
           </div>
 
           <div className="relative z-[1] mt-4 flex flex-wrap gap-1.5">
@@ -507,7 +534,11 @@ export function ExamDeliveryPassView({
                 {dday} · {ddayLabel}
               </span>
             ) : null}
-            <span className="student-chip student-chip-dark">현장 확인</span>
+            {passIdentityTags.map((tag) => (
+              <span key={tag} className="student-chip student-chip-dark">
+                {tag}
+              </span>
+            ))}
           </div>
         </section>
 

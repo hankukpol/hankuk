@@ -1,7 +1,7 @@
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 import { normalizeBirthDate } from '@/lib/auth/student-auth'
 import { createServerClient } from '@/lib/supabase/server'
-import type { Enrollment } from '@/types/database'
+import type { Enrollment, Student } from '@/types/database'
 import {
   createEnrollmentForPayment,
   createPayment,
@@ -209,14 +209,50 @@ function buildEnrollmentMaps(enrollments: Enrollment[]) {
   return { byExam, byNamePhoneLast4 }
 }
 
+function getEnrollmentStudentBirthDate(enrollment: Enrollment) {
+  const student = (enrollment as Enrollment & { students?: Student | null }).students ?? null
+  return normalizeBirthDate(student?.birth_date) || null
+}
+
+function isEnrollmentCompatibleWithImportRow(
+  row: Pick<PaymentImportPreviewRow, 'name' | 'phone' | 'birthDate'>,
+  enrollment: Enrollment,
+) {
+  if (normalizeName(enrollment.name) !== normalizeName(row.name)) {
+    return false
+  }
+
+  const rowPhone = normalizePhone(row.phone)
+  const enrollmentPhone = normalizePhone(enrollment.phone)
+  if (rowPhone.length >= 8 && rowPhone !== enrollmentPhone) {
+    return false
+  }
+
+  if (rowPhone.length > 0 && rowPhone.length < 8 && !enrollmentPhone.endsWith(rowPhone)) {
+    return false
+  }
+
+  const enrollmentBirthDate = getEnrollmentStudentBirthDate(enrollment)
+  if (row.birthDate && enrollmentBirthDate && row.birthDate !== enrollmentBirthDate) {
+    return false
+  }
+
+  return true
+}
+
 function resolveEnrollment(params: {
-  row: Pick<PaymentImportPreviewRow, 'name' | 'phone' | 'examNumber'>
+  row: Pick<PaymentImportPreviewRow, 'name' | 'phone' | 'examNumber' | 'birthDate'>
   byExam: Map<string, Enrollment[]>
   byNamePhoneLast4: Map<string, Enrollment[]>
 }) {
   const examNumber = normalizeExamNumber(params.row.examNumber)
   const examMatches = examNumber ? params.byExam.get(examNumber) ?? [] : []
   if (examMatches.length === 1) {
+    const enrollment = examMatches[0]
+    if (!enrollment || !isEnrollmentCompatibleWithImportRow(params.row, enrollment)) {
+      return { status: 'error' as const, enrollment: null, message: 'Exam number matches an existing student, but name, phone, or birth date does not match.' }
+    }
+
     return { status: 'matched' as const, enrollment: examMatches[0], message: '응시번호로 매칭' }
   }
 
@@ -228,12 +264,15 @@ function resolveEnrollment(params: {
   const namePhoneMatches = phoneLast4
     ? params.byNamePhoneLast4.get(`${normalizeName(params.row.name)}::${phoneLast4}`) ?? []
     : []
+  const compatibleNamePhoneMatches = namePhoneMatches.filter((enrollment) => (
+    isEnrollmentCompatibleWithImportRow(params.row, enrollment)
+  ))
 
-  if (namePhoneMatches.length === 1) {
+  if (compatibleNamePhoneMatches.length === 1 && namePhoneMatches.length === 1) {
     return { status: 'matched' as const, enrollment: namePhoneMatches[0], message: '이름과 연락처 뒤 4자리로 매칭' }
   }
 
-  if (namePhoneMatches.length > 1) {
+  if (compatibleNamePhoneMatches.length > 1 || namePhoneMatches.length > 1) {
     return { status: 'duplicate' as const, enrollment: null, message: '동명이인 후보가 2명 이상입니다.' }
   }
 
@@ -292,14 +331,14 @@ export function previewPaymentImportRows(params: {
       return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'error', enrollmentId: null, message: '계좌 결제는 입금자명을 입력해 주세요.' }
     }
 
-    const importKey = examNumber ? `exam:${examNumber}` : `name-phone:${name}:${phone.slice(-4)}`
+    const importKey = examNumber ? `exam:${examNumber}` : `identity:${name}:${phone}:${birthDate ?? ''}`
     if (seenImportKeys.has(importKey)) {
       return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'duplicate', enrollmentId: null, message: '업로드 파일 안에서 중복된 학생입니다.' }
     }
     seenImportKeys.add(importKey)
 
     const resolved = resolveEnrollment({
-      row: { name, phone, examNumber },
+      row: { name, phone, examNumber, birthDate },
       ...maps,
     })
 
@@ -311,8 +350,16 @@ export function previewPaymentImportRows(params: {
       return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'duplicate', enrollmentId: null, message: resolved.message }
     }
 
+    if (resolved.status === 'error') {
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'error', enrollmentId: null, message: resolved.message }
+    }
+
     if (!params.createMissingEnrollment) {
       return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'error', enrollmentId: null, message: '매칭 수강생이 없습니다.' }
+    }
+
+    if (!birthDate) {
+      return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'error', enrollmentId: null, message: 'birthDate is required to create a missing enrollment.' }
     }
 
     return { rowNumber, name, phone, examNumber, birthDate, amount, paidAt, method, cardCompany, bankAccountLast4, depositorName, category, memo, status: 'create', enrollmentId: null, message: resolved.message }

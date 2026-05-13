@@ -47,6 +47,8 @@ function getAttendanceDeviceMeta(enrollment: Enrollment) {
   const registeredCount = state.registered_count ?? 1
   const maxDeviceCount = state.max_registered_count ?? 3
   const countLabel = `${registeredCount}/${maxDeviceCount}`
+  const recentAutoReplacedCount = state.recent_auto_replaced_count ?? 0
+  const hasAutoReplacedWarning = Boolean(state.auto_replaced_warning) || recentAutoReplacedCount >= 2
 
   if (state.status === 'pending_reset') {
     return {
@@ -57,6 +59,19 @@ function getAttendanceDeviceMeta(enrollment: Enrollment) {
         state.reset_requested_at ? `요청 시각: ${formatDateTime(state.reset_requested_at)}` : null,
         state.reset_requested_user_agent ? `기기 정보: ${state.reset_requested_user_agent}` : null,
       ].filter(Boolean).join('\n') || '추가 기기 승인 대기 중입니다.',
+    }
+  }
+
+  if (hasAutoReplacedWarning) {
+    return {
+      label: `변경 잦음 ${countLabel}`,
+      className: 'bg-amber-50 text-amber-700',
+      title: [
+        `등록된 브라우저: ${countLabel}`,
+        `최근 자동 교체: ${recentAutoReplacedCount}회`,
+        state.last_auto_replaced_at ? `마지막 자동 교체: ${formatDateTime(state.last_auto_replaced_at)}` : null,
+        state.last_seen_at ? `마지막 확인: ${formatDateTime(state.last_seen_at)}` : null,
+      ].filter(Boolean).join('\n'),
     }
   }
 

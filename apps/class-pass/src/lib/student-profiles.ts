@@ -26,6 +26,7 @@ export type StudentProfileSnapshot = {
   name: string
   phone: string
   exam_number?: string | null
+  birth_date?: string | null
   photo_url?: string | null
 }
 
@@ -86,12 +87,39 @@ type NormalizedStudentSnapshot = {
   name: string
   phone: string
   exam_number?: string | null
+  birth_date?: string | null
   photo_url?: string | null
 }
 
 type PreparedEnsureBatchInput = EnsureStudentProfileBatchInput & {
   dedupKey: string
   normalized: NormalizedStudentSnapshot
+}
+
+export class StudentIdentityConflictError extends Error {
+  status = 409
+  code = 'STUDENT_IDENTITY_CONFLICT'
+  fields: string[]
+
+  constructor(message: string, fields: string[] = []) {
+    super(message)
+    this.name = 'StudentIdentityConflictError'
+    this.fields = fields
+  }
+}
+
+export function isStudentIdentityConflictError(error: unknown): error is StudentIdentityConflictError {
+  return error instanceof StudentIdentityConflictError
+    || (
+      typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && (error as { code?: unknown }).code === 'STUDENT_IDENTITY_CONFLICT'
+    )
+}
+
+function hasOwnField<T extends object>(value: T, key: keyof T) {
+  return Object.prototype.hasOwnProperty.call(value, key)
 }
 
 function normalizeStudentSnapshot(snapshot: StudentProfileSnapshot): NormalizedStudentSnapshot {
@@ -101,6 +129,9 @@ function normalizeStudentSnapshot(snapshot: StudentProfileSnapshot): NormalizedS
     exam_number: snapshot.exam_number === undefined
       ? undefined
       : normalizeExamNumber(snapshot.exam_number) || null,
+    birth_date: hasOwnField(snapshot, 'birth_date')
+      ? normalizeBirthDate(snapshot.birth_date) || null
+      : undefined,
     photo_url: snapshot.photo_url === undefined
       ? undefined
       : snapshot.photo_url?.trim() || null,
@@ -113,7 +144,8 @@ function buildStudentIdentityKey(snapshot: StudentProfileSnapshot | Student | No
     return `exam:${examNumber}`
   }
 
-  return `phone:${normalizePhone(snapshot.phone)}::${normalizeName(snapshot.name)}`
+  const birthDate = normalizeBirthDate('birth_date' in snapshot ? snapshot.birth_date : undefined) || ''
+  return `identity:${normalizePhone(snapshot.phone)}::${normalizeName(snapshot.name)}::${birthDate}`
 }
 
 function normalizeJoinedOne<T>(value: MaybeJoinedOne<T>): T | null {
@@ -128,6 +160,103 @@ function hasStoredBirthDate(value: string | null | undefined) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+function getNormalizedStudentBirthDate(student: Pick<Student, 'birth_date'>) {
+  return normalizeBirthDate(student.birth_date) || null
+}
+
+function getStudentIdentityMismatches(
+  student: Student,
+  normalized: NormalizedStudentSnapshot,
+) {
+  const mismatches: string[] = []
+  const studentExamNumber = normalizeExamNumber(student.exam_number) || null
+  const studentBirthDate = getNormalizedStudentBirthDate(student)
+
+  if (normalizeName(student.name) !== normalized.name) {
+    mismatches.push('name')
+  }
+
+  if (normalizePhone(student.phone) !== normalized.phone) {
+    mismatches.push('phone')
+  }
+
+  if (
+    normalized.exam_number
+    && studentExamNumber
+    && studentExamNumber !== normalized.exam_number
+  ) {
+    mismatches.push('exam_number')
+  }
+
+  if (
+    normalized.birth_date
+    && studentBirthDate
+    && studentBirthDate !== normalized.birth_date
+  ) {
+    mismatches.push('birth_date')
+  }
+
+  return mismatches
+}
+
+function assertStudentIdentityMatches(
+  student: Student,
+  normalized: NormalizedStudentSnapshot,
+  matchedBy: 'exam_number' | 'identity',
+) {
+  const mismatches = getStudentIdentityMismatches(student, normalized)
+  if (mismatches.length === 0) {
+    return
+  }
+
+  throw new StudentIdentityConflictError(
+    `Student identity conflict while matching by ${matchedBy}. Check exam number, name, phone, and birth date.`,
+    mismatches,
+  )
+}
+
+async function assertNoStudentIdentityCollision(
+  db: DbClient,
+  division: TenantType,
+  normalized: NormalizedStudentSnapshot,
+  currentStudent?: Student | null,
+) {
+  const currentStudentId = currentStudent?.id ?? null
+  const nextExamNumber = normalized.exam_number !== undefined
+    ? normalized.exam_number
+    : normalizeExamNumber(currentStudent?.exam_number) || null
+  const nextBirthDate = normalized.birth_date !== undefined
+    ? normalized.birth_date
+    : normalizeBirthDate(currentStudent?.birth_date) || null
+
+  if (nextExamNumber) {
+    const sameExamStudent = await findStudentByExamNumber(db, division, nextExamNumber)
+    if (sameExamStudent && sameExamStudent.id !== currentStudentId) {
+      throw new StudentIdentityConflictError(
+        'Another student already uses this exam number.',
+        ['exam_number'],
+      )
+    }
+  }
+
+  if (normalized.name && normalized.phone && nextBirthDate) {
+    const sameIdentityStudent = await findStudentByIdentity(
+      db,
+      division,
+      normalized.name,
+      normalized.phone,
+      nextBirthDate,
+    )
+
+    if (sameIdentityStudent && sameIdentityStudent.id !== currentStudentId) {
+      throw new StudentIdentityConflictError(
+        'Another student already uses this name, phone, and birth date.',
+        ['name', 'phone', 'birth_date'],
+      )
+    }
+  }
+}
+
 function shouldUpdateStudent(
   student: Student,
   normalized: NormalizedStudentSnapshot,
@@ -136,6 +265,7 @@ function shouldUpdateStudent(
     student.name !== normalized.name
     || student.phone !== normalized.phone
     || (normalized.exam_number !== undefined && student.exam_number !== normalized.exam_number)
+    || (normalized.birth_date !== undefined && normalized.birth_date !== null && student.birth_date !== normalized.birth_date)
     || (normalized.photo_url !== undefined && student.photo_url !== normalized.photo_url)
   )
 }
@@ -257,30 +387,52 @@ async function findStudentByPhone(
       .eq('name', name)
       .order('updated_at', { ascending: false })
       .order('id')
-      .limit(1),
+      .limit(2),
   ) as Student[] | null
 
-  if ((exactNameRows?.length ?? 0) > 0) {
+  if ((exactNameRows?.length ?? 0) > 1) {
+    throw new StudentIdentityConflictError(
+      'Multiple students match this name and phone. Birth date is required to disambiguate.',
+      ['name', 'phone', 'birth_date'],
+    )
+  }
+
+  if ((exactNameRows?.length ?? 0) === 1) {
     return exactNameRows?.[0] ?? null
   }
 
-  const fallbackRows = unwrapSupabaseResult(
-    'studentProfiles.findStudentByPhone.fallback',
+  return null
+}
+
+async function findStudentByIdentity(
+  db: DbClient,
+  division: TenantType,
+  name: string,
+  phone: string,
+  birthDate: string,
+) {
+  const rows = unwrapSupabaseResult(
+    'studentProfiles.findStudentByIdentity',
     await db
       .from('students')
       .select('*')
       .eq('division', division)
+      .eq('name', name)
       .eq('phone', phone)
+      .eq('birth_date', birthDate)
       .order('updated_at', { ascending: false })
       .order('id')
       .limit(2),
   ) as Student[] | null
 
-  if ((fallbackRows?.length ?? 0) === 1) {
-    return fallbackRows?.[0] ?? null
+  if ((rows?.length ?? 0) > 1) {
+    throw new StudentIdentityConflictError(
+      'Multiple students have the same name, phone, and birth date.',
+      ['name', 'phone', 'birth_date'],
+    )
   }
 
-  return null
+  return rows?.[0] ?? null
 }
 
 async function findCanonicalDuplicateStudent(
@@ -301,7 +453,9 @@ async function findCanonicalDuplicateStudent(
     'studentProfiles.findCanonicalDuplicate',
     normalized.exam_number
       ? await query.eq('exam_number', normalized.exam_number)
-      : await query.is('exam_number', null),
+      : normalized.birth_date
+        ? await query.eq('birth_date', normalized.birth_date)
+        : await query.is('exam_number', null),
   ) as Student[] | null
 
   const canonical = rows?.[0] ?? null
@@ -315,19 +469,44 @@ async function findCanonicalDuplicateStudent(
 
 function findMatchingStudentFromPhoneCandidates(
   candidates: Student[] | undefined,
-  name: string,
+  normalized: NormalizedStudentSnapshot,
 ) {
   if (!candidates || candidates.length === 0) {
     return null
   }
 
-  const matchedByName = candidates.find((row) => normalizeName(row.name) === name)
-  if (matchedByName) {
-    return matchedByName
+  const nameMatches = candidates.filter((row) => normalizeName(row.name) === normalized.name)
+  if (nameMatches.length === 0) {
+    return null
   }
 
-  if (candidates.length === 1) {
-    return candidates[0] ?? null
+  if (normalized.birth_date) {
+    const birthMatches = nameMatches.filter((row) => {
+      const storedBirthDate = getNormalizedStudentBirthDate(row)
+      return storedBirthDate === normalized.birth_date || storedBirthDate === null
+    })
+
+    if (birthMatches.length === 1) {
+      return birthMatches[0] ?? null
+    }
+
+    if (birthMatches.length > 1) {
+      throw new StudentIdentityConflictError(
+        'Multiple students match this name, phone, and birth date.',
+        ['name', 'phone', 'birth_date'],
+      )
+    }
+  }
+
+  if (nameMatches.length === 1) {
+    return nameMatches[0] ?? null
+  }
+
+  if (nameMatches.length > 1) {
+    throw new StudentIdentityConflictError(
+      'Multiple students match this name and phone. Birth date is required to disambiguate.',
+      ['name', 'phone', 'birth_date'],
+    )
   }
 
   return null
@@ -349,9 +528,25 @@ export async function findMatchingStudentProfile(
 
   if (!student && normalized.exam_number) {
     student = await findStudentByExamNumber(db, params.division, normalized.exam_number)
+    if (student) {
+      assertStudentIdentityMatches(student, normalized, 'exam_number')
+    }
   }
 
-  if (!student) {
+  if (!student && normalized.birth_date) {
+    student = await findStudentByIdentity(
+      db,
+      params.division,
+      normalized.name,
+      normalized.phone,
+      normalized.birth_date,
+    )
+    if (student) {
+      assertStudentIdentityMatches(student, normalized, 'identity')
+    }
+  }
+
+  if (!student && !normalized.birth_date) {
     student = await findStudentByPhone(db, params.division, normalized.phone, normalized.name)
   }
 
@@ -372,6 +567,33 @@ export function getStudentAuthProfile(student: Student) {
     birth_date: student.birth_date,
     auth_method: student.auth_method,
   }
+}
+
+export function getEnrollmentStudentMismatchFields(
+  enrollment: Pick<Enrollment, 'name' | 'phone' | 'exam_number'>,
+  student: Pick<Student, 'name' | 'phone' | 'exam_number'>,
+) {
+  const fields: string[] = []
+  const enrollmentName = normalizeName(enrollment.name)
+  const studentName = normalizeName(student.name)
+  const enrollmentPhone = normalizePhone(enrollment.phone)
+  const studentPhone = normalizePhone(student.phone)
+  const enrollmentExamNumber = normalizeExamNumber(enrollment.exam_number)
+  const studentExamNumber = normalizeExamNumber(student.exam_number)
+
+  if (enrollmentName && studentName && enrollmentName !== studentName) {
+    fields.push('name')
+  }
+
+  if (enrollmentPhone && studentPhone && enrollmentPhone !== studentPhone) {
+    fields.push('phone')
+  }
+
+  if (enrollmentExamNumber && studentExamNumber && enrollmentExamNumber !== studentExamNumber) {
+    fields.push('exam_number')
+  }
+
+  return fields
 }
 
 export async function initializeStudentAuth(
@@ -587,6 +809,17 @@ export async function applyStudentBirthDate(
     }
   }
 
+  await assertNoStudentIdentityCollision(
+    db,
+    student.division as TenantType,
+    {
+      name: normalizeName(student.name),
+      phone: normalizePhone(student.phone),
+      birth_date: normalizedBirthDate,
+    },
+    student,
+  )
+
   const updatedStudent = await updateStudentRecord(db, student.id, {
     birth_date: normalizedBirthDate,
     pin_hash: null,
@@ -800,11 +1033,14 @@ export async function ensureStudentProfile(
   const timestamp = new Date().toISOString()
 
   if (!student) {
+    await assertNoStudentIdentityCollision(db, params.division, normalized)
+
     const insertPayload: Record<string, string | null> = {
       division: params.division,
       name: normalized.name,
       phone: normalized.phone,
       exam_number: normalized.exam_number ?? null,
+      birth_date: normalized.birth_date ?? null,
       photo_url: normalized.photo_url ?? null,
     }
 
@@ -839,10 +1075,15 @@ export async function ensureStudentProfile(
     }
   }
 
+  await assertNoStudentIdentityCollision(db, params.division, normalized, student)
+
   const updatedStudent = await updateStudentRecord(db, student.id, {
     name: normalized.name,
     phone: normalized.phone,
     exam_number: normalized.exam_number !== undefined ? normalized.exam_number : student.exam_number,
+    birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
+      ? normalized.birth_date
+      : student.birth_date,
     photo_url: normalized.photo_url !== undefined ? normalized.photo_url : student.photo_url,
     updated_at: timestamp,
   })
@@ -885,6 +1126,27 @@ export async function ensureStudentProfilesBatch(
     normalized: normalizeStudentSnapshot(input),
     dedupKey: buildStudentIdentityKey(input),
   }))
+
+  const preparedByDedupKey = new Map<string, PreparedEnsureBatchInput>()
+  for (const input of prepared) {
+    const existing = preparedByDedupKey.get(input.dedupKey)
+    if (!existing) {
+      preparedByDedupKey.set(input.dedupKey, input)
+      continue
+    }
+
+    if (
+      existing.normalized.name !== input.normalized.name
+      || existing.normalized.phone !== input.normalized.phone
+      || existing.normalized.birth_date !== input.normalized.birth_date
+      || existing.normalized.exam_number !== input.normalized.exam_number
+    ) {
+      throw new StudentIdentityConflictError(
+        'Duplicate import rows use the same student key with different identity values.',
+        ['exam_number', 'name', 'phone', 'birth_date'],
+      )
+    }
+  }
 
   const currentStudentIds = Array.from(new Set(
     prepared
@@ -956,12 +1218,21 @@ export async function ensureStudentProfilesBatch(
   const matchedStudentsByKey = new Map<string, Student | null>()
 
   for (const input of prepared) {
-    const matched = (
-      (input.currentStudentId ? currentStudentsById.get(input.currentStudentId) : null)
-      ?? (input.normalized.exam_number ? examStudentsByNumber.get(input.normalized.exam_number) : null)
-      ?? findMatchingStudentFromPhoneCandidates(phoneStudentsByPhone.get(input.normalized.phone), input.normalized.name)
-      ?? null
-    )
+    let matched = input.currentStudentId ? currentStudentsById.get(input.currentStudentId) ?? null : null
+
+    if (!matched && input.normalized.exam_number) {
+      matched = examStudentsByNumber.get(input.normalized.exam_number) ?? null
+      if (matched) {
+        assertStudentIdentityMatches(matched, input.normalized, 'exam_number')
+      }
+    }
+
+    if (!matched) {
+      matched = findMatchingStudentFromPhoneCandidates(
+        phoneStudentsByPhone.get(input.normalized.phone),
+        input.normalized,
+      )
+    }
 
     matchedStudentsByKey.set(input.key, matched)
   }
@@ -976,6 +1247,8 @@ export async function ensureStudentProfilesBatch(
       insertInputsByDedupKey.set(input.dedupKey, input)
       continue
     }
+
+    await assertNoStudentIdentityCollision(db, input.division, input.normalized, matchedStudent)
 
     if (shouldUpdateStudent(matchedStudent, input.normalized)) {
       updateInputByStudentId.set(matchedStudent.id, {
@@ -1000,6 +1273,7 @@ export async function ensureStudentProfilesBatch(
             name: input.normalized.name,
             phone: input.normalized.phone,
             exam_number: input.normalized.exam_number ?? null,
+            birth_date: input.normalized.birth_date ?? null,
             photo_url: input.normalized.photo_url ?? null,
             updated_at: nowIso,
           })),
@@ -1023,6 +1297,9 @@ export async function ensureStudentProfilesBatch(
               name: normalized.name,
               phone: normalized.phone,
               exam_number: normalized.exam_number !== undefined ? normalized.exam_number : student.exam_number,
+              birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
+                ? normalized.birth_date
+                : student.birth_date,
               photo_url: normalized.photo_url !== undefined ? normalized.photo_url : student.photo_url,
               updated_at: nowIso,
             })
@@ -1136,68 +1413,22 @@ export async function syncStudentEnrollmentSnapshotsBatch(
     return []
   }
 
-  const studentMap = new Map(students.map((student) => [student.id, student]))
-  const rows = unwrapSupabaseResult(
-    'studentProfiles.syncEnrollmentSnapshotsBatch.selectEnrollments',
-    await db
+  await Promise.all(students.map(async (student) => {
+    const { error } = await db
       .from('enrollments')
-      .select('id,course_id,student_id,status,gender,region,series,memo,refunded_at,custom_data')
-      .in('student_id', students.map((student) => student.id)),
-  ) as Array<
-    Pick<Enrollment, 'id' | 'course_id' | 'student_id' | 'status' | 'gender' | 'region' | 'series' | 'memo' | 'refunded_at' | 'custom_data'>
-  > | null
-
-  const payloads = (rows ?? [])
-    .map((row) => {
-      const student = row.student_id ? studentMap.get(row.student_id) : null
-      if (!student) {
-        return null
-      }
-
-      return {
-        id: row.id,
-        course_id: row.course_id,
-        student_id: student.id,
+      .update({
         name: student.name,
         phone: student.phone,
         exam_number: student.exam_number,
-        gender: row.gender,
-        region: row.region,
-        series: row.series,
-        status: row.status,
         photo_url: student.photo_url,
-        memo: row.memo,
-        refunded_at: row.refunded_at,
-        custom_data: row.custom_data ?? {},
-      }
-    })
-    .filter((value): value is {
-      id: number
-      course_id: number
-      student_id: number
-      name: string
-      phone: string
-      exam_number: string | null
-      gender: string | null
-      region: string | null
-      series: string | null
-      status: Enrollment['status']
-      photo_url: string | null
-      memo: string | null
-      refunded_at: string | null
-      custom_data: Record<string, string>
-    } => Boolean(value))
+        student_id: student.id,
+      })
+      .eq('student_id', student.id)
 
-  if (payloads.length === 0) {
-    return students
-  }
-
-  unwrapSupabaseResult(
-    'studentProfiles.syncEnrollmentSnapshotsBatch.upsertEnrollments',
-    await db
-      .from('enrollments')
-      .upsert(payloads, { onConflict: 'id' }),
-  )
+    if (error) {
+      throw error
+    }
+  }))
 
   return students
 }
@@ -1243,13 +1474,23 @@ export function mergeEnrollmentStudentSnapshot(row: EnrollmentWithStudentRow): E
 
   const { students, ...enrollment } = row
   void students
+  const mismatchFields = getEnrollmentStudentMismatchFields(enrollment, student)
+  const compatible = mismatchFields.length === 0
+
   return {
     ...enrollment,
     student_id: enrollment.student_id ?? student.id,
-    student_profile: getStudentAuthProfile(student),
-    name: student.name,
-    phone: student.phone,
-    exam_number: student.exam_number,
-    photo_url: student.photo_url,
+    student_profile: {
+      ...getStudentAuthProfile(student),
+      identity_mismatch: !compatible,
+      mismatch_fields: mismatchFields,
+      profile_name: student.name,
+      profile_phone: student.phone,
+      profile_exam_number: student.exam_number,
+    },
+    name: enrollment.name || (compatible ? student.name : enrollment.name),
+    phone: enrollment.phone || (compatible ? student.phone : enrollment.phone),
+    exam_number: enrollment.exam_number ?? (compatible ? student.exam_number : enrollment.exam_number),
+    photo_url: enrollment.photo_url ?? (compatible ? student.photo_url : enrollment.photo_url),
   }
 }

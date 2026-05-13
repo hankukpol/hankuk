@@ -13,7 +13,6 @@ import {
   isDeviceBindingConflictError,
   mapAttendanceDeviceState,
   pickPendingDeviceBinding,
-  shouldPreservePendingDeviceRequest,
   type AttendanceDeviceBindingPolicyRow,
 } from '@/lib/attendance/device-binding-policy'
 import type {
@@ -217,10 +216,80 @@ function normalizeAttendanceDeviceBindingDependencyError(error: unknown) {
 
 type AttendanceDeviceBindingRow = AttendanceDeviceBindingPolicyRow
 const MAX_ATTENDANCE_DEVICE_BINDING_ATTEMPTS = 3
+const AUTO_REPLACED_DEVICE_WARNING_WINDOW_DAYS = 14
+const AUTO_REPLACED_DEVICE_WARNING_THRESHOLD = 2
 
 function sanitizeDeviceUserAgent(value: string | null | undefined) {
   const trimmed = value?.trim() ?? ''
   return trimmed ? trimmed.slice(0, 500) : null
+}
+
+type RecentAutoReplacedDeviceSummary = {
+  count: number
+  lastReplacedAt: string | null
+}
+
+function getEventEnrollmentId(details: unknown) {
+  if (!details || typeof details !== 'object') {
+    return null
+  }
+
+  const value = (details as { enrollment_id?: unknown }).enrollment_id
+  const enrollmentId = Number(value)
+  return Number.isInteger(enrollmentId) && enrollmentId > 0 ? enrollmentId : null
+}
+
+function isAutoReplacedDeviceEvent(details: unknown) {
+  return Boolean(details && typeof details === 'object' && (details as { auto_replaced?: unknown }).auto_replaced === true)
+}
+
+async function listRecentAutoReplacedDeviceSummaries(
+  db: ReturnType<typeof createServerClient>,
+  params: {
+    courseId: number
+    enrollmentIds: number[]
+  },
+) {
+  const summaries = new Map<number, RecentAutoReplacedDeviceSummary>()
+  const targetEnrollmentIds = new Set(params.enrollmentIds)
+
+  if (targetEnrollmentIds.size === 0) {
+    return summaries
+  }
+
+  const sinceIso = new Date(
+    Date.now() - AUTO_REPLACED_DEVICE_WARNING_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString()
+  const response = await db
+    .from('attendance_events')
+    .select('created_at,details')
+    .eq('course_id', params.courseId)
+    .eq('event_type', 'attendance_device_registered')
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: false })
+
+  if (response.error) {
+    return summaries
+  }
+
+  for (const row of (response.data ?? []) as Array<{ created_at?: string | null; details?: unknown }>) {
+    if (!isAutoReplacedDeviceEvent(row.details)) {
+      continue
+    }
+
+    const enrollmentId = getEventEnrollmentId(row.details)
+    if (!enrollmentId || !targetEnrollmentIds.has(enrollmentId)) {
+      continue
+    }
+
+    const current = summaries.get(enrollmentId) ?? { count: 0, lastReplacedAt: null }
+    summaries.set(enrollmentId, {
+      count: current.count + 1,
+      lastReplacedAt: current.lastReplacedAt ?? row.created_at ?? null,
+    })
+  }
+
+  return summaries
 }
 
 function mergeAttendanceDeviceBindingRows(
@@ -346,6 +415,23 @@ export async function listAttendanceDeviceStatesForCourse(
     result.set(enrollmentId, mapAttendanceDeviceState(rows))
   }
 
+  const autoReplaceSummaries = await listRecentAutoReplacedDeviceSummaries(db, {
+    courseId,
+    enrollmentIds: normalizedEnrollmentIds.length > 0
+      ? normalizedEnrollmentIds
+      : [...rowsByEnrollment.keys()],
+  })
+
+  for (const [enrollmentId, summary] of autoReplaceSummaries.entries()) {
+    const state = result.get(enrollmentId) ?? mapAttendanceDeviceState(null)
+    result.set(enrollmentId, {
+      ...state,
+      recent_auto_replaced_count: summary.count,
+      last_auto_replaced_at: summary.lastReplacedAt,
+      auto_replaced_warning: summary.count >= AUTO_REPLACED_DEVICE_WARNING_THRESHOLD,
+    })
+  }
+
   return result
 }
 
@@ -369,7 +455,7 @@ export async function enforceAttendanceDeviceBinding(params: {
   const db = createServerClient()
   const deviceKeyHash = params.deviceKeyHash.trim()
   const nowIso = new Date().toISOString()
-  const resetRequestedUserAgent = sanitizeDeviceUserAgent(params.userAgent)
+  const deviceUserAgent = sanitizeDeviceUserAgent(params.userAgent)
 
   if (!deviceKeyHash) {
     throw new AttendanceServiceError('기기 식별 정보가 올바르지 않습니다.', 400)
@@ -528,35 +614,17 @@ export async function enforceAttendanceDeviceBinding(params: {
     }
 
     const targetBinding = decision.binding
-    if (shouldPreservePendingDeviceRequest(targetBinding, deviceKeyHash)) {
-      await logAttendanceEvent({
-        course_id: params.courseId,
-        event_type: 'attendance_device_rebind_requested',
-        details: {
-          enrollment_id: params.enrollmentId,
-          requested_at: targetBinding.reset_requested_at,
-          registered_count: ownBindings.length,
-          max_registered_count: ATTENDANCE_DEVICE_BINDING_LIMIT,
-          preserved_pending: true,
-        },
-      })
-
-      return {
-        ok: false,
-        code: 'DEVICE_REBIND_REQUIRED',
-        state: mapAttendanceDeviceState(ownBindings),
-      }
-    }
-
-    const nextResetRequestedAt = targetBinding.reset_requested_device_key_hash === deviceKeyHash
-      ? targetBinding.reset_requested_at ?? nowIso
-      : nowIso
     const updateResult = await db
       .from('attendance_device_bindings')
       .update({
-        reset_requested_at: nextResetRequestedAt,
-        reset_requested_device_key_hash: deviceKeyHash,
-        reset_requested_user_agent: resetRequestedUserAgent,
+        device_key_hash: deviceKeyHash,
+        bound_at: nowIso,
+        last_seen_at: nowIso,
+        reset_requested_at: null,
+        reset_requested_device_key_hash: null,
+        reset_requested_user_agent: null,
+        reset_approved_at: null,
+        reset_approved_by: null,
         updated_at: nowIso,
       })
       .eq('id', targetBinding.id)
@@ -573,24 +641,51 @@ export async function enforceAttendanceDeviceBinding(params: {
 
     await logAttendanceEvent({
       course_id: params.courseId,
-      event_type: 'attendance_device_rebind_requested',
+      event_type: 'attendance_device_registered',
       details: {
         enrollment_id: params.enrollmentId,
-        requested_at: nextResetRequestedAt,
         registered_count: ownBindings.length,
         max_registered_count: ATTENDANCE_DEVICE_BINDING_LIMIT,
+        auto_replaced: true,
+        replaced_binding_id: targetBinding.id,
+        replaced_bound_at: targetBinding.bound_at,
+        replaced_last_seen_at: targetBinding.last_seen_at,
+        user_agent: deviceUserAgent,
       },
     })
 
-    const updatedBinding = updateResult.data as AttendanceDeviceBindingRow | null
-    const nextBindings = mergeAttendanceDeviceBindingRows(
+    let nextBindings = mergeAttendanceDeviceBindingRows(
       ownBindings,
-      updatedBinding ? [updatedBinding] : [],
+      updateResult.data ? [updateResult.data as AttendanceDeviceBindingRow] : [],
     )
+    const pendingIdsToClear = ownBindings
+      .filter((row) => row.id !== targetBinding.id && hasPendingDeviceRequest(row))
+      .map((row) => row.id)
+
+    if (pendingIdsToClear.length > 0) {
+      const clearPendingResult = await db
+        .from('attendance_device_bindings')
+        .update({
+          reset_requested_at: null,
+          reset_requested_device_key_hash: null,
+          reset_requested_user_agent: null,
+          updated_at: nowIso,
+        })
+        .in('id', pendingIdsToClear)
+        .select('*')
+
+      if (clearPendingResult.error) {
+        throw normalizeAttendanceDeviceBindingDependencyError(clearPendingResult.error)
+      }
+
+      nextBindings = mergeAttendanceDeviceBindingRows(
+        nextBindings,
+        (clearPendingResult.data ?? []) as AttendanceDeviceBindingRow[],
+      )
+    }
 
     return {
-      ok: false,
-      code: 'DEVICE_REBIND_REQUIRED',
+      ok: true,
       state: mapAttendanceDeviceState(nextBindings),
     }
   }

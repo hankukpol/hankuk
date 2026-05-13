@@ -10,6 +10,7 @@ import {
   ensureStudentProfile,
   getStudentAuthProfile,
   getStudentProfileById,
+  isStudentIdentityConflictError,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
@@ -108,16 +109,26 @@ export async function PATCH(
     || parsed.data.photo_url !== undefined
 
   if (shouldSyncStudent) {
-    let studentResult = await ensureStudentProfile(db, {
-      division,
-      currentStudentId: currentEnrollment.student_id,
-      name: parsed.data.name ?? currentEnrollment.name,
-      phone: parsed.data.phone ?? currentEnrollment.phone,
-      exam_number: parsed.data.exam_number !== undefined
-        ? parsed.data.exam_number
-        : currentEnrollment.exam_number,
-      photo_url: parsed.data.photo_url,
-    })
+    let studentResult: Awaited<ReturnType<typeof ensureStudentProfile>>
+    try {
+      studentResult = await ensureStudentProfile(db, {
+        division,
+        currentStudentId: currentEnrollment.student_id,
+        name: parsed.data.name ?? currentEnrollment.name,
+        phone: parsed.data.phone ?? currentEnrollment.phone,
+        exam_number: parsed.data.exam_number !== undefined
+          ? parsed.data.exam_number
+          : currentEnrollment.exam_number,
+        birth_date: parsed.data.birth_date,
+        photo_url: parsed.data.photo_url,
+      })
+    } catch (error) {
+      if (isStudentIdentityConflictError(error)) {
+        return NextResponse.json({ error: error.message, fields: error.fields }, { status: 409 })
+      }
+
+      throw error
+    }
 
     if (studentResult.changed || studentResult.created) {
       await syncStudentEnrollmentSnapshots(db, studentResult.student)

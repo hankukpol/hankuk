@@ -31,7 +31,7 @@ export type AttendanceDeviceBindingDecision =
     type: 'register'
   }
   | {
-    type: 'request_rebind'
+    type: 'replace'
     binding: AttendanceDeviceBindingPolicyRow
   }
 
@@ -151,7 +151,7 @@ export function getAttendanceDeviceBindingDecision(
   }
 
   return {
-    type: 'request_rebind',
+    type: 'replace',
     binding,
   }
 }

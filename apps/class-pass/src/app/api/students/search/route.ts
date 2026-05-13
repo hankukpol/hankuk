@@ -8,7 +8,7 @@ import type { Course, Enrollment, Student } from '@/types/database'
 
 type SearchStudentRow = Pick<
   Student,
-  'id' | 'name' | 'phone' | 'exam_number' | 'photo_url' | 'updated_at'
+  'id' | 'name' | 'phone' | 'exam_number' | 'birth_date' | 'photo_url' | 'updated_at'
 >
 
 type EnrollmentSearchRow = Pick<
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
   searches.push(
     db
       .from('students')
-      .select('id,name,phone,exam_number,photo_url,updated_at')
+      .select('id,name,phone,exam_number,birth_date,photo_url,updated_at')
       .eq('division', division)
       .ilike('name', `%${escapedQuery}%`)
       .order('updated_at', { ascending: false })
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     searches.push(
       db
         .from('students')
-        .select('id,name,phone,exam_number,photo_url,updated_at')
+        .select('id,name,phone,exam_number,birth_date,photo_url,updated_at')
         .eq('division', division)
         .ilike('exam_number', `%${escapedNormalizedQuery}%`)
         .order('updated_at', { ascending: false })
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
     searches.push(
       db
         .from('students')
-        .select('id,name,phone,exam_number,photo_url,updated_at')
+        .select('id,name,phone,exam_number,birth_date,photo_url,updated_at')
         .eq('division', division)
         .ilike('phone', `%${escapedPhoneQuery}%`)
         .order('updated_at', { ascending: false })
@@ -186,6 +186,7 @@ export async function GET(req: NextRequest) {
         name: student.name,
         phone: student.phone,
         exam_number: student.exam_number,
+        birth_date: student.birth_date,
         photo_url: student.photo_url,
         alreadyEnrolled: courseId
           ? studentEnrollments.some((enrollment) => (

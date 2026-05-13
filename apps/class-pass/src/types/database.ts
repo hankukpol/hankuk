@@ -122,6 +122,11 @@ export interface Enrollment {
     id: number
     birth_date: string | null
     auth_method: StudentAuthMethod | null
+    identity_mismatch?: boolean
+    mismatch_fields?: string[]
+    profile_name?: string | null
+    profile_phone?: string | null
+    profile_exam_number?: string | null
   } | null
   name: string
   phone: string
@@ -171,6 +176,9 @@ export interface AttendanceDeviceState {
   last_seen_at: string | null
   reset_requested_at: string | null
   reset_requested_user_agent: string | null
+  recent_auto_replaced_count?: number
+  last_auto_replaced_at?: string | null
+  auto_replaced_warning?: boolean
 }
 
 export interface SeatAssignment {

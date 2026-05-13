@@ -1450,6 +1450,11 @@ export default function CourseStudentsPage({
       return
     }
 
+    if (!/^\d{6}$/.test(createForm.birth_date)) {
+      setError('생년월일 6자리를 입력해 주세요.')
+      return
+    }
+
     const paymentPayload = normalizePaymentSectionPayload(createPaymentForm)
     const isZeroAmountBilling = !paymentPayload.tuitionExempt
       && paymentPayload.expectedAmount === 0

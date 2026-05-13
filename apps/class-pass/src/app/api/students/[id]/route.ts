@@ -6,6 +6,7 @@ import {
   applyStudentBirthDate,
   getStudentAuthProfile,
   getStudentProfileById,
+  isStudentIdentityConflictError,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
@@ -60,6 +61,10 @@ export async function PATCH(
       },
     })
   } catch (error) {
+    if (isStudentIdentityConflictError(error)) {
+      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 409 })
+    }
+
     return handleRouteError('students.[id].PATCH', '학생 정보를 수정하지 못했습니다.', error)
   }
 }

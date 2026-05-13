@@ -1013,6 +1013,7 @@ async function listExistingPaymentRegistrations(
       .eq('course_id', courseId)
       .eq('name', name)
       .eq('phone', phone)
+      .is('student_id', null)
       .order('created_at', { ascending: false }),
   ])
 
@@ -1051,11 +1052,16 @@ export async function createEnrollmentForPayment(
     throw createPaymentError('강좌를 찾을 수 없습니다.', 404)
   }
 
+  if (!input.birthDate) {
+    throw createPaymentError('birthDate is required to identify a student safely.', 400)
+  }
+
   const matchedStudent = await findMatchingStudentProfile(db, {
     division: tenantDivision,
     name: input.name,
     phone: input.phone,
     exam_number: input.examNumber,
+    birth_date: input.birthDate,
   })
 
   const studentResult = await ensureStudentProfile(db, {
@@ -1064,6 +1070,7 @@ export async function createEnrollmentForPayment(
     name: input.name,
     phone: input.phone,
     exam_number: input.examNumber,
+    birth_date: input.birthDate,
   })
 
   if (studentResult.changed || studentResult.created) {

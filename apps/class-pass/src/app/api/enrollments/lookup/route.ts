@@ -10,7 +10,7 @@ import {
   resetRateLimit,
 } from '@/lib/auth/rateLimiter'
 import { listStudentCoursesForStudent } from '@/lib/class-pass-data'
-import { findMatchingStudentProfile } from '@/lib/student-profiles'
+import { findMatchingStudentProfile, isStudentIdentityConflictError } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { normalizeName, normalizePhone } from '@/lib/utils'
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
       division,
       name: normalizeName(parsed.data.name),
       phone: normalizePhone(parsed.data.phone),
+      birth_date: parsed.data.verificationCode,
     })
 
     if (!student) {
@@ -78,7 +79,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '인증번호가 일치하지 않습니다.' }, { status: 401 })
     }
 
-    const courses = await listStudentCoursesForStudent(division, student.id)
+    const courses = await listStudentCoursesForStudent(division, student.id, {
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+    })
     if (courses.length === 0) {
       return NextResponse.json({ error: '일치하는 수강 이력을 찾지 못했습니다.' }, { status: 404 })
     }
@@ -86,6 +90,14 @@ export async function POST(req: NextRequest) {
     await resetRateLimit(rateLimitKey)
     return NextResponse.json({ courses })
   } catch (error) {
+    if (isStudentIdentityConflictError(error)) {
+      await recordRateLimitFailure(`lookup:${getClientIp(req)}`)
+      return NextResponse.json(
+        { error: '동명이인 확인이 필요합니다. 이름, 연락처, 생년월일 6자리를 정확히 입력해 주세요.' },
+        { status: 409 },
+      )
+    }
+
     return handleRouteError('enrollments.lookup.POST', '수강 정보를 조회하지 못했습니다.', error)
   }
 }

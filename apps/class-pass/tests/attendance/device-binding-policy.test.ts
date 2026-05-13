@@ -106,7 +106,7 @@ describe('attendance device binding policy', () => {
     assert.equal(shouldPreservePendingDeviceRequest(bindings[1], 'new-hash'), true)
   })
 
-  it('picks the oldest active binding when a fourth device needs admin approval', () => {
+  it('picks the oldest active binding when a fourth device should auto-replace a slot', () => {
     const bindings = [
       row({ id: 1, last_seen_at: '2026-04-30T10:01:00.000Z' }),
       row({ id: 2, last_seen_at: '2026-04-30T10:03:00.000Z' }),
@@ -116,7 +116,7 @@ describe('attendance device binding policy', () => {
     assert.equal(pickDeviceBindingForNewRequest(bindings, 'new-hash')?.id, 1)
   })
 
-  it('preserves an existing pending request when a different new device retries', () => {
+  it('picks an existing pending request slot for automatic replacement', () => {
     const pending = row({
       reset_requested_at: '2026-04-30T10:05:00.000Z',
       reset_requested_device_key_hash: 'pending-hash',
@@ -130,13 +130,13 @@ describe('attendance device binding policy', () => {
     assert.equal(shouldPreservePendingDeviceRequest(pending, 'another-hash'), true)
     assert.equal(shouldPreservePendingDeviceRequest(pending, 'pending-hash'), false)
     assert.equal(shouldPreservePendingDeviceRequest(row(), 'another-hash'), false)
-    assert.equal(decision.type, 'request_rebind')
-    if (decision.type === 'request_rebind') {
+    assert.equal(decision.type, 'replace')
+    if (decision.type === 'replace') {
       assert.equal(decision.binding.id, pending.id)
     }
   })
 
-  it('decides whether to touch, register, or request rebind', () => {
+  it('decides whether to touch, register, or replace a full device set', () => {
     assert.equal(getAttendanceDeviceBindingDecision([], 'new-hash').type, 'register')
     assert.equal(
       getAttendanceDeviceBindingDecision([row({ id: 1 }), row({ id: 2 })], 'new-hash').type,
@@ -146,11 +146,11 @@ describe('attendance device binding policy', () => {
     const touch = getAttendanceDeviceBindingDecision([row({ id: 1, device_key_hash: 'known' })], 'known')
     assert.equal(touch.type, 'touch')
 
-    const requestRebind = getAttendanceDeviceBindingDecision(
+    const replace = getAttendanceDeviceBindingDecision(
       [row({ id: 1 }), row({ id: 2 }), row({ id: 3 })],
       'new-hash',
     )
-    assert.equal(requestRebind.type, 'request_rebind')
+    assert.equal(replace.type, 'replace')
   })
 
   it('recognizes database uniqueness and limit conflicts', () => {

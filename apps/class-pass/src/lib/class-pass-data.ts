@@ -1094,29 +1094,7 @@ export async function listStudentCourses(
       .limit(20),
   ) as Array<Pick<Student, 'id' | 'name'>> | null
 
-  let matchedStudentIds = (exactStudentRows ?? []).map((row) => row.id)
-
-  if (matchedStudentIds.length === 0) {
-    const phoneCandidateRows = unwrapSupabaseResult(
-      'listStudentCourses.studentsByPhoneLimited',
-      await db
-        .from('students')
-        .select('id,name')
-        .eq('division', division)
-        .eq('phone', normalizedPhone)
-        .order('updated_at', { ascending: false })
-        .order('id')
-        .limit(2),
-    ) as Array<Pick<Student, 'id' | 'name'>> | null
-
-    const matchedByName = (phoneCandidateRows ?? [])
-      .filter((row) => normalizeName(row.name) === normalizedName)
-      .map((row) => row.id)
-
-    matchedStudentIds = matchedByName.length > 0
-      ? matchedByName
-      : (phoneCandidateRows?.length === 1 ? [phoneCandidateRows[0].id] : [])
-  }
+  const matchedStudentIds = (exactStudentRows ?? []).map((row) => row.id)
 
   let enrollmentRows: Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>> = []
 
@@ -1159,19 +1137,26 @@ export async function listStudentCourses(
 export async function listStudentCoursesForStudent(
   division: TenantType,
   studentId: number,
+  identity?: { name?: string | null; phone?: string | null },
 ): Promise<PassCourseSummary[]> {
   const db = createServerClient()
+  const normalizedName = identity?.name ? normalizeName(identity.name) : null
+  const normalizedPhone = identity?.phone ? normalizePhone(identity.phone) : null
   const enrollments = unwrapSupabaseResult(
     'listStudentCoursesForStudent.enrollments',
     await db
       .from('enrollments')
-      .select('id,course_id,status,suspended_at,courses!inner(id,division)')
+      .select('id,course_id,name,phone,status,suspended_at,courses!inner(id,division)')
       .eq('student_id', studentId)
       .eq('courses.division', division)
       .eq('status', 'active'),
   )
 
-  const enrollmentRows = (enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>>
+  const enrollmentRows = ((enrollments ?? []) as Array<Pick<Enrollment, 'id' | 'course_id' | 'name' | 'phone' | 'status' | 'suspended_at'>>)
+    .filter((row) => (
+      (!normalizedName || normalizeName(row.name) === normalizedName)
+      && (!normalizedPhone || normalizePhone(row.phone) === normalizedPhone)
+    ))
   const courseIds = Array.from(new Set(enrollmentRows.map((row) => row.course_id)))
 
   if (courseIds.length === 0) {

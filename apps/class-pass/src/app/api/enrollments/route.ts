@@ -29,6 +29,7 @@ import {
   getStudentAuthProfile,
   getStudentProfileById,
   initializeStudentAuth,
+  isStudentIdentityConflictError,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
@@ -211,6 +212,7 @@ async function listExistingCourseRegistrations(
       .eq('course_id', courseId)
       .eq('name', name)
       .eq('phone', phone)
+      .is('student_id', null)
       .order('created_at', { ascending: false }),
   ])
 
@@ -303,6 +305,10 @@ export async function GET(req: NextRequest) {
       summary,
     })
   } catch (error) {
+    if (isStudentIdentityConflictError(error)) {
+      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 409 })
+    }
+
     return handleRouteError('enrollments.GET', '수강생 목록을 불러오지 못했습니다.', error)
   }
 }
@@ -380,11 +386,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '선택한 수강생을 찾을 수 없습니다.' }, { status: 404 })
     }
 
+    if (!selectedStudent && !parsed.data.birth_date) {
+      return NextResponse.json({ error: 'birth_date is required to identify a student safely.' }, { status: 400 })
+    }
+
     const matchedStudent = selectedStudent ?? await findMatchingStudentProfile(db, {
       division,
       name: parsed.data.name,
       phone: parsed.data.phone,
       exam_number: parsed.data.exam_number,
+      birth_date: parsed.data.birth_date,
       photo_url: parsed.data.photo_url,
     })
 
@@ -396,6 +407,7 @@ export async function POST(req: NextRequest) {
         name: parsed.data.name,
         phone: parsed.data.phone,
         exam_number: parsed.data.exam_number,
+        birth_date: parsed.data.birth_date,
         photo_url: parsed.data.photo_url,
       })
 
@@ -584,6 +596,10 @@ export async function POST(req: NextRequest) {
       },
     )
   } catch (error) {
+    if (isStudentIdentityConflictError(error)) {
+      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 409 })
+    }
+
     return handleRouteError('enrollments.POST', '수강생을 생성하지 못했습니다.', error)
   }
 }

@@ -9,6 +9,7 @@ import { getCourseById } from '@/lib/class-pass-data'
 import {
   ensureStudentProfilesBatch,
   initializeStudentAuthBatch,
+  isStudentIdentityConflictError,
   syncStudentEnrollmentSnapshotsBatch,
   type EnsureStudentProfileResult,
 } from '@/lib/student-profiles'
@@ -70,6 +71,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '붙여넣기 텍스트에서 유효한 수강생을 찾지 못했습니다.' }, { status: 400 })
   }
 
+  const rowsMissingBirthDate = rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !row.birth_date)
+  if (rowsMissingBirthDate.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'birth_date is required for every imported student.',
+        rows: rowsMissingBirthDate.slice(0, 20).map(({ row, index }) => ({
+          rowNumber: index + 1,
+          name: row.name,
+          phoneLast4: normalizePhone(row.phone).slice(-4),
+          examNumber: row.exam_number ?? null,
+        })),
+      },
+      { status: 400 },
+    )
+  }
+
   const db = createServerClient()
   const existingEnrollments = (
     await db
@@ -85,7 +104,6 @@ export async function POST(req: NextRequest) {
   const existingRows = (existingEnrollments.data ?? []) as ExistingEnrollmentRow[]
   const existingByStudentId = new Map<number, ExistingEnrollmentRow>()
   const existingByExamNumber = new Map<string, ExistingEnrollmentRow>()
-  const existingByPhoneName = new Map<string, ExistingEnrollmentRow>()
 
   for (const enrollment of existingRows) {
     if (enrollment.student_id != null) {
@@ -96,12 +114,6 @@ export async function POST(req: NextRequest) {
     if (examNumber && !existingByExamNumber.has(examNumber)) {
       existingByExamNumber.set(examNumber, enrollment)
     }
-
-    const phone = normalizePhone(enrollment.phone)
-    const phoneNameKey = `${phone}::${normalizeName(enrollment.name)}`
-    if (phone && !existingByPhoneName.has(phoneNameKey)) {
-      existingByPhoneName.set(phoneNameKey, enrollment)
-    }
   }
 
   const latestRowByKey = new Map<string, (typeof rows)[number]>()
@@ -110,22 +122,49 @@ export async function POST(req: NextRequest) {
   for (const row of rows) {
     const key = row.exam_number?.trim()
       ? `exam:${normalizeExamNumber(row.exam_number)}`
-      : `phone:${normalizePhone(row.phone)}::${normalizeName(row.name)}`
+      : `identity:${normalizePhone(row.phone)}::${normalizeName(row.name)}::${row.birth_date ?? ''}`
+
+    const existing = latestRowByKey.get(key)
+    if (
+      existing
+      && (
+        normalizeName(existing.name) !== normalizeName(row.name)
+        || normalizePhone(existing.phone) !== normalizePhone(row.phone)
+        || (existing.birth_date ?? null) !== (row.birth_date ?? null)
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: 'Duplicate import rows use the same exam number with different name, phone, or birth date.',
+        },
+        { status: 409 },
+      )
+    }
 
     latestRowByKey.set(key, row)
   }
 
-  const studentResults = await ensureStudentProfilesBatch(
-    db,
-    Array.from(latestRowByKey.entries()).map(([key, row]) => ({
-      key,
-      division,
-      name: row.name,
-      phone: row.phone,
-      exam_number: row.exam_number,
-      photo_url: row.photo_url,
-    })),
-  )
+  let studentResults: Awaited<ReturnType<typeof ensureStudentProfilesBatch>>
+  try {
+    studentResults = await ensureStudentProfilesBatch(
+      db,
+      Array.from(latestRowByKey.entries()).map(([key, row]) => ({
+        key,
+        division,
+        name: row.name,
+        phone: row.phone,
+        exam_number: row.exam_number,
+        birth_date: row.birth_date,
+        photo_url: row.photo_url,
+      })),
+    )
+  } catch (error) {
+    if (isStudentIdentityConflictError(error)) {
+      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 409 })
+    }
+
+    throw error
+  }
 
   const authSetup = await initializeStudentAuthBatch(
     db,
@@ -174,11 +213,9 @@ export async function POST(req: NextRequest) {
   for (const resolved of latestRowByStudentId.values()) {
     const student = resolved.student
     const examNumber = normalizeExamNumber(student.exam_number)
-    const phone = normalizePhone(student.phone)
     const current =
       existingByStudentId.get(student.id)
       ?? (examNumber ? existingByExamNumber.get(examNumber) : null)
-      ?? existingByPhoneName.get(`${phone}::${normalizeName(student.name)}`)
     const explicitSeriesOption = resolved.series
       ? await resolveBranchSeriesOption({ label: resolved.series })
       : null

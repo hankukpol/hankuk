@@ -84,6 +84,11 @@ function isEnrollmentGenderHeader(value: string) {
   return normalized === '성별' || normalized === '남녀' || normalized === '남여' || normalized === 'gender'
 }
 
+function isEnrollmentSeriesHeader(value: string) {
+  const normalized = normalizeHeaderLabel(value)
+  return normalized === '직렬' || normalized === 'series'
+}
+
 function normalizeKnownGender(value: string) {
   const gender = normalizeGenderLabel(value)
   return gender === '남' || gender === '여' ? gender : undefined
@@ -147,6 +152,7 @@ type EnrollmentHeaderMap = {
   phone?: number
   birthDate?: number
   gender?: number
+  series?: number
 }
 
 function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
@@ -158,6 +164,7 @@ function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
     else if (isEnrollmentPhoneHeader(cell)) map.phone = index
     else if (isEnrollmentBirthDateHeader(cell)) map.birthDate = index
     else if (isEnrollmentGenderHeader(cell)) map.gender = index
+    else if (isEnrollmentSeriesHeader(cell)) map.series = index
   })
 
   return map.name !== undefined && map.phone !== undefined ? map : null
@@ -165,7 +172,7 @@ function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
 
 /**
  * Parse bulk enrollment text.
- * Column order: 수험번호, 이름, 연락처, ...customFieldKeys
+ * Column order: 기수, 수험번호, 이름, 연락처, 생년월일, 성별, 직렬, ...customFieldKeys
  */
 export function parseEnrollmentBulkText(
   input: string,
@@ -188,6 +195,7 @@ export function parseEnrollmentBulkText(
           exam_number: headerMap.exam !== undefined ? normalizeExamNumber(cells[headerMap.exam] ?? '') || undefined : undefined,
           birth_date: headerMap.birthDate !== undefined ? normalizeBirthDate(cells[headerMap.birthDate] ?? '') ?? undefined : undefined,
           gender: headerMap.gender !== undefined ? normalizeGender(cells[headerMap.gender] ?? '') : undefined,
+          series: headerMap.series !== undefined ? normalizeName(cells[headerMap.series] ?? '') || undefined : undefined,
           name: normalizeName(cells[headerMap.name ?? -1] ?? ''),
           phone: normalizePhone(cells[headerMap.phone ?? -1] ?? ''),
         }
@@ -253,11 +261,17 @@ export function parseEnrollmentBulkText(
         customValues.shift()
       }
 
+      const series = customValues[0]?.trim() || undefined
+      if (series) {
+        customValues.shift()
+      }
+
       const row: ParsedEnrollmentRow = {
         cohort_label: cohortLabel,
         exam_number: examNumber,
         birth_date: birthDate,
         gender,
+        series,
         name: normalizeName(cells[nameIndex] ?? ''),
         phone: normalizePhone(cells[phoneIndex] ?? ''),
       }

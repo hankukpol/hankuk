@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { verifyCourseOwnership } from '@/lib/class-pass-data'
+import { normalizeGenderLabel } from '@/lib/gender'
 import { attachCohortLabelsToStudents } from '@/lib/student-cohorts'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -16,7 +17,16 @@ type SearchStudentRow = Pick<
 
 type EnrollmentSearchRow = Pick<
   Enrollment,
-  'id' | 'student_id' | 'course_id' | 'status' | 'created_at'
+  | 'id'
+  | 'student_id'
+  | 'course_id'
+  | 'gender'
+  | 'series_option_id'
+  | 'series_group'
+  | 'series'
+  | 'student_type'
+  | 'status'
+  | 'created_at'
 > & {
   courses?: Pick<Course, 'id' | 'name' | 'division'> | Array<Pick<Course, 'id' | 'name' | 'division'>> | null
 }
@@ -156,7 +166,7 @@ export async function GET(req: NextRequest) {
   const studentIds = students.map((student) => student.id)
   const { data: enrollmentRows, error: enrollmentError } = await db
     .from('enrollments')
-    .select('id,student_id,course_id,status,created_at,courses!inner(id,name,division)')
+    .select('id,student_id,course_id,gender,series_option_id,series_group,series,student_type,status,created_at,courses!inner(id,name,division)')
     .in('student_id', studentIds)
     .eq('courses.division', division)
     .order('created_at', { ascending: false })
@@ -167,9 +177,15 @@ export async function GET(req: NextRequest) {
   }
 
   const enrollmentByStudentId = new Map<number, EnrollmentSearchRow[]>()
+  const genderByStudentId = new Map<number, string>()
   for (const row of (enrollmentRows ?? []) as EnrollmentSearchRow[]) {
     if (!row.student_id) {
       continue
+    }
+
+    const gender = normalizeGenderLabel(row.gender)
+    if (gender && !genderByStudentId.has(row.student_id)) {
+      genderByStudentId.set(row.student_id, gender)
     }
 
     enrollmentByStudentId.set(row.student_id, [
@@ -193,6 +209,11 @@ export async function GET(req: NextRequest) {
         cohort_label: student.cohort_label ?? null,
         birth_date: student.birth_date,
         photo_url: student.photo_url,
+        gender: genderByStudentId.get(student.id) ?? null,
+        series_option_id: latestEnrollment?.series_option_id ?? null,
+        series_group: latestEnrollment?.series_group ?? null,
+        series: latestEnrollment?.series ?? null,
+        student_type: latestEnrollment?.student_type ?? null,
         alreadyEnrolled: courseId
           ? studentEnrollments.some((enrollment) => (
             enrollment.course_id === courseId && enrollment.status === 'active'
@@ -203,6 +224,11 @@ export async function GET(req: NextRequest) {
             id: latestEnrollment.id,
             courseId: latestEnrollment.course_id,
             courseName: latestCourse.name,
+            gender: normalizeGenderLabel(latestEnrollment.gender) || null,
+            series_option_id: latestEnrollment.series_option_id ?? null,
+            series_group: latestEnrollment.series_group ?? null,
+            series: latestEnrollment.series ?? null,
+            student_type: latestEnrollment.student_type ?? null,
             status: latestEnrollment.status,
             createdAt: latestEnrollment.created_at,
           }

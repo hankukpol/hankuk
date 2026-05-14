@@ -33,10 +33,12 @@ import {
   deleteStudentIfOrphaned,
   ensureStudentProfile,
   findMatchingStudentProfile,
+  getLatestStudentEnrollmentGender,
   getStudentAuthProfile,
   getStudentProfileById,
   initializeStudentAuth,
   isStudentIdentityConflictError,
+  syncStudentEnrollmentSharedDetails,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
@@ -469,13 +471,15 @@ export async function POST(req: NextRequest) {
     }
 
     const refundedRegistration = existingRegistrations.find((entry) => entry.status === 'refunded') ?? null
+    const enrollmentGender = parsed.data.gender
+      || await getLatestStudentEnrollmentGender(db, student.id, division)
     const enrollmentPayload = {
       course_id: parsed.data.courseId,
       student_id: student.id,
       name: student.name,
       phone: student.phone,
       exam_number: student.exam_number,
-      gender: parsed.data.gender || null,
+      gender: enrollmentGender,
       region: parsed.data.region || null,
       series_option_id: seriesOption?.id ?? null,
       series_group: seriesOption?.group_key ?? 'public',
@@ -610,6 +614,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    await syncStudentEnrollmentSharedDetails(db, student.id, {
+      ...(enrollmentGender ? { gender: enrollmentGender } : {}),
+      series_option_id: enrollmentPayload.series_option_id,
+      series_group: enrollmentPayload.series_group,
+      series: enrollmentPayload.series,
+      student_type: parsed.data.student_type,
+    })
     await invalidateCache('enrollments')
     if (textbookIds.length > 0) {
       await invalidateCache('materials')

@@ -29,10 +29,12 @@ import {
   deleteStudentIfOrphaned,
   ensureStudentProfile,
   findMatchingStudentProfile,
+  getLatestStudentEnrollmentGender,
   getStudentAuthProfile,
   getStudentProfileById,
   initializeStudentAuth,
   isStudentIdentityConflictError,
+  syncStudentEnrollmentSharedDetails,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
@@ -619,11 +621,13 @@ export async function POST(req: NextRequest) {
     const actorStaffId = getActorStaffId(auth.payload)
     const hasBillablePayment = registrationPaymentAllocations.some((allocation) => allocation.length > 0)
     const checkoutGroupId = hasBillablePayment ? randomUUID() : null
+    const enrollmentGender = parsed.data.gender
+      || await getLatestStudentEnrollmentGender(db, student.id, division)
     const studentSnapshot = {
       name: student.name,
       phone: student.phone,
       examNumber: student.exam_number,
-      gender: parsed.data.gender || null,
+      gender: enrollmentGender,
       region: parsed.data.region || null,
       seriesOptionId: seriesOption?.id ?? null,
       seriesGroup: seriesOption?.group_key ?? 'public',
@@ -703,6 +707,13 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      await syncStudentEnrollmentSharedDetails(db, student.id, {
+        ...(enrollmentGender ? { gender: enrollmentGender } : {}),
+        series_option_id: seriesOption?.id ?? null,
+        series_group: seriesOption?.group_key ?? 'public',
+        series: seriesOption?.label ?? parsed.data.series ?? '怨듭콈',
+        student_type: parsed.data.student_type,
+      })
       if (studentResult.changed || studentResult.created) {
         await syncStudentEnrollmentSnapshots(db, student)
       }

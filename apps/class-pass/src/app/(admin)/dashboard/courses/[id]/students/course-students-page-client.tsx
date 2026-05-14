@@ -89,11 +89,21 @@ type StudentSearchResult = {
   cohort_label: string | null
   birth_date: string | null
   photo_url: string | null
+  gender: string | null
+  series_option_id: number | null
+  series_group: Enrollment['series_group'] | null
+  series: string | null
+  student_type: EnrollmentStudentType | null
   alreadyEnrolled: boolean
   latestEnrollment: {
     id: number
     courseId: number
     courseName: string
+    gender: string | null
+    series_option_id: number | null
+    series_group: Enrollment['series_group'] | null
+    series: string | null
+    student_type: EnrollmentStudentType | null
     status: Enrollment['status']
     createdAt: string
   } | null
@@ -740,7 +750,13 @@ export default function CourseStudentsPage({
       exam_number: student.exam_number ?? '',
       cohort_number: cohortLabelToNumberString(student.cohort_label),
       birth_date: student.birth_date ?? '',
-      gender: '',
+      gender: normalizeGenderLabel(student.gender ?? student.latestEnrollment?.gender),
+      series_option_id: student.series_option_id
+        ?? student.latestEnrollment?.series_option_id
+        ?? current.series_option_id,
+      student_type: student.student_type
+        ?? student.latestEnrollment?.student_type
+        ?? current.student_type,
     }))
     setStudentLookupError('')
   }
@@ -2404,13 +2420,13 @@ export default function CourseStudentsPage({
         <form onSubmit={handleBulkImport} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
           <p className="mt-1 text-xs text-slate-500">
-            탭 구분 · 순서: <span className="font-semibold text-slate-700">기수, 학번, 이름, 연락처, 생년월일, 성별{customFields.map((f) => `, ${f.label}`).join('')}</span>
+            탭 구분 · 순서: <span className="font-semibold text-slate-700">기수, 학번, 이름, 연락처, 생년월일, 성별, 직렬</span>
           </p>
           <textarea
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             rows={6}
-            placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\n51\tA-002\t김소방\t01087654321\t990704\t여`}
+            placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\t공채\n51\tA-002\t김소방\t01087654321\t990704\t여\t경채`}
             className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-slate-400"
           />
           <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>

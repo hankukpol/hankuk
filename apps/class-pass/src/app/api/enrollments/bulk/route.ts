@@ -11,6 +11,7 @@ import {
   ensureStudentProfilesBatch,
   initializeStudentAuthBatch,
   isStudentIdentityConflictError,
+  syncStudentEnrollmentSharedDetailsBatch,
   syncStudentEnrollmentSnapshotsBatch,
   type EnsureStudentProfileResult,
 } from '@/lib/student-profiles'
@@ -244,6 +245,10 @@ export async function POST(req: NextRequest) {
 
   const updates: Array<Record<string, unknown>> = []
   const inserts: Array<Record<string, unknown>> = []
+  const sharedDetailsEntries: Array<{
+    studentId: number
+    details: Parameters<typeof syncStudentEnrollmentSharedDetailsBatch>[1][number]['details']
+  }> = []
   const defaultSeriesOption = await resolveBranchSeriesOption()
 
   for (const resolved of latestRowByStudentId.values()) {
@@ -268,6 +273,20 @@ export async function POST(req: NextRequest) {
       series: explicitSeriesOption?.label ?? current?.series ?? defaultSeriesOption?.label ?? '공채',
       photo_url: student.photo_url,
       custom_data: resolved.custom_data ?? current?.custom_data ?? {},
+    }
+    const sharedDetails: Parameters<typeof syncStudentEnrollmentSharedDetailsBatch>[1][number]['details'] = {
+      ...(resolved.gender !== undefined ? { gender: resolved.gender ?? null } : {}),
+      ...(explicitSeriesOption ? {
+        series_option_id: explicitSeriesOption.id,
+        series_group: explicitSeriesOption.group_key,
+        series: explicitSeriesOption.label,
+      } : {}),
+    }
+    if (Object.keys(sharedDetails).length > 0) {
+      sharedDetailsEntries.push({
+        studentId: student.id,
+        details: sharedDetails,
+      })
     }
 
     if (current) {
@@ -315,6 +334,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }
   }
+
+  await syncStudentEnrollmentSharedDetailsBatch(db, sharedDetailsEntries)
 
   await invalidateCache('enrollments')
   return NextResponse.json(

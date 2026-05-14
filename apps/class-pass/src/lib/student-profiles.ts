@@ -4,6 +4,7 @@ import { generateStudentPin } from '@/lib/auth/pin'
 import { createServerClient } from '@/lib/supabase/server'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import type { Course, Enrollment, Student } from '@/types/database'
+import { normalizeGenderLabel } from '@/lib/gender'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 
 type DbClient = ReturnType<typeof createServerClient>
@@ -1485,6 +1486,152 @@ export async function syncStudentEnrollmentSnapshotsBatch(
   }))
 
   return students
+}
+
+export async function getLatestStudentEnrollmentGender(
+  db: DbClient,
+  studentId: number | null | undefined,
+  division?: TenantType,
+) {
+  if (!studentId) {
+    return null
+  }
+
+  let query = db
+    .from('enrollments')
+    .select('gender,created_at,courses!inner(division)')
+    .eq('student_id', studentId)
+    .not('gender', 'is', null)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(10)
+
+  if (division) {
+    query = query.eq('courses.division', division)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    throw error
+  }
+
+  for (const row of data ?? []) {
+    const gender = normalizeGenderLabel(row.gender)
+    if (gender) {
+      return gender
+    }
+  }
+
+  return null
+}
+
+export type StudentEnrollmentSharedDetailsInput = {
+  gender?: string | null
+  series_option_id?: number | null
+  series_group?: Enrollment['series_group'] | null
+  series?: string | null
+  student_type?: Enrollment['student_type'] | null
+}
+
+function buildStudentEnrollmentSharedDetailsPayload(details: StudentEnrollmentSharedDetailsInput) {
+  const payload: Record<string, unknown> = {}
+
+  if (hasOwnField(details, 'gender')) {
+    payload.gender = normalizeGenderLabel(details.gender) || null
+  }
+  if (hasOwnField(details, 'series_option_id')) {
+    payload.series_option_id = details.series_option_id ?? null
+  }
+  if (hasOwnField(details, 'series_group')) {
+    payload.series_group = details.series_group ?? null
+  }
+  if (hasOwnField(details, 'series')) {
+    payload.series = details.series?.trim() || null
+  }
+  if (hasOwnField(details, 'student_type') && details.student_type) {
+    payload.student_type = details.student_type
+  }
+
+  return payload
+}
+
+export async function syncStudentEnrollmentSharedDetails(
+  db: DbClient,
+  studentId: number | null | undefined,
+  details: StudentEnrollmentSharedDetailsInput,
+) {
+  if (!studentId) {
+    return null
+  }
+
+  const payload = buildStudentEnrollmentSharedDetailsPayload(details)
+  if (Object.keys(payload).length === 0) {
+    return null
+  }
+
+  const { error } = await db
+    .from('enrollments')
+    .update(payload)
+    .eq('student_id', studentId)
+
+  if (error) {
+    throw error
+  }
+
+  return payload
+}
+
+export async function syncStudentEnrollmentSharedDetailsBatch(
+  db: DbClient,
+  entries: Array<{
+    studentId: number | null | undefined
+    details: StudentEnrollmentSharedDetailsInput
+  }>,
+) {
+  const detailsByStudentId = new Map<number, StudentEnrollmentSharedDetailsInput>()
+
+  for (const entry of entries) {
+    if (!entry.studentId) {
+      continue
+    }
+
+    const payload = buildStudentEnrollmentSharedDetailsPayload(entry.details)
+    if (Object.keys(payload).length === 0) {
+      continue
+    }
+
+    detailsByStudentId.set(entry.studentId, {
+      ...(detailsByStudentId.get(entry.studentId) ?? {}),
+      ...entry.details,
+    })
+  }
+
+  await Promise.all(Array.from(detailsByStudentId.entries()).map(async ([studentId, details]) => {
+    await syncStudentEnrollmentSharedDetails(db, studentId, details)
+  }))
+
+  return detailsByStudentId
+}
+
+export async function syncStudentEnrollmentGenderSnapshots(
+  db: DbClient,
+  studentId: number | null | undefined,
+  gender: string | null | undefined,
+) {
+  return syncStudentEnrollmentSharedDetails(db, studentId, { gender })
+}
+
+export async function syncStudentEnrollmentGenderSnapshotsBatch(
+  db: DbClient,
+  entries: Array<{ studentId: number | null | undefined; gender: string | null | undefined }>,
+) {
+  return syncStudentEnrollmentSharedDetailsBatch(
+    db,
+    entries.map((entry) => ({
+      studentId: entry.studentId,
+      details: { gender: entry.gender },
+    })),
+  )
 }
 
 export async function deleteStudentIfOrphaned(

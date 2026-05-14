@@ -17,6 +17,7 @@ import {
   getStudentAuthProfile,
   getStudentProfileById,
   isStudentIdentityConflictError,
+  syncStudentEnrollmentSharedDetails,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
@@ -237,6 +238,23 @@ export async function PATCH(
 
   if (!data) {
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
+  }
+
+  const sharedDetails = {
+    ...(parsed.data.gender !== undefined ? { gender: parsed.data.gender || null } : {}),
+    ...('series_option_id' in payload ? {
+      series_option_id: payload.series_option_id as number | null,
+      series_group: payload.series_group as Enrollment['series_group'] | null,
+      series: payload.series as string | null,
+    } : {}),
+    ...(parsed.data.student_type !== undefined ? { student_type: parsed.data.student_type } : {}),
+  }
+  if (Object.keys(sharedDetails).length > 0) {
+    await syncStudentEnrollmentSharedDetails(
+      db,
+      (data as Enrollment).student_id ?? currentEnrollment.student_id,
+      sharedDetails,
+    )
   }
 
   await invalidateCache('enrollments')

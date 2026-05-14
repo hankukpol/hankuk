@@ -35,7 +35,7 @@ type MaterialQueryOptions = { activeOnly?: boolean; materialType?: MaterialType 
 type MaterialSnapshot = Pick<Material, 'id' | 'course_id' | 'material_type'>
 type AttendanceSummaryRow = AttendanceHistoryEntry
 type StudentCourseAccessContext = { course: Course; enrollment: Enrollment }
-type CourseEnrollmentCountRow = Pick<Enrollment, 'course_id' | 'status' | 'suspended_at'>
+type CourseEnrollmentCountRow = Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>
 const ENROLLMENT_FETCH_CHUNK_SIZE = 1000
 
 export type StudentPassLookupResult =
@@ -64,16 +64,28 @@ async function attachCourseEnrollmentCounts(courses: Course[]) {
   }
 
   const db = createServerClient()
-  const rows = unwrapSupabaseResult(
-    'attachCourseEnrollmentCounts',
-    await db
-      .from('enrollments')
-      .select('course_id,status,suspended_at')
-      .in('course_id', courses.map((course) => course.id)),
-  ) as CourseEnrollmentCountRow[] | null
+  const rows: CourseEnrollmentCountRow[] = []
+  const courseIds = courses.map((course) => course.id)
+
+  for (let offset = 0; ; offset += ENROLLMENT_FETCH_CHUNK_SIZE) {
+    const page = unwrapSupabaseResult(
+      'attachCourseEnrollmentCounts',
+      await db
+        .from('enrollments')
+        .select('id,course_id,status,suspended_at')
+        .in('course_id', courseIds)
+        .order('id', { ascending: true })
+        .range(offset, offset + ENROLLMENT_FETCH_CHUNK_SIZE - 1),
+    ) as CourseEnrollmentCountRow[] | null
+
+    rows.push(...(page ?? []))
+    if (!page || page.length < ENROLLMENT_FETCH_CHUNK_SIZE) {
+      break
+    }
+  }
 
   const countMap = new Map<number, { active: number; total: number }>()
-  for (const row of rows ?? []) {
+  for (const row of rows) {
     const current = countMap.get(row.course_id) ?? { active: 0, total: 0 }
     current.total += 1
     if (row.status === 'active' && !row.suspended_at) {

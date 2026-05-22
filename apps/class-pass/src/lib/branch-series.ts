@@ -268,12 +268,32 @@ export async function saveBranchSeriesOptions(inputs: BranchSeriesOptionInput[])
   return listBranchOptions(branch.id, true)
 }
 
-export async function resolveBranchSeriesOption(input: {
+export type ResolveBranchSeriesOptionInput = {
   optionId?: number | null
   label?: string | null
   group?: BranchSeriesGroup | null
-} = {}) {
-  const options = await listBranchSeriesOptions({ includeInactive: false })
+}
+
+export function findBranchSeriesOptionByLabel(
+  options: BranchSeriesOption[],
+  label: string | null | undefined,
+  group?: BranchSeriesGroup | null,
+) {
+  const normalizedLabel = label?.trim()
+  if (!normalizedLabel) {
+    return null
+  }
+
+  return options.find((candidate) => (
+    candidate.label === normalizedLabel
+    && (!group || candidate.group_key === group)
+  )) ?? null
+}
+
+export function resolveBranchSeriesOptionFromOptions(
+  options: BranchSeriesOption[],
+  input: ResolveBranchSeriesOptionInput = {},
+) {
   const normalizedLabel = input.label?.trim()
 
   if (input.optionId) {
@@ -284,10 +304,7 @@ export async function resolveBranchSeriesOption(input: {
   }
 
   if (normalizedLabel) {
-    const option = options.find((candidate) => (
-      candidate.label === normalizedLabel
-      && (!input.group || candidate.group_key === input.group)
-    ))
+    const option = findBranchSeriesOptionByLabel(options, normalizedLabel, input.group)
     if (option) {
       return option
     }
@@ -299,4 +316,43 @@ export async function resolveBranchSeriesOption(input: {
     ?? options.find((option) => option.is_active)
     ?? null
   )
+}
+
+export function resolveBranchSeriesOptionRequestFromOptions(
+  options: BranchSeriesOption[],
+  input: ResolveBranchSeriesOptionInput = {},
+) {
+  const requestedLabel = input.label?.trim() || null
+  const optionByLabel = requestedLabel
+    ? findBranchSeriesOptionByLabel(options, requestedLabel, input.group)
+    : null
+
+  if (requestedLabel && !optionByLabel) {
+    return {
+      option: null,
+      error: `직렬 '${requestedLabel}'은 현재 지점에서 사용할 수 없습니다.`,
+    }
+  }
+
+  const option = resolveBranchSeriesOptionFromOptions(options, input)
+  if (input.optionId && option?.id !== input.optionId) {
+    return {
+      option: null,
+      error: '선택한 직렬이 현재 지점에서 사용할 수 없습니다.',
+    }
+  }
+
+  if (input.optionId && optionByLabel && optionByLabel.id !== input.optionId) {
+    return {
+      option: null,
+      error: '선택한 직렬 ID와 직렬명이 일치하지 않습니다.',
+    }
+  }
+
+  return { option, error: null }
+}
+
+export async function resolveBranchSeriesOption(input: ResolveBranchSeriesOptionInput = {}) {
+  const options = await listBranchSeriesOptions({ includeInactive: false })
+  return resolveBranchSeriesOptionFromOptions(options, input)
 }

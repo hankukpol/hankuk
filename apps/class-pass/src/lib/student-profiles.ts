@@ -1533,6 +1533,10 @@ export type StudentEnrollmentSharedDetailsInput = {
   student_type?: Enrollment['student_type'] | null
 }
 
+export type StudentEnrollmentSharedDetailsScope =
+  | { courseId: number }
+  | { enrollmentId: number }
+
 function buildStudentEnrollmentSharedDetailsPayload(details: StudentEnrollmentSharedDetailsInput) {
   const payload: Record<string, unknown> = {}
 
@@ -1559,6 +1563,7 @@ export async function syncStudentEnrollmentSharedDetails(
   db: DbClient,
   studentId: number | null | undefined,
   details: StudentEnrollmentSharedDetailsInput,
+  scope: StudentEnrollmentSharedDetailsScope,
 ) {
   if (!studentId) {
     return null
@@ -1569,10 +1574,18 @@ export async function syncStudentEnrollmentSharedDetails(
     return null
   }
 
-  const { error } = await db
+  let query = db
     .from('enrollments')
     .update(payload)
     .eq('student_id', studentId)
+
+  if ('courseId' in scope) {
+    query = query.eq('course_id', scope.courseId)
+  } else {
+    query = query.eq('id', scope.enrollmentId)
+  }
+
+  const { error } = await query
 
   if (error) {
     throw error
@@ -1586,9 +1599,14 @@ export async function syncStudentEnrollmentSharedDetailsBatch(
   entries: Array<{
     studentId: number | null | undefined
     details: StudentEnrollmentSharedDetailsInput
+    scope: StudentEnrollmentSharedDetailsScope
   }>,
 ) {
-  const detailsByStudentId = new Map<number, StudentEnrollmentSharedDetailsInput>()
+  const detailsByScopedStudent = new Map<string, {
+    studentId: number
+    details: StudentEnrollmentSharedDetailsInput
+    scope: StudentEnrollmentSharedDetailsScope
+  }>()
 
   for (const entry of entries) {
     if (!entry.studentId) {
@@ -1600,36 +1618,51 @@ export async function syncStudentEnrollmentSharedDetailsBatch(
       continue
     }
 
-    detailsByStudentId.set(entry.studentId, {
-      ...(detailsByStudentId.get(entry.studentId) ?? {}),
-      ...entry.details,
+    const scopeKey = 'courseId' in entry.scope
+      ? `course:${entry.scope.courseId}`
+      : `enrollment:${entry.scope.enrollmentId}`
+    const key = `${entry.studentId}:${scopeKey}`
+    const current = detailsByScopedStudent.get(key)
+    detailsByScopedStudent.set(key, {
+      studentId: entry.studentId,
+      scope: entry.scope,
+      details: {
+        ...(current?.details ?? {}),
+        ...entry.details,
+      },
     })
   }
 
-  await Promise.all(Array.from(detailsByStudentId.entries()).map(async ([studentId, details]) => {
-    await syncStudentEnrollmentSharedDetails(db, studentId, details)
+  await Promise.all(Array.from(detailsByScopedStudent.values()).map(async (entry) => {
+    await syncStudentEnrollmentSharedDetails(db, entry.studentId, entry.details, entry.scope)
   }))
 
-  return detailsByStudentId
+  return detailsByScopedStudent
 }
 
 export async function syncStudentEnrollmentGenderSnapshots(
   db: DbClient,
   studentId: number | null | undefined,
   gender: string | null | undefined,
+  scope: StudentEnrollmentSharedDetailsScope,
 ) {
-  return syncStudentEnrollmentSharedDetails(db, studentId, { gender })
+  return syncStudentEnrollmentSharedDetails(db, studentId, { gender }, scope)
 }
 
 export async function syncStudentEnrollmentGenderSnapshotsBatch(
   db: DbClient,
-  entries: Array<{ studentId: number | null | undefined; gender: string | null | undefined }>,
+  entries: Array<{
+    studentId: number | null | undefined
+    gender: string | null | undefined
+    scope: StudentEnrollmentSharedDetailsScope
+  }>,
 ) {
   return syncStudentEnrollmentSharedDetailsBatch(
     db,
     entries.map((entry) => ({
       studentId: entry.studentId,
       details: { gender: entry.gender },
+      scope: entry.scope,
     })),
   )
 }

@@ -6,7 +6,7 @@ import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
-import { Download, Plus, Search, Trash2, UserCheck, X } from 'lucide-react'
+import { Download, Plus, Search, Trash2, Upload, UserCheck, X } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { StudentHistoryPanel } from '@/components/admin/student-history-panel'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
@@ -22,6 +22,7 @@ import {
   type PaymentSectionValue,
 } from '@/components/payments/PaymentSection'
 import { formatWon } from '@/lib/payments/format'
+import { downloadEnrollmentTemplate, parseEnrollmentXlsxToText } from '@/lib/enrollment-template'
 import { formatPhoneNumber } from '@/lib/utils'
 import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 import { useTenantConfig } from '@/components/TenantProvider'
@@ -391,6 +392,7 @@ export default function CourseStudentsPage({
   const [pageSize, setPageSize] = useState(50)
   const [totalCount, setTotalCount] = useState(0)
   const [pageSummary, setPageSummary] = useState({ active: 0, refunded: 0, suspended: 0 })
+  const excelUploadInputRef = useRef<HTMLInputElement | null>(null)
   const searchTimerRef = useRef<number | null>(null)
   const paginationRef = useRef({ currentPage: 1, pageSize: 50, search: '', statusFilter: 'all' as EnrollmentManageStatusFilter })
   const fetchSeqRef = useRef(0)
@@ -1226,6 +1228,7 @@ export default function CourseStudentsPage({
       '직렬',
       '학원구분',
       ...customFields.map((field) => field.label),
+      '비고',
       '상태',
       '등록일',
     ]
@@ -1239,6 +1242,7 @@ export default function CourseStudentsPage({
       enrollment.series?.trim() || (enrollment.series_group === 'career' ? '경채' : '공채'),
       ENROLLMENT_STUDENT_TYPE_LABEL[enrollment.student_type ?? 'general'],
       ...customFields.map((field) => (enrollment.custom_data ?? {})[field.key] ?? ''),
+      enrollment.memo ?? '',
       getEnrollmentStatusLabel(enrollment),
       formatCsvDate(enrollment.created_at),
     ])
@@ -1257,6 +1261,52 @@ export default function CourseStudentsPage({
     setError('')
     setMessage(`${course.name} 수강생 명단 CSV를 다운로드했습니다.`)
   }, [course, courseId, customFields, totalCount])
+
+  const handleDownloadExcelTemplate = useCallback(async () => {
+    if (!course) {
+      return
+    }
+
+    let allEnrollments: Enrollment[]
+    try {
+      const data = await fetchStudentsPageData(courseId, {
+        page: 1,
+        pageSize: 50,
+        search: paginationRef.current.search,
+        status: paginationRef.current.statusFilter,
+        noLimit: true,
+      })
+      allEnrollments = data.enrollments
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '전체 수강생 목록을 불러오지 못했습니다.')
+      return
+    }
+
+    try {
+      downloadEnrollmentTemplate(course, allEnrollments)
+      setError('')
+      setMessage(
+        allEnrollments.length === 0
+          ? '빈 템플릿을 다운로드했습니다. 작성 후 템플릿 업로드로 등록하세요.'
+          : `${course.name} 명단 ${allEnrollments.length}건이 포함된 템플릿을 다운로드했습니다.`,
+      )
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '템플릿을 생성하지 못했습니다.')
+    }
+  }, [course, courseId])
+
+  const handleExcelUploadFile = useCallback(async (file: File) => {
+    setError('')
+    setMessage('')
+    try {
+      const text = await parseEnrollmentXlsxToText(file)
+      setBulkText(text)
+      setPanel('bulk')
+      setMessage('템플릿 내용을 미리보기에 채웠습니다. 확인 후 "일괄 반영"을 눌러주세요.')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '템플릿 파일을 읽지 못했습니다.')
+    }
+  }, [])
 
   const loadMatrixData = useCallback(async (mode: MatrixMode) => {
     setMatrixLoading(true)
@@ -2010,6 +2060,37 @@ export default function CourseStudentsPage({
             <Download className="h-4 w-4" aria-hidden="true" />
             명단 다운로드
           </button>
+          <button
+            type="button"
+            onClick={handleDownloadExcelTemplate}
+            title="현재 명단을 비고 포함 엑셀 템플릿으로 다운로드 (편집 후 업로드 가능). 수강생이 없으면 빈 양식이 다운로드됩니다."
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            템플릿 다운로드
+          </button>
+          <button
+            type="button"
+            onClick={() => excelUploadInputRef.current?.click()}
+            title="엑셀(.xlsx) 템플릿 파일 업로드. 다운로드한 템플릿을 수정해서 그대로 올리시면 됩니다."
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
+          >
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            템플릿 업로드
+          </button>
+          <input
+            ref={excelUploadInputRef}
+            type="file"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = '' // allow re-uploading the same file
+              if (file) {
+                void handleExcelUploadFile(file)
+              }
+            }}
+          />
           {course.feature_photo && (
             <Link
               href={withTenantPrefix(`/dashboard/courses/${courseId}/students/photos`, tenant.type)}
@@ -2421,12 +2502,16 @@ export default function CourseStudentsPage({
           <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
           <p className="mt-1 text-xs text-slate-500">
             탭 구분 · 순서: <span className="font-semibold text-slate-700">기수, 학번, 이름, 연락처, 생년월일, 성별, 직렬</span>
+            <span className="text-slate-400"> (1행에 헤더를 넣으면 순서 무관, 빈 칸은 기존 값 보존)</span>
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            마지막 컬럼에 <span className="font-semibold text-slate-700">비고</span>를 추가하면 이 강좌에만 적용되는 메모를 입력할 수 있습니다.
           </p>
           <textarea
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             rows={6}
-            placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\t공채\n51\tA-002\t김소방\t01087654321\t990704\t여\t경채`}
+            placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\t공채\t교재 미수령\n51\tA-002\t김소방\t01087654321\t990704\t여\t경채\t`}
             className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-slate-400"
           />
           <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>

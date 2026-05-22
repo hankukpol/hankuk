@@ -2,22 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { resolveBranchSeriesOption } from '@/lib/branch-series'
+import {
+  findBranchSeriesOptionByLabel,
+  listBranchSeriesOptions,
+  resolveBranchSeriesOptionFromOptions,
+} from '@/lib/branch-series'
 import { parseEnrollmentBulkText } from '@/lib/bulk'
 import { invalidateCache } from '@/lib/cache/revalidate'
-import { getCourseById } from '@/lib/class-pass-data'
 import { normalizeCohortNumber, resolveStudentCohortOptionByNumber } from '@/lib/student-cohorts'
 import {
   ensureStudentProfilesBatch,
   initializeStudentAuthBatch,
   isStudentIdentityConflictError,
-  syncStudentEnrollmentSharedDetailsBatch,
   syncStudentEnrollmentSnapshotsBatch,
   type EnsureStudentProfileResult,
 } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
+import type { EnrollmentFieldDef } from '@/types/database'
 
 const schema = z.object({
   courseId: z.number().int().positive(),
@@ -62,13 +65,25 @@ export async function POST(req: NextRequest) {
   }
 
   const division = await getServerTenantType()
-  const course = await getCourseById(parsed.data.courseId, division)
+  const db = createServerClient()
+  const { data: course, error: courseError } = await db
+    .from('courses')
+    .select('id,enrollment_fields')
+    .eq('id', parsed.data.courseId)
+    .eq('division', division)
+    .maybeSingle()
+
+  if (courseError) {
+    return NextResponse.json({ error: '강좌를 확인하지 못했습니다.' }, { status: 500 })
+  }
   if (!course) {
     return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  const customFieldKeys = (course.enrollment_fields ?? []).map((f: { key: string }) => f.key)
-  const rows = parseEnrollmentBulkText(parsed.data.text, customFieldKeys)
+  const customFields = Array.isArray(course.enrollment_fields)
+    ? course.enrollment_fields as EnrollmentFieldDef[]
+    : []
+  const rows = parseEnrollmentBulkText(parsed.data.text, customFields)
   if (rows.length === 0) {
     return NextResponse.json({ error: '붙여넣기 텍스트에서 유효한 수강생을 찾지 못했습니다.' }, { status: 400 })
   }
@@ -91,7 +106,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const db = createServerClient()
+  const seriesOptions = await listBranchSeriesOptions({ includeInactive: false })
+  const explicitSeriesLabels = Array.from(new Set(
+    rows
+      .map((row) => row.series?.trim())
+      .filter((label): label is string => Boolean(label)),
+  ))
+  const invalidSeriesLabel = explicitSeriesLabels.find((label) => !findBranchSeriesOptionByLabel(seriesOptions, label))
+  if (invalidSeriesLabel) {
+    return NextResponse.json(
+      { error: `직렬 '${invalidSeriesLabel}'은 현재 지점에서 사용할 수 없습니다.` },
+      { status: 400 },
+    )
+  }
+
   const existingEnrollments = (
     await db
       .from('enrollments')
@@ -245,11 +273,7 @@ export async function POST(req: NextRequest) {
 
   const updates: Array<Record<string, unknown>> = []
   const inserts: Array<Record<string, unknown>> = []
-  const sharedDetailsEntries: Array<{
-    studentId: number
-    details: Parameters<typeof syncStudentEnrollmentSharedDetailsBatch>[1][number]['details']
-  }> = []
-  const defaultSeriesOption = await resolveBranchSeriesOption()
+  const defaultSeriesOption = resolveBranchSeriesOptionFromOptions(seriesOptions)
 
   for (const resolved of latestRowByStudentId.values()) {
     const student = resolved.student
@@ -258,7 +282,7 @@ export async function POST(req: NextRequest) {
       existingByStudentId.get(student.id)
       ?? (examNumber ? existingByExamNumber.get(examNumber) : null)
     const explicitSeriesOption = resolved.series
-      ? await resolveBranchSeriesOption({ label: resolved.series })
+      ? findBranchSeriesOptionByLabel(seriesOptions, resolved.series)
       : null
 
     const payload = {
@@ -272,29 +296,20 @@ export async function POST(req: NextRequest) {
       series_group: explicitSeriesOption?.group_key ?? current?.series_group ?? defaultSeriesOption?.group_key ?? 'public',
       series: explicitSeriesOption?.label ?? current?.series ?? defaultSeriesOption?.label ?? '공채',
       photo_url: student.photo_url,
-      custom_data: resolved.custom_data ?? current?.custom_data ?? {},
+      memo: resolved.memo ?? current?.memo ?? null,
+      custom_data: { ...(current?.custom_data ?? {}), ...(resolved.custom_data ?? {}) },
     }
-    const sharedDetails: Parameters<typeof syncStudentEnrollmentSharedDetailsBatch>[1][number]['details'] = {
-      ...(resolved.gender !== undefined ? { gender: resolved.gender ?? null } : {}),
-      ...(explicitSeriesOption ? {
-        series_option_id: explicitSeriesOption.id,
-        series_group: explicitSeriesOption.group_key,
-        series: explicitSeriesOption.label,
-      } : {}),
-    }
-    if (Object.keys(sharedDetails).length > 0) {
-      sharedDetailsEntries.push({
-        studentId: student.id,
-        details: sharedDetails,
-      })
-    }
+    // NOTE: gender/series are intentionally NOT propagated to the student's
+    // other enrollments here. Bulk import is course-scoped — only the target
+    // course's enrollment row is updated. Earlier the route called
+    // syncStudentEnrollmentSharedDetailsBatch, which leaked values across
+    // courses during template round-trips.
 
     if (current) {
       updates.push({
         id: current.id,
         course_id: current.course_id,
         status: current.status,
-        memo: current.memo,
         refunded_at: current.refunded_at,
         ...payload,
       })
@@ -334,8 +349,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }
   }
-
-  await syncStudentEnrollmentSharedDetailsBatch(db, sharedDetailsEntries)
 
   await invalidateCache('enrollments')
   return NextResponse.json(

@@ -5,7 +5,10 @@ import { requireAppFeature } from '@/lib/app-feature-guard'
 import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { resolveBranchSeriesOption } from '@/lib/branch-series'
+import {
+  listBranchSeriesOptions,
+  resolveBranchSeriesOptionRequestFromOptions,
+} from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   assertCohortOptionBelongsToCurrentBranch,
@@ -38,7 +41,6 @@ import {
   getStudentProfileById,
   initializeStudentAuth,
   isStudentIdentityConflictError,
-  syncStudentEnrollmentSharedDetails,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
@@ -389,13 +391,15 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServerClient()
-    const seriesOption = await resolveBranchSeriesOption({
+    const seriesOptions = await listBranchSeriesOptions({ includeInactive: false })
+    const seriesSelection = resolveBranchSeriesOptionRequestFromOptions(seriesOptions, {
       optionId: parsed.data.series_option_id,
       label: parsed.data.series,
     })
-    if (parsed.data.series_option_id && seriesOption?.id !== parsed.data.series_option_id) {
-      return NextResponse.json({ error: '선택한 직렬이 현재 지점에서 사용할 수 없습니다.' }, { status: 400 })
+    if (seriesSelection.error) {
+      return NextResponse.json({ error: seriesSelection.error }, { status: 400 })
     }
+    const seriesOption = seriesSelection.option
     const selectedStudent = parsed.data.studentId
       ? await getStudentProfileById(db, parsed.data.studentId, division)
       : null
@@ -614,13 +618,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    await syncStudentEnrollmentSharedDetails(db, student.id, {
-      ...(enrollmentGender ? { gender: enrollmentGender } : {}),
-      series_option_id: enrollmentPayload.series_option_id,
-      series_group: enrollmentPayload.series_group,
-      series: enrollmentPayload.series,
-      student_type: parsed.data.student_type,
-    })
+    // Enrollment-only fields (gender/series/student_type) stay scoped to the
+    // course being created. Student master fields are still synced above.
     await invalidateCache('enrollments')
     if (textbookIds.length > 0) {
       await invalidateCache('materials')

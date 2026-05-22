@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { resolveBranchSeriesOption } from '@/lib/branch-series'
+import {
+  listBranchSeriesOptions,
+  resolveBranchSeriesOptionRequestFromOptions,
+} from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   assertCohortOptionBelongsToCurrentBranch,
@@ -17,7 +20,6 @@ import {
   getStudentAuthProfile,
   getStudentProfileById,
   isStudentIdentityConflictError,
-  syncStudentEnrollmentSharedDetails,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
@@ -191,13 +193,15 @@ export async function PATCH(
   if (parsed.data.gender !== undefined) payload.gender = parsed.data.gender || null
   if (parsed.data.region !== undefined) payload.region = parsed.data.region || null
   if (parsed.data.series_option_id !== undefined || parsed.data.series !== undefined) {
-    const seriesOption = await resolveBranchSeriesOption({
+    const seriesOptions = await listBranchSeriesOptions({ includeInactive: false })
+    const seriesSelection = resolveBranchSeriesOptionRequestFromOptions(seriesOptions, {
       optionId: parsed.data.series_option_id,
       label: parsed.data.series,
     })
-    if (parsed.data.series_option_id && seriesOption?.id !== parsed.data.series_option_id) {
-      return NextResponse.json({ error: '선택한 직렬이 현재 지점에서 사용할 수 없습니다.' }, { status: 400 })
+    if (seriesSelection.error) {
+      return NextResponse.json({ error: seriesSelection.error }, { status: 400 })
     }
+    const seriesOption = seriesSelection.option
     payload.series_option_id = seriesOption?.id ?? null
     payload.series_group = seriesOption?.group_key ?? 'public'
     payload.series = seriesOption?.label ?? parsed.data.series ?? '공채'
@@ -240,22 +244,8 @@ export async function PATCH(
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  const sharedDetails = {
-    ...(parsed.data.gender !== undefined ? { gender: parsed.data.gender || null } : {}),
-    ...('series_option_id' in payload ? {
-      series_option_id: payload.series_option_id as number | null,
-      series_group: payload.series_group as Enrollment['series_group'] | null,
-      series: payload.series as string | null,
-    } : {}),
-    ...(parsed.data.student_type !== undefined ? { student_type: parsed.data.student_type } : {}),
-  }
-  if (Object.keys(sharedDetails).length > 0) {
-    await syncStudentEnrollmentSharedDetails(
-      db,
-      (data as Enrollment).student_id ?? currentEnrollment.student_id,
-      sharedDetails,
-    )
-  }
+  // Enrollment-only fields (gender/series/student_type) stay scoped to this
+  // enrollment. Student master fields are still synced through student snapshots.
 
   await invalidateCache('enrollments')
   const [enrichedEnrollment] = await attachCohortLabelsToEnrollments([{

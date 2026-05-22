@@ -11,8 +11,14 @@ export type ParsedEnrollmentRow = {
   gender?: string
   region?: string
   series?: string
+  memo?: string
   photo_url?: string
   custom_data?: Record<string, string>
+}
+
+export type EnrollmentBulkCustomField = {
+  key: string
+  label?: string | null
 }
 
 export type ParsedSeatRow = {
@@ -89,6 +95,17 @@ function isEnrollmentSeriesHeader(value: string) {
   return normalized === '직렬' || normalized === 'series'
 }
 
+function isEnrollmentMemoHeader(value: string) {
+  const normalized = normalizeHeaderLabel(value)
+  return (
+    normalized === '비고'
+    || normalized === '메모'
+    || normalized === 'memo'
+    || normalized === 'note'
+    || normalized === 'remark'
+  )
+}
+
 function normalizeKnownGender(value: string) {
   const gender = normalizeGenderLabel(value)
   return gender === '남' || gender === '여' ? gender : undefined
@@ -153,6 +170,44 @@ type EnrollmentHeaderMap = {
   birthDate?: number
   gender?: number
   series?: number
+  memo?: number
+}
+
+function normalizeCustomFields(customFields?: Array<string | EnrollmentBulkCustomField>): EnrollmentBulkCustomField[] {
+  return (customFields ?? [])
+    .map((field) => (typeof field === 'string' ? { key: field, label: field } : field))
+    .filter((field) => Boolean(field.key))
+}
+
+function getEnrollmentCustomHeaderMap(
+  headers: string[],
+  customFields: EnrollmentBulkCustomField[],
+  usedIndexes: Set<number>,
+) {
+  const keyByLabel = new Map<string, string>()
+
+  customFields.forEach((field) => {
+    for (const label of [field.label, field.key]) {
+      const normalized = normalizeHeaderLabel(label ?? '')
+      if (normalized && !keyByLabel.has(normalized)) {
+        keyByLabel.set(normalized, field.key)
+      }
+    }
+  })
+
+  const customIndexes = new Map<string, number>()
+  headers.forEach((header, index) => {
+    if (usedIndexes.has(index)) {
+      return
+    }
+
+    const key = keyByLabel.get(normalizeHeaderLabel(header))
+    if (key && !customIndexes.has(key)) {
+      customIndexes.set(key, index)
+    }
+  })
+
+  return customIndexes
 }
 
 function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
@@ -165,6 +220,7 @@ function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
     else if (isEnrollmentBirthDateHeader(cell)) map.birthDate = index
     else if (isEnrollmentGenderHeader(cell)) map.gender = index
     else if (isEnrollmentSeriesHeader(cell)) map.series = index
+    else if (isEnrollmentMemoHeader(cell)) map.memo = index
   })
 
   return map.name !== undefined && map.phone !== undefined ? map : null
@@ -172,18 +228,28 @@ function getEnrollmentHeaderMap(cells: string[]): EnrollmentHeaderMap | null {
 
 /**
  * Parse bulk enrollment text.
- * Column order: 기수, 수험번호, 이름, 연락처, 생년월일, 성별, 직렬, ...customFieldKeys
+ * Column order: 기수, 수험번호, 이름, 연락처, 생년월일, 성별, 직렬, ...customFields
  */
 export function parseEnrollmentBulkText(
   input: string,
-  customFieldKeys?: string[],
+  customFieldsInput?: Array<string | EnrollmentBulkCustomField>,
 ): ParsedEnrollmentRow[] {
+  const customFields = normalizeCustomFields(customFieldsInput)
   const lines = input
     .split(/\r?\n/)
     .map((line) => splitEnrollmentLine(line))
     .filter((cells) => cells.some(Boolean))
 
   const headerMap = lines.length > 0 ? getEnrollmentHeaderMap(lines[0] ?? []) : null
+  const headerCells = headerMap ? lines[0] ?? [] : []
+  const headerUsedIndexes = new Set(
+    headerMap
+      ? Object.values(headerMap).filter((value): value is number => value !== undefined)
+      : [],
+  )
+  const customHeaderMap = headerMap
+    ? getEnrollmentCustomHeaderMap(headerCells, customFields, headerUsedIndexes)
+    : new Map<string, number>()
   const bodyLines = headerMap ? lines.slice(1) : lines.filter((cells) => !isEnrollmentHeaderRow(cells))
 
   return bodyLines
@@ -191,23 +257,31 @@ export function parseEnrollmentBulkText(
     .map((cells) => {
       if (headerMap) {
         const row: ParsedEnrollmentRow = {
-          cohort_label: headerMap.cohort !== undefined ? (cells[headerMap.cohort] ?? '').trim() : undefined,
+          cohort_label: headerMap.cohort !== undefined ? ((cells[headerMap.cohort] ?? '').trim() || undefined) : undefined,
           exam_number: headerMap.exam !== undefined ? normalizeExamNumber(cells[headerMap.exam] ?? '') || undefined : undefined,
           birth_date: headerMap.birthDate !== undefined ? normalizeBirthDate(cells[headerMap.birthDate] ?? '') ?? undefined : undefined,
           gender: headerMap.gender !== undefined ? normalizeGender(cells[headerMap.gender] ?? '') : undefined,
           series: headerMap.series !== undefined ? normalizeName(cells[headerMap.series] ?? '') || undefined : undefined,
+          memo: headerMap.memo !== undefined ? ((cells[headerMap.memo] ?? '').trim() || undefined) : undefined,
           name: normalizeName(cells[headerMap.name ?? -1] ?? ''),
           phone: normalizePhone(cells[headerMap.phone ?? -1] ?? ''),
         }
 
-        if (customFieldKeys?.length) {
-          const usedIndexes = new Set(Object.values(headerMap).filter((value): value is number => value !== undefined))
-          const customValues = cells.filter((_, index) => !usedIndexes.has(index))
+        if (customFields.length) {
+          const usedIndexes = new Set([
+            ...headerUsedIndexes,
+            ...customHeaderMap.values(),
+          ])
+          const fallbackValues = cells.filter((_, index) => !usedIndexes.has(index))
+          let fallbackIndex = 0
           const customData: Record<string, string> = {}
-          customFieldKeys.forEach((key, index) => {
-            const value = customValues[index]
+          customFields.forEach((field) => {
+            const directIndex = customHeaderMap.get(field.key)
+            const value = directIndex !== undefined
+              ? (cells[directIndex] ?? '').trim()
+              : fallbackValues[fallbackIndex++]
             if (value) {
-              customData[key] = value
+              customData[field.key] = value
             }
           })
           if (Object.keys(customData).length > 0) {
@@ -266,22 +340,30 @@ export function parseEnrollmentBulkText(
         customValues.shift()
       }
 
+      // In positional mode the memo column comes after gender, series, and any
+      // course-defined custom fields. Anything still left becomes the memo so
+      // users can paste `... 직렬 비고` without supplying a header.
+      const customFieldCount = customFields.length
+      const memoIndex = customFieldCount
+      const memo = (customValues[memoIndex] ?? '').trim() || undefined
+
       const row: ParsedEnrollmentRow = {
         cohort_label: cohortLabel,
         exam_number: examNumber,
         birth_date: birthDate,
         gender,
         series,
+        memo,
         name: normalizeName(cells[nameIndex] ?? ''),
         phone: normalizePhone(cells[phoneIndex] ?? ''),
       }
 
-      if (customFieldKeys?.length) {
+      if (customFields.length) {
         const customData: Record<string, string> = {}
-        customFieldKeys.forEach((key, index) => {
+        customFields.forEach((field, index) => {
           const value = customValues[index]
           if (value) {
-            customData[key] = value
+            customData[field.key] = value
           }
         })
         if (Object.keys(customData).length > 0) {

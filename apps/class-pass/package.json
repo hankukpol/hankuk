@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:attendance": "node -e \"require('fs').rmSync('.codex-temp/attendance-tests',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test .codex-temp/attendance-tests/tests/attendance/device-binding-policy.test.js .codex-temp/attendance-tests/tests/attendance/submit-event-details.test.js",
+    "test:bulk": "tsx --require ./tests/_setup/stub-server-only.cjs --test tests/bulk/parse-enrollment-bulk-text.test.ts",
     "verify:payments-local": "node scripts/verify-payment-workflows-local.js",
     "verify:designated-seat-display": "node scripts/verify-designated-seat-display.js",
     "verify:designated-seat-multi-room": "node scripts/verify-designated-seat-multi-room-local-workflow.js",
@@ -45,6 +46,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.2.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.8.0"
   }
 }

@@ -5,7 +5,10 @@ import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { getActorStaffId } from '@/lib/auth/actor'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
-import { resolveBranchSeriesOption } from '@/lib/branch-series'
+import {
+  listBranchSeriesOptions,
+  resolveBranchSeriesOptionRequestFromOptions,
+} from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import {
   assertCohortOptionBelongsToCurrentBranch,
@@ -34,7 +37,6 @@ import {
   getStudentProfileById,
   initializeStudentAuth,
   isStudentIdentityConflictError,
-  syncStudentEnrollmentSharedDetails,
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { createServerClient } from '@/lib/supabase/server'
@@ -537,13 +539,15 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServerClient()
-    const seriesOption = await resolveBranchSeriesOption({
+    const seriesOptions = await listBranchSeriesOptions({ includeInactive: false })
+    const seriesSelection = resolveBranchSeriesOptionRequestFromOptions(seriesOptions, {
       optionId: parsed.data.series_option_id,
       label: parsed.data.series,
     })
-    if (parsed.data.series_option_id && seriesOption?.id !== parsed.data.series_option_id) {
-      return NextResponse.json({ error: '선택한 직렬은 현재 지점에서 사용할 수 없습니다.' }, { status: 400 })
+    if (seriesSelection.error) {
+      return NextResponse.json({ error: seriesSelection.error }, { status: 400 })
     }
+    const seriesOption = seriesSelection.option
     let cohortOption: Awaited<ReturnType<typeof assertCohortOptionBelongsToCurrentBranch>>
     try {
       cohortOption = parsed.data.cohort_number !== undefined
@@ -707,13 +711,8 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await syncStudentEnrollmentSharedDetails(db, student.id, {
-        ...(enrollmentGender ? { gender: enrollmentGender } : {}),
-        series_option_id: seriesOption?.id ?? null,
-        series_group: seriesOption?.group_key ?? 'public',
-        series: seriesOption?.label ?? parsed.data.series ?? '怨듭콈',
-        student_type: parsed.data.student_type,
-      })
+      // Enrollment-only fields (gender/series/student_type) are already stored
+      // by the batch RPC for the requested courses only.
       if (studentResult.changed || studentResult.created) {
         await syncStudentEnrollmentSnapshots(db, student)
       }

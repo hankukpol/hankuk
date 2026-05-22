@@ -34,13 +34,16 @@ function buildHeaders(customFields: EnrollmentFieldDef[]): string[] {
 }
 
 function buildDataRow(enrollment: Enrollment, customFields: EnrollmentFieldDef[]): string[] {
+  const profile = enrollment.student_profile
+  const profileHasExamNumber = Boolean(profile && 'profile_exam_number' in profile)
+
   return [
-    enrollment.name,
+    profile?.profile_name?.trim() || enrollment.name,
     // Phones export as plain text to preserve leading zeros.
-    enrollment.phone,
+    profile?.profile_phone?.trim() || enrollment.phone,
     // Birth dates are stored as YYMMDD; keep as-is so the upload round-trips cleanly.
-    enrollment.student_profile?.birth_date ?? '',
-    enrollment.exam_number ?? '',
+    profile?.birth_date ?? '',
+    profileHasExamNumber ? profile?.profile_exam_number ?? '' : enrollment.exam_number ?? '',
     enrollment.cohort_label ?? enrollment.student_profile?.cohort_label ?? '',
     enrollment.gender ?? '',
     enrollment.series ?? '',

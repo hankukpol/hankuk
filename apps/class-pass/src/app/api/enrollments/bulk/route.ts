@@ -47,6 +47,18 @@ type ExistingEnrollmentRow = {
   created_at: string
 }
 
+function findExistingEnrollmentForImportedRow(
+  row: ReturnType<typeof parseEnrollmentBulkText>[number],
+  existingByExamNumber: Map<string, ExistingEnrollmentRow>,
+) {
+  const examNumber = normalizeExamNumber(row.exam_number)
+  return examNumber ? existingByExamNumber.get(examNumber) ?? null : null
+}
+
+function getStudentIdentityConflictMessage() {
+  return '기존 학생 마스터와 가져오기 행의 정보가 충돌합니다. 학번, 이름, 연락처, 생년월일을 확인해 주세요.'
+}
+
 export async function POST(req: NextRequest) {
   const authError = await requireAdminApi(req)
   if (authError) {
@@ -212,20 +224,25 @@ export async function POST(req: NextRequest) {
   try {
     studentResults = await ensureStudentProfilesBatch(
       db,
-      Array.from(latestRowByKey.entries()).map(([key, row]) => ({
-        key,
-        division,
-        name: row.name,
-        phone: row.phone,
-        exam_number: row.exam_number,
-        ...(cohortIdByKey.get(key) !== undefined ? { cohort_option_id: cohortIdByKey.get(key) } : {}),
-        birth_date: row.birth_date,
-        photo_url: row.photo_url,
-      })),
+      Array.from(latestRowByKey.entries()).map(([key, row]) => {
+        const currentStudentId = findExistingEnrollmentForImportedRow(row, existingByExamNumber)?.student_id ?? null
+
+        return {
+          key,
+          division,
+          name: row.name,
+          phone: row.phone,
+          exam_number: row.exam_number,
+          ...(currentStudentId ? { currentStudentId } : {}),
+          ...(cohortIdByKey.get(key) !== undefined ? { cohort_option_id: cohortIdByKey.get(key) } : {}),
+          birth_date: row.birth_date,
+          photo_url: row.photo_url,
+        }
+      }),
     )
   } catch (error) {
     if (isStudentIdentityConflictError(error)) {
-      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 409 })
+      return NextResponse.json({ error: getStudentIdentityConflictMessage(), fields: error.fields }, { status: 409 })
     }
 
     throw error

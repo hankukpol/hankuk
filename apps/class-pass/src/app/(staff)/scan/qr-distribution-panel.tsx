@@ -20,7 +20,7 @@ function getScanStatusLabel(scanState: ScanState) {
     case 'processing':
       return '배부를 처리하고 있습니다.'
     case 'selecting':
-      return '아래 자료를 누르면 바로 배부됩니다.'
+      return '필요한 자료를 차례로 눌러 배부하세요.'
     case 'scanning':
       return '학생 QR을 카메라에 비춰 주세요.'
     default:
@@ -112,7 +112,7 @@ export function QrDistributionPanel({
             <div>
               <h2 className="student-eyebrow student-eyebrow-light">배부 선택</h2>
               <p className="mt-1 text-[15px] font-semibold text-[var(--student-text)]">
-                자료를 누르면 즉시 배부됩니다
+                필요한 자료만 차례로 눌러 배부 ({selectOptions.length}건 남음)
               </p>
             </div>
             <button
@@ -120,7 +120,7 @@ export function QrDistributionPanel({
               onClick={onCancelSelection}
               className="text-[13px] font-semibold text-[var(--student-text-muted)]"
             >
-              취소
+              완료
             </button>
           </div>
 

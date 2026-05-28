@@ -11,6 +11,11 @@ export interface RateLimitResult {
   retryAfterMs: number
 }
 
+export interface RateLimitOptions {
+  maxAttempts?: number
+  windowSeconds?: number
+}
+
 type DbRateLimitRow = {
   allowed: boolean
   remaining_attempts: number
@@ -18,9 +23,23 @@ type DbRateLimitRow = {
 }
 
 const store = new Map<string, RateLimitEntry>()
-const MAX_ATTEMPTS = 5
-const WINDOW_MS = 15 * 60 * 1000
-const WINDOW_SECONDS = WINDOW_MS / 1000
+const DEFAULT_MAX_ATTEMPTS = 5
+const DEFAULT_WINDOW_SECONDS = 15 * 60
+
+function getRateLimitConfig(options?: RateLimitOptions) {
+  const maxAttempts = Number.isInteger(options?.maxAttempts) && Number(options?.maxAttempts) > 0
+    ? Number(options?.maxAttempts)
+    : DEFAULT_MAX_ATTEMPTS
+  const windowSeconds = Number.isInteger(options?.windowSeconds) && Number(options?.windowSeconds) > 0
+    ? Number(options?.windowSeconds)
+    : DEFAULT_WINDOW_SECONDS
+
+  return {
+    maxAttempts,
+    windowSeconds,
+    windowMs: windowSeconds * 1000,
+  }
+}
 
 function getActiveEntry(key: string, now: number): RateLimitEntry | null {
   const entry = store.get(key)
@@ -37,16 +56,16 @@ function getActiveEntry(key: string, now: number): RateLimitEntry | null {
   return entry
 }
 
-function toRateLimitResult(entry: RateLimitEntry | null, now: number): RateLimitResult {
+function toRateLimitResult(entry: RateLimitEntry | null, now: number, maxAttempts = DEFAULT_MAX_ATTEMPTS): RateLimitResult {
   if (!entry) {
     return {
       allowed: true,
-      remainingAttempts: MAX_ATTEMPTS,
+      remainingAttempts: maxAttempts,
       retryAfterMs: 0,
     }
   }
 
-  if (entry.attempts >= MAX_ATTEMPTS) {
+  if (entry.attempts >= maxAttempts) {
     return {
       allowed: false,
       remainingAttempts: 0,
@@ -56,7 +75,7 @@ function toRateLimitResult(entry: RateLimitEntry | null, now: number): RateLimit
 
   return {
     allowed: true,
-    remainingAttempts: Math.max(MAX_ATTEMPTS - entry.attempts, 0),
+    remainingAttempts: Math.max(maxAttempts - entry.attempts, 0),
     retryAfterMs: 0,
   }
 }
@@ -72,57 +91,60 @@ if (typeof setInterval !== 'undefined') {
   }, 5 * 60 * 1000)
 }
 
-function checkLocalRateLimit(key: string): RateLimitResult {
+function checkLocalRateLimit(key: string, options?: RateLimitOptions): RateLimitResult {
+  const config = getRateLimitConfig(options)
   const now = Date.now()
   const entry = getActiveEntry(key, now)
 
   if (!entry) {
-    const nextEntry = { attempts: 1, resetAt: now + WINDOW_MS }
+    const nextEntry = { attempts: 1, resetAt: now + config.windowMs }
     store.set(key, nextEntry)
     return {
       allowed: true,
-      remainingAttempts: MAX_ATTEMPTS - 1,
+      remainingAttempts: config.maxAttempts - 1,
       retryAfterMs: 0,
     }
   }
 
-  if (entry.attempts >= MAX_ATTEMPTS) {
-    return toRateLimitResult(entry, now)
+  if (entry.attempts >= config.maxAttempts) {
+    return toRateLimitResult(entry, now, config.maxAttempts)
   }
 
   entry.attempts += 1
   return {
     allowed: true,
-    remainingAttempts: Math.max(MAX_ATTEMPTS - entry.attempts, 0),
+    remainingAttempts: Math.max(config.maxAttempts - entry.attempts, 0),
     retryAfterMs: 0,
   }
 }
 
-function peekLocalRateLimit(key: string): RateLimitResult {
+function peekLocalRateLimit(key: string, options?: RateLimitOptions): RateLimitResult {
+  const config = getRateLimitConfig(options)
   const now = Date.now()
-  return toRateLimitResult(getActiveEntry(key, now), now)
+  return toRateLimitResult(getActiveEntry(key, now), now, config.maxAttempts)
 }
 
-function recordLocalRateLimitFailure(key: string): RateLimitResult {
+function recordLocalRateLimitFailure(key: string, options?: RateLimitOptions): RateLimitResult {
+  const config = getRateLimitConfig(options)
   const now = Date.now()
   const entry = getActiveEntry(key, now)
 
   if (!entry) {
-    const nextEntry = { attempts: 1, resetAt: now + WINDOW_MS }
+    const nextEntry = { attempts: 1, resetAt: now + config.windowMs }
     store.set(key, nextEntry)
     return {
       allowed: true,
-      remainingAttempts: MAX_ATTEMPTS - 1,
+      remainingAttempts: config.maxAttempts - 1,
       retryAfterMs: 0,
     }
   }
 
-  if (entry.attempts >= MAX_ATTEMPTS) {
-    return toRateLimitResult(entry, now)
+  if (entry.attempts >= config.maxAttempts) {
+    return toRateLimitResult(entry, now, config.maxAttempts)
   }
 
   entry.attempts += 1
-  return toRateLimitResult(entry, now)
+  return toRateLimitResult(entry, now, config.maxAttempts)
 }
 
 function resetLocalRateLimit(key: string): void {
@@ -144,13 +166,15 @@ function mapDbRateLimitResult(row: DbRateLimitRow | null | undefined): RateLimit
 async function checkDbRateLimit(
   key: string,
   action: 'peek' | 'increment' | 'reset',
+  options?: RateLimitOptions,
 ): Promise<RateLimitResult | null> {
   try {
+    const config = getRateLimitConfig(options)
     const db = createServerClient()
     const { data, error } = await db.rpc('check_rate_limit', {
       p_key: key,
-      p_max_attempts: MAX_ATTEMPTS,
-      p_window_seconds: WINDOW_SECONDS,
+      p_max_attempts: config.maxAttempts,
+      p_window_seconds: config.windowSeconds,
       p_increment: action === 'increment',
       p_reset: action === 'reset',
     })
@@ -168,21 +192,21 @@ async function checkDbRateLimit(
   }
 }
 
-export async function checkRateLimit(key: string): Promise<RateLimitResult> {
-  return await checkDbRateLimit(key, 'increment') ?? checkLocalRateLimit(key)
+export async function checkRateLimit(key: string, options?: RateLimitOptions): Promise<RateLimitResult> {
+  return await checkDbRateLimit(key, 'increment', options) ?? checkLocalRateLimit(key, options)
 }
 
-export async function peekRateLimit(key: string): Promise<RateLimitResult> {
-  return await checkDbRateLimit(key, 'peek') ?? peekLocalRateLimit(key)
+export async function peekRateLimit(key: string, options?: RateLimitOptions): Promise<RateLimitResult> {
+  return await checkDbRateLimit(key, 'peek', options) ?? peekLocalRateLimit(key, options)
 }
 
-export async function recordRateLimitFailure(key: string): Promise<RateLimitResult> {
-  return await checkDbRateLimit(key, 'increment') ?? recordLocalRateLimitFailure(key)
+export async function recordRateLimitFailure(key: string, options?: RateLimitOptions): Promise<RateLimitResult> {
+  return await checkDbRateLimit(key, 'increment', options) ?? recordLocalRateLimitFailure(key, options)
 }
 
-export async function resetRateLimit(key: string): Promise<void> {
+export async function resetRateLimit(key: string, options?: RateLimitOptions): Promise<void> {
   resetLocalRateLimit(key)
-  await checkDbRateLimit(key, 'reset')
+  await checkDbRateLimit(key, 'reset', options)
 }
 
 function normalizeIpCandidate(value: string | null): string | null {

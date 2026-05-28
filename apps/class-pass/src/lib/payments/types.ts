@@ -90,7 +90,10 @@ export type EnrollmentPayment = {
   settlement_confirmation?: SettlementEntryConfirmation | null
   created_at: string
   updated_at: string
-  enrollment_billing?: Pick<EnrollmentBilling, 'discount_amount' | 'created_by_staff_id'> | null
+  enrollment_billing?: Pick<
+    EnrollmentBilling,
+    'discount_amount' | 'expected_amount' | 'payable_amount' | 'created_by_staff_id'
+  > | null
   enrollments?: Pick<
     Enrollment,
     'id' | 'name' | 'phone' | 'exam_number' | 'status' | 'series_option_id' | 'series_group' | 'series' | 'student_type'

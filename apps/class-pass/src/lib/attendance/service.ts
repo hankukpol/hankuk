@@ -1006,6 +1006,35 @@ async function getAttendanceExcuseSubject(subjectId: number) {
   return row
 }
 
+export async function assertEnrollmentBelongsToCourse(input: {
+  enrollmentId: number
+  courseId: number
+  subjectId?: number | null
+}) {
+  const [enrollment, subject] = await Promise.all([
+    getAttendanceExcuseEnrollment(input.enrollmentId),
+    input.subjectId == null ? Promise.resolve(null) : getAttendanceExcuseSubject(input.subjectId),
+  ])
+
+  if (!enrollment) {
+    throw new AttendanceServiceError('수강생을 찾을 수 없습니다.', 404)
+  }
+
+  if (enrollment.course_id !== input.courseId) {
+    throw new AttendanceServiceError('다른 강좌의 수강생은 관리할 수 없습니다.', 403)
+  }
+
+  if (input.subjectId != null && !subject) {
+    throw new AttendanceServiceError('과목을 찾을 수 없습니다.', 404)
+  }
+
+  if (subject && subject.course_id !== input.courseId) {
+    throw new AttendanceServiceError('다른 강좌의 과목은 관리할 수 없습니다.', 403)
+  }
+
+  return { enrollment, subject }
+}
+
 async function listActiveEnrollments(courseId: number) {
   const db = createServerClient()
   const rows = unwrapSupabaseResult(
@@ -2403,4 +2432,502 @@ export async function hasValidSeatAssignmentForSubject(params: {
   ) as { seat_number?: string | null } | null
 
   return Boolean(normalizeAttendanceSeatNumber(row?.seat_number ?? null))
+}
+
+export type EnrollmentCareState = 'pending' | 'needs_contact' | 'contacted' | 'meeting_scheduled'
+
+export const ENROLLMENT_CARE_STATES: readonly EnrollmentCareState[] = [
+  'pending',
+  'needs_contact',
+  'contacted',
+  'meeting_scheduled',
+] as const
+
+export type EnrollmentCareNoteRecord = {
+  id: number
+  enrollmentId: number
+  subjectId: number | null
+  body: string
+  createdBy: string | null
+  createdByName: string | null
+  createdAt: string
+}
+
+const ENROLLMENT_CARE_MIGRATION_MESSAGE =
+  '수강생 관리 DB migration이 아직 적용되지 않았습니다. `202605270001_enrollment_care_management.sql`을 먼저 적용해 주세요.'
+
+const ENROLLMENT_CARE_SCHEMA_CACHE_MESSAGE =
+  'DB 스키마 캐시가 갱신되는 중입니다. 잠시 후 다시 시도해 주세요.'
+
+function isEnrollmentCareSchemaCacheError(error: unknown) {
+  const message = getErrorMessage(error)
+  if (!message.includes('schema cache')) {
+    return false
+  }
+  return (
+    message.includes('enrollment_care_states')
+    || message.includes('enrollment_care_notes')
+    || message.includes('upsert_enrollment_care_state')
+    || message.includes('get_attendance_cumulative_absences')
+  )
+}
+
+function isMissingEnrollmentCareDependencyError(error: unknown) {
+  const message = getErrorMessage(error)
+  return (
+    message.includes('relation "enrollment_care_states" does not exist')
+    || message.includes('relation "class_pass.enrollment_care_states" does not exist')
+    || message.includes('relation "enrollment_care_notes" does not exist')
+    || message.includes('relation "class_pass.enrollment_care_notes" does not exist')
+    || (message.includes('upsert_enrollment_care_state') && message.includes('does not exist'))
+    || (message.includes('get_attendance_cumulative_absences') && message.includes('does not exist'))
+  )
+}
+
+function toEnrollmentCareDependencyError(error: unknown): AttendanceServiceError | null {
+  if (isEnrollmentCareSchemaCacheError(error)) {
+    return new AttendanceServiceError(ENROLLMENT_CARE_SCHEMA_CACHE_MESSAGE, 503)
+  }
+  if (isMissingEnrollmentCareDependencyError(error)) {
+    return new AttendanceServiceError(ENROLLMENT_CARE_MIGRATION_MESSAGE, 503)
+  }
+  return null
+}
+
+function handleEnrollmentCareReadError<T>(error: unknown, fallback: T): T {
+  if (isEnrollmentCareSchemaCacheError(error)) {
+    throw new AttendanceServiceError(ENROLLMENT_CARE_SCHEMA_CACHE_MESSAGE, 503)
+  }
+  if (isMissingEnrollmentCareDependencyError(error)) {
+    return fallback
+  }
+  throw error
+}
+
+function mapEnrollmentCareRpcError(error: unknown): AttendanceServiceError | null {
+  if (!error || typeof error !== 'object') {
+    return null
+  }
+  const code = 'code' in error && typeof error.code === 'string' ? error.code : ''
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : ''
+
+  if (code === '42501' || message.includes('enrollment does not belong to course')) {
+    return new AttendanceServiceError('수강생이 해당 강좌에 속하지 않습니다.', 403)
+  }
+  if (code === '42501' || message.includes('subject does not belong to course')) {
+    return new AttendanceServiceError('과목이 해당 강좌에 속하지 않습니다.', 403)
+  }
+  if (code === '23503' || message.includes('enrollment not found')) {
+    return new AttendanceServiceError('수강생을 찾을 수 없습니다.', 404)
+  }
+  if (code === '23514' || message.includes('invalid enrollment care state')) {
+    return new AttendanceServiceError('관리 상태 값이 올바르지 않습니다.', 400)
+  }
+  return null
+}
+
+export function makeEnrollmentCareKey(enrollmentId: number, subjectId: number | null) {
+  return subjectId == null ? `${enrollmentId}:none` : `${enrollmentId}:${subjectId}`
+}
+
+export async function listEnrollmentCareStatesMap(params: {
+  courseId: number
+  enrollmentIds: number[]
+  subjectId: number | null
+}): Promise<Map<string, EnrollmentCareState>> {
+  const map = new Map<string, EnrollmentCareState>()
+  if (params.enrollmentIds.length === 0) {
+    return map
+  }
+
+  const db = createServerClient()
+  let query = db
+    .from('enrollment_care_states')
+    .select('enrollment_id, subject_id, state, enrollments!inner(course_id)')
+    .eq('enrollments.course_id', params.courseId)
+    .in('enrollment_id', params.enrollmentIds)
+
+  if (params.subjectId == null) {
+    query = query.is('subject_id', null)
+  } else {
+    query = query.eq('subject_id', params.subjectId)
+  }
+
+  try {
+    const rows = unwrapSupabaseResult(
+      'enrollmentCare.states.list',
+      await query,
+    ) as Array<{ enrollment_id: number; subject_id: number | null; state: EnrollmentCareState }> | null
+
+    for (const row of rows ?? []) {
+      map.set(
+        makeEnrollmentCareKey(
+          Number(row.enrollment_id),
+          row.subject_id == null ? null : Number(row.subject_id),
+        ),
+        row.state,
+      )
+    }
+  } catch (error) {
+    return handleEnrollmentCareReadError(error, map)
+  }
+
+  return map
+}
+
+async function listEnrollmentCareStatesMapBySubjectIds(params: {
+  enrollmentIds: number[]
+  subjectIds: number[]
+}): Promise<Map<string, EnrollmentCareState>> {
+  const map = new Map<string, EnrollmentCareState>()
+  const enrollmentIds = [...new Set(params.enrollmentIds)]
+  const subjectIds = [...new Set(params.subjectIds)]
+
+  if (enrollmentIds.length === 0 || subjectIds.length === 0) {
+    return map
+  }
+
+  const db = createServerClient()
+
+  try {
+    const rows = unwrapSupabaseResult(
+      'enrollmentCare.states.listBySubjects',
+      await db
+        .from('enrollment_care_states')
+        .select('enrollment_id, subject_id, state')
+        .in('enrollment_id', enrollmentIds)
+        .in('subject_id', subjectIds),
+    ) as Array<{ enrollment_id: number; subject_id: number | null; state: EnrollmentCareState }> | null
+
+    for (const row of rows ?? []) {
+      if (row.subject_id == null) {
+        continue
+      }
+      map.set(makeEnrollmentCareKey(Number(row.enrollment_id), Number(row.subject_id)), row.state)
+    }
+  } catch (error) {
+    return handleEnrollmentCareReadError(error, map)
+  }
+
+  return map
+}
+
+export async function listEnrollmentCareLatestNotesMap(params: {
+  courseId: number
+  enrollmentIds: number[]
+  subjectId: number | null
+}): Promise<Map<string, EnrollmentCareNoteRecord>> {
+  const map = new Map<string, EnrollmentCareNoteRecord>()
+  if (params.enrollmentIds.length === 0) {
+    return map
+  }
+
+  const db = createServerClient()
+  let query = db
+    .from('enrollment_care_notes')
+    .select('id, enrollment_id, subject_id, body, created_by, created_by_name, created_at')
+    .eq('course_id', params.courseId)
+    .in('enrollment_id', params.enrollmentIds)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+
+  if (params.subjectId == null) {
+    query = query.is('subject_id', null)
+  } else {
+    query = query.eq('subject_id', params.subjectId)
+  }
+
+  try {
+    const rows = unwrapSupabaseResult(
+      'enrollmentCare.notes.latest',
+      await query,
+    ) as Array<{
+      id: number
+      enrollment_id: number
+      subject_id: number | null
+      body: string
+      created_by: string | null
+      created_by_name: string | null
+      created_at: string
+    }> | null
+
+    for (const row of rows ?? []) {
+      const key = makeEnrollmentCareKey(
+        Number(row.enrollment_id),
+        row.subject_id == null ? null : Number(row.subject_id),
+      )
+      if (map.has(key)) {
+        continue
+      }
+      map.set(key, {
+        id: Number(row.id),
+        enrollmentId: Number(row.enrollment_id),
+        subjectId: row.subject_id == null ? null : Number(row.subject_id),
+        body: String(row.body ?? ''),
+        createdBy: row.created_by == null ? null : String(row.created_by),
+        createdByName: row.created_by_name == null ? null : String(row.created_by_name),
+        createdAt: String(row.created_at ?? ''),
+      })
+    }
+  } catch (error) {
+    return handleEnrollmentCareReadError(error, map)
+  }
+
+  return map
+}
+
+async function listEnrollmentCareLatestNotesMapBySubjectIds(params: {
+  enrollmentIds: number[]
+  subjectIds: number[]
+}): Promise<Map<string, EnrollmentCareNoteRecord>> {
+  const map = new Map<string, EnrollmentCareNoteRecord>()
+  const enrollmentIds = [...new Set(params.enrollmentIds)]
+  const subjectIds = [...new Set(params.subjectIds)]
+
+  if (enrollmentIds.length === 0 || subjectIds.length === 0) {
+    return map
+  }
+
+  const db = createServerClient()
+
+  try {
+    const rows = unwrapSupabaseResult(
+      'enrollmentCare.notes.latestBySubjects',
+      await db
+        .from('enrollment_care_notes')
+        .select('id, enrollment_id, subject_id, body, created_by, created_by_name, created_at')
+        .in('enrollment_id', enrollmentIds)
+        .in('subject_id', subjectIds)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false }),
+    ) as Array<{
+      id: number
+      enrollment_id: number
+      subject_id: number | null
+      body: string
+      created_by: string | null
+      created_by_name: string | null
+      created_at: string
+    }> | null
+
+    for (const row of rows ?? []) {
+      if (row.subject_id == null) {
+        continue
+      }
+      const key = makeEnrollmentCareKey(Number(row.enrollment_id), Number(row.subject_id))
+      if (map.has(key)) {
+        continue
+      }
+      map.set(key, {
+        id: Number(row.id),
+        enrollmentId: Number(row.enrollment_id),
+        subjectId: Number(row.subject_id),
+        body: String(row.body ?? ''),
+        createdBy: row.created_by == null ? null : String(row.created_by),
+        createdByName: row.created_by_name == null ? null : String(row.created_by_name),
+        createdAt: String(row.created_at ?? ''),
+      })
+    }
+  } catch (error) {
+    return handleEnrollmentCareReadError(error, map)
+  }
+
+  return map
+}
+
+export async function listEnrollmentCumulativeAbsencesMap(params: {
+  courseId: number
+  enrollmentIds: number[]
+  subjectId: number | null
+  days?: number
+}): Promise<Map<number, number>> {
+  const map = new Map<number, number>()
+  if (params.enrollmentIds.length === 0) {
+    return map
+  }
+
+  const db = createServerClient()
+  try {
+    const rows = unwrapSupabaseResult(
+      'attendance.cumulativeAbsences.rpc',
+      await db.rpc('get_attendance_cumulative_absences', {
+        p_course_id: params.courseId,
+        p_enrollment_ids: params.enrollmentIds,
+        p_subject_id: params.subjectId ?? null,
+        p_days: params.days ?? 14,
+      }),
+    ) as Array<{ enrollment_id: number; cumulative_absences: number | null }> | null
+
+    for (const row of rows ?? []) {
+      map.set(Number(row.enrollment_id), Number(row.cumulative_absences ?? 0))
+    }
+  } catch (error) {
+    return handleEnrollmentCareReadError(error, map)
+  }
+
+  return map
+}
+
+export async function upsertEnrollmentCareState(input: {
+  courseId: number
+  enrollmentId: number
+  subjectId: number | null
+  state: EnrollmentCareState
+  updatedBy: string | null
+}): Promise<{ state: EnrollmentCareState }> {
+  if (!ENROLLMENT_CARE_STATES.includes(input.state)) {
+    throw new AttendanceServiceError('관리 상태 값이 올바르지 않습니다.', 400)
+  }
+
+  await assertEnrollmentBelongsToCourse({
+    courseId: input.courseId,
+    enrollmentId: input.enrollmentId,
+    subjectId: input.subjectId,
+  })
+
+  const db = createServerClient()
+
+  try {
+    const result = await db
+      .rpc('upsert_enrollment_care_state', {
+        p_course_id: input.courseId,
+        p_enrollment_id: input.enrollmentId,
+        p_subject_id: input.subjectId,
+        p_state: input.state,
+        p_updated_by: input.updatedBy ?? null,
+      })
+      .maybeSingle()
+
+    if (result.error) {
+      throw result.error
+    }
+  } catch (error) {
+    const dependencyError = toEnrollmentCareDependencyError(error)
+    if (dependencyError) {
+      throw dependencyError
+    }
+    const mappedError = mapEnrollmentCareRpcError(error)
+    if (mappedError) {
+      throw mappedError
+    }
+    throw error
+  }
+
+  return { state: input.state }
+}
+
+export async function appendEnrollmentCareNote(input: {
+  courseId: number
+  enrollmentId: number
+  subjectId: number | null
+  body: string
+  createdBy: string | null
+  createdByName: string | null
+}): Promise<EnrollmentCareNoteRecord> {
+  const normalized = input.body.trim()
+  if (!normalized) {
+    throw new AttendanceServiceError('메모 내용을 입력해 주세요.', 400)
+  }
+
+  if (normalized.length > 500) {
+    throw new AttendanceServiceError('메모는 500자를 넘을 수 없습니다.', 400)
+  }
+
+  await assertEnrollmentBelongsToCourse({
+    courseId: input.courseId,
+    enrollmentId: input.enrollmentId,
+    subjectId: input.subjectId,
+  })
+
+  const db = createServerClient()
+  try {
+    const result = await db
+      .from('enrollment_care_notes')
+      .insert({
+        course_id: input.courseId,
+        enrollment_id: input.enrollmentId,
+        subject_id: input.subjectId,
+        body: normalized,
+        created_by: input.createdBy,
+        created_by_name: input.createdByName,
+      })
+      .select('id, enrollment_id, subject_id, body, created_by, created_by_name, created_at')
+      .single()
+
+    if (result.error) {
+      throw result.error
+    }
+
+    return {
+      id: Number(result.data.id),
+      enrollmentId: Number(result.data.enrollment_id),
+      subjectId: result.data.subject_id == null ? null : Number(result.data.subject_id),
+      body: String(result.data.body ?? ''),
+      createdBy: result.data.created_by == null ? null : String(result.data.created_by),
+      createdByName: result.data.created_by_name == null ? null : String(result.data.created_by_name),
+      createdAt: String(result.data.created_at ?? ''),
+    }
+  } catch (error) {
+    const dependencyError = toEnrollmentCareDependencyError(error)
+    if (dependencyError) {
+      throw dependencyError
+    }
+    throw error
+  }
+}
+
+export async function listEnrollmentCareNoteHistory(input: {
+  courseId: number
+  enrollmentId: number
+  subjectId: number | null
+  limit?: number
+}): Promise<EnrollmentCareNoteRecord[]> {
+  await assertEnrollmentBelongsToCourse({
+    courseId: input.courseId,
+    enrollmentId: input.enrollmentId,
+    subjectId: input.subjectId,
+  })
+
+  const db = createServerClient()
+  let query = db
+    .from('enrollment_care_notes')
+    .select('id, enrollment_id, subject_id, body, created_by, created_by_name, created_at')
+    .eq('course_id', input.courseId)
+    .eq('enrollment_id', input.enrollmentId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(input.limit ?? 20)
+
+  if (input.subjectId == null) {
+    query = query.is('subject_id', null)
+  } else {
+    query = query.eq('subject_id', input.subjectId)
+  }
+
+  try {
+    const rows = unwrapSupabaseResult(
+      'enrollmentCare.notes.history',
+      await query,
+    ) as Array<{
+      id: number
+      enrollment_id: number
+      subject_id: number | null
+      body: string
+      created_by: string | null
+      created_by_name: string | null
+      created_at: string
+    }> | null
+
+    return (rows ?? []).map((row) => ({
+      id: Number(row.id),
+      enrollmentId: Number(row.enrollment_id),
+      subjectId: row.subject_id == null ? null : Number(row.subject_id),
+      body: String(row.body ?? ''),
+      createdBy: row.created_by == null ? null : String(row.created_by),
+      createdByName: row.created_by_name == null ? null : String(row.created_by_name),
+      createdAt: String(row.created_at ?? ''),
+    }))
+  } catch (error) {
+    return handleEnrollmentCareReadError<EnrollmentCareNoteRecord[]>(error, [])
+  }
 }

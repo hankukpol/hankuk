@@ -38,6 +38,10 @@
 **/.codex-temp-*
 **/.codex-admin-token.txt
 **/.codex-cookies.txt
+**/.codex-deploy-*/
+**/.codex-remote-attachments/
+apps/class-pass/_workspace/
+apps/class-pass/supabase/seed-mock/
 **/.playwright-mcp/
 apps/class-pass/20260408_KSCAT_v2.4.0_*/
 **/student-pass-*.png

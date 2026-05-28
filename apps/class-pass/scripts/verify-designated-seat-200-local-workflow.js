@@ -92,8 +92,12 @@ function updateCookieJar(jar, response) {
   }
 }
 
-function cookieHeader(jar) {
-  return Array.from(jar.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
+function cookieHeader(jar, division) {
+  const entries = new Map(jar)
+  if (division && !entries.has('hankuk_division')) {
+    entries.set('hankuk_division', division)
+  }
+  return Array.from(entries.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
 }
 
 function displayCookieName(courseId) {
@@ -182,13 +186,19 @@ async function requestJson(context, path, options = {}, jar = new Map(), admin =
   if (options.body != null && !headers.has('content-type')) headers.set('content-type', 'application/json')
   if (admin && !headers.has('origin')) headers.set('origin', context.baseUrl)
 
-  const cookies = cookieHeader(jar)
+  const cookies = cookieHeader(jar, context.division)
   if (cookies) headers.set('cookie', cookies)
 
   const response = await fetch(`${context.baseUrl}${path}`, { ...options, headers })
   updateCookieJar(jar, response)
-  const payload = await response.json().catch(() => null)
-  return { response, payload }
+  const text = await response.text()
+  let payload = null
+  try {
+    payload = text ? JSON.parse(text) : null
+  } catch {
+    payload = { raw: text }
+  }
+  return { response, payload, raw: text }
 }
 
 async function waitForServer(context) {
@@ -230,9 +240,25 @@ async function seed(db, division, studentCount, seatCount) {
     'seed course',
   )
 
+  const room = await must(
+    db
+      .from('course_rooms')
+      .insert({
+        course_id: course.id,
+        name: 'Main Room',
+        sort_order: 0,
+        is_active: true,
+        is_open: true,
+      })
+      .select('id,course_id,name,sort_order,is_active,is_open')
+      .single(),
+    'seed room',
+  )
+
   await must(
     db.from('course_seat_layouts').insert({
       course_id: course.id,
+      room_id: room.id,
       columns: 30,
       rows: Math.ceil(seatCount / 30),
       aisle_columns: [6, 12, 18, 24],
@@ -242,6 +268,7 @@ async function seed(db, division, studentCount, seatCount) {
 
   const seatsPayload = Array.from({ length: seatCount }, (_, index) => ({
     course_id: course.id,
+    room_id: room.id,
     label: `T${String(index + 1).padStart(3, '0')}`,
     position_x: (index % 30) + 1,
     position_y: Math.floor(index / 30) + 1,
@@ -257,7 +284,7 @@ async function seed(db, division, studentCount, seatCount) {
 
   const seats = []
   for (const part of chunk(seatsPayload, 200)) {
-    seats.push(...await must(db.from('course_seats').insert(part).select('id,label,position_x,position_y'), 'seed seats'))
+    seats.push(...await must(db.from('course_seats').insert(part).select('id,room_id,label,position_x,position_y'), 'seed seats'))
   }
 
   const enrollments = []
@@ -265,7 +292,7 @@ async function seed(db, division, studentCount, seatCount) {
     enrollments.push(...await must(db.from('enrollments').insert(part).select('id,name,phone,exam_number'), 'seed enrollments'))
   }
 
-  return { course, seats, enrollments }
+  return { course, room, seats, enrollments }
 }
 
 async function cleanupDivision(db, division) {
@@ -292,14 +319,15 @@ async function adminJson(context, path, method, body) {
 }
 
 async function expectDisplayStatus(context, jar, expectedStatus, label, expectedHttpOk = true) {
-  const { response, payload } = await requestJson(
+  const { response, payload, raw } = await requestJson(
     context,
     `/api/designated-seats/display?courseId=${context.course.id}`,
     { method: 'GET' },
     jar,
   )
-  if (expectedHttpOk) assert.equal(response.ok, true, `${label}: ${response.status} ${JSON.stringify(payload)}`)
-  assert.equal(payload?.status, expectedStatus, `${label}: unexpected display status ${JSON.stringify(payload)}`)
+  const responseSummary = `${response.status} ${JSON.stringify(payload)} raw=${JSON.stringify((raw ?? '').slice(0, 300))}`
+  if (expectedHttpOk) assert.equal(response.ok, true, `${label}: ${responseSummary}`)
+  assert.equal(payload?.status, expectedStatus, `${label}: unexpected display status ${responseSummary}`)
   return { response, payload }
 }
 
@@ -326,7 +354,7 @@ async function createDisplayDeviceThroughStaffFlow(context, deviceName) {
   )
   assert.equal(registerResult.response.ok, true, `register display device failed: ${registerResult.response.status} ${JSON.stringify(registerResult.payload)}`)
   assert.equal(registerResult.payload.success, true)
-  assert.ok(cookieHeader(jar).includes(`${displayCookieName(context.course.id)}=`), 'display device cookie was not set')
+  assert.ok(cookieHeader(jar, context.division).includes(`${displayCookieName(context.course.id)}=`), 'display device cookie was not set')
   return { jar, device: registerResult.payload.device }
 }
 

@@ -1682,17 +1682,22 @@ async function attachEnrollmentBillingSnapshots(payments: EnrollmentPayment[]) {
   const db = createServerClient()
   const { data, error } = await db
     .from('enrollment_billing')
-    .select('enrollment_id,discount_amount,created_by_staff_id')
+    .select('enrollment_id,discount_amount,expected_amount,payable_amount,created_by_staff_id')
     .in('enrollment_id', enrollmentIds)
 
   if (error) {
     throw error
   }
 
-  const billingByEnrollmentId = new Map<number, Pick<EnrollmentBilling, 'discount_amount' | 'created_by_staff_id'>>()
+  const billingByEnrollmentId = new Map<
+    number,
+    Pick<EnrollmentBilling, 'discount_amount' | 'expected_amount' | 'payable_amount' | 'created_by_staff_id'>
+  >()
   for (const row of data ?? []) {
     billingByEnrollmentId.set(Number(row.enrollment_id), {
       discount_amount: Number(row.discount_amount ?? 0),
+      expected_amount: Number(row.expected_amount ?? 0),
+      payable_amount: Number(row.payable_amount ?? 0),
       created_by_staff_id: row.created_by_staff_id === null ? null : Number(row.created_by_staff_id),
     })
   }

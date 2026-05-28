@@ -4,9 +4,55 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   DesignatedSeatAttendanceDashboard,
   DesignatedSeatAttendanceRecord,
+  EnrollmentCareNoteRecord,
+  EnrollmentCareState,
 } from '@/types/database'
 
 type RecordTab = 'all' | 'present' | 'absent'
+
+type SortKey =
+  | 'consecutiveAbsences'
+  | 'cumulativeAbsences'
+  | 'lastAttendedDate'
+  | 'careState'
+  | 'studentName'
+  | 'examNumber'
+
+type SortConfig = { key: SortKey; direction: 'asc' | 'desc' }
+
+const CARE_STATE_ORDER: Record<EnrollmentCareState, number> = {
+  needs_contact: 0,
+  pending: 1,
+  meeting_scheduled: 2,
+  contacted: 3,
+}
+
+const CARE_STATE_NEXT: Record<EnrollmentCareState, EnrollmentCareState> = {
+  pending: 'needs_contact',
+  needs_contact: 'contacted',
+  contacted: 'meeting_scheduled',
+  meeting_scheduled: 'pending',
+}
+
+const CARE_STATE_LABEL: Record<EnrollmentCareState, string> = {
+  pending: '대기',
+  needs_contact: '연락 필요',
+  contacted: '연락 완료',
+  meeting_scheduled: '면담 예정',
+}
+
+function formatDateTimeShort(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
 
 function getToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
@@ -98,6 +144,167 @@ function StatusChip(props: { status: DesignatedSeatAttendanceRecord['status'] })
     <span className="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
       결석
     </span>
+  )
+}
+
+function SortableTh(props: {
+  label: string
+  sortKey: SortKey
+  currentSort: SortConfig | null
+  onToggle: (key: SortKey) => void
+  className?: string
+}) {
+  const active = props.currentSort?.key === props.sortKey
+  const direction = active ? props.currentSort?.direction : null
+  const arrow = direction === 'desc' ? '↓' : direction === 'asc' ? '↑' : '↕'
+
+  return (
+    <th className={`px-4 py-3 ${props.className ?? ''}`}>
+      <button
+        type="button"
+        onClick={() => props.onToggle(props.sortKey)}
+        className={`inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-[0.14em] transition-colors hover:bg-slate-100 ${
+          active ? 'text-[#1d1d1f]' : 'text-slate-500'
+        }`}
+      >
+        <span>{props.label}</span>
+        <span className={active ? 'text-[#0071e3]' : 'text-slate-400'}>{arrow}</span>
+      </button>
+    </th>
+  )
+}
+
+function CareStateChip(props: {
+  state: EnrollmentCareState
+  pending?: boolean
+  onClick: () => void
+}) {
+  const palette: Record<EnrollmentCareState, string> = {
+    pending: 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+    needs_contact: 'bg-rose-100 text-rose-700 hover:bg-rose-200',
+    contacted: 'bg-sky-100 text-sky-700 hover:bg-sky-200',
+    meeting_scheduled: 'bg-violet-100 text-violet-700 hover:bg-violet-200',
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.pending}
+      className={`rounded-full px-3 py-1 text-xs font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 ${palette[props.state]}`}
+      title="클릭하여 다음 상태로 변경"
+    >
+      {CARE_STATE_LABEL[props.state]}
+    </button>
+  )
+}
+
+function CareNoteCell(props: {
+  record: DesignatedSeatAttendanceRecord
+  onSubmit: (body: string) => Promise<void>
+  onLoadHistory: () => Promise<EnrollmentCareNoteRecord[]>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const [hoverHistory, setHoverHistory] = useState<EnrollmentCareNoteRecord[] | null>(null)
+  const [hoverLoading, setHoverLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function commit() {
+    const trimmed = value.trim()
+    if (!trimmed || submitting) {
+      setEditing(false)
+      setValue('')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await props.onSubmit(trimmed)
+      setValue('')
+      setEditing(false)
+      setHoverHistory(null)
+    } catch {
+      // 실패 시 입력값과 편집 모드 유지하여 사용자가 재시도하거나 복사할 수 있게 함
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleHoverEnter() {
+    if (hoverHistory != null || hoverLoading) {
+      return
+    }
+    setHoverLoading(true)
+    try {
+      const notes = await props.onLoadHistory()
+      setHoverHistory(notes)
+    } finally {
+      setHoverLoading(false)
+    }
+  }
+
+  const latest = props.record.latestNote
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            void commit()
+          } else if (event.key === 'Escape') {
+            setEditing(false)
+            setValue('')
+          }
+        }}
+        onBlur={() => void commit()}
+        placeholder="메모 입력 후 엔터"
+        maxLength={500}
+        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs outline-none focus:border-[#0071e3]"
+      />
+    )
+  }
+
+  return (
+    <div
+      className="group relative inline-flex max-w-[220px] cursor-text items-center gap-1"
+      onMouseEnter={() => void handleHoverEnter()}
+      onClick={() => {
+        setEditing(true)
+        setValue('')
+      }}
+    >
+      {latest ? (
+        <span className="block truncate text-left text-xs text-slate-700">{latest.body}</span>
+      ) : (
+        <span className="text-xs text-slate-400">+ 메모</span>
+      )}
+      {latest ? (
+        <div className="pointer-events-none invisible absolute left-1/2 top-full z-20 mt-1 w-72 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100">
+          <p className="mb-2 font-semibold text-slate-900">메모 히스토리</p>
+          {hoverLoading ? (
+            <p className="text-slate-400">불러오는 중...</p>
+          ) : hoverHistory && hoverHistory.length > 0 ? (
+            <ul className="space-y-2">
+              {hoverHistory.slice(0, 3).map((note) => (
+                <li key={note.id} className="border-l-2 border-slate-200 pl-2">
+                  <p className="text-[11px] text-slate-400">
+                    {formatDateTimeShort(note.createdAt)}
+                    {note.createdByName ? ` · ${note.createdByName}` : ''}
+                  </p>
+                  <p className="mt-0.5 break-words text-slate-700">{note.body}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-slate-400">최근 메모: {latest.body}</p>
+          )}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -217,6 +424,11 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [absenteeSort, setAbsenteeSort] = useState<SortConfig | null>({
+    key: 'consecutiveAbsences',
+    direction: 'desc',
+  })
+  const [careStatePending, setCareStatePending] = useState<Set<number>>(() => new Set())
 
   const loadDashboard = useCallback(async () => {
     const query = new URLSearchParams({
@@ -283,17 +495,140 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
     setCurrentPage(1)
   }, [activeTab, date, pageSize, search])
 
+  const toggleAbsenteeSort = useCallback((key: SortKey) => {
+    setAbsenteeSort((current) => {
+      if (!current || current.key !== key) {
+        return { key, direction: 'desc' }
+      }
+      if (current.direction === 'desc') {
+        return { key, direction: 'asc' }
+      }
+      return null
+    })
+  }, [])
+
+  const setRowCareStatePending = useCallback((enrollmentId: number, pending: boolean) => {
+    setCareStatePending((current) => {
+      const next = new Set(current)
+      if (pending) {
+        next.add(enrollmentId)
+      } else {
+        next.delete(enrollmentId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleCareStateToggle = useCallback(async (record: DesignatedSeatAttendanceRecord) => {
+    const nextState = CARE_STATE_NEXT[record.careState]
+    setRowCareStatePending(record.enrollmentId, true)
+    setError('')
+
+    try {
+      const response = await fetch('/api/attendance/admin/care-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: props.courseId,
+          enrollmentId: record.enrollmentId,
+          subjectId: null,
+          state: nextState,
+        }),
+      })
+      const payload = await readJson<{ error?: string }>(response)
+      if (!response.ok) {
+        throw new Error(payload?.error ?? '관리 상태를 변경하지 못했습니다.')
+      }
+      await loadDashboard()
+        .then((nextDashboard) => setDashboard(nextDashboard))
+        .catch(() => null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '관리 상태를 변경하지 못했습니다.')
+    } finally {
+      setRowCareStatePending(record.enrollmentId, false)
+    }
+  }, [loadDashboard, props.courseId, setRowCareStatePending])
+
+  const handleCareNoteSubmit = useCallback(async (
+    record: DesignatedSeatAttendanceRecord,
+    body: string,
+  ) => {
+    setError('')
+    const response = await fetch('/api/attendance/admin/care-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseId: props.courseId,
+        enrollmentId: record.enrollmentId,
+        subjectId: null,
+        body,
+      }),
+    })
+    const payload = await readJson<{ error?: string }>(response)
+    if (!response.ok) {
+      const message = payload?.error ?? '메모를 등록하지 못했습니다.'
+      setError(message)
+      throw new Error(message)
+    }
+    await loadDashboard()
+      .then((nextDashboard) => setDashboard(nextDashboard))
+      .catch(() => null)
+  }, [loadDashboard, props.courseId])
+
+  const loadCareNoteHistory = useCallback(async (record: DesignatedSeatAttendanceRecord) => {
+    const query = new URLSearchParams({
+      courseId: String(props.courseId),
+      enrollmentId: String(record.enrollmentId),
+      limit: '5',
+    })
+    const response = await fetch(`/api/attendance/admin/care-notes?${query.toString()}`, {
+      cache: 'no-store',
+    })
+    const payload = await readJson<{ notes?: EnrollmentCareNoteRecord[]; error?: string }>(response)
+    if (!response.ok) {
+      throw new Error(payload?.error ?? '메모 히스토리를 불러오지 못했습니다.')
+    }
+    return payload?.notes ?? []
+  }, [props.courseId])
+
   const filteredRecords = useMemo(() => {
     const source = dashboard?.records ?? []
     const scoped = activeTab === 'all'
       ? source
       : source.filter((row) => row.status === activeTab)
-    const ordered = activeTab === 'absent'
-      ? [...scoped].sort((left, right) => (
-        right.consecutiveAbsences - left.consecutiveAbsences
-        || left.studentName.localeCompare(right.studentName, 'ko-KR')
-      ))
-      : scoped
+
+    let ordered = scoped
+    if (activeTab === 'absent') {
+      if (absenteeSort) {
+        const dirSign = absenteeSort.direction === 'asc' ? 1 : -1
+        const compare = (left: DesignatedSeatAttendanceRecord, right: DesignatedSeatAttendanceRecord) => {
+          switch (absenteeSort.key) {
+            case 'consecutiveAbsences':
+              return (left.consecutiveAbsences - right.consecutiveAbsences) * dirSign
+            case 'cumulativeAbsences':
+              return (left.cumulativeAbsences - right.cumulativeAbsences) * dirSign
+            case 'lastAttendedDate':
+              return ((left.lastAttendedDate ?? '').localeCompare(right.lastAttendedDate ?? '')) * dirSign
+            case 'careState':
+              return (CARE_STATE_ORDER[left.careState] - CARE_STATE_ORDER[right.careState]) * dirSign
+            case 'studentName':
+              return left.studentName.localeCompare(right.studentName, 'ko-KR') * dirSign
+            case 'examNumber':
+              return (left.examNumber ?? '').localeCompare(right.examNumber ?? '', 'ko-KR') * dirSign
+            default:
+              return 0
+          }
+        }
+        ordered = [...scoped].sort((left, right) => (
+          compare(left, right) || left.studentName.localeCompare(right.studentName, 'ko-KR')
+        ))
+      } else {
+        ordered = [...scoped].sort((left, right) => (
+          right.consecutiveAbsences - left.consecutiveAbsences
+          || left.studentName.localeCompare(right.studentName, 'ko-KR')
+        ))
+      }
+    }
 
     return ordered.filter((row) => matchesFields(search, [
       row.studentName,
@@ -301,10 +636,13 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
       row.phone,
       row.seatLabel,
       row.status === 'absent' ? `연속결석${row.consecutiveAbsences}회` : '',
+      row.status === 'absent' ? `누적결석${row.cumulativeAbsences}회` : '',
+      row.status === 'absent' ? CARE_STATE_LABEL[row.careState] : '',
+      row.latestNote?.body,
       row.status === 'present' ? '출석' : '결석',
       formatTime(row.checkedInAt),
     ]))
-  }, [activeTab, dashboard?.records, search])
+  }, [absenteeSort, activeTab, dashboard?.records, search])
 
   const pageCount = Math.max(1, Math.ceil(filteredRecords.length / pageSize))
 
@@ -416,63 +754,135 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
         ) : null}
 
         <div className="overflow-x-auto">
-          <table className="min-w-[920px] w-full table-fixed">
-            <colgroup>
-              <col className="w-[11%]" />
-              <col className="w-[13%]" />
-              <col className="w-[16%]" />
-              <col className="w-[12%]" />
-              <col className="w-[18%]" />
-              <col className="w-[17%]" />
-              <col className="w-[13%]" />
-            </colgroup>
-            <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              <tr>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3">수험번호</th>
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">좌석번호</th>
-                <th className="px-4 py-3">연락처</th>
-                <th className="px-4 py-3">연속 결석</th>
-                <th className="px-4 py-3">출석 시각</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
-              {pagedRecords.length === 0 ? (
+          {activeTab === 'absent' ? (
+            <table className="min-w-[1100px] w-full">
+              <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
-                    {getEmptyStateMessage({ tab: activeTab, hasSearch, hasNoStudents })}
-                  </td>
+                  <th className="px-4 py-3">상태</th>
+                  <SortableTh label="수험번호" sortKey="examNumber" currentSort={absenteeSort} onToggle={toggleAbsenteeSort} />
+                  <SortableTh label="이름" sortKey="studentName" currentSort={absenteeSort} onToggle={toggleAbsenteeSort} />
+                  <th className="px-4 py-3">좌석</th>
+                  <th className="px-4 py-3">연락처</th>
+                  <SortableTh label="연속 결석" sortKey="consecutiveAbsences" currentSort={absenteeSort} onToggle={toggleAbsenteeSort} />
+                  <SortableTh label="누적 결석(14d)" sortKey="cumulativeAbsences" currentSort={absenteeSort} onToggle={toggleAbsenteeSort} />
+                  <SortableTh label="마지막 출석" sortKey="lastAttendedDate" currentSort={absenteeSort} onToggle={toggleAbsenteeSort} />
+                  <SortableTh label="관리 상태" sortKey="careState" currentSort={absenteeSort} onToggle={toggleAbsenteeSort} />
+                  <th className="px-4 py-3">비고 메모</th>
                 </tr>
-              ) : (
-                pagedRecords.map((row) => (
-                  <tr key={row.enrollmentId} className="bg-white">
-                    <td className="px-4 py-3 align-middle text-center">
-                      <StatusChip status={row.status} />
-                    </td>
-                    <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">
-                      {row.examNumber ?? '-'}
-                    </td>
-                    <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">
-                      <span className="block truncate">{row.studentName}</span>
-                    </td>
-                    <td className="px-4 py-3 align-middle text-center text-slate-600">
-                      {row.seatLabel ?? '-'}
-                    </td>
-                    <td className="px-4 py-3 align-middle text-center text-slate-600">
-                      <span className="block truncate">{row.phone}</span>
-                    </td>
-                    <td className="px-4 py-3 align-middle text-center">
-                      <ConsecutiveAbsenceCell record={row} />
-                    </td>
-                    <td className="px-4 py-3 align-middle text-center text-slate-600">
-                      {formatTime(row.checkedInAt)}
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
+                {pagedRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-400">
+                      {getEmptyStateMessage({ tab: activeTab, hasSearch, hasNoStudents })}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  pagedRecords.map((row) => {
+                    const cumulativeHighlighted = row.cumulativeAbsences >= 3
+                    return (
+                      <tr key={row.enrollmentId} className="bg-white">
+                        <td className="px-4 py-3 align-middle text-center">
+                          <StatusChip status={row.status} />
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">{row.examNumber ?? '-'}</td>
+                        <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">
+                          <span className="block truncate">{row.studentName}</span>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center text-slate-600">{row.seatLabel ?? '-'}</td>
+                        <td className="px-4 py-3 align-middle text-center text-slate-600">
+                          <span className="block truncate">{row.phone}</span>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <ConsecutiveAbsenceCell record={row} />
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            cumulativeHighlighted ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {row.cumulativeAbsences}회
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center text-slate-600">{row.lastAttendedDate ?? '-'}</td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <CareStateChip
+                            state={row.careState}
+                            pending={careStatePending.has(row.enrollmentId)}
+                            onClick={() => void handleCareStateToggle(row)}
+                          />
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <CareNoteCell
+                            record={row}
+                            onSubmit={(body) => handleCareNoteSubmit(row, body)}
+                            onLoadHistory={() => loadCareNoteHistory(row)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <table className="min-w-[920px] w-full table-fixed">
+              <colgroup>
+                <col className="w-[11%]" />
+                <col className="w-[13%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col className="w-[18%]" />
+                <col className="w-[17%]" />
+                <col className="w-[13%]" />
+              </colgroup>
+              <thead className="bg-slate-50 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">상태</th>
+                  <th className="px-4 py-3">수험번호</th>
+                  <th className="px-4 py-3">이름</th>
+                  <th className="px-4 py-3">좌석번호</th>
+                  <th className="px-4 py-3">연락처</th>
+                  <th className="px-4 py-3">연속 결석</th>
+                  <th className="px-4 py-3">출석 시각</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-center text-sm text-slate-700">
+                {pagedRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
+                      {getEmptyStateMessage({ tab: activeTab, hasSearch, hasNoStudents })}
+                    </td>
+                  </tr>
+                ) : (
+                  pagedRecords.map((row) => (
+                    <tr key={row.enrollmentId} className="bg-white">
+                      <td className="px-4 py-3 align-middle text-center">
+                        <StatusChip status={row.status} />
+                      </td>
+                      <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">
+                        {row.examNumber ?? '-'}
+                      </td>
+                      <td className="px-4 py-3 align-middle text-center font-semibold text-slate-900">
+                        <span className="block truncate">{row.studentName}</span>
+                      </td>
+                      <td className="px-4 py-3 align-middle text-center text-slate-600">
+                        {row.seatLabel ?? '-'}
+                      </td>
+                      <td className="px-4 py-3 align-middle text-center text-slate-600">
+                        <span className="block truncate">{row.phone}</span>
+                      </td>
+                      <td className="px-4 py-3 align-middle text-center">
+                        <ConsecutiveAbsenceCell record={row} />
+                      </td>
+                      <td className="px-4 py-3 align-middle text-center text-slate-600">
+                        {formatTime(row.checkedInAt)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <PaginationControls

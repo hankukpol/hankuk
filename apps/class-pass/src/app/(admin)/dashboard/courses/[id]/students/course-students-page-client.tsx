@@ -23,6 +23,9 @@ import {
 } from '@/components/payments/PaymentSection'
 import { formatWon } from '@/lib/payments/format'
 import { downloadEnrollmentTemplate, parseEnrollmentXlsxToText } from '@/lib/enrollment-template'
+import { downloadCourseSettlementXlsx } from '@/lib/payments/xlsx-export'
+import { buildSettlementReport } from '@/lib/payments/settlement-report'
+import type { EnrollmentPayment } from '@/lib/payments/types'
 import { formatPhoneNumber } from '@/lib/utils'
 import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
 import { useTenantConfig } from '@/components/TenantProvider'
@@ -1308,6 +1311,61 @@ export default function CourseStudentsPage({
     }
   }, [])
 
+  const handleDownloadCourseSettlement = useCallback(async () => {
+    if (!course) return
+
+    setError('')
+    setMessage('')
+
+    // 정산 기간: 강좌 등록 시작일(enrolled_from) 또는 강좌 생성일 ~ 오늘
+    const fromCandidate = course.enrolled_from || course.created_at || ''
+    const fromDate = fromCandidate.slice(0, 10) || '2020-01-01'
+    const toDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })
+
+    try {
+      // 1. 결제·환불 상세 데이터 + 전체 수강생 명단 병렬 조회
+      const settlementParams = new URLSearchParams({
+        from: fromDate,
+        to: toDate,
+        courseId: String(courseId),
+        limit: '10000',
+      })
+
+      const [settlementResponse, enrollmentsData] = await Promise.all([
+        fetch(`/api/payments/settlement/details?${settlementParams.toString()}`, { cache: 'no-store' }),
+        fetchStudentsPageData(courseId, {
+          page: 1,
+          pageSize: 50,
+          search: '',
+          status: 'all',
+          noLimit: true,
+        }),
+      ])
+
+      const settlementResult = await settlementResponse.json().catch(() => null)
+      if (!settlementResponse.ok) {
+        throw new Error(settlementResult?.error ?? '정산 데이터를 불러오지 못했습니다.')
+      }
+
+      const payments = (settlementResult?.payments ?? []) as EnrollmentPayment[]
+      const report = buildSettlementReport(payments, fromDate, toDate)
+
+      downloadCourseSettlementXlsx(
+        report,
+        payments,
+        { id: course.id, name: course.name, slug: course.slug },
+        enrollmentsData.enrollments,
+        { from: fromDate, to: toDate },
+      )
+
+      setMessage(
+        `${course.name} 정산 다운로드 완료 (결제 ${payments.length}건, 수강생 ${enrollmentsData.enrollments.length}명, 기간 ${fromDate} ~ ${toDate})`,
+      )
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '정산 다운로드에 실패했습니다.')
+    }
+  }, [course, courseId])
+
   const loadMatrixData = useCallback(async (mode: MatrixMode) => {
     setMatrixLoading(true)
     setError('')
@@ -2059,6 +2117,15 @@ export default function CourseStudentsPage({
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             명단 다운로드
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadCourseSettlement}
+            title="이 강좌 전체 기간의 결제·환불 내역을 정산용 엑셀로 다운로드 (요약·수강생별·결제명세·환불내역 시트 포함)"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-all duration-200 ease-ios hover:bg-emerald-100 active:scale-[0.97]"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            정산 다운로드
           </button>
           <button
             type="button"

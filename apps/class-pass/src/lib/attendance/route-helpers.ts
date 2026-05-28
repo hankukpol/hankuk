@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppFeatureKey } from '@/lib/app-config.shared'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { authenticateAdminRequest } from '@/lib/auth/authenticate'
+import { checkRateLimit } from '@/lib/auth/rateLimiter'
 import { getCourseById } from '@/lib/class-pass-data'
 import { getServerTenantType } from '@/lib/tenant.server'
 import type { Course, StaffJwtPayload } from '@/types/database'
@@ -44,6 +45,69 @@ type GuardResult<T> =
   | { response: NextResponse; context: null }
   | { response: null; context: T }
 
+const ATTENDANCE_CARE_RATE_LIMIT = {
+  maxAttempts: 60,
+  windowSeconds: 60,
+} as const
+
+const ATTENDANCE_CARE_PRIVATE_HEADERS = {
+  'Cache-Control': 'no-store, private',
+  'X-Robots-Tag': 'noindex',
+} as const
+
+function mergeAttendanceCareHeaders(headers?: HeadersInit) {
+  const nextHeaders = new Headers(headers)
+  for (const [key, value] of Object.entries(ATTENDANCE_CARE_PRIVATE_HEADERS)) {
+    nextHeaders.set(key, value)
+  }
+  return nextHeaders
+}
+
+export function withAttendanceCareHeaders(response: NextResponse) {
+  for (const [key, value] of Object.entries(ATTENDANCE_CARE_PRIVATE_HEADERS)) {
+    response.headers.set(key, value)
+  }
+  return response
+}
+
+export function attendanceCareJson(body: unknown, init: ResponseInit = {}) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: mergeAttendanceCareHeaders(init.headers),
+  })
+}
+
+function getAttendanceCareRateLimitActor(payload: StaffJwtPayload | null) {
+  return (
+    payload?.adminId?.trim()
+    || payload?.sub?.trim()
+    || (payload?.accountId == null ? null : String(payload.accountId))
+    || payload?.staffName?.trim()
+    || 'unknown'
+  )
+}
+
+export async function requireAttendanceCareRateLimit(
+  payload: StaffJwtPayload | null,
+  courseId: number,
+): Promise<NextResponse | null> {
+  const actor = getAttendanceCareRateLimitActor(payload)
+  const rateLimit = await checkRateLimit(`attendance-care:${actor}:course:${courseId}`, ATTENDANCE_CARE_RATE_LIMIT)
+
+  if (rateLimit.allowed) {
+    return null
+  }
+
+  const retryAfterSec = Math.max(Math.ceil(rateLimit.retryAfterMs / 1000), 1)
+  return attendanceCareJson(
+    {
+      error: 'Too many requests. Try again later.',
+      retryAfterMs: rateLimit.retryAfterMs,
+    },
+    { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
+  )
+}
+
 export async function requireAttendanceCourse(courseId: number): Promise<GuardResult<AttendanceCourseContext>> {
   const featureError = await requireAppFeature('attendance_enabled')
   if (featureError) {
@@ -73,6 +137,53 @@ export async function requireAttendanceCourse(courseId: number): Promise<GuardRe
   return {
     response: null,
     context: { course, division },
+  }
+}
+
+export async function requireCareAdminCourseRequest(
+  req: NextRequest,
+  courseId: number,
+): Promise<GuardResult<AttendanceAdminCourseContext>> {
+  const { error, payload } = await authenticateAdminRequest(req)
+  if (error) {
+    return { response: error, context: null }
+  }
+
+  const studentFeatureError = await requireAppFeature('admin_student_management_enabled')
+  const seatFeatureError = await requireAppFeature('admin_seat_management_enabled')
+  if (studentFeatureError && seatFeatureError) {
+    return {
+      response: NextResponse.json(
+        { error: '결석자 관리 기능을 사용할 수 없습니다. 학생 관리 또는 좌석 관리 권한이 필요합니다.' },
+        { status: 403 },
+      ),
+      context: null,
+    }
+  }
+
+  const division = await getServerTenantType()
+  const course = await getCourseById(courseId, division)
+
+  if (!course) {
+    return {
+      response: NextResponse.json({ error: ATTENDANCE_ERROR_MESSAGES.courseNotFound }, { status: 404 }),
+      context: null,
+    }
+  }
+
+  if (!course.feature_attendance && !course.feature_designated_seat) {
+    return {
+      response: NextResponse.json(
+        { error: '이 강의는 출석 또는 지정좌석 기능을 사용하지 않습니다.' },
+        { status: 409 },
+      ),
+      context: null,
+    }
+  }
+
+  return {
+    response: null,
+    context: { course, division, payload },
   }
 }
 

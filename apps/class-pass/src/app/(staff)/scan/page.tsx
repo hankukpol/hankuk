@@ -74,7 +74,6 @@ export default function StaffScanPage() {
   const [error, setError] = useState('')
   const [overlay, setOverlay] = useState<OverlayState | null>(null)
   const [selectOptions, setSelectOptions] = useState<MaterialItem[]>([])
-  const [selectedSelectionMaterialIds, setSelectedSelectionMaterialIds] = useState<number[]>([])
   const [pendingToken, setPendingToken] = useState('')
   const [lastStudentName, setLastStudentName] = useState('')
 
@@ -113,7 +112,6 @@ export default function StaffScanPage() {
 
   const clearPendingSelection = useCallback(() => {
     setSelectOptions([])
-    setSelectedSelectionMaterialIds([])
     setPendingToken('')
   }, [])
 
@@ -302,7 +300,6 @@ export default function StaffScanPage() {
       processingRef.current = true
       setScanState('processing')
       setSelectOptions([])
-      setSelectedSelectionMaterialIds([])
       setPendingToken(token)
       setMessage('')
       setError('')
@@ -343,7 +340,6 @@ export default function StaffScanPage() {
 
         if (payload?.needsSelection && payload.unreceived?.length) {
           setSelectOptions(payload.unreceived)
-          setSelectedSelectionMaterialIds([])
           setScanState('selecting')
           processingRef.current = true
           return
@@ -538,19 +534,15 @@ export default function StaffScanPage() {
     clearPendingSelection()
   }, [clearPendingSelection])
 
-  const handleConfirmSelection = useCallback(async (materialIds?: number[]) => {
-    if (!pendingToken) {
-      return
-    }
-
-    if (!selectedCourseId) {
+  // 한 번 QR 스캔 후 표시되는 자료 목록에서 자료 1개를 터치할 때.
+  // - 그 1건만 즉시 배부
+  // - selectOptions에서 해당 ID만 제거 (목록 유지)
+  // - 남은 자료가 있으면 패널 유지 + 작은 안내 메시지로 진행 표시
+  // - 모두 배부 끝나면 success overlay + 카메라 스캔 모드 복귀
+  // - 동시 배부 충돌 등으로 API가 unreceived 갱신 응답을 주면 새 목록으로 교체
+  const handleDistributeOne = useCallback(async (materialId: number) => {
+    if (!pendingToken || !selectedCourseId) {
       setError('강좌를 먼저 선택해 주세요.')
-      return
-    }
-
-    const targetMaterialIds = materialIds ?? selectedSelectionMaterialIds
-    if (targetMaterialIds.length === 0) {
-      setError('배부할 자료를 하나 이상 선택해 주세요.')
       return
     }
 
@@ -565,74 +557,82 @@ export default function StaffScanPage() {
         body: JSON.stringify({
           token: pendingToken,
           courseId: selectedCourseId,
-          ...(targetMaterialIds.length === 1
-            ? { materialId: targetMaterialIds[0] }
-            : { materialIds: targetMaterialIds }),
+          materialId,
         }),
       })
       const payload = (await response.json().catch(() => null)) as ScanResponse | null
 
-      setSelectOptions([])
-      setSelectedSelectionMaterialIds([])
-      setPendingToken('')
-
-      if (response.ok && payload?.success) {
-        const distributedMaterials = payload.distributedMaterials ?? []
-
-        showOverlay(
-          {
-            success: true,
-            title: summarizeDistributedMaterials(distributedMaterials.length > 0
-              ? distributedMaterials
-              : payload?.materialName
-                ? [{ name: payload.materialName, material_type: payload.materialType }]
-                : []),
-            description: [payload.studentName, describeDistributedMaterials(distributedMaterials)]
-              .filter(Boolean)
-              .join(' · '),
-          },
-          OVERLAY_TIMEOUT_MS,
-        )
-        return
-      }
-
-      if (payload?.needsSelection && payload.unreceived?.length) {
+      // 실패: 동시 배부로 인해 unreceived 갱신 요청이 오면 목록만 교체하고 사용자가 다시 고르도록
+      if (response.ok && payload?.needsSelection && Array.isArray(payload.unreceived)) {
         setSelectOptions(payload.unreceived)
-        setSelectedSelectionMaterialIds([])
-        setPendingToken(pendingToken)
+        processingRef.current = false
         setScanState('selecting')
-        processingRef.current = true
+        setError('다른 직원이 먼저 배부했을 수 있습니다. 갱신된 목록에서 다시 선택해 주세요.')
         return
       }
 
-      if (payload?.distributedMaterials?.length) {
-        showOverlay(
-          {
-            success: false,
-            title: '일부 자료만 배부되었습니다.',
-            description: [payload.studentName, describeDistributedMaterials(payload.distributedMaterials)]
-              .filter(Boolean)
-              .join(' · '),
-          },
-          ERROR_OVERLAY_TIMEOUT_MS,
-        )
+      if (!response.ok || !payload?.success) {
+        processingRef.current = false
+        setScanState('selecting')
+        setError(getScanFailureDescription(payload) || '배부에 실패했습니다.')
         return
       }
+
+      // success — 응답의 distributedMaterials 우선, 없으면 단건 materialId fallback
+      const distributedMaterials = payload.distributedMaterials ?? []
+      const distributedIdSet = new Set<number>(distributedMaterials.map((material) => material.id))
+      if (distributedIdSet.size === 0) {
+        distributedIdSet.add(materialId)
+      }
+
+      const remaining = selectOptions.filter((material) => !distributedIdSet.has(material.id))
+
+      // 안내 메시지·overlay에 쓸 자료 라벨용 배열 — 응답이 부실해도 1건 표시 보장
+      const labelMaterials: Array<{ id?: number; name: string; material_type?: 'handout' | 'textbook' }> =
+        distributedMaterials.length > 0
+          ? distributedMaterials
+          : [{
+              id: materialId,
+              name: payload.materialName || '자료',
+              material_type: payload.materialType,
+            }]
+
+      const studentName = payload.studentName || lastStudentName || '학생'
+
+      if (remaining.length > 0) {
+        // 남은 자료 있음 → 패널 유지, 작은 안내 메시지만 표시
+        setSelectOptions(remaining)
+        processingRef.current = false
+        setScanState('selecting')
+
+        const distributedSummary = describeDistributedMaterials(labelMaterials) ?? '자료 배부'
+        setMessage(`${studentName} · ${distributedSummary} 배부 완료 · 남은 자료 ${remaining.length}건`)
+
+        try { navigator.vibrate?.(35) } catch { /* vibration not supported */ }
+        return
+      }
+
+      // 모두 배부됨 → success overlay + 카메라 모드 복귀
+      setSelectOptions([])
+      setPendingToken('')
+      setMessage('')
 
       showOverlay(
         {
-          success: false,
-          title: '자료 선택을 완료하지 못했습니다.',
-          description: getScanFailureDescription(payload),
+          success: true,
+          title: summarizeDistributedMaterials(labelMaterials),
+          description: [studentName, describeDistributedMaterials(labelMaterials)]
+            .filter(Boolean)
+            .join(' · '),
         },
-        ERROR_OVERLAY_TIMEOUT_MS,
+        OVERLAY_TIMEOUT_MS,
       )
     } catch {
       processingRef.current = false
       setScanState('selecting')
-      setError('자료 선택 요청에 실패했습니다. 다시 시도해 주세요.')
+      setError('배부 요청에 실패했습니다. 다시 시도해 주세요.')
     }
-  }, [pendingToken, selectedCourseId, selectedSelectionMaterialIds, showOverlay])
+  }, [pendingToken, selectedCourseId, selectOptions, lastStudentName, showOverlay])
 
   async function handleQuickDistribute() {
     if (!selectedCourseId || !quickPhone.trim()) {
@@ -979,7 +979,7 @@ export default function StaffScanPage() {
             void stopScanner().then(() => startScanner())
           }}
           onDistributeMaterial={(materialId) => {
-            void handleConfirmSelection([materialId])
+            void handleDistributeOne(materialId)
           }}
           onCancelSelection={handleCancelSelection}
         />

@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
   if (rowsMissingBirthDate.length > 0) {
     return NextResponse.json(
       {
-        error: 'birth_date is required for every imported student.',
+        error: '모든 수강생의 생년월일을 입력해 주세요. 생년월일이 비어 있는 행이 있습니다.',
         rows: rowsMissingBirthDate.slice(0, 20).map(({ row, index }) => ({
           rowNumber: index + 1,
           name: row.name,
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
     ) {
       return NextResponse.json(
         {
-          error: 'Duplicate import rows use the same exam number with different name, phone, or birth date.',
+          error: `같은 학번 '${normalizeExamNumber(row.exam_number)}'이(가) 서로 다른 사람(이름·연락처·생년월일)에 중복으로 입력되어 있습니다. 업로드 파일에서 '${existing.name}'과(와) '${row.name}'의 학번을 확인해 주세요.`,
         },
         { status: 409 },
       )

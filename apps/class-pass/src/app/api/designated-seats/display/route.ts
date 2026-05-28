@@ -97,7 +97,18 @@ async function findOpenRoomWithActiveSeats(
   return null
 }
 
-export async function GET(req: NextRequest) {
+const DISPLAY_LOAD_RETRY_ATTEMPTS = 3
+
+function isTransientDisplayLoadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /invalid response|upstream|fetch failed|connection reset|ECONNRESET|502/i.test(message)
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+async function getDisplayResponse(req: NextRequest) {
   try {
     const parsed = schema.safeParse({
       courseId: req.nextUrl.searchParams.get('courseId'),
@@ -303,6 +314,24 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (error) {
-    return handleRouteError('designatedSeats.display.GET', '현장 QR 정보를 불러오지 못했습니다.', error)
+    throw error
   }
+}
+
+export async function GET(req: NextRequest) {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < DISPLAY_LOAD_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await getDisplayResponse(req)
+    } catch (error) {
+      lastError = error
+      if (!isTransientDisplayLoadError(error) || attempt === DISPLAY_LOAD_RETRY_ATTEMPTS - 1) {
+        break
+      }
+      await wait(40 * (attempt + 1))
+    }
+  }
+
+  return handleRouteError('designatedSeats.display.GET', '현장 QR 정보를 불러오지 못했습니다.', lastError)
 }

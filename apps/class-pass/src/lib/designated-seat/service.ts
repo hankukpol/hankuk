@@ -22,6 +22,12 @@ import type {
 import { normalizeName, normalizePhone } from '@/lib/utils'
 import { isPresenceLocationEnforced } from '@/lib/presence/shared'
 import { createOpaqueDisplayToken, hashToken } from '@/lib/designated-seat/token'
+import {
+  listEnrollmentCareLatestNotesMap,
+  listEnrollmentCareStatesMap,
+  listEnrollmentCumulativeAbsencesMap,
+  makeEnrollmentCareKey,
+} from '@/lib/attendance/service'
 
 /** Returns today's midnight in KST as ISO string (UTC) for filtering daily reservations. */
 export function getTodayStartKST(): string {
@@ -836,25 +842,6 @@ export async function getCurrentDisplaySlotSchedule(slotId: number, now = new Da
   return row
 }
 
-async function revokeExpiredDisplaySessions(
-  db: ReturnType<typeof createServerClient>,
-  courseId: number,
-  nowIso: string,
-) {
-  const result = await db
-    .from('course_seat_display_sessions')
-    .update({
-      revoked_at: nowIso,
-    })
-    .eq('course_id', courseId)
-    .is('revoked_at', null)
-    .lte('expires_at', nowIso)
-
-  if (result.error) {
-    throw result.error
-  }
-}
-
 export type DisplaySessionAvailability =
   | {
     status: 'active'
@@ -880,8 +867,6 @@ export async function ensureDisplaySessionForCurrentSchedule(
     throw new Error('Display room is required.')
   }
 
-  await revokeExpiredDisplaySessions(db, courseId, nowIso)
-
   const activeSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId, roomId)
   if (activeSession) {
     return {
@@ -906,57 +891,47 @@ export async function ensureDisplaySessionForCurrentSchedule(
     }
   }
 
-  const rawToken = createOpaqueDisplayToken()
   const expiresAt = getKstScheduleEndIso(schedule, now)
-  const insertResult = await db
-    .from('course_seat_display_sessions')
-    .insert({
-      course_id: courseId,
-      room_id: roomId,
-      display_token_hash: hashToken(rawToken),
-      created_by: 'schedule',
-      expires_at: expiresAt,
-      last_seen_at: nowIso,
-      source: 'schedule',
-      schedule_id: slotId ? null : schedule.id,
-      display_slot_id: slotId,
+  const rawToken = createOpaqueDisplayToken()
+  const displayTokenHash = hashToken(rawToken)
+  const sessionResult = await db
+    .rpc('ensure_course_seat_display_schedule_session', {
+      p_course_id: courseId,
+      p_room_id: roomId,
+      p_display_slot_id: slotId,
+      p_schedule_id: slotId ? null : schedule.id,
+      p_display_token_hash: displayTokenHash,
+      p_expires_at: expiresAt,
+      p_now: nowIso,
     })
-    .select('*')
     .single()
 
-  if (insertResult.error) {
-    if (insertResult.error.code === '23505') {
-      const concurrentSession = await getActiveDisplaySessionForDisplayTarget(courseId, slotId, roomId)
-      if (concurrentSession) {
-        return {
-          status: 'active',
-          session: concurrentSession,
-          schedule,
-        }
-      }
-    }
-
-    throw insertResult.error
+  if (sessionResult.error) {
+    throw sessionResult.error
   }
 
-  await logDesignatedSeatEvent({
-    course_id: courseId,
-    enrollment_id: null,
-    seat_id: null,
-    event_type: 'display_session_started',
-    details: {
-      display_session_id: insertResult.data.id,
-      actor: 'schedule',
-      source: 'schedule',
-      schedule_id: slotId ? null : schedule.id,
-      display_slot_id: slotId,
-      room_id: roomId,
-    },
-  })
+  const session = sessionResult.data as DesignatedSeatDisplaySession
+
+  if (session.display_token_hash === displayTokenHash) {
+    await logDesignatedSeatEvent({
+      course_id: courseId,
+      enrollment_id: null,
+      seat_id: null,
+      event_type: 'display_session_started',
+      details: {
+        display_session_id: session.id,
+        actor: 'schedule',
+        source: 'schedule',
+        schedule_id: slotId ? null : schedule.id,
+        display_slot_id: slotId,
+        room_id: roomId,
+      },
+    })
+  }
 
   return {
     status: 'active',
-    session: insertResult.data as DesignatedSeatDisplaySession,
+    session,
     schedule,
   }
 }
@@ -1081,6 +1056,9 @@ function mapDesignatedSeatAttendanceRow(row: Record<string, unknown>): Designate
     seatLabel: row.seat_label ? String(row.seat_label) : null,
     checkedInAt: row.checked_in_at ? String(row.checked_in_at) : null,
     eventType: eventTypeValue,
+    cumulativeAbsences: 0,
+    careState: 'pending',
+    latestNote: null,
   }
 }
 
@@ -1256,12 +1234,26 @@ export async function getDesignatedSeatAttendanceDashboardData(params: {
     date: params.date,
     records: baseRecords,
   })
+  const enrollmentIds = baseRecords.map((row) => row.enrollmentId)
+  const [cumulativeMap, careStateMap, latestNoteMap] = await Promise.all([
+    listEnrollmentCumulativeAbsencesMap({
+      courseId: params.courseId,
+      enrollmentIds,
+      subjectId: null,
+    }),
+    listEnrollmentCareStatesMap({ courseId: params.courseId, enrollmentIds, subjectId: null }),
+    listEnrollmentCareLatestNotesMap({ courseId: params.courseId, enrollmentIds, subjectId: null }),
+  ])
   const records = baseRecords.map((record) => {
     const metric = absenceMetrics.get(record.enrollmentId)
+    const careKey = makeEnrollmentCareKey(record.enrollmentId, null)
     return {
       ...record,
       consecutiveAbsences: metric?.consecutiveAbsences ?? 0,
       lastAttendedDate: metric?.lastAttendedDate ?? null,
+      cumulativeAbsences: cumulativeMap.get(record.enrollmentId) ?? 0,
+      careState: careStateMap.get(careKey) ?? 'pending',
+      latestNote: latestNoteMap.get(careKey) ?? null,
     }
   })
   const targetCount = records.length

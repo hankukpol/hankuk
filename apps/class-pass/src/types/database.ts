@@ -349,6 +349,18 @@ export type DesignatedSeatAttendanceEventType =
   | 'admin_seat_changed'
   | 'admin_seat_unchanged'
 
+export type EnrollmentCareState = 'pending' | 'needs_contact' | 'contacted' | 'meeting_scheduled'
+
+export interface EnrollmentCareNoteRecord {
+  id: number
+  enrollmentId: number
+  subjectId: number | null
+  body: string
+  createdBy: string | null
+  createdByName: string | null
+  createdAt: string
+}
+
 export interface DesignatedSeatAttendanceRecord {
   enrollmentId: number
   studentName: string
@@ -361,6 +373,9 @@ export interface DesignatedSeatAttendanceRecord {
   seatLabel: string | null
   checkedInAt: string | null
   eventType: DesignatedSeatAttendanceEventType | null
+  cumulativeAbsences: number
+  careState: EnrollmentCareState
+  latestNote: EnrollmentCareNoteRecord | null
 }
 
 export interface DesignatedSeatAttendanceDashboard {

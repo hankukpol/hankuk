@@ -14,7 +14,10 @@ type ExamScoreManagerProps = {
   initialExamTypes: ExamTypeItem[];
 };
 
-type EditableRow = ExamScoreSheet["rows"][number];
+type ScoreSheetRow = ExamScoreSheet["rows"][number];
+type EditableRow = ScoreSheetRow & {
+  scoreInputs: Record<string, string>;
+};
 
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -44,6 +47,49 @@ function normalizeNumericCell(value: string) {
 
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function splitPasteCells(line: string) {
+  const trimmed = line.trim();
+
+  if (!trimmed) {
+    return [];
+  }
+
+  if (line.includes("\t")) {
+    return line.split("\t").map((cell) => cell.trim());
+  }
+
+  if (line.includes(",")) {
+    return line.split(",").map((cell) => cell.trim());
+  }
+
+  return trimmed.split(/\s+/);
+}
+
+function isScoreInputDraft(value: string) {
+  const trimmed = value.trim();
+  return trimmed === "" || /^[\d,]*\.?\d*$/.test(trimmed);
+}
+
+function formatScoreInput(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function buildScoreInputs(
+  subjects: ExamScoreSheet["subjects"],
+  scores: Record<string, number | null>,
+) {
+  return Object.fromEntries(
+    subjects.map((subject) => [subject.id, formatScoreInput(scores[subject.id])]),
+  );
+}
+
+function toEditableRows(sheet: ExamScoreSheet): EditableRow[] {
+  return sheet.rows.map((row) => ({
+    ...row,
+    scoreInputs: buildScoreInputs(sheet.subjects, row.scores),
+  }));
 }
 
 function normalizeRound(value: string) {
@@ -181,11 +227,13 @@ export function ExamScoreManager({
 
       const nextExamDate = data.sheet.examDate ?? getKstToday();
 
+      const editableRows = toEditableRows(data.sheet);
+
       setSheet(data.sheet);
-      setRows(data.sheet.rows);
+      setRows(editableRows);
       setExamDate(nextExamDate);
       setExamRoundInput(normalizedRound);
-      setSavedSnapshot(buildSnapshot(data.sheet.rows, nextExamDate));
+      setSavedSnapshot(buildSnapshot(editableRows, nextExamDate));
 
       if (options?.showToast) {
         toast.success("성적 시트를 새로 불러왔습니다.");
@@ -257,10 +305,12 @@ export function ExamScoreManager({
 
       const nextExamDate = data.sheet.examDate ?? examDate;
 
+      const editableRows = toEditableRows(data.sheet);
+
       setSheet(data.sheet);
-      setRows(data.sheet.rows);
+      setRows(editableRows);
       setExamDate(nextExamDate);
-      setSavedSnapshot(buildSnapshot(data.sheet.rows, nextExamDate));
+      setSavedSnapshot(buildSnapshot(editableRows, nextExamDate));
       toast.success("성적을 저장했습니다.");
       showActionComplete({
         title: "성적 저장 완료",
@@ -346,7 +396,7 @@ export function ExamScoreManager({
     let appliedCount = 0;
 
     lines.forEach((line, lineIndex) => {
-      const cells = line.split("\t");
+      const cells = splitPasteCells(line);
       const firstToken = cells[0]?.trim();
       const matchedIndex = firstToken ? studentIndexByToken.get(firstToken) : undefined;
       const targetIndex = matchedIndex ?? lineIndex;
@@ -364,11 +414,12 @@ export function ExamScoreManager({
         nextScores[subject.id] = normalizeNumericCell(rawCell);
       });
 
-      const rawNote = cells[valueOffset + sheet.subjects.length]?.trim();
+      const rawNote = cells.slice(valueOffset + sheet.subjects.length).join(" ").trim();
 
       nextRows[targetIndex] = {
         ...currentRow,
         scores: nextScores,
+        scoreInputs: buildScoreInputs(sheet.subjects, nextScores),
         totalScore: sumRowScores(nextScores),
         notes: rawNote ? rawNote : currentRow.notes,
       };
@@ -557,7 +608,7 @@ export function ExamScoreManager({
                 value={pasteText}
                 onChange={(event) => setPasteText(event.target.value)}
                 className="mt-3 min-h-[120px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                placeholder={"P-2026-001\t80\t76\t72\t84\t88\nP-2026-002\t88\t80\t78\t86\t90"}
+                placeholder={"P-2026-001\t80\t76\t72\t84\t88.5\nP-2026-002\t88\t80\t78\t86\t90"}
               />
               <div className="mt-3 flex justify-end">
                 <button
@@ -640,18 +691,35 @@ export function ExamScoreManager({
                           {sheet.subjects.map((subject) => (
                             <td key={subject.id} className="px-3 py-3">
                               <input
-                                value={row.scores[subject.id] ?? ""}
-                                onChange={(event) =>
-                                  updateRow(row.studentId, (current) => ({
-                                    ...current,
-                                    scores: {
-                                      ...current.scores,
-                                      [subject.id]: normalizeNumericCell(event.target.value),
-                                    },
-                                  }))
+                                value={
+                                  row.scoreInputs[subject.id] ?? formatScoreInput(row.scores[subject.id])
                                 }
+                                onChange={(event) => {
+                                  const nextInput = event.target.value;
+
+                                  if (!isScoreInputDraft(nextInput)) {
+                                    return;
+                                  }
+
+                                  updateRow(row.studentId, (current) => {
+                                    const nextScores = {
+                                      ...current.scores,
+                                      [subject.id]: normalizeNumericCell(nextInput),
+                                    };
+
+                                    return {
+                                      ...current,
+                                      scores: nextScores,
+                                      scoreInputs: {
+                                        ...current.scoreInputs,
+                                        [subject.id]: nextInput,
+                                      },
+                                      totalScore: sumRowScores(nextScores),
+                                    };
+                                  });
+                                }}
                                 className="w-24 rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
-                                inputMode="numeric"
+                                inputMode="decimal"
                                 placeholder="-"
                               />
                             </td>

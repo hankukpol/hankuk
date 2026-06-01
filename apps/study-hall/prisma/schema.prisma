@@ -356,7 +356,7 @@ model ExamScore {
   examRound    Int       @map("exam_round")
   examDate     DateTime? @map("exam_date") @db.Date
   scores       Json
-  totalScore   Int?      @map("total_score")
+  totalScore   Float?    @map("total_score")
   rankInClass  Int?      @map("rank_in_class")
   notes        String?
   recordedById String    @map("recorded_by_id")

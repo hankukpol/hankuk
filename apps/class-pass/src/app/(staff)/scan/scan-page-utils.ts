@@ -46,6 +46,8 @@ export function getScanReasonMessage(reason?: string) {
       return '선택한 강좌와 QR 수강증의 강좌가 다릅니다.'
     case 'NOT_ASSIGNED':
       return '해당 학생에게 배정되지 않은 교재입니다.'
+    case 'NO_SEAT_FOR_SUBJECT':
+      return '이 학생은 해당 과목의 좌석을 배정받지 않아 자료를 받을 수 없습니다.'
     case 'DISTRIBUTION_FAILED':
       return '배부 처리에 실패했습니다. 다시 시도해 주세요.'
     default:

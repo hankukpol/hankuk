@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { toReceiptMap } from '@/lib/bulk'
 import { handleRouteError } from '@/lib/api/error-response'
 import {
+  filterHandoutsBySeatSubjects,
   getAssignedTextbooksForEnrollment,
   getReceiptRows,
   listMaterialsForCourse,
+  listSeatAssignedSubjectIdsForEnrollment,
   verifyEnrollmentOwnership,
 } from '@/lib/class-pass-data'
 import { checkRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
@@ -63,12 +65,15 @@ export async function GET(
       return NextResponse.json({ error: '수강생 정보를 확인하지 못했습니다.' }, { status: 403 })
     }
 
-    const [handouts, textbooks, receiptRows] = await Promise.all([
+    const [allHandouts, textbooks, receiptRows, seatSubjectIds] = await Promise.all([
       listMaterialsForCourse(enrollment.course_id, { activeOnly: true, materialType: 'handout' }),
       getAssignedTextbooksForEnrollment(enrollmentId, { activeOnly: true }),
       getReceiptRows(enrollmentId),
+      listSeatAssignedSubjectIdsForEnrollment(enrollmentId),
     ])
 
+    // 과목 지정 배부자료는 해당 과목 좌석배정자에게만 노출 (배부 경로와 동일 게이팅).
+    const handouts = filterHandoutsBySeatSubjects(allHandouts, seatSubjectIds)
     const handoutIdSet = new Set(handouts.map((material) => material.id))
     const textbookIdSet = new Set(textbooks.map((material) => material.id))
 

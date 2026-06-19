@@ -5,6 +5,7 @@ import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById, listCourseSubjects, verifyCourseOwnership } from '@/lib/class-pass-data'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
+import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { normalizeName, parsePositiveInt } from '@/lib/utils'
 
@@ -180,6 +181,29 @@ export async function DELETE(
   }
 
   const db = createServerClient()
+
+  // 이 과목으로 좌석 기반 배부가 설정된 자료가 있으면 삭제를 막는다.
+  // (과목 삭제 시 좌석배정은 cascade로 사라지지만 자료 subject_id가 풀려 "전원 배부"로
+  //  둔갑하는 fail-open을 방지. DB FK도 restrict라 어차피 막히지만 친절한 메시지를 위해 선검사.)
+  const referencingMaterial = unwrapSupabaseResult(
+    'subjects.delete.materialRefCheck',
+    await db
+      .from('materials')
+      .select('id, name')
+      .eq('subject_id', parsed.data.subjectId)
+      .limit(1)
+      .maybeSingle(),
+  ) as { id: number; name: string } | null
+
+  if (referencingMaterial) {
+    return NextResponse.json(
+      {
+        error: `이 과목으로 배부 설정된 자료("${referencingMaterial.name}")가 있어 삭제할 수 없습니다. 해당 자료의 배부 대상 과목을 먼저 변경해 주세요.`,
+      },
+      { status: 409 },
+    )
+  }
+
   const { error } = await db
     .from('course_subjects')
     .delete()
@@ -190,6 +214,10 @@ export async function DELETE(
     return NextResponse.json({ error: '과목을 삭제하지 못했습니다.' }, { status: 500 })
   }
 
-  await Promise.all([invalidateCache('course-subjects'), invalidateCache('seats')])
+  await Promise.all([
+    invalidateCache('course-subjects'),
+    invalidateCache('seats'),
+    invalidateCache('materials'),
+  ])
   return NextResponse.json({ success: true })
 }

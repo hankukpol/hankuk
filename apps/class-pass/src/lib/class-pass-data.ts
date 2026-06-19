@@ -773,12 +773,47 @@ export async function getAssignedTextbooksForEnrollment(
   return getCachedAssignedTextbooks(enrollmentId, Boolean(options?.activeOnly))
 }
 
+export async function listSeatAssignedSubjectIdsForEnrollment(
+  enrollmentId: number,
+): Promise<Set<number>> {
+  const db = createServerClient()
+  const rows = unwrapSupabaseResult(
+    'listSeatAssignedSubjectIdsForEnrollment',
+    await db
+      .from('seat_assignments')
+      .select('subject_id')
+      .eq('enrollment_id', enrollmentId),
+  ) as Array<{ subject_id: number | null }> | null
+
+  const subjectIds = new Set<number>()
+  for (const row of rows ?? []) {
+    if (row.subject_id != null) {
+      subjectIds.add(Number(row.subject_id))
+    }
+  }
+  return subjectIds
+}
+
+/**
+ * 과목이 지정된 배부자료(handout)는 해당 과목 좌석을 배정받은 학생만 받을 수 있다.
+ * 과목 미지정(subject_id null) 자료는 전원 대상(하위호환).
+ * 배부 후보·학생 패스·수령증 등 모든 노출 경로에서 동일하게 사용한다.
+ */
+export function filterHandoutsBySeatSubjects(
+  handouts: Material[],
+  seatSubjectIds: Set<number>,
+): Material[] {
+  return handouts.filter((material) => (
+    material.subject_id == null || seatSubjectIds.has(material.subject_id)
+  ))
+}
+
 export async function getUnreceivedMaterialsForEnrollment(
   enrollmentId: number,
   courseId: number,
 ): Promise<Material[]> {
   const db = createServerClient()
-  const [handouts, assignedTextbooks, receiptRows] = await Promise.all([
+  const [handouts, assignedTextbooks, receiptRows, seatSubjectIds] = await Promise.all([
     listMaterialsForCourse(courseId, { activeOnly: true, materialType: 'handout' }),
     getAssignedTextbooksForEnrollment(enrollmentId, { activeOnly: true }),
     (async () => {
@@ -792,10 +827,13 @@ export async function getUnreceivedMaterialsForEnrollment(
 
       return data ?? []
     })(),
+    listSeatAssignedSubjectIdsForEnrollment(enrollmentId),
   ])
 
   const receivedIds = new Set(receiptRows.map((row) => row.material_id))
-  return [...handouts, ...assignedTextbooks].filter((material) => !receivedIds.has(material.id))
+  const eligibleHandouts = filterHandoutsBySeatSubjects(handouts, seatSubjectIds)
+
+  return [...eligibleHandouts, ...assignedTextbooks].filter((material) => !receivedIds.has(material.id))
 }
 
 export async function assignTextbook(
@@ -1227,6 +1265,15 @@ export async function buildPassPayload(params: {
     getAppConfig(),
   ])
 
+  // 과목 지정 배부자료는 해당 과목 좌석배정자에게만 노출 (배부 경로와 동일 게이팅).
+  const seatSubjectIds = new Set<number>()
+  for (const assignment of seatAssignments) {
+    if (assignment.subject_id != null) {
+      seatSubjectIds.add(Number(assignment.subject_id))
+    }
+  }
+  const gatedMaterials = filterHandoutsBySeatSubjects(materials, seatSubjectIds)
+
   return {
     kind: 'ok',
     payload: await buildPassPayloadResult({
@@ -1238,7 +1285,7 @@ export async function buildPassPayload(params: {
       designatedSeat,
       attendance,
       attendanceHistory,
-      materials,
+      materials: gatedMaterials,
       textbooks,
       receiptRows,
     }),
@@ -1270,12 +1317,22 @@ export async function buildArchivedPassPayload(params: {
     return { kind: 'active', redirectTo: redirects.live }
   }
 
-  const [attendanceRows, materials, textbooks, receiptRows] = await Promise.all([
+  const [attendanceRows, allHandouts, textbooks, receiptRows, seatAssignments] = await Promise.all([
     listAttendanceSummaryRows(course.id, enrollment.id),
     listMaterialsForCourse(course.id, { activeOnly: false, materialType: 'handout' }),
     getAssignedTextbooksForEnrollment(enrollment.id, { activeOnly: false }),
     getReceiptRows(enrollment.id),
+    listSeatAssignmentsForEnrollment(enrollment.id),
   ])
+
+  // 과목 지정 배부자료는 해당 과목 좌석배정자에게만 노출 (배부 경로와 동일 게이팅).
+  const seatSubjectIds = new Set<number>()
+  for (const assignment of seatAssignments) {
+    if (assignment.subject_id != null) {
+      seatSubjectIds.add(Number(assignment.subject_id))
+    }
+  }
+  const materials = filterHandoutsBySeatSubjects(allHandouts, seatSubjectIds)
 
   const todayKey = getKstDateKey()
   const todayAttendance = attendanceRows.find((row) => row.attended_date === todayKey) ?? null

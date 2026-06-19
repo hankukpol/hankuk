@@ -5,6 +5,7 @@ import { invalidateCache } from '@/lib/cache/revalidate'
 import { verifyMaterialOwnership } from '@/lib/class-pass-data'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
+import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
 
@@ -13,6 +14,7 @@ const patchSchema = z.object({
   description: z.string().optional().nullable(),
   is_active: z.boolean().optional(),
   sort_order: z.number().int().min(0).max(999).optional(),
+  subject_id: z.number().int().positive().nullable().optional(),
 })
 
 export async function PATCH(
@@ -47,6 +49,41 @@ export async function PATCH(
   }
 
   const db = createServerClient()
+
+  if (parsed.data.subject_id != null) {
+    const materialRow = unwrapSupabaseResult(
+      'materials.patch.materialCourse',
+      await db
+        .from('materials')
+        .select('course_id, material_type')
+        .eq('id', materialId)
+        .maybeSingle(),
+    ) as { course_id: number; material_type: string } | null
+
+    if (materialRow && materialRow.material_type !== 'handout') {
+      return NextResponse.json(
+        { error: '과목 지정(좌석 기반 배부)은 배부자료에만 설정할 수 있습니다.' },
+        { status: 400 },
+      )
+    }
+
+    const subjectRow = materialRow
+      ? unwrapSupabaseResult(
+        'materials.patch.subjectCheck',
+        await db
+          .from('course_subjects')
+          .select('id')
+          .eq('id', parsed.data.subject_id)
+          .eq('course_id', materialRow.course_id)
+          .maybeSingle(),
+      ) as { id: number } | null
+      : null
+
+    if (!subjectRow) {
+      return NextResponse.json({ error: '선택한 과목이 이 강좌에 속하지 않습니다.' }, { status: 400 })
+    }
+  }
+
   const { data, error } = await db
     .from('materials')
     .update(parsed.data)

@@ -6,7 +6,7 @@ import { startTransition, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
-import type { Course, Material, MaterialType } from '@/types/database'
+import type { Course, CourseSubject, Material, MaterialType } from '@/types/database'
 import { useMotionConfig } from '@/lib/motion'
 
 type MaterialForm = {
@@ -14,11 +14,13 @@ type MaterialForm = {
   description: string
   is_active: boolean
   sort_order: number
+  subject_id: number | null
 }
 
 export type MaterialsPageData = {
   course: Course
   materials: Material[]
+  subjects: CourseSubject[]
 }
 
 type CourseMaterialsPageProps = {
@@ -32,6 +34,7 @@ const EMPTY_FORM: MaterialForm = {
   description: '',
   is_active: true,
   sort_order: 0,
+  subject_id: null,
 }
 
 function toForm(material: Material): MaterialForm {
@@ -40,6 +43,7 @@ function toForm(material: Material): MaterialForm {
     description: material.description ?? '',
     is_active: material.is_active,
     sort_order: material.sort_order,
+    subject_id: material.subject_id ?? null,
   }
 }
 
@@ -48,13 +52,15 @@ function getTabLabel(materialType: MaterialType) {
 }
 
 async function fetchMaterialsPageData(courseId: number): Promise<MaterialsPageData> {
-  const [courseResponse, materialsResponse] = await Promise.all([
+  const [courseResponse, materialsResponse, subjectsResponse] = await Promise.all([
     fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
     fetch(`/api/materials?courseId=${courseId}`, { cache: 'no-store' }),
+    fetch(`/api/courses/${courseId}/subjects`, { cache: 'no-store' }),
   ])
 
   const coursePayload = await courseResponse.json().catch(() => null)
   const materialsPayload = await materialsResponse.json().catch(() => null)
+  const subjectsPayload = await subjectsResponse.json().catch(() => null)
 
   if (!courseResponse.ok) {
     throw new Error(coursePayload?.error ?? '과정 정보를 불러오지 못했습니다.')
@@ -67,6 +73,7 @@ async function fetchMaterialsPageData(courseId: number): Promise<MaterialsPageDa
   return {
     course: coursePayload.course as Course,
     materials: (materialsPayload.materials ?? []) as Material[],
+    subjects: (subjectsPayload?.subjects ?? []) as CourseSubject[],
   }
 }
 
@@ -82,6 +89,7 @@ export default function CourseMaterialsPage({
 
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
   const [materials, setMaterials] = useState<Material[]>(initialData?.materials ?? [])
+  const [subjects, setSubjects] = useState<CourseSubject[]>(initialData?.subjects ?? [])
   const [activeTab, setActiveTab] = useState<MaterialType>('handout')
   const [createForm, setCreateForm] = useState<MaterialForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -97,6 +105,7 @@ export default function CourseMaterialsPage({
     const data = await fetchMaterialsPageData(courseId)
     setCourse(data.course)
     setMaterials(data.materials)
+    setSubjects(data.subjects)
   }
 
   useEffect(() => {
@@ -114,12 +123,26 @@ export default function CourseMaterialsPage({
       .then((data) => {
         setCourse(data.course)
         setMaterials(data.materials)
+        setSubjects(data.subjects)
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : '자료 페이지를 불러오지 못했습니다.')
       })
       .finally(() => setLoading(false))
   }, [courseId, initialLoaded])
+
+  const subjectNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const subject of subjects) {
+      map.set(subject.id, subject.name)
+    }
+    return map
+  }, [subjects])
+
+  const editingMaterial = useMemo(
+    () => materials.find((material) => material.id === editingId) ?? null,
+    [editingId, materials],
+  )
 
   const summary = useMemo(() => {
     const currentMaterials = materials.filter((material) => material.material_type === activeTab)
@@ -152,6 +175,8 @@ export default function CourseMaterialsPage({
         courseId,
         ...createForm,
         material_type: activeTab,
+        // 과목 게이팅은 배부자료(handout) 전용. 교재 생성 시에는 과목을 보내지 않는다.
+        subject_id: activeTab === 'handout' ? createForm.subject_id : null,
       }),
     })
     const payload = await response.json().catch(() => null)
@@ -372,6 +397,33 @@ export default function CourseMaterialsPage({
                 />
               </label>
             </div>
+            {subjects.length > 0 && activeTab === 'handout' ? (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-gray-500">
+                  배부 대상 과목 (선택)
+                </span>
+                <select
+                  value={createForm.subject_id ?? ''}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      subject_id: event.target.value ? Number(event.target.value) : null,
+                    }))
+                  }
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
+                >
+                  <option value="">전체 배부 (좌석 무관)</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name} 좌석 배정자만
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-400">
+                  과목을 지정하면 그 과목 좌석을 배정받은 학생만 이 자료를 받을 수 있습니다.
+                </span>
+              </label>
+            ) : null}
           </div>
 
           {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
@@ -431,6 +483,17 @@ export default function CourseMaterialsPage({
                           >
                             {material.is_active ? '활성' : '비활성'}
                           </span>
+                          {material.material_type === 'handout' ? (
+                            material.subject_id != null ? (
+                              <span className="rounded-2xl bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
+                                {subjectNameById.get(material.subject_id) ?? '과목'} 좌석자만
+                              </span>
+                            ) : (
+                              <span className="rounded-2xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                                전체 배부
+                              </span>
+                            )
+                          ) : null}
                         </div>
                         {material.description ? (
                           <p className="mt-2 text-sm leading-6 text-gray-500">{material.description}</p>
@@ -514,6 +577,30 @@ export default function CourseMaterialsPage({
                     />
                   </label>
                 </div>
+                {subjects.length > 0 && editingMaterial?.material_type === 'handout' ? (
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-gray-500">
+                      배부 대상 과목 (선택)
+                    </span>
+                    <select
+                      value={editForm.subject_id ?? ''}
+                      onChange={(event) =>
+                        setEditForm((current) => ({
+                          ...current,
+                          subject_id: event.target.value ? Number(event.target.value) : null,
+                        }))
+                      }
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
+                    >
+                      <option value="">전체 배부 (좌석 무관)</option>
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.name} 좌석 배정자만
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
 
               <button

@@ -470,6 +470,7 @@ export interface Material {
   is_active: boolean
   sort_order: number
   material_type: MaterialType
+  subject_id: number | null
 }
 
 export interface TextbookAssignment {

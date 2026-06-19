@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { DragEvent, FormEvent, KeyboardEvent } from 'react'
+import type { DragEvent, FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowDown, ArrowUp, GripVertical, Loader2 } from 'lucide-react'
@@ -227,19 +227,6 @@ export default function CoursesPageClient({
 
   function handleOpenCourseDetail(courseId: number) {
     router.push(withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type))
-  }
-
-  function handleCourseCardKeyDown(event: KeyboardEvent<HTMLElement>, courseId: number) {
-    if (event.target !== event.currentTarget) {
-      return
-    }
-
-    if (event.key !== 'Enter' && event.key !== ' ') {
-      return
-    }
-
-    event.preventDefault()
-    handleOpenCourseDetail(courseId)
   }
 
   async function handleCreate(event: FormEvent) {
@@ -667,7 +654,7 @@ export default function CoursesPageClient({
         ))}
       </motion.div>
 
-      {/* ── Course cards ── */}
+      {/* ── Course table ── */}
       <motion.section layout transition={motionConfig.tab}>
         {loading ? (
           <motion.p
@@ -695,140 +682,138 @@ export default function CoursesPageClient({
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={motionConfig.modal}
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+            className="overflow-hidden rounded-[8px] bg-white shadow-sm ring-1 ring-slate-100"
           >
-            {filtered.map((course, index) => {
-              const tags = getCourseFeatureTags(course)
-              const isActive = course.status === 'active'
-              const activeEnrollmentCount = getActiveEnrollmentCount(course)
-              const isDragTarget = dragOverCourseId === course.id
-              const isDragging = draggedCourseId === course.id
+            <div className="overflow-x-auto">
+              <table className="min-w-[1080px] w-full">
+                <thead className="border-b border-[#e8e8ed] bg-[#f5f5f7] text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-[#86868b]">
+                  <tr>
+                    <th className="px-3 py-3 text-center">순서</th>
+                    <th className="px-3 py-3">유형</th>
+                    <th className="px-4 py-3">강좌명</th>
+                    <th className="px-3 py-3 text-center">상태</th>
+                    <th className="px-3 py-3 text-right">수강중</th>
+                    <th className="px-3 py-3 text-right">강좌 금액</th>
+                    <th className="px-3 py-3 text-center">보고 코드</th>
+                    <th className="px-4 py-3">기능</th>
+                    <th className="px-4 py-3 text-right">작업</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f0f0f2] text-sm text-[#1d1d1f]">
+                  {filtered.map((course, index) => {
+                    const tags = getCourseFeatureTags(course)
+                    const isActive = course.status === 'active'
+                    const activeEnrollmentCount = getActiveEnrollmentCount(course)
+                    const isDragTarget = dragOverCourseId === course.id
+                    const isDragging = draggedCourseId === course.id
 
-              return (
-                <motion.article
-                  key={course.id}
-                  role="link"
-                  tabIndex={0}
-                  aria-label={`${course.name} 상세로 이동`}
-                  onClick={() => handleOpenCourseDetail(course.id)}
-                  onKeyDown={(event) => handleCourseCardKeyDown(event, course.id)}
-                  onDragOver={(event) => handleDragOver(event, course.id)}
-                  onDrop={(event) => handleDrop(event, course.id)}
-                  whileHover={{ y: -2 }}
-                  whileTap={{ scale: 0.992 }}
-                  transition={motionConfig.tab}
-                  className={`group flex min-h-[278px] min-w-0 cursor-pointer flex-col rounded-[8px] bg-white p-4 shadow-sm ring-1 ring-slate-100 transition-all duration-200 ease-ios hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#0071e3]/35 ${
-                    isDragTarget ? 'ring-2 ring-[#0071e3]/45' : ''
-                  } ${isDragging ? 'opacity-55' : ''}`}
-                >
-                  <div className="flex items-start gap-3">
-                    {renderOrderControls(course, index, filtered.length)}
-                    <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <span className="shrink-0 rounded-[6px] bg-[#f5f5f7] px-2 py-1 text-[11px] font-semibold text-[#1d1d1f]">
-                            {courseTypeLabel(course.course_type)}
-                          </span>
-                          {course.copied_from_course_id ? (
-                            <span className="shrink-0 rounded-[6px] bg-[#f5f5f7] px-2 py-1 text-[11px] font-semibold text-[#86868b]">
-                              복사본
-                            </span>
-                          ) : null}
-                        </div>
-                        <h3 className="mt-2 line-clamp-2 text-[15px] font-semibold leading-5 text-[#1d1d1f]">
-                          {course.name}
-                        </h3>
-                        <p className="mt-1 truncate text-xs text-[#86868b]">
-                          {course.slug}
-                        </p>
-                        {course.copied_from_course_name ? (
-                          <p className="mt-1 truncate text-[11px] text-[#86868b]">
-                            원본 {course.copied_from_course_name}
-                          </p>
-                        ) : null}
-                      </div>
-                      <span className={`shrink-0 rounded-[8px] px-2.5 py-1 text-[11px] font-semibold ${
-                        isActive ? 'bg-[#f5f5f7] text-[#1b7a1b]' : 'bg-[#f5f5f7] text-[#86868b]'
-                      }`}>
-                        {isActive ? '운영중' : '보관됨'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-[#f5f5f7] py-3">
-                    <div>
-                      <dt className="text-[11px] font-semibold text-[#86868b]">수강중</dt>
-                      <dd className="mt-1 text-lg font-semibold leading-none text-[#1d1d1f]">
-                        {activeEnrollmentCount.toLocaleString('ko-KR')}명
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-semibold text-[#86868b]">강좌 금액</dt>
-                      <dd className="mt-1 truncate text-sm font-semibold text-[#1d1d1f]">
-                        {formatWon(course.tuition_amount ?? 0)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-semibold text-[#86868b]">보고 코드</dt>
-                      <dd className="mt-1 text-sm font-semibold text-[#1d1d1f]">
-                        {course.settlement_report_code || '-'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-semibold text-[#86868b]">순서</dt>
-                      <dd className="mt-1 text-sm font-semibold text-[#1d1d1f]">
-                        {index + 1}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  {tags.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {tags.map((tag) => (
-                        <span key={tag} className="rounded-[5px] bg-[#f5f5f7] px-1.5 py-0.5 text-[10px] font-medium text-[#86868b]">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div
-                    className="mt-auto grid grid-cols-2 gap-2 pt-4"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <Link
-                      href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
-                      className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-center text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
-                    >
-                      수강생
-                    </Link>
-                    <Link
-                      href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
-                      className="rounded-[8px] bg-[#1d1d1f] px-3 py-2 text-center text-xs font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
-                    >
-                      상세
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => requestDuplicate(course)}
-                      disabled={duplicatingCourseId === course.id}
-                      className="rounded-[8px] bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
-                    >
-                      {duplicatingCourseId === course.id ? '복사중' : '복사'}
-                    </button>
-                    {isActive ? (
-                      <button
-                        type="button"
-                        onClick={() => requestArchive(course)}
-                        className="rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+                    return (
+                      <tr
+                        key={course.id}
+                        onClick={() => handleOpenCourseDetail(course.id)}
+                        onDragOver={(event) => handleDragOver(event, course.id)}
+                        onDrop={(event) => handleDrop(event, course.id)}
+                        className={`cursor-pointer transition-colors hover:bg-[#f5f5f7] ${
+                          isDragTarget ? 'bg-[#0071e3]/5' : ''
+                        } ${isDragging ? 'opacity-55' : ''}`}
                       >
-                        보관
-                      </button>
-                    ) : null}
-                  </div>
-                </motion.article>
-              )
-            })}
+                        <td className="px-3 py-3 align-middle">
+                          {renderOrderControls(course, index, filtered.length)}
+                        </td>
+                        <td className="px-3 py-3 align-middle">
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="rounded-[6px] bg-[#f5f5f7] px-2 py-1 text-[11px] font-semibold text-[#1d1d1f]">
+                              {courseTypeLabel(course.course_type)}
+                            </span>
+                            {course.copied_from_course_id ? (
+                              <span className="rounded-[6px] bg-[#f5f5f7] px-2 py-0.5 text-[10px] font-semibold text-[#86868b]">
+                                복사본
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <div className="min-w-0">
+                            <p className="line-clamp-1 font-semibold text-[#1d1d1f]">{course.name}</p>
+                            <p className="mt-0.5 truncate text-xs text-[#86868b]">{course.slug}</p>
+                            {course.copied_from_course_name ? (
+                              <p className="mt-0.5 truncate text-[11px] text-[#86868b]">
+                                원본 {course.copied_from_course_name}
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-center align-middle">
+                          <span className={`inline-flex rounded-[8px] px-2.5 py-1 text-[11px] font-semibold ${
+                            isActive ? 'bg-emerald-50 text-[#1b7a1b]' : 'bg-[#f5f5f7] text-[#86868b]'
+                          }`}>
+                            {isActive ? '운영중' : '보관됨'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right align-middle font-semibold tabular-nums">
+                          {activeEnrollmentCount.toLocaleString('ko-KR')}명
+                        </td>
+                        <td className="px-3 py-3 text-right align-middle tabular-nums">
+                          {formatWon(course.tuition_amount ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-center align-middle text-[#86868b]">
+                          {course.settlement_report_code || '-'}
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          {tags.length > 0 ? (
+                            <div className="flex max-w-[220px] flex-wrap gap-1">
+                              {tags.map((tag) => (
+                                <span key={tag} className="rounded-[5px] bg-[#f5f5f7] px-1.5 py-0.5 text-[10px] font-medium text-[#86868b]">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[#c7c7cc]">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <div
+                            className="flex items-center justify-end gap-1.5"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Link
+                              href={withTenantPrefix(`/dashboard/courses/${course.id}/students`, tenant.type)}
+                              className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+                            >
+                              수강생
+                            </Link>
+                            <Link
+                              href={withTenantPrefix(`/dashboard/courses/${course.id}`, tenant.type)}
+                              className="rounded-[8px] bg-[#1d1d1f] px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100"
+                            >
+                              상세
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => requestDuplicate(course)}
+                              disabled={duplicatingCourseId === course.id}
+                              className="rounded-[8px] bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+                            >
+                              {duplicatingCourseId === course.id ? '복사중' : '복사'}
+                            </button>
+                            {isActive ? (
+                              <button
+                                type="button"
+                                onClick={() => requestArchive(course)}
+                                className="rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-xs font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+                              >
+                                보관
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </motion.div>
         )}
       </motion.section>

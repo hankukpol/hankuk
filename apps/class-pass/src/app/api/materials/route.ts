@@ -5,6 +5,7 @@ import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById, listMaterialsForCourse, verifyCourseOwnership } from '@/lib/class-pass-data'
 import { createServerClient } from '@/lib/supabase/server'
+import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
@@ -14,6 +15,7 @@ const schema = z.object({
   is_active: z.boolean().default(true),
   sort_order: z.number().int().min(0).max(999).default(0),
   material_type: z.enum(['handout', 'textbook']).default('handout'),
+  subject_id: z.number().int().positive().nullable().optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -70,6 +72,30 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerClient()
+
+  if (parsed.data.subject_id != null) {
+    if (parsed.data.material_type !== 'handout') {
+      return NextResponse.json(
+        { error: '과목 지정(좌석 기반 배부)은 배부자료에만 설정할 수 있습니다.' },
+        { status: 400 },
+      )
+    }
+
+    const subjectRow = unwrapSupabaseResult(
+      'materials.create.subjectCheck',
+      await db
+        .from('course_subjects')
+        .select('id')
+        .eq('id', parsed.data.subject_id)
+        .eq('course_id', parsed.data.courseId)
+        .maybeSingle(),
+    ) as { id: number } | null
+
+    if (!subjectRow) {
+      return NextResponse.json({ error: '선택한 과목이 이 강좌에 속하지 않습니다.' }, { status: 400 })
+    }
+  }
+
   const { data, error } = await db
     .from('materials')
     .insert({
@@ -79,6 +105,7 @@ export async function POST(req: NextRequest) {
       is_active: parsed.data.is_active,
       sort_order: parsed.data.sort_order,
       material_type: parsed.data.material_type,
+      subject_id: parsed.data.subject_id ?? null,
     })
     .select('*')
     .single()

@@ -23,6 +23,8 @@ export type MatrixRow = {
   enrollment: Enrollment
   receipts: Record<number, ReceiptCell>
   assignments: Record<number, true>
+  // 이 수강생이 좌석을 배정받은 과목 id 집합 (과목 지정 배부자료 게이팅용)
+  seatSubjects: Record<number, true>
 }
 
 export type EnrollmentForm = {

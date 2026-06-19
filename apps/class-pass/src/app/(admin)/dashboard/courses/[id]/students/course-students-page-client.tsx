@@ -1401,6 +1401,18 @@ export default function CourseStudentsPage({
         distributed_at: string
       }>
       const assignments = (payload?.assignments ?? []) as TextbookAssignment[]
+      const seatAssignments = (payload?.seatAssignments ?? []) as Array<{
+        enrollment_id: number
+        subject_id: number
+      }>
+
+      const seatSubjectMap = new Map<number, Record<number, true>>()
+      for (const seat of seatAssignments) {
+        if (!seatSubjectMap.has(seat.enrollment_id)) {
+          seatSubjectMap.set(seat.enrollment_id, {})
+        }
+        seatSubjectMap.get(seat.enrollment_id)![seat.subject_id] = true
+      }
 
       const receiptMap = new Map<number, Record<number, ReceiptCell>>()
       for (const log of logs) {
@@ -1429,6 +1441,7 @@ export default function CourseStudentsPage({
           enrollment,
           receipts: receiptMap.get(enrollment.id) ?? {},
           assignments: assignmentMap.get(enrollment.id) ?? {},
+          seatSubjects: seatSubjectMap.get(enrollment.id) ?? {},
         })),
       )
       setFilterMatId(null)

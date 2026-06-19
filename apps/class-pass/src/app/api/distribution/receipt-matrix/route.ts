@@ -56,7 +56,10 @@ export async function GET(req: NextRequest) {
 
     const materialIds = materials.map((material) => material.id)
     const db = createServerClient()
-    const [{ data: logs, error }, assignments] = await Promise.all([
+    // handout 중 과목이 지정된 자료가 하나라도 있으면, 좌석 게이팅을 위해 좌석배정을 함께 조회한다.
+    const needsSeatGating = resolvedMaterialType === 'handout'
+      && materials.some((material) => material.subject_id != null)
+    const [{ data: logs, error }, assignments, seatRows] = await Promise.all([
       db
         .from('distribution_logs')
         .select('id,enrollment_id,material_id,distributed_at')
@@ -64,16 +67,29 @@ export async function GET(req: NextRequest) {
       resolvedMaterialType === 'textbook'
         ? getTextbookAssignmentsByCourse(courseId)
         : Promise.resolve(undefined),
+      needsSeatGating
+        ? db
+          .from('seat_assignments')
+          .select('enrollment_id, subject_id, enrollments!inner(course_id)')
+          .eq('enrollments.course_id', courseId)
+        : Promise.resolve({ data: [] as Array<{ enrollment_id: number; subject_id: number | null }> }),
     ])
 
     if (error) {
       return NextResponse.json({ error: '배부 로그를 불러오지 못했습니다.' }, { status: 500 })
     }
 
+    const seatAssignments = resolvedMaterialType === 'handout'
+      ? ((seatRows?.data ?? []) as Array<{ enrollment_id: number; subject_id: number | null }>)
+        .filter((row) => row.subject_id != null)
+        .map((row) => ({ enrollment_id: Number(row.enrollment_id), subject_id: Number(row.subject_id) }))
+      : undefined
+
     return NextResponse.json({
       materials,
       logs: logs ?? [],
       assignments,
+      seatAssignments,
     })
   } catch (error) {
     return handleRouteError('distribution.receipt-matrix.GET', '수령 현황을 불러오지 못했습니다.', error)

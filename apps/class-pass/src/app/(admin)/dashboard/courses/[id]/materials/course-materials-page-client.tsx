@@ -5,6 +5,7 @@ import type { FormEvent } from 'react'
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
 import type { Course, CourseSubject, Material, MaterialType } from '@/types/database'
 import { useMotionConfig } from '@/lib/motion'
@@ -524,98 +525,111 @@ export default function CourseMaterialsPage({
             </div>
           </section>
 
-          {editingId ? (
-            <form onSubmit={handleSaveEdit} className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-2xl font-extrabold text-gray-900">자료 수정</h3>
-                <button
-                  type="button"
-                  onClick={() => setEditingId(null)}
-                  className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97]"
-                >
-                  닫기
-                </button>
-              </div>
-
-              <div className="mt-6 grid gap-4">
-                <input
-                  value={editForm.name}
-                  onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="이름"
-                  className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-                />
-                <textarea
-                  value={editForm.description}
-                  onChange={(event) =>
-                    setEditForm((current) => ({ ...current, description: event.target.value }))
-                  }
-                  rows={4}
-                  placeholder="설명"
-                  className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-                />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <input
-                    type="number"
-                    value={editForm.sort_order}
-                    onChange={(event) =>
-                      setEditForm((current) => ({
-                        ...current,
-                        sort_order: Number(event.target.value || 0),
-                      }))
-                    }
-                    placeholder="정렬 순서"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-                  />
-                  <label className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-gray-700">
-                    <span>활성 상태</span>
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(event) =>
-                        setEditForm((current) => ({ ...current, is_active: event.target.checked }))
-                      }
-                    />
-                  </label>
-                </div>
-                {subjects.length > 0 && editingMaterial?.material_type === 'handout' ? (
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-xs font-semibold text-gray-500">
-                      배부 대상 과목 (선택)
-                    </span>
-                    <select
-                      value={editForm.subject_id ?? ''}
-                      onChange={(event) =>
-                        setEditForm((current) => ({
-                          ...current,
-                          subject_id: event.target.value ? Number(event.target.value) : null,
-                        }))
-                      }
-                      className="rounded-2xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
-                    >
-                      <option value="">전체 배부 (좌석 무관)</option>
-                      {subjects.map((subject) => (
-                        <option key={subject.id} value={subject.id}>
-                          {subject.name} 좌석 배정자만
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-              </div>
-
-              <button
-                type="submit"
-                disabled={saving}
-                className="mt-5 rounded-2xl px-5 py-4 text-lg font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
-                style={{ background: 'var(--theme)' }}
-              >
-                {saving ? '저장 중...' : '변경사항 저장'}
-              </button>
-            </form>
-          ) : null}
         </div>
       </div>
       </div>
+
+      <SeatEditModal
+        open={Boolean(editingId)}
+        title="자료 수정"
+        badge={editingMaterial ? getTabLabel(editingMaterial.material_type) : undefined}
+        description={editingMaterial ? `"${editingMaterial.name}" 항목을 수정합니다.` : undefined}
+        widthClassName="max-w-lg"
+        onClose={() => setEditingId(null)}
+      >
+        <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-[#86868b]">이름</span>
+            <input
+              value={editForm.name}
+              onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="이름"
+              className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm text-[#1d1d1f] outline-none focus:border-[#0071e3]"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-[#86868b]">설명</span>
+            <textarea
+              value={editForm.description}
+              onChange={(event) =>
+                setEditForm((current) => ({ ...current, description: event.target.value }))
+              }
+              rows={3}
+              placeholder="설명"
+              className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm text-[#1d1d1f] outline-none focus:border-[#0071e3]"
+            />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">정렬 순서</span>
+              <input
+                type="number"
+                value={editForm.sort_order}
+                onChange={(event) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    sort_order: Number(event.target.value || 0),
+                  }))
+                }
+                placeholder="정렬 순서"
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm text-[#1d1d1f] outline-none focus:border-[#0071e3]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-2 self-end rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm font-medium text-[#1d1d1f]">
+              <span>활성 상태</span>
+              <input
+                type="checkbox"
+                checked={editForm.is_active}
+                onChange={(event) =>
+                  setEditForm((current) => ({ ...current, is_active: event.target.checked }))
+                }
+              />
+            </label>
+          </div>
+          {subjects.length > 0 && editingMaterial?.material_type === 'handout' ? (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-[#86868b]">배부 대상 과목 (선택)</span>
+              <select
+                value={editForm.subject_id ?? ''}
+                onChange={(event) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    subject_id: event.target.value ? Number(event.target.value) : null,
+                  }))
+                }
+                className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm text-[#1d1d1f] outline-none focus:border-[#0071e3]"
+              >
+                <option value="">전체 배부 (좌석 무관)</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name} 좌석 배정자만
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-[#86868b]">
+                과목을 지정하면 그 과목 좌석을 배정받은 학생만 이 자료를 받을 수 있습니다.
+              </span>
+            </label>
+          ) : null}
+
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingId(null)}
+              className="rounded-[8px] bg-[#f5f5f7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] active:scale-[0.97]"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-[8px] bg-[#0071e3] px-5 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
+            >
+              {saving ? '저장 중...' : '변경사항 저장'}
+            </button>
+          </div>
+        </form>
+      </SeatEditModal>
     </>
   )
 }

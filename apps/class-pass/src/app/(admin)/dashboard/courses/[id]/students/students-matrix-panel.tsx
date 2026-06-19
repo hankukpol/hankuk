@@ -52,6 +52,11 @@ function renderMatrixCell(
       )
     }
 
+    // 과목이 지정된 배부자료는 그 과목 좌석을 배정받은 학생에게만 배부 버튼을 노출한다.
+    if (material.subject_id != null && !row.seatSubjects[material.subject_id]) {
+      return <span className="text-[11px] font-semibold text-slate-300">대상 아님</span>
+    }
+
     return (
       <button
         type="button"

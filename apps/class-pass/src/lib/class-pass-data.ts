@@ -1000,20 +1000,20 @@ export async function listSeatAssignmentsForCourse(courseId: number): Promise<Se
 }
 
 const getCachedSeatAssignmentsForEnrollment = unstable_cache(
-  async (enrollmentId: number) => {
+  async (enrollmentId: number, courseId: number | null) => {
     const db = createServerClient()
     const data = unwrapSupabaseResult(
       'listSeatAssignmentsForEnrollment',
       await db
         .from('seat_assignments')
-        .select('*,course_subjects(id,name,sort_order)')
+        .select('*,course_subjects(id,course_id,name,sort_order)')
         .eq('enrollment_id', enrollmentId),
     )
 
     return ((data ?? []) as SeatAssignment[])
       .filter((assignment) => {
         const subject = assignment.course_subjects as unknown as CourseSubject | null
-        return subject !== null
+        return subject !== null && (courseId === null || subject.course_id === courseId)
       })
       .sort((left, right) => {
         const leftSubject = left.course_subjects as unknown as CourseSubject
@@ -1037,8 +1037,9 @@ const getCachedSeatAssignmentsForEnrollment = unstable_cache(
 
 export async function listSeatAssignmentsForEnrollment(
   enrollmentId: number,
+  courseId?: number,
 ): Promise<SeatAssignment[]> {
-  return getCachedSeatAssignmentsForEnrollment(enrollmentId)
+  return getCachedSeatAssignmentsForEnrollment(enrollmentId, courseId ?? null)
 }
 
 const getCachedReceiptRows = unstable_cache(
@@ -1268,7 +1269,7 @@ export async function buildPassPayload(params: {
 
   const [subjects, seatAssignments, designatedSeat, attendance, attendanceHistory, materials, textbooks, receiptRows, appConfig] = await Promise.all([
     listCourseSubjects(course.id),
-    listSeatAssignmentsForEnrollment(enrollment.id),
+    listSeatAssignmentsForEnrollment(enrollment.id, course.id),
     getDesignatedSeatStudentState({
       course,
       enrollmentId: enrollment.id,
@@ -1342,7 +1343,7 @@ export async function buildArchivedPassPayload(params: {
     listMaterialsForCourse(course.id, { activeOnly: false, materialType: 'handout' }),
     getAssignedTextbooksForEnrollment(enrollment.id, { activeOnly: false }),
     getReceiptRows(enrollment.id),
-    listSeatAssignmentsForEnrollment(enrollment.id),
+    listSeatAssignmentsForEnrollment(enrollment.id, course.id),
   ])
 
   // 과목 지정 배부자료는 해당 과목 좌석배정자에게만 노출 (배부 경로와 동일 게이팅).

@@ -37,6 +37,7 @@ type AttendanceSummaryRow = AttendanceHistoryEntry
 type StudentCourseAccessContext = { course: Course; enrollment: Enrollment }
 type CourseEnrollmentCountRow = Pick<Enrollment, 'id' | 'course_id' | 'status' | 'suspended_at'>
 const ENROLLMENT_FETCH_CHUNK_SIZE = 1000
+const SEAT_ASSIGNMENT_FETCH_CHUNK_SIZE = 1000
 
 export type StudentPassLookupResult =
   | { kind: 'ok'; payload: PassPayload }
@@ -311,6 +312,32 @@ async function attachEnrollmentBilling(enrollments: Enrollment[]) {
   }))
 }
 
+async function listAllSeatAssignmentsBySubjectIds(
+  db: ReturnType<typeof createServerClient>,
+  subjectIds: number[],
+): Promise<SeatAssignment[]> {
+  const rows: SeatAssignment[] = []
+
+  for (let offset = 0; ; offset += SEAT_ASSIGNMENT_FETCH_CHUNK_SIZE) {
+    const page = unwrapSupabaseResult(
+      'listSeatAssignmentsForCourse',
+      await db
+        .from('seat_assignments')
+        .select('*')
+        .in('subject_id', subjectIds)
+        .order('enrollment_id')
+        .order('id')
+        .range(offset, offset + SEAT_ASSIGNMENT_FETCH_CHUNK_SIZE - 1),
+    ) as SeatAssignment[] | null
+
+    rows.push(...(page ?? []))
+
+    if ((page?.length ?? 0) < SEAT_ASSIGNMENT_FETCH_CHUNK_SIZE) {
+      return rows
+    }
+  }
+}
+
 const getCachedSeatAssignmentsForCourse = unstable_cache(
   async (courseId: number) => {
     const db = createServerClient()
@@ -323,14 +350,7 @@ const getCachedSeatAssignmentsForCourse = unstable_cache(
 
     const subjectMap = new Map(subjects.map((subject) => [subject.id, subject]))
     const seatNumberCollator = new Intl.Collator('ko-KR', { numeric: true, sensitivity: 'base' })
-    const data = unwrapSupabaseResult(
-      'listSeatAssignmentsForCourse',
-      await db
-        .from('seat_assignments')
-        .select('*')
-        .in('subject_id', subjectIds)
-        .order('enrollment_id'),
-    )
+    const data = await listAllSeatAssignmentsBySubjectIds(db, subjectIds)
 
     return ((data ?? []) as SeatAssignment[])
       .map((assignment) => ({

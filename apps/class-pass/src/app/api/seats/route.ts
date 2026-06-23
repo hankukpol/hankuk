@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
       listSeatAssignmentsForCourse(courseId),
     ])
 
-    return NextResponse.json({ subjects, seatAssignments })
+    return NextResponse.json(
+      { subjects, seatAssignments },
+      { headers: { 'Cache-Control': 'no-store, private' } },
+    )
   } catch (error) {
     return handleRouteError('seats.GET', '좌석 배정 정보를 불러오지 못했습니다.', error)
   }

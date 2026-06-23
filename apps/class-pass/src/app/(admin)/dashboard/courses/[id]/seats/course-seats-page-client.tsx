@@ -131,12 +131,14 @@ export default function CourseSeatsPage({
       return
     }
 
-    if (initialLoaded) {
-      return
-    }
+    let isActive = true
 
     fetchSeatsPageData(courseId)
       .then((data) => {
+        if (!isActive) {
+          return
+        }
+
         setCourse(data.course)
         setSubjects(data.subjects)
         setSeatAssignments(data.seatAssignments)
@@ -144,10 +146,22 @@ export default function CourseSeatsPage({
         setSeatDrafts(buildSeatDraftMap(data.seatAssignments))
       })
       .catch((reason: unknown) => {
+        if (!isActive) {
+          return
+        }
+
         setError(reason instanceof Error ? reason.message : '좌석 관리 페이지를 불러오지 못했습니다.')
       })
-      .finally(() => setLoading(false))
-  }, [courseId, initialLoaded])
+      .finally(() => {
+        if (isActive) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [courseId])
 
   const summary = useMemo(() => {
     const assignedEnrollments = new Set(seatAssignments.map((entry) => entry.enrollment_id))

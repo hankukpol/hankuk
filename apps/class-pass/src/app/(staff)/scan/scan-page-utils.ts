@@ -35,7 +35,7 @@ export function normalizeToken(rawValue: string) {
 export function getScanReasonMessage(reason?: string) {
   switch (reason) {
     case 'INVALID_TOKEN':
-      return '유효하지 않은 QR 코드입니다.'
+      return 'QR이 만료되었거나 올바르지 않습니다. 학생 수강증을 새로고침하거나 다시 열어 달라고 안내해 주세요.'
     case 'ENROLLMENT_NOT_FOUND':
       return '수강생 정보를 찾을 수 없습니다.'
     case 'ALL_RECEIVED':

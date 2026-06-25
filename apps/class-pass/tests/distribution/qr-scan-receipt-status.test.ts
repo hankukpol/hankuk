@@ -56,4 +56,12 @@ describe('QR scan receipt status workflow', () => {
     assert.match(adminMatrixSource, /formatKoreanDate\(receipt\.distributed_at\)/)
     assert.doesNotMatch(adminMatrixSource, /formatDateTime\(receipt\.distributed_at\)\.split\(' '\)\[0\]/)
   })
+
+  it('refreshes the student QR token before the ten-minute token expires', () => {
+    assert.match(studentPageSource, /QR_TOKEN_REFRESH_MS\s*=\s*5 \* 60 \* 1000/)
+    assert.match(studentPageSource, /qrRefreshTimer = setInterval/)
+    assert.match(studentPageSource, /void load\(\)\.catch\(\(\) => null\)/)
+    assert.match(studentPageSource, /document\.visibilityState !== 'visible'/)
+    assert.match(staffUtilsSource, /학생 수강증을 새로고침하거나 다시 열어 달라고 안내/)
+  })
 })

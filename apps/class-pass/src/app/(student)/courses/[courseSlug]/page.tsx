@@ -13,6 +13,7 @@ import { formatCourseTypeLabel, formatKoreanDate } from '@/lib/utils'
 
 const LS_NAME = 'class_pass_student_name'
 const LS_PHONE = 'class_pass_student_phone'
+const QR_TOKEN_REFRESH_MS = 5 * 60 * 1000
 
 function replaceStudentLocation(target: string, router: ReturnType<typeof useRouter>) {
   if (typeof window !== 'undefined') {
@@ -152,6 +153,7 @@ export default function StudentCoursePassPage() {
 
     let cancelled = false
     let pollTimer: ReturnType<typeof setInterval> | null = null
+    let qrRefreshTimer: ReturnType<typeof setInterval> | null = null
     let removeVisibilityListener: (() => void) | null = null
     let receiptMaterialCount = 0
 
@@ -252,17 +254,35 @@ export default function StudentCoursePassPage() {
             pollTimer = setInterval(() => {
               void pollReceipts()
             }, 10_000)
+          }
 
-            const handleVisibilityChange = () => {
-              if (document.visibilityState === 'visible') {
-                void pollReceipts()
+          if (passData.course.feature_qr_pass) {
+            qrRefreshTimer = setInterval(() => {
+              if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+                return
               }
+
+              void load().catch(() => null)
+            }, QR_TOKEN_REFRESH_MS)
+          }
+
+          const handleVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') {
+              return
             }
 
-            document.addEventListener('visibilitychange', handleVisibilityChange)
-            removeVisibilityListener = () => {
-              document.removeEventListener('visibilitychange', handleVisibilityChange)
+            if (passData.course.feature_qr_pass) {
+              void load().catch(() => null)
             }
+
+            if (shouldPollReceipts) {
+              void pollReceipts()
+            }
+          }
+
+          document.addEventListener('visibilitychange', handleVisibilityChange)
+          removeVisibilityListener = () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
           }
         }
       })
@@ -277,6 +297,9 @@ export default function StudentCoursePassPage() {
       cancelled = true
       if (pollTimer) {
         clearInterval(pollTimer)
+      }
+      if (qrRefreshTimer) {
+        clearInterval(qrRefreshTimer)
       }
       removeVisibilityListener?.()
     }

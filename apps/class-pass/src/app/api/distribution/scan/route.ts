@@ -11,6 +11,7 @@ import { verifyQrToken } from '@/lib/qr/token'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+import type { Course, Enrollment } from '@/types/database'
 
 const schema = z.object({
   token: z.string().min(1),
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
       selectedCourseId && selectedCourseId !== payload.courseId
         ? db
             .from('courses')
-            .select('id, name')
+            .select('*')
             .eq('id', selectedCourseId)
             .eq('division', division)
             .eq('status', 'active')
@@ -82,30 +83,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, reason: 'ENROLLMENT_NOT_FOUND' }, { status: 404 })
     }
 
+    let distributionCourse = course as Course
+    let distributionEnrollment = enrollment as Enrollment
+
     if (selectedCourseId && selectedCourseId !== payload.courseId) {
-      return NextResponse.json(
-        {
-          success: false,
-          reason: 'COURSE_MISMATCH',
-          studentName: enrollment.name,
-          courseName: course.name,
-          selectedCourseName: selectedCourse?.name ?? null,
-        },
-        { status: 409 },
-      )
+      const selectedEnrollmentQuery = db
+        .from('enrollments')
+        .select('*')
+        .eq('course_id', selectedCourseId)
+        .eq('status', 'active')
+
+      let selectedEnrollmentResult
+      if (distributionEnrollment.student_id != null) {
+        selectedEnrollmentResult = await selectedEnrollmentQuery
+          .eq('student_id', distributionEnrollment.student_id)
+          .maybeSingle()
+      } else {
+        let fallbackQuery = selectedEnrollmentQuery
+          .eq('name', distributionEnrollment.name)
+          .eq('phone', distributionEnrollment.phone)
+
+        if (distributionEnrollment.exam_number) {
+          fallbackQuery = fallbackQuery.eq('exam_number', distributionEnrollment.exam_number)
+        }
+
+        selectedEnrollmentResult = await fallbackQuery.maybeSingle()
+      }
+
+      const selectedEnrollment = unwrapSupabaseResult(
+        'distributionScan.selectedEnrollment',
+        selectedEnrollmentResult,
+      ) as Enrollment | null
+
+      if (selectedCourse && selectedEnrollment) {
+        distributionCourse = selectedCourse as Course
+        distributionEnrollment = selectedEnrollment
+      } else {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: 'COURSE_MISMATCH',
+            studentName: enrollment.name,
+            courseName: course.name,
+            selectedCourseName: selectedCourse?.name ?? null,
+          },
+          { status: 409 },
+        )
+      }
     }
 
-    if (!course.feature_qr_distribution) {
+    if (!distributionCourse.feature_qr_distribution) {
       return NextResponse.json({
         success: true,
         materialName: 'QR 인증',
-        studentName: enrollment.name,
+        studentName: distributionEnrollment.name,
       })
     }
 
     const selection = await resolvePendingDistributionSelection({
-      enrollmentId: enrollment.id,
-      courseId: course.id,
+      enrollmentId: distributionEnrollment.id,
+      courseId: distributionCourse.id,
       materialId: parsed.data.materialId,
       materialIds: parsed.data.materialIds,
     })
@@ -114,7 +151,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         reason: 'ALL_RECEIVED',
-        studentName: enrollment.name,
+        studentName: distributionEnrollment.name,
       })
     }
 
@@ -122,15 +159,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         reason: 'SELECT_MATERIAL',
-        studentName: enrollment.name,
+        studentName: distributionEnrollment.name,
         needsSelection: true,
         unreceived: selection.materials,
       }, { status: 400 })
     }
 
     const distribution = await distributeMaterialsToEnrollment({
-      enrollmentId: enrollment.id,
-      studentName: enrollment.name,
+      enrollmentId: distributionEnrollment.id,
+      studentName: distributionEnrollment.name,
       materials: selection.materials,
     })
 
@@ -138,7 +175,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         reason: distribution.reason,
-        studentName: enrollment.name,
+        studentName: distributionEnrollment.name,
         distributedMaterials: distribution.kind === 'partial'
           ? distribution.materials.map((material) => ({
             id: material.id,

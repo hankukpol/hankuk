@@ -563,7 +563,7 @@ export default function StaffScanPage() {
       const payload = (await response.json().catch(() => null)) as ScanResponse | null
 
       // 실패: 동시 배부로 인해 unreceived 갱신 요청이 오면 목록만 교체하고 사용자가 다시 고르도록
-      if (response.ok && payload?.needsSelection && Array.isArray(payload.unreceived)) {
+      if (payload?.needsSelection && Array.isArray(payload.unreceived)) {
         setSelectOptions(payload.unreceived)
         processingRef.current = false
         setScanState('selecting')
@@ -662,7 +662,7 @@ export default function StaffScanPage() {
       })
       const payload = (await response.json().catch(() => null)) as ScanResponse | null
 
-      if (response.ok && payload?.needsSelection && Array.isArray(payload.unreceived)) {
+      if (payload?.needsSelection && Array.isArray(payload.unreceived)) {
         setSelectOptions(payload.unreceived)
         processingRef.current = false
         setScanState('selecting')

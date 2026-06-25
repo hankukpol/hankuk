@@ -43,7 +43,7 @@ export function getScanReasonMessage(reason?: string) {
     case 'SELECT_MATERIAL':
       return '배부할 자료를 선택해 주세요.'
     case 'COURSE_MISMATCH':
-      return '선택한 강좌와 QR 수강증의 강좌가 다릅니다.'
+      return '다른 강좌 QR입니다.'
     case 'NOT_ASSIGNED':
       return '해당 학생에게 배정되지 않은 교재입니다.'
     case 'NO_SEAT_FOR_SUBJECT':
@@ -57,12 +57,14 @@ export function getScanReasonMessage(reason?: string) {
 
 export function getScanFailureDescription(payload?: ScanResponse | null) {
   if (payload?.reason === 'COURSE_MISMATCH') {
+    const studentText = payload.studentName ? `${payload.studentName} 학생의 QR입니다. ` : ''
+
     if (payload.selectedCourseName && payload.courseName) {
-      return `선택 강좌(${payload.selectedCourseName})와 QR 수강증 강좌(${payload.courseName})가 다릅니다.`
+      return `${studentText}현재 선택 강좌는 "${payload.selectedCourseName}"이고, QR은 "${payload.courseName}" 수강증입니다. 선택한 강좌 수강증 QR로 다시 스캔해 주세요.`
     }
 
     if (payload.courseName) {
-      return `현재 선택한 강좌와 QR 수강증 강좌(${payload.courseName})가 다릅니다.`
+      return `${studentText}QR은 "${payload.courseName}" 수강증입니다. 선택한 강좌 수강증 QR로 다시 스캔해 주세요.`
     }
   }
 

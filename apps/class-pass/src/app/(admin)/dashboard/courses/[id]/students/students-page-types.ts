@@ -50,6 +50,11 @@ export type BulkProgressState = {
   total: number
 }
 
+export type DistributionBatchItem = {
+  enrollmentId: number
+  materialIds: number[]
+}
+
 export const MATRIX_TAB_META: Record<MatrixMode, { materialType: 'handout' | 'textbook'; title: string }> = {
   receipts: { materialType: 'handout', title: '배부자료 수령현황' },
   'textbook-assign': { materialType: 'textbook', title: '교재 배정' },

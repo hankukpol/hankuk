@@ -10,7 +10,10 @@ import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
   enrollmentId: z.number().int().positive(),
-  materialId: z.number().int().positive(),
+  materialId: z.number().int().positive().optional(),
+  materialIds: z.array(z.number().int().positive()).optional(),
+}).refine((value) => value.materialId != null || (value.materialIds?.length ?? 0) > 0, {
+  message: '배부할 자료가 필요합니다.',
 })
 
 type DistributionResult = {
@@ -41,33 +44,64 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServerClient()
-    const rpcResult = await db.rpc('distribute_material', {
-      p_enrollment_id: parsed.data.enrollmentId,
-      p_material_id: parsed.data.materialId,
-    })
+    const materialIds = Array.from(
+      new Set([parsed.data.materialId, ...(parsed.data.materialIds ?? [])].filter((value): value is number => (
+        typeof value === 'number' && Number.isInteger(value) && value > 0
+      ))),
+    )
 
-    if (rpcResult.error) {
-      return NextResponse.json({ error: '자료 배부 처리에 실패했습니다.' }, { status: 500 })
+    let successCount = 0
+    let studentName: string | undefined
+    const materialNames: string[] = []
+    const failures: string[] = []
+
+    for (const materialId of materialIds) {
+      const rpcResult = await db.rpc('distribute_material', {
+        p_enrollment_id: parsed.data.enrollmentId,
+        p_material_id: materialId,
+      })
+
+      if (rpcResult.error) {
+        failures.push('자료 배부 처리에 실패했습니다.')
+        continue
+      }
+
+      const result = rpcResult.data as DistributionResult | null
+      if (!result?.success) {
+        failures.push(result?.reason ?? '자료 배부 처리에 실패했습니다.')
+        continue
+      }
+
+      successCount += 1
+      studentName = result.student_name ?? studentName
+      if (result.material_name) {
+        materialNames.push(result.material_name)
+      }
     }
 
-    const result = rpcResult.data as DistributionResult | null
-    if (!result?.success) {
-      if (result?.reason === 'NOT_ASSIGNED') {
+    if (successCount === 0) {
+      if (failures.includes('NOT_ASSIGNED')) {
         return NextResponse.json(
           { error: '해당 학생에게 배정되지 않은 교재입니다.' },
           { status: 400 },
         )
       }
 
-      return NextResponse.json({ error: result?.reason ?? '자료 배부 처리에 실패했습니다.' }, { status: 400 })
+      return NextResponse.json(
+        { error: failures[0] ?? '자료 배부 처리에 실패했습니다.' },
+        { status: failures.includes('자료 배부 처리에 실패했습니다.') ? 500 : 400 },
+      )
     }
 
     await invalidateCache('distribution-logs')
 
     return NextResponse.json({
       success: true,
-      student_name: result.student_name,
-      material_name: result.material_name,
+      student_name: studentName,
+      material_name: materialNames.length === 1 ? materialNames[0] : `${successCount}건`,
+      material_names: materialNames,
+      success_count: successCount,
+      failed_count: materialIds.length - successCount,
     })
   } catch (error) {
     return handleRouteError('distribution.manual.POST', '자료 배부 처리에 실패했습니다.', error)

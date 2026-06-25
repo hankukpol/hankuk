@@ -53,6 +53,7 @@ import {
   isMatrixTab,
   toEditForm,
   type EnrollmentForm,
+  type DistributionBatchItem,
   type MatrixMode,
   type MatrixRow,
   type Panel,
@@ -1521,27 +1522,99 @@ export default function CourseStudentsPage({
     setError('')
     setMessage('')
 
-    let successCount = 0
-
-    for (const materialId of materialIds) {
+    try {
       const response = await fetch('/api/distribution/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enrollmentId, materialId }),
+        body: JSON.stringify({ enrollmentId, materialIds }),
       })
+      const payload = await response.json().catch(() => null)
 
-      setBulkProgress((progress) => ({ ...progress, done: progress.done + 1 }))
+      setBulkProgress({ done: materialIds.length, total: materialIds.length })
 
-      if (response.ok) {
-        successCount += 1
+      if (!response.ok) {
+        setError(payload?.error ?? '자료 일괄 배부에 실패했습니다.')
+        return
       }
+
+      const successCount = Number(payload?.success_count ?? materialIds.length)
+      const failCount = Number(payload?.failed_count ?? Math.max(0, materialIds.length - successCount))
+      setMessage(`자료 일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
+      await reloadCurrentMatrix()
+    } finally {
+      setBulkProcessing(false)
     }
+  }
 
-    setBulkProcessing(false)
+  async function runDistributionBatch(items: DistributionBatchItem[]) {
+    const targets = items.filter((item) => item.materialIds.length > 0)
+    const totalCount = targets.reduce((sum, item) => sum + item.materialIds.length, 0)
+    if (targets.length === 0 || totalCount === 0) return
 
-    const failCount = materialIds.length - successCount
-    setMessage(`자료 일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
-    await reloadCurrentMatrix()
+    setBulkProcessing(true)
+    setBulkProgress({ done: 0, total: totalCount })
+    setError('')
+    setMessage('')
+
+    let successCount = 0
+    let failCount = 0
+    let processedCount = 0
+    const CHUNK_SIZE = 5
+
+    try {
+      for (let index = 0; index < targets.length; index += CHUNK_SIZE) {
+        const chunk = targets.slice(index, index + CHUNK_SIZE)
+        await Promise.all(
+          chunk.map(async (item) => {
+            try {
+              const response = await fetch('/api/distribution/manual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  enrollmentId: item.enrollmentId,
+                  materialIds: item.materialIds,
+                }),
+              })
+              const payload = await response.json().catch(() => null)
+
+              if (response.ok) {
+                const itemSuccessCount = Number(payload?.success_count ?? item.materialIds.length)
+                successCount += itemSuccessCount
+                failCount += Number(payload?.failed_count ?? Math.max(0, item.materialIds.length - itemSuccessCount))
+              } else {
+                failCount += item.materialIds.length
+              }
+            } catch {
+              failCount += item.materialIds.length
+            } finally {
+              processedCount += item.materialIds.length
+              setBulkProgress({ done: processedCount, total: totalCount })
+            }
+          }),
+        )
+      }
+
+      setSelectedIds(new Set())
+      setMessage(`일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
+      await reloadCurrentMatrix()
+    } finally {
+      setBulkProcessing(false)
+    }
+  }
+
+  function confirmDistributionBatch(items: DistributionBatchItem[]) {
+    const targets = items.filter((item) => item.materialIds.length > 0)
+    const materialCount = targets.reduce((sum, item) => sum + item.materialIds.length, 0)
+    if (targets.length === 0 || materialCount === 0) return
+
+    openConfirmation({
+      title: '자료를 일괄 배부할까요?',
+      description: `현재 검색/필터 결과 중 ${targets.length.toLocaleString('ko-KR')}명에게 미수령 자료 ${materialCount.toLocaleString('ko-KR')}건을 배부합니다. 이미 수령한 자료와 대상이 아닌 자료는 제외됩니다.`,
+      confirmLabel: '일괄 배부',
+      pendingLabel: '배부 중...',
+      tone: 'success',
+      onConfirm: () => runDistributionBatch(targets),
+    })
   }
 
   async function handleBulkDistributeSelected() {
@@ -2991,6 +3064,9 @@ export default function CourseStudentsPage({
           }}
           onDistributeAll={(enrollmentId, materialIds) => {
             void handleDistributeAllForEnrollment(enrollmentId, materialIds)
+          }}
+          onDistributeBatch={(items) => {
+            confirmDistributionBatch(items)
           }}
           onUndo={(logId, studentName, materialName) => {
             openConfirmation({

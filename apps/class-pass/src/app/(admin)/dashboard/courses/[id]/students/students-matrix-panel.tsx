@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '@/lib/utils'
 import type { Material } from '@/types/database'
-import { MATRIX_TAB_META, type BulkProgressState, type MatrixMode, type MatrixRow } from './students-page-types'
+import {
+  MATRIX_TAB_META,
+  type BulkProgressState,
+  type DistributionBatchItem,
+  type MatrixMode,
+  type MatrixRow,
+} from './students-page-types'
 
 const MATRIX_PAGE_SIZE = 50
 
@@ -23,6 +29,7 @@ type StudentsMatrixPanelProps = {
   onToggleRowSelection: (enrollmentId: number, checked: boolean) => void
   onDistribute: (enrollmentId: number, materialId: number) => void
   onDistributeAll?: (enrollmentId: number, materialIds: number[]) => void
+  onDistributeBatch?: (items: DistributionBatchItem[]) => void
   onUndo: (logId: number, studentName: string, materialName: string) => void
   onAssignTextbook: (enrollmentId: number, materialId: number, checked: boolean) => void
   onAssignAllTextbooks?: (enrollmentId: number) => void
@@ -199,6 +206,7 @@ export function StudentsMatrixPanel({
   onToggleRowSelection,
   onDistribute,
   onDistributeAll,
+  onDistributeBatch,
   onUndo,
   onAssignTextbook,
   onAssignAllTextbooks,
@@ -207,6 +215,7 @@ export function StudentsMatrixPanel({
   const [currentPage, setCurrentPage] = useState(1)
   const showAllAssignColumn = tab === 'textbook-assign' && typeof onAssignAllTextbooks === 'function'
   const showAllDistributeColumn = (tab === 'receipts' || tab === 'textbook-receipts') && typeof onDistributeAll === 'function'
+  const showBatchDistributeButton = showAllDistributeColumn && typeof onDistributeBatch === 'function'
   const pageCount = Math.max(1, Math.ceil(filteredMatrixRows.length / MATRIX_PAGE_SIZE))
   const visiblePage = Math.min(currentPage, pageCount)
   const pageStart = (visiblePage - 1) * MATRIX_PAGE_SIZE
@@ -219,6 +228,22 @@ export function StudentsMatrixPanel({
     [pagedMatrixRows],
   )
   const allVisibleSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedIds.has(id))
+  const distributionBatchItems = useMemo(() => {
+    if (!showBatchDistributeButton) {
+      return []
+    }
+
+    return filteredMatrixRows
+      .map((row) => ({
+        enrollmentId: row.enrollment.id,
+        materialIds: getPendingDistributionMaterials(row, matrixMaterials, tab).map((material) => material.id),
+      }))
+      .filter((item) => item.materialIds.length > 0)
+  }, [filteredMatrixRows, matrixMaterials, showBatchDistributeButton, tab])
+  const distributionBatchMaterialCount = useMemo(
+    () => distributionBatchItems.reduce((sum, item) => sum + item.materialIds.length, 0),
+    [distributionBatchItems],
+  )
 
   useEffect(() => {
     setCurrentPage(1)
@@ -252,13 +277,29 @@ export function StudentsMatrixPanel({
             전체 {filteredMatrixRows.length.toLocaleString('ko-KR')}명
           </span>
         </div>
-        <input
-          type="text"
-          value={matrixSearch}
-          onChange={(event) => handleSearchChange(event.target.value)}
-          placeholder="이름, 연락처, 응시번호 검색"
-          className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-64 sm:py-2"
-        />
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          {showBatchDistributeButton ? (
+            <button
+              type="button"
+              onClick={() => onDistributeBatch?.(distributionBatchItems)}
+              disabled={bulkProcessing || distributionBatchMaterialCount === 0}
+              className="rounded-[8px] bg-blue-600 px-3 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] disabled:bg-slate-100 disabled:text-slate-400 disabled:active:scale-100 sm:py-2"
+            >
+              {bulkProcessing
+                ? `배부 중... (${bulkProgress.done}/${bulkProgress.total})`
+                : distributionBatchMaterialCount > 0
+                  ? `${distributionBatchMaterialCount}건 일괄 배부`
+                  : '배부할 자료 없음'}
+            </button>
+          ) : null}
+          <input
+            type="text"
+            value={matrixSearch}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            placeholder="이름, 연락처, 응시번호 검색"
+            className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-64 sm:py-2"
+          />
+        </div>
       </div>
 
       {filterMatId !== null ? (

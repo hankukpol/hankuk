@@ -53,7 +53,7 @@ describe('QR scan receipt status workflow', () => {
     assert.match(studentPageSource, /formatKoreanDate/)
     assert.match(studentPageSource, /미수령 자료 \{unreceivedMaterials\.length\}건/)
     assert.match(studentPageSource, /미수령 교재 \{unreceivedTextbooks\.length\}건/)
-    assert.match(adminMatrixSource, /formatKoreanDate\(receipt\.distributed_at\)/)
+    assert.match(adminMatrixSource, /formatKoreanMonthDay\(receipt\.distributed_at\)/)
     assert.doesNotMatch(adminMatrixSource, /formatDateTime\(receipt\.distributed_at\)\.split\(' '\)\[0\]/)
   })
 

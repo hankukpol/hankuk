@@ -12,6 +12,7 @@ type QrDistributionPanelProps = {
   containerRef: RefObject<HTMLDivElement | null>
   onRestartScanner: () => void
   onDistributeMaterial: (materialId: number) => void
+  onDistributeAllMaterials: () => void
   onCancelSelection: () => void
 }
 
@@ -20,7 +21,7 @@ function getScanStatusLabel(scanState: ScanState) {
     case 'processing':
       return '배부를 처리하고 있습니다.'
     case 'selecting':
-      return '필요한 자료를 차례로 눌러 배부하세요.'
+      return '남은 자료를 한 번에 배부하거나 필요한 자료만 선택하세요.'
     case 'scanning':
       return '학생 QR을 카메라에 비춰 주세요.'
     default:
@@ -42,6 +43,7 @@ export function QrDistributionPanel({
   containerRef,
   onRestartScanner,
   onDistributeMaterial,
+  onDistributeAllMaterials,
   onCancelSelection,
 }: QrDistributionPanelProps) {
   return (
@@ -108,20 +110,30 @@ export function QrDistributionPanel({
 
       {selectOptions.length > 0 ? (
         <section className="student-card mx-4 mt-3 px-4 py-4 sm:mx-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mb-3 flex flex-col gap-3">
             <div>
               <h2 className="student-eyebrow student-eyebrow-light">배부 선택</h2>
               <p className="mt-1 text-[15px] font-semibold text-[var(--student-text)]">
-                필요한 자료만 차례로 눌러 배부 ({selectOptions.length}건 남음)
+                남은 자료 {selectOptions.length}건
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onCancelSelection}
-              className="text-[13px] font-semibold text-[var(--student-text-muted)]"
-            >
-              완료
-            </button>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <button
+                type="button"
+                onClick={onDistributeAllMaterials}
+                disabled={scanState === 'processing'}
+                className="student-pill-button student-pill-primary justify-center disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                남은 {selectOptions.length}건 전체 배부
+              </button>
+              <button
+                type="button"
+                onClick={onCancelSelection}
+                className="student-pill-button student-pill-secondary px-4"
+              >
+                완료
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-2">

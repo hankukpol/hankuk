@@ -634,6 +634,90 @@ export default function StaffScanPage() {
     }
   }, [pendingToken, selectedCourseId, selectOptions, lastStudentName, showOverlay])
 
+  const handleDistributeAllSelected = useCallback(async () => {
+    if (!pendingToken || !selectedCourseId) {
+      setError('강좌를 먼저 선택해 주세요.')
+      return
+    }
+
+    const materialIds = selectOptions.map((material) => material.id)
+    if (materialIds.length === 0) {
+      return
+    }
+
+    processingRef.current = true
+    setScanState('processing')
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await fetch('/api/distribution/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: pendingToken,
+          courseId: selectedCourseId,
+          materialIds,
+        }),
+      })
+      const payload = (await response.json().catch(() => null)) as ScanResponse | null
+
+      if (response.ok && payload?.needsSelection && Array.isArray(payload.unreceived)) {
+        setSelectOptions(payload.unreceived)
+        processingRef.current = false
+        setScanState('selecting')
+        setError('다른 직원이 먼저 배부했을 수 있습니다. 갱신된 목록에서 다시 선택해 주세요.')
+        return
+      }
+
+      const distributedMaterials = payload?.distributedMaterials ?? []
+      const distributedIdSet = new Set<number>(distributedMaterials.map((material) => material.id))
+
+      if (!response.ok || !payload?.success) {
+        if (distributedIdSet.size > 0) {
+          const remaining = selectOptions.filter((material) => !distributedIdSet.has(material.id))
+          setSelectOptions(remaining)
+          processingRef.current = false
+          setScanState(remaining.length > 0 ? 'selecting' : 'scanning')
+          setError(
+            `일부 자료만 배부되었습니다. ${describeDistributedMaterials(distributedMaterials) ?? ''}`.trim(),
+          )
+          return
+        }
+
+        processingRef.current = false
+        setScanState('selecting')
+        setError(getScanFailureDescription(payload) || '전체 배부에 실패했습니다.')
+        return
+      }
+
+      const labelMaterials = distributedMaterials.length > 0
+        ? distributedMaterials
+        : selectOptions
+
+      const studentName = payload.studentName || lastStudentName || '학생'
+
+      setSelectOptions([])
+      setPendingToken('')
+      setMessage('')
+
+      showOverlay(
+        {
+          success: true,
+          title: summarizeDistributedMaterials(labelMaterials),
+          description: [studentName, describeDistributedMaterials(labelMaterials)]
+            .filter(Boolean)
+            .join(' · '),
+        },
+        OVERLAY_TIMEOUT_MS,
+      )
+    } catch {
+      processingRef.current = false
+      setScanState('selecting')
+      setError('전체 배부 요청에 실패했습니다. 다시 시도해 주세요.')
+    }
+  }, [pendingToken, selectedCourseId, selectOptions, lastStudentName, showOverlay])
+
   async function handleQuickDistribute() {
     if (!selectedCourseId || !quickPhone.trim()) {
       setError('강좌를 선택하고 전화번호를 입력해 주세요.')
@@ -980,6 +1064,9 @@ export default function StaffScanPage() {
           }}
           onDistributeMaterial={(materialId) => {
             void handleDistributeOne(materialId)
+          }}
+          onDistributeAllMaterials={() => {
+            void handleDistributeAllSelected()
           }}
           onCancelSelection={handleCancelSelection}
         />

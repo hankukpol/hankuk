@@ -9,7 +9,7 @@ import { ExamDeliveryPassView } from '@/components/student/ExamDeliveryPassView'
 import { useTenantConfig } from '@/components/TenantProvider'
 import type { PassPayload } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
-import { formatCourseTypeLabel } from '@/lib/utils'
+import { formatCourseTypeLabel, formatKoreanDate } from '@/lib/utils'
 
 const LS_NAME = 'class_pass_student_name'
 const LS_PHONE = 'class_pass_student_phone'
@@ -38,13 +38,7 @@ function isCurrentStudentLocation(target: string) {
 }
 
 function formatReceiptTime(value: string) {
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
+  return formatKoreanDate(value)
 }
 
 function formatAttendanceDate(value: string) {
@@ -455,10 +449,12 @@ export default function StudentCoursePassPage() {
   const receiptCount = Object.keys(data.receipts).length
   const materialCount = data.materials.length
   const allReceived = materialCount > 0 && receiptCount === materialCount
+  const unreceivedMaterials = data.materials.filter((material) => !data.receipts[material.id])
   const nextMaterialId = data.materials.find((material) => !data.receipts[material.id])?.id
   const textbookReceiptCount = Object.keys(data.textbookReceipts).length
   const textbookCount = data.textbooks.length
   const allTextbooksReceived = textbookCount > 0 && textbookReceiptCount === textbookCount
+  const unreceivedTextbooks = data.textbooks.filter((material) => !data.textbookReceipts[material.id])
   const nextTextbookId = data.textbooks.find((material) => !data.textbookReceipts[material.id])?.id
   const appName = data.appConfig.app_name || tenant.defaultAppName
   const courseTypeLabel = formatCourseTypeLabel(data.course.course_type)
@@ -689,6 +685,15 @@ export default function StudentCoursePassPage() {
             </div>
           ) : null}
 
+          {!allReceived && unreceivedMaterials.length > 0 ? (
+            <div className="mb-3 rounded-[12px] bg-[rgba(0,113,227,0.08)] px-4 py-3">
+              <p className="text-[12px] font-semibold text-[var(--student-blue)]">미수령 자료 {unreceivedMaterials.length}건</p>
+              <p className="mt-1 text-[13px] font-medium text-[var(--student-text)]">
+                {unreceivedMaterials.map((material) => material.name).join(', ')}
+              </p>
+            </div>
+          ) : null}
+
           {materialCount === 0 ? (
             <p className="student-body py-2">배부 자료가 없습니다.</p>
           ) : (
@@ -720,9 +725,9 @@ export default function StudentCoursePassPage() {
                       {receiptAt ? (
                         <span className="font-medium text-[#19703a]">{formatReceiptTime(receiptAt)}</span>
                       ) : isNext ? (
-                        <span className="text-[var(--student-text-muted)]">다음 수령 대상</span>
+                        <span className="font-semibold text-[var(--student-blue)]">미수령</span>
                       ) : (
-                        <span className="text-[#98a0ad]">대기 중</span>
+                        <span className="font-semibold text-[#98a0ad]">미수령</span>
                       )}
                     </span>
                   </li>
@@ -745,6 +750,15 @@ export default function StudentCoursePassPage() {
           {allTextbooksReceived ? (
             <div className="mb-3 rounded-[12px] bg-[#eefaf1] px-4 py-3 text-center">
               <span className="text-[14px] font-semibold text-[#19703a]">모든 교재를 수령했습니다.</span>
+            </div>
+          ) : null}
+
+          {!allTextbooksReceived && unreceivedTextbooks.length > 0 ? (
+            <div className="mb-3 rounded-[12px] bg-[rgba(0,113,227,0.08)] px-4 py-3">
+              <p className="text-[12px] font-semibold text-[var(--student-blue)]">미수령 교재 {unreceivedTextbooks.length}건</p>
+              <p className="mt-1 text-[13px] font-medium text-[var(--student-text)]">
+                {unreceivedTextbooks.map((material) => material.name).join(', ')}
+              </p>
             </div>
           ) : null}
 
@@ -776,9 +790,9 @@ export default function StudentCoursePassPage() {
                     {receiptAt ? (
                       <span className="font-medium text-[#19703a]">{formatReceiptTime(receiptAt)}</span>
                     ) : isNext ? (
-                      <span className="text-[var(--student-text-muted)]">다음 수령 대상</span>
+                      <span className="font-semibold text-[var(--student-blue)]">미수령</span>
                     ) : (
-                      <span className="text-[#98a0ad]">대기 중</span>
+                      <span className="font-semibold text-[#98a0ad]">미수령</span>
                     )}
                   </span>
                 </li>

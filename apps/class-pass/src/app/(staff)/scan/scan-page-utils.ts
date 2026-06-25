@@ -39,7 +39,7 @@ export function getScanReasonMessage(reason?: string) {
     case 'ENROLLMENT_NOT_FOUND':
       return '수강생 정보를 찾을 수 없습니다.'
     case 'ALL_RECEIVED':
-      return '모든 자료를 이미 수령했습니다.'
+      return '현재 수령할 자료가 없습니다.'
     case 'SELECT_MATERIAL':
       return '배부할 자료를 선택해 주세요.'
     case 'COURSE_MISMATCH':
@@ -56,6 +56,12 @@ export function getScanReasonMessage(reason?: string) {
 }
 
 export function getScanFailureDescription(payload?: ScanResponse | null) {
+  if (payload?.reason === 'ALL_RECEIVED') {
+    return payload.studentName
+      ? `${payload.studentName} 학생은 현재 받을 미수령 자료가 없습니다.`
+      : '현재 받을 미수령 자료가 없습니다.'
+  }
+
   if (payload?.reason === 'COURSE_MISMATCH') {
     const studentText = payload.studentName ? `${payload.studentName} 학생의 QR입니다. ` : ''
 

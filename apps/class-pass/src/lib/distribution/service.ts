@@ -50,6 +50,7 @@ export async function resolvePendingDistributionSelection(params: {
   courseId: number
   materialId?: number
   materialIds?: number[]
+  requireExplicitSelection?: boolean
 }): Promise<PendingDistributionSelection> {
   const unreceivedMaterials = await getUnreceivedMaterialsForEnrollment(params.enrollmentId, params.courseId)
   const materials = unreceivedMaterials.map((material) => ({
@@ -69,7 +70,7 @@ export async function resolvePendingDistributionSelection(params: {
     ),
   )
 
-  if (requestedIds.length === 0 && materials.length === 1) {
+  if (requestedIds.length === 0 && materials.length === 1 && !params.requireExplicitSelection) {
     return { kind: 'selected', materials: [materials[0]] }
   }
 

@@ -362,7 +362,11 @@ export default function StaffScanPage() {
         showOverlay(
           {
             success: false,
-            title: payload?.reason === 'COURSE_MISMATCH' ? '다른 강좌 QR입니다.' : '스캔을 완료하지 못했습니다.',
+            title: payload?.reason === 'COURSE_MISMATCH'
+              ? '다른 강좌 QR입니다.'
+              : payload?.reason === 'ALL_RECEIVED'
+                ? '수령자료 없음'
+                : '스캔을 완료하지 못했습니다.',
             description: getScanFailureDescription(payload),
           },
           ERROR_OVERLAY_TIMEOUT_MS,

@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
       courseId: course.id,
       materialId: parsed.data.materialId,
       materialIds: parsed.data.materialIds,
+      requireExplicitSelection: parsed.data.materialId == null && (parsed.data.materialIds?.length ?? 0) === 0,
     })
 
     if (selection.kind === 'all_received') {

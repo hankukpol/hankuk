@@ -9,7 +9,7 @@ import {
 } from '@/lib/student-session'
 import type { ArchivedPassPayload, Material } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
-import { formatCourseTypeLabel } from '@/lib/utils'
+import { formatCourseTypeLabel, formatKoreanDate } from '@/lib/utils'
 
 function replaceStudentLocation(target: string, router: ReturnType<typeof useRouter>) {
   if (typeof window !== 'undefined') {
@@ -35,13 +35,7 @@ function isCurrentStudentLocation(target: string) {
 }
 
 function formatReceiptTime(value: string) {
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
+  return formatKoreanDate(value)
 }
 
 export default function ArchivedStudentCoursePage() {
@@ -329,6 +323,8 @@ function ReceiptSection({
   items: Material[]
   receipts: Record<number, string>
 }) {
+  const unreceivedItems = items.filter((material) => !receipts[material.id])
+
   return (
     <section className="student-card px-4 py-4">
       <div className="flex items-center justify-between gap-3">
@@ -344,31 +340,42 @@ function ReceiptSection({
           <p className="text-[14px] text-[var(--student-text-muted)]">{emptyMessage}</p>
         </div>
       ) : (
-        <ul className="mt-3 flex flex-col gap-2">
-          {items.map((material) => {
-            const receiptAt = receipts[material.id] ?? null
-            return (
-              <li key={material.id} className="student-card-muted flex items-center gap-3 px-4 py-3">
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                    receiptAt ? 'bg-[#19703a] text-white' : 'border border-[var(--student-line)] text-[var(--student-text-muted)]'
-                  }`}
-                >
-                  {receiptAt ? '완료' : '대기'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-medium text-[var(--student-text)]">{material.name}</p>
-                  {material.description ? (
-                    <p className="mt-0.5 truncate text-[12px] text-[var(--student-text-muted)]">{material.description}</p>
-                  ) : null}
-                </div>
-                <span className="text-[12px] text-[var(--student-text-muted)]">
-                  {receiptAt ? formatReceiptTime(receiptAt) : '미수령'}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
+        <>
+          {unreceivedItems.length > 0 ? (
+            <div className="mt-3 rounded-[12px] bg-[rgba(0,113,227,0.08)] px-4 py-3">
+              <p className="text-[12px] font-semibold text-[var(--student-blue)]">미수령 {unreceivedItems.length}건</p>
+              <p className="mt-1 text-[13px] font-medium text-[var(--student-text)]">
+                {unreceivedItems.map((material) => material.name).join(', ')}
+              </p>
+            </div>
+          ) : null}
+
+          <ul className="mt-3 flex flex-col gap-2">
+            {items.map((material) => {
+              const receiptAt = receipts[material.id] ?? null
+              return (
+                <li key={material.id} className="student-card-muted flex items-center gap-3 px-4 py-3">
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                      receiptAt ? 'bg-[#19703a] text-white' : 'border border-[var(--student-line)] text-[var(--student-text-muted)]'
+                    }`}
+                  >
+                    {receiptAt ? '완료' : '미'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium text-[var(--student-text)]">{material.name}</p>
+                    {material.description ? (
+                      <p className="mt-0.5 truncate text-[12px] text-[var(--student-text-muted)]">{material.description}</p>
+                    ) : null}
+                  </div>
+                  <span className="text-[12px] text-[var(--student-text-muted)]">
+                    {receiptAt ? formatReceiptTime(receiptAt) : '미수령'}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </>
       )}
     </section>
   )

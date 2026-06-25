@@ -41,6 +41,21 @@ export function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value))
 }
 
+export function formatKoreanDate(value: string | null | undefined) {
+  if (!value) {
+    return '-'
+  }
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value))
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${get('year')}.${get('month')}.${get('day')}`
+}
+
 // "26.05.11" 형식 (YY.MM.DD, 서울 시간 기준)
 export function formatShortDate(value: string | null | undefined) {
   if (!value) return '-'

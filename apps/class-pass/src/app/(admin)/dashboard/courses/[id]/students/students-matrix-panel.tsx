@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { formatDateTime } from '@/lib/utils'
+import { formatDateTime, formatKoreanDate } from '@/lib/utils'
 import type { Material } from '@/types/database'
 import {
   MATRIX_TAB_META,
@@ -55,7 +55,9 @@ function renderMatrixCell(
           className="inline-flex flex-col items-center gap-0.5 text-emerald-600 transition-all duration-200 ease-ios hover:text-emerald-700 active:scale-[0.97]"
         >
           <span className="text-base">✓</span>
-          <span className="text-[10px] text-gray-400">{formatDateTime(receipt.distributed_at).split(' ')[0]}</span>
+          <span className="text-[10px] text-gray-400" title={formatDateTime(receipt.distributed_at)}>
+            {formatKoreanDate(receipt.distributed_at)}
+          </span>
         </button>
       )
     }
@@ -106,7 +108,9 @@ function renderMatrixCell(
         className="inline-flex flex-col items-center gap-0.5 text-emerald-600 transition-all duration-200 ease-ios hover:text-emerald-700 active:scale-[0.97]"
       >
         <span className="text-base">✓</span>
-        <span className="text-[10px] text-gray-400">{formatDateTime(receipt.distributed_at).split(' ')[0]}</span>
+        <span className="text-[10px] text-gray-400" title={formatDateTime(receipt.distributed_at)}>
+          {formatKoreanDate(receipt.distributed_at)}
+        </span>
       </button>
     )
   }

@@ -22,6 +22,7 @@ type StudentsMatrixPanelProps = {
   onReplaceSelectedIds: (nextSelectedIds: Set<number>) => void
   onToggleRowSelection: (enrollmentId: number, checked: boolean) => void
   onDistribute: (enrollmentId: number, materialId: number) => void
+  onDistributeAll?: (enrollmentId: number, materialIds: number[]) => void
   onUndo: (logId: number, studentName: string, materialName: string) => void
   onAssignTextbook: (enrollmentId: number, materialId: number, checked: boolean) => void
   onAssignAllTextbooks?: (enrollmentId: number) => void
@@ -115,6 +116,24 @@ function renderMatrixCell(
   )
 }
 
+function getPendingDistributionMaterials(row: MatrixRow, materials: Material[], tab: MatrixMode) {
+  if (tab === 'textbook-assign') {
+    return []
+  }
+
+  return materials.filter((material) => {
+    if (row.receipts[material.id]) {
+      return false
+    }
+
+    if (tab === 'textbook-receipts') {
+      return Boolean(row.assignments[material.id])
+    }
+
+    return material.subject_id == null || Boolean(row.seatSubjects[material.subject_id])
+  })
+}
+
 function MatrixPaginationControls({
   currentPage,
   pageCount,
@@ -179,6 +198,7 @@ export function StudentsMatrixPanel({
   onReplaceSelectedIds,
   onToggleRowSelection,
   onDistribute,
+  onDistributeAll,
   onUndo,
   onAssignTextbook,
   onAssignAllTextbooks,
@@ -186,6 +206,7 @@ export function StudentsMatrixPanel({
 }: StudentsMatrixPanelProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const showAllAssignColumn = tab === 'textbook-assign' && typeof onAssignAllTextbooks === 'function'
+  const showAllDistributeColumn = (tab === 'receipts' || tab === 'textbook-receipts') && typeof onDistributeAll === 'function'
   const pageCount = Math.max(1, Math.ceil(filteredMatrixRows.length / MATRIX_PAGE_SIZE))
   const visiblePage = Math.min(currentPage, pageCount)
   const pageStart = (visiblePage - 1) * MATRIX_PAGE_SIZE
@@ -286,6 +307,9 @@ export function StudentsMatrixPanel({
                   </th>
                 ) : null}
                 <th className="sticky left-0 bg-white px-5 py-3">수강생</th>
+                {showAllDistributeColumn ? (
+                  <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
+                ) : null}
                 {showAllAssignColumn ? (
                   <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
                 ) : null}
@@ -305,7 +329,7 @@ export function StudentsMatrixPanel({
             <tbody className="divide-y divide-slate-50">
               {filteredMatrixRows.length === 0 ? (
                 <tr>
-                  <td colSpan={matrixMaterials.length + 1 + (bulkActionEnabled ? 1 : 0) + (showAllAssignColumn ? 1 : 0)} className="px-5 py-8 text-center text-gray-400">
+                  <td colSpan={matrixMaterials.length + 1 + (bulkActionEnabled ? 1 : 0) + (showAllDistributeColumn ? 1 : 0) + (showAllAssignColumn ? 1 : 0)} className="px-5 py-8 text-center text-gray-400">
                     {matrixSearch.trim() || filterMatId !== null ? '검색 결과가 없습니다.' : '데이터가 없습니다.'}
                   </td>
                 </tr>
@@ -325,6 +349,32 @@ export function StudentsMatrixPanel({
                     {row.enrollment.name}
                     <span className="ml-2 text-xs text-gray-400">{row.enrollment.exam_number || row.enrollment.phone}</span>
                   </td>
+                  {showAllDistributeColumn ? (
+                    (() => {
+                      const pendingMaterials = getPendingDistributionMaterials(row, matrixMaterials, tab)
+                      const pendingCount = pendingMaterials.length
+
+                      return (
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            type="button"
+                            disabled={bulkProcessing || pendingCount === 0}
+                            onClick={() => onDistributeAll?.(
+                              row.enrollment.id,
+                              pendingMaterials.map((material) => material.id),
+                            )}
+                            className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100 ${
+                              pendingCount === 0
+                                ? 'cursor-default bg-slate-100 text-slate-400'
+                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50'
+                            }`}
+                          >
+                            {pendingCount === 0 ? '완료' : `${pendingCount}건 배부`}
+                          </button>
+                        </td>
+                      )
+                    })()
+                  ) : null}
                   {showAllAssignColumn ? (
                     (() => {
                       const allAssigned =

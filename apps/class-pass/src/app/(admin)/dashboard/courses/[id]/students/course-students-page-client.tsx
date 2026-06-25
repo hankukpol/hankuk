@@ -1444,9 +1444,10 @@ export default function CourseStudentsPage({
           seatSubjects: seatSubjectMap.get(enrollment.id) ?? {},
         })),
       )
-      setFilterMatId(null)
+      setFilterMatId((current) => (
+        current !== null && materials.some((material) => material.id === current) ? current : null
+      ))
       setSelectedIds(new Set())
-      setMatrixSearch('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '매트릭스 데이터를 불러오지 못했습니다.')
     } finally {
@@ -1509,6 +1510,37 @@ export default function CourseStudentsPage({
     setBulkProcessing(false)
     if (!r.ok) { setError(p?.error ?? '배부 처리에 실패했습니다.'); return }
     setMessage(`${p?.student_name ?? '수강생'} - ${p?.material_name ?? '자료'} 배부 완료`)
+    await reloadCurrentMatrix()
+  }
+
+  async function handleDistributeAllForEnrollment(enrollmentId: number, materialIds: number[]) {
+    if (materialIds.length === 0) return
+
+    setBulkProcessing(true)
+    setBulkProgress({ done: 0, total: materialIds.length })
+    setError('')
+    setMessage('')
+
+    let successCount = 0
+
+    for (const materialId of materialIds) {
+      const response = await fetch('/api/distribution/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentId, materialId }),
+      })
+
+      setBulkProgress((progress) => ({ ...progress, done: progress.done + 1 }))
+
+      if (response.ok) {
+        successCount += 1
+      }
+    }
+
+    setBulkProcessing(false)
+
+    const failCount = materialIds.length - successCount
+    setMessage(`자료 일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
     await reloadCurrentMatrix()
   }
 
@@ -2956,6 +2988,9 @@ export default function CourseStudentsPage({
           }}
           onDistribute={(enrollmentId, materialId) => {
             void handleDistribute(enrollmentId, materialId)
+          }}
+          onDistributeAll={(enrollmentId, materialIds) => {
+            void handleDistributeAllForEnrollment(enrollmentId, materialIds)
           }}
           onUndo={(logId, studentName, materialName) => {
             openConfirmation({

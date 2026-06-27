@@ -6,6 +6,7 @@ import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import type { PhoneCheckRecord } from "@/lib/services/phone-submission.service";
 import type { PointRuleItem } from "@/lib/services/point.service";
 
@@ -43,6 +44,28 @@ function findPhonePointRule(rules: PointRuleItem[]) {
   );
 }
 
+function getAttendanceBadgeClassName(record: PhoneCheckRecord) {
+  if (record.attendanceStatus === null && record.attendanceCheckable) {
+    return "bg-slate-50 text-slate-500 ring-slate-200";
+  }
+
+  switch (record.attendanceStatus) {
+    case "PRESENT":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
+    case "TARDY":
+      return "bg-amber-50 text-amber-700 ring-amber-600/20";
+    case "ABSENT":
+    case "EXCUSED":
+      return "bg-rose-50 text-rose-700 ring-rose-600/20";
+    case "HOLIDAY":
+    case "HALF_HOLIDAY":
+    case "NOT_APPLICABLE":
+      return "bg-slate-50 text-slate-500 ring-slate-200";
+    default:
+      return "bg-indigo-50 text-indigo-700 ring-indigo-600/20";
+  }
+}
+
 export function PhoneSubmissionManager({
   divisionSlug,
   initialRecords = [],
@@ -61,16 +84,16 @@ export function PhoneSubmissionManager({
   const { confirm, confirmDialog } = useConfirmDialog();
 
   const notSubmittedList = useMemo(
-    () => records.filter((record) => record.status === "NOT_SUBMITTED"),
+    () => records.filter((record) => record.status === "NOT_SUBMITTED" && record.attendanceCheckable),
     [records],
   );
   const submittedCount = useMemo(
-    () => records.filter((record) => record.status === "SUBMITTED").length,
+    () => records.filter((record) => record.status === "SUBMITTED" && record.attendanceCheckable).length,
     [records],
   );
   const notSubmittedCount = notSubmittedList.length;
   const rentedCount = useMemo(
-    () => records.filter((record) => record.status === "RENTED").length,
+    () => records.filter((record) => record.status === "RENTED" && record.attendanceCheckable).length,
     [records],
   );
 
@@ -324,6 +347,7 @@ export function PhoneSubmissionManager({
                 <th className="pb-3 pr-4 font-semibold text-slate-600">교시</th>
                 <th className="pb-3 pr-4 font-semibold text-slate-600">이름</th>
                 <th className="pb-3 pr-4 font-semibold text-slate-600">수험번호</th>
+                <th className="pb-3 pr-4 font-semibold text-slate-600">출석 상태</th>
                 <th className="pb-3 pr-4 font-semibold text-slate-600">상태</th>
                 <th className="pb-3 font-semibold text-slate-600">대여 사유</th>
               </tr>
@@ -339,7 +363,7 @@ export function PhoneSubmissionManager({
                   }
                 >
                   <td className="py-3 pr-4">
-                    {item.status === "NOT_SUBMITTED" && (
+                    {item.status === "NOT_SUBMITTED" && item.attendanceCheckable && (
                       <input
                         type="checkbox"
                         checked={selectedIds.has(item.studentId)}
@@ -352,6 +376,15 @@ export function PhoneSubmissionManager({
                   <td className="py-3 pr-4 text-slate-600">{item.periodName}</td>
                   <td className="py-3 pr-4 font-medium text-slate-900">{item.studentName}</td>
                   <td className="py-3 pr-4 text-slate-600">{item.studentNumber}</td>
+                  <td className="py-3 pr-4">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${getAttendanceBadgeClassName(item)}`}
+                    >
+                      {item.attendanceStatus === null && item.attendanceCheckable
+                        ? "출결 연동 없음"
+                        : getAttendanceStatusLabel(item.attendanceStatus)}
+                    </span>
+                  </td>
                   <td className="py-3 pr-4">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${

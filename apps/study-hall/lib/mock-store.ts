@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -1845,12 +1845,56 @@ async function withMockStateLock<T>(operation: () => Promise<T>) {
   }
 }
 
+function isFileLockError(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as NodeJS.ErrnoException).code)
+      : "";
+
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
+}
+
+async function retryLockedFileOperation(operation: () => Promise<void>) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await operation();
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (!isFileLockError(error)) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+
+  throw lastError;
+}
+
 async function persistMockState(serialized: string) {
   // 원자적 쓰기: 임시파일에 먼저 쓴 뒤 rename으로 교체하여 부분 쓰기 방지
-  const tempPath = `${mockStatePath}.tmp`;
+  const tempPath = `${mockStatePath}.${process.pid}.${Date.now()}.${Math.random()
+    .toString(36)
+    .slice(2)}.tmp`;
   await writeFile(tempPath, serialized, "utf8");
   await writeFile(mockStateBackupPath, serialized, "utf8");
-  await rename(tempPath, mockStatePath);
+
+  try {
+    await retryLockedFileOperation(() => rename(tempPath, mockStatePath));
+  } catch (error) {
+    if (!isFileLockError(error)) {
+      throw error;
+    }
+
+    // Windows dev mode may keep the JSON file briefly locked while another
+    // request reads it. Mock mode can safely fall back to direct write here.
+    await retryLockedFileOperation(() => writeFile(mockStatePath, serialized, "utf8"));
+    await unlink(tempPath).catch(() => undefined);
+  }
 }
 
 async function ensureMockStateFile() {

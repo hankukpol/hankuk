@@ -1,13 +1,18 @@
 "use client";
 
-import { Save } from "lucide-react";
+import { Phone, Save } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Modal } from "@/components/ui/Modal";
+import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import { getSeatPositionKey } from "@/lib/seat-layout";
 import { getStudyTrackShortLabel } from "@/lib/study-track-meta";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
-import type { PhoneCheckStatus, PhoneDaySnapshot } from "@/lib/services/phone-submission.service";
+import type {
+  PhoneAttendanceCell,
+  PhoneCheckStatus,
+  PhoneDaySnapshot,
+} from "@/lib/services/phone-submission.service";
 
 export type LocalStatus = PhoneCheckStatus | null;
 
@@ -24,8 +29,11 @@ type PhoneCheckSeatMapProps = {
   initialSeatLayout: SeatLayout;
   students: PhoneDaySnapshot["students"];
   periodState: LocalPeriodState;
+  attendanceByStudentId: Map<string, PhoneAttendanceCell>;
+  attendanceIntegrationEnabled: boolean;
   onStatusChange: (studentId: string, status: LocalStatus) => void;
   onRentalNoteChange: (studentId: string, note: string) => void;
+  onOpenBulkRental: (studentId: string) => void;
 };
 
 const STATUS_LABEL: Record<PhoneCheckStatus, string> = {
@@ -48,14 +56,37 @@ const STATUS_TONE: Record<PhoneCheckStatus, string> = {
 
 const BUTTON_ACTIVE = "bg-[var(--division-color)] text-white";
 
+function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enabled: boolean) {
+  if (!enabled) return "border-slate-200 bg-white text-slate-500";
+
+  switch (cell?.status) {
+    case "PRESENT":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "TARDY":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "ABSENT":
+    case "EXCUSED":
+      return "border-rose-200 bg-rose-50 text-rose-700";
+    case "HOLIDAY":
+    case "HALF_HOLIDAY":
+    case "NOT_APPLICABLE":
+      return "border-slate-200 bg-slate-50 text-slate-500";
+    default:
+      return "border-indigo-200 bg-indigo-50 text-indigo-500";
+  }
+}
+
 export function PhoneCheckSeatMap({
   divisionSlug,
   rooms,
   initialSeatLayout,
   students,
   periodState,
+  attendanceByStudentId,
+  attendanceIntegrationEnabled,
   onStatusChange,
   onRentalNoteChange,
+  onOpenBulkRental,
 }: PhoneCheckSeatMapProps) {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(
     initialSeatLayout.room?.id ?? null,
@@ -107,6 +138,8 @@ export function PhoneCheckSeatMap({
   const modalEntry = modalStudentId
     ? (periodState[modalStudentId] ?? { status: null, rentalNote: "" })
     : null;
+  const modalAttendanceCell = modalStudentId ? attendanceByStudentId.get(modalStudentId) : null;
+  const modalCheckable = !attendanceIntegrationEnabled || Boolean(modalAttendanceCell?.checkable);
 
   // 현재 자습실에 없는 학생 (좌석 없거나 다른 자습실)
   const seatedStudentIds = useMemo(
@@ -190,6 +223,9 @@ export function PhoneCheckSeatMap({
               const seatStudentBase = seat.assignedStudent;
               const student = seatStudentBase ? studentById.get(seatStudentBase.id) : null;
               const entry = student ? (periodState[student.id] ?? { status: null, rentalNote: "" }) : null;
+              const attendanceCell = student ? attendanceByStudentId.get(student.id) : null;
+              const isCheckable =
+                !attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
               const status = entry?.status ?? null;
               const isSelected = student?.id === modalStudentId;
 
@@ -197,6 +233,8 @@ export function PhoneCheckSeatMap({
                 ? "border-dashed border-slate-200 bg-slate-100 text-slate-400"
                 : !student
                   ? "border-slate-200 bg-white text-slate-500"
+                  : !isCheckable
+                    ? "border-slate-200 bg-slate-50 text-slate-400"
                   : status
                     ? STATUS_TONE[status]
                     : "border-slate-200 bg-white text-slate-600";
@@ -215,14 +253,31 @@ export function PhoneCheckSeatMap({
                   {/* 상단: 좌석번호 + 상태 배지 */}
                   <div className="flex items-start justify-between gap-1">
                     <span className="text-xs font-semibold tracking-widest">{seat.label}</span>
-                    {student && status && (
+                    {student && (
+                      <span
+                        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
+                          attendanceCell ?? undefined,
+                          attendanceIntegrationEnabled,
+                        )}`}
+                      >
+                        {attendanceIntegrationEnabled
+                          ? getAttendanceStatusLabel(attendanceCell?.status)
+                          : "출결 없음"}
+                      </span>
+                    )}
+                    {student && isCheckable && status && (
                       <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[status]}`}>
                         {STATUS_LABEL[status]}
                       </span>
                     )}
-                    {student && !status && (
+                    {student && isCheckable && !status && (
                       <span className="shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
                         미체크
+                      </span>
+                    )}
+                    {student && !isCheckable && (
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                        체크 없음
                       </span>
                     )}
                   </div>
@@ -256,9 +311,14 @@ export function PhoneCheckSeatMap({
           </p>
           {unseatedStudents.map((student) => {
             const entry = periodState[student.id] ?? { status: null, rentalNote: "" };
+            const attendanceCell = attendanceByStudentId.get(student.id);
+            const isCheckable =
+              !attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
             const { status } = entry;
             const cardBg =
-              status === "SUBMITTED"
+              !isCheckable
+                ? "border-slate-100 bg-slate-50/80 opacity-75"
+                : status === "SUBMITTED"
                 ? "border-green-100 bg-green-50/30"
                 : status === "NOT_SUBMITTED"
                   ? "border-red-100 bg-red-50/30"
@@ -270,29 +330,51 @@ export function PhoneCheckSeatMap({
               <div key={student.id} className={`rounded-[10px] border p-3 transition ${cardBg}`}>
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-900">{student.name}</p>
+                    <button
+                      type="button"
+                      onClick={() => onOpenBulkRental(student.id)}
+                      className="text-left text-sm font-semibold text-slate-900 underline-offset-4 transition hover:text-sky-700 hover:underline"
+                    >
+                      {student.name}
+                    </button>
                     <p className="text-xs text-slate-500">
                       {student.seatDisplay ?? "좌석 미배정"} · {student.studentNumber}
                     </p>
+                    <span
+                      className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
+                        attendanceCell,
+                        attendanceIntegrationEnabled,
+                      )}`}
+                    >
+                      {attendanceIntegrationEnabled
+                        ? getAttendanceStatusLabel(attendanceCell?.status)
+                        : "출결 연동 없음"}
+                    </span>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    {(["SUBMITTED", "NOT_SUBMITTED", "RENTED"] as const).map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => onStatusChange(student.id, status === s ? null : s)}
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                          status === s
-                            ? BUTTON_ACTIVE
-                            : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                        }`}
-                      >
-                        {STATUS_LABEL[s]}
-                      </button>
-                    ))}
+                    {isCheckable ? (
+                      (["SUBMITTED", "NOT_SUBMITTED", "RENTED"] as const).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => onStatusChange(student.id, status === s ? null : s)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                            status === s
+                              ? BUTTON_ACTIVE
+                              : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          {STATUS_LABEL[s]}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
+                        체크 없음
+                      </span>
+                    )}
                   </div>
                 </div>
-                {status === "RENTED" && (
+                {isCheckable && status === "RENTED" && (
                   <div className="mt-2">
                     <input
                       type="text"
@@ -321,30 +403,68 @@ export function PhoneCheckSeatMap({
       >
         {modalStudentId && modalEntry && (
           <div className="space-y-4">
-            {/* 3-state 버튼 */}
-            <div className="flex gap-2">
-              {(["SUBMITTED", "NOT_SUBMITTED", "RENTED"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => {
-                    const next = modalEntry.status === s ? null : s;
-                    onStatusChange(modalStudentId, next);
-                    if (s !== "RENTED") setModalStudentId(null);
-                  }}
-                  className={`flex-1 rounded-full px-3 py-2.5 text-sm font-medium transition ${
-                    modalEntry.status === s
-                      ? BUTTON_ACTIVE
-                      : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  {STATUS_LABEL[s]}
-                </button>
-              ))}
+            <div>
+              <span
+                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName(
+                  modalAttendanceCell ?? undefined,
+                  attendanceIntegrationEnabled,
+                )}`}
+              >
+                {attendanceIntegrationEnabled
+                  ? getAttendanceStatusLabel(modalAttendanceCell?.status)
+                  : "출결 연동 없음"}
+              </span>
+              {modalAttendanceCell?.reason ? (
+                <p className="mt-2 text-xs text-slate-500">{modalAttendanceCell.reason}</p>
+              ) : null}
             </div>
 
+            {!modalCheckable ? (
+              <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+                출석 또는 지각으로 처리된 학생만 휴대폰 상태를 체크할 수 있습니다.
+              </div>
+            ) : null}
+
+            {modalStudentId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenBulkRental(modalStudentId);
+                  setModalStudentId(null);
+                }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+              >
+                <Phone className="h-4 w-4" />
+                일괄 대여
+              </button>
+            ) : null}
+
+            {/* 3-state 버튼 */}
+            {modalCheckable ? (
+              <div className="flex gap-2">
+                {(["SUBMITTED", "NOT_SUBMITTED", "RENTED"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      const next = modalEntry.status === s ? null : s;
+                      onStatusChange(modalStudentId, next);
+                      if (s !== "RENTED") setModalStudentId(null);
+                    }}
+                    className={`flex-1 rounded-full px-3 py-2.5 text-sm font-medium transition ${
+                      modalEntry.status === s
+                        ? BUTTON_ACTIVE
+                        : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    {STATUS_LABEL[s]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             {/* 대여 사유 */}
-            {modalEntry.status === "RENTED" && (
+            {modalCheckable && modalEntry.status === "RENTED" && (
               <div className="space-y-3">
                 <input
                   type="text"
@@ -367,7 +487,7 @@ export function PhoneCheckSeatMap({
             )}
 
             {/* 초기화 */}
-            {modalEntry.status && modalEntry.status !== "RENTED" && (
+            {modalCheckable && modalEntry.status && modalEntry.status !== "RENTED" && (
               <button
                 type="button"
                 onClick={() => {

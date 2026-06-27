@@ -2,13 +2,19 @@
 
 import dynamic from "next/dynamic";
 
-import { LayoutGrid, RefreshCcw, Save, Search, Table2, X } from "lucide-react";
+import { LayoutGrid, Phone, RefreshCcw, Save, Search, Table2, X } from "lucide-react";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { PhoneCheckTable } from "@/components/phones/PhoneCheckTable";
+import { Modal } from "@/components/ui/Modal";
+import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
-import type { PhoneCheckStatus, PhoneDaySnapshot } from "@/lib/services/phone-submission.service";
+import type {
+  PhoneAttendanceCell,
+  PhoneCheckStatus,
+  PhoneDaySnapshot,
+} from "@/lib/services/phone-submission.service";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
 
@@ -34,6 +40,14 @@ export type LocalPeriodState = {
 
 type AllPeriodsState = {
   [periodId: string]: LocalPeriodState;
+};
+
+type BulkRentalDraft = {
+  startPeriodId: string;
+  endPeriodId: string;
+  rentalNote: string;
+  overwriteExisting: boolean;
+  selectedStudentIds: Set<string>;
 };
 
 function getKstToday() {
@@ -105,16 +119,56 @@ function resolveActivePeriodId(
   );
 }
 
+function getPeriodRange(periods: PhoneDaySnapshot["periods"], startPeriodId: string, endPeriodId: string) {
+  const startIndex = periods.findIndex((period) => period.periodId === startPeriodId);
+  const endIndex = periods.findIndex((period) => period.periodId === endPeriodId);
+
+  if (startIndex === -1 || endIndex === -1) {
+    return [];
+  }
+
+  const [fromIndex, toIndex] =
+    startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+
+  return periods.slice(fromIndex, toIndex + 1);
+}
+
+function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enabled: boolean) {
+  if (!enabled) return "border-slate-200 bg-slate-50 text-slate-500";
+
+  switch (cell?.status) {
+    case "PRESENT":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "TARDY":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "ABSENT":
+    case "EXCUSED":
+      return "border-rose-200 bg-rose-50 text-rose-700";
+    case "HOLIDAY":
+    case "HALF_HOLIDAY":
+    case "NOT_APPLICABLE":
+      return "border-slate-200 bg-slate-50 text-slate-500";
+    default:
+      return "border-indigo-200 bg-indigo-50 text-indigo-500";
+  }
+}
+
 function buildInitialState(snapshot: PhoneDaySnapshot): AllPeriodsState {
   const state: AllPeriodsState = {};
   for (const period of snapshot.periods) {
     const recordByStudentId = new Map(period.records.map((record) => [record.studentId, record]));
+    const attendanceByStudentId = new Map(
+      period.attendance.map((cell) => [cell.studentId, cell]),
+    );
     state[period.periodId] = {};
     for (const student of snapshot.students) {
       const record = recordByStudentId.get(student.id);
+      const attendanceCell = attendanceByStudentId.get(student.id);
+      const isCheckable =
+        !snapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
       state[period.periodId][student.id] = {
-        status: record ? record.status : null,
-        rentalNote: record?.rentalNote ?? "",
+        status: isCheckable && record ? record.status : null,
+        rentalNote: isCheckable ? record?.rentalNote ?? "" : "",
       };
     }
   }
@@ -152,6 +206,8 @@ export function PhoneCheckForm({
   const [isLoading, setIsLoading] = useState(false);
   const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [bulkRentalDraft, setBulkRentalDraft] = useState<BulkRentalDraft | null>(null);
+  const [isSavingBulkRental, setIsSavingBulkRental] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const markDirty = useCallback(() => {
@@ -172,7 +228,23 @@ export function PhoneCheckForm({
     () => periodsState[activePeriodId] ?? {},
     [activePeriodId, periodsState],
   );
+  const activeAttendanceByStudentId = useMemo(
+    () => new Map((activePeriod?.attendance ?? []).map((cell) => [cell.studentId, cell])),
+    [activePeriod],
+  );
   const hasSearchQuery = hasStudentSearchQuery(searchQuery);
+
+  const isStudentCheckableForPeriod = useCallback(
+    (periodId: string, studentId: string) => {
+      if (!snapshot.attendanceIntegrationEnabled) {
+        return true;
+      }
+
+      const period = snapshot.periods.find((item) => item.periodId === periodId);
+      return Boolean(period?.attendance.find((cell) => cell.studentId === studentId)?.checkable);
+    },
+    [snapshot.attendanceIntegrationEnabled, snapshot.periods],
+  );
 
   async function loadSnapshot(newDate: string) {
     setIsLoading(true);
@@ -208,6 +280,10 @@ export function PhoneCheckForm({
   }
 
   function setStudentStatus(periodId: string, studentId: string, status: LocalStatus) {
+    if (!isStudentCheckableForPeriod(periodId, studentId)) {
+      return;
+    }
+
     markDirty();
     setPeriodsState((prev) => ({
       ...prev,
@@ -222,6 +298,11 @@ export function PhoneCheckForm({
   }
 
   function setRentalNote(periodId: string, studentId: string, note: string) {
+    if (!isStudentCheckableForPeriod(periodId, studentId)) {
+      return;
+    }
+
+    markDirty();
     setPeriodsState((prev) => ({
       ...prev,
       [periodId]: {
@@ -238,8 +319,12 @@ export function PhoneCheckForm({
   ) {
     markDirty();
     setPeriodsState((prev) => {
-      const next: LocalPeriodState = {};
+      const next: LocalPeriodState = { ...(prev[periodId] ?? {}) };
       for (const student of targetStudents) {
+        if (!isStudentCheckableForPeriod(periodId, student.id)) {
+          continue;
+        }
+
         next[student.id] = {
           status,
           rentalNote: status === "RENTED" ? (prev[periodId]?.[student.id]?.rentalNote ?? "") : "",
@@ -251,16 +336,25 @@ export function PhoneCheckForm({
 
   async function savePeriod(periodId: string) {
     const periodStateMap = periodsState[periodId] ?? {};
-    const records = Object.entries(periodStateMap)
-      .filter(([, v]) => v.status !== null)
-      .map(([studentId, v]) => ({
-        studentId,
-        status: v.status as PhoneCheckStatus,
-        rentalNote: v.rentalNote || undefined,
-      }));
+    const records = students
+      .filter(
+        (student) =>
+          isStudentCheckableForPeriod(periodId, student.id) ||
+          (periodStateMap[student.id]?.status ?? null) !== null,
+      )
+      .map((student) => {
+        const value = periodStateMap[student.id] ?? { status: null, rentalNote: "" };
+        return {
+          studentId: student.id,
+          status: isStudentCheckableForPeriod(periodId, student.id)
+            ? value.status
+            : null,
+          rentalNote: value.rentalNote || undefined,
+        };
+      });
 
     if (records.length === 0) {
-      toast.error("저장할 기록이 없습니다. 최소 1명의 상태를 선택해주세요.");
+      toast.error("저장할 학생이 없습니다.");
       return;
     }
 
@@ -287,12 +381,18 @@ export function PhoneCheckForm({
           const recordByStudentId = new Map(
             savedPeriod.records.map((record) => [record.studentId, record]),
           );
+          const attendanceByStudentId = new Map(
+            savedPeriod.attendance.map((cell) => [cell.studentId, cell]),
+          );
           const newPeriodState: LocalPeriodState = {};
           for (const student of newSnapshot.students) {
             const record = recordByStudentId.get(student.id);
+            const attendanceCell = attendanceByStudentId.get(student.id);
+            const isCheckable =
+              !newSnapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
             newPeriodState[student.id] = {
-              status: record ? record.status : null,
-              rentalNote: record?.rentalNote ?? "",
+              status: isCheckable && record ? record.status : null,
+              rentalNote: isCheckable ? record?.rentalNote ?? "" : "",
             };
           }
           updated[periodId] = newPeriodState;
@@ -306,13 +406,169 @@ export function PhoneCheckForm({
     }
   }
 
+  function getCheckablePeriodCountForStudent(
+    studentId: string,
+    targetPeriods: PhoneDaySnapshot["periods"],
+  ) {
+    if (!snapshot.attendanceIntegrationEnabled) {
+      return targetPeriods.length;
+    }
+
+    return targetPeriods.filter((period) =>
+      isStudentCheckableForPeriod(period.periodId, studentId),
+    ).length;
+  }
+
+  function openBulkRentalModal(studentId?: string) {
+    if (!activePeriodId) {
+      toast.error("교시를 선택해주세요.");
+      return;
+    }
+
+    const targetPeriods = getPeriodRange(periods, activePeriodId, activePeriodId);
+    const selectedStudentIds =
+      studentId && getCheckablePeriodCountForStudent(studentId, targetPeriods) > 0
+        ? new Set([studentId])
+        : new Set<string>();
+
+    setBulkRentalDraft({
+      startPeriodId: activePeriodId,
+      endPeriodId: activePeriodId,
+      rentalNote: "",
+      overwriteExisting: false,
+      selectedStudentIds,
+    });
+  }
+
+  function updateBulkRentalDraft(value: Partial<Omit<BulkRentalDraft, "selectedStudentIds">>) {
+    setBulkRentalDraft((current) => (current ? { ...current, ...value } : current));
+  }
+
+  function toggleBulkRentalStudent(studentId: string) {
+    setBulkRentalDraft((current) => {
+      if (!current) return current;
+
+      const nextStudentIds = new Set(current.selectedStudentIds);
+      if (nextStudentIds.has(studentId)) {
+        nextStudentIds.delete(studentId);
+      } else {
+        const targetPeriods = getPeriodRange(
+          periods,
+          current.startPeriodId,
+          current.endPeriodId,
+        );
+        if (getCheckablePeriodCountForStudent(studentId, targetPeriods) === 0) {
+          return current;
+        }
+        nextStudentIds.add(studentId);
+      }
+
+      return { ...current, selectedStudentIds: nextStudentIds };
+    });
+  }
+
+  function selectDefaultBulkRentalStudents() {
+    setBulkRentalDraft((current) => {
+      if (!current) return current;
+      const targetPeriods = getPeriodRange(
+        periods,
+        current.startPeriodId,
+        current.endPeriodId,
+      );
+
+      return {
+        ...current,
+        selectedStudentIds: new Set(
+          filteredStudents
+            .filter(
+              (student) =>
+                getCheckablePeriodCountForStudent(student.id, targetPeriods) > 0,
+            )
+            .map((student) => student.id),
+        ),
+      };
+    });
+  }
+
+  async function applyBulkRental() {
+    if (!bulkRentalDraft) {
+      return;
+    }
+
+    const studentIds = Array.from(bulkRentalDraft.selectedStudentIds);
+    if (studentIds.length === 0) {
+      toast.error("일괄 대여할 학생을 선택해주세요.");
+      return;
+    }
+
+    const targetPeriods = getPeriodRange(
+      periods,
+      bulkRentalDraft.startPeriodId,
+      bulkRentalDraft.endPeriodId,
+    );
+    if (targetPeriods.length === 0) {
+      toast.error("대여할 교시 범위를 확인해주세요.");
+      return;
+    }
+
+    setIsSavingBulkRental(true);
+    try {
+      const res = await fetch(`/api/${divisionSlug}/phone-submissions/bulk-rental`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date,
+          studentIds,
+          startPeriodId: bulkRentalDraft.startPeriodId,
+          endPeriodId: bulkRentalDraft.endPeriodId,
+          rentalNote: bulkRentalDraft.rentalNote || undefined,
+          overwriteExisting: bulkRentalDraft.overwriteExisting,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error ?? "일괄 대여 저장에 실패했습니다.");
+        return;
+      }
+
+      const data = (await res.json()) as {
+        snapshot: PhoneDaySnapshot;
+        result: {
+          appliedCount: number;
+          updatedExistingCount: number;
+          skippedAttendanceCount: number;
+          skippedExistingCount: number;
+          targetCellCount: number;
+        };
+      };
+      setSnapshot(data.snapshot);
+      setPeriodsState(buildInitialState(data.snapshot));
+      setIsDirty(false);
+      setBulkRentalDraft(null);
+      toast.success(
+        `일괄 대여 적용: 신규 ${data.result.appliedCount}건, 갱신 ${data.result.updatedExistingCount}건`,
+      );
+    } finally {
+      setIsSavingBulkRental(false);
+    }
+  }
+
   const activePeriodStats = useMemo(() => {
     let submittedCount = 0;
     let notSubmittedCount = 0;
     let rentedCount = 0;
     let uncheckedCount = 0;
+    let checkableStudentCount = 0;
 
-    Object.values(activePeriodState).forEach((entry) => {
+    students.forEach((student) => {
+      if (!isStudentCheckableForPeriod(activePeriodId, student.id)) {
+        return;
+      }
+
+      checkableStudentCount += 1;
+      const entry = activePeriodState[student.id] ?? { status: null, rentalNote: "" };
+
       if (entry.status === "SUBMITTED") {
         submittedCount += 1;
         return;
@@ -336,8 +592,23 @@ export function PhoneCheckForm({
       notSubmittedCount,
       rentedCount,
       uncheckedCount,
+      checkableStudentCount,
+      attendanceUnprocessedCount: activePeriod?.attendanceUnprocessedCount ?? 0,
+      attendanceBlockedCount: activePeriod?.attendanceBlockedCount ?? 0,
     };
-  }, [activePeriodState]);
+  }, [activePeriod, activePeriodId, activePeriodState, isStudentCheckableForPeriod, students]);
+
+  const bulkRentalTargetPeriods = bulkRentalDraft
+    ? getPeriodRange(periods, bulkRentalDraft.startPeriodId, bulkRentalDraft.endPeriodId)
+    : [];
+  const bulkRentalSelectedCount = bulkRentalDraft?.selectedStudentIds.size ?? 0;
+  const bulkRentalSelectedTargetCellCount = bulkRentalDraft
+    ? Array.from(bulkRentalDraft.selectedStudentIds).reduce(
+        (sum, studentId) =>
+          sum + getCheckablePeriodCountForStudent(studentId, bulkRentalTargetPeriods),
+        0,
+      )
+    : 0;
 
   return (
     <div className="space-y-5">
@@ -472,9 +743,22 @@ export function PhoneCheckForm({
                   <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
                     대여 {activePeriodStats.rentedCount}
                   </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">
+                    체크대상 {activePeriodStats.checkableStudentCount}
+                  </span>
                   {activePeriodStats.uncheckedCount > 0 && (
                     <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
                       미체크 {activePeriodStats.uncheckedCount}
+                    </span>
+                  )}
+                  {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceUnprocessedCount > 0 && (
+                    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
+                      출결 미확인 {activePeriodStats.attendanceUnprocessedCount}
+                    </span>
+                  )}
+                  {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceBlockedCount > 0 && (
+                    <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
+                      체크 제외 {activePeriodStats.attendanceBlockedCount}
                     </span>
                   )}
                 </div>
@@ -498,6 +782,14 @@ export function PhoneCheckForm({
                 </button>
                 <button
                   type="button"
+                  onClick={() => openBulkRentalModal()}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  일괄 대여
+                </button>
+                <button
+                  type="button"
                   onClick={() => savePeriod(activePeriodId)}
                   disabled={savingPeriodId === activePeriodId || isLoading}
                   className="ml-auto inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
@@ -516,12 +808,15 @@ export function PhoneCheckForm({
                 <PhoneCheckTable
                   students={filteredStudents}
                   periodState={activePeriodState}
+                  attendanceByStudentId={activeAttendanceByStudentId}
+                  attendanceIntegrationEnabled={snapshot.attendanceIntegrationEnabled}
                   onStatusChange={(studentId, status) =>
                     setStudentStatus(activePeriodId, studentId, status)
                   }
                   onRentalNoteChange={(studentId, note) =>
                     setRentalNote(activePeriodId, studentId, note)
                   }
+                  onOpenBulkRental={(studentId) => openBulkRentalModal(studentId)}
                 />
               ) : seatRooms && seatRooms.length > 0 && initialSeatLayout ? (
                 <div className="space-y-4">
@@ -536,22 +831,30 @@ export function PhoneCheckForm({
                     initialSeatLayout={initialSeatLayout}
                     students={filteredStudents}
                     periodState={activePeriodState}
+                    attendanceByStudentId={activeAttendanceByStudentId}
+                    attendanceIntegrationEnabled={snapshot.attendanceIntegrationEnabled}
                     onStatusChange={(studentId, status) =>
                       setStudentStatus(activePeriodId, studentId, status)
                     }
                     onRentalNoteChange={(studentId, note) =>
                       setRentalNote(activePeriodId, studentId, note)
                     }
+                    onOpenBulkRental={(studentId) => openBulkRentalModal(studentId)}
                   />
                 </div>
               ) : (
                 <div className="space-y-2">
                   {filteredStudents.map((student) => {
                     const entry = activePeriodState[student.id] ?? { status: null, rentalNote: "" };
+                    const attendanceCell = activeAttendanceByStudentId.get(student.id);
+                    const isCheckable =
+                      !snapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
                     const { status, rentalNote } = entry;
 
                     const cardBg =
-                      status === "SUBMITTED"
+                      !isCheckable
+                        ? "border-slate-100 bg-slate-50/80 opacity-75"
+                        : status === "SUBMITTED"
                         ? "border-green-100 bg-green-50/30"
                         : status === "NOT_SUBMITTED"
                           ? "border-red-100 bg-red-50/30"
@@ -566,38 +869,58 @@ export function PhoneCheckForm({
                       >
                         <div className="flex items-center gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-slate-900">{student.name}</p>
+                            <button
+                              type="button"
+                              onClick={() => openBulkRentalModal(student.id)}
+                              className="text-left text-sm font-semibold text-slate-900 underline-offset-4 transition hover:text-sky-700 hover:underline"
+                            >
+                              {student.name}
+                            </button>
                             <p className="text-xs text-slate-500">
                               {student.studentNumber}
                               {student.studyTrack && ` · ${student.studyTrack}`}
                             </p>
+                            <span
+                              className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
+                                attendanceCell,
+                                snapshot.attendanceIntegrationEnabled,
+                              )}`}
+                            >
+                              {snapshot.attendanceIntegrationEnabled
+                                ? getAttendanceStatusLabel(attendanceCell?.status)
+                                : "출결 연동 없음"}
+                            </span>
                           </div>
                           <div className="flex shrink-0 gap-1">
-                            {(
-                              [
+                            {isCheckable ? (
+                              ([
                                 { s: "SUBMITTED" as const, label: "반납", active: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20" },
                                 { s: "NOT_SUBMITTED" as const, label: "미반납", active: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20" },
                                 { s: "RENTED" as const, label: "대여", active: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-700/20" },
-                              ]
-                            ).map(({ s, label, active }) => (
-                              <button
-                                key={s}
-                                type="button"
-                                onClick={() =>
-                                  setStudentStatus(activePeriodId, student.id, status === s ? null : s)
-                                }
-                                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                                  status === s
-                                    ? active
-                                    : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                                }`}
-                              >
-                                {label}
-                              </button>
-                            ))}
+                              ]).map(({ s, label, active }) => (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  onClick={() =>
+                                    setStudentStatus(activePeriodId, student.id, status === s ? null : s)
+                                  }
+                                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                                    status === s
+                                      ? active
+                                      : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))
+                            ) : (
+                              <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
+                                체크 없음
+                              </span>
+                            )}
                           </div>
                         </div>
-                        {status === "RENTED" && (
+                        {isCheckable && status === "RENTED" && (
                           <div className="mt-2">
                             <input
                               type="text"
@@ -620,6 +943,186 @@ export function PhoneCheckForm({
           )}
         </>
       )}
+      <Modal
+        open={bulkRentalDraft !== null}
+        title="휴대폰 일괄 대여"
+        description="선택한 학생에게 지정한 교시 범위의 대여 상태를 적용합니다."
+        badge="대여"
+        widthClassName="max-w-2xl"
+        onClose={() => setBulkRentalDraft(null)}
+      >
+        {bulkRentalDraft ? (
+          <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-600">
+                시작 교시
+                <select
+                  value={bulkRentalDraft.startPeriodId}
+                  onChange={(event) =>
+                    updateBulkRentalDraft({ startPeriodId: event.target.value })
+                  }
+                  className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                >
+                  {periods.map((period) => (
+                    <option key={period.periodId} value={period.periodId}>
+                      {period.periodName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                종료 교시
+                <select
+                  value={bulkRentalDraft.endPeriodId}
+                  onChange={(event) =>
+                    updateBulkRentalDraft({ endPeriodId: event.target.value })
+                  }
+                  className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                >
+                  {periods.map((period) => (
+                    <option key={period.periodId} value={period.periodId}>
+                      {period.periodName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="block text-xs font-semibold text-slate-600">
+              대여 메모
+              <input
+                type="text"
+                value={bulkRentalDraft.rentalNote}
+                onChange={(event) => updateBulkRentalDraft({ rentalNote: event.target.value })}
+                placeholder="예: 인강 수강"
+                maxLength={200}
+                className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400 placeholder:text-slate-400"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() =>
+                updateBulkRentalDraft({
+                  overwriteExisting: !bulkRentalDraft.overwriteExisting,
+                })
+              }
+              className={`w-full rounded-[10px] border px-3 py-2.5 text-left text-xs font-semibold transition ${
+                bulkRentalDraft.overwriteExisting
+                  ? "border-sky-200 bg-sky-50 text-sky-700"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              기존 반납/미반납 기록도 대여로 덮어쓰기
+            </button>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-600">
+                  학생 선택 {bulkRentalSelectedCount}명 · 적용 {bulkRentalSelectedTargetCellCount}칸
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={selectDefaultBulkRentalStudents}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    범위 출석자 선택
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBulkRentalDraft((current) =>
+                        current ? { ...current, selectedStudentIds: new Set() } : current,
+                      )
+                    }
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    선택 해제
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-72 space-y-2 overflow-y-auto rounded-[10px] border border-slate-200 p-2">
+                {filteredStudents.map((student) => {
+                  const attendanceCell = activeAttendanceByStudentId.get(student.id);
+                  const checkablePeriodCount = getCheckablePeriodCountForStudent(
+                    student.id,
+                    bulkRentalTargetPeriods,
+                  );
+                  const isSelectable = checkablePeriodCount > 0;
+                  const selected = bulkRentalDraft.selectedStudentIds.has(student.id);
+
+                  return (
+                    <label
+                      key={student.id}
+                      className={`flex items-center gap-3 rounded-[10px] border px-3 py-2 transition ${
+                        selected
+                          ? "border-sky-200 bg-sky-50"
+                          : isSelectable
+                            ? "cursor-pointer border-slate-100 bg-white hover:bg-slate-50"
+                            : "cursor-not-allowed border-slate-100 bg-slate-50 opacity-70"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={!isSelectable}
+                        onChange={() => toggleBulkRentalStudent(student.id)}
+                        className="h-4 w-4 rounded"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-slate-900">
+                          {student.name}
+                        </span>
+                        <span className="block truncate text-xs text-slate-500">
+                          {student.studentNumber}
+                          {student.seatDisplay ? ` · ${student.seatDisplay}` : ""}
+                        </span>
+                      </span>
+                      <span
+                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
+                          attendanceCell,
+                          snapshot.attendanceIntegrationEnabled,
+                        )}`}
+                      >
+                        {snapshot.attendanceIntegrationEnabled
+                          ? getAttendanceStatusLabel(attendanceCell?.status)
+                          : "출결 연동 없음"}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          isSelectable
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-400"
+                        }`}
+                      >
+                        {snapshot.attendanceIntegrationEnabled
+                          ? `${checkablePeriodCount}/${bulkRentalTargetPeriods.length}교시`
+                          : `${bulkRentalTargetPeriods.length}교시`}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={applyBulkRental}
+              disabled={
+                isSavingBulkRental ||
+                bulkRentalSelectedCount === 0 ||
+                bulkRentalSelectedTargetCellCount === 0
+              }
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              <Save className="h-4 w-4" />
+              {isSavingBulkRental ? "저장 중..." : "일괄 대여 저장"}
+            </button>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

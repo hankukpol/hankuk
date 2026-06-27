@@ -23,6 +23,7 @@ export function revalidateDivisionOperationalViews(
   revalidatePath(`/${divisionSlug}/admin/leave`);
   revalidatePath(`/${divisionSlug}/admin/interviews`);
   revalidatePath(`/${divisionSlug}/admin/points`);
+  revalidatePath(`/${divisionSlug}/admin/phone-submissions`);
   revalidatePath(`/${divisionSlug}/admin/warnings`);
   revalidatePath(`/${divisionSlug}/admin/reports`);
   revalidatePath(`/${divisionSlug}/student`);

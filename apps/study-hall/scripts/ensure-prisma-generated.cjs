@@ -8,6 +8,13 @@ const schemaPath = path.resolve(appRoot, "prisma/schema.prisma");
 const generatedDir = path.resolve(appRoot, "../../node_modules/.prisma/client");
 const generatedIndexPath = path.join(generatedDir, "index.js");
 const generatedDefaultPath = path.join(generatedDir, "default.js");
+const prismaClientPackagePath = require.resolve("@prisma/client/package.json", {
+  paths: [appRoot],
+});
+const generatedVirtualDefaultPath = path.resolve(
+  path.dirname(prismaClientPackagePath),
+  "../../.prisma/client/default.js",
+);
 const stampDir = path.resolve(appRoot, ".local");
 const stampPath = path.join(stampDir, "prisma-client-schema.sha256");
 const shouldForceGenerate = process.argv.includes("--force");
@@ -36,17 +43,21 @@ function shouldGenerateClient() {
 }
 
 function patchDefaultEntry() {
-  if (!fs.existsSync(generatedDefaultPath)) {
-    return;
-  }
+  const targetPaths = Array.from(new Set([generatedDefaultPath, generatedVirtualDefaultPath]));
 
-  const current = fs.readFileSync(generatedDefaultPath, "utf8");
-  const next = current
-    .replace("require('#main-entry-point')", "require('.')")
-    .replace("require('./index.js')", "require('.')");
+  for (const targetPath of targetPaths) {
+    if (!fs.existsSync(targetPath)) {
+      continue;
+    }
 
-  if (next !== current) {
-    fs.writeFileSync(generatedDefaultPath, next, "utf8");
+    const current = fs.readFileSync(targetPath, "utf8");
+    const next = current
+      .replace("require('#main-entry-point')", "require('.')")
+      .replace("require('./index.js')", "require('.')");
+
+    if (next !== current) {
+      fs.writeFileSync(targetPath, next, "utf8");
+    }
   }
 }
 

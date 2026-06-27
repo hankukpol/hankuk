@@ -235,9 +235,11 @@ async function main() {
     const examType =
       fixtureState.examTypesByDivision.police.find((item) => item.isActive !== false) ||
       fixtureState.examTypesByDivision.police[0];
+    const activePeriods = fixtureState.periodsByDivision.police.filter((item) => item.isActive !== false);
     const studyTrack = fixtureState.divisionSettingsByDivision.police.studyTracks?.[0] || "track";
     expect(paymentCategory, "No payment category found.");
     expect(examType, "No exam type found.");
+    expect(activePeriods.length >= 2, "Need at least two active periods in police fixtures.");
 
     const uniqueSeed = Date.now();
     const firstStudentNumber = `SMOKE-${uniqueSeed}-1`;
@@ -323,6 +325,117 @@ async function main() {
       `occupied seat overwrite should fail, got ${occupiedAssign.status}`,
     );
 
+    const [firstPeriod, secondPeriod] = activePeriods;
+    await expectStatus(
+      "save attendance period A",
+      await request("/api/police/attendance", {
+        method: "POST",
+        jar: policeJar,
+        body: {
+          date: today,
+          periodId: firstPeriod.id,
+          records: [
+            { studentId: firstStudent.id, status: "PRESENT" },
+            { studentId: secondStudent.id, status: "ABSENT", reason: "smoke absent" },
+          ],
+        },
+      }),
+      200,
+    );
+    await expectStatus(
+      "save attendance period B",
+      await request("/api/police/attendance", {
+        method: "POST",
+        jar: policeJar,
+        body: {
+          date: today,
+          periodId: secondPeriod.id,
+          records: [
+            { studentId: firstStudent.id, status: "TARDY" },
+            { studentId: secondStudent.id, status: "PRESENT" },
+          ],
+        },
+      }),
+      200,
+    );
+
+    const phoneSnapshotResponse = await request(
+      `/api/police/phone-submissions?mode=snapshot&date=${today}`,
+      { jar: policeJar },
+    );
+    await expectStatus("phone snapshot with attendance", phoneSnapshotResponse, 200);
+    const phoneSnapshot = (await phoneSnapshotResponse.json()).snapshot;
+    const firstPhonePeriod = phoneSnapshot.periods.find((period) => period.periodId === firstPeriod.id);
+    expect(firstPhonePeriod, "First phone period snapshot missing.");
+    const firstAttendanceCell = firstPhonePeriod.attendance.find((cell) => cell.studentId === firstStudent.id);
+    const secondAttendanceCell = firstPhonePeriod.attendance.find((cell) => cell.studentId === secondStudent.id);
+    expect(firstAttendanceCell?.status === "PRESENT" && firstAttendanceCell.checkable, "Present student should be phone-checkable.");
+    expect(secondAttendanceCell?.status === "ABSENT" && !secondAttendanceCell.checkable, "Absent student should not be phone-checkable.");
+
+    const blockedPhoneSave = await request("/api/police/phone-submissions", {
+      method: "POST",
+      jar: policeJar,
+      body: {
+        date: today,
+        periodId: firstPeriod.id,
+        records: [
+          { studentId: firstStudent.id, status: "SUBMITTED" },
+          { studentId: secondStudent.id, status: "NOT_SUBMITTED" },
+        ],
+      },
+    });
+    expect(blockedPhoneSave.status === 400, `absent phone save should fail, got ${blockedPhoneSave.status}`);
+
+    await expectStatus(
+      "save phone submitted",
+      await request("/api/police/phone-submissions", {
+        method: "POST",
+        jar: policeJar,
+        body: {
+          date: today,
+          periodId: firstPeriod.id,
+          records: [{ studentId: firstStudent.id, status: "SUBMITTED" }],
+        },
+      }),
+      201,
+    );
+
+    const clearPhoneResponse = await request("/api/police/phone-submissions", {
+      method: "POST",
+      jar: policeJar,
+      body: {
+        date: today,
+        periodId: firstPeriod.id,
+        records: [{ studentId: firstStudent.id, status: null }],
+      },
+    });
+    await expectStatus("clear phone submitted", clearPhoneResponse, 201);
+    const clearedSnapshot = (await clearPhoneResponse.json()).snapshot;
+    const clearedFirstPeriod = clearedSnapshot.periods.find((period) => period.periodId === firstPeriod.id);
+    expect(
+      !clearedFirstPeriod.records.some((record) => record.studentId === firstStudent.id),
+      "Phone status null should clear the existing phone record.",
+    );
+
+    const bulkRentalResponse = await request("/api/police/phone-submissions/bulk-rental", {
+      method: "POST",
+      jar: policeJar,
+      body: {
+        date: today,
+        studentIds: [firstStudent.id, secondStudent.id],
+        startPeriodId: firstPeriod.id,
+        endPeriodId: secondPeriod.id,
+        rentalNote: "smoke rental",
+      },
+    });
+    await expectStatus("bulk phone rental", bulkRentalResponse, 201);
+    const bulkRental = await bulkRentalResponse.json();
+    expect(bulkRental.result.appliedCount === 3, `bulk rental should apply 3 cells, got ${bulkRental.result.appliedCount}`);
+    expect(
+      bulkRental.result.skippedAttendanceCount === 1,
+      `bulk rental should skip 1 absent cell, got ${bulkRental.result.skippedAttendanceCount}`,
+    );
+
     const studentsResponse = await request("/api/police/students", { jar: policeJar });
     await expectStatus("list students after seat assignment", studentsResponse, 200);
     const studentsJson = await studentsResponse.json();
@@ -400,6 +513,8 @@ async function main() {
             paymentCreate: true,
             announcementCreate: true,
             examSave: true,
+            phoneAttendanceLink: true,
+            phoneBulkRental: true,
           },
         },
         null,

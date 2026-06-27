@@ -186,7 +186,22 @@ function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enab
   }
 }
 
+function getBulkRentalRangeBadgeClassName(checkableCount: number, totalCount: number, enabled: boolean) {
+  if (!enabled) return "border-slate-200 bg-slate-50 text-slate-500";
+  if (totalCount === 0 || checkableCount === 0) return "border-slate-200 bg-slate-100 text-slate-400";
+  if (checkableCount === totalCount) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
 function buildInitialState(snapshot: PhoneDaySnapshot): AllPeriodsState {
+  return buildStateFromSnapshot(snapshot);
+}
+
+function buildStateFromSnapshot(
+  snapshot: PhoneDaySnapshot,
+  previousState?: AllPeriodsState,
+  preservedCellKeys: Set<string> = new Set(),
+): AllPeriodsState {
   const state: AllPeriodsState = {};
   for (const period of snapshot.periods) {
     const recordByStudentId = new Map(period.records.map((record) => [record.studentId, record]));
@@ -195,6 +210,15 @@ function buildInitialState(snapshot: PhoneDaySnapshot): AllPeriodsState {
     );
     state[period.periodId] = {};
     for (const student of snapshot.students) {
+      const key = getPhoneCellKey(period.periodId, student.id);
+      if (previousState && preservedCellKeys.has(key)) {
+        state[period.periodId][student.id] = previousState[period.periodId]?.[student.id] ?? {
+          status: null,
+          rentalNote: "",
+        };
+        continue;
+      }
+
       const record = recordByStudentId.get(student.id);
       const attendanceCell = attendanceByStudentId.get(student.id);
       const isCheckable =
@@ -206,6 +230,26 @@ function buildInitialState(snapshot: PhoneDaySnapshot): AllPeriodsState {
     }
   }
   return state;
+}
+
+function getBulkRentalAppliedCellKeys(
+  snapshot: PhoneDaySnapshot,
+  studentIds: Set<string>,
+  periodIds: Set<string>,
+) {
+  const keys: string[] = [];
+  for (const period of snapshot.periods) {
+    if (!periodIds.has(period.periodId)) {
+      continue;
+    }
+
+    for (const record of period.records) {
+      if (record.status === "RENTED" && studentIds.has(record.studentId)) {
+        keys.push(getPhoneCellKey(period.periodId, record.studentId));
+      }
+    }
+  }
+  return keys;
 }
 
 type PhoneCheckFormProps = {
@@ -244,6 +288,7 @@ export function PhoneCheckForm({
   const [bulkRentalDraft, setBulkRentalDraft] = useState<BulkRentalDraft | null>(null);
   const [isSavingBulkRental, setIsSavingBulkRental] = useState(false);
   const dirtyCellKeysRef = useRef(dirtyCellKeys);
+  const cellSaveStatesRef = useRef(cellSaveStates);
   const saveSequenceRef = useRef<Record<string, number>>({});
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const isDirty = dirtyCellKeys.size > 0;
@@ -251,6 +296,10 @@ export function PhoneCheckForm({
   useEffect(() => {
     dirtyCellKeysRef.current = dirtyCellKeys;
   }, [dirtyCellKeys]);
+
+  useEffect(() => {
+    cellSaveStatesRef.current = cellSaveStates;
+  }, [cellSaveStates]);
 
   const markDirty = useCallback((periodId: string, studentId: string) => {
     const key = getPhoneCellKey(periodId, studentId);
@@ -645,6 +694,30 @@ export function PhoneCheckForm({
     });
   }
 
+  function updateBulkRentalPeriodRange(value: { startPeriodId?: string; endPeriodId?: string }) {
+    setBulkRentalDraft((current) => {
+      if (!current) return current;
+
+      const next = { ...current, ...value };
+      const startIndex = periods.findIndex((period) => period.periodId === next.startPeriodId);
+      const endIndex = periods.findIndex((period) => period.periodId === next.endPeriodId);
+
+      if (startIndex === -1 || endIndex === -1) {
+        return next;
+      }
+
+      if (value.startPeriodId && startIndex > endIndex) {
+        next.endPeriodId = next.startPeriodId;
+      }
+
+      if (value.endPeriodId && endIndex < startIndex) {
+        next.startPeriodId = next.endPeriodId;
+      }
+
+      return next;
+    });
+  }
+
   function updateBulkRentalDraft(value: Partial<Omit<BulkRentalDraft, "selectedStudentIds">>) {
     setBulkRentalDraft((current) => (current ? { ...current, ...value } : current));
   }
@@ -716,6 +789,15 @@ export function PhoneCheckForm({
       return;
     }
 
+    const isCellSaving = Object.values(cellSaveStatesRef.current).some(
+      (state) => state.status === "saving",
+    );
+
+    if (isCellSaving) {
+      toast.error("개별 저장이 끝난 뒤 일괄 대여를 실행해주세요.");
+      return;
+    }
+
     setIsSavingBulkRental(true);
     try {
       const res = await fetch(`/api/${divisionSlug}/phone-submissions/bulk-rental`, {
@@ -747,11 +829,33 @@ export function PhoneCheckForm({
           targetCellCount: number;
         };
       };
+      const selectedStudentIdSet = new Set(studentIds);
+      const targetPeriodIdSet = new Set(targetPeriods.map((period) => period.periodId));
+      const appliedCellKeys = getBulkRentalAppliedCellKeys(
+        data.snapshot,
+        selectedStudentIdSet,
+        targetPeriodIdSet,
+      );
+      const appliedCellKeySet = new Set(appliedCellKeys);
+      const preservedDirtyKeys = new Set(dirtyCellKeysRef.current);
+
+      appliedCellKeySet.forEach((key) => {
+        preservedDirtyKeys.delete(key);
+      });
+
       setSnapshot(data.snapshot);
-      setPeriodsState(buildInitialState(data.snapshot));
-      dirtyCellKeysRef.current = new Set();
-      setDirtyCellKeys(new Set());
-      setCellSaveStates({});
+      setPeriodsState((current) =>
+        buildStateFromSnapshot(data.snapshot, current, preservedDirtyKeys),
+      );
+      dirtyCellKeysRef.current = preservedDirtyKeys;
+      setDirtyCellKeys(preservedDirtyKeys);
+      setCellSaveStates((current) => {
+        const next = { ...current };
+        appliedCellKeySet.forEach((key) => {
+          next[key] = { status: "saved" };
+        });
+        return next;
+      });
       setBulkRentalDraft(null);
       toast.success(
         `일괄 대여 적용: 신규 ${data.result.appliedCount}건, 갱신 ${data.result.updatedExistingCount}건`,
@@ -856,6 +960,14 @@ export function PhoneCheckForm({
         0,
       )
     : 0;
+  const bulkRentalRangeLabel =
+    bulkRentalTargetPeriods.length === 0
+      ? "범위 없음"
+      : bulkRentalTargetPeriods.length === 1
+        ? bulkRentalTargetPeriods[0].periodName
+        : `${bulkRentalTargetPeriods[0].periodName}~${
+            bulkRentalTargetPeriods[bulkRentalTargetPeriods.length - 1].periodName
+          }`;
 
   return (
     <div className="space-y-5">
@@ -1246,7 +1358,7 @@ export function PhoneCheckForm({
                 <select
                   value={bulkRentalDraft.startPeriodId}
                   onChange={(event) =>
-                    updateBulkRentalDraft({ startPeriodId: event.target.value })
+                    updateBulkRentalPeriodRange({ startPeriodId: event.target.value })
                   }
                   className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
                 >
@@ -1262,7 +1374,7 @@ export function PhoneCheckForm({
                 <select
                   value={bulkRentalDraft.endPeriodId}
                   onChange={(event) =>
-                    updateBulkRentalDraft({ endPeriodId: event.target.value })
+                    updateBulkRentalPeriodRange({ endPeriodId: event.target.value })
                   }
                   className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
                 >
@@ -1305,9 +1417,14 @@ export function PhoneCheckForm({
 
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-slate-600">
-                  학생 선택 {bulkRentalSelectedCount}명 · 적용 {bulkRentalSelectedTargetCellCount}칸
-                </p>
+                <div>
+                  <p className="text-xs font-semibold text-slate-600">
+                    학생 선택 {bulkRentalSelectedCount}명 · 적용 {bulkRentalSelectedTargetCellCount}칸
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                    범위 {bulkRentalRangeLabel}
+                  </p>
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -1332,7 +1449,6 @@ export function PhoneCheckForm({
 
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-[10px] border border-slate-200 p-2">
                 {visibleStudents.map((student) => {
-                  const attendanceCell = activeAttendanceByStudentId.get(student.id);
                   const checkablePeriodCount = getCheckablePeriodCountForStudent(
                     student.id,
                     bulkRentalTargetPeriods,
@@ -1368,25 +1484,15 @@ export function PhoneCheckForm({
                         </span>
                       </span>
                       <span
-                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
-                          attendanceCell,
+                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getBulkRentalRangeBadgeClassName(
+                          checkablePeriodCount,
+                          bulkRentalTargetPeriods.length,
                           snapshot.attendanceIntegrationEnabled,
                         )}`}
                       >
                         {snapshot.attendanceIntegrationEnabled
-                          ? getAttendanceStatusLabel(attendanceCell?.status)
+                          ? `적용 ${checkablePeriodCount}/${bulkRentalTargetPeriods.length}교시`
                           : "출결 연동 없음"}
-                      </span>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          isSelectable
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-slate-100 text-slate-400"
-                        }`}
-                      >
-                        {snapshot.attendanceIntegrationEnabled
-                          ? `${checkablePeriodCount}/${bulkRentalTargetPeriods.length}교시`
-                          : `${bulkRentalTargetPeriods.length}교시`}
                       </span>
                     </label>
                   );

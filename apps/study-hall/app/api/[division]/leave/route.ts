@@ -26,9 +26,11 @@ export async function GET(
   }
 
   try {
+    const requestedLimit = Number(request.nextUrl.searchParams.get("limit") ?? 500);
     const permissions = await listLeavePermissions(params.division, {
       studentId: request.nextUrl.searchParams.get("studentId") || undefined,
       month: request.nextUrl.searchParams.get("month") || undefined,
+      limit: Number.isFinite(requestedLimit) ? requestedLimit : 500,
     });
     return NextResponse.json({ permissions }, { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" } });
   } catch (error) {

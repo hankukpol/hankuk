@@ -20,7 +20,6 @@ import type {
 import type { LeaveStatusValue, LeaveTypeValue } from "@/lib/leave-meta";
 import { getPrismaClient, normalizeOptionalText } from "@/lib/service-helpers";
 import { syncAttendanceDerivedPoints } from "@/lib/services/attendance.service";
-import { getPeriods } from "@/lib/services/period.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 
 type LeaveActor = {
@@ -63,6 +62,8 @@ export type LeaveSettlementPreviewItem = {
   holidayRemaining: number;
   halfDayUsed: number;
   halfDayRemaining: number;
+  healthUsed: number;
+  healthRemaining: number;
   rewardPoints: number;
   isSettled: boolean;
 };
@@ -110,6 +111,58 @@ function getKstToday() {
 
 function getCurrentMonth() {
   return getKstToday().slice(0, 7);
+}
+
+function getLeaveLimit(
+  type: LeaveTypeValue,
+  settings: { holidayLimit: number; halfDayLimit: number; healthLimit: number },
+) {
+  switch (type) {
+    case "HOLIDAY":
+      return settings.holidayLimit;
+    case "HALF_DAY":
+      return settings.halfDayLimit;
+    case "HEALTH":
+      return settings.healthLimit;
+    default:
+      return null;
+  }
+}
+
+function getLeaveLimitLabel(type: LeaveTypeValue) {
+  switch (type) {
+    case "HOLIDAY":
+      return "휴가";
+    case "HALF_DAY":
+      return "반차";
+    case "HEALTH":
+      return "병가";
+    default:
+      return "외출";
+  }
+}
+
+function assertLeaveLimitNotExceeded(
+  type: LeaveTypeValue,
+  usedCount: number,
+  settings: { holidayLimit: number; halfDayLimit: number; healthLimit: number },
+) {
+  const limit = getLeaveLimit(type, settings);
+
+  if (limit === null) {
+    return;
+  }
+
+  if (usedCount >= limit) {
+    throw badRequest(`${getLeaveLimitLabel(type)} 월 한도를 초과했습니다. (${usedCount}/${limit})`);
+  }
+}
+
+function isLeaveWriteConflict(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2002" || error.code === "P2034")
+  );
 }
 
 function getLeaveStatus(type: LeaveTypeValue, date: string) {
@@ -297,8 +350,9 @@ async function applyMockLeaveAttendance(
   state.attendanceByDivision[divisionSlug] = Array.from(current.values());
 }
 
-async function applyDbLeaveAttendance(
-  divisionSlug: string,
+async function applyDbLeaveAttendanceWithTx(
+  tx: LeavePrismaClient,
+  divisionId: string,
   actorId: string,
   input: LeavePermissionSchemaInput,
 ) {
@@ -308,11 +362,7 @@ async function applyDbLeaveAttendance(
     return;
   }
 
-  const prisma = await getPrismaClient();
-  const allPeriods = (await getPeriods(divisionSlug))
-    .filter((period) => period.isActive && period.isMandatory)
-    .sort((left, right) => left.displayOrder - right.displayOrder);
-  const targetPeriods = input.type === "HALF_DAY" ? allPeriods.slice(0, 3) : allPeriods;
+  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input.type);
 
   if (targetPeriods.length === 0) {
     return;
@@ -321,9 +371,9 @@ async function applyDbLeaveAttendance(
   const targetDate = parseDateString(input.date);
   const attendanceReason = buildAttendanceReason(input.type, normalizeOptionalText(input.reason));
 
-  await prisma.$transaction(
+  await Promise.all(
     targetPeriods.map((period) =>
-      prisma.attendance.upsert({
+      tx.attendance.upsert({
         where: {
           studentId_periodId_date: {
             studentId: input.studentId,
@@ -442,6 +492,7 @@ function buildLeaveSettlementPreviewItems(args: {
   settledStudentIds: Set<string>;
   holidayLimit: number;
   halfDayLimit: number;
+  healthLimit: number;
   holidayUnusedPts: number;
   halfDayUnusedPts: number;
 }) {
@@ -453,8 +504,10 @@ function buildLeaveSettlementPreviewItems(args: {
       );
       const holidayUsed = records.filter((permission) => permission.type === "HOLIDAY").length;
       const halfDayUsed = records.filter((permission) => permission.type === "HALF_DAY").length;
-      const holidayRemaining = Math.max(args.holidayLimit - holidayUsed, 0);
+      const healthUsed = records.filter((permission) => permission.type === "HEALTH").length;
+      const holidayRemaining = Math.max(args.holidayLimit - holidayUsed - healthUsed, 0);
       const halfDayRemaining = Math.max(args.halfDayLimit - halfDayUsed, 0);
+      const healthRemaining = Math.max(args.healthLimit - healthUsed, 0);
       const rewardPoints =
         holidayRemaining * args.holidayUnusedPts + halfDayRemaining * args.halfDayUnusedPts;
 
@@ -467,6 +520,8 @@ function buildLeaveSettlementPreviewItems(args: {
         holidayRemaining,
         halfDayUsed,
         halfDayRemaining,
+        healthUsed,
+        healthRemaining,
         rewardPoints,
         isSettled: args.settledStudentIds.has(student.id),
       } satisfies LeaveSettlementPreviewItem;
@@ -484,8 +539,11 @@ export async function listLeavePermissions(
   options?: {
     studentId?: string;
     month?: string;
+    limit?: number;
   },
 ) {
+  const limit = Math.min(Math.max(options?.limit ?? 500, 1), 500);
+
   if (isMockMode()) {
     const state = await readMockState();
     const students = new Map(
@@ -500,6 +558,7 @@ export async function listLeavePermissions(
           right.date.localeCompare(left.date) ||
           right.createdAt.localeCompare(left.createdAt),
       )
+      .slice(0, limit)
       .map((record) =>
         serializeLeaveRecord(
           record,
@@ -547,6 +606,7 @@ export async function listLeavePermissions(
       },
     },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    take: limit,
   });
 
   return permissions.map((record) => serializeLeaveRecord(record, record.student, record.approvedBy.name));
@@ -559,6 +619,7 @@ export async function createLeavePermission(
 ) {
   const reason = normalizeOptionalText(input.reason);
   const status = getLeaveStatus(input.type, input.date);
+  const settings = await getDivisionSettings(divisionSlug);
 
   if (isMockMode()) {
     const record = await updateMockState(async (state) => {
@@ -590,6 +651,16 @@ export async function createLeavePermission(
       if (duplicated) {
         throw conflict("해당 날짜에는 이미 휴가가 등록되어 있습니다.");
       }
+
+      const monthPrefix = input.date.slice(0, 7);
+      const usedCount = (state.leavePermissionsByDivision[divisionSlug] ?? []).filter(
+        (saved) =>
+          saved.studentId === input.studentId &&
+          saved.type === input.type &&
+          saved.date.startsWith(monthPrefix) &&
+          !isInactiveLeaveStatus(saved.status),
+      ).length;
+      assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const nextRecord: MockLeavePermissionRecord = {
         id: `mock-leave-${divisionSlug}-${Date.now()}`,
@@ -628,60 +699,93 @@ export async function createLeavePermission(
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
-  const student = await prisma.student.findFirst({
-    where: {
-      id: input.studentId,
-      divisionId: division.id,
-    },
-    select: {
-      id: true,
-      status: true,
-    },
-  });
+  const leaveDate = parseDateString(input.date);
+  const { start: monthStart, end: monthEnd } = getMonthRange(input.date.slice(0, 7));
 
-  if (!student) {
-    throw notFound("학생 정보를 찾을 수 없습니다.");
-  }
+  const permission = await prisma.$transaction(async (tx) => {
+      const student = await tx.student.findFirst({
+        where: {
+          id: input.studentId,
+          divisionId: division.id,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
 
-  if (student.status === "WITHDRAWN" || student.status === "GRADUATED") {
-    throw badRequest("퇴실 또는 수료 처리된 학생에게는 외출/휴가를 등록할 수 없습니다.");
-  }
+      if (!student) {
+        throw notFound("학생 정보를 찾을 수 없습니다.");
+      }
 
-  const duplicated = await prisma.leavePermission.findFirst({
-    where: {
-      studentId: input.studentId,
-      student: {
-        divisionId: division.id,
-      },
-      date: parseDateString(input.date),
-      status: {
-        notIn: ["REJECTED"],
-      },
-    },
-    select: {
-      id: true,
-    },
-  });
+      if (student.status === "WITHDRAWN" || student.status === "GRADUATED") {
+        throw badRequest("퇴실 또는 수료 처리된 학생에게는 외출/휴가를 등록할 수 없습니다.");
+      }
 
-  if (duplicated) {
-    throw conflict("해당 날짜에는 이미 휴가가 등록되어 있습니다.");
-  }
+      const duplicated = await tx.leavePermission.findFirst({
+        where: {
+          studentId: input.studentId,
+          student: {
+            divisionId: division.id,
+          },
+          date: leaveDate,
+          status: {
+            notIn: ["REJECTED"],
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
 
-  const permission = await prisma.leavePermission.create({
-    data: {
-      studentId: input.studentId,
-      type: input.type,
-      date: parseDateString(input.date),
-      reason,
-      approvedById: actor.id,
-      status,
-    },
-  });
+      if (duplicated) {
+        throw conflict("해당 날짜에는 이미 휴가가 등록되어 있습니다.");
+      }
 
-  await applyDbLeaveAttendance(divisionSlug, actor.id, {
-    ...input,
-    reason,
-  });
+      const usedCount = await tx.leavePermission.count({
+        where: {
+          studentId: input.studentId,
+          type: input.type,
+          date: {
+            gte: monthStart,
+            lt: monthEnd,
+          },
+          status: {
+            notIn: ["REJECTED"],
+          },
+          student: {
+            divisionId: division.id,
+          },
+        },
+      });
+      assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+
+      const created = await tx.leavePermission.create({
+        data: {
+          studentId: input.studentId,
+          type: input.type,
+          date: leaveDate,
+          reason,
+          approvedById: actor.id,
+          status,
+        },
+      });
+
+      await applyDbLeaveAttendanceWithTx(tx, division.id, actor.id, {
+        ...input,
+        reason,
+      });
+
+      return created;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    }).catch((error) => {
+      if (isLeaveWriteConflict(error)) {
+        throw conflict("같은 날짜의 휴가가 이미 등록되었거나 동시에 처리 중입니다.");
+      }
+
+      throw error;
+    });
 
   if (getAttendanceStatusForLeaveType(input.type)) {
     await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id);
@@ -869,6 +973,7 @@ export async function previewLeaveSettlement(
       settledStudentIds,
       holidayLimit: settings.holidayLimit,
       halfDayLimit: settings.halfDayLimit,
+      healthLimit: settings.healthLimit,
       holidayUnusedPts: settings.holidayUnusedPts,
       halfDayUnusedPts: settings.halfDayUnusedPts,
     });
@@ -913,6 +1018,7 @@ export async function previewLeaveSettlement(
     settledStudentIds,
     holidayLimit: settings.holidayLimit,
     halfDayLimit: settings.halfDayLimit,
+    healthLimit: settings.healthLimit,
     holidayUnusedPts: settings.holidayUnusedPts,
     halfDayUnusedPts: settings.halfDayUnusedPts,
   });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
 import { divisionCreateSchema } from "@/lib/super-admin-schemas";
 import {
@@ -14,8 +15,12 @@ export async function GET() {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const divisions = await listManagedDivisions();
-  return NextResponse.json({ divisions }, { headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=60" } });
+  try {
+    const divisions = await listManagedDivisions();
+    return NextResponse.json({ divisions }, { headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=60" } });
+  } catch (error) {
+    return toApiErrorResponse(error, "지점 목록을 불러오지 못했습니다.");
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -39,9 +44,6 @@ export async function POST(request: NextRequest) {
     const division = await createManagedDivision(parsed.data);
     return NextResponse.json({ division }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "지점 생성에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "지점 생성에 실패했습니다.");
   }
 }

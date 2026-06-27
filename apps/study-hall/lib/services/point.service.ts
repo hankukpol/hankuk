@@ -18,7 +18,7 @@ import {
   normalizeOptionalText,
 } from "@/lib/service-helpers";
 import { getPeriods } from "@/lib/services/period.service";
-import { getWarningStage, getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
+import { getWarningStage, getWarningStageLabel } from "@/lib/student-meta";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { listStudents, type StudentListItem } from "@/lib/services/student.service";
 
@@ -193,11 +193,54 @@ function getPointRecordDateValue(date?: string | null) {
   return date ? parseDateString(date) : new Date();
 }
 
+function toPointDateKey(value: Date | string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10);
+}
+
+function getWarningPointStartDate(student: Pick<StudentListItem, "courseStartDate" | "enrolledAt">) {
+  return student.courseStartDate ?? toPointDateKey(student.enrolledAt) ?? "0000-01-01";
+}
+
+function isWarningPointInCurrentCourse(
+  student: Pick<StudentListItem, "courseStartDate" | "enrolledAt">,
+  recordDate: Date | string,
+) {
+  const recordDateKey = toPointDateKey(recordDate);
+
+  if (!recordDateKey) {
+    return false;
+  }
+
+  return recordDateKey >= getWarningPointStartDate(student);
+}
+
 function isDailyPerfectAttendanceRecord(record: {
   ruleId: string | null;
   notes: string | null;
 }) {
   return record.ruleId === null && Boolean(record.notes?.startsWith(DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX));
+}
+
+function getAttendanceDerivedPointDate(notes: string | null) {
+  if (!notes) {
+    return null;
+  }
+
+  const attendancePenaltyMatch = notes.match(AUTO_ATTENDANCE_PENALTY_NOTE_PATTERN);
+  if (attendancePenaltyMatch) {
+    return attendancePenaltyMatch[1] ?? null;
+  }
+
+  if (notes.startsWith(DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX)) {
+    const match = notes.match(/^\[자동\] 개근 상점 \((\d{4}-\d{2}-\d{2})\)$/);
+    return match?.[1] ?? null;
+  }
+
+  return null;
 }
 
 function getPointRecordDisplayNotes(notes: string | null) {
@@ -1683,17 +1726,32 @@ export async function createPointRecordsBatch(
   } satisfies PointBatchGrantResult;
 }
 
-export async function deletePointRecord(divisionSlug: string, recordId: string) {
+export async function deletePointRecord(divisionSlug: string, recordId: string, actor: PointActor) {
   if (isMockMode()) {
+    let attendanceDerivedDate: string | null = null;
+    let studentId: string | null = null;
+
     await updateMockState((state) => {
       const current = state.pointRecordsByDivision[divisionSlug] ?? [];
+      const target = current.find((record) => record.id === recordId);
 
-      if (!current.some((record) => record.id === recordId)) {
+      if (!target) {
         throw notFound("상벌점 기록을 찾을 수 없습니다.");
       }
 
+      attendanceDerivedDate = getAttendanceDerivedPointDate(target.notes);
+      studentId = target.studentId;
       state.pointRecordsByDivision[divisionSlug] = current.filter((record) => record.id !== recordId);
     });
+
+    if (attendanceDerivedDate) {
+      const { syncAttendanceDerivedPoints } = await import("@/lib/services/attendance.service");
+      await syncAttendanceDerivedPoints(divisionSlug, attendanceDerivedDate, actor.id);
+    }
+
+    if (studentId) {
+      revalidateDivisionOperationalViews(divisionSlug, { studentId });
+    }
     return true;
   }
 
@@ -1709,6 +1767,7 @@ export async function deletePointRecord(divisionSlug: string, recordId: string) 
     select: {
       id: true,
       studentId: true,
+      notes: true,
     },
   });
 
@@ -1722,6 +1781,12 @@ export async function deletePointRecord(divisionSlug: string, recordId: string) 
     },
   });
 
+  const attendanceDerivedDate = getAttendanceDerivedPointDate(record.notes);
+  if (attendanceDerivedDate) {
+    const { syncAttendanceDerivedPoints } = await import("@/lib/services/attendance.service");
+    await syncAttendanceDerivedPoints(divisionSlug, attendanceDerivedDate, actor.id);
+  }
+
   revalidateDivisionOperationalViews(divisionSlug, { studentId: record.studentId });
   return true;
 }
@@ -1729,11 +1794,70 @@ export async function deletePointRecord(divisionSlug: string, recordId: string) 
 export async function listWarningStudents(divisionSlug: string) {
   const settings = await getDivisionSettings(divisionSlug);
   const students = await listStudents(divisionSlug);
+  const activeStudentIds = new Set(
+    students
+      .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")
+      .map((student) => student.id),
+  );
+  const studentById = new Map(students.map((student) => [student.id, student]));
+  const demeritPointsByStudentId = new Map<string, number>();
+
+  if (isMockMode()) {
+    const state = await readMockState();
+    for (const record of state.pointRecordsByDivision[divisionSlug] ?? []) {
+      const student = studentById.get(record.studentId);
+      if (
+        !student ||
+        !activeStudentIds.has(record.studentId) ||
+        record.points >= 0 ||
+        !isWarningPointInCurrentCourse(student, record.date)
+      ) {
+        continue;
+      }
+      demeritPointsByStudentId.set(
+        record.studentId,
+        (demeritPointsByStudentId.get(record.studentId) ?? 0) + Math.abs(record.points),
+      );
+    }
+  } else {
+    const division = await getDivisionOrThrow(divisionSlug);
+    const prisma = await getPrismaClient();
+    const records = await prisma.pointRecord.findMany({
+      where: {
+        points: {
+          lt: 0,
+        },
+        student: {
+          divisionId: division.id,
+          status: {
+            in: ["ACTIVE", "ON_LEAVE"],
+          },
+        },
+      },
+      select: {
+        studentId: true,
+        points: true,
+        date: true,
+      },
+    });
+
+    for (const record of records) {
+      const student = studentById.get(record.studentId);
+      if (!student || !isWarningPointInCurrentCourse(student, record.date)) {
+        continue;
+      }
+
+      demeritPointsByStudentId.set(
+        record.studentId,
+        (demeritPointsByStudentId.get(record.studentId) ?? 0) + Math.abs(record.points),
+      );
+    }
+  }
 
   return students
     .map((student) => ({
       student,
-      demeritPoints: toDemeritPoints(student.netPoints),
+      demeritPoints: demeritPointsByStudentId.get(student.id) ?? 0,
     }))
     .filter(
       ({ student, demeritPoints }) =>

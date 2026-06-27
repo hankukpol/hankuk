@@ -4,7 +4,26 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { pointBatchSchema } from "@/lib/point-schemas";
-import { createPointRecordsBatch } from "@/lib/services/point.service";
+import {
+  createPointRecordsBatch,
+  type PointBatchGrantResult,
+} from "@/lib/services/point.service";
+
+const POINT_BATCH_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000;
+const pointBatchIdempotencyCache = new Map<
+  string,
+  { createdAt: number; promise: Promise<PointBatchGrantResult> }
+>();
+
+function prunePointBatchIdempotencyCache() {
+  const now = Date.now();
+
+  pointBatchIdempotencyCache.forEach((entry, key) => {
+    if (now - entry.createdAt > POINT_BATCH_IDEMPOTENCY_TTL_MS) {
+      pointBatchIdempotencyCache.delete(key);
+    }
+  });
+}
 
 export async function POST(
   request: NextRequest,
@@ -36,9 +55,46 @@ export async function POST(
   }
 
   try {
-    const result = await createPointRecordsBatch(params.division, auth.session, parsed.data);
+    const idempotencyKey = parsed.data.idempotencyKey
+      ? [
+          params.division,
+          auth.session.id,
+          parsed.data.date,
+          parsed.data.idempotencyKey,
+        ].join(":")
+      : null;
+
+    if (!idempotencyKey) {
+      const result = await createPointRecordsBatch(params.division, auth.session, parsed.data);
+      return NextResponse.json({ result }, { status: 201 });
+    }
+
+    prunePointBatchIdempotencyCache();
+    const existing = pointBatchIdempotencyCache.get(idempotencyKey);
+    if (existing) {
+      const result = await existing.promise;
+      return NextResponse.json({ result }, { status: 201 });
+    }
+
+    const promise = createPointRecordsBatch(params.division, auth.session, parsed.data);
+    pointBatchIdempotencyCache.set(idempotencyKey, {
+      createdAt: Date.now(),
+      promise,
+    });
+
+    const result = await promise;
     return NextResponse.json({ result }, { status: 201 });
   } catch (error) {
+    if (parsed.success && parsed.data.idempotencyKey) {
+      pointBatchIdempotencyCache.delete(
+        [
+          params.division,
+          auth.session.id,
+          parsed.data.date,
+          parsed.data.idempotencyKey,
+        ].join(":"),
+      );
+    }
     return toApiErrorResponse(error, "일괄 상벌점 부여에 실패했습니다.");
   }
 }

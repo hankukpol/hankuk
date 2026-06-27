@@ -1,5 +1,26 @@
 import { z } from "zod";
 
+const PAYMENT_AMOUNT_LIMIT = 2_000_000_000;
+
+const paymentAmountSchema = z
+  .number()
+  .int("금액은 정수로 입력해 주세요.")
+  .min(-PAYMENT_AMOUNT_LIMIT, "금액이 너무 큽니다.")
+  .max(PAYMENT_AMOUNT_LIMIT, "금액이 너무 큽니다.")
+  .refine((value) => value !== 0, "금액은 0원일 수 없습니다.");
+
+const positivePaymentAmountSchema = z
+  .number()
+  .int("금액은 정수로 입력해 주세요.")
+  .positive("금액은 0보다 커야 합니다.")
+  .max(PAYMENT_AMOUNT_LIMIT, "금액이 너무 큽니다.");
+
+const tuitionAmountSchema = z
+  .number()
+  .int("적용 금액은 정수여야 합니다.")
+  .min(0, "적용 금액은 0원 이상이어야 합니다.")
+  .max(PAYMENT_AMOUNT_LIMIT, "적용 금액이 너무 큽니다.");
+
 const paymentMethodFieldSchema = z
   .string()
   .trim()
@@ -9,10 +30,7 @@ const paymentMethodFieldSchema = z
 export const paymentSchema = z.object({
   studentId: z.string().min(1, "학생을 선택해 주세요."),
   paymentTypeId: z.string().min(1, "수납 유형을 선택해 주세요."),
-  amount: z
-    .number()
-    .int("금액은 정수로 입력해 주세요.")
-    .refine((value) => value !== 0, "금액은 0원일 수 없습니다."),
+  amount: paymentAmountSchema,
   paymentDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "결제 날짜 형식이 올바르지 않습니다."),
@@ -22,10 +40,7 @@ export const paymentSchema = z.object({
 
 const paymentPayloadSchema = z.object({
   paymentTypeId: z.string().min(1, "수납 유형을 선택해 주세요."),
-  amount: z
-    .number()
-    .int("금액은 정수로 입력해 주세요.")
-    .refine((value) => value !== 0, "금액은 0원일 수 없습니다."),
+  amount: paymentAmountSchema,
   paymentDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "결제 날짜 형식이 올바르지 않습니다."),
@@ -46,16 +61,14 @@ export const paymentBatchSchema = z.object({
 export const enrollPaymentSchema = z
   .object({
     student: z.object({
-      name: z.string().trim().min(1, "학생 이름을 입력해 주세요."),
-      studentNumber: z.string().trim().min(1, "학번을 입력해 주세요."),
+      name: z.string().trim().min(1, "학생 이름을 입력해 주세요.").max(50, "학생 이름은 50자 이하여야 합니다."),
+      studentNumber: z.string().trim().min(1, "학번을 입력해 주세요.").max(50, "학번은 50자 이하여야 합니다."),
       phone: z.string().trim().max(20, "연락처는 20자 이하여야 합니다.").nullable().optional(),
       memo: z.string().trim().max(2000, "메모는 2000자 이하여야 합니다.").nullable().optional(),
     }),
     tuitionPlanId: z.string().min(1, "수강 플랜을 선택해 주세요."),
     tuitionAmount: z
-      .number()
-      .int("적용 금액은 정수여야 합니다.")
-      .min(0, "적용 금액은 0원 이상이어야 합니다.")
+      .union([tuitionAmountSchema, z.null()])
       .nullable()
       .optional(),
     tuitionExempt: z.boolean().optional(),
@@ -73,6 +86,14 @@ export const enrollPaymentSchema = z
     payments: paymentEntriesSchema.optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.tuitionExempt && !value.tuitionExemptReason?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tuitionExemptReason"],
+        message: "수강료 면제 사유를 입력해 주세요.",
+      });
+    }
+
     if (!value.tuitionExempt && !value.payment && !value.payments?.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -87,13 +108,16 @@ export const renewPaymentSchema = z
     studentId: z.string().min(1, "학생을 선택해 주세요."),
     tuitionPlanId: z.string().min(1, "연장 플랜을 선택해 주세요."),
     tuitionAmount: z
-      .number()
-      .int("적용 금액은 정수여야 합니다.")
-      .min(0, "적용 금액은 0원 이상이어야 합니다.")
+      .union([tuitionAmountSchema, z.null()])
       .nullable()
       .optional(),
     payment: paymentPayloadSchema.optional(),
     payments: paymentEntriesSchema.optional(),
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8, "갱신 요청 키가 필요합니다.")
+      .max(100, "갱신 요청 키는 100자 이하여야 합니다."),
   });
 
 const refundBaseSchema = z.object({
@@ -106,10 +130,7 @@ const refundBaseSchema = z.object({
 
 const refundSimpleSchema = refundBaseSchema.extend({
   mode: z.literal("simple"),
-  amount: z
-    .number()
-    .int("환불 금액은 정수로 입력해 주세요.")
-    .positive("환불 금액은 0보다 커야 합니다."),
+  amount: positivePaymentAmountSchema,
   originalPaymentId: z.string().trim().min(1).nullable().optional(),
   method: paymentMethodFieldSchema,
   notes: z.string().trim().max(500).nullable().optional(),
@@ -122,7 +143,8 @@ const refundCardFullCancelSchema = refundBaseSchema.extend({
   rechargeAmount: z
     .number()
     .int("재결제 금액은 정수로 입력해 주세요.")
-    .positive("재결제 금액은 0보다 커야 합니다."),
+    .positive("재결제 금액은 0보다 커야 합니다.")
+    .max(PAYMENT_AMOUNT_LIMIT, "재결제 금액이 너무 큽니다."),
   refundNotes: z.string().trim().max(500).nullable().optional(),
   rechargeNotes: z.string().trim().max(500).nullable().optional(),
 });

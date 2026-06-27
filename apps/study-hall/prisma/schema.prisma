@@ -93,6 +93,7 @@ model Division {
   announcements     Announcement[]
   examSchedules     ExamSchedule[]
   phoneSubmissions  PhoneSubmission[]
+  paymentOperations PaymentOperation[]
 
   @@map("divisions")
 }
@@ -118,7 +119,7 @@ model Student {
   memo                String?
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
-  division            Division           @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  division            Division           @relation(fields: [divisionId], references: [id], onDelete: Restrict)
   seat                Seat?              @relation(fields: [seatId], references: [id], onDelete: SetNull)
   tuitionPlan         TuitionPlan?       @relation(fields: [tuitionPlanId], references: [id], onDelete: SetNull)
   attendanceRecords   Attendance[]
@@ -130,6 +131,7 @@ model Student {
   morningExamScores   MorningExamScore[]
   scoreTargets        ScoreTarget[]
   phoneSubmissions    PhoneSubmission[]
+  paymentOperations   PaymentOperation[]
 
   @@unique([divisionId, studentNumber])
   @@index([divisionId])
@@ -170,7 +172,7 @@ model Attendance {
   recordedById String?          @map("recorded_by_id")
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
-  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
   period       Period           @relation(fields: [periodId], references: [id], onDelete: Cascade)
   recordedBy   Admin?           @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
 
@@ -206,7 +208,7 @@ model PointRecord {
   notes        String?
   recordedById String     @map("recorded_by_id")
   createdAt    DateTime   @default(now()) @map("created_at")
-  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
   rule         PointRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
   recordedBy   Admin      @relation("PointRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
@@ -225,7 +227,7 @@ model LeavePermission {
   approvedById String      @map("approved_by_id")
   status       LeaveStatus
   createdAt    DateTime    @default(now()) @map("created_at")
-  student      Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student     @relation(fields: [studentId], references: [id], onDelete: Restrict)
   approvedBy   Admin       @relation("LeaveApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
 
   @@index([studentId, date])
@@ -244,7 +246,7 @@ model Interview {
   resultType  ResultType @map("result_type")
   createdById String     @map("created_by_id")
   createdAt   DateTime   @default(now()) @map("created_at")
-  student     Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student     Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
   createdBy   Admin      @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([studentId, date])
@@ -264,7 +266,7 @@ model Payment {
   notes         String?
   recordedById  String          @map("recorded_by_id")
   createdAt     DateTime        @default(now()) @map("created_at")
-  student       Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student       Student         @relation(fields: [studentId], references: [id], onDelete: Restrict)
   paymentType   PaymentCategory @relation(fields: [paymentTypeId], references: [id], onDelete: Restrict)
   recordedBy    Admin           @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
@@ -290,6 +292,23 @@ model PaymentCategory {
   @@unique([divisionId, name])
   @@index([divisionId])
   @@map("payment_categories")
+}
+
+model PaymentOperation {
+  id             String   @id @default(cuid())
+  divisionId     String   @map("division_id")
+  studentId      String   @map("student_id")
+  operationType  String   @map("operation_type")
+  idempotencyKey String   @map("idempotency_key")
+  result         Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  division       Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([divisionId, studentId, operationType, idempotencyKey], map: "payment_operations_division_student_operation_key_uidx")
+  @@index([studentId, createdAt], map: "payment_operations_student_id_created_at_idx")
+  @@map("payment_operations")
 }
 
 model TuitionPlan {
@@ -361,7 +380,7 @@ model ExamScore {
   notes        String?
   recordedById String    @map("recorded_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")
-  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Restrict)
   examType     ExamType  @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
   recordedBy   Admin     @relation("ExamRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
@@ -385,7 +404,7 @@ model MorningExamScore {
   recordedById String      @map("recorded_by_id")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
-  student      Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student     @relation(fields: [studentId], references: [id], onDelete: Restrict)
   examType     ExamType    @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
   subject      ExamSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   recordedBy   Admin       @relation("MorningExamRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
@@ -406,7 +425,7 @@ model ScoreTarget {
   note        String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
-  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
   examType    ExamType @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, examTypeId])
@@ -562,7 +581,7 @@ model PhoneSubmission {
   createdAt    DateTime              @default(now()) @map("created_at")
   updatedAt    DateTime              @updatedAt @map("updated_at")
   division     Division              @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  student      Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student      Student               @relation(fields: [studentId], references: [id], onDelete: Restrict)
   period       Period                @relation(fields: [periodId], references: [id], onDelete: Cascade)
   recordedBy   Admin                 @relation("PhoneSubmissionRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 

@@ -11,9 +11,9 @@ import {
 import { findStudentSessionByCredentials } from "@/lib/services/student.service";
 
 const studentLoginSchema = z.object({
-  division: z.string().min(1),
-  studentNumber: z.string().min(1, "수험번호를 입력해주세요."),
-  name: z.string().min(1, "이름을 입력해주세요."),
+  division: z.string().min(1).max(100),
+  studentNumber: z.string().trim().min(1, "수험번호를 입력해주세요.").max(50, "수험번호는 50자 이하여야 합니다."),
+  name: z.string().trim().min(1, "이름을 입력해주세요.").max(50, "이름은 50자 이하여야 합니다."),
 });
 
 function rateLimitResponse(error: unknown) {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       return rateLimitResponse(error);
     }
 
-    return NextResponse.json({ error: "학생 정보를 찾을 수 없습니다." }, { status: 404 });
+    return NextResponse.json({ error: "학생 정보를 확인해주세요." }, { status: 401 });
   }
 
   const token = await createStudentSessionToken(session);

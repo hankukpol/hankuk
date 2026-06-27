@@ -77,7 +77,7 @@ export async function POST(
       return NextResponse.json({ error: "지점을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const staff = await createDivisionStaff(division.id, params.division, parsed.data);
+    const staff = await createDivisionStaff(division.id, params.division, parsed.data, auth.session);
     return NextResponse.json({ staff }, { status: 201 });
   } catch (error) {
     return toApiErrorResponse(error, "직원 추가에 실패했습니다.");

@@ -4,6 +4,11 @@ import { Phone, Save } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Modal } from "@/components/ui/Modal";
+import {
+  PHONE_CHECK_STATUS_LABEL,
+  PHONE_CHECK_STATUS_OPTIONS,
+  PhoneStatusCheckButton,
+} from "@/components/phones/PhoneStatusCheckButton";
 import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import { getSeatPositionKey } from "@/lib/seat-layout";
 import { getStudyTrackShortLabel } from "@/lib/study-track-meta";
@@ -13,6 +18,7 @@ import type {
   PhoneCheckStatus,
   PhoneDaySnapshot,
 } from "@/lib/services/phone-submission.service";
+import type { PhoneSaveState } from "@/components/phones/PhoneCheckTable";
 
 export type LocalStatus = PhoneCheckStatus | null;
 
@@ -31,15 +37,11 @@ type PhoneCheckSeatMapProps = {
   periodState: LocalPeriodState;
   attendanceByStudentId: Map<string, PhoneAttendanceCell>;
   attendanceIntegrationEnabled: boolean;
+  saveStateByStudentId?: Record<string, PhoneSaveState | undefined>;
   onStatusChange: (studentId: string, status: LocalStatus) => void;
   onRentalNoteChange: (studentId: string, note: string) => void;
+  onRentalNoteCommit?: (studentId: string) => void;
   onOpenBulkRental: (studentId: string) => void;
-};
-
-const STATUS_LABEL: Record<PhoneCheckStatus, string> = {
-  SUBMITTED: "반납",
-  NOT_SUBMITTED: "미반납",
-  RENTED: "대여",
 };
 
 const STATUS_BADGE: Record<PhoneCheckStatus, string> = {
@@ -53,8 +55,6 @@ const STATUS_TONE: Record<PhoneCheckStatus, string> = {
   NOT_SUBMITTED: "border-red-200 bg-red-50 text-red-900",
   RENTED: "border-sky-100 bg-sky-50 text-sky-900",
 };
-
-const BUTTON_ACTIVE = "bg-[var(--division-color)] text-white";
 
 function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enabled: boolean) {
   if (!enabled) return "border-slate-200 bg-white text-slate-500";
@@ -84,8 +84,10 @@ export function PhoneCheckSeatMap({
   periodState,
   attendanceByStudentId,
   attendanceIntegrationEnabled,
+  saveStateByStudentId = {},
   onStatusChange,
   onRentalNoteChange,
+  onRentalNoteCommit = () => undefined,
   onOpenBulkRental,
 }: PhoneCheckSeatMapProps) {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(
@@ -140,6 +142,7 @@ export function PhoneCheckSeatMap({
     : null;
   const modalAttendanceCell = modalStudentId ? attendanceByStudentId.get(modalStudentId) : null;
   const modalCheckable = !attendanceIntegrationEnabled || Boolean(modalAttendanceCell?.checkable);
+  const modalSaveState = modalStudentId ? saveStateByStudentId[modalStudentId] : undefined;
 
   // 현재 자습실에 없는 학생 (좌석 없거나 다른 자습실)
   const seatedStudentIds = useMemo(
@@ -227,6 +230,7 @@ export function PhoneCheckSeatMap({
               const isCheckable =
                 !attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
               const status = entry?.status ?? null;
+              const saveState = student ? saveStateByStudentId[student.id] : undefined;
               const isSelected = student?.id === modalStudentId;
 
               const tone = !seat.isActive
@@ -267,7 +271,7 @@ export function PhoneCheckSeatMap({
                     )}
                     {student && isCheckable && status && (
                       <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[status]}`}>
-                        {STATUS_LABEL[status]}
+                        {PHONE_CHECK_STATUS_LABEL[status]}
                       </span>
                     )}
                     {student && isCheckable && !status && (
@@ -278,6 +282,11 @@ export function PhoneCheckSeatMap({
                     {student && !isCheckable && (
                       <span className="shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
                         체크 없음
+                      </span>
+                    )}
+                    {student && saveState === "saving" && (
+                      <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                        저장 중
                       </span>
                     )}
                   </div>
@@ -315,6 +324,7 @@ export function PhoneCheckSeatMap({
             const isCheckable =
               !attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
             const { status } = entry;
+            const saveState = saveStateByStudentId[student.id];
             const cardBg =
               !isCheckable
                 ? "border-slate-100 bg-slate-50/80 opacity-75"
@@ -350,22 +360,35 @@ export function PhoneCheckSeatMap({
                         ? getAttendanceStatusLabel(attendanceCell?.status)
                         : "출결 연동 없음"}
                     </span>
+                    {saveState ? (
+                      <span
+                        className={`ml-1 mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          saveState === "saving"
+                            ? "bg-amber-50 text-amber-700"
+                            : saveState === "saved"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {saveState === "saving"
+                          ? "저장 중"
+                          : saveState === "saved"
+                            ? "저장됨"
+                            : "저장 실패"}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {isCheckable ? (
-                      (["SUBMITTED", "NOT_SUBMITTED", "RENTED"] as const).map((s) => (
-                        <button
+                      PHONE_CHECK_STATUS_OPTIONS.map((s) => (
+                        <PhoneStatusCheckButton
                           key={s}
-                          type="button"
+                          status={s}
+                          selected={status === s}
+                          disabled={saveState === "saving"}
                           onClick={() => onStatusChange(student.id, status === s ? null : s)}
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                            status === s
-                              ? BUTTON_ACTIVE
-                              : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                          }`}
-                        >
-                          {STATUS_LABEL[s]}
-                        </button>
+                          className="min-w-[74px]"
+                        />
                       ))
                     ) : (
                       <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
@@ -380,6 +403,7 @@ export function PhoneCheckSeatMap({
                       type="text"
                       value={entry.rentalNote}
                       onChange={(e) => onRentalNoteChange(student.id, e.target.value)}
+                      onBlur={() => onRentalNoteCommit(student.id)}
                       placeholder="대여 사유 (예: 인강 수강)"
                       maxLength={200}
                       className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2 text-xs outline-none transition focus:border-slate-400 placeholder:text-slate-400"
@@ -417,6 +441,23 @@ export function PhoneCheckSeatMap({
               {modalAttendanceCell?.reason ? (
                 <p className="mt-2 text-xs text-slate-500">{modalAttendanceCell.reason}</p>
               ) : null}
+              {modalSaveState ? (
+                <span
+                  className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    modalSaveState === "saving"
+                      ? "bg-amber-50 text-amber-700"
+                      : modalSaveState === "saved"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {modalSaveState === "saving"
+                    ? "저장 중"
+                    : modalSaveState === "saved"
+                      ? "저장됨"
+                      : "저장 실패"}
+                </span>
+              ) : null}
             </div>
 
             {!modalCheckable ? (
@@ -442,23 +483,20 @@ export function PhoneCheckSeatMap({
             {/* 3-state 버튼 */}
             {modalCheckable ? (
               <div className="flex gap-2">
-                {(["SUBMITTED", "NOT_SUBMITTED", "RENTED"] as const).map((s) => (
-                  <button
+                {PHONE_CHECK_STATUS_OPTIONS.map((s) => (
+                  <PhoneStatusCheckButton
                     key={s}
-                    type="button"
+                    status={s}
+                    selected={modalEntry.status === s}
+                    disabled={modalSaveState === "saving"}
                     onClick={() => {
                       const next = modalEntry.status === s ? null : s;
                       onStatusChange(modalStudentId, next);
                       if (s !== "RENTED") setModalStudentId(null);
                     }}
-                    className={`flex-1 rounded-full px-3 py-2.5 text-sm font-medium transition ${
-                      modalEntry.status === s
-                        ? BUTTON_ACTIVE
-                        : "bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    {STATUS_LABEL[s]}
-                  </button>
+                    className="flex-1"
+                    size="md"
+                  />
                 ))}
               </div>
             ) : null}
@@ -470,6 +508,7 @@ export function PhoneCheckSeatMap({
                   type="text"
                   value={modalEntry.rentalNote}
                   onChange={(e) => onRentalNoteChange(modalStudentId, e.target.value)}
+                  onBlur={() => onRentalNoteCommit(modalStudentId)}
                   placeholder="대여 사유 (예: 인강 수강)"
                   maxLength={200}
                   autoFocus
@@ -477,7 +516,10 @@ export function PhoneCheckSeatMap({
                 />
                 <button
                   type="button"
-                  onClick={() => setModalStudentId(null)}
+                  onClick={() => {
+                    onRentalNoteCommit(modalStudentId);
+                    setModalStudentId(null);
+                  }}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
                 >
                   <Save className="h-4 w-4" />

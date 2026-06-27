@@ -1765,19 +1765,18 @@ export async function deleteStudent(divisionSlug: string, studentId: string) {
       if (!target) {
         throw notFound("학생 정보를 찾을 수 없습니다.");
       }
-      state.studentsByDivision[divisionSlug] = current.filter(
-        (student) => student.id !== studentId,
+      state.studentsByDivision[divisionSlug] = current.map((student) =>
+        student.id === studentId
+          ? {
+              ...student,
+              status: "WITHDRAWN",
+              withdrawnAt: new Date().toISOString(),
+              withdrawnNote: student.withdrawnNote ?? "관리자 삭제 요청으로 퇴실 처리됨",
+              seatId: null,
+              updatedAt: new Date().toISOString(),
+            }
+          : student,
       );
-      if (state.attendanceByDivision[divisionSlug]) {
-        state.attendanceByDivision[divisionSlug] = state.attendanceByDivision[divisionSlug].filter(
-          (record) => record.studentId !== studentId,
-        );
-      }
-      if (state.pointRecordsByDivision[divisionSlug]) {
-        state.pointRecordsByDivision[divisionSlug] = state.pointRecordsByDivision[divisionSlug].filter(
-          (record) => record.studentId !== studentId,
-        );
-      }
     });
     return;
   }
@@ -1796,12 +1795,20 @@ export async function deleteStudent(divisionSlug: string, studentId: string) {
     throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
-  // Student 관련 레코드는 onDelete: Cascade로 자동 삭제
-  await prisma.$executeRaw`
-    DELETE FROM study_hall.students
-    WHERE id = ${studentId}
-      AND division_id = ${division.id}
-  `;
+  await prisma.student.update({
+    where: {
+      id: studentId,
+    },
+    data: {
+      status: "WITHDRAWN",
+      withdrawnAt: new Date(),
+      withdrawnNote: "관리자 삭제 요청으로 퇴실 처리됨",
+      seatId: null,
+    },
+    select: {
+      id: true,
+    },
+  });
   revalidateDivisionOperationalViews(divisionSlug, { studentId });
 }
 

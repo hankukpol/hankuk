@@ -225,9 +225,9 @@ export async function applyAdminContextCookies(response: NextResponse, session: 
   const token = await createAdminSessionToken(session);
 
   response.cookies.set(ADMIN_SESSION_COOKIE, token, options);
-  response.cookies.set(ADMIN_ROLE_COOKIE, session.role, options);
-  response.cookies.set(ADMIN_DIVISION_COOKIE, session.divisionSlug ?? "", options);
-  response.cookies.set(ADMIN_NAME_COOKIE, session.name, options);
+  [ADMIN_ROLE_COOKIE, ADMIN_DIVISION_COOKIE, ADMIN_NAME_COOKIE].forEach((cookieName) => {
+    response.cookies.set(cookieName, "", { ...options, maxAge: 0 });
+  });
 }
 
 export function applyStudentSessionCookie(response: NextResponse, token: string) {

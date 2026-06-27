@@ -42,7 +42,7 @@ export async function PATCH(
       return NextResponse.json({ error: "지점을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const result = await resetDivisionStaffPassword(division.id, params.id, parsed.data.password);
+    const result = await resetDivisionStaffPassword(division.id, params.id, parsed.data.password, auth.session);
     return NextResponse.json({ result });
   } catch (error) {
     return toApiErrorResponse(error, "비밀번호 변경에 실패했습니다.");

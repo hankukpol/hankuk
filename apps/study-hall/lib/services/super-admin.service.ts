@@ -269,15 +269,6 @@ export async function updateManagedDivision(slug: string, input: DivisionUpdateI
   return serializeDivision(division);
 }
 
-function removeDivisionScopedCollections<T>(
-  source: Record<string, T>,
-  divisionSlug: string,
-) {
-  return Object.fromEntries(
-    Object.entries(source).filter(([key]) => key !== divisionSlug),
-  ) as Record<string, T>;
-}
-
 export async function deleteManagedDivision(slug: string): Promise<ManagedDivisionDeleteResult> {
   if (isMockMode()) {
     return updateMockState(async (state) => {
@@ -286,9 +277,8 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
         throw new Error("지점 정보를 찾을 수 없습니다.");
       }
       const now = new Date().toISOString();
-      state.divisions = state.divisions.filter((item) => item.slug !== slug);
-      state.deletedDivisionSlugs = Array.from(
-        new Set([...(state.deletedDivisionSlugs ?? []), slug]),
+      state.divisions = state.divisions.map((item) =>
+        item.slug === slug ? { ...item, isActive: false } : item,
       );
       state.admins = state.admins.map((admin) =>
         admin.divisionSlug === slug
@@ -301,41 +291,6 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
             }
           : admin,
       );
-      state.divisionSettingsByDivision = removeDivisionScopedCollections(
-        state.divisionSettingsByDivision,
-        slug,
-      );
-      state.periodsByDivision = removeDivisionScopedCollections(state.periodsByDivision, slug);
-      state.attendanceByDivision = removeDivisionScopedCollections(state.attendanceByDivision, slug);
-      state.studentsByDivision = removeDivisionScopedCollections(state.studentsByDivision, slug);
-      state.studyRoomsByDivision = removeDivisionScopedCollections(state.studyRoomsByDivision, slug);
-      state.seatsByDivision = removeDivisionScopedCollections(state.seatsByDivision, slug);
-      state.pointRulesByDivision = removeDivisionScopedCollections(state.pointRulesByDivision, slug);
-      state.pointRecordsByDivision = removeDivisionScopedCollections(state.pointRecordsByDivision, slug);
-      state.paymentCategoriesByDivision = removeDivisionScopedCollections(
-        state.paymentCategoriesByDivision,
-        slug,
-      );
-      state.paymentRecordsByDivision = removeDivisionScopedCollections(
-        state.paymentRecordsByDivision,
-        slug,
-      );
-      state.tuitionPlansByDivision = removeDivisionScopedCollections(
-        state.tuitionPlansByDivision,
-        slug,
-      );
-      state.leavePermissionsByDivision = removeDivisionScopedCollections(
-        state.leavePermissionsByDivision,
-        slug,
-      );
-      state.interviewsByDivision = removeDivisionScopedCollections(state.interviewsByDivision, slug);
-      state.announcementsByDivision = removeDivisionScopedCollections(
-        state.announcementsByDivision,
-        slug,
-      );
-      state.examTypesByDivision = removeDivisionScopedCollections(state.examTypesByDivision, slug);
-      state.examScoresByDivision = removeDivisionScopedCollections(state.examScoresByDivision, slug);
-      state.scoreTargetsByDivision = removeDivisionScopedCollections(state.scoreTargetsByDivision, slug);
       return {
         slug: division.slug,
         name: division.name,
@@ -352,22 +307,12 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
       id: true,
       slug: true,
       name: true,
+      isActive: true,
     },
   });
 
   if (!division) {
     throw new Error("지점 정보를 찾을 수 없습니다.");
-  }
-
-  // 학생 데이터가 존재하면 삭제 차단 (CASCADE로 모든 성적·출결·상벌점 유실 방지)
-  const studentCount = await prisma.student.count({
-    where: { divisionId: division.id },
-  });
-
-  if (studentCount > 0) {
-    throw new Error(
-      `이 지점에 학생 ${studentCount}명의 데이터가 존재합니다. 지점을 삭제하면 모든 학생·출결·성적·상벌점 데이터가 영구 삭제됩니다. 먼저 모든 학생을 퇴실 처리하거나 다른 지점으로 이동해주세요.`,
-    );
   }
 
   await prisma.$transaction([
@@ -380,9 +325,12 @@ export async function deleteManagedDivision(slug: string): Promise<ManagedDivisi
         isActive: false,
       },
     }),
-    prisma.division.delete({
+    prisma.division.update({
       where: {
         id: division.id,
+      },
+      data: {
+        isActive: false,
       },
     }),
   ]);

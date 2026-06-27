@@ -46,7 +46,7 @@ export async function PATCH(
       return NextResponse.json({ error: "지점을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    const staff = await updateDivisionStaff(division.id, params.id, parsed.data);
+    const staff = await updateDivisionStaff(division.id, params.id, parsed.data, auth.session);
     return NextResponse.json({ staff });
   } catch (error) {
     return toApiErrorResponse(error, "직원 정보 수정에 실패했습니다.");
@@ -81,8 +81,8 @@ export async function DELETE(
     }
 
     const result = permanent
-      ? await permanentDeleteDivisionStaff(division.id, params.id)
-      : await deleteDivisionStaff(division.id, params.id);
+      ? await permanentDeleteDivisionStaff(division.id, params.id, auth.session)
+      : await deleteDivisionStaff(division.id, params.id, auth.session);
     return NextResponse.json({ result });
   } catch (error) {
     return toApiErrorResponse(error, permanent ? "직원 삭제에 실패했습니다." : "직원 비활성화에 실패했습니다.");

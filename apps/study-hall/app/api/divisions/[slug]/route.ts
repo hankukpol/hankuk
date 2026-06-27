@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
 import { divisionUpdateSchema } from "@/lib/super-admin-schemas";
 import {
@@ -31,10 +32,7 @@ export async function PATCH(
     const division = await updateManagedDivision(params.slug, parsed.data);
     return NextResponse.json({ division });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "지점 수정에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "지점 수정에 실패했습니다.");
   }
 }
 
@@ -52,9 +50,6 @@ export async function DELETE(
     const deletedDivision = await deleteManagedDivision(params.slug);
     return NextResponse.json({ deletedDivision });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "지점 삭제에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "지점 삭제에 실패했습니다.");
   }
 }

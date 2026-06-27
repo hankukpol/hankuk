@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const POINT_BATCH_STUDENTS_MAX = 500;
+
 const pointCategoryNameSchema = z
   .string()
   .trim()
@@ -41,11 +43,15 @@ export const pointRecordSchema = z
 
 export const pointBatchSchema = z
   .object({
-    studentIds: z.array(z.string().min(1)).min(1, "대상 학생을 한 명 이상 선택해주세요."),
+    studentIds: z
+      .array(z.string().min(1))
+      .min(1, "대상 학생을 한 명 이상 선택해주세요.")
+      .max(POINT_BATCH_STUDENTS_MAX, `한 번에 ${POINT_BATCH_STUDENTS_MAX}명까지만 부여할 수 있습니다.`),
     ruleId: z.string().min(1).nullable().optional(),
     points: z.number().int().nullable().optional(),
     notes: z.string().trim().nullable().optional(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "부여 날짜 형식이 올바르지 않습니다."),
+    idempotencyKey: z.string().trim().min(1).max(100).optional(),
   })
   .refine((value) => value.ruleId || typeof value.points === "number", {
     message: "규칙을 선택하거나 직접 점수를 입력해주세요.",

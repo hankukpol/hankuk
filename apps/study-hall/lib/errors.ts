@@ -145,8 +145,15 @@ export function getErrorMessage(error: unknown, fallbackMessage: string) {
     return error.issues[0]?.message ?? fallbackMessage;
   }
 
-  if (error instanceof Error && error.message.trim()) {
+  if (isAppError(error)) {
     return error.message;
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      return "이미 등록된 데이터입니다.";
+    }
+    return fallbackMessage;
   }
 
   return fallbackMessage;

@@ -101,6 +101,11 @@ export type RenewPaymentResult = {
   payment: PaymentItem | null;
 };
 
+type PaymentOperationResultPayload = {
+  studentId: string;
+  paymentIds: string[];
+};
+
 export type SettlementMethodSummary = {
   method: string;
   methodLabel: string;
@@ -141,6 +146,8 @@ const PAYMENT_SCHEMA_MISMATCH_PATTERNS = [
   "payment_group_id",
   "original_payment_id",
 ] as const;
+
+const PAYMENT_AMOUNT_LIMIT = 2_000_000_000;
 
 let paymentSchemaCompatibilityPromise: Promise<PaymentSchemaCompatibility> | null = null;
 
@@ -228,6 +235,10 @@ function normalizePaymentAmount(value: number) {
     throw badRequest("금액은 0원이 될 수 없습니다.");
   }
 
+  if (Math.abs(normalized) > PAYMENT_AMOUNT_LIMIT) {
+    throw badRequest("금액이 너무 큽니다.");
+  }
+
   return normalized;
 }
 
@@ -241,6 +252,10 @@ function normalizeTuitionAmount(value: number) {
 
   if (normalized < 0) {
     throw badRequest("수강료는 0원 이상이어야 합니다.");
+  }
+
+  if (normalized > PAYMENT_AMOUNT_LIMIT) {
+    throw badRequest("수강료가 너무 큽니다.");
   }
 
   return normalized;
@@ -623,6 +638,45 @@ async function findPaymentById(divisionSlug: string, paymentId: string) {
   return (await listPayments(divisionSlug)).find((item) => item.id === paymentId) ?? null;
 }
 
+function parsePaymentOperationResult(
+  value: Prisma.JsonValue | null,
+): PaymentOperationResultPayload | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const payload = value as Record<string, unknown>;
+  if (typeof payload.studentId !== "string" || !Array.isArray(payload.paymentIds)) {
+    return null;
+  }
+
+  const paymentIds = payload.paymentIds.filter((id): id is string => typeof id === "string");
+  if (paymentIds.length !== payload.paymentIds.length) {
+    return null;
+  }
+
+  return {
+    studentId: payload.studentId,
+    paymentIds,
+  };
+}
+
+async function buildRenewPaymentResultFromPayload(
+  divisionSlug: string,
+  payload: PaymentOperationResultPayload,
+): Promise<RenewPaymentResult> {
+  const student = await getStudentDetail(divisionSlug, payload.studentId);
+  const payments = (
+    await Promise.all(payload.paymentIds.map((paymentId) => findPaymentById(divisionSlug, paymentId)))
+  ).filter((payment): payment is PaymentItem => Boolean(payment));
+
+  return {
+    student,
+    payments,
+    payment: payments[0] ?? null,
+  };
+}
+
 export async function listPaymentCategories(
   divisionSlug: string,
   options?: {
@@ -892,6 +946,10 @@ export async function updatePayment(
         throw notFound("수납 기록을 찾을 수 없습니다.");
       }
 
+      if (target.amount < 0 || target.originalPaymentId) {
+        throw badRequest("환불 또는 재결제 연결 기록은 직접 수정할 수 없습니다.");
+      }
+
       if (!student) {
         throw notFound("학생 정보를 찾을 수 없습니다.");
       }
@@ -944,11 +1002,21 @@ export async function updatePayment(
     },
     select: {
       id: true,
+      studentId: true,
+      amount: true,
+      ...(paymentSchema.supportsGroupedPayments ? { originalPaymentId: true } : {}),
     },
   });
 
   if (!payment) {
     throw notFound("수납 기록을 찾을 수 없습니다.");
+  }
+
+  if (
+    payment.amount < 0 ||
+    ("originalPaymentId" in payment && payment.originalPaymentId)
+  ) {
+    throw badRequest("환불 또는 재결제 연결 기록은 직접 수정할 수 없습니다.");
   }
 
   const [student, category] = await Promise.all([
@@ -1255,7 +1323,7 @@ export async function refundPayment(
 
   if (input.mode === "simple") {
     const refundAmount = normalizePaymentAmount(input.amount * -1);
-    const [student, refundCategory, originalPayment] = await Promise.all([
+    const [student, refundCategory] = await Promise.all([
       prisma.student.findFirst({
         where: {
           id: input.studentId,
@@ -1275,21 +1343,6 @@ export async function refundPayment(
           id: true,
         },
       }),
-      input.originalPaymentId
-        ? prisma.payment.findFirst({
-            where: {
-              id: input.originalPaymentId,
-              studentId: input.studentId,
-              student: {
-                divisionId: division.id,
-              },
-            },
-            select: {
-              id: true,
-              amount: true,
-            },
-          })
-        : Promise.resolve(null),
     ]);
 
     if (!student) {
@@ -1302,46 +1355,64 @@ export async function refundPayment(
       throw notFound("환불 수납 유형을 찾을 수 없습니다.");
     }
 
-    const currentBalance = await getStudentPaymentBalance(prisma, student.id);
-    ensureNonNegativePaymentBalance(currentBalance + refundAmount);
-
-    if (input.originalPaymentId) {
-      if (!originalPayment) {
-        throw notFound("원결제를 찾을 수 없습니다.");
-      }
-
-      if (originalPayment.amount <= 0) {
-        throw badRequest("원결제 금액이 올바르지 않습니다.");
-      }
-
-      const refundedAmount = await getRefundedAmountForOriginalPayment(prisma, originalPayment.id);
-      const refundableAmount = originalPayment.amount - refundedAmount;
-
-      if (input.amount > refundableAmount) {
-        throw badRequest("환불 금액이 원결제의 남은 환불 가능액을 초과했습니다.");
-      }
-    }
-
     const refundGroupId = input.originalPaymentId ? createPaymentGroupId() : null;
 
-    const payment = await prisma.payment.create({
-      data: toPrismaPaymentCreateInput(
-        paymentSchema.supportsGroupedPayments,
-        actor,
-        student.id,
-        {
-          paymentTypeId: refundCategory.id,
-          amount: refundAmount,
-          paymentDate: input.paymentDate,
-          method: input.method,
-          notes: input.notes,
-        },
-        {
-          paymentGroupId: refundGroupId,
-          originalPaymentId: input.originalPaymentId ?? null,
-        },
-      ),
-      select: paymentSelectForWrite,
+    const payment = await prisma.$transaction(async (tx) => {
+      const currentBalance = await getStudentPaymentBalance(tx, student.id);
+      ensureNonNegativePaymentBalance(currentBalance + refundAmount);
+
+      if (input.originalPaymentId) {
+        const txOriginalPayment = await tx.payment.findFirst({
+          where: {
+            id: input.originalPaymentId,
+            studentId: input.studentId,
+            student: {
+              divisionId: division.id,
+            },
+          },
+          select: {
+            id: true,
+            amount: true,
+          },
+        });
+
+        if (!txOriginalPayment) {
+          throw notFound("원결제를 찾을 수 없습니다.");
+        }
+
+        if (txOriginalPayment.amount <= 0) {
+          throw badRequest("원결제 금액이 올바르지 않습니다.");
+        }
+
+        const refundedAmount = await getRefundedAmountForOriginalPayment(tx, txOriginalPayment.id);
+        const refundableAmount = txOriginalPayment.amount - refundedAmount;
+
+        if (input.amount > refundableAmount) {
+          throw badRequest("환불 금액이 원결제의 남은 환불 가능액을 초과했습니다.");
+        }
+      }
+
+      return tx.payment.create({
+        data: toPrismaPaymentCreateInput(
+          paymentSchema.supportsGroupedPayments,
+          actor,
+          student.id,
+          {
+            paymentTypeId: refundCategory.id,
+            amount: refundAmount,
+            paymentDate: input.paymentDate,
+            method: input.method,
+            notes: input.notes,
+          },
+          {
+            paymentGroupId: refundGroupId,
+            originalPaymentId: input.originalPaymentId ?? null,
+          },
+        ),
+        select: paymentSelectForWrite,
+      });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
     revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
@@ -1432,26 +1503,57 @@ export async function refundPayment(
     throw badRequest("재결제 금액은 원결제 금액보다 작아야 합니다.");
   }
 
-  const refundedAmount = await getRefundedAmountForOriginalPayment(prisma, originalPayment.id);
-  if (refundedAmount > 0) {
-    throw badRequest("이미 환불 이력이 있는 카드 결제는 전체취소를 다시 진행할 수 없습니다.");
-  }
-
-  const currentBalance = await getStudentPaymentBalance(prisma, student.id);
-  ensureNonNegativePaymentBalance(currentBalance - originalPayment.amount + rechargeAmount);
-
   const originalPaymentDate = toDateString(originalPayment.paymentDate);
   const refundGroupId = createPaymentGroupId();
   const result = await prisma.$transaction(async (tx) => {
+    const txOriginalPayment = await tx.payment.findFirst({
+      where: {
+        id: input.originalPaymentId,
+        studentId: input.studentId,
+        student: {
+          divisionId: division.id,
+        },
+      },
+      select: {
+        id: true,
+        amount: true,
+        method: true,
+      },
+    });
+
+    if (!txOriginalPayment) {
+      throw notFound("원결제를 찾을 수 없습니다.");
+    }
+
+    if (normalizePaymentMethodValue(txOriginalPayment.method) !== "card") {
+      throw badRequest("카드 전체취소는 카드 결제 건만 선택할 수 있습니다.");
+    }
+
+    if (txOriginalPayment.amount <= 0) {
+      throw badRequest("원결제 금액이 올바르지 않습니다.");
+    }
+
+    if (rechargeAmount >= txOriginalPayment.amount) {
+      throw badRequest("재결제 금액은 원결제 금액보다 작아야 합니다.");
+    }
+
+    const refundedAmount = await getRefundedAmountForOriginalPayment(tx, txOriginalPayment.id);
+    if (refundedAmount > 0) {
+      throw badRequest("이미 환불 이력이 있는 카드 결제는 전체취소를 다시 진행할 수 없습니다.");
+    }
+
+    const currentBalance = await getStudentPaymentBalance(tx, student.id);
+    ensureNonNegativePaymentBalance(currentBalance - txOriginalPayment.amount + rechargeAmount);
+
     const refundPaymentRecord = await tx.payment.create({
       data: {
         studentId: student.id,
         paymentTypeId: refundCategory.id,
-        amount: originalPayment.amount * -1,
+        amount: txOriginalPayment.amount * -1,
         paymentDate: parseDateString(input.paymentDate),
         method: "card",
         paymentGroupId: refundGroupId,
-        originalPaymentId: originalPayment.id,
+        originalPaymentId: txOriginalPayment.id,
         notes:
           normalizeOptionalText(input.refundNotes) ??
           `카드 전체취소 (원결제 ${originalPaymentDate})`,
@@ -1468,7 +1570,7 @@ export async function refundPayment(
         paymentDate: parseDateString(input.paymentDate),
         method: "card",
         paymentGroupId: refundGroupId,
-        originalPaymentId: originalPayment.id,
+        originalPaymentId: txOriginalPayment.id,
         notes: normalizeOptionalText(input.rechargeNotes) ?? "카드 재결제 (공제 후)",
         recordedById: actor.id,
       },
@@ -1479,6 +1581,8 @@ export async function refundPayment(
       refundPaymentRecord,
       rechargePaymentRecord,
     };
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   });
 
   revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
@@ -1782,73 +1886,114 @@ export async function renewAndPay(
   const paymentSelectForWrite = getPaymentSelect(paymentSchema.supportsGroupedPayments);
 
   const normalizedPaymentEntries = resolvePaymentEntries(input.payment, input.payments);
-  const [student, plan, categories] = await Promise.all([
-    prisma.student.findFirst({
+  const operationType = "RENEW_PAYMENT";
+  const idempotencyKey = input.idempotencyKey.trim();
+  const lockKey = `${division.id}:${input.studentId}:${operationType}:${idempotencyKey}`;
+
+  const resultPayload = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const existingOperation = await tx.paymentOperation.findUnique({
       where: {
-        id: input.studentId,
-        divisionId: division.id,
+        divisionId_studentId_operationType_idempotencyKey: {
+          divisionId: division.id,
+          studentId: input.studentId,
+          operationType,
+          idempotencyKey,
+        },
       },
       select: {
-        id: true,
-        status: true,
-        courseEndDate: true,
-        tuitionExempt: true,
+        result: true,
       },
-    }),
-    prisma.tuitionPlan.findFirst({
-      where: {
-        id: input.tuitionPlanId,
-        divisionId: division.id,
-      },
-      select: {
-        id: true,
-        amount: true,
-        durationDays: true,
-      },
-    }),
-    normalizedPaymentEntries.length > 0
-      ? prisma.paymentCategory.findMany({
-          where: {
-            divisionId: division.id,
-            id: {
-              in: Array.from(new Set(normalizedPaymentEntries.map((payment) => payment.paymentTypeId))),
+    });
+    const existingResult = parsePaymentOperationResult(existingOperation?.result ?? null);
+
+    if (existingResult) {
+      return existingResult;
+    }
+
+    if (existingOperation) {
+      throw conflict("같은 갱신 요청이 아직 처리 중입니다. 잠시 후 다시 시도해 주세요.");
+    }
+
+    const [student, plan, categories] = await Promise.all([
+      tx.student.findFirst({
+        where: {
+          id: input.studentId,
+          divisionId: division.id,
+        },
+        select: {
+          id: true,
+          status: true,
+          courseEndDate: true,
+          tuitionExempt: true,
+        },
+      }),
+      tx.tuitionPlan.findFirst({
+        where: {
+          id: input.tuitionPlanId,
+          divisionId: division.id,
+        },
+        select: {
+          id: true,
+          amount: true,
+          durationDays: true,
+        },
+      }),
+      normalizedPaymentEntries.length > 0
+        ? tx.paymentCategory.findMany({
+            where: {
+              divisionId: division.id,
+              id: {
+                in: Array.from(new Set(normalizedPaymentEntries.map((payment) => payment.paymentTypeId))),
+              },
             },
-          },
-          select: {
-            id: true,
-          },
-        })
-      : Promise.resolve([]),
-  ]);
+            select: {
+              id: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
 
-  if (!student) {
-    throw notFound("학생 정보를 찾을 수 없습니다.");
-  }
+    if (!student) {
+      throw notFound("학생 정보를 찾을 수 없습니다.");
+    }
 
-  ensureStudentStatusForPayment(student.status);
-  const paymentEntries = student.tuitionExempt
-    ? []
-    : ensurePaymentEntries(
-        normalizedPaymentEntries,
-        "면제 학생이 아니면 수납 정보를 입력해 주세요.",
-      );
+    ensureStudentStatusForPayment(student.status);
+    const paymentEntries = student.tuitionExempt
+      ? []
+      : ensurePaymentEntries(
+          normalizedPaymentEntries,
+          "면제 학생이 아니면 수납 정보를 입력해 주세요.",
+        );
 
-  if (!plan) {
-    throw notFound("수강 플랜을 찾을 수 없습니다.");
-  }
+    if (!plan) {
+      throw notFound("수강 플랜을 찾을 수 없습니다.");
+    }
 
-  if (categories.length !== new Set(paymentEntries.map((payment) => payment.paymentTypeId)).size) {
-    throw notFound("수납 유형을 찾을 수 없습니다.");
-  }
+    if (categories.length !== new Set(paymentEntries.map((payment) => payment.paymentTypeId)).size) {
+      throw notFound("수납 유형을 찾을 수 없습니다.");
+    }
 
-  const currentCourseEndDate = student.courseEndDate ? toDateString(student.courseEndDate) : null;
-  const nextCourseEndDate = resolveRenewedCourseEndDate(currentCourseEndDate, plan.durationDays);
-  const tuitionAmount =
-    typeof input.tuitionAmount === "number" && Number.isFinite(input.tuitionAmount)
-      ? normalizeTuitionAmount(input.tuitionAmount)
-      : plan.amount;
+    const operation = await tx.paymentOperation.create({
+      data: {
+        divisionId: division.id,
+        studentId: student.id,
+        operationType,
+        idempotencyKey,
+      },
+      select: {
+        id: true,
+      },
+    });
 
-  const result = await prisma.$transaction(async (tx) => {
+    const currentCourseEndDate = student.courseEndDate ? toDateString(student.courseEndDate) : null;
+    const nextCourseEndDate = resolveRenewedCourseEndDate(currentCourseEndDate, plan.durationDays);
+    const tuitionAmount =
+      typeof input.tuitionAmount === "number" && Number.isFinite(input.tuitionAmount)
+        ? normalizeTuitionAmount(input.tuitionAmount)
+        : plan.amount;
+
     await tx.student.update({
       where: {
         id: student.id,
@@ -1871,19 +2016,27 @@ export async function renewAndPay(
         }),
       ),
     );
-
-    return {
+    const payload = {
       studentId: student.id,
-      payments: payments.map((payment) => serializePayment(payment)),
-    };
+      paymentIds: payments.map((payment) => payment.id),
+    } satisfies PaymentOperationResultPayload;
+
+    await tx.paymentOperation.update({
+      where: {
+        id: operation.id,
+      },
+      data: {
+        result: payload,
+      },
+    });
+
+    return payload;
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   });
 
-  revalidateDivisionOperationalViews(divisionSlug, { studentId: result.studentId });
-  return {
-    student: await getStudentDetail(divisionSlug, result.studentId),
-    payments: result.payments,
-    payment: result.payments[0] ?? null,
-  };
+  revalidateDivisionOperationalViews(divisionSlug, { studentId: resultPayload.studentId });
+  return buildRenewPaymentResultFromPayload(divisionSlug, resultPayload);
 }
 
 export async function getSettlementSummary(

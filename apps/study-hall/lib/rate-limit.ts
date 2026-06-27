@@ -58,17 +58,28 @@ function pruneExpiredEntry(key: string, now: number, windowMs: number) {
 }
 
 export function getRequestIp(headers: Headers) {
-  const forwarded = headers.get("x-forwarded-for");
+  const trustedHeaders = [
+    "x-vercel-forwarded-for",
+    "x-real-ip",
+    "cf-connecting-ip",
+    "fastly-client-ip",
+  ];
 
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-
-    if (first) {
-      return first;
+  for (const header of trustedHeaders) {
+    const value = headers.get(header)?.split(",")[0]?.trim();
+    if (value) {
+      return value;
     }
   }
 
-  return headers.get("x-real-ip")?.trim() || "unknown";
+  if (process.env.TRUST_X_FORWARDED_FOR === "true") {
+    const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (forwarded) {
+      return forwarded;
+    }
+  }
+
+  return "unknown";
 }
 
 export function assertRateLimit(ip: string, options?: RateLimitOptions) {

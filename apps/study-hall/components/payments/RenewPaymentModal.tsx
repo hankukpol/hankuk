@@ -37,6 +37,12 @@ type FormState = {
   payments: PaymentEntryFormValue[];
 };
 
+function createIdempotencyKey() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `renew-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function createInitialState(
   paymentCategories: PaymentCategoryItem[],
   tuitionPlans: TuitionPlanItem[],
@@ -104,6 +110,7 @@ export function RenewPaymentModal({
     description: string;
     notice?: string;
   } | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => createIdempotencyKey());
 
   useEffect(() => {
     if (!open) {
@@ -113,6 +120,7 @@ export function RenewPaymentModal({
     setForm(createInitialState(paymentCategories, tuitionPlans, initialStudentId));
     setIsSubmitting(false);
     setSaveSuccessModal(null);
+    setIdempotencyKey(createIdempotencyKey());
   }, [initialStudentId, open, paymentCategories, tuitionPlans]);
 
   const activeStudents = useMemo(
@@ -148,6 +156,7 @@ export function RenewPaymentModal({
           tuitionPlanId: form.tuitionPlanId,
           tuitionAmount: form.tuitionAmount ? Number(form.tuitionAmount) : null,
           payments: selectedStudent?.tuitionExempt ? undefined : toPaymentPayload(form.payments),
+          idempotencyKey,
         }),
       });
       const data = await response.json();
@@ -169,6 +178,7 @@ export function RenewPaymentModal({
           : "연장 수납과 수강 기간 갱신이 저장되었습니다.",
         notice: "변경된 수강 기간과 수납 내역은 학생 정보와 수납 현황에 바로 반영됩니다.",
       });
+      setIdempotencyKey(createIdempotencyKey());
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "연장 처리에 실패했습니다.");

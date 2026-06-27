@@ -25,10 +25,14 @@ export async function GET(
     return NextResponse.json({ error: featureDisabledError }, { status: 403 });
   }
 
-  const students = await listStudents(params.division);
-  return NextResponse.json({ students }, {
-    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" },
-  });
+  try {
+    const students = await listStudents(params.division);
+    return NextResponse.json({ students }, {
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" },
+    });
+  } catch (error) {
+    return toApiErrorResponse(error, "학생 목록을 불러오지 못했습니다.");
+  }
 }
 
 export async function POST(

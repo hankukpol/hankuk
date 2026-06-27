@@ -3,10 +3,15 @@
 import dynamic from "next/dynamic";
 
 import { LayoutGrid, Phone, RefreshCcw, Save, Search, Table2, X } from "lucide-react";
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { PhoneCheckTable } from "@/components/phones/PhoneCheckTable";
+import type { PhoneSaveState } from "@/components/phones/PhoneCheckTable";
+import {
+  PHONE_CHECK_STATUS_OPTIONS,
+  PhoneStatusCheckButton,
+} from "@/components/phones/PhoneStatusCheckButton";
 import { Modal } from "@/components/ui/Modal";
 import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
@@ -49,6 +54,34 @@ type BulkRentalDraft = {
   overwriteExisting: boolean;
   selectedStudentIds: Set<string>;
 };
+
+type CellSaveState = {
+  status: PhoneSaveState;
+};
+
+type StudentFilterMode = "all" | "unchecked";
+
+function getPhoneCellKey(periodId: string, studentId: string) {
+  return `${periodId}:${studentId}`;
+}
+
+function comparePhoneStudents(
+  left: PhoneDaySnapshot["students"][number],
+  right: PhoneDaySnapshot["students"][number],
+) {
+  const leftSeat = left.seatLabel ?? "";
+  const rightSeat = right.seatLabel ?? "";
+  const roomCompare = (left.studyRoomName ?? "").localeCompare(right.studyRoomName ?? "", "ko");
+  if (roomCompare !== 0) return roomCompare;
+
+  const seatCompare = leftSeat.localeCompare(rightSeat, "ko", { numeric: true });
+  if (seatCompare !== 0) return seatCompare;
+
+  return (
+    left.name.localeCompare(right.name, "ko") ||
+    left.studentNumber.localeCompare(right.studentNumber, "ko")
+  );
+}
 
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -203,15 +236,43 @@ export function PhoneCheckForm({
   );
   const [viewMode, setViewMode] = useState<"seat" | "table">("table");
   const [searchQuery, setSearchQuery] = useState("");
+  const [studentFilterMode, setStudentFilterMode] = useState<StudentFilterMode>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
+  const [dirtyCellKeys, setDirtyCellKeys] = useState<Set<string>>(() => new Set());
+  const [cellSaveStates, setCellSaveStates] = useState<Record<string, CellSaveState>>({});
   const [bulkRentalDraft, setBulkRentalDraft] = useState<BulkRentalDraft | null>(null);
   const [isSavingBulkRental, setIsSavingBulkRental] = useState(false);
+  const dirtyCellKeysRef = useRef(dirtyCellKeys);
+  const saveSequenceRef = useRef<Record<string, number>>({});
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const isDirty = dirtyCellKeys.size > 0;
 
-  const markDirty = useCallback(() => {
-    setIsDirty(true);
+  useEffect(() => {
+    dirtyCellKeysRef.current = dirtyCellKeys;
+  }, [dirtyCellKeys]);
+
+  const markDirty = useCallback((periodId: string, studentId: string) => {
+    const key = getPhoneCellKey(periodId, studentId);
+    setDirtyCellKeys((current) => {
+      const next = new Set(current);
+      next.add(key);
+      dirtyCellKeysRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const clearDirtyKeys = useCallback((keys: string[]) => {
+    if (keys.length === 0) return;
+
+    setDirtyCellKeys((current) => {
+      const next = new Set(current);
+      for (const key of keys) {
+        next.delete(key);
+      }
+      dirtyCellKeysRef.current = next;
+      return next;
+    });
   }, []);
 
   const periods = snapshot.periods;
@@ -259,7 +320,9 @@ export function PhoneCheckForm({
       const { snapshot: newSnapshot } = (await res.json()) as { snapshot: PhoneDaySnapshot };
       setSnapshot(newSnapshot);
       setPeriodsState(buildInitialState(newSnapshot));
-      setIsDirty(false);
+      dirtyCellKeysRef.current = new Set();
+      setDirtyCellKeys(new Set());
+      setCellSaveStates({});
       const retainedPeriodId = newSnapshot.periods.find(
         (period) => period.periodId === activePeriodId,
       )?.periodId;
@@ -279,22 +342,165 @@ export function PhoneCheckForm({
     void loadSnapshot(newDate);
   }
 
+  async function savePhoneRecords(
+    periodId: string,
+    records: Array<{ studentId: string; status: LocalStatus; rentalNote?: string }>,
+    dirtyKeysToClear: string[],
+    options: { successToast?: string; periodSaving?: boolean } = {},
+  ) {
+    if (records.length === 0) {
+      toast.error("저장할 학생이 없습니다.");
+      return;
+    }
+
+    const sequences = dirtyKeysToClear.map((key) => {
+      const nextSequence = (saveSequenceRef.current[key] ?? 0) + 1;
+      saveSequenceRef.current[key] = nextSequence;
+      return [key, nextSequence] as const;
+    });
+
+    setCellSaveStates((current) => {
+      const next = { ...current };
+      for (const key of dirtyKeysToClear) {
+        next[key] = { status: "saving" };
+      }
+      return next;
+    });
+
+    if (options.periodSaving) {
+      setSavingPeriodId(periodId);
+    }
+
+    try {
+      const res = await fetch(`/api/${divisionSlug}/phone-submissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, periodId, records }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "저장에 실패했습니다.");
+      }
+
+      const isStale = sequences.some(
+        ([key, sequence]) => saveSequenceRef.current[key] !== sequence,
+      );
+      const { snapshot: newSnapshot } = (await res.json()) as { snapshot: PhoneDaySnapshot };
+
+      if (!isStale) {
+        const savedKeySet = new Set(dirtyKeysToClear);
+        setSnapshot(newSnapshot);
+        setPeriodsState((prev) => {
+          const updated = { ...prev };
+          const savedPeriod = newSnapshot.periods.find((p) => p.periodId === periodId);
+          if (savedPeriod) {
+            const recordByStudentId = new Map(
+              savedPeriod.records.map((record) => [record.studentId, record]),
+            );
+            const attendanceByStudentId = new Map(
+              savedPeriod.attendance.map((cell) => [cell.studentId, cell]),
+            );
+            const newPeriodState: LocalPeriodState = {};
+            for (const student of newSnapshot.students) {
+              const key = getPhoneCellKey(periodId, student.id);
+              if (dirtyCellKeysRef.current.has(key) && !savedKeySet.has(key)) {
+                newPeriodState[student.id] = prev[periodId]?.[student.id] ?? {
+                  status: null,
+                  rentalNote: "",
+                };
+                continue;
+              }
+
+              const record = recordByStudentId.get(student.id);
+              const attendanceCell = attendanceByStudentId.get(student.id);
+              const isCheckable =
+                !newSnapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
+              newPeriodState[student.id] = {
+                status: isCheckable && record ? record.status : null,
+                rentalNote: isCheckable ? record?.rentalNote ?? "" : "",
+              };
+            }
+            updated[periodId] = newPeriodState;
+          }
+          return updated;
+        });
+        clearDirtyKeys(dirtyKeysToClear);
+      }
+
+      setCellSaveStates((current) => {
+        const next = { ...current };
+        for (const key of dirtyKeysToClear) {
+          if (!isStale) {
+            next[key] = { status: "saved" };
+          }
+        }
+        return next;
+      });
+
+      if (options.successToast && !isStale) {
+        toast.success(options.successToast);
+      }
+    } catch (error) {
+      const failedKeys = sequences
+        .filter(([key, sequence]) => saveSequenceRef.current[key] === sequence)
+        .map(([key]) => key);
+
+      if (failedKeys.length > 0) {
+        setDirtyCellKeys((current) => {
+          const next = new Set(current);
+          for (const key of failedKeys) {
+            next.add(key);
+          }
+          dirtyCellKeysRef.current = next;
+          return next;
+        });
+      }
+
+      setCellSaveStates((current) => {
+        const next = { ...current };
+        for (const key of failedKeys) {
+          next[key] = { status: "error" };
+        }
+        return next;
+      });
+      toast.error(error instanceof Error ? error.message : "저장에 실패했습니다.");
+    } finally {
+      if (options.periodSaving) {
+        setSavingPeriodId(null);
+      }
+    }
+  }
+
   function setStudentStatus(periodId: string, studentId: string, status: LocalStatus) {
     if (!isStudentCheckableForPeriod(periodId, studentId)) {
       return;
     }
 
-    markDirty();
+    const previousEntry = periodsState[periodId]?.[studentId] ?? {
+      status: null,
+      rentalNote: "",
+    };
+    const nextEntry = {
+      status,
+      rentalNote: status !== "RENTED" ? "" : previousEntry.rentalNote,
+    };
+    const key = getPhoneCellKey(periodId, studentId);
+
     setPeriodsState((prev) => ({
       ...prev,
       [periodId]: {
         ...prev[periodId],
-        [studentId]: {
-          status,
-          rentalNote: status !== "RENTED" ? "" : (prev[periodId]?.[studentId]?.rentalNote ?? ""),
-        },
+        [studentId]: nextEntry,
       },
     }));
+
+    clearDirtyKeys([key]);
+    void savePhoneRecords(
+      periodId,
+      [{ studentId, status: nextEntry.status, rentalNote: nextEntry.rentalNote || undefined }],
+      [key],
+    );
   }
 
   function setRentalNote(periodId: string, studentId: string, note: string) {
@@ -302,7 +508,7 @@ export function PhoneCheckForm({
       return;
     }
 
-    markDirty();
+    markDirty(periodId, studentId);
     setPeriodsState((prev) => ({
       ...prev,
       [periodId]: {
@@ -312,25 +518,64 @@ export function PhoneCheckForm({
     }));
   }
 
+  function commitRentalNote(periodId: string, studentId: string) {
+    const key = getPhoneCellKey(periodId, studentId);
+    if (!dirtyCellKeysRef.current.has(key)) {
+      return;
+    }
+
+    const value = periodsState[periodId]?.[studentId] ?? { status: null, rentalNote: "" };
+    void savePhoneRecords(
+      periodId,
+      [{ studentId, status: value.status, rentalNote: value.rentalNote || undefined }],
+      [key],
+    );
+  }
+
   function setAllForPeriod(
     periodId: string,
     status: PhoneCheckStatus,
     targetStudents: PhoneDaySnapshot["students"] = students,
   ) {
-    markDirty();
+    const targets = targetStudents
+      .filter((student) => isStudentCheckableForPeriod(periodId, student.id))
+      .map((student) => {
+        const rentalNote =
+          status === "RENTED" ? (periodsState[periodId]?.[student.id]?.rentalNote ?? "") : "";
+        return {
+          student,
+          record: {
+            studentId: student.id,
+            status,
+            rentalNote: rentalNote || undefined,
+          },
+          nextEntry: {
+            status,
+            rentalNote,
+          },
+          key: getPhoneCellKey(periodId, student.id),
+        };
+      });
+
     setPeriodsState((prev) => {
       const next: LocalPeriodState = { ...(prev[periodId] ?? {}) };
-      for (const student of targetStudents) {
-        if (!isStudentCheckableForPeriod(periodId, student.id)) {
-          continue;
-        }
-
-        next[student.id] = {
-          status,
-          rentalNote: status === "RENTED" ? (prev[periodId]?.[student.id]?.rentalNote ?? "") : "",
-        };
+      for (const target of targets) {
+        next[target.student.id] = target.nextEntry;
       }
       return { ...prev, [periodId]: next };
+    });
+
+    if (targets.length === 0) {
+      toast.error("저장할 학생이 없습니다.");
+      return;
+    }
+
+    const records = targets.map((target) => target.record);
+    const keys = targets.map((target) => target.key);
+    clearDirtyKeys(keys);
+    void savePhoneRecords(periodId, records, keys, {
+      successToast: status === "SUBMITTED" ? "전원 반납 저장됨" : "전원 미반납 저장됨",
+      periodSaving: true,
     });
   }
 
@@ -358,52 +603,12 @@ export function PhoneCheckForm({
       return;
     }
 
-    setSavingPeriodId(periodId);
-    try {
-      const res = await fetch(`/api/${divisionSlug}/phone-submissions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, periodId, records }),
-      });
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error ?? "저장에 실패했습니다.");
-        return;
-      }
-
-      const { snapshot: newSnapshot } = (await res.json()) as { snapshot: PhoneDaySnapshot };
-      setSnapshot(newSnapshot);
-      setPeriodsState((prev) => {
-        const updated = { ...prev };
-        const savedPeriod = newSnapshot.periods.find((p) => p.periodId === periodId);
-        if (savedPeriod) {
-          const recordByStudentId = new Map(
-            savedPeriod.records.map((record) => [record.studentId, record]),
-          );
-          const attendanceByStudentId = new Map(
-            savedPeriod.attendance.map((cell) => [cell.studentId, cell]),
-          );
-          const newPeriodState: LocalPeriodState = {};
-          for (const student of newSnapshot.students) {
-            const record = recordByStudentId.get(student.id);
-            const attendanceCell = attendanceByStudentId.get(student.id);
-            const isCheckable =
-              !newSnapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
-            newPeriodState[student.id] = {
-              status: isCheckable && record ? record.status : null,
-              rentalNote: isCheckable ? record?.rentalNote ?? "" : "",
-            };
-          }
-          updated[periodId] = newPeriodState;
-        }
-        return updated;
-      });
-      setIsDirty(false);
-      toast.success("저장되었습니다.");
-    } finally {
-      setSavingPeriodId(null);
-    }
+    void savePhoneRecords(
+      periodId,
+      records,
+      records.map((record) => getPhoneCellKey(periodId, record.studentId)),
+      { successToast: "저장되었습니다.", periodSaving: true },
+    );
   }
 
   function getCheckablePeriodCountForStudent(
@@ -479,7 +684,7 @@ export function PhoneCheckForm({
       return {
         ...current,
         selectedStudentIds: new Set(
-          filteredStudents
+          visibleStudents
             .filter(
               (student) =>
                 getCheckablePeriodCountForStudent(student.id, targetPeriods) > 0,
@@ -544,7 +749,9 @@ export function PhoneCheckForm({
       };
       setSnapshot(data.snapshot);
       setPeriodsState(buildInitialState(data.snapshot));
-      setIsDirty(false);
+      dirtyCellKeysRef.current = new Set();
+      setDirtyCellKeys(new Set());
+      setCellSaveStates({});
       setBulkRentalDraft(null);
       toast.success(
         `일괄 대여 적용: 신규 ${data.result.appliedCount}건, 갱신 ${data.result.updatedExistingCount}건`,
@@ -597,6 +804,46 @@ export function PhoneCheckForm({
       attendanceBlockedCount: activePeriod?.attendanceBlockedCount ?? 0,
     };
   }, [activePeriod, activePeriodId, activePeriodState, isStudentCheckableForPeriod, students]);
+
+  const visibleStudents = useMemo(
+    () =>
+      filteredStudents
+        .filter((student) => {
+          if (studentFilterMode !== "unchecked") {
+            return true;
+          }
+
+          return (
+            isStudentCheckableForPeriod(activePeriodId, student.id) &&
+            (activePeriodState[student.id]?.status ?? null) === null
+          );
+        })
+        .sort((left, right) => {
+          const rankFor = (student: PhoneDaySnapshot["students"][number]) => {
+            if (!isStudentCheckableForPeriod(activePeriodId, student.id)) return 5;
+            const status = activePeriodState[student.id]?.status ?? null;
+            if (status === null) return 0;
+            if (status === "NOT_SUBMITTED") return 1;
+            if (status === "RENTED") return 2;
+            if (status === "SUBMITTED") return 3;
+            return 4;
+          };
+
+          return rankFor(left) - rankFor(right) || comparePhoneStudents(left, right);
+        }),
+    [activePeriodId, activePeriodState, filteredStudents, isStudentCheckableForPeriod, studentFilterMode],
+  );
+
+  const activeSaveStateByStudentId = useMemo(
+    () =>
+      Object.fromEntries(
+        students.map((student) => [
+          student.id,
+          cellSaveStates[getPhoneCellKey(activePeriodId, student.id)]?.status,
+        ]),
+      ) as Record<string, PhoneSaveState | undefined>,
+    [activePeriodId, cellSaveStates, students],
+  );
 
   const bulkRentalTargetPeriods = bulkRentalDraft
     ? getPeriodRange(periods, bulkRentalDraft.startPeriodId, bulkRentalDraft.endPeriodId)
@@ -683,8 +930,29 @@ export function PhoneCheckForm({
           ) : null}
         </label>
 
-        <div className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-          {filteredStudents.length}명 표시 / 전체 {students.length}명
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-[8px] border border-slate-200 bg-slate-50 p-1">
+            {[
+              { value: "all" as const, label: "전체" },
+              { value: "unchecked" as const, label: "미체크만" },
+            ].map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => setStudentFilterMode(filter.value)}
+                className={`rounded-[7px] px-3 py-1.5 text-xs font-semibold transition ${
+                  studentFilterMode === filter.value
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {visibleStudents.length}명 표시 / 검색 {filteredStudents.length}명 / 전체 {students.length}명
+          </div>
         </div>
       </div>
 
@@ -768,17 +1036,17 @@ export function PhoneCheckForm({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", filteredStudents)}
+                  onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", visibleStudents)}
                   className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
-                  전원 반납
+                  표시 학생 반납
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED", filteredStudents)}
+                  onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED", visibleStudents)}
                   className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
-                  전원 미반납
+                  표시 학생 미반납
                 </button>
                 <button
                   type="button"
@@ -800,22 +1068,28 @@ export function PhoneCheckForm({
               </div>
 
               {/* 학생 목록 */}
-              {filteredStudents.length === 0 ? (
+              {visibleStudents.length === 0 ? (
                 <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
-                  {hasSearchQuery ? "검색 조건에 맞는 학생이 없습니다." : "재원 학생이 없습니다."}
+                  {studentFilterMode === "unchecked"
+                    ? "미체크 학생이 없습니다."
+                    : hasSearchQuery
+                      ? "검색 조건에 맞는 학생이 없습니다."
+                      : "재원 학생이 없습니다."}
                 </div>
               ) : viewMode === "table" ? (
                 <PhoneCheckTable
-                  students={filteredStudents}
+                  students={visibleStudents}
                   periodState={activePeriodState}
                   attendanceByStudentId={activeAttendanceByStudentId}
                   attendanceIntegrationEnabled={snapshot.attendanceIntegrationEnabled}
+                  saveStateByStudentId={activeSaveStateByStudentId}
                   onStatusChange={(studentId, status) =>
                     setStudentStatus(activePeriodId, studentId, status)
                   }
                   onRentalNoteChange={(studentId, note) =>
                     setRentalNote(activePeriodId, studentId, note)
                   }
+                  onRentalNoteCommit={(studentId) => commitRentalNote(activePeriodId, studentId)}
                   onOpenBulkRental={(studentId) => openBulkRentalModal(studentId)}
                 />
               ) : seatRooms && seatRooms.length > 0 && initialSeatLayout ? (
@@ -829,27 +1103,30 @@ export function PhoneCheckForm({
                     divisionSlug={divisionSlug}
                     rooms={seatRooms}
                     initialSeatLayout={initialSeatLayout}
-                    students={filteredStudents}
+                    students={visibleStudents}
                     periodState={activePeriodState}
                     attendanceByStudentId={activeAttendanceByStudentId}
                     attendanceIntegrationEnabled={snapshot.attendanceIntegrationEnabled}
+                    saveStateByStudentId={activeSaveStateByStudentId}
                     onStatusChange={(studentId, status) =>
                       setStudentStatus(activePeriodId, studentId, status)
                     }
                     onRentalNoteChange={(studentId, note) =>
                       setRentalNote(activePeriodId, studentId, note)
                     }
+                    onRentalNoteCommit={(studentId) => commitRentalNote(activePeriodId, studentId)}
                     onOpenBulkRental={(studentId) => openBulkRentalModal(studentId)}
                   />
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredStudents.map((student) => {
+                  {visibleStudents.map((student) => {
                     const entry = activePeriodState[student.id] ?? { status: null, rentalNote: "" };
                     const attendanceCell = activeAttendanceByStudentId.get(student.id);
                     const isCheckable =
                       !snapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
                     const { status, rentalNote } = entry;
+                    const saveState = activeSaveStateByStudentId[student.id];
 
                     const cardBg =
                       !isCheckable
@@ -890,28 +1167,37 @@ export function PhoneCheckForm({
                                 ? getAttendanceStatusLabel(attendanceCell?.status)
                                 : "출결 연동 없음"}
                             </span>
+                            {saveState ? (
+                              <span
+                                className={`ml-1 mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  saveState === "saving"
+                                    ? "bg-amber-50 text-amber-700"
+                                    : saveState === "saved"
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : "bg-red-50 text-red-700"
+                                }`}
+                              >
+                                {saveState === "saving"
+                                  ? "저장 중"
+                                  : saveState === "saved"
+                                    ? "저장됨"
+                                    : "저장 실패"}
+                              </span>
+                            ) : null}
                           </div>
-                          <div className="flex shrink-0 gap-1">
+                          <div className="flex shrink-0 flex-wrap justify-end gap-1">
                             {isCheckable ? (
-                              ([
-                                { s: "SUBMITTED" as const, label: "반납", active: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20" },
-                                { s: "NOT_SUBMITTED" as const, label: "미반납", active: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20" },
-                                { s: "RENTED" as const, label: "대여", active: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-700/20" },
-                              ]).map(({ s, label, active }) => (
-                                <button
+                              PHONE_CHECK_STATUS_OPTIONS.map((s) => (
+                                <PhoneStatusCheckButton
                                   key={s}
-                                  type="button"
+                                  status={s}
+                                  selected={status === s}
+                                  disabled={saveState === "saving"}
                                   onClick={() =>
                                     setStudentStatus(activePeriodId, student.id, status === s ? null : s)
                                   }
-                                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                                    status === s
-                                      ? active
-                                      : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                                  }`}
-                                >
-                                  {label}
-                                </button>
+                                  className="min-w-[74px]"
+                                />
                               ))
                             ) : (
                               <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
@@ -928,6 +1214,7 @@ export function PhoneCheckForm({
                               onChange={(e) =>
                                 setRentalNote(activePeriodId, student.id, e.target.value)
                               }
+                              onBlur={() => commitRentalNote(activePeriodId, student.id)}
                               placeholder="대여 사유 (예: 인강 수강)"
                               maxLength={200}
                               className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2 text-xs outline-none transition focus:border-slate-400 placeholder:text-slate-400"
@@ -1044,7 +1331,7 @@ export function PhoneCheckForm({
               </div>
 
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-[10px] border border-slate-200 p-2">
-                {filteredStudents.map((student) => {
+                {visibleStudents.map((student) => {
                   const attendanceCell = activeAttendanceByStudentId.get(student.id);
                   const checkablePeriodCount = getCheckablePeriodCountForStudent(
                     student.id,

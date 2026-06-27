@@ -57,6 +57,12 @@ type PointOverviewResponse = PointRecordsResponse & {
   students?: StudentListItem[];
 };
 
+function createPointBatchIdempotencyKey() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `point-batch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
 }
@@ -110,6 +116,9 @@ export const PointGrantManager = memo(function PointGrantManager({
   const [batchDate, setBatchDate] = useState(getKstTodayYmd());
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBatchSaving, setIsBatchSaving] = useState(false);
+  const [batchIdempotencyKey, setBatchIdempotencyKey] = useState(() =>
+    createPointBatchIdempotencyKey(),
+  );
 
   const selectedSingleRule = activeRules.find((rule) => rule.id === singleRuleId) ?? null;
   const selectedBatchRule = activeRules.find((rule) => rule.id === batchRuleId) ?? null;
@@ -369,6 +378,7 @@ export const PointGrantManager = memo(function PointGrantManager({
           points: batchRuleId ? null : Number(batchManualPoints),
           notes: batchNotes || null,
           date: batchDate,
+          idempotencyKey: batchIdempotencyKey,
         }),
       });
       const data = await response.json();
@@ -383,6 +393,7 @@ export const PointGrantManager = memo(function PointGrantManager({
       setSelectedStudentIds([]);
       setBatchNotes("");
       setBatchManualPoints("");
+      setBatchIdempotencyKey(createPointBatchIdempotencyKey());
       setPanelMode(null);
       const refreshed = await refreshData();
       if (refreshed && historyStudent && selectedStudentIds.includes(historyStudent.id)) {

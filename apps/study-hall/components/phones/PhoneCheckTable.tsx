@@ -2,6 +2,10 @@
 
 import { useMemo } from "react";
 
+import {
+  PHONE_CHECK_STATUS_OPTIONS,
+  PhoneStatusCheckButton,
+} from "@/components/phones/PhoneStatusCheckButton";
 import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import { getStudyTrackShortLabel } from "@/lib/study-track-meta";
 import type {
@@ -19,38 +23,19 @@ type LocalPeriodState = Record<
     rentalNote: string;
   }
 >;
+export type PhoneSaveState = "saving" | "saved" | "error";
 
 type PhoneCheckTableProps = {
   students: StudentItem[];
   periodState: LocalPeriodState;
   attendanceByStudentId: Map<string, PhoneAttendanceCell>;
   attendanceIntegrationEnabled: boolean;
+  saveStateByStudentId?: Record<string, PhoneSaveState | undefined>;
   onStatusChange: (studentId: string, status: LocalStatus) => void;
   onRentalNoteChange: (studentId: string, note: string) => void;
+  onRentalNoteCommit?: (studentId: string) => void;
   onOpenBulkRental: (studentId: string) => void;
 };
-
-const STATUS_BUTTONS: Array<{
-  status: PhoneCheckStatus;
-  label: string;
-  activeClassName: string;
-}> = [
-  {
-    status: "SUBMITTED",
-    label: "반납",
-    activeClassName: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20",
-  },
-  {
-    status: "NOT_SUBMITTED",
-    label: "미반납",
-    activeClassName: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20",
-  },
-  {
-    status: "RENTED",
-    label: "대여",
-    activeClassName: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-700/20",
-  },
-];
 
 function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enabled: boolean) {
   if (!enabled) return "border-slate-200 bg-slate-50 text-slate-500";
@@ -72,39 +57,59 @@ function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enab
   }
 }
 
-function sortStudentsBySeat(students: StudentItem[]) {
-  return [...students].sort((left, right) => {
-    const hasLeftSeat = left.seatLabel != null;
-    const hasRightSeat = right.seatLabel != null;
+function compareStudentsBySeat(left: StudentItem, right: StudentItem) {
+  const hasLeftSeat = left.seatLabel != null;
+  const hasRightSeat = right.seatLabel != null;
 
-    if (hasLeftSeat !== hasRightSeat) {
-      return hasLeftSeat ? -1 : 1;
-    }
+  if (hasLeftSeat !== hasRightSeat) {
+    return hasLeftSeat ? -1 : 1;
+  }
 
-    if (!hasLeftSeat && !hasRightSeat) {
-      return (
-        left.name.localeCompare(right.name, "ko") ||
-        left.studentNumber.localeCompare(right.studentNumber, "ko")
-      );
-    }
-
-    const roomCompare = (left.studyRoomName ?? "").localeCompare(right.studyRoomName ?? "", "ko");
-    if (roomCompare !== 0) {
-      return roomCompare;
-    }
-
-    const seatCompare = (left.seatLabel ?? "").localeCompare(right.seatLabel ?? "", "ko", {
-      numeric: true,
-    });
-    if (seatCompare !== 0) {
-      return seatCompare;
-    }
-
+  if (!hasLeftSeat && !hasRightSeat) {
     return (
       left.name.localeCompare(right.name, "ko") ||
       left.studentNumber.localeCompare(right.studentNumber, "ko")
     );
+  }
+
+  const roomCompare = (left.studyRoomName ?? "").localeCompare(right.studyRoomName ?? "", "ko");
+  if (roomCompare !== 0) {
+    return roomCompare;
+  }
+
+  const seatCompare = (left.seatLabel ?? "").localeCompare(right.seatLabel ?? "", "ko", {
+    numeric: true,
   });
+  if (seatCompare !== 0) {
+    return seatCompare;
+  }
+
+  return (
+    left.name.localeCompare(right.name, "ko") ||
+    left.studentNumber.localeCompare(right.studentNumber, "ko")
+  );
+}
+
+function getWorkflowRank(
+  student: StudentItem,
+  periodState: LocalPeriodState,
+  attendanceByStudentId: Map<string, PhoneAttendanceCell>,
+  attendanceIntegrationEnabled: boolean,
+) {
+  const attendanceCell = attendanceByStudentId.get(student.id);
+  const isCheckable = !attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
+
+  if (!isCheckable) {
+    return 5;
+  }
+
+  const status = periodState[student.id]?.status ?? null;
+
+  if (status === null) return 0;
+  if (status === "NOT_SUBMITTED") return 1;
+  if (status === "RENTED") return 2;
+  if (status === "SUBMITTED") return 3;
+  return 4;
 }
 
 export function PhoneCheckTable({
@@ -112,11 +117,23 @@ export function PhoneCheckTable({
   periodState,
   attendanceByStudentId,
   attendanceIntegrationEnabled,
+  saveStateByStudentId = {},
   onStatusChange,
   onRentalNoteChange,
+  onRentalNoteCommit = () => undefined,
   onOpenBulkRental,
 }: PhoneCheckTableProps) {
-  const sortedStudents = useMemo(() => sortStudentsBySeat(students), [students]);
+  const sortedStudents = useMemo(
+    () =>
+      [...students].sort((left, right) => {
+        const rankCompare =
+          getWorkflowRank(left, periodState, attendanceByStudentId, attendanceIntegrationEnabled) -
+          getWorkflowRank(right, periodState, attendanceByStudentId, attendanceIntegrationEnabled);
+
+        return rankCompare || compareStudentsBySeat(left, right);
+      }),
+    [attendanceByStudentId, attendanceIntegrationEnabled, periodState, students],
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -152,6 +169,7 @@ export function PhoneCheckTable({
             const { status, rentalNote } = entry;
             const attendanceCell = attendanceByStudentId.get(student.id);
             const isCheckable = !attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
+            const saveState = saveStateByStudentId[student.id];
 
             return (
               <tr
@@ -170,6 +188,23 @@ export function PhoneCheckTable({
                   >
                     {student.name}
                   </button>
+                  {saveState ? (
+                    <span
+                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        saveState === "saving"
+                          ? "bg-amber-50 text-amber-700"
+                          : saveState === "saved"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {saveState === "saving"
+                        ? "저장 중"
+                        : saveState === "saved"
+                          ? "저장됨"
+                          : "저장 실패"}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="border-b border-slate-100 px-4 py-4 text-slate-600">
                   {student.studentNumber}
@@ -197,21 +232,19 @@ export function PhoneCheckTable({
                 <td className="border-b border-slate-100 px-4 py-4">
                   {isCheckable ? (
                     <div className="flex flex-wrap gap-2">
-                      {STATUS_BUTTONS.map((button) => (
-                        <button
-                          key={button.status}
-                          type="button"
+                      {PHONE_CHECK_STATUS_OPTIONS.map((buttonStatus) => (
+                        <PhoneStatusCheckButton
+                          key={buttonStatus}
+                          status={buttonStatus}
+                          selected={status === buttonStatus}
+                          disabled={saveState === "saving"}
                           onClick={() =>
-                            onStatusChange(student.id, status === button.status ? null : button.status)
+                            onStatusChange(
+                              student.id,
+                              status === buttonStatus ? null : buttonStatus,
+                            )
                           }
-                          className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                            status === button.status
-                              ? button.activeClassName
-                              : "bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:bg-slate-50"
-                          }`}
-                        >
-                          {button.label}
-                        </button>
+                        />
                       ))}
                     </div>
                   ) : (
@@ -226,6 +259,7 @@ export function PhoneCheckTable({
                       type="text"
                       value={rentalNote}
                       onChange={(event) => onRentalNoteChange(student.id, event.target.value)}
+                      onBlur={() => onRentalNoteCommit(student.id)}
                       placeholder="대여 사유를 입력하세요"
                       maxLength={200}
                       className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition focus:border-slate-400"

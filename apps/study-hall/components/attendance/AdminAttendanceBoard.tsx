@@ -137,6 +137,40 @@ function hasCellChanged(
   return currentCell.status !== previousCell.status || currentCell.reason !== previousCell.reason;
 }
 
+function mergeSavedMatrix(
+  savedMatrix: MatrixState,
+  matrix: MatrixState,
+  targetStudentIds?: string[],
+) {
+  if (!targetStudentIds) {
+    return matrix;
+  }
+
+  const next = { ...savedMatrix };
+  for (const studentId of targetStudentIds) {
+    if (matrix[studentId]) {
+      next[studentId] = matrix[studentId];
+    }
+  }
+  return next;
+}
+
+function hasMatrixChanges(
+  matrix: MatrixState,
+  savedMatrix: MatrixState,
+  students: StudentItem[],
+  periods: PeriodItem[],
+) {
+  return students.some((student) =>
+    periods.some((period) =>
+      hasCellChanged(
+        getCellState(matrix, student.id, period.id),
+        getCellState(savedMatrix, student.id, period.id),
+      ),
+    ),
+  );
+}
+
 function getWeekdayFromDate(date: string) {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -701,19 +735,9 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       setStats(statsData);
     }
 
-    setSavedMatrix((current) => {
-      if (!targetStudentIds) {
-        return matrix;
-      }
-
-      const next = { ...current };
-      for (const studentId of targetStudentIds) {
-        if (matrix[studentId]) {
-          next[studentId] = matrix[studentId];
-        }
-      }
-      return next;
-    });
+    const nextSavedMatrix = mergeSavedMatrix(savedMatrix, matrix, targetStudentIds);
+    setSavedMatrix(nextSavedMatrix);
+    return nextSavedMatrix;
   }
 
   async function handleSaveAll() {
@@ -736,7 +760,8 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   async function handleSaveStudent(studentId: string) {
     try {
-      await persistChangedPeriodsForStudents([studentId]);
+      const nextSavedMatrix = await persistChangedPeriodsForStudents([studentId]);
+      setIsDirty(hasMatrixChanges(matrix, nextSavedMatrix, students, periods));
       const targetStudent = students.find((student) => student.id === studentId);
       toast.success("저장되었습니다.");
       setSaveSuccessModal({

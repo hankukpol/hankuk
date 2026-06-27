@@ -4,7 +4,7 @@ import {
   updateMockState,
   type MockMorningExamScoreRecord,
 } from "@/lib/mock-store";
-import { notFound } from "@/lib/errors";
+import { badRequest, notFound } from "@/lib/errors";
 import type { MorningExamScoresBatchInput } from "@/lib/morning-exam-schemas";
 import { listExamTypes, type ExamSubjectItem, type ExamTypeItem } from "@/lib/services/exam.service";
 import { listStudents } from "@/lib/services/student.service";
@@ -295,9 +295,23 @@ export async function saveMorningExamScores(
   }
 
   const { weekYear, weekNumber } = getIsoWeekInfo(input.date);
+  const rowStudentIds = input.rows.map((row) => row.studentId);
+  const uniqueStudentIds = Array.from(new Set(rowStudentIds));
+
+  if (uniqueStudentIds.length !== rowStudentIds.length) {
+    throw badRequest("같은 학생의 성적이 중복 포함되어 있습니다.");
+  }
 
   if (isMockMode()) {
     const savedCount = await updateMockState((state) => {
+      const divisionStudentIds = new Set(
+        (state.studentsByDivision[divisionSlug] ?? []).map((student) => student.id),
+      );
+
+      if (uniqueStudentIds.some((studentId) => !divisionStudentIds.has(studentId))) {
+        throw badRequest("다른 지점 학생의 성적은 저장할 수 없습니다.");
+      }
+
       const existing = state.morningExamScoresByDivision[divisionSlug] ?? [];
       const scores = existing.filter(
         (s) =>
@@ -353,17 +367,32 @@ export async function saveMorningExamScores(
     return { savedCount };
   }
 
-  await getDivisionOrThrow(divisionSlug);
+  const division = await getDivisionOrThrow(divisionSlug);
   const { prisma } = await import("@/lib/prisma");
 
   const examDate = toUtcDate(input.date);
   let savedCount = 0;
+  const validStudentCount = await prisma.student.count({
+    where: {
+      id: {
+        in: uniqueStudentIds,
+      },
+      divisionId: division.id,
+    },
+  });
+
+  if (validStudentCount !== uniqueStudentIds.length) {
+    throw badRequest("다른 지점 학생의 성적은 저장할 수 없습니다.");
+  }
 
   await prisma.morningExamScore.deleteMany({
     where: {
       examTypeId: input.examTypeId,
       examDate,
       subjectId: { not: input.subjectId },
+      student: {
+        divisionId: division.id,
+      },
     },
   });
 

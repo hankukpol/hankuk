@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  ADMIN_DIVISION_COOKIE,
-  ADMIN_ROLE_COOKIE,
   ADMIN_SESSION_COOKIE,
   STUDENT_SESSION_COOKIE,
 } from "@/lib/auth-cookies";
+import {
+  verifyAdminSessionToken,
+  verifyStudentSessionToken,
+} from "@/lib/session-tokens";
 
 const adminAllowedRoles = new Set(["ADMIN", "SUPER_ADMIN"]);
 const assistantAllowedRoles = new Set(["ASSISTANT", "ADMIN", "SUPER_ADMIN"]);
@@ -24,25 +26,27 @@ export async function middleware(request: NextRequest) {
   const divisionSlug = segments[0];
   const section = segments[1];
   const subsection = segments[2];
-  const hasAdminSession = Boolean(request.cookies.get(ADMIN_SESSION_COOKIE)?.value);
-  const hasStudentSession = Boolean(request.cookies.get(STUDENT_SESSION_COOKIE)?.value);
-  const adminRole = request.cookies.get(ADMIN_ROLE_COOKIE)?.value ?? null;
-  const adminDivision = request.cookies.get(ADMIN_DIVISION_COOKIE)?.value ?? null;
+  const adminToken = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  const studentToken = request.cookies.get(STUDENT_SESSION_COOKIE)?.value;
+  const adminSession = adminToken ? await verifyAdminSessionToken(adminToken) : null;
+  const studentSession = studentToken ? await verifyStudentSessionToken(studentToken) : null;
+  const adminRole = adminSession?.role ?? null;
+  const adminDivision = adminSession?.divisionSlug ?? null;
 
   if (section === "student" && subsection !== "login") {
-    if (!hasStudentSession) {
+    if (!studentSession || studentSession.divisionSlug !== divisionSlug) {
       return buildRedirect(request, `/${divisionSlug}/student/login`);
     }
   }
 
   if (isSuperAdminPath) {
-    if (!hasAdminSession || adminRole !== "SUPER_ADMIN") {
+    if (!adminSession || adminRole !== "SUPER_ADMIN") {
       return buildRedirect(request, "/login");
     }
   }
 
   if (section === "admin") {
-    if (!hasAdminSession || !adminAllowedRoles.has(adminRole ?? "")) {
+    if (!adminSession || !adminAllowedRoles.has(adminRole ?? "")) {
       return buildRedirect(request, "/login");
     }
 
@@ -52,7 +56,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (section === "assistant") {
-    if (!hasAdminSession || !assistantAllowedRoles.has(adminRole ?? "")) {
+    if (!adminSession || !assistantAllowedRoles.has(adminRole ?? "")) {
       return buildRedirect(request, "/login");
     }
 

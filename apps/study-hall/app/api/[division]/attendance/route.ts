@@ -6,27 +6,31 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { getAttendanceSnapshot, upsertAttendanceBatch } from "@/lib/services/attendance.service";
 
+const ATTENDANCE_RECORDS_MAX = 500;
+
 const attendanceBatchSchema = z.object({
   periodId: z.string().min(1, "교시를 선택해주세요."),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식이 올바르지 않습니다."),
-  records: z.array(
-    z.object({
-      studentId: z.string().min(1),
-      status: z.union([
-        z.literal(""),
-        z.enum([
-          "PRESENT",
-          "TARDY",
-          "ABSENT",
-          "EXCUSED",
-          "HOLIDAY",
-          "HALF_HOLIDAY",
-          "NOT_APPLICABLE",
+  records: z
+    .array(
+      z.object({
+        studentId: z.string().min(1),
+        status: z.union([
+          z.literal(""),
+          z.enum([
+            "PRESENT",
+            "TARDY",
+            "ABSENT",
+            "EXCUSED",
+            "HOLIDAY",
+            "HALF_HOLIDAY",
+            "NOT_APPLICABLE",
+          ]),
         ]),
-      ]),
-      reason: z.string().nullable().optional(),
-    }),
-  ),
+        reason: z.string().max(500).nullable().optional(),
+      }),
+    )
+    .max(ATTENDANCE_RECORDS_MAX, `한 번에 ${ATTENDANCE_RECORDS_MAX}명까지만 저장할 수 있습니다.`),
 });
 
 export async function GET(

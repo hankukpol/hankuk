@@ -54,7 +54,7 @@ export async function DELETE(
   }
 
   try {
-    await deletePointRecord(params.division, params.id);
+    await deletePointRecord(params.division, params.id, auth.session);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return toApiErrorResponse(error, "상벌점 기록 삭제에 실패했습니다.");

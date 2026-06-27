@@ -5,8 +5,23 @@ function stripBom(value: string) {
   return value.replace(/^\uFEFF/, "");
 }
 
+function sanitizeSpreadsheetFormula(value: CsvCell) {
+  if (typeof value !== "string") {
+    return value == null ? "" : String(value);
+  }
+
+  const text = String(value);
+  const normalized = stripBom(text).trimStart();
+
+  if (/^[=+\-@\t\r]/.test(normalized)) {
+    return `'${text}`;
+  }
+
+  return text;
+}
+
 function escapeDelimitedCell(value: CsvCell, delimiter: Exclude<DelimitedFileDelimiter, "\t">) {
-  const text = value == null ? "" : String(value);
+  const text = sanitizeSpreadsheetFormula(value);
 
   if (!text.includes(delimiter) && !/[\"\n\r]/.test(text)) {
     return text;

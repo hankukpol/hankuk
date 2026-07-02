@@ -8,6 +8,10 @@ const pointCategoryNameSchema = z
   .min(1, "카테고리 이름을 입력해주세요.")
   .max(30, "카테고리 이름은 30자 이하여야 합니다.");
 
+const pointGrantDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "부여 날짜 형식이 올바르지 않습니다.");
+
 export const pointRuleSchema = z.object({
   category: pointCategoryNameSchema,
   name: z.string().trim().min(1, "규칙 이름을 입력해주세요."),
@@ -35,6 +39,7 @@ export const pointRecordSchema = z
     ruleId: z.string().min(1).nullable().optional(),
     points: z.number().int().nullable().optional(),
     notes: z.string().trim().nullable().optional(),
+    date: pointGrantDateSchema.nullable().optional(),
   })
   .refine((value) => value.ruleId || typeof value.points === "number", {
     message: "규칙을 선택하거나 직접 점수를 입력해주세요.",
@@ -50,7 +55,7 @@ export const pointBatchSchema = z
     ruleId: z.string().min(1).nullable().optional(),
     points: z.number().int().nullable().optional(),
     notes: z.string().trim().nullable().optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "부여 날짜 형식이 올바르지 않습니다."),
+    date: pointGrantDateSchema,
     idempotencyKey: z.string().trim().min(1).max(100).optional(),
   })
   .refine((value) => value.ruleId || typeof value.points === "number", {

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardCheck, House } from "lucide-react";
+import { ClipboardCheck, House, Smartphone } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 type AssistantBottomNavProps = {
   divisionSlug: string;
+  phoneSubmissionsEnabled?: boolean;
 };
 
 const NAV_ITEMS = [
@@ -19,16 +20,33 @@ const NAV_ITEMS = [
     label: "출석체크",
     icon: ClipboardCheck,
   },
+  {
+    href: (divisionSlug: string) => `/${divisionSlug}/assistant/phones`,
+    label: "휴대폰",
+    icon: Smartphone,
+    feature: "phoneSubmissions",
+  },
 ] as const;
 
-export function AssistantBottomNav({ divisionSlug }: AssistantBottomNavProps) {
+export function AssistantBottomNav({
+  divisionSlug,
+  phoneSubmissionsEnabled = false,
+}: AssistantBottomNavProps) {
   const pathname = usePathname();
+  const visibleItems = NAV_ITEMS.filter(
+    (item) =>
+      !("feature" in item) || item.feature !== "phoneSubmissions" || phoneSubmissionsEnabled,
+  );
 
   return (
     <nav className="fixed inset-x-0 bottom-4 z-40 px-4">
       <div className="mx-auto max-w-3xl rounded-[10px] border border-black/5 bg-white p-2">
-        <div className="grid grid-cols-2 gap-2">
-          {NAV_ITEMS.map((item) => {
+        <div
+          className={`grid gap-2 ${
+            visibleItems.length === 3 ? "grid-cols-3" : "grid-cols-2"
+          }`}
+        >
+          {visibleItems.map((item) => {
             const href = item.href(divisionSlug);
             const isActive = pathname === href;
             const Icon = item.icon;

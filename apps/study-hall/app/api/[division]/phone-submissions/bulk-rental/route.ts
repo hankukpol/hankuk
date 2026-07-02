@@ -10,7 +10,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { division: string } },
 ) {
-  const auth = await requireApiAuth(params.division, ["ADMIN", "SUPER_ADMIN"]);
+  const auth = await requireApiAuth(params.division, ["ASSISTANT", "ADMIN", "SUPER_ADMIN"]);
 
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });

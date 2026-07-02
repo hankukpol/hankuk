@@ -19,6 +19,26 @@ export function getKstCurrentMonthRange(today = getKstTodayYmd()): PointDateRang
   };
 }
 
+export function getMonthRangeForDate(date: string, today = getKstTodayYmd()): PointDateRange {
+  const monthKey = date.slice(0, 7);
+  const dateFrom = `${monthKey}-01`;
+
+  if (monthKey === today.slice(0, 7)) {
+    return {
+      dateFrom,
+      dateTo: today,
+    };
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  return {
+    dateFrom,
+    dateTo: `${monthKey}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 export function appendPointDateRangeParams(
   params: URLSearchParams,
   range: Partial<PointDateRange>,

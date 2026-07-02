@@ -46,6 +46,22 @@ function getKstDate(offsetDays = 0) {
   }).format(date);
 }
 
+function getRelativeMonthRange(today, monthOffset) {
+  const [year, month] = today.split("-").map(Number);
+  const firstDay = new Date(Date.UTC(year, month - 1 + monthOffset, 1));
+  const lastDay = new Date(Date.UTC(
+    firstDay.getUTCFullYear(),
+    firstDay.getUTCMonth() + 1,
+    0,
+  ));
+  const monthKey = `${firstDay.getUTCFullYear()}-${String(firstDay.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  return {
+    dateFrom: `${monthKey}-01`,
+    dateTo: `${monthKey}-${String(lastDay.getUTCDate()).padStart(2, "0")}`,
+  };
+}
+
 function expect(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -201,6 +217,12 @@ async function main() {
     const assistantJar = await loginAdmin("assistant-police@mock.local");
     await expectStatus("assistant dashboard", await request("/police/assistant", { jar: assistantJar }), 200);
     await expectStatus("assistant check page", await request("/police/assistant/check", { jar: assistantJar }), 200);
+    await expectStatus("assistant phones page", await request("/police/assistant/phones", { jar: assistantJar }), 200);
+    await expectStatus(
+      "assistant phone snapshot API",
+      await request(`/api/police/phone-submissions?mode=snapshot&date=${today}`, { jar: assistantJar }),
+      200,
+    );
     await expectStatus("assistant students API forbidden", await request("/api/police/students", { jar: assistantJar }), 403);
 
     const studentFixture = fixtureState.studentsByDivision.police.find(
@@ -235,10 +257,14 @@ async function main() {
     const examType =
       fixtureState.examTypesByDivision.police.find((item) => item.isActive !== false) ||
       fixtureState.examTypesByDivision.police[0];
+    const positivePointRule =
+      fixtureState.pointRulesByDivision.police.find((item) => item.isActive !== false && item.points > 0) ||
+      fixtureState.pointRulesByDivision.police[0];
     const activePeriods = fixtureState.periodsByDivision.police.filter((item) => item.isActive !== false);
     const studyTrack = fixtureState.divisionSettingsByDivision.police.studyTracks?.[0] || "track";
     expect(paymentCategory, "No payment category found.");
     expect(examType, "No exam type found.");
+    expect(positivePointRule, "No point rule found.");
     expect(activePeriods.length >= 2, "Need at least two active periods in police fixtures.");
 
     const uniqueSeed = Date.now();
@@ -323,6 +349,76 @@ async function main() {
     expect(
       [400, 409].includes(occupiedAssign.status),
       `occupied seat overwrite should fail, got ${occupiedAssign.status}`,
+    );
+
+    const previousMonthRange = getRelativeMonthRange(today, -1);
+    const currentMonthRange = {
+      dateFrom: `${today.slice(0, 8)}01`,
+      dateTo: today,
+    };
+    const previousMonthGrantDate = `${previousMonthRange.dateFrom.slice(0, 8)}15`;
+    const singleBackdateNote = `smoke single backdate ${uniqueSeed}`;
+    const batchBackdateNote = `smoke batch backdate ${uniqueSeed}`;
+
+    const singlePointResponse = await request("/api/police/points", {
+      method: "POST",
+      jar: policeJar,
+      body: {
+        studentId: firstStudent.id,
+        ruleId: positivePointRule.id,
+        points: null,
+        notes: singleBackdateNote,
+        date: previousMonthGrantDate,
+      },
+    });
+    await expectStatus("single point backdate", singlePointResponse, 201);
+    const singlePoint = (await singlePointResponse.json()).record;
+    expect(
+      singlePoint.date.slice(0, 10) === previousMonthGrantDate,
+      `single point date should be ${previousMonthGrantDate}, got ${singlePoint.date}`,
+    );
+
+    const batchPointResponse = await request("/api/police/points/batch", {
+      method: "POST",
+      jar: policeJar,
+      body: {
+        studentIds: [firstStudent.id, secondStudent.id],
+        ruleId: positivePointRule.id,
+        points: null,
+        notes: batchBackdateNote,
+        date: previousMonthGrantDate,
+        idempotencyKey: `smoke-point-${uniqueSeed}`,
+      },
+    });
+    await expectStatus("batch point backdate", batchPointResponse, 201);
+    const batchPoint = await batchPointResponse.json();
+    expect(batchPoint.result.createdCount === 2, "Batch point backdate should create two records.");
+    expect(batchPoint.result.date === previousMonthGrantDate, "Batch point result date should match the backdate.");
+
+    const previousMonthPoints = await request(
+      `/api/police/points?dateFrom=${previousMonthRange.dateFrom}&dateTo=${previousMonthRange.dateTo}`,
+      { jar: policeJar },
+    );
+    await expectStatus("previous month points", previousMonthPoints, 200);
+    const previousMonthPointJson = await previousMonthPoints.json();
+    expect(
+      previousMonthPointJson.records.some((record) => record.notes === singleBackdateNote),
+      "Single backdated point should be visible in previous month range.",
+    );
+    expect(
+      previousMonthPointJson.records.filter((record) => record.notes === batchBackdateNote).length === 2,
+      "Batch backdated points should be visible in previous month range.",
+    );
+
+    const currentMonthPoints = await request(
+      `/api/police/points?dateFrom=${currentMonthRange.dateFrom}&dateTo=${currentMonthRange.dateTo}`,
+      { jar: policeJar },
+    );
+    await expectStatus("current month points exclude backdates", currentMonthPoints, 200);
+    const currentMonthPointJson = await currentMonthPoints.json();
+    expect(
+      !currentMonthPointJson.records.some((record) => record.notes === singleBackdateNote || record.notes === batchBackdateNote),
+      "Backdated points should not appear in the current month range.",
     );
 
     const [firstPeriod, secondPeriod] = activePeriods;
@@ -417,6 +513,20 @@ async function main() {
       "Phone status null should clear the existing phone record.",
     );
 
+    await expectStatus(
+      "save phone submitted before bulk rental skip",
+      await request("/api/police/phone-submissions", {
+        method: "POST",
+        jar: policeJar,
+        body: {
+          date: today,
+          periodId: firstPeriod.id,
+          records: [{ studentId: firstStudent.id, status: "SUBMITTED" }],
+        },
+      }),
+      201,
+    );
+
     const bulkRentalResponse = await request("/api/police/phone-submissions/bulk-rental", {
       method: "POST",
       jar: policeJar,
@@ -430,10 +540,14 @@ async function main() {
     });
     await expectStatus("bulk phone rental", bulkRentalResponse, 201);
     const bulkRental = await bulkRentalResponse.json();
-    expect(bulkRental.result.appliedCount === 3, `bulk rental should apply 3 cells, got ${bulkRental.result.appliedCount}`);
+    expect(bulkRental.result.appliedCount === 2, `bulk rental should apply 2 cells, got ${bulkRental.result.appliedCount}`);
     expect(
       bulkRental.result.skippedAttendanceCount === 1,
       `bulk rental should skip 1 absent cell, got ${bulkRental.result.skippedAttendanceCount}`,
+    );
+    expect(
+      bulkRental.result.skippedExistingCount === 1,
+      `bulk rental should skip 1 existing submitted cell, got ${bulkRental.result.skippedExistingCount}`,
     );
 
     const studentsResponse = await request("/api/police/students", { jar: policeJar });
@@ -513,6 +627,7 @@ async function main() {
             paymentCreate: true,
             announcementCreate: true,
             examSave: true,
+            pointBackdate: true,
             phoneAttendanceLink: true,
             phoneBulkRental: true,
           },

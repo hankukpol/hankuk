@@ -4,6 +4,7 @@ import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 import { requireDivisionAssistantAccess } from "@/lib/auth";
 import { getDivisionBySlug } from "@/lib/services/division.service";
+import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 
 type AssistantLayoutProps = {
   children: ReactNode;
@@ -13,9 +14,10 @@ type AssistantLayoutProps = {
 };
 
 export default async function AssistantLayout({ children, params }: AssistantLayoutProps) {
-  const [session, division] = await Promise.all([
+  const [session, division, featureSettings] = await Promise.all([
     requireDivisionAssistantAccess(params.division),
     getDivisionBySlug(params.division),
+    getDivisionFeatureSettings(params.division),
   ]);
 
   return (
@@ -50,7 +52,10 @@ export default async function AssistantLayout({ children, params }: AssistantLay
 
       <main className="mx-auto max-w-4xl px-4 pb-24 pt-4">{children}</main>
 
-      <AssistantBottomNav divisionSlug={params.division} />
+      <AssistantBottomNav
+        divisionSlug={params.division}
+        phoneSubmissionsEnabled={featureSettings.featureFlags.phoneSubmissions}
+      />
     </div>
   );
 }

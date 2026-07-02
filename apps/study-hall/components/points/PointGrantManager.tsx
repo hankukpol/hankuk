@@ -23,6 +23,7 @@ import {
   appendPointDateRangeParams,
   getKstCurrentMonthRange,
   getKstTodayYmd,
+  getMonthRangeForDate,
   type PointDateRange,
 } from "@/lib/point-date-range";
 import type { PointRecordItem, PointRuleItem } from "@/lib/services/point.service";
@@ -71,6 +72,14 @@ function formatRulePreview(rule: PointRuleItem) {
   return `${rule.name} · ${rule.points > 0 ? "+" : ""}${rule.points}점`;
 }
 
+function isSameRange(left: PointDateRange, right: PointDateRange) {
+  return left.dateFrom === right.dateFrom && left.dateTo === right.dateTo;
+}
+
+function isDateInRange(date: string, range: PointDateRange) {
+  return date >= range.dateFrom && date <= range.dateTo;
+}
+
 export const PointGrantManager = memo(function PointGrantManager({
   divisionSlug,
   students,
@@ -107,6 +116,7 @@ export const PointGrantManager = memo(function PointGrantManager({
   const [singleRuleId, setSingleRuleId] = useState(activeRules[0]?.id ?? "");
   const [singleManualPoints, setSingleManualPoints] = useState("");
   const [singleNotes, setSingleNotes] = useState("");
+  const [singleDate, setSingleDate] = useState(getKstTodayYmd());
   const [isSingleSaving, setIsSingleSaving] = useState(false);
 
   const [search, setSearch] = useState("");
@@ -270,6 +280,26 @@ export const PointGrantManager = memo(function PointGrantManager({
     }
   }
 
+  async function refreshAfterGrant(grantDate: string, affectedStudentIds: string[]) {
+    const nextRange = isDateInRange(grantDate, appliedRange)
+      ? appliedRange
+      : getMonthRangeForDate(grantDate);
+    const movedRange = !isSameRange(nextRange, appliedRange);
+
+    if (movedRange) {
+      setDraftDateFrom(nextRange.dateFrom);
+      setDraftDateTo(nextRange.dateTo);
+    }
+
+    const refreshed = await refreshData(false, nextRange);
+
+    if (refreshed && historyStudent && affectedStudentIds.includes(historyStudent.id)) {
+      await loadStudentHistory(historyStudent, nextRange);
+    }
+
+    return movedRange;
+  }
+
   function getStudentPointTotal(studentId: string) {
     return rankStudents.find((student) => student.id === studentId)?.netPoints ?? 0;
   }
@@ -328,6 +358,7 @@ export const PointGrantManager = memo(function PointGrantManager({
           ruleId: singleRuleId || null,
           points: singleRuleId ? null : Number(singleManualPoints),
           notes: singleNotes || null,
+          date: singleDate,
         }),
       });
       const data = await response.json();
@@ -336,14 +367,15 @@ export const PointGrantManager = memo(function PointGrantManager({
         throw new Error(data.error ?? "상벌점 기록에 실패했습니다.");
       }
 
-      toast.success("상벌점을 기록했습니다.");
       setSingleNotes("");
       setSingleManualPoints("");
       setPanelMode(null);
-      const refreshed = await refreshData();
-      if (refreshed && historyStudent?.id === singleStudentId) {
-        await loadStudentHistory(historyStudent);
-      }
+      const movedRange = await refreshAfterGrant(singleDate, [singleStudentId]);
+      toast.success(
+        movedRange
+          ? `${singleDate.slice(0, 7)} 기록으로 저장하고 해당 월 조회로 이동했습니다.`
+          : "상벌점을 기록했습니다.",
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "상벌점 기록에 실패했습니다.");
     } finally {
@@ -387,18 +419,18 @@ export const PointGrantManager = memo(function PointGrantManager({
         throw new Error(data.error ?? "일괄 상벌점 부여에 실패했습니다.");
       }
 
-      toast.success(
-        `${data.result.createdCount}명에게 ${data.result.points > 0 ? "+" : ""}${data.result.points}점을 적용했습니다.`,
-      );
+      const affectedStudentIds = selectedStudentIds;
       setSelectedStudentIds([]);
       setBatchNotes("");
       setBatchManualPoints("");
       setBatchIdempotencyKey(createPointBatchIdempotencyKey());
       setPanelMode(null);
-      const refreshed = await refreshData();
-      if (refreshed && historyStudent && selectedStudentIds.includes(historyStudent.id)) {
-        await loadStudentHistory(historyStudent);
-      }
+      const movedRange = await refreshAfterGrant(batchDate, affectedStudentIds);
+      toast.success(
+        movedRange
+          ? `${data.result.createdCount}명에게 ${data.result.points > 0 ? "+" : ""}${data.result.points}점을 적용하고 ${batchDate.slice(0, 7)} 조회로 이동했습니다.`
+          : `${data.result.createdCount}명에게 ${data.result.points > 0 ? "+" : ""}${data.result.points}점을 적용했습니다.`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "일괄 상벌점 부여에 실패했습니다.");
     } finally {
@@ -790,16 +822,29 @@ export const PointGrantManager = memo(function PointGrantManager({
         description="학생 한 명에게 상점 또는 벌점을 빠르게 기록합니다."
       >
         <form onSubmit={handleSingleSubmit} className="space-y-5">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">학생 선택</span>
-            <StudentSearchCombobox
-              students={activeStudents}
-              value={singleStudentId}
-              onChange={setSingleStudentId}
-              placeholder="학생을 선택해 주세요."
-              showStudyTrack
-            />
-          </label>
+          <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">학생 선택</span>
+              <StudentSearchCombobox
+                students={activeStudents}
+                value={singleStudentId}
+                onChange={setSingleStudentId}
+                placeholder="학생을 선택해 주세요."
+                showStudyTrack
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">적용 날짜</span>
+              <input
+                type="date"
+                value={singleDate}
+                onChange={(event) => setSingleDate(event.target.value)}
+                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                required
+              />
+            </label>
+          </div>
 
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">규칙 선택</span>

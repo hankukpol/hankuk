@@ -186,9 +186,18 @@ function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enab
   }
 }
 
-function getBulkRentalRangeBadgeClassName(checkableCount: number, totalCount: number, enabled: boolean) {
+function getBulkRentalRangeBadgeClassName(
+  checkableCount: number,
+  totalCount: number,
+  enabled: boolean,
+  rentedCount = 0,
+) {
   if (!enabled) return "border-slate-200 bg-slate-50 text-slate-500";
   if (totalCount === 0 || checkableCount === 0) return "border-slate-200 bg-slate-100 text-slate-400";
+  if (rentedCount > 0 && rentedCount === checkableCount) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (rentedCount > 0) return "border-sky-200 bg-sky-50 text-sky-700";
   if (checkableCount === totalCount) return "border-emerald-200 bg-emerald-50 text-emerald-700";
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
@@ -673,6 +682,33 @@ export function PhoneCheckForm({
     ).length;
   }
 
+  function getRentedPeriodCountForStudent(
+    studentId: string,
+    targetPeriods: PhoneDaySnapshot["periods"],
+  ) {
+    return targetPeriods.filter(
+      (period) => periodsState[period.periodId]?.[studentId]?.status === "RENTED",
+    ).length;
+  }
+
+  function getAlreadyRentedBulkStudentIds(
+    targetPeriods: PhoneDaySnapshot["periods"],
+    targetStudents: PhoneDaySnapshot["students"] = visibleStudents,
+  ) {
+    return new Set(
+      targetStudents
+        .filter((student) => {
+          const checkableCount = getCheckablePeriodCountForStudent(student.id, targetPeriods);
+          if (checkableCount === 0) {
+            return false;
+          }
+
+          return getRentedPeriodCountForStudent(student.id, targetPeriods) === checkableCount;
+        })
+        .map((student) => student.id),
+    );
+  }
+
   function openBulkRentalModal(studentId?: string) {
     if (!activePeriodId) {
       toast.error("교시를 선택해주세요.");
@@ -683,7 +719,7 @@ export function PhoneCheckForm({
     const selectedStudentIds =
       studentId && getCheckablePeriodCountForStudent(studentId, targetPeriods) > 0
         ? new Set([studentId])
-        : new Set<string>();
+        : getAlreadyRentedBulkStudentIds(targetPeriods);
 
     setBulkRentalDraft({
       startPeriodId: activePeriodId,
@@ -713,6 +749,17 @@ export function PhoneCheckForm({
       if (value.endPeriodId && endIndex < startIndex) {
         next.startPeriodId = next.endPeriodId;
       }
+
+      const targetPeriods = getPeriodRange(periods, next.startPeriodId, next.endPeriodId);
+      const nextSelectedStudentIds = getAlreadyRentedBulkStudentIds(targetPeriods);
+
+      current.selectedStudentIds.forEach((studentId) => {
+        if (getCheckablePeriodCountForStudent(studentId, targetPeriods) > 0) {
+          nextSelectedStudentIds.add(studentId);
+        }
+      });
+
+      next.selectedStudentIds = nextSelectedStudentIds;
 
       return next;
     });
@@ -857,9 +904,15 @@ export function PhoneCheckForm({
         return next;
       });
       setBulkRentalDraft(null);
-      toast.success(
-        `일괄 대여 적용: 신규 ${data.result.appliedCount}건, 갱신 ${data.result.updatedExistingCount}건`,
-      );
+      const appliedTotal = data.result.appliedCount + data.result.updatedExistingCount;
+      const skippedTotal = data.result.skippedAttendanceCount + data.result.skippedExistingCount;
+      const resultMessage = `일괄 대여 적용: 적용 ${appliedTotal}칸, 출결 제외 ${data.result.skippedAttendanceCount}칸, 기존 기록 제외 ${data.result.skippedExistingCount}칸`;
+
+      if (skippedTotal > 0) {
+        toast.warning(resultMessage);
+      } else {
+        toast.success(resultMessage);
+      }
     } finally {
       setIsSavingBulkRental(false);
     }
@@ -1431,7 +1484,7 @@ export function PhoneCheckForm({
                     onClick={selectDefaultBulkRentalStudents}
                     className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                   >
-                    범위 출석자 선택
+                    표시 출석자 선택
                   </button>
                   <button
                     type="button"
@@ -1453,8 +1506,22 @@ export function PhoneCheckForm({
                     student.id,
                     bulkRentalTargetPeriods,
                   );
+                  const rentedPeriodCount = getRentedPeriodCountForStudent(
+                    student.id,
+                    bulkRentalTargetPeriods,
+                  );
                   const isSelectable = checkablePeriodCount > 0;
                   const selected = bulkRentalDraft.selectedStudentIds.has(student.id);
+                  const rangeStatusText =
+                    snapshot.attendanceIntegrationEnabled && rentedPeriodCount > 0
+                      ? `대여 ${rentedPeriodCount}/${checkablePeriodCount}교시${
+                          checkablePeriodCount < bulkRentalTargetPeriods.length
+                            ? ` · 제외 ${bulkRentalTargetPeriods.length - checkablePeriodCount}`
+                            : ""
+                        }`
+                      : snapshot.attendanceIntegrationEnabled
+                        ? `적용 ${checkablePeriodCount}/${bulkRentalTargetPeriods.length}교시`
+                        : "출결 연동 없음";
 
                   return (
                     <label
@@ -1488,11 +1555,10 @@ export function PhoneCheckForm({
                           checkablePeriodCount,
                           bulkRentalTargetPeriods.length,
                           snapshot.attendanceIntegrationEnabled,
+                          rentedPeriodCount,
                         )}`}
                       >
-                        {snapshot.attendanceIntegrationEnabled
-                          ? `적용 ${checkablePeriodCount}/${bulkRentalTargetPeriods.length}교시`
-                          : "출결 연동 없음"}
+                        {rangeStatusText}
                       </span>
                     </label>
                   );

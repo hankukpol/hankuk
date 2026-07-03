@@ -47,8 +47,22 @@ type ExistingEnrollmentRow = {
   created_at: string
 }
 
+type ParsedBulkEnrollmentRow = ReturnType<typeof parseEnrollmentBulkText>[number]
+
+type BulkImportRowError = {
+  rowNumber: number
+  lineNumber: number
+  name: string
+  phoneLast4: string | null
+  examNumber: string | null
+  field: string
+  value: string | null
+  message: string
+  sourceText: string
+}
+
 function findExistingEnrollmentForImportedRow(
-  row: ReturnType<typeof parseEnrollmentBulkText>[number],
+  row: ParsedBulkEnrollmentRow,
   existingByExamNumber: Map<string, ExistingEnrollmentRow>,
 ) {
   const examNumber = normalizeExamNumber(row.exam_number)
@@ -57,6 +71,42 @@ function findExistingEnrollmentForImportedRow(
 
 function getStudentIdentityConflictMessage() {
   return '기존 학생 마스터와 가져오기 행의 정보가 충돌합니다. 학번, 이름, 연락처, 생년월일을 확인해 주세요.'
+}
+
+function createBulkImportRowError(
+  row: ParsedBulkEnrollmentRow,
+  field: string,
+  message: string,
+  value?: string | null,
+): BulkImportRowError {
+  return {
+    rowNumber: row.sourceLineNumber,
+    lineNumber: row.sourceLineNumber,
+    name: row.name,
+    phoneLast4: normalizePhone(row.phone).slice(-4) || null,
+    examNumber: row.exam_number ?? null,
+    field,
+    value: value === undefined ? null : value,
+    message,
+    sourceText: row.sourceText,
+  }
+}
+
+function createBulkImportErrorResponse(
+  error: string,
+  rowErrors: BulkImportRowError[],
+  status = 400,
+) {
+  return NextResponse.json(
+    {
+      error,
+      rowErrors: rowErrors
+        .sort((a, b) => a.lineNumber - b.lineNumber)
+        .slice(0, 100),
+      rowErrorCount: rowErrors.length,
+    },
+    { status },
+  )
 }
 
 export async function POST(req: NextRequest) {
@@ -100,21 +150,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '붙여넣기 텍스트에서 유효한 수강생을 찾지 못했습니다.' }, { status: 400 })
   }
 
-  const rowsMissingBirthDate = rows
-    .map((row, index) => ({ row, index }))
-    .filter(({ row }) => !row.birth_date)
-  if (rowsMissingBirthDate.length > 0) {
-    return NextResponse.json(
-      {
-        error: '모든 수강생의 생년월일을 입력해 주세요. 생년월일이 비어 있는 행이 있습니다.',
-        rows: rowsMissingBirthDate.slice(0, 20).map(({ row, index }) => ({
-          rowNumber: index + 1,
-          name: row.name,
-          phoneLast4: normalizePhone(row.phone).slice(-4),
-          examNumber: row.exam_number ?? null,
-        })),
-      },
-      { status: 400 },
+  const basicRowErrors = rows.flatMap((row) => {
+    const errors: BulkImportRowError[] = []
+    if (!row.name) {
+      errors.push(createBulkImportRowError(
+        row,
+        'name',
+        '이름이 비어 있습니다. 이름 열이 비었거나 열 순서가 밀렸는지 확인해 주세요.',
+        row.name,
+      ))
+    }
+
+    const normalizedPhone = normalizePhone(row.phone)
+    if (normalizedPhone.length < 8) {
+      errors.push(createBulkImportRowError(
+        row,
+        'phone',
+        '연락처가 비어 있거나 너무 짧습니다. 연락처 열과 숫자 입력을 확인해 주세요.',
+        row.phone,
+      ))
+    }
+
+    if (!row.birth_date) {
+      errors.push(createBulkImportRowError(
+        row,
+        'birth_date',
+        '생년월일을 6자리 또는 8자리 날짜로 입력해 주세요.',
+        row.birth_date ?? '',
+      ))
+    }
+
+    return errors
+  })
+
+  if (basicRowErrors.length > 0) {
+    return createBulkImportErrorResponse(
+      '이름, 연락처, 생년월일을 확인해야 하는 행이 있습니다.',
+      basicRowErrors,
     )
   }
 
@@ -124,11 +196,20 @@ export async function POST(req: NextRequest) {
       .map((row) => row.series?.trim())
       .filter((label): label is string => Boolean(label)),
   ))
-  const invalidSeriesLabel = explicitSeriesLabels.find((label) => !findBranchSeriesOptionByLabel(seriesOptions, label))
-  if (invalidSeriesLabel) {
-    return NextResponse.json(
-      { error: `직렬 '${invalidSeriesLabel}'은 현재 지점에서 사용할 수 없습니다.` },
-      { status: 400 },
+  const invalidSeriesLabelSet = new Set(
+    explicitSeriesLabels.filter((label) => !findBranchSeriesOptionByLabel(seriesOptions, label)),
+  )
+  if (invalidSeriesLabelSet.size > 0) {
+    return createBulkImportErrorResponse(
+      '현재 지점에서 사용할 수 없는 직렬이 포함되어 있습니다.',
+      rows
+        .filter((row) => row.series && invalidSeriesLabelSet.has(row.series.trim()))
+        .map((row) => createBulkImportRowError(
+          row,
+          'series',
+          `직렬 '${row.series}'은 현재 지점에서 사용할 수 없습니다.`,
+          row.series ?? '',
+        )),
     )
   }
 
@@ -176,11 +257,24 @@ export async function POST(req: NextRequest) {
         || (existing.birth_date ?? null) !== (row.birth_date ?? null)
       )
     ) {
-      return NextResponse.json(
-        {
-          error: `같은 학번 '${normalizeExamNumber(row.exam_number)}'이(가) 서로 다른 사람(이름·연락처·생년월일)에 중복으로 입력되어 있습니다. 업로드 파일에서 '${existing.name}'과(와) '${row.name}'의 학번을 확인해 주세요.`,
-        },
-        { status: 409 },
+      const examNumber = normalizeExamNumber(row.exam_number)
+      return createBulkImportErrorResponse(
+        `같은 학번 '${examNumber}'이(가) 서로 다른 사람에게 입력되어 있습니다.`,
+        [
+          createBulkImportRowError(
+            existing,
+            'exam_number',
+            `이 행과 ${row.sourceLineNumber}행이 같은 학번 '${examNumber}'을 사용합니다.`,
+            examNumber,
+          ),
+          createBulkImportRowError(
+            row,
+            'exam_number',
+            `이 행과 ${existing.sourceLineNumber}행이 같은 학번 '${examNumber}'을 사용합니다.`,
+            examNumber,
+          ),
+        ],
+        409,
       )
     }
 
@@ -198,15 +292,31 @@ export async function POST(req: NextRequest) {
     try {
       cohortNumber = normalizeCohortNumber(label)
     } catch {
-      return NextResponse.json({
-        error: `기수는 숫자만 입력해 주세요. 문제가 있는 값: ${label}`,
-      }, { status: 400 })
+      return createBulkImportErrorResponse(
+        '기수는 숫자만 입력해 주세요.',
+        Array.from(latestRowByKey.values())
+          .filter((row) => row.cohort_label?.trim() === label)
+          .map((row) => createBulkImportRowError(
+            row,
+            'cohort_label',
+            `기수 '${label}'는 숫자로 해석할 수 없습니다.`,
+            label,
+          )),
+      )
     }
     const option = await resolveStudentCohortOptionByNumber(cohortNumber)
     if (!option) {
-      return NextResponse.json({
-        error: `기수 '${label}'를 처리하지 못했습니다.`,
-      }, { status: 400 })
+      return createBulkImportErrorResponse(
+        `기수 '${label}'를 처리하지 못했습니다.`,
+        Array.from(latestRowByKey.values())
+          .filter((row) => row.cohort_label?.trim() === label)
+          .map((row) => createBulkImportRowError(
+            row,
+            'cohort_label',
+            `기수 '${label}'를 현재 지점 기수로 연결하지 못했습니다.`,
+            label,
+          )),
+      )
     }
     cohortByLabel.set(label, option.id)
   }

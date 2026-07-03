@@ -23,6 +23,7 @@ import {
   syncStudentEnrollmentSnapshots,
 } from '@/lib/student-profiles'
 import { isStudentTypeColumnMissing, omitStudentType } from '@/lib/db/column-compat'
+import { getEnrollmentDeleteDecision } from '@/lib/enrollment-delete-policy'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
@@ -291,20 +292,26 @@ export async function DELETE(
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  const { count: paymentCount, error: paymentCountError } = await db
+  const { data: paymentRows, error: paymentRowsError } = await db
     .from('enrollment_payments')
-    .select('id', { count: 'exact', head: true })
+    .select('id,amount,method,status')
     .eq('enrollment_id', enrollmentId)
 
-  if (paymentCountError) {
+  if (paymentRowsError) {
     return NextResponse.json({ error: '결제 이력을 확인하지 못했습니다.' }, { status: 500 })
   }
 
-  if ((paymentCount ?? 0) > 0) {
+  const deleteDecision = getEnrollmentDeleteDecision(paymentRows ?? [])
+  if (!deleteDecision.canDelete) {
+    const hasPositivePayments = deleteDecision.positivePaymentCount > 0
     return NextResponse.json(
       {
-        error: '결제 기록이 있어 수강생을 삭제할 수 없습니다.',
-        reason: '정산·환불 이력 보존을 위해 결제 기록이 연결된 수강생은 삭제하지 않습니다. 결제 취소/환불 또는 응시 정지를 사용해 주세요.',
+        error: hasPositivePayments
+          ? '유료 결제 기록이 있어 수강생을 삭제할 수 없습니다.'
+          : '결제 기록이 있어 수강생을 삭제할 수 없습니다.',
+        reason: hasPositivePayments
+          ? `이 수강생에는 금액이 있는 결제 기록 ${deleteDecision.positivePaymentCount}건이 연결되어 있습니다. 유료 결제 학생은 삭제하지 말고 결제 취소 또는 환불 처리로 정리해 주세요.`
+          : `이 수강생에는 0원 또는 무료 결제 기록 ${deleteDecision.zeroAmountPaymentCount}건이 연결되어 있습니다. 결제 기록이 없는 무료 등록만 삭제할 수 있습니다.`,
       },
       { status: 409 },
     )

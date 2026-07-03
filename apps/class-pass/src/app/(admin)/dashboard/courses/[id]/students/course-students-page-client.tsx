@@ -85,6 +85,18 @@ type NoticeRequest = {
   tone?: 'default' | 'danger' | 'success'
 }
 
+type BulkImportRowError = {
+  rowNumber: number
+  lineNumber: number
+  name: string
+  phoneLast4: string | null
+  examNumber: string | null
+  field: string
+  value: string | null
+  message: string
+  sourceText: string
+}
+
 type StudentSearchResult = {
   id: number
   name: string
@@ -112,6 +124,95 @@ type StudentSearchResult = {
     status: Enrollment['status']
     createdAt: string
   } | null
+}
+
+type DistributionLogPayload = {
+  logId: number
+  materialId: number
+  distributedAt: string
+}
+
+function parseBulkImportRowErrors(payload: unknown): BulkImportRowError[] {
+  if (typeof payload !== 'object' || payload === null || !('rowErrors' in payload)) {
+    return []
+  }
+
+  const rowErrors = (payload as { rowErrors?: unknown }).rowErrors
+  if (!Array.isArray(rowErrors)) {
+    return []
+  }
+
+  return rowErrors
+    .map((entry) => {
+      if (typeof entry !== 'object' || entry === null) {
+        return null
+      }
+
+      const source = entry as Record<string, unknown>
+      const lineNumber = Number(source.lineNumber ?? source.rowNumber)
+      const rowNumber = Number(source.rowNumber ?? source.lineNumber)
+      if (!Number.isInteger(lineNumber) || lineNumber <= 0) {
+        return null
+      }
+
+      return {
+        rowNumber: Number.isInteger(rowNumber) && rowNumber > 0 ? rowNumber : lineNumber,
+        lineNumber,
+        name: typeof source.name === 'string' ? source.name : '',
+        phoneLast4: typeof source.phoneLast4 === 'string' ? source.phoneLast4 : null,
+        examNumber: typeof source.examNumber === 'string' ? source.examNumber : null,
+        field: typeof source.field === 'string' ? source.field : '',
+        value: typeof source.value === 'string' ? source.value : null,
+        message: typeof source.message === 'string' ? source.message : '이 행을 확인해 주세요.',
+        sourceText: typeof source.sourceText === 'string' ? source.sourceText : '',
+      }
+    })
+    .filter((entry): entry is BulkImportRowError => Boolean(entry))
+}
+
+function getBulkImportRowErrorCount(payload: unknown, fallbackCount: number) {
+  if (typeof payload !== 'object' || payload === null || !('rowErrorCount' in payload)) {
+    return fallbackCount
+  }
+
+  const count = Number((payload as { rowErrorCount?: unknown }).rowErrorCount)
+  return Number.isInteger(count) && count >= fallbackCount ? count : fallbackCount
+}
+
+function parseDistributionLogsFromPayload(payload: unknown): DistributionLogPayload[] {
+  if (typeof payload !== 'object' || payload === null || !('logs' in payload)) {
+    return []
+  }
+
+  const logs = (payload as { logs?: unknown }).logs
+  if (!Array.isArray(logs)) {
+    return []
+  }
+
+  return logs
+    .map((entry) => {
+      if (typeof entry !== 'object' || entry === null) {
+        return null
+      }
+
+      const source = entry as {
+        log_id?: unknown
+        material_id?: unknown
+        distributed_at?: unknown
+      }
+      const logId = Number(source.log_id)
+      const materialId = Number(source.material_id)
+      const distributedAt = typeof source.distributed_at === 'string'
+        ? source.distributed_at
+        : new Date().toISOString()
+
+      if (!Number.isInteger(logId) || logId <= 0 || !Number.isInteger(materialId) || materialId <= 0) {
+        return null
+      }
+
+      return { logId, materialId, distributedAt }
+    })
+    .filter((entry): entry is DistributionLogPayload => Boolean(entry))
 }
 
 function getReceiptNoticeFromPayload(payload: unknown) {
@@ -433,6 +534,8 @@ export default function CourseStudentsPage({
   const [paymentDetailEnrollmentId, setPaymentDetailEnrollmentId] = useState<number | null>(null)
   const [historyEnrollmentId, setHistoryEnrollmentId] = useState<number | null>(null)
   const [bulkText, setBulkText] = useState('')
+  const [bulkRowErrors, setBulkRowErrors] = useState<BulkImportRowError[]>([])
+  const [bulkRowErrorCount, setBulkRowErrorCount] = useState(0)
   const [pinReveal, setPinReveal] = useState<PinRevealState | null>(null)
   const [suspensionTarget, setSuspensionTarget] = useState<Enrollment | null>(null)
   const [suspensionSubmitting, setSuspensionSubmitting] = useState(false)
@@ -881,21 +984,26 @@ export default function CourseStudentsPage({
     setError('')
     setMessage('')
 
-    const response = await fetch('/api/distribution/undo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ logId }),
-    })
-    const payload = await response.json().catch(() => null)
+    try {
+      const response = await fetch('/api/distribution/undo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logId }),
+      })
+      const payload = await response.json().catch(() => null)
 
-    setBulkProcessing(false)
-    if (!response.ok) {
-      setError(payload?.error ?? '수령 기록 취소에 실패했습니다.')
-      return
+      if (!response.ok) {
+        setError(payload?.error ?? '수령 기록 취소에 실패했습니다.')
+        return
+      }
+
+      removeMatrixReceiptByLogId(logId)
+      setMessage(`${studentName} - ${materialName} 수령 기록을 취소했습니다.`)
+    } catch {
+      setError('수령 기록 취소에 실패했습니다.')
+    } finally {
+      setBulkProcessing(false)
     }
-
-    setMessage(`${studentName} - ${materialName} 수령 기록을 취소했습니다.`)
-    await reloadCurrentMatrix()
   }
 
   async function handleDeleteConfirmed(enrollment: Enrollment) {
@@ -1305,6 +1413,8 @@ export default function CourseStudentsPage({
     try {
       const text = await parseEnrollmentXlsxToText(file)
       setBulkText(text)
+      setBulkRowErrors([])
+      setBulkRowErrorCount(0)
       setPanel('bulk')
       setMessage('템플릿 내용을 미리보기에 채웠습니다. 확인 후 "일괄 반영"을 눌러주세요.')
     } catch (reason) {
@@ -1498,20 +1608,115 @@ export default function CourseStudentsPage({
 
   const bulkActionEnabled = filterMatId !== null && (tab === 'receipts' || tab === 'textbook-assign')
 
+  function applyMatrixReceipts(enrollmentId: number, logs: DistributionLogPayload[]) {
+    if (logs.length === 0) {
+      return
+    }
+
+    setMatrixRows((current) => current.map((row) => {
+      if (row.enrollment.id !== enrollmentId) {
+        return row
+      }
+
+      const receipts = { ...row.receipts }
+      for (const log of logs) {
+        receipts[log.materialId] = {
+          logId: log.logId,
+          distributed_at: log.distributedAt,
+        }
+      }
+
+      return { ...row, receipts }
+    }))
+  }
+
+  function removeMatrixReceiptByLogId(logId: number) {
+    setMatrixRows((current) => current.map((row) => {
+      const receipts = { ...row.receipts }
+      let changed = false
+
+      for (const [materialId, receipt] of Object.entries(receipts)) {
+        if (receipt.logId === logId) {
+          delete receipts[Number(materialId)]
+          changed = true
+        }
+      }
+
+      return changed ? { ...row, receipts } : row
+    }))
+  }
+
+  function applyMatrixAssignments(enrollmentId: number, materialIds: number[], assigned: boolean) {
+    if (materialIds.length === 0) {
+      return
+    }
+
+    const uniqueMaterialIds = Array.from(new Set(materialIds))
+    setMatrixRows((current) => current.map((row) => {
+      if (row.enrollment.id !== enrollmentId) {
+        return row
+      }
+
+      const assignments = { ...row.assignments }
+      for (const materialId of uniqueMaterialIds) {
+        if (assigned) {
+          assignments[materialId] = true
+        } else {
+          delete assignments[materialId]
+        }
+      }
+
+      return { ...row, assignments }
+    }))
+  }
+
+  function applyMatrixAssignmentsByMaterial(materialId: number, enrollmentIds: number[], assigned: boolean) {
+    if (enrollmentIds.length === 0) {
+      return
+    }
+
+    const enrollmentIdSet = new Set(enrollmentIds)
+    setMatrixRows((current) => current.map((row) => {
+      if (!enrollmentIdSet.has(row.enrollment.id)) {
+        return row
+      }
+
+      const assignments = { ...row.assignments }
+      if (assigned) {
+        assignments[materialId] = true
+      } else {
+        delete assignments[materialId]
+      }
+
+      return { ...row, assignments }
+    }))
+  }
+
   async function handleDistribute(enrollmentId: number, materialId: number) {
     setBulkProcessing(true)
     setError('')
     setMessage('')
-    const r = await fetch('/api/distribution/manual', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enrollmentId, materialId }),
-    })
-    const p = await r.json().catch(() => null)
-    setBulkProcessing(false)
-    if (!r.ok) { setError(p?.error ?? '배부 처리에 실패했습니다.'); return }
-    setMessage(`${p?.student_name ?? '수강생'} - ${p?.material_name ?? '자료'} 배부 완료`)
-    await reloadCurrentMatrix()
+    try {
+      const response = await fetch('/api/distribution/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentId, materialId }),
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        setError(payload?.error ?? '배부 처리에 실패했습니다.')
+        return
+      }
+
+      const logs = parseDistributionLogsFromPayload(payload)
+      applyMatrixReceipts(enrollmentId, logs)
+      setMessage(`${payload?.student_name ?? '수강생'} - ${payload?.material_name ?? '자료'} 배부 완료`)
+    } catch {
+      setError('배부 처리에 실패했습니다.')
+    } finally {
+      setBulkProcessing(false)
+    }
   }
 
   async function handleDistributeAllForEnrollment(enrollmentId: number, materialIds: number[]) {
@@ -1539,8 +1744,9 @@ export default function CourseStudentsPage({
 
       const successCount = Number(payload?.success_count ?? materialIds.length)
       const failCount = Number(payload?.failed_count ?? Math.max(0, materialIds.length - successCount))
+      const logs = parseDistributionLogsFromPayload(payload)
+      applyMatrixReceipts(enrollmentId, logs)
       setMessage(`자료 일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
-      await reloadCurrentMatrix()
     } finally {
       setBulkProcessing(false)
     }
@@ -1578,6 +1784,8 @@ export default function CourseStudentsPage({
               const payload = await response.json().catch(() => null)
 
               if (response.ok) {
+                const logs = parseDistributionLogsFromPayload(payload)
+                applyMatrixReceipts(item.enrollmentId, logs)
                 const itemSuccessCount = Number(payload?.success_count ?? item.materialIds.length)
                 successCount += itemSuccessCount
                 failCount += Number(payload?.failed_count ?? Math.max(0, item.materialIds.length - itemSuccessCount))
@@ -1596,7 +1804,6 @@ export default function CourseStudentsPage({
 
       setSelectedIds(new Set())
       setMessage(`일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
-      await reloadCurrentMatrix()
     } finally {
       setBulkProcessing(false)
     }
@@ -1636,8 +1843,13 @@ export default function CourseStudentsPage({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enrollmentId, materialId: filterMatId }),
           })
+          const payload = await r.json().catch(() => null)
           setBulkProgress((p) => ({ ...p, done: p.done + 1 }))
-          if (r.ok) successCount++
+          if (r.ok) {
+            const logs = parseDistributionLogsFromPayload(payload)
+            applyMatrixReceipts(enrollmentId, logs)
+            successCount++
+          }
           return r
         }),
       )
@@ -1648,29 +1860,35 @@ export default function CourseStudentsPage({
     setSelectedIds(new Set())
     const failCount = ids.length - successCount
     setMessage(`일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
-    await reloadCurrentMatrix()
   }
 
   async function handleAssignTextbook(enrollmentId: number, materialId: number, checked: boolean) {
     setBulkProcessing(true)
     setError('')
     setMessage('')
+    applyMatrixAssignments(enrollmentId, [materialId], checked)
 
-    const response = await fetch('/api/textbook-assignments', {
-      method: checked ? 'POST' : 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enrollmentId, materialId }),
-    })
-    const payload = await response.json().catch(() => null)
-    setBulkProcessing(false)
+    try {
+      const response = await fetch('/api/textbook-assignments', {
+        method: checked ? 'POST' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentId, materialId }),
+      })
+      const payload = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      setError(payload?.error ?? '교재 배정 처리에 실패했습니다.')
-      return
+      if (!response.ok) {
+        applyMatrixAssignments(enrollmentId, [materialId], !checked)
+        setError(payload?.error ?? '교재 배정 처리에 실패했습니다.')
+        return
+      }
+
+      setMessage(checked ? '교재를 배정했습니다.' : '교재 배정을 해제했습니다.')
+    } catch {
+      applyMatrixAssignments(enrollmentId, [materialId], !checked)
+      setError('교재 배정 처리에 실패했습니다.')
+    } finally {
+      setBulkProcessing(false)
     }
-
-    setMessage(checked ? '교재를 배정했습니다.' : '교재 배정을 해제했습니다.')
-    await reloadCurrentMatrix()
   }
 
   async function handleAssignAllTextbooks(enrollmentId: number) {
@@ -1696,8 +1914,11 @@ export default function CourseStudentsPage({
       return
     }
 
+    const assignedMaterialIds = Array.isArray(payload?.assignments)
+      ? (payload.assignments as TextbookAssignment[]).map((assignment) => assignment.material_id)
+      : matrixMaterials.map((material) => material.id)
+    applyMatrixAssignments(enrollmentId, assignedMaterialIds, true)
     setMessage('전체 교재를 배정했습니다.')
-    await reloadCurrentMatrix()
   }
 
   async function handleBulkAssignSelected() {
@@ -1725,8 +1946,11 @@ export default function CourseStudentsPage({
     }
 
     setSelectedIds(new Set())
+    const assignedEnrollmentIds = Array.isArray(payload?.assignments)
+      ? (payload.assignments as TextbookAssignment[]).map((assignment) => assignment.enrollment_id)
+      : enrollmentIds
+    applyMatrixAssignmentsByMaterial(filterMatId, assignedEnrollmentIds, true)
     setMessage(`${payload?.assignments?.length ?? enrollmentIds.length}명에게 교재를 배정했습니다.`)
-    await reloadCurrentMatrix()
   }
 
   // CRUD
@@ -1972,10 +2196,17 @@ export default function CourseStudentsPage({
 
   async function handleBulkImport(ev: FormEvent) {
     ev.preventDefault()
-    if (!bulkText.trim()) { setError('명단을 입력해 주세요.'); return }
+    if (!bulkText.trim()) {
+      setBulkRowErrors([])
+      setBulkRowErrorCount(0)
+      setError('명단을 입력해 주세요.')
+      return
+    }
     setSubmitting(true)
     setError('')
     setMessage('')
+    setBulkRowErrors([])
+    setBulkRowErrorCount(0)
     try {
       const r = await fetch('/api/enrollments/bulk', {
         method: 'POST',
@@ -1983,8 +2214,16 @@ export default function CourseStudentsPage({
         body: JSON.stringify({ courseId, text: bulkText }),
       })
       const p = await r.json().catch(() => null)
-      if (!r.ok) { setError(p?.error ?? '대량 등록에 실패했습니다.'); return }
+      if (!r.ok) {
+        const rowErrors = parseBulkImportRowErrors(p)
+        setBulkRowErrors(rowErrors)
+        setBulkRowErrorCount(getBulkImportRowErrorCount(p, rowErrors.length))
+        setError(p?.error ?? '대량 등록에 실패했습니다.')
+        return
+      }
       setBulkText('')
+      setBulkRowErrors([])
+      setBulkRowErrorCount(0)
       if (Array.isArray(p?.generated_pins) && p.generated_pins.length > 0) {
         setPinReveal({
           title: '일괄 생성 학생 PIN',
@@ -2694,15 +2933,59 @@ export default function CourseStudentsPage({
           </p>
           <textarea
             value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
+            onChange={(e) => {
+              setBulkText(e.target.value)
+              setBulkRowErrors([])
+              setBulkRowErrorCount(0)
+            }}
             rows={6}
             placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\t공채\t교재 미수령\n51\tA-002\t김소방\t01087654321\t990704\t여\t경채\t`}
             className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-slate-400"
           />
+          {bulkRowErrors.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50/80 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold text-red-700">
+                  수정이 필요한 행 {bulkRowErrorCount.toLocaleString()}건
+                </p>
+                {bulkRowErrorCount > bulkRowErrors.length ? (
+                  <span className="text-[11px] font-medium text-red-500">
+                    먼저 {bulkRowErrors.length.toLocaleString()}건만 표시
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
+                {bulkRowErrors.map((item, index) => (
+                  <div key={`${item.lineNumber}-${item.field}-${index}`} className="rounded-lg border border-red-100 bg-white px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-bold text-red-700">{item.lineNumber}행</span>
+                      {item.name ? <span className="font-semibold text-slate-900">{item.name}</span> : null}
+                      {item.examNumber ? <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">{item.examNumber}</span> : null}
+                      {item.phoneLast4 ? <span className="text-[11px] text-slate-500">끝 {item.phoneLast4}</span> : null}
+                    </div>
+                    <p className="mt-1 text-xs text-red-700">{item.message}</p>
+                    {item.sourceText ? (
+                      <p className="mt-1 truncate font-mono text-[11px] text-slate-400">{item.sourceText}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>
           <div className="mt-3 flex items-center gap-3">
             <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100">{submitting ? '반영 중...' : '일괄 반영'}</button>
-            <button type="button" onClick={() => setPanel('none')} className="text-xs text-slate-500 transition-all duration-200 ease-ios hover:underline active:scale-[0.97]">취소</button>
+            <button
+              type="button"
+              onClick={() => {
+                setBulkRowErrors([])
+                setBulkRowErrorCount(0)
+                setPanel('none')
+              }}
+              className="text-xs text-slate-500 transition-all duration-200 ease-ios hover:underline active:scale-[0.97]"
+            >
+              취소
+            </button>
           </div>
         </form>
       )}
@@ -3019,7 +3302,7 @@ export default function CourseStudentsPage({
           onDelete={(enrollment) => {
             openConfirmation({
               title: '수강생을 삭제할까요?',
-              description: `${enrollment.name} 학생을 이 강의 목록에서 제거합니다.\n\n결제 기록, 정산 이력, 출결/좌석 기록처럼 보존해야 하는 이력이 있으면 삭제할 수 없습니다.`,
+              description: `${enrollment.name} 학생을 이 강의 목록에서 제거합니다.\n\n유료 결제 이력이 있으면 삭제할 수 없고, 결제 취소 또는 환불 처리로 정리해야 합니다. 0원 결제 기록도 보존 이력으로 남기며, 결제 기록이 없는 무료 등록만 삭제됩니다.`,
               confirmLabel: '삭제',
               pendingLabel: '삭제 중...',
               tone: 'danger',

@@ -3,6 +3,8 @@ import { normalizeGenderLabel } from '@/lib/gender'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
 
 export type ParsedEnrollmentRow = {
+  sourceLineNumber: number
+  sourceText: string
   name: string
   phone: string
   exam_number?: string
@@ -237,11 +239,15 @@ export function parseEnrollmentBulkText(
   const customFields = normalizeCustomFields(customFieldsInput)
   const lines = input
     .split(/\r?\n/)
-    .map((line) => splitEnrollmentLine(line))
-    .filter((cells) => cells.some(Boolean))
+    .map((line, index) => ({
+      cells: splitEnrollmentLine(line),
+      lineNumber: index + 1,
+      sourceText: line,
+    }))
+    .filter((line) => line.cells.some(Boolean))
 
-  const headerMap = lines.length > 0 ? getEnrollmentHeaderMap(lines[0] ?? []) : null
-  const headerCells = headerMap ? lines[0] ?? [] : []
+  const headerMap = lines.length > 0 ? getEnrollmentHeaderMap(lines[0]?.cells ?? []) : null
+  const headerCells = headerMap ? lines[0]?.cells ?? [] : []
   const headerUsedIndexes = new Set(
     headerMap
       ? Object.values(headerMap).filter((value): value is number => value !== undefined)
@@ -250,13 +256,14 @@ export function parseEnrollmentBulkText(
   const customHeaderMap = headerMap
     ? getEnrollmentCustomHeaderMap(headerCells, customFields, headerUsedIndexes)
     : new Map<string, number>()
-  const bodyLines = headerMap ? lines.slice(1) : lines.filter((cells) => !isEnrollmentHeaderRow(cells))
+  const bodyLines = headerMap ? lines.slice(1) : lines.filter((line) => !isEnrollmentHeaderRow(line.cells))
 
   return bodyLines
-    .filter((cells) => cells.length >= 2)
-    .map((cells) => {
+    .map(({ cells, lineNumber, sourceText }) => {
       if (headerMap) {
         const row: ParsedEnrollmentRow = {
+          sourceLineNumber: lineNumber,
+          sourceText,
           cohort_label: headerMap.cohort !== undefined ? ((cells[headerMap.cohort] ?? '').trim() || undefined) : undefined,
           exam_number: headerMap.exam !== undefined ? normalizeExamNumber(cells[headerMap.exam] ?? '') || undefined : undefined,
           birth_date: headerMap.birthDate !== undefined ? normalizeBirthDate(cells[headerMap.birthDate] ?? '') ?? undefined : undefined,
@@ -348,6 +355,8 @@ export function parseEnrollmentBulkText(
       const memo = (customValues[memoIndex] ?? '').trim() || undefined
 
       const row: ParsedEnrollmentRow = {
+        sourceLineNumber: lineNumber,
+        sourceText,
         cohort_label: cohortLabel,
         exam_number: examNumber,
         birth_date: birthDate,
@@ -373,7 +382,6 @@ export function parseEnrollmentBulkText(
 
       return row
     })
-    .filter((row) => row.name && row.phone)
 }
 
 type TabularSeatLine = {

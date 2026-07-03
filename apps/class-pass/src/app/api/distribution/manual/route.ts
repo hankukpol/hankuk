@@ -19,6 +19,7 @@ const schema = z.object({
 type DistributionResult = {
   success: boolean
   reason?: string
+  log_id?: number | string | null
   material_name?: string
   student_name?: string
 }
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
     let studentName: string | undefined
     const materialNames: string[] = []
     const failures: string[] = []
+    const distributedLogs: Array<{ logId: number; materialId: number }> = []
 
     for (const materialId of materialIds) {
       const rpcResult = await db.rpc('distribute_material', {
@@ -74,6 +76,10 @@ export async function POST(req: NextRequest) {
 
       successCount += 1
       studentName = result.student_name ?? studentName
+      const logId = Number(result.log_id)
+      if (Number.isInteger(logId) && logId > 0) {
+        distributedLogs.push({ logId, materialId })
+      }
       if (result.material_name) {
         materialNames.push(result.material_name)
       }
@@ -95,11 +101,31 @@ export async function POST(req: NextRequest) {
 
     await invalidateCache('distribution-logs')
 
+    const logRows = distributedLogs.length > 0
+      ? await db
+        .from('distribution_logs')
+        .select('id,material_id,distributed_at')
+        .in('id', distributedLogs.map((log) => log.logId))
+      : { data: [], error: null }
+
+    const logRowMap = new Map(
+      (logRows.data ?? []).map((row) => [Number(row.id), row]),
+    )
+    const distributedAtFallback = new Date().toISOString()
+
     return NextResponse.json({
       success: true,
       student_name: studentName,
       material_name: materialNames.length === 1 ? materialNames[0] : `${successCount}건`,
       material_names: materialNames,
+      logs: distributedLogs.map((log) => {
+        const row = logRowMap.get(log.logId)
+        return {
+          log_id: log.logId,
+          material_id: Number(row?.material_id ?? log.materialId),
+          distributed_at: typeof row?.distributed_at === 'string' ? row.distributed_at : distributedAtFallback,
+        }
+      }),
       success_count: successCount,
       failed_count: materialIds.length - successCount,
     })

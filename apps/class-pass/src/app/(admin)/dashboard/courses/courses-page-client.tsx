@@ -195,6 +195,7 @@ export default function CoursesPageClient({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicatingCourseId, setDuplicatingCourseId] = useState<number | null>(null)
+  const [restoringCourseId, setRestoringCourseId] = useState<number | null>(null)
   const [reorderingCourseId, setReorderingCourseId] = useState<number | null>(null)
   const [draggedCourseId, setDraggedCourseId] = useState<number | null>(null)
   const [dragOverCourseId, setDragOverCourseId] = useState<number | null>(null)
@@ -280,6 +281,49 @@ export default function CoursesPageClient({
     if (!response.ok) { setError(payload?.error ?? '아카이브 실패'); return }
     setCourses((c) => c.map((e) => (e.id === course.id ? { ...e, status: 'archived' as const } : e)))
     setMessage('강좌를 아카이브했습니다.')
+  }
+
+  function requestRestore(course: Course) {
+    setConfirmation({
+      title: '강좌를 복원할까요?',
+      description: `"${course.name}" 강좌를 운영강좌로 다시 이동합니다. 수강생과 기존 기록은 그대로 유지됩니다.`,
+      confirmLabel: '복원',
+      pendingLabel: '복원 중...',
+      tone: 'success',
+      onConfirm: () => handleRestoreConfirmed(course),
+    })
+  }
+
+  async function handleRestoreConfirmed(course: Course) {
+    setRestoringCourseId(course.id)
+    setError('')
+    setMessage('')
+
+    try {
+      const response = await fetch(`/api/courses/${course.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active' }),
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        setError(payload?.error ?? '강좌를 복원하지 못했습니다.')
+        return
+      }
+
+      const restoredCourse = payload?.course as Course | undefined
+      setCourses((current) => current.map((entry) => (
+        entry.id === course.id
+          ? { ...entry, ...(restoredCourse ?? {}), status: 'active' as const }
+          : entry
+      )))
+      setMessage('강좌를 운영강좌로 복원했습니다.')
+    } catch {
+      setError('강좌를 복원하지 못했습니다.')
+    } finally {
+      setRestoringCourseId(null)
+    }
   }
 
   function requestDuplicate(course: Course) {
@@ -805,7 +849,16 @@ export default function CoursesPageClient({
                               >
                                 보관
                               </button>
-                            ) : null}
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => requestRestore(course)}
+                                disabled={restoringCourseId === course.id}
+                                className="rounded-[8px] bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+                              >
+                                {restoringCourseId === course.id ? '복원중' : '복원'}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

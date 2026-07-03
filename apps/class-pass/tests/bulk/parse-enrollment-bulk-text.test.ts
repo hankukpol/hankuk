@@ -30,6 +30,40 @@ const seriesOptions: BranchSeriesOption[] = [
 ]
 
 describe('parseEnrollmentBulkText — header mode, empty 기수 (the fix)', () => {
+  it('keeps the original pasted line number for row-level error reporting', () => {
+    const text = [
+      '',
+      '학번\t기수\t이름\t연락처\t생년월일\t성별\t직렬',
+      'A-001\t50\t홍길동\t01012345678\t990315\t남\t공채',
+      '',
+      'A-002\t51\t김소방\t01087654321\t\t여\t경채',
+    ].join('\n')
+
+    const rows = parseEnrollmentBulkText(text)
+    assert.equal(rows.length, 2)
+    assert.equal(rows[0].sourceLineNumber, 3)
+    assert.equal(rows[1].sourceLineNumber, 5)
+    assert.equal(rows[1].sourceText, 'A-002\t51\t김소방\t01087654321\t\t여\t경채')
+  })
+
+  it('keeps rows with missing identity fields so the API can report the exact line', () => {
+    const text = [
+      '학번\t기수\t이름\t연락처\t생년월일\t성별\t직렬',
+      'A-001\t50\t홍길동\t01012345678\t990315\t남\t공채',
+      'A-002\t51\t김소방\t\t990704\t여\t경채',
+      'A-003\t52\t\t01011112222\t000101\t남\t공채',
+    ].join('\n')
+
+    const rows = parseEnrollmentBulkText(text)
+    assert.equal(rows.length, 3)
+    assert.equal(rows[1].sourceLineNumber, 3)
+    assert.equal(rows[1].name, '김소방')
+    assert.equal(rows[1].phone, '')
+    assert.equal(rows[2].sourceLineNumber, 4)
+    assert.equal(rows[2].name, '')
+    assert.equal(rows[2].phone, '01011112222')
+  })
+
   it('empty 기수 cell in the middle stays undefined so existing cohort is preserved', () => {
     // 기수 컬럼이 중간에 있고 셀이 빈 경우.
     const text = [

@@ -194,7 +194,7 @@ export default function CoursesPageClient({
   const [filter, setFilter] = useState<CourseFilter>('active')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [duplicatingCourseId, setDuplicatingCourseId] = useState<number | null>(null)
+  const [copyingTemplateCourseId, setCopyingTemplateCourseId] = useState<number | null>(null)
   const [restoringCourseId, setRestoringCourseId] = useState<number | null>(null)
   const [reorderingCourseId, setReorderingCourseId] = useState<number | null>(null)
   const [draggedCourseId, setDraggedCourseId] = useState<number | null>(null)
@@ -326,39 +326,49 @@ export default function CoursesPageClient({
     }
   }
 
-  function requestDuplicate(course: Course) {
+  function requestTemplateCopy(course: Course) {
     setConfirmation({
-      title: '강좌를 복사할까요?',
-      description: `"${course.name}" 강좌의 설정, 과목, 수강생 추가 필드만 복사됩니다. 학생, 자료, 좌석 데이터는 복사되지 않습니다.`,
-      confirmLabel: '복사',
-      pendingLabel: '복사 중...',
-      onConfirm: () => handleDuplicateConfirmed(course),
+      title: '강좌 템플릿을 복사할까요?',
+      description: `"${course.name}" 강좌의 설정, 과목, 강의실과 좌석 배치를 복사합니다. 학생, 자료, 좌석 예약, 출석, 결제, 표시 설정은 복사되지 않습니다. 복사본은 보관강좌로 생성됩니다.`,
+      confirmLabel: '템플릿 복사',
+      pendingLabel: '템플릿 복사 중...',
+      onConfirm: () => handleTemplateCopyConfirmed(course),
     })
   }
 
-  async function handleDuplicateConfirmed(course: Course) {
-    setDuplicatingCourseId(course.id)
+  async function handleTemplateCopyConfirmed(course: Course) {
+    setCopyingTemplateCourseId(course.id)
     setError('')
     setMessage('')
 
-    const response = await fetch(`/api/courses/${course.id}/duplicate`, {
-      method: 'POST',
-    })
-    const payload = await response.json().catch(() => null)
-    setDuplicatingCourseId(null)
+    try {
+      const response = await fetch(`/api/courses/${course.id}/template-copy`, {
+        method: 'POST',
+      })
+      const payload = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      setError(payload?.error ?? '강좌 복사본을 만들지 못했습니다.')
-      return
+      if (!response.ok) {
+        setError(payload?.error ?? '강좌 템플릿을 복사하지 못했습니다.')
+        return
+      }
+
+      const copiedCourse = payload?.course as Course | undefined
+      if (!copiedCourse?.id) {
+        setError('복사된 강좌 템플릿 정보를 확인하지 못했습니다.')
+        return
+      }
+
+      setCourses((current) => [
+        copiedCourse,
+        ...current.filter((entry) => entry.id !== copiedCourse.id),
+      ])
+      setFilter('archived')
+      setMessage(`"${copiedCourse.name}" 템플릿을 만들었습니다. 강좌명을 변경한 뒤 운영강좌로 전환해 주세요.`)
+    } catch {
+      setError('강좌 템플릿을 복사하지 못했습니다.')
+    } finally {
+      setCopyingTemplateCourseId(null)
     }
-
-    const duplicated = payload?.course as Course | undefined
-    if (!duplicated?.id) {
-      setError('복사된 강좌 정보를 확인하지 못했습니다.')
-      return
-    }
-
-    router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
   }
 
   async function runConfirmedAction() {
@@ -771,7 +781,7 @@ export default function CoursesPageClient({
                             </span>
                             {course.copied_from_course_id ? (
                               <span className="rounded-[6px] bg-[#f5f5f7] px-2 py-0.5 text-[10px] font-semibold text-[#86868b]">
-                                복사본
+                                템플릿 복사본
                               </span>
                             ) : null}
                           </div>
@@ -835,11 +845,11 @@ export default function CoursesPageClient({
                             </Link>
                             <button
                               type="button"
-                              onClick={() => requestDuplicate(course)}
-                              disabled={duplicatingCourseId === course.id}
-                              className="rounded-[8px] bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+                              onClick={() => requestTemplateCopy(course)}
+                              disabled={copyingTemplateCourseId === course.id}
+                              className="whitespace-nowrap rounded-[8px] bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
                             >
-                              {duplicatingCourseId === course.id ? '복사중' : '복사'}
+                              {copyingTemplateCourseId === course.id ? '복사 중' : '강좌 템플릿 복사'}
                             </button>
                             {isActive ? (
                               <button

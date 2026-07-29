@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { motion } from 'framer-motion'
-import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -43,8 +42,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
   const [course, setCourse] = useState<Course | null>(null)
   const [loading, setLoading] = useState(true)
-  const [duplicating, setDuplicating] = useState(false)
-  const [duplicateConfirmOpen, setDuplicateConfirmOpen] = useState(false)
   const [error, setError] = useState('')
   const [hasMounted, setHasMounted] = useState(false)
   const tabNavigationFrameRef = useRef<number | null>(null)
@@ -153,42 +150,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
     ]
   }, [basePath, course])
 
-  function requestDuplicate() {
-    if (!course) {
-      return
-    }
-
-    setDuplicateConfirmOpen(true)
-  }
-
-  async function handleDuplicateConfirmed() {
-    if (!course) {
-      return
-    }
-    setDuplicating(true)
-    setError('')
-
-    const response = await fetch(`/api/courses/${course.id}/duplicate`, {
-      method: 'POST',
-    })
-    const payload = await response.json().catch(() => null)
-    setDuplicating(false)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '강좌 복사본을 만들지 못했습니다.')
-      return
-    }
-
-    const duplicated = payload?.course as Course | undefined
-    if (!duplicated?.id) {
-      setError('복사된 강좌 정보를 확인하지 못했습니다.')
-      return
-    }
-
-    setDuplicateConfirmOpen(false)
-    router.push(withTenantPrefix(`/dashboard/courses/${duplicated.id}`, tenant.type))
-  }
-
   function handleCourseTabClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (
       event.defaultPrevented
@@ -219,22 +180,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
   return (
     <>
-    <ConfirmationModal
-      open={duplicateConfirmOpen}
-      title="강좌를 복사할까요?"
-      description={course ? `"${course.name}" 강좌의 설정, 과목, 수강생 추가 필드만 복사됩니다. 학생, 자료, 좌석 데이터는 복사되지 않습니다.` : undefined}
-      confirmLabel="복사"
-      pendingLabel="복사 중..."
-      submitting={duplicating}
-      onClose={() => {
-        if (!duplicating) {
-          setDuplicateConfirmOpen(false)
-        }
-      }}
-      onConfirm={() => {
-        void handleDuplicateConfirmed()
-      }}
-    />
     <div className="flex flex-col gap-6">
       <section className="rounded-[8px] border border-slate-200 bg-white px-5 pt-5 sm:px-6 sm:pt-6">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">강좌 관리</p>
@@ -253,18 +198,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
             ) : null}
           </div>
 
-          {course ? (
-            <button
-              type="button"
-              onClick={requestDuplicate}
-              disabled={duplicating}
-              className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
-            >
-              {duplicating ? '복사중' : '복사'}
-            </button>
-          ) : (
-            <div className="h-10 w-20 rounded-[8px] bg-slate-100" />
-          )}
         </div>
 
         <div className="mt-5 flex gap-6 border-b border-slate-200 overflow-x-auto">

@@ -15,6 +15,7 @@
     "test:distribution": "tsx --test tests/distribution/receipt-matrix-pagination.test.ts tests/distribution/qr-scan-receipt-status.test.ts",
     "test:settlement": "tsx --require ./tests/_setup/stub-server-only.cjs --test tests/payments/course-settlement.test.ts",
     "verify:payments-local": "node scripts/verify-payment-workflows-local.js",
+    "verify:course-template-copy": "node scripts/verify-course-template-copy-local.js",
     "verify:designated-seat-display": "node scripts/verify-designated-seat-display.js",
     "verify:designated-seat-multi-room": "node scripts/verify-designated-seat-multi-room-local-workflow.js",
     "verify:designated-seat-200": "node scripts/verify-designated-seat-200-local-workflow.js"

@@ -100,6 +100,20 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
     }
   }, [courseId])
 
+  useEffect(() => {
+    function handleCourseUpdated(event: Event) {
+      const nextCourse = (event as CustomEvent<Course>).detail
+      if (nextCourse?.id === courseId) {
+        setCourse(nextCourse)
+      }
+    }
+
+    window.addEventListener('class-pass:course-updated', handleCourseUpdated)
+    return () => {
+      window.removeEventListener('class-pass:course-updated', handleCourseUpdated)
+    }
+  }, [courseId])
+
   const tabs = useMemo<CourseRouteTab[]>(() => {
     const matches = (href: string) => (currentPathname: string) =>
       currentPathname === href || currentPathname.startsWith(`${href}/`)

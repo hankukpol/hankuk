@@ -210,13 +210,14 @@ export default function CourseDetailPage({
   async function handleSave(event: FormEvent) {
     event.preventDefault()
     if (!form) return
+    const previousSlug = course?.slug
     setSaving(true); setError(''); setWarning(''); setMessage('')
     const response = await fetch(`/api/courses/${courseId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...form,
-        slug: form.slug.trim(),
+        slug: undefined,
         theme_color: form.theme_color.trim(),
         tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
         settlement_report_code: form.settlement_report_code.trim() || null,
@@ -254,13 +255,19 @@ export default function CourseDetailPage({
     const updated = payload.course as Course
     const nextWarning = payload?.warning ?? ''
     const partialSave = Boolean(payload?.partialSave ?? nextWarning)
+    const slugChanged = Boolean(previousSlug && updated.slug !== previousSlug)
     setCourse(updated)
     setForm(toPatchForm(updated))
+    window.dispatchEvent(new CustomEvent<Course>('class-pass:course-updated', {
+      detail: updated,
+    }))
     setWarning(nextWarning)
     setMessage(
       partialSave
         ? '강좌 기본 설정은 저장됐지만 일부 기능 설정은 아직 반영되지 않았습니다.'
-        : '강좌 설정을 저장했습니다.',
+        : slugChanged
+          ? '강좌 설정을 저장하고 slug를 새 강좌명에 맞춰 변경했습니다.'
+          : '강좌 설정을 저장했습니다.',
     )
   }
 
@@ -534,6 +541,13 @@ export default function CourseDetailPage({
                   readOnly
                   className="cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-gray-400 outline-none"
                 />
+                <p className="text-[11px] leading-4 text-gray-400">
+                  {course.status === 'active'
+                    ? '운영 중에는 기존 링크와 QR 주소 보호를 위해 변경되지 않습니다.'
+                    : course.copied_at
+                      ? '강좌명을 변경해 저장하면 자동으로 갱신되며, 중복 시 -2, -3 순으로 구분됩니다.'
+                      : '강좌 주소 식별자로 자동 관리됩니다.'}
+                </p>
               </div>
             </div>
 

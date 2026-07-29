@@ -32,11 +32,15 @@ import {
   stripPresenceLocationFields,
   stripSettlementReportCodeField,
 } from '@/lib/course-feature-compat'
+import {
+  buildCourseSlugCandidate,
+  decideCourseSlugUpdate,
+} from '@/lib/course-slug'
 import { createServerClient } from '@/lib/supabase/server'
 import { deleteStudentIfOrphaned } from '@/lib/student-profiles'
 import { getServerTenantType } from '@/lib/tenant.server'
 import type { Course } from '@/types/database'
-import { parsePositiveInt, slugifyCourseName } from '@/lib/utils'
+import { parsePositiveInt } from '@/lib/utils'
 import { isValidDateKey } from '@/lib/validation/primitives'
 
 const optionalDateKeySchema = z.preprocess(
@@ -52,7 +56,7 @@ const enrollmentFieldSchema = z.object({
 })
 
 const patchSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
   slug: z.string().trim().max(100).optional(),
   course_type: z.enum(['interview', 'mock_exam', 'lecture', 'general']).optional(),
   status: z.enum(['active', 'archived']).optional(),
@@ -112,6 +116,38 @@ async function invalidateCourseLifecycleCaches() {
   await invalidateCache('attendance')
   await invalidateCache('materials')
   await invalidateCache('distribution-logs')
+}
+
+async function resolveUniqueCourseSlug(params: {
+  db: ReturnType<typeof createServerClient>
+  division: Course['division']
+  courseId: number
+  courseName: string
+}) {
+  for (let sequence = 1; sequence <= 10_000; sequence += 1) {
+    const candidate = buildCourseSlugCandidate({
+      courseName: params.courseName,
+      courseId: params.courseId,
+      sequence,
+    })
+    const { data, error } = await params.db
+      .from('courses')
+      .select('id')
+      .eq('division', params.division)
+      .eq('slug', candidate)
+      .neq('id', params.courseId)
+      .limit(1)
+
+    if (error) {
+      throw error
+    }
+
+    if (!data?.length) {
+      return candidate
+    }
+  }
+
+  throw new Error('사용 가능한 강좌 slug를 찾지 못했습니다.')
 }
 
 async function revokeArchivedCourseLiveSessions(
@@ -229,13 +265,51 @@ export async function PATCH(
   const nowIso = new Date().toISOString()
   const nextName = parsed.data.name ?? existingCourse.name
   const nextStatus = parsed.data.status ?? existingCourse.status
+  const requestedSlug = parsed.data.slug?.trim()
+  const slugDecision = decideCourseSlugUpdate({
+    currentName: existingCourse.name,
+    currentSlug: existingCourse.slug,
+    currentStatus: existingCourse.status,
+    copiedAt: existingCourse.copied_at,
+    nextName,
+    nextStatus,
+    requestedSlug,
+  })
+
+  if (slugDecision.type === 'reject-active-change') {
+    return NextResponse.json(
+      { error: '운영 중인 강좌의 slug는 기존 링크 보호를 위해 변경할 수 없습니다.' },
+      { status: 400 },
+    )
+  }
+
+  const shouldRegenerateTemplateSlug = slugDecision.type === 'regenerate'
+  const db = createServerClient()
+  let nextSlug = slugDecision.type === 'use' ? slugDecision.slug : existingCourse.slug
+
+  if (shouldRegenerateTemplateSlug) {
+    try {
+      nextSlug = await resolveUniqueCourseSlug({
+        db,
+        division,
+        courseId,
+        courseName: nextName,
+      })
+    } catch (error) {
+      console.error('Failed to resolve a unique course slug.', {
+        courseId,
+        division,
+        error,
+      })
+      return NextResponse.json({ error: '새 강좌명에 맞는 slug를 만들지 못했습니다.' }, { status: 500 })
+    }
+  }
+
   const featureDesignatedSeat = parsed.data.feature_designated_seat ?? existingCourse.feature_designated_seat
   const featureAttendance = parsed.data.feature_attendance ?? existingCourse.feature_attendance
   const rawUpdatePayload: Record<string, unknown> = {
     ...parsed.data,
-    slug: parsed.data.slug === undefined
-      ? existingCourse.slug
-      : parsed.data.slug || slugifyCourseName(nextName),
+    slug: nextSlug,
     settlement_report_code: parsed.data.settlement_report_code === undefined
       ? existingCourse.settlement_report_code
       : parsed.data.settlement_report_code?.trim() || null,
@@ -304,7 +378,6 @@ export async function PATCH(
     warnings.push(PRESENCE_LOCATION_WARNING)
   }
 
-  const db = createServerClient()
   const runUpdate = (payload: Record<string, unknown>) => db
     .from('courses')
     .update(payload)
@@ -377,6 +450,32 @@ export async function PATCH(
     break
   }
 
+  for (
+    let attempt = 0;
+    attempt < 3 && error?.code === '23505' && shouldRegenerateTemplateSlug;
+    attempt += 1
+  ) {
+    try {
+      nextSlug = await resolveUniqueCourseSlug({
+        db,
+        division,
+        courseId,
+        courseName: nextName,
+      })
+      updatePayload = { ...updatePayload, slug: nextSlug }
+      const retry = await runUpdate(updatePayload)
+      data = retry.data
+      error = retry.error
+    } catch (slugError) {
+      console.error('Failed to retry a unique course slug.', {
+        courseId,
+        division,
+        error: slugError,
+      })
+      break
+    }
+  }
+
   const warning = mergeFeatureWarnings(warnings)
   const partialSave = warnings.length > 0
 
@@ -385,6 +484,11 @@ export async function PATCH(
       return NextResponse.json({ error: '같은 division 안에 동일한 강좌 slug가 이미 존재합니다.' }, { status: 409 })
     }
 
+    console.error('Failed to update course.', {
+      courseId,
+      division,
+      error,
+    })
     return NextResponse.json({ error: '강좌를 수정하지 못했습니다.' }, { status: 500 })
   }
 

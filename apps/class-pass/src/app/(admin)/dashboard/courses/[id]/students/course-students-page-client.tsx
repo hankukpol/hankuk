@@ -23,6 +23,15 @@ import {
 } from '@/components/payments/PaymentSection'
 import { formatWon } from '@/lib/payments/format'
 import { downloadEnrollmentTemplate, parseEnrollmentXlsxToText } from '@/lib/enrollment-template'
+import {
+  applyBulkImportMasterIdentity,
+  getBulkImportFieldLabel,
+  mergeBulkImportProgress,
+  type BulkImportEditableRow,
+  type BulkImportMasterSnapshot,
+  type BulkImportProgress,
+  type BulkImportRowIssue,
+} from '@/lib/enrollment-bulk-workflow'
 import { downloadCourseSettlementXlsx } from '@/lib/payments/xlsx-export'
 import { buildSettlementReport } from '@/lib/payments/settlement-report'
 import type { EnrollmentPayment } from '@/lib/payments/types'
@@ -85,16 +94,18 @@ type NoticeRequest = {
   tone?: 'default' | 'danger' | 'success'
 }
 
-type BulkImportRowError = {
-  rowNumber: number
-  lineNumber: number
-  name: string
-  phoneLast4: string | null
-  examNumber: string | null
-  field: string
-  value: string | null
-  message: string
-  sourceText: string
+const BULK_IMPORT_COMPARISON_FIELDS = [
+  { inputKey: 'examNumber', issueKey: 'exam_number' },
+  { inputKey: 'name', issueKey: 'name' },
+  { inputKey: 'phone', issueKey: 'phone' },
+  { inputKey: 'birthDate', issueKey: 'birth_date' },
+] as const
+
+function getBulkImportMasterValue(
+  master: BulkImportMasterSnapshot,
+  field: typeof BULK_IMPORT_COMPARISON_FIELDS[number]['inputKey'],
+) {
+  return master[field]
 }
 
 type StudentSearchResult = {
@@ -132,7 +143,64 @@ type DistributionLogPayload = {
   distributedAt: string
 }
 
-function parseBulkImportRowErrors(payload: unknown): BulkImportRowError[] {
+function parseBulkImportEditableRow(
+  value: unknown,
+  fallback: { lineNumber: number; sourceText: string; name: string },
+): BulkImportEditableRow {
+  const source = typeof value === 'object' && value !== null
+    ? value as Record<string, unknown>
+    : {}
+  const customDataSource = typeof source.customData === 'object' && source.customData !== null
+    ? source.customData as Record<string, unknown>
+    : {}
+
+  return {
+    sourceLineNumber: Number.isInteger(Number(source.sourceLineNumber))
+      && Number(source.sourceLineNumber) > 0
+      ? Number(source.sourceLineNumber)
+      : fallback.lineNumber,
+    sourceText: typeof source.sourceText === 'string' ? source.sourceText : fallback.sourceText,
+    name: typeof source.name === 'string' ? source.name : fallback.name,
+    phone: typeof source.phone === 'string' ? source.phone : '',
+    examNumber: typeof source.examNumber === 'string' ? source.examNumber : '',
+    cohortLabel: typeof source.cohortLabel === 'string' ? source.cohortLabel : '',
+    birthDate: typeof source.birthDate === 'string' ? source.birthDate : '',
+    gender: typeof source.gender === 'string' ? source.gender : '',
+    series: typeof source.series === 'string' ? source.series : '',
+    memo: typeof source.memo === 'string' ? source.memo : '',
+    photoUrl: typeof source.photoUrl === 'string' ? source.photoUrl : '',
+    customData: Object.fromEntries(
+      Object.entries(customDataSource)
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    ),
+  }
+}
+
+function parseBulkImportMasterSnapshot(value: unknown): BulkImportMasterSnapshot | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const source = value as Record<string, unknown>
+  const id = Number(source.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    return null
+  }
+
+  return {
+    id,
+    name: typeof source.name === 'string' ? source.name : '',
+    phone: typeof source.phone === 'string' ? source.phone : '',
+    examNumber: typeof source.examNumber === 'string' ? source.examNumber : '',
+    birthDate: typeof source.birthDate === 'string' ? source.birthDate : '',
+    cohortOptionId: typeof source.cohortOptionId === 'number'
+      && Number.isInteger(source.cohortOptionId)
+      && source.cohortOptionId > 0
+      ? source.cohortOptionId
+      : null,
+  }
+}
+
+function parseBulkImportRowErrors(payload: unknown): BulkImportRowIssue[] {
   if (typeof payload !== 'object' || payload === null || !('rowErrors' in payload)) {
     return []
   }
@@ -155,19 +223,34 @@ function parseBulkImportRowErrors(payload: unknown): BulkImportRowError[] {
         return null
       }
 
+      const name = typeof source.name === 'string' ? source.name : ''
+      const sourceText = typeof source.sourceText === 'string' ? source.sourceText : ''
+      const field = typeof source.field === 'string' ? source.field : ''
+      const message = typeof source.message === 'string' ? source.message : '이 행을 확인해 주세요.'
+      const fields = Array.isArray(source.fields)
+        ? source.fields.filter((value): value is string => typeof value === 'string')
+        : [field].filter(Boolean)
+      const messages = Array.isArray(source.messages)
+        ? source.messages.filter((value): value is string => typeof value === 'string')
+        : [message]
+
       return {
         rowNumber: Number.isInteger(rowNumber) && rowNumber > 0 ? rowNumber : lineNumber,
         lineNumber,
-        name: typeof source.name === 'string' ? source.name : '',
+        name,
         phoneLast4: typeof source.phoneLast4 === 'string' ? source.phoneLast4 : null,
         examNumber: typeof source.examNumber === 'string' ? source.examNumber : null,
-        field: typeof source.field === 'string' ? source.field : '',
+        field,
+        fields,
         value: typeof source.value === 'string' ? source.value : null,
-        message: typeof source.message === 'string' ? source.message : '이 행을 확인해 주세요.',
-        sourceText: typeof source.sourceText === 'string' ? source.sourceText : '',
+        message,
+        messages,
+        sourceText,
+        input: parseBulkImportEditableRow(source.input, { lineNumber, sourceText, name }),
+        master: parseBulkImportMasterSnapshot(source.master),
       }
     })
-    .filter((entry): entry is BulkImportRowError => Boolean(entry))
+    .filter((entry): entry is BulkImportRowIssue => Boolean(entry))
 }
 
 function getBulkImportRowErrorCount(payload: unknown, fallbackCount: number) {
@@ -534,8 +617,9 @@ export default function CourseStudentsPage({
   const [paymentDetailEnrollmentId, setPaymentDetailEnrollmentId] = useState<number | null>(null)
   const [historyEnrollmentId, setHistoryEnrollmentId] = useState<number | null>(null)
   const [bulkText, setBulkText] = useState('')
-  const [bulkRowErrors, setBulkRowErrors] = useState<BulkImportRowError[]>([])
+  const [bulkRowErrors, setBulkRowErrors] = useState<BulkImportRowIssue[]>([])
   const [bulkRowErrorCount, setBulkRowErrorCount] = useState(0)
+  const [bulkImportResult, setBulkImportResult] = useState<BulkImportProgress | null>(null)
   const [pinReveal, setPinReveal] = useState<PinRevealState | null>(null)
   const [suspensionTarget, setSuspensionTarget] = useState<Enrollment | null>(null)
   const [suspensionSubmitting, setSuspensionSubmitting] = useState(false)
@@ -1415,6 +1499,7 @@ export default function CourseStudentsPage({
       setBulkText(text)
       setBulkRowErrors([])
       setBulkRowErrorCount(0)
+      setBulkImportResult(null)
       setPanel('bulk')
       setMessage('템플릿 내용을 미리보기에 채웠습니다. 확인 후 "일괄 반영"을 눌러주세요.')
     } catch (reason) {
@@ -2194,50 +2279,156 @@ export default function CourseStudentsPage({
     }
   }
 
-  async function handleBulkImport(ev: FormEvent) {
-    ev.preventDefault()
-    if (!bulkText.trim()) {
-      setBulkRowErrors([])
-      setBulkRowErrorCount(0)
-      setError('명단을 입력해 주세요.')
-      return
-    }
+  async function submitBulkImport(
+    payload: { text: string } | { rows: BulkImportEditableRow[] },
+  ) {
     setSubmitting(true)
     setError('')
     setMessage('')
-    setBulkRowErrors([])
-    setBulkRowErrorCount(0)
     try {
       const r = await fetch('/api/enrollments/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courseId, text: bulkText }),
+        body: JSON.stringify({ courseId, ...payload }),
       })
       const p = await r.json().catch(() => null)
       if (!r.ok) {
         const rowErrors = parseBulkImportRowErrors(p)
-        setBulkRowErrors(rowErrors)
-        setBulkRowErrorCount(getBulkImportRowErrorCount(p, rowErrors.length))
+        if (rowErrors.length > 0) {
+          setBulkRowErrors(rowErrors)
+          setBulkRowErrorCount(getBulkImportRowErrorCount(p, rowErrors.length))
+        } else if ('text' in payload) {
+          setBulkRowErrors([])
+          setBulkRowErrorCount(0)
+          setBulkImportResult(null)
+        }
         setError(p?.error ?? '대량 등록에 실패했습니다.')
         return
       }
-      setBulkText('')
-      setBulkRowErrors([])
-      setBulkRowErrorCount(0)
+
+      const rowErrors = parseBulkImportRowErrors(p)
+      const importedCount = Number.isInteger(Number(p?.count)) ? Number(p.count) : 0
+      const totalCount = Number.isInteger(Number(p?.totalCount))
+        ? Number(p.totalCount)
+        : importedCount + rowErrors.length
+      const errorCount = getBulkImportRowErrorCount(p, rowErrors.length)
+      const isRetry = 'rows' in payload
+      const nextProgress = mergeBulkImportProgress(
+        bulkImportResult,
+        { totalCount, importedCount, errorCount },
+        isRetry,
+      )
       if (Array.isArray(p?.generated_pins) && p.generated_pins.length > 0) {
         setPinReveal({
           title: '일괄 생성 학생 PIN',
           pins: p.generated_pins as Array<{ name: string; phone: string; pin: string }>,
         })
       }
-      setMessage(`${p?.count ?? 0}건 반영했습니다.`)
-      setPanel('none')
+
+      setBulkText('')
+      setBulkRowErrors(rowErrors)
+      setBulkRowErrorCount(errorCount)
+      setBulkImportResult(nextProgress)
+      setMessage(
+        isRetry
+          ? rowErrors.length > 0
+            ? `전체 ${nextProgress.totalCount}명 중 ${nextProgress.importedCount}명 반영 완료, 오류 ${nextProgress.errorCount}명은 추가 확인이 필요합니다.`
+            : `전체 ${nextProgress.totalCount}명 등록을 완료했습니다.`
+          : typeof p?.message === 'string'
+            ? p.message
+            : rowErrors.length > 0
+              ? `정상 ${importedCount}명은 반영했고, 오류 ${errorCount}명은 확인이 필요합니다.`
+              : `${importedCount}건 반영했습니다.`,
+      )
       await refresh().catch(() => null)
+
+      if (rowErrors.length === 0) {
+        setBulkImportResult(null)
+        setPanel('none')
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '대량 등록에 실패했습니다.')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  async function handleBulkImport(ev: FormEvent) {
+    ev.preventDefault()
+    if (!bulkText.trim()) {
+      setBulkRowErrors([])
+      setBulkRowErrorCount(0)
+      setBulkImportResult(null)
+      setError('명단을 입력해 주세요.')
+      return
+    }
+
+    setBulkRowErrors([])
+    setBulkRowErrorCount(0)
+    setBulkImportResult(null)
+    await submitBulkImport({ text: bulkText })
+  }
+
+  function updateBulkImportRow(
+    index: number,
+    field: keyof Pick<
+      BulkImportEditableRow,
+      'examNumber' | 'name' | 'phone' | 'birthDate' | 'cohortLabel' | 'series'
+    >,
+    value: string,
+  ) {
+    setBulkRowErrors((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index) {
+        return item
+      }
+      const input = { ...item.input, [field]: value }
+      return {
+        ...item,
+        input,
+        name: input.name,
+        examNumber: input.examNumber || null,
+        phoneLast4: input.phone.replace(/\D/g, '').slice(-4) || null,
+      }
+    }))
+  }
+
+  function applyMasterToBulkImportRow(index: number) {
+    setBulkRowErrors((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index || !item.master) {
+        return item
+      }
+      const input = applyBulkImportMasterIdentity(item.input, item.master)
+      return {
+        ...item,
+        input,
+        name: input.name,
+        examNumber: input.examNumber || null,
+        phoneLast4: input.phone.replace(/\D/g, '').slice(-4) || null,
+      }
+    }))
+  }
+
+  function applyAllMasterValues() {
+    setBulkRowErrors((current) => current.map((item) => {
+      if (!item.master) {
+        return item
+      }
+      const input = applyBulkImportMasterIdentity(item.input, item.master)
+      return {
+        ...item,
+        input,
+        name: input.name,
+        examNumber: input.examNumber || null,
+        phoneLast4: input.phone.replace(/\D/g, '').slice(-4) || null,
+      }
+    }))
+  }
+
+  async function retryBulkImportErrors() {
+    if (bulkRowErrors.length === 0) {
+      return
+    }
+    await submitBulkImport({ rows: bulkRowErrors.map((item) => item.input) })
   }
 
   function startEdit(e: Enrollment) {
@@ -2460,7 +2651,15 @@ export default function CourseStudentsPage({
           </button>
           <button
             type="button"
-            onClick={() => setPanel(panel === 'bulk' ? 'none' : 'bulk')}
+            onClick={() => {
+              const opening = panel !== 'bulk'
+              if (opening) {
+                setBulkRowErrors([])
+                setBulkRowErrorCount(0)
+                setBulkImportResult(null)
+              }
+              setPanel(opening ? 'bulk' : 'none')
+            }}
             className="rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
           >
             명단 붙여넣기
@@ -2923,65 +3122,248 @@ export default function CourseStudentsPage({
 
       {panel === 'bulk' && (
         <form onSubmit={handleBulkImport} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            탭 구분 · 순서: <span className="font-semibold text-slate-700">기수, 학번, 이름, 연락처, 생년월일, 성별, 직렬</span>
-            <span className="text-slate-400"> (1행에 헤더를 넣으면 순서 무관, 빈 칸은 기존 값 보존)</span>
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            마지막 컬럼에 <span className="font-semibold text-slate-700">비고</span>를 추가하면 이 강좌에만 적용되는 메모를 입력할 수 있습니다.
-          </p>
-          <textarea
-            value={bulkText}
-            onChange={(e) => {
-              setBulkText(e.target.value)
-              setBulkRowErrors([])
-              setBulkRowErrorCount(0)
-            }}
-            rows={6}
-            placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\t공채\t교재 미수령\n51\tA-002\t김소방\t01087654321\t990704\t여\t경채\t`}
-            className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-slate-400"
-          />
-          {bulkRowErrors.length > 0 ? (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50/80 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-bold text-red-700">
-                  수정이 필요한 행 {bulkRowErrorCount.toLocaleString()}건
-                </p>
-                {bulkRowErrorCount > bulkRowErrors.length ? (
-                  <span className="text-[11px] font-medium text-red-500">
-                    먼저 {bulkRowErrors.length.toLocaleString()}건만 표시
-                  </span>
-                ) : null}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                전체 명단을 먼저 검사한 뒤 정상 학생은 바로 등록하고, 오류 학생만 아래에 남겨 다시 처리합니다.
+              </p>
+            </div>
+            {bulkImportResult ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkText('')
+                  setBulkRowErrors([])
+                  setBulkRowErrorCount(0)
+                  setBulkImportResult(null)
+                  setError('')
+                  setMessage('')
+                }}
+                disabled={submitting}
+                className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50"
+              >
+                새 명단 입력
+              </button>
+            ) : null}
+          </div>
+
+          {!bulkImportResult ? (
+            <>
+              <p className="mt-3 text-xs text-slate-500">
+                탭 구분 · 순서: <span className="font-semibold text-slate-700">기수, 학번, 이름, 연락처, 생년월일, 성별, 직렬</span>
+                <span className="text-slate-400"> (1행에 헤더를 넣으면 순서 무관, 빈 칸은 기존 값 보존)</span>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                마지막 컬럼에 <span className="font-semibold text-slate-700">비고</span>를 추가하면 이 강좌에만 적용되는 메모를 입력할 수 있습니다.
+              </p>
+              <textarea
+                value={bulkText}
+                onChange={(e) => {
+                  setBulkText(e.target.value)
+                  setBulkRowErrors([])
+                  setBulkRowErrorCount(0)
+                  setBulkImportResult(null)
+                }}
+                rows={6}
+                placeholder={`50\tA-001\t홍길동\t01012345678\t990315\t남\t공채\t교재 미수령\n51\tA-002\t김소방\t01087654321\t990704\t여\t경채\t`}
+                className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs outline-none transition-colors focus:border-slate-400"
+              />
+            </>
+          ) : (
+            <div className="mt-4 grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+              <div className="border-r border-slate-200 px-3 py-3 text-center">
+                <p className="text-[11px] font-medium text-slate-500">전체 검사</p>
+                <p className="mt-0.5 text-lg font-bold text-slate-900">{bulkImportResult.totalCount.toLocaleString()}명</p>
               </div>
-              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto pr-1">
-                {bulkRowErrors.map((item, index) => (
-                  <div key={`${item.lineNumber}-${item.field}-${index}`} className="rounded-lg border border-red-100 bg-white px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-bold text-red-700">{item.lineNumber}행</span>
-                      {item.name ? <span className="font-semibold text-slate-900">{item.name}</span> : null}
-                      {item.examNumber ? <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">{item.examNumber}</span> : null}
-                      {item.phoneLast4 ? <span className="text-[11px] text-slate-500">끝 {item.phoneLast4}</span> : null}
-                    </div>
-                    <p className="mt-1 text-xs text-red-700">{item.message}</p>
-                    {item.sourceText ? (
-                      <p className="mt-1 truncate font-mono text-[11px] text-slate-400">{item.sourceText}</p>
-                    ) : null}
-                  </div>
-                ))}
+              <div className="border-r border-slate-200 px-3 py-3 text-center">
+                <p className="text-[11px] font-medium text-emerald-600">등록 완료</p>
+                <p className="mt-0.5 text-lg font-bold text-emerald-700">{bulkImportResult.importedCount.toLocaleString()}명</p>
+              </div>
+              <div className="px-3 py-3 text-center">
+                <p className="text-[11px] font-medium text-amber-600">확인 필요</p>
+                <p className="mt-0.5 text-lg font-bold text-amber-700">{bulkImportResult.errorCount.toLocaleString()}명</p>
               </div>
             </div>
+          )}
+
+          {bulkRowErrors.length > 0 ? (
+            <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3 sm:p-4" aria-label="오류 명단 검토">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-amber-900">
+                    확인이 필요한 명단 {bulkRowErrorCount.toLocaleString()}명
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    노란색 항목이 마스터와 다른 값입니다. 마스터 값을 적용하거나 입력값을 직접 고친 뒤 오류 명단만 다시 등록하세요.
+                  </p>
+                </div>
+                {bulkRowErrors.some((item) => item.master) ? (
+                  <button
+                    type="button"
+                    onClick={applyAllMasterValues}
+                    disabled={submitting}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    전체 마스터 값 적용
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-3 max-h-[34rem] space-y-3 overflow-y-auto pr-1">
+                {bulkRowErrors.map((item, index) => (
+                  <article
+                    key={`${item.lineNumber}-${item.field}-${index}`}
+                    className="rounded-xl border border-amber-200 bg-white p-3 shadow-sm sm:p-4"
+                  >
+                    <header className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-md bg-amber-100 px-2 py-1 font-bold text-amber-800">{item.lineNumber}행</span>
+                          <span className="font-semibold text-slate-900">{item.input.name || '이름 미입력'}</span>
+                          {item.input.examNumber ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">
+                              {item.input.examNumber}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-xs font-medium leading-5 text-rose-700">{item.message}</p>
+                      </div>
+                      {item.master ? (
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                            학생 마스터 #{item.master.id}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => applyMasterToBulkImportRow(index)}
+                            disabled={submitting}
+                            className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+                          >
+                            이 학생 마스터 값 적용
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-500">
+                          일치하는 마스터 없음
+                        </span>
+                      )}
+                    </header>
+
+                    <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+                      <div className="hidden grid-cols-[88px_minmax(0,1fr)_minmax(0,1fr)] bg-slate-50 text-[11px] font-semibold text-slate-500 sm:grid">
+                        <span className="px-3 py-2">항목</span>
+                        <span className="border-l border-slate-200 px-3 py-2">붙여넣은 값 · 직접 수정</span>
+                        <span className="border-l border-slate-200 px-3 py-2">학생 마스터 값</span>
+                      </div>
+                      {BULK_IMPORT_COMPARISON_FIELDS.map(({ inputKey, issueKey }) => {
+                        const mismatched = item.fields.includes(issueKey)
+                        const masterValue = item.master
+                          ? getBulkImportMasterValue(item.master, inputKey)
+                          : ''
+                        return (
+                          <div
+                            key={inputKey}
+                            className={`grid grid-cols-1 gap-2 border-t border-slate-200 px-3 py-2 first:border-t-0 sm:grid-cols-[76px_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-3 sm:px-0 sm:py-0 ${
+                              mismatched ? 'bg-amber-50/70' : 'bg-white'
+                            }`}
+                          >
+                            <span className={`text-xs font-semibold sm:px-3 ${mismatched ? 'text-amber-800' : 'text-slate-600'}`}>
+                              {getBulkImportFieldLabel(issueKey)}
+                            </span>
+                            <label className="min-w-0 sm:border-l sm:border-slate-200 sm:px-3 sm:py-2">
+                              <span className="mb-1 block text-[10px] font-medium text-slate-400 sm:hidden">붙여넣은 값 · 직접 수정</span>
+                              <input
+                                value={item.input[inputKey]}
+                                onChange={(event) => updateBulkImportRow(index, inputKey, event.target.value)}
+                                disabled={submitting}
+                                aria-label={`${item.lineNumber}행 ${getBulkImportFieldLabel(issueKey)} 입력값`}
+                                className={`w-full rounded-md border bg-white px-2.5 py-1.5 text-xs outline-none transition-colors disabled:opacity-60 ${
+                                  mismatched
+                                    ? 'border-amber-300 focus:border-amber-500'
+                                    : 'border-slate-200 focus:border-slate-400'
+                                }`}
+                              />
+                            </label>
+                            <div className="min-w-0 sm:border-l sm:border-slate-200 sm:px-3 sm:py-2">
+                              <span className="mb-1 block text-[10px] font-medium text-slate-400 sm:hidden">학생 마스터 값</span>
+                              <p className={`truncate text-xs ${item.master ? 'font-medium text-slate-800' : 'text-slate-400'}`}>
+                                {item.master ? masterValue || '미등록' : '일치하는 마스터 없음'}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {item.fields.includes('cohort_label') || item.fields.includes('series') ? (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {item.fields.includes('cohort_label') ? (
+                          <label className="text-[11px] font-semibold text-slate-600">
+                            기수 직접 수정
+                            <input
+                              value={item.input.cohortLabel}
+                              onChange={(event) => updateBulkImportRow(index, 'cohortLabel', event.target.value)}
+                              disabled={submitting}
+                              className="mt-1 w-full rounded-md border border-amber-300 bg-white px-2.5 py-2 text-xs outline-none focus:border-amber-500"
+                            />
+                          </label>
+                        ) : null}
+                        {item.fields.includes('series') ? (
+                          <label className="text-[11px] font-semibold text-slate-600">
+                            직렬 직접 수정
+                            <input
+                              value={item.input.series}
+                              onChange={(event) => updateBulkImportRow(index, 'series', event.target.value)}
+                              disabled={submitting}
+                              className="mt-1 w-full rounded-md border border-amber-300 bg-white px-2.5 py-2 text-xs outline-none focus:border-amber-500"
+                            />
+                          </label>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {item.sourceText ? (
+                      <details className="mt-3 text-[11px] text-slate-400">
+                        <summary className="cursor-pointer font-medium hover:text-slate-600">원본 붙여넣기 행 보기</summary>
+                        <p className="mt-1 overflow-x-auto whitespace-pre font-mono">{item.sourceText}</p>
+                      </details>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </section>
           ) : null}
+
           <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>
-          <div className="mt-3 flex items-center gap-3">
-            <button type="submit" disabled={submitting} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100">{submitting ? '반영 중...' : '일괄 반영'}</button>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {bulkRowErrors.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => void retryBulkImportErrors()}
+                disabled={submitting}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
+              >
+                {submitting ? '오류 명단 반영 중...' : `오류 ${bulkRowErrors.length.toLocaleString()}명 다시 등록`}
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
+              >
+                {submitting ? '전체 검사 및 반영 중...' : '전체 검사 후 정상 명단 반영'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
                 setBulkRowErrors([])
                 setBulkRowErrorCount(0)
+                setBulkImportResult(null)
                 setPanel('none')
               }}
+              disabled={submitting}
               className="text-xs text-slate-500 transition-all duration-200 ease-ios hover:underline active:scale-[0.97]"
             >
               취소

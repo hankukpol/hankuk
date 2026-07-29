@@ -7,12 +7,20 @@ import {
   listBranchSeriesOptions,
   resolveBranchSeriesOptionFromOptions,
 } from '@/lib/branch-series'
-import { parseEnrollmentBulkText } from '@/lib/bulk'
+import { parseEnrollmentBulkText, type ParsedEnrollmentRow } from '@/lib/bulk'
 import { invalidateCache } from '@/lib/cache/revalidate'
+import {
+  getBulkImportEnrollmentSnapshotMismatches,
+  normalizeBulkImportEditableRow,
+  type BulkImportEditableRow,
+  type BulkImportMasterSnapshot,
+  type BulkImportRowIssue,
+} from '@/lib/enrollment-bulk-workflow'
 import { normalizeCohortNumber, resolveStudentCohortOptionByNumber } from '@/lib/student-cohorts'
 import {
   ensureStudentProfilesBatch,
   initializeStudentAuthBatch,
+  inspectStudentProfilesBatch,
   isStudentIdentityConflictError,
   syncStudentEnrollmentSnapshotsBatch,
   type EnsureStudentProfileResult,
@@ -20,11 +28,34 @@ import {
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { normalizeExamNumber, normalizeName, normalizePhone } from '@/lib/utils'
-import type { EnrollmentFieldDef } from '@/types/database'
+import type { EnrollmentFieldDef, Student } from '@/types/database'
+
+const retryRowSchema = z.object({
+  sourceLineNumber: z.number().int().positive(),
+  sourceText: z.string().default(''),
+  name: z.string(),
+  phone: z.string(),
+  examNumber: z.string().default(''),
+  cohortLabel: z.string().default(''),
+  birthDate: z.string().default(''),
+  gender: z.string().default(''),
+  series: z.string().default(''),
+  memo: z.string().default(''),
+  photoUrl: z.string().default(''),
+  customData: z.record(z.string()).default({}),
+})
 
 const schema = z.object({
   courseId: z.number().int().positive(),
-  text: z.string().min(1),
+  text: z.string().optional(),
+  rows: z.array(retryRowSchema).optional(),
+}).superRefine((value, context) => {
+  if (!value.text?.trim() && (!value.rows || value.rows.length === 0)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'text 또는 rows가 필요합니다.',
+    })
+  }
 })
 
 type ExistingEnrollmentRow = {
@@ -47,38 +78,72 @@ type ExistingEnrollmentRow = {
   created_at: string
 }
 
-type ParsedBulkEnrollmentRow = ReturnType<typeof parseEnrollmentBulkText>[number]
-
-type BulkImportRowError = {
-  rowNumber: number
-  lineNumber: number
-  name: string
-  phoneLast4: string | null
-  examNumber: string | null
-  field: string
-  value: string | null
-  message: string
-  sourceText: string
-}
-
 function findExistingEnrollmentForImportedRow(
-  row: ParsedBulkEnrollmentRow,
+  row: ParsedEnrollmentRow,
   existingByExamNumber: Map<string, ExistingEnrollmentRow>,
 ) {
   const examNumber = normalizeExamNumber(row.exam_number)
   return examNumber ? existingByExamNumber.get(examNumber) ?? null : null
 }
 
-function getStudentIdentityConflictMessage() {
-  return '기존 학생 마스터와 가져오기 행의 정보가 충돌합니다. 학번, 이름, 연락처, 생년월일을 확인해 주세요.'
+function toEditableRow(row: ParsedEnrollmentRow): BulkImportEditableRow {
+  return {
+    sourceLineNumber: row.sourceLineNumber,
+    sourceText: row.sourceText,
+    name: row.name,
+    phone: row.phone,
+    examNumber: row.exam_number ?? '',
+    cohortLabel: row.cohort_label ?? '',
+    birthDate: row.birth_date ?? '',
+    gender: row.gender ?? '',
+    series: row.series ?? '',
+    memo: row.memo ?? '',
+    photoUrl: row.photo_url ?? '',
+    customData: row.custom_data ?? {},
+  }
 }
 
-function createBulkImportRowError(
-  row: ParsedBulkEnrollmentRow,
+function fromEditableRow(row: BulkImportEditableRow): ParsedEnrollmentRow {
+  const normalized = normalizeBulkImportEditableRow(row)
+  return {
+    sourceLineNumber: normalized.sourceLineNumber,
+    sourceText: normalized.sourceText,
+    name: normalized.name,
+    phone: normalized.phone,
+    exam_number: normalized.examNumber || undefined,
+    cohort_label: normalized.cohortLabel || undefined,
+    birth_date: normalized.birthDate || undefined,
+    gender: normalized.gender || undefined,
+    series: normalized.series || undefined,
+    memo: normalized.memo || undefined,
+    photo_url: normalized.photoUrl || undefined,
+    custom_data: normalized.customData,
+  }
+}
+
+function toMasterSnapshot(student: Student): BulkImportMasterSnapshot {
+  return {
+    id: student.id,
+    name: student.name,
+    phone: student.phone,
+    examNumber: student.exam_number ?? '',
+    birthDate: student.birth_date ?? '',
+    cohortOptionId: student.cohort_option_id,
+  }
+}
+
+function getStudentIdentityConflictMessage() {
+  return '기존 학생 마스터와 가져오기 행의 정보가 충돌합니다. 입력값과 마스터 값을 확인해 주세요.'
+}
+
+function createBulkImportIssue(
+  row: ParsedEnrollmentRow,
   field: string,
   message: string,
   value?: string | null,
-): BulkImportRowError {
+  master: BulkImportMasterSnapshot | null = null,
+  fields: string[] = [field],
+): BulkImportRowIssue {
   return {
     rowNumber: row.sourceLineNumber,
     lineNumber: row.sourceLineNumber,
@@ -86,26 +151,77 @@ function createBulkImportRowError(
     phoneLast4: normalizePhone(row.phone).slice(-4) || null,
     examNumber: row.exam_number ?? null,
     field,
+    fields,
     value: value === undefined ? null : value,
     message,
+    messages: [message],
     sourceText: row.sourceText,
+    input: toEditableRow(row),
+    master,
   }
 }
 
-function createBulkImportErrorResponse(
-  error: string,
-  rowErrors: BulkImportRowError[],
-  status = 400,
+function addBulkImportIssue(
+  issuesByRow: Map<ParsedEnrollmentRow, BulkImportRowIssue>,
+  row: ParsedEnrollmentRow,
+  field: string,
+  message: string,
+  value?: string | null,
+  master: BulkImportMasterSnapshot | null = null,
+  fields: string[] = [field],
 ) {
+  const existing = issuesByRow.get(row)
+  if (!existing) {
+    issuesByRow.set(
+      row,
+      createBulkImportIssue(row, field, message, value, master, fields),
+    )
+    return
+  }
+
+  existing.fields = Array.from(new Set([...existing.fields, ...fields]))
+  if (!existing.messages.includes(message)) {
+    existing.messages.push(message)
+  }
+  existing.message = existing.messages.join(' ')
+  existing.master = master ?? existing.master
+}
+
+function getBulkImportKey(row: ParsedEnrollmentRow) {
+  const examNumber = normalizeExamNumber(row.exam_number)
+  return examNumber
+    ? `exam:${examNumber}`
+    : `identity:${normalizePhone(row.phone)}::${normalizeName(row.name)}::${row.birth_date ?? ''}`
+}
+
+function createBulkImportSuccessResponse(params: {
+  totalCount: number
+  importedCount: number
+  rowErrors: BulkImportRowIssue[]
+  generatedPins?: Array<{ name: string; phone: string; pin: string }>
+}) {
+  const rowErrors = [...params.rowErrors].sort((a, b) => a.lineNumber - b.lineNumber)
+  const partial = rowErrors.length > 0
+
   return NextResponse.json(
     {
-      error,
-      rowErrors: rowErrors
-        .sort((a, b) => a.lineNumber - b.lineNumber)
-        .slice(0, 100),
+      success: true,
+      partial,
+      count: params.importedCount,
+      totalCount: params.totalCount,
+      errorCount: rowErrors.length,
       rowErrorCount: rowErrors.length,
+      rowErrors,
+      generated_pins: params.generatedPins && params.generatedPins.length > 0
+        ? params.generatedPins
+        : undefined,
+      message: partial
+        ? `정상 ${params.importedCount}명은 반영했고, 오류 ${rowErrors.length}명은 확인이 필요합니다.`
+        : `${params.importedCount}명을 모두 반영했습니다.`,
     },
-    { status },
+    params.generatedPins && params.generatedPins.length > 0
+      ? { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      : undefined,
   )
 }
 
@@ -145,80 +261,66 @@ export async function POST(req: NextRequest) {
   const customFields = Array.isArray(course.enrollment_fields)
     ? course.enrollment_fields as EnrollmentFieldDef[]
     : []
-  const rows = parseEnrollmentBulkText(parsed.data.text, customFields)
+  const rows = parsed.data.rows
+    ? parsed.data.rows.map((row) => fromEditableRow(row))
+    : parseEnrollmentBulkText(parsed.data.text ?? '', customFields)
+
   if (rows.length === 0) {
     return NextResponse.json({ error: '붙여넣기 텍스트에서 유효한 수강생을 찾지 못했습니다.' }, { status: 400 })
   }
 
-  const basicRowErrors = rows.flatMap((row) => {
-    const errors: BulkImportRowError[] = []
+  const issuesByRow = new Map<ParsedEnrollmentRow, BulkImportRowIssue>()
+  for (const row of rows) {
     if (!row.name) {
-      errors.push(createBulkImportRowError(
+      addBulkImportIssue(
+        issuesByRow,
         row,
         'name',
         '이름이 비어 있습니다. 이름 열이 비었거나 열 순서가 밀렸는지 확인해 주세요.',
         row.name,
-      ))
+      )
     }
 
     const normalizedPhone = normalizePhone(row.phone)
     if (normalizedPhone.length < 8) {
-      errors.push(createBulkImportRowError(
+      addBulkImportIssue(
+        issuesByRow,
         row,
         'phone',
         '연락처가 비어 있거나 너무 짧습니다. 연락처 열과 숫자 입력을 확인해 주세요.',
         row.phone,
-      ))
+      )
     }
 
     if (!row.birth_date) {
-      errors.push(createBulkImportRowError(
+      addBulkImportIssue(
+        issuesByRow,
         row,
         'birth_date',
         '생년월일을 6자리 또는 8자리 날짜로 입력해 주세요.',
         row.birth_date ?? '',
-      ))
+      )
     }
-
-    return errors
-  })
-
-  if (basicRowErrors.length > 0) {
-    return createBulkImportErrorResponse(
-      '이름, 연락처, 생년월일을 확인해야 하는 행이 있습니다.',
-      basicRowErrors,
-    )
   }
 
   const seriesOptions = await listBranchSeriesOptions({ includeInactive: false })
-  const explicitSeriesLabels = Array.from(new Set(
-    rows
-      .map((row) => row.series?.trim())
-      .filter((label): label is string => Boolean(label)),
-  ))
-  const invalidSeriesLabelSet = new Set(
-    explicitSeriesLabels.filter((label) => !findBranchSeriesOptionByLabel(seriesOptions, label)),
-  )
-  if (invalidSeriesLabelSet.size > 0) {
-    return createBulkImportErrorResponse(
-      '현재 지점에서 사용할 수 없는 직렬이 포함되어 있습니다.',
-      rows
-        .filter((row) => row.series && invalidSeriesLabelSet.has(row.series.trim()))
-        .map((row) => createBulkImportRowError(
-          row,
-          'series',
-          `직렬 '${row.series}'은 현재 지점에서 사용할 수 없습니다.`,
-          row.series ?? '',
-        )),
-    )
+  for (const row of rows) {
+    const label = row.series?.trim()
+    if (label && !findBranchSeriesOptionByLabel(seriesOptions, label)) {
+      addBulkImportIssue(
+        issuesByRow,
+        row,
+        'series',
+        `직렬 '${label}'은 현재 지점에서 사용할 수 없습니다.`,
+        label,
+      )
+    }
   }
 
-  const existingEnrollments = (
-    await db
-      .from('enrollments')
-      .select('*')
-      .eq('course_id', parsed.data.courseId)
-  )
+  const existingEnrollments = await db
+    .from('enrollments')
+    .select('*')
+    .eq('course_id', parsed.data.courseId)
 
   if (existingEnrollments.error) {
     return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
@@ -227,145 +329,254 @@ export async function POST(req: NextRequest) {
   const existingRows = (existingEnrollments.data ?? []) as ExistingEnrollmentRow[]
   const existingByStudentId = new Map<number, ExistingEnrollmentRow>()
   const existingByExamNumber = new Map<string, ExistingEnrollmentRow>()
-
   for (const enrollment of existingRows) {
     if (enrollment.student_id != null) {
       existingByStudentId.set(enrollment.student_id, enrollment)
     }
-
     const examNumber = normalizeExamNumber(enrollment.exam_number)
     if (examNumber && !existingByExamNumber.has(examNumber)) {
       existingByExamNumber.set(examNumber, enrollment)
     }
   }
 
-  const latestRowByKey = new Map<string, (typeof rows)[number]>()
-  const generatedPins: Array<{ name: string; phone: string; pin: string }> = []
-  const cohortIdByKey = new Map<string, number | null | undefined>()
-
+  const rowsByKey = new Map<string, ParsedEnrollmentRow[]>()
   for (const row of rows) {
-    const key = row.exam_number?.trim()
-      ? `exam:${normalizeExamNumber(row.exam_number)}`
-      : `identity:${normalizePhone(row.phone)}::${normalizeName(row.name)}::${row.birth_date ?? ''}`
-
-    const existing = latestRowByKey.get(key)
-    if (
-      existing
-      && (
-        normalizeName(existing.name) !== normalizeName(row.name)
-        || normalizePhone(existing.phone) !== normalizePhone(row.phone)
-        || (existing.birth_date ?? null) !== (row.birth_date ?? null)
-      )
-    ) {
-      const examNumber = normalizeExamNumber(row.exam_number)
-      return createBulkImportErrorResponse(
-        `같은 학번 '${examNumber}'이(가) 서로 다른 사람에게 입력되어 있습니다.`,
-        [
-          createBulkImportRowError(
-            existing,
-            'exam_number',
-            `이 행과 ${row.sourceLineNumber}행이 같은 학번 '${examNumber}'을 사용합니다.`,
-            examNumber,
-          ),
-          createBulkImportRowError(
-            row,
-            'exam_number',
-            `이 행과 ${existing.sourceLineNumber}행이 같은 학번 '${examNumber}'을 사용합니다.`,
-            examNumber,
-          ),
-        ],
-        409,
-      )
-    }
-
-    latestRowByKey.set(key, row)
+    const key = getBulkImportKey(row)
+    rowsByKey.set(key, [...(rowsByKey.get(key) ?? []), row])
   }
 
-  const cohortLabels = Array.from(new Set(
-    Array.from(latestRowByKey.values())
-      .map((row) => row.cohort_label?.trim())
-      .filter((label): label is string => Boolean(label)),
-  ))
-  const cohortByLabel = new Map<string, number>()
-  for (const label of cohortLabels) {
+  const dedupedRows: ParsedEnrollmentRow[] = []
+  for (const [key, sameKeyRows] of rowsByKey.entries()) {
+    const first = sameKeyRows[0]!
+    if (sameKeyRows.length === 1) {
+      dedupedRows.push(first)
+      continue
+    }
+
+    const sameIdentity = sameKeyRows.every((row) => (
+      normalizeName(row.name) === normalizeName(first.name)
+      && normalizePhone(row.phone) === normalizePhone(first.phone)
+      && (row.birth_date ?? null) === (first.birth_date ?? null)
+      && normalizeExamNumber(row.exam_number) === normalizeExamNumber(first.exam_number)
+    ))
+
+    if (sameIdentity) {
+      dedupedRows.push(first)
+      for (const duplicate of sameKeyRows.slice(1)) {
+        addBulkImportIssue(
+          issuesByRow,
+          duplicate,
+          'duplicate_row',
+          `${first.sourceLineNumber}행과 같은 학생이 중복 입력되어 이 행은 제외했습니다.`,
+          key,
+        )
+      }
+      continue
+    }
+
+    for (const conflictRow of sameKeyRows) {
+      addBulkImportIssue(
+        issuesByRow,
+        conflictRow,
+        'exam_number',
+        `같은 학번 또는 학생 식별값이 ${sameKeyRows.map((row) => `${row.sourceLineNumber}행`).join(', ')}에서 서로 다르게 입력되었습니다.`,
+        normalizeExamNumber(conflictRow.exam_number),
+        null,
+        ['exam_number', 'name', 'phone', 'birth_date'],
+      )
+    }
+  }
+
+  const inspectionKeyByRow = new Map<ParsedEnrollmentRow, string>()
+  const inspectionInputs = rows.map((row, index) => {
+    const key = `row:${row.sourceLineNumber}:${index}`
+    inspectionKeyByRow.set(row, key)
+    const currentStudentId = findExistingEnrollmentForImportedRow(row, existingByExamNumber)?.student_id ?? null
+    return {
+      key,
+      division,
+      name: row.name,
+      phone: row.phone,
+      exam_number: row.exam_number,
+      ...(currentStudentId ? { currentStudentId } : {}),
+      birth_date: row.birth_date,
+      photo_url: row.photo_url,
+    }
+  })
+
+  const inspections = await inspectStudentProfilesBatch(db, inspectionInputs)
+  for (const row of rows) {
+    const inspection = inspections.get(inspectionKeyByRow.get(row) ?? '')
+    const master = inspection?.student ? toMasterSnapshot(inspection.student) : null
+    const existingEnrollment = findExistingEnrollmentForImportedRow(row, existingByExamNumber)
+    if (inspection?.conflict) {
+      addBulkImportIssue(
+        issuesByRow,
+        row,
+        inspection.conflict.fields[0] ?? 'identity',
+        getStudentIdentityConflictMessage(),
+        null,
+        master,
+        inspection.conflict.fields,
+      )
+    } else if (existingEnrollment && !inspection?.student) {
+      const snapshotMismatches = getBulkImportEnrollmentSnapshotMismatches(
+        toEditableRow(row),
+        existingEnrollment,
+      )
+
+      if (snapshotMismatches.length > 0 || existingEnrollment.student_id) {
+        addBulkImportIssue(
+          issuesByRow,
+          row,
+          snapshotMismatches[0] ?? 'identity',
+          existingEnrollment.student_id
+            ? '기존 수강 정보에 연결된 학생 마스터를 찾지 못했습니다. 학생 마스터 연결 상태를 확인해 주세요.'
+            : '같은 학번의 기존 수강 정보와 이름 또는 연락처가 다릅니다. 기존 수강 정보를 확인해 주세요.',
+          null,
+          null,
+          snapshotMismatches.length > 0 ? snapshotMismatches : ['identity'],
+        )
+      }
+    } else if (master && issuesByRow.has(row)) {
+      issuesByRow.get(row)!.master = master
+    }
+  }
+
+  const cleanRowsByMasterStudentId = new Map<number, ParsedEnrollmentRow[]>()
+  for (const row of dedupedRows) {
+    if (issuesByRow.has(row)) {
+      continue
+    }
+    const studentId = inspections.get(inspectionKeyByRow.get(row) ?? '')?.student?.id
+    if (studentId) {
+      cleanRowsByMasterStudentId.set(
+        studentId,
+        [...(cleanRowsByMasterStudentId.get(studentId) ?? []), row],
+      )
+    }
+  }
+  for (const matchingRows of cleanRowsByMasterStudentId.values()) {
+    const first = matchingRows[0]
+    if (!first || matchingRows.length === 1) {
+      continue
+    }
+    for (const duplicate of matchingRows.slice(1)) {
+      addBulkImportIssue(
+        issuesByRow,
+        duplicate,
+        'duplicate_row',
+        `${first.sourceLineNumber}행과 같은 학생 마스터로 확인되어 이 행은 제외했습니다.`,
+      )
+    }
+  }
+
+  const cohortIdByRow = new Map<ParsedEnrollmentRow, number | null | undefined>()
+  const rowsReadyForCohort = dedupedRows.filter((row) => !issuesByRow.has(row))
+  const rowsByCohortLabel = new Map<string, ParsedEnrollmentRow[]>()
+  for (const row of rowsReadyForCohort) {
+    if (row.cohort_label === undefined) {
+      cohortIdByRow.set(row, undefined)
+      continue
+    }
+
+    const label = row.cohort_label.trim()
+    if (!label) {
+      cohortIdByRow.set(row, null)
+      continue
+    }
+    rowsByCohortLabel.set(label, [...(rowsByCohortLabel.get(label) ?? []), row])
+  }
+
+  for (const [label, matchingRows] of rowsByCohortLabel.entries()) {
     let cohortNumber: number | null | undefined
     try {
       cohortNumber = normalizeCohortNumber(label)
     } catch {
-      return createBulkImportErrorResponse(
-        '기수는 숫자만 입력해 주세요.',
-        Array.from(latestRowByKey.values())
-          .filter((row) => row.cohort_label?.trim() === label)
-          .map((row) => createBulkImportRowError(
-            row,
-            'cohort_label',
-            `기수 '${label}'는 숫자로 해석할 수 없습니다.`,
-            label,
-          )),
-      )
-    }
-    const option = await resolveStudentCohortOptionByNumber(cohortNumber)
-    if (!option) {
-      return createBulkImportErrorResponse(
-        `기수 '${label}'를 처리하지 못했습니다.`,
-        Array.from(latestRowByKey.values())
-          .filter((row) => row.cohort_label?.trim() === label)
-          .map((row) => createBulkImportRowError(
-            row,
-            'cohort_label',
-            `기수 '${label}'를 현재 지점 기수로 연결하지 못했습니다.`,
-            label,
-          )),
-      )
-    }
-    cohortByLabel.set(label, option.id)
-  }
-
-  for (const [key, row] of latestRowByKey.entries()) {
-    if (row.cohort_label === undefined) {
-      cohortIdByKey.set(key, undefined)
+      for (const row of matchingRows) {
+        addBulkImportIssue(
+          issuesByRow,
+          row,
+          'cohort_label',
+          `기수 '${label}'는 숫자로 해석할 수 없습니다.`,
+          label,
+        )
+      }
       continue
     }
-    const label = row.cohort_label.trim()
-    cohortIdByKey.set(key, label ? cohortByLabel.get(label) ?? null : null)
+
+    const option = await resolveStudentCohortOptionByNumber(cohortNumber)
+    if (!option) {
+      for (const row of matchingRows) {
+        addBulkImportIssue(
+          issuesByRow,
+          row,
+          'cohort_label',
+          `기수 '${label}'를 현재 지점 기수로 연결하지 못했습니다.`,
+          label,
+        )
+      }
+      continue
+    }
+
+    for (const row of matchingRows) {
+      cohortIdByRow.set(row, option.id)
+    }
   }
+
+  const validRows = dedupedRows.filter((row) => !issuesByRow.has(row))
+  if (validRows.length === 0) {
+    return createBulkImportSuccessResponse({
+      totalCount: rows.length,
+      importedCount: 0,
+      rowErrors: Array.from(issuesByRow.values()),
+    })
+  }
+
+  const generatedPins: Array<{ name: string; phone: string; pin: string }> = []
+  const validKeyByRow = new Map<ParsedEnrollmentRow, string>()
+  const ensureInputs = validRows.map((row, index) => {
+    const key = `valid:${row.sourceLineNumber}:${index}`
+    validKeyByRow.set(row, key)
+    const inspection = inspections.get(inspectionKeyByRow.get(row) ?? '')
+    const currentStudentId = inspection?.student?.id
+      ?? findExistingEnrollmentForImportedRow(row, existingByExamNumber)?.student_id
+      ?? null
+
+    return {
+      key,
+      division,
+      name: row.name,
+      phone: row.phone,
+      exam_number: row.exam_number,
+      ...(currentStudentId ? { currentStudentId } : {}),
+      ...(cohortIdByRow.get(row) !== undefined ? { cohort_option_id: cohortIdByRow.get(row) } : {}),
+      birth_date: row.birth_date,
+      photo_url: row.photo_url,
+    }
+  })
 
   let studentResults: Awaited<ReturnType<typeof ensureStudentProfilesBatch>>
   try {
-    studentResults = await ensureStudentProfilesBatch(
-      db,
-      Array.from(latestRowByKey.entries()).map(([key, row]) => {
-        const currentStudentId = findExistingEnrollmentForImportedRow(row, existingByExamNumber)?.student_id ?? null
-
-        return {
-          key,
-          division,
-          name: row.name,
-          phone: row.phone,
-          exam_number: row.exam_number,
-          ...(currentStudentId ? { currentStudentId } : {}),
-          ...(cohortIdByKey.get(key) !== undefined ? { cohort_option_id: cohortIdByKey.get(key) } : {}),
-          birth_date: row.birth_date,
-          photo_url: row.photo_url,
-        }
-      }),
-    )
+    studentResults = await ensureStudentProfilesBatch(db, ensureInputs)
   } catch (error) {
     if (isStudentIdentityConflictError(error)) {
-      return NextResponse.json({ error: getStudentIdentityConflictMessage(), fields: error.fields }, { status: 409 })
+      return NextResponse.json(
+        { error: getStudentIdentityConflictMessage(), fields: error.fields },
+        { status: 409 },
+      )
     }
-
     throw error
   }
 
   const authSetup = await initializeStudentAuthBatch(
     db,
-    Array.from(latestRowByKey.entries()).map(([key, row]) => {
+    validRows.map((row) => {
+      const key = validKeyByRow.get(row)!
       const student = studentResults.get(key)?.student
       if (!student) {
         throw new Error('enrollments.bulk: student resolution failed')
       }
-
       return {
         key,
         student,
@@ -385,33 +596,31 @@ export async function POST(req: NextRequest) {
   const changedStudents = Array.from(studentResults.values())
     .filter((result) => result.changed || result.created)
     .map((result) => result.student)
-
   await syncStudentEnrollmentSnapshotsBatch(db, changedStudents)
 
-  const latestRowByStudentId = new Map<number, (typeof rows)[number] & { student: EnsureStudentProfileResult['student'] }>()
-  for (const [key, row] of latestRowByKey.entries()) {
+  const latestRowByStudentId = new Map<number, ParsedEnrollmentRow & {
+    student: EnsureStudentProfileResult['student']
+  }>()
+  for (const row of validRows) {
+    const key = validKeyByRow.get(row)!
     const resolvedStudent = authSetup.results.get(key)?.student ?? studentResults.get(key)?.student
     if (!resolvedStudent) {
       throw new Error('enrollments.bulk: auth setup failed')
     }
-
     latestRowByStudentId.set(resolvedStudent.id, { ...row, student: resolvedStudent })
   }
 
   const updates: Array<Record<string, unknown>> = []
   const inserts: Array<Record<string, unknown>> = []
   const defaultSeriesOption = resolveBranchSeriesOptionFromOptions(seriesOptions)
-
   for (const resolved of latestRowByStudentId.values()) {
     const student = resolved.student
     const examNumber = normalizeExamNumber(student.exam_number)
-    const current =
-      existingByStudentId.get(student.id)
+    const current = existingByStudentId.get(student.id)
       ?? (examNumber ? existingByExamNumber.get(examNumber) : null)
     const explicitSeriesOption = resolved.series
       ? findBranchSeriesOptionByLabel(seriesOptions, resolved.series)
       : null
-
     const payload = {
       student_id: student.id,
       name: student.name,
@@ -426,11 +635,6 @@ export async function POST(req: NextRequest) {
       memo: resolved.memo ?? current?.memo ?? null,
       custom_data: { ...(current?.custom_data ?? {}), ...(resolved.custom_data ?? {}) },
     }
-    // NOTE: gender/series are intentionally NOT propagated to the student's
-    // other enrollments here. Bulk import is course-scoped — only the target
-    // course's enrollment row is updated. Earlier the route called
-    // syncStudentEnrollmentSharedDetailsBatch, which leaked values across
-    // courses during template round-trips.
 
     if (current) {
       updates.push({
@@ -440,25 +644,22 @@ export async function POST(req: NextRequest) {
         refunded_at: current.refunded_at,
         ...payload,
       })
-      continue
+    } else {
+      inserts.push({
+        course_id: parsed.data.courseId,
+        ...payload,
+      })
     }
-
-    inserts.push({
-      course_id: parsed.data.courseId,
-      ...payload,
-    })
   }
 
   if (updates.length > 0) {
     const { error } = await db
       .from('enrollments')
       .upsert(updates, { onConflict: 'id' })
-
     if (error) {
       if (error.code === '23505') {
         return NextResponse.json({ error: '중복된 수강생이 하나 이상 포함되어 있습니다.' }, { status: 409 })
       }
-
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }
   }
@@ -467,25 +668,19 @@ export async function POST(req: NextRequest) {
     const { error } = await db
       .from('enrollments')
       .insert(inserts)
-
     if (error) {
       if (error.code === '23505') {
         return NextResponse.json({ error: '중복된 수강생이 하나 이상 포함되어 있습니다.' }, { status: 409 })
       }
-
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }
   }
 
   await invalidateCache('enrollments')
-  return NextResponse.json(
-    {
-      success: true,
-      count: latestRowByStudentId.size,
-      generated_pins: generatedPins.length > 0 ? generatedPins : undefined,
-    },
-    generatedPins.length > 0
-      ? { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      : undefined,
-  )
+  return createBulkImportSuccessResponse({
+    totalCount: rows.length,
+    importedCount: latestRowByStudentId.size,
+    rowErrors: Array.from(issuesByRow.values()),
+    generatedPins,
+  })
 }

@@ -18,6 +18,19 @@ export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ')
 }
 
+export function normalizeBirthDate(value: string | null | undefined): string | null {
+  const normalized = (value ?? '').replace(/\D/g, '')
+  if (/^\d{6}$/.test(normalized)) {
+    return normalized
+  }
+
+  if (/^\d{8}$/.test(normalized)) {
+    return normalized.slice(-6)
+  }
+
+  return null
+}
+
 export function slugifyCourseName(value: string): string {
   return value
     .trim()

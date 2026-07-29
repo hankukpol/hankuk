@@ -50,6 +50,14 @@ export type EnsureStudentProfileBatchInput = StudentProfileSnapshot & {
   currentStudentId?: number | null
 }
 
+export type StudentProfileBatchInspection = {
+  student: Student | null
+  conflict: {
+    message: string
+    fields: string[]
+  } | null
+}
+
 export type InitializeStudentAuthBatchInput = {
   key: string
   student: Student
@@ -1144,6 +1152,178 @@ export async function ensureStudentProfile(
     created: false,
     changed: true,
   }
+}
+
+/**
+ * Resolve every import row against the student master without writing anything.
+ *
+ * Bulk enrollment uses this as a preflight so one conflicting student does not
+ * abort the remaining valid rows and the UI can show the matching master values.
+ */
+export async function inspectStudentProfilesBatch(
+  db: DbClient,
+  inputs: EnsureStudentProfileBatchInput[],
+) {
+  const results = new Map<string, StudentProfileBatchInspection>()
+
+  if (inputs.length === 0) {
+    return results
+  }
+
+  const divisionGroups = new Map<TenantType, EnsureStudentProfileBatchInput[]>()
+  for (const input of inputs) {
+    divisionGroups.set(input.division, [...(divisionGroups.get(input.division) ?? []), input])
+  }
+
+  if (divisionGroups.size > 1) {
+    for (const group of divisionGroups.values()) {
+      const groupResults = await inspectStudentProfilesBatch(db, group)
+      for (const [key, value] of groupResults.entries()) {
+        results.set(key, value)
+      }
+    }
+
+    return results
+  }
+
+  const prepared = inputs.map((input): PreparedEnsureBatchInput => ({
+    ...input,
+    normalized: normalizeStudentSnapshot(input),
+    dedupKey: buildStudentIdentityKey(input),
+  }))
+  const division = prepared[0]!.division
+  const currentStudentIds = Array.from(new Set(
+    prepared
+      .map((input) => input.currentStudentId ?? null)
+      .filter((value): value is number => value !== null && Number.isInteger(value) && value > 0),
+  ))
+  const examNumbers = Array.from(new Set(
+    prepared
+      .map((input) => input.normalized.exam_number)
+      .filter((value): value is string => Boolean(value)),
+  ))
+  const phones = Array.from(new Set(
+    prepared.map((input) => input.normalized.phone).filter(Boolean),
+  ))
+
+  const [currentStudents, examStudents, phoneStudents] = await Promise.all([
+    listStudentsByIds(db, currentStudentIds, division),
+    examNumbers.length === 0
+      ? Promise.resolve([] as Student[])
+      : (async () => {
+        const rows = unwrapSupabaseResult(
+          'studentProfiles.inspectBatch.examStudents',
+          await db
+            .from('students')
+            .select('*')
+            .eq('division', division)
+            .in('exam_number', examNumbers),
+        ) as Student[] | null
+
+        return rows ?? []
+      })(),
+    phones.length === 0
+      ? Promise.resolve([] as Student[])
+      : (async () => {
+        const rows = unwrapSupabaseResult(
+          'studentProfiles.inspectBatch.phoneStudents',
+          await db
+            .from('students')
+            .select('*')
+            .eq('division', division)
+            .in('phone', phones)
+            .order('updated_at', { ascending: false })
+            .order('id'),
+        ) as Student[] | null
+
+        return rows ?? []
+      })(),
+  ])
+
+  const currentStudentsById = new Map(currentStudents.map((student) => [student.id, student]))
+  const examStudentsByNumber = new Map<string, Student>()
+  const phoneStudentsByPhone = new Map<string, Student[]>()
+
+  for (const student of examStudents) {
+    const examNumber = normalizeExamNumber(student.exam_number)
+    if (examNumber && !examStudentsByNumber.has(examNumber)) {
+      examStudentsByNumber.set(examNumber, student)
+    }
+  }
+
+  for (const student of phoneStudents) {
+    const phone = normalizePhone(student.phone)
+    phoneStudentsByPhone.set(phone, [...(phoneStudentsByPhone.get(phone) ?? []), student])
+  }
+
+  for (const input of prepared) {
+    const currentStudent = input.currentStudentId
+      ? currentStudentsById.get(input.currentStudentId) ?? null
+      : null
+    const examStudent = input.normalized.exam_number
+      ? examStudentsByNumber.get(input.normalized.exam_number) ?? null
+      : null
+
+    if (currentStudent && examStudent && currentStudent.id !== examStudent.id) {
+      results.set(input.key, {
+        student: examStudent,
+        conflict: {
+          message: '현재 수강생과 같은 학번을 사용하는 다른 학생 마스터가 있습니다.',
+          fields: ['exam_number'],
+        },
+      })
+      continue
+    }
+
+    let matched = currentStudent ?? examStudent
+    if (matched) {
+      const mismatches = getStudentIdentityMismatches(matched, input.normalized)
+      results.set(input.key, {
+        student: matched,
+        conflict: mismatches.length > 0
+          ? {
+              message: '기존 학생 마스터와 가져오기 행의 정보가 다릅니다.',
+              fields: mismatches,
+            }
+          : null,
+      })
+      continue
+    }
+
+    try {
+      matched = findMatchingStudentFromPhoneCandidates(
+        phoneStudentsByPhone.get(input.normalized.phone),
+        input.normalized,
+      )
+      const mismatches = matched
+        ? getStudentIdentityMismatches(matched, input.normalized)
+        : []
+
+      results.set(input.key, {
+        student: matched,
+        conflict: mismatches.length > 0
+          ? {
+              message: '기존 학생 마스터와 가져오기 행의 정보가 다릅니다.',
+              fields: mismatches,
+            }
+          : null,
+      })
+    } catch (error) {
+      if (!isStudentIdentityConflictError(error)) {
+        throw error
+      }
+
+      results.set(input.key, {
+        student: null,
+        conflict: {
+          message: error.message,
+          fields: error.fields,
+        },
+      })
+    }
+  }
+
+  return results
 }
 
 export async function ensureStudentProfilesBatch(

@@ -1,6 +1,8 @@
 import { comparePin } from '@/lib/auth/pin'
 import type { StudentAuthMethod } from '@/types/database'
 
+export { normalizeBirthDate } from '@/lib/utils'
+
 type StudentAuthRecord = {
   auth_method: StudentAuthMethod | null
   birth_date: string | null
@@ -10,19 +12,6 @@ type StudentAuthRecord = {
 export type VerifyStudentAuthResult =
   | { ok: true }
   | { ok: false; reason: 'no_auth_configured' | 'invalid_code' }
-
-export function normalizeBirthDate(value: string | null | undefined): string | null {
-  const normalized = (value ?? '').replace(/\D/g, '')
-  if (/^\d{6}$/.test(normalized)) {
-    return normalized
-  }
-
-  if (/^\d{8}$/.test(normalized)) {
-    return normalized.slice(-6)
-  }
-
-  return null
-}
 
 export async function verifyStudentAuth(
   student: StudentAuthRecord,

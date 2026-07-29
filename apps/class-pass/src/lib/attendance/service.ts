@@ -2575,43 +2575,6 @@ export async function listEnrollmentCareStatesMap(params: {
   return map
 }
 
-async function listEnrollmentCareStatesMapBySubjectIds(params: {
-  enrollmentIds: number[]
-  subjectIds: number[]
-}): Promise<Map<string, EnrollmentCareState>> {
-  const map = new Map<string, EnrollmentCareState>()
-  const enrollmentIds = [...new Set(params.enrollmentIds)]
-  const subjectIds = [...new Set(params.subjectIds)]
-
-  if (enrollmentIds.length === 0 || subjectIds.length === 0) {
-    return map
-  }
-
-  const db = createServerClient()
-
-  try {
-    const rows = unwrapSupabaseResult(
-      'enrollmentCare.states.listBySubjects',
-      await db
-        .from('enrollment_care_states')
-        .select('enrollment_id, subject_id, state')
-        .in('enrollment_id', enrollmentIds)
-        .in('subject_id', subjectIds),
-    ) as Array<{ enrollment_id: number; subject_id: number | null; state: EnrollmentCareState }> | null
-
-    for (const row of rows ?? []) {
-      if (row.subject_id == null) {
-        continue
-      }
-      map.set(makeEnrollmentCareKey(Number(row.enrollment_id), Number(row.subject_id)), row.state)
-    }
-  } catch (error) {
-    return handleEnrollmentCareReadError(error, map)
-  }
-
-  return map
-}
-
 export async function listEnrollmentCareLatestNotesMap(params: {
   courseId: number
   enrollmentIds: number[]
@@ -2663,65 +2626,6 @@ export async function listEnrollmentCareLatestNotesMap(params: {
         id: Number(row.id),
         enrollmentId: Number(row.enrollment_id),
         subjectId: row.subject_id == null ? null : Number(row.subject_id),
-        body: String(row.body ?? ''),
-        createdBy: row.created_by == null ? null : String(row.created_by),
-        createdByName: row.created_by_name == null ? null : String(row.created_by_name),
-        createdAt: String(row.created_at ?? ''),
-      })
-    }
-  } catch (error) {
-    return handleEnrollmentCareReadError(error, map)
-  }
-
-  return map
-}
-
-async function listEnrollmentCareLatestNotesMapBySubjectIds(params: {
-  enrollmentIds: number[]
-  subjectIds: number[]
-}): Promise<Map<string, EnrollmentCareNoteRecord>> {
-  const map = new Map<string, EnrollmentCareNoteRecord>()
-  const enrollmentIds = [...new Set(params.enrollmentIds)]
-  const subjectIds = [...new Set(params.subjectIds)]
-
-  if (enrollmentIds.length === 0 || subjectIds.length === 0) {
-    return map
-  }
-
-  const db = createServerClient()
-
-  try {
-    const rows = unwrapSupabaseResult(
-      'enrollmentCare.notes.latestBySubjects',
-      await db
-        .from('enrollment_care_notes')
-        .select('id, enrollment_id, subject_id, body, created_by, created_by_name, created_at')
-        .in('enrollment_id', enrollmentIds)
-        .in('subject_id', subjectIds)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false }),
-    ) as Array<{
-      id: number
-      enrollment_id: number
-      subject_id: number | null
-      body: string
-      created_by: string | null
-      created_by_name: string | null
-      created_at: string
-    }> | null
-
-    for (const row of rows ?? []) {
-      if (row.subject_id == null) {
-        continue
-      }
-      const key = makeEnrollmentCareKey(Number(row.enrollment_id), Number(row.subject_id))
-      if (map.has(key)) {
-        continue
-      }
-      map.set(key, {
-        id: Number(row.id),
-        enrollmentId: Number(row.enrollment_id),
-        subjectId: Number(row.subject_id),
         body: String(row.body ?? ''),
         createdBy: row.created_by == null ? null : String(row.created_by),
         createdByName: row.created_by_name == null ? null : String(row.created_by_name),

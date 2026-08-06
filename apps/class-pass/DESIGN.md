@@ -30,6 +30,8 @@ The color story is starkly binary. Product sections alternate between pure black
 - **Link Blue** (`#0066cc`): `--sk-body-link-color`, inline text links. Slightly darker than Apple Blue for text-level readability.
 - **Bright Blue** (`#2997ff`): Links on dark backgrounds. Higher luminance for contrast on black sections.
 - **System Red** (`#ff3b30`): Validation errors and destructive status messages only.
+- **System Green Surface** (`#ecfdf5`): Resolved and successfully completed operational states.
+- **System Green Text** (`#047857`): Text and badges for resolved operational states.
 
 ### Text
 - **White** (`#ffffff`): Text on dark backgrounds, button text on blue/dark CTAs.

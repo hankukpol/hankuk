@@ -21,6 +21,7 @@ import {
   type QueuedDesignatedSeatScanIssue,
 } from '../../src/lib/designated-seat/scan-issue-queue'
 import {
+  buildDesignatedSeatScanIssueResolutionMap,
   DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE,
   getKstDateBounds,
   isValidKstDateKey,
@@ -158,4 +159,46 @@ test('KST scan issue date validation rejects normalized and impossible dates', (
     adjusted: true,
   })
   assert.equal(DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE, 200)
+})
+
+test('later authentication or reservation resolves only earlier scan issues for the same student', () => {
+  const resolutions = buildDesignatedSeatScanIssueResolutionMap(
+    [
+      { id: 1, enrollmentId: 101, recordedAt: '2026-08-06T01:58:24.000Z' },
+      { id: 2, enrollmentId: 102, recordedAt: '2026-08-06T01:58:24.000Z' },
+      { id: 3, enrollmentId: 101, recordedAt: '2026-08-06T01:59:40.000Z' },
+    ],
+    [
+      {
+        id: 11,
+        enrollmentId: 101,
+        eventType: 'student_auth_success',
+        recordedAt: '2026-08-06T01:58:28.000Z',
+      },
+      {
+        id: 12,
+        enrollmentId: 102,
+        eventType: 'seat_reserved',
+        recordedAt: '2026-08-06T01:58:45.000Z',
+      },
+      {
+        id: 13,
+        enrollmentId: 101,
+        eventType: 'seat_reserved',
+        recordedAt: '2026-08-06T01:59:10.000Z',
+      },
+    ],
+  )
+
+  assert.deepEqual(resolutions.get(1), {
+    eventId: 13,
+    eventType: 'seat_reserved',
+    resolvedAt: '2026-08-06T01:59:10.000Z',
+  })
+  assert.deepEqual(resolutions.get(2), {
+    eventId: 12,
+    eventType: 'seat_reserved',
+    resolvedAt: '2026-08-06T01:58:45.000Z',
+  })
+  assert.equal(resolutions.has(3), false)
 })

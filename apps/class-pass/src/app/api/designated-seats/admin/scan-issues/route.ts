@@ -9,12 +9,63 @@ import {
   isDesignatedSeatScanIssueEventType,
 } from '@/lib/designated-seat/scan-telemetry'
 import {
+  buildDesignatedSeatScanIssueResolutionMap,
+  DESIGNATED_SEAT_SCAN_RESOLUTION_EVENT_TYPES,
   DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE,
   getKstDateBounds,
   isValidKstDateKey,
 } from '@/lib/designated-seat/scan-issues-query'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
+
+type CourseSeatEventRow = {
+  id: number
+  enrollment_id: number | null
+  event_type: string
+  details: unknown
+  created_at: string
+}
+
+function getIssueOccurredAt(event: CourseSeatEventRow) {
+  if (event.details && typeof event.details === 'object' && !Array.isArray(event.details)) {
+    const occurredAt = (event.details as Record<string, unknown>).occurred_at
+    if (typeof occurredAt === 'string' && Number.isFinite(Date.parse(occurredAt))) {
+      return occurredAt
+    }
+  }
+  return event.created_at
+}
+
+async function loadCourseSeatEvents(params: {
+  db: ReturnType<typeof createServerClient>
+  courseId: number
+  eventTypes: readonly string[]
+  startIso: string
+  endIso: string
+}) {
+  const rows: CourseSeatEventRow[] = []
+  const pageSize = 1_000
+
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await params.db
+      .from('course_seat_events')
+      .select('id,enrollment_id,event_type,details,created_at')
+      .eq('course_id', params.courseId)
+      .in('event_type', [...params.eventTypes])
+      .gte('created_at', params.startIso)
+      .lt('created_at', params.endIso)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + pageSize - 1)
+
+    if (result.error) throw result.error
+    const page = (result.data ?? []) as CourseSeatEventRow[]
+    rows.push(...page)
+    if (page.length < pageSize) break
+  }
+
+  return rows
+}
 
 const schema = z.object({
   courseId: z.coerce.number().int().positive(),
@@ -52,45 +103,50 @@ export async function GET(req: NextRequest) {
 
     const { startIso, endIso } = getKstDateBounds(parsed.data.date)
     const db = createServerClient()
-    const baseCountQuery = db
-      .from('course_seat_events')
-      .select('id', { count: 'exact', head: true })
-      .eq('course_id', course.id)
-      .in('event_type', [...DESIGNATED_SEAT_SCAN_ISSUE_EVENT_TYPES])
-      .gte('created_at', startIso)
-      .lt('created_at', endIso)
+    const resolutionEndIso = new Date(Date.parse(endIso) + 5 * 60 * 1000).toISOString()
+    const [allIssueEvents, resolutionEvents] = await Promise.all([
+      loadCourseSeatEvents({
+        db,
+        courseId: course.id,
+        eventTypes: DESIGNATED_SEAT_SCAN_ISSUE_EVENT_TYPES,
+        startIso,
+        endIso,
+      }),
+      loadCourseSeatEvents({
+        db,
+        courseId: course.id,
+        eventTypes: DESIGNATED_SEAT_SCAN_RESOLUTION_EVENT_TYPES,
+        startIso,
+        endIso: resolutionEndIso,
+      }),
+    ])
 
-    let eventQuery = db
-      .from('course_seat_events')
-      .select('id,enrollment_id,event_type,details,created_at')
-      .eq('course_id', course.id)
-      .in('event_type', [...DESIGNATED_SEAT_SCAN_ISSUE_EVENT_TYPES])
-      .gte('created_at', startIso)
-      .lt('created_at', endIso)
-
-    if (parsed.data.cursorCreatedAt && parsed.data.cursorId) {
-      eventQuery = eventQuery.or(
-        `created_at.lt.${parsed.data.cursorCreatedAt},and(created_at.eq.${parsed.data.cursorCreatedAt},id.lt.${parsed.data.cursorId})`,
-      )
-    }
-
-    eventQuery = eventQuery
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE + 1)
-
-    const [countResult, eventResult] = await Promise.all([baseCountQuery, eventQuery])
-
-    if (countResult.error) {
-      throw countResult.error
-    }
-    if (eventResult.error) {
-      throw eventResult.error
-    }
-
-    const fetchedEvents = (eventResult.data ?? []).filter(
-      (event) => isDesignatedSeatScanIssueEventType(event.event_type),
+    const resolutionMap = buildDesignatedSeatScanIssueResolutionMap(
+      allIssueEvents.map((event) => ({
+        id: Number(event.id),
+        enrollmentId: event.enrollment_id ? Number(event.enrollment_id) : null,
+        // 실패 기록이 재시도 성공 뒤에 지연 전송돼도 실제 발생 순서대로 해결 상태를 판정합니다.
+        recordedAt: getIssueOccurredAt(event),
+      })),
+      resolutionEvents.map((event) => ({
+        id: Number(event.id),
+        enrollmentId: event.enrollment_id ? Number(event.enrollment_id) : null,
+        eventType: event.event_type as (typeof DESIGNATED_SEAT_SCAN_RESOLUTION_EVENT_TYPES)[number],
+        recordedAt: event.created_at,
+      })),
     )
+    const cursorTime = parsed.data.cursorCreatedAt ? Date.parse(parsed.data.cursorCreatedAt) : null
+    const pageCandidates = cursorTime !== null && parsed.data.cursorId
+      ? allIssueEvents.filter((event) => {
+        const eventTime = Date.parse(event.created_at)
+        return eventTime < cursorTime || (eventTime === cursorTime && Number(event.id) < parsed.data.cursorId!)
+      })
+      : allIssueEvents
+    const fetchedEvents = pageCandidates
+      .slice(0, DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE + 1)
+      .filter(
+        (event) => isDesignatedSeatScanIssueEventType(event.event_type),
+      )
     const hasMore = fetchedEvents.length > DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE
     const events = fetchedEvents.slice(0, DESIGNATED_SEAT_SCAN_ISSUES_PAGE_SIZE)
     const enrollmentIds = [...new Set(
@@ -113,8 +169,8 @@ export async function GET(req: NextRequest) {
 
     const enrollmentMap = new Map((enrollmentResult.data ?? []).map((row) => [Number(row.id), row]))
     const issues = events.map((event) => {
-      const details = event.details && typeof event.details === 'object' && !Array.isArray(event.details)
-        ? event.details
+      const details: Record<string, unknown> = event.details && typeof event.details === 'object' && !Array.isArray(event.details)
+        ? event.details as Record<string, unknown>
         : {}
       const occurredAt = typeof details.occurred_at === 'string' ? details.occurred_at : event.created_at
       return {
@@ -123,6 +179,7 @@ export async function GET(req: NextRequest) {
         details,
         createdAt: occurredAt,
         recordedAt: event.created_at,
+        resolution: resolutionMap.get(Number(event.id)) ?? null,
         enrollment: event.enrollment_id
           ? enrollmentMap.get(Number(event.enrollment_id)) ?? null
           : null,
@@ -133,10 +190,23 @@ export async function GET(req: NextRequest) {
       ? { createdAt: lastEvent.created_at, id: Number(lastEvent.id) }
       : null
 
+    const unresolvedEvents = allIssueEvents.filter((event) => !resolutionMap.has(Number(event.id)))
+    const summary = {
+      totalIssues: allIssueEvents.length,
+      resolvedIssues: allIssueEvents.length - unresolvedEvents.length,
+      unresolvedIssues: unresolvedEvents.length,
+      affectedStudents: new Set(allIssueEvents.map((event) => event.enrollment_id).filter(Boolean)).size,
+      unresolvedStudents: new Set(unresolvedEvents.map((event) => event.enrollment_id).filter(Boolean)).size,
+      noDecode: allIssueEvents.filter((event) => event.event_type === 'student_qr_no_decode').length,
+      cameraFailed: allIssueEvents.filter((event) => event.event_type === 'student_qr_camera_failed').length,
+      authRejected: allIssueEvents.filter((event) => event.event_type === 'student_qr_auth_rejected').length,
+    }
+
     return NextResponse.json({
       date: parsed.data.date,
       issues,
-      total: countResult.count ?? issues.length,
+      total: allIssueEvents.length,
+      summary,
       hasMore,
       nextCursor,
     })

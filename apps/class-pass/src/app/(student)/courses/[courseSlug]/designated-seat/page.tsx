@@ -15,6 +15,15 @@ import {
   parseDesignatedSeatScanValue,
   type DesignatedSeatVerificationPayload,
 } from '@/lib/designated-seat/scan'
+import {
+  flushDesignatedSeatScanIssueQueue,
+  queueDesignatedSeatScanIssue,
+} from '@/lib/designated-seat/scan-issue-queue'
+import {
+  DESIGNATED_SEAT_NO_DECODE_AUTO_REPORT_MS,
+  shouldReportDesignatedSeatNoDecode,
+  type DesignatedSeatScanIssueEventType,
+} from '@/lib/designated-seat/scan-telemetry'
 import { isPresenceLocationEnforced, isPresenceLocationFeatureActive } from '@/lib/presence/shared'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { DesignatedSeat, DesignatedSeatStudentState, PassPayload } from '@/types/database'
@@ -43,6 +52,57 @@ type ScannerInstance = {
   stop: () => Promise<void>
   clear: () => void
   applyVideoConstraints?: (constraints: MediaTrackConstraints) => Promise<void>
+  getRunningTrackSettings?: () => MediaTrackSettings
+}
+
+type ScanAttempt = {
+  startedAt: number
+  cameraStartedAt?: number
+  decodedAt?: number
+  reportedNoDecode?: boolean
+  cameraLabel?: string
+  cameraSettings?: {
+    width?: number
+    height?: number
+    frameRate?: number
+    aspectRatio?: number
+    zoom?: number
+    focusMode?: string
+    focusDistance?: number
+  }
+}
+
+function snapshotCameraSettings(settings: MediaTrackSettings | undefined): ScanAttempt['cameraSettings'] {
+  if (!settings) return undefined
+
+  const extended = settings as MediaTrackSettings & {
+    zoom?: number
+    focusMode?: string
+    focusDistance?: number
+  }
+  return {
+    width: settings.width,
+    height: settings.height,
+    frameRate: settings.frameRate,
+    aspectRatio: settings.aspectRatio,
+    zoom: extended.zoom,
+    focusMode: extended.focusMode,
+    focusDistance: extended.focusDistance,
+  }
+}
+
+async function disposeScanner(scanner: ScannerInstance) {
+  try {
+    await scanner.stop()
+  } catch {
+    // The scanner may still be starting or may already be stopped.
+  }
+
+  try {
+    scanner.clear()
+  } catch {
+    // Ignore cleanup failures after the camera stream has stopped.
+  }
 }
 
 function ensureLocalDeviceKey() {
@@ -109,11 +169,19 @@ export default function DesignatedSeatPage() {
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null)
   const [roomLoading, setRoomLoading] = useState(false)
   const scannerRef = useRef<ScannerInstance | null>(null)
+  const scanAttemptRef = useRef<ScanAttempt | null>(null)
   const roomStateRequestRef = useRef(0)
 
   useEffect(() => {
     setDeviceKey(ensureLocalDeviceKey())
-  }, [])
+    void flushDesignatedSeatScanIssueQueue(tenant.type)
+
+    const handleOnline = () => {
+      void flushDesignatedSeatScanIssueQueue(tenant.type)
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [tenant.type])
 
   const loadData = useCallback(async () => {
     const name = sessionStorage.getItem(LS_NAME) ?? ''
@@ -154,6 +222,87 @@ export default function DesignatedSeatPage() {
     ? state.rooms.find((room) => room.id === state.reservation?.room_id) ?? null
     : activeRoom
   const selectedRoomStateReady = !state || !activeRoomId || state.active_room_id === activeRoomId
+
+  const reportScanIssue = useCallback((
+    eventType: DesignatedSeatScanIssueEventType,
+    issue: {
+      reason: string
+      durationMs?: number
+      cameraLabel?: string
+      cameraSettings?: ScanAttempt['cameraSettings']
+      responseStatus?: number
+      responseCode?: string
+      responseMessage?: string
+    },
+  ) => {
+    if (!data) return
+
+    const deviceSignature = buildDeviceSignature()
+    delete deviceSignature.userAgent
+    queueDesignatedSeatScanIssue({
+      courseId: data.course.id,
+      enrollmentId: data.enrollment.id,
+      roomId: activeRoomId,
+      name: data.enrollment.name,
+      phone: data.enrollment.phone,
+      eventType,
+      deviceSignature,
+      ...issue,
+    }, tenant.type)
+  }, [activeRoomId, data, tenant.type])
+
+  const reportUnresolvedScanAttempt = useCallback((reason: string) => {
+    const attempt = scanAttemptRef.current
+    if (!attempt?.cameraStartedAt) return false
+
+    const durationMs = Date.now() - attempt.cameraStartedAt
+    if (!shouldReportDesignatedSeatNoDecode({
+      durationMs,
+      decoded: Boolean(attempt.decodedAt),
+      alreadyReported: Boolean(attempt.reportedNoDecode),
+    })) return false
+
+    attempt.reportedNoDecode = true
+    reportScanIssue('student_qr_no_decode', {
+      reason,
+      durationMs,
+      cameraLabel: attempt.cameraLabel,
+      cameraSettings: attempt.cameraSettings,
+    })
+    return true
+  }, [reportScanIssue])
+
+  const openScanner = useCallback(() => {
+    scanAttemptRef.current = { startedAt: Date.now() }
+    setScannerOpen(true)
+  }, [])
+
+  const closeScannerWithoutDecode = useCallback(() => {
+    reportUnresolvedScanAttempt('manual_close_without_decode')
+    scanAttemptRef.current = null
+    setScannerOpen(false)
+  }, [reportUnresolvedScanAttempt])
+
+  useEffect(() => {
+    if (!scannerOpen) return
+
+    const handlePageHide = () => {
+      reportUnresolvedScanAttempt('page_hidden_without_decode')
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        reportUnresolvedScanAttempt('page_hidden_without_decode')
+      }
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      reportUnresolvedScanAttempt('scanner_effect_cleanup')
+    }
+  }, [reportUnresolvedScanAttempt, scannerOpen])
 
   const applyDesignatedSeatState = useCallback((nextState: DesignatedSeatStudentState) => {
     setSelectedRoomId(resolveClientRoomId(nextState, null))
@@ -242,25 +391,17 @@ export default function DesignatedSeatPage() {
       return
     }
 
-    try {
-      await scanner.stop()
-    } catch {
-      // ignore stop failures
-    }
-
-    try {
-      scanner.clear()
-    } catch {
-      // ignore clear failures
-    }
+    await disposeScanner(scanner)
   }, [])
 
   const handleVerify = useCallback(async (payload: DesignatedSeatVerificationPayload) => {
     if (!data || !deviceKey) {
+      scanAttemptRef.current = null
       setError('기기 정보를 준비하고 있습니다. 잠시 후 다시 시도해 주세요.')
       return
     }
     if (!activeRoomId) {
+      scanAttemptRef.current = null
       setError('강의실을 먼저 선택해 주세요.')
       return
     }
@@ -279,26 +420,43 @@ export default function DesignatedSeatPage() {
         setPresenceFailure(presenceResult.error)
         setWorking(false)
         setError(presenceResult.error.message)
+        scanAttemptRef.current = null
         return
       }
     }
 
-    const response = await fetch(withTenantPrefix('/api/designated-seats/auth', tenant.type), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId: data.course.id,
-        enrollmentId: data.enrollment.id,
-        roomId: activeRoomId,
-        name: data.enrollment.name,
-        phone: data.enrollment.phone,
-        localDeviceKey: deviceKey,
-        deviceSignature: buildDeviceSignature(),
-        presenceLocation: presenceResult?.ok ? presenceResult.location : undefined,
-        presenceError: presenceResult && !presenceResult.ok ? presenceResult.error : undefined,
-        ...payload,
-      }),
-    })
+    let response: Response
+    try {
+      response = await fetch(withTenantPrefix('/api/designated-seats/auth', tenant.type), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: data.course.id,
+          enrollmentId: data.enrollment.id,
+          roomId: activeRoomId,
+          name: data.enrollment.name,
+          phone: data.enrollment.phone,
+          localDeviceKey: deviceKey,
+          deviceSignature: buildDeviceSignature(),
+          presenceLocation: presenceResult?.ok ? presenceResult.location : undefined,
+          presenceError: presenceResult && !presenceResult.ok ? presenceResult.error : undefined,
+          ...payload,
+        }),
+      })
+    } catch {
+      const attempt = scanAttemptRef.current
+      reportScanIssue('student_qr_auth_rejected', {
+        reason: 'network_error',
+        durationMs: attempt ? Date.now() - attempt.startedAt : undefined,
+        cameraLabel: attempt?.cameraLabel,
+        cameraSettings: attempt?.cameraSettings,
+        responseStatus: 0,
+      })
+      scanAttemptRef.current = null
+      setWorking(false)
+      setError('네트워크 연결을 확인한 뒤 QR을 다시 스캔해 주세요.')
+      return
+    }
     const result = await response.json().catch(() => null)
     setWorking(false)
 
@@ -322,6 +480,17 @@ export default function DesignatedSeatPage() {
       } else {
         setPresenceFailure(null)
       }
+      const attempt = scanAttemptRef.current
+      reportScanIssue('student_qr_auth_rejected', {
+        reason: 'server_rejected',
+        durationMs: attempt ? Date.now() - attempt.startedAt : undefined,
+        cameraLabel: attempt?.cameraLabel,
+        cameraSettings: attempt?.cameraSettings,
+        responseStatus: response.status,
+        responseCode: failure?.code,
+        responseMessage: failure?.error,
+      })
+      scanAttemptRef.current = null
       return
     }
 
@@ -334,7 +503,8 @@ export default function DesignatedSeatPage() {
 
     setPresenceFailure(null)
     setMessage('현장 인증이 완료되었습니다. 원하시는 좌석을 선택해 주세요.')
-  }, [activeRoomId, applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, tenant.type])
+    scanAttemptRef.current = null
+  }, [activeRoomId, applyDesignatedSeatState, data, deviceKey, refreshDesignatedSeatState, reportScanIssue, tenant.type])
 
   useEffect(() => {
     if (!scannerOpen) {
@@ -343,6 +513,7 @@ export default function DesignatedSeatPage() {
     }
 
     let cancelled = false
+    let noDecodeTimer: number | null = null
 
     async function startScanner() {
       if (typeof window === 'undefined') {
@@ -353,8 +524,15 @@ export default function DesignatedSeatPage() {
       setError('')
 
       const readinessError = await getCameraReadinessError()
+      if (cancelled) return
       if (readinessError) {
         if (!cancelled) {
+          const attempt = scanAttemptRef.current
+          reportScanIssue('student_qr_camera_failed', {
+            reason: 'camera_readiness_failed',
+            durationMs: attempt ? Date.now() - attempt.startedAt : undefined,
+          })
+          scanAttemptRef.current = null
           setScannerLoading(false)
           setError(readinessError)
           setScannerOpen(false)
@@ -364,8 +542,15 @@ export default function DesignatedSeatPage() {
 
       try {
         const cameraSelection = await getStrictMainRearCamera()
+        if (cancelled) return
         if (!cameraSelection.ok) {
           if (!cancelled) {
+            const attempt = scanAttemptRef.current
+            reportScanIssue('student_qr_camera_failed', {
+              reason: cameraSelection.reason,
+              durationMs: attempt ? Date.now() - attempt.startedAt : undefined,
+            })
+            scanAttemptRef.current = null
             setScannerLoading(false)
             setError(
               cameraSelection.reason === 'rear-camera-not-found'
@@ -388,6 +573,9 @@ export default function DesignatedSeatPage() {
             return
           }
 
+          if (scanAttemptRef.current) {
+            scanAttemptRef.current.decodedAt = Date.now()
+          }
           setScannerOpen(false)
           void handleVerify(verificationPayload)
         }
@@ -399,6 +587,14 @@ export default function DesignatedSeatPage() {
           onSuccess,
         )
 
+        if (cancelled) {
+          if (scannerRef.current === scanner) {
+            scannerRef.current = null
+          }
+          await disposeScanner(scanner)
+          return
+        }
+
         // Force 1x main lens on multi-camera phones (iPhone 11+, Galaxy S-series, etc.).
         // advanced[] is best-effort, so unsupported browsers silently skip it.
         try {
@@ -409,11 +605,30 @@ export default function DesignatedSeatPage() {
           // ignore if the browser rejects the zoom constraint
         }
 
+        if (scanAttemptRef.current) {
+          scanAttemptRef.current.cameraStartedAt = Date.now()
+          scanAttemptRef.current.cameraLabel = cameraSelection.label
+          scanAttemptRef.current.cameraSettings = snapshotCameraSettings(scanner.getRunningTrackSettings?.())
+          if (!scanAttemptRef.current.decodedAt) {
+            noDecodeTimer = window.setTimeout(() => {
+              reportUnresolvedScanAttempt('decode_timeout')
+            }, DESIGNATED_SEAT_NO_DECODE_AUTO_REPORT_MS)
+          }
+        }
+
         if (!cancelled) {
           setScannerLoading(false)
         }
       } catch {
         if (!cancelled) {
+          const attempt = scanAttemptRef.current
+          reportScanIssue('student_qr_camera_failed', {
+            reason: 'camera_start_failed',
+            durationMs: attempt ? Date.now() - attempt.startedAt : undefined,
+            cameraLabel: attempt?.cameraLabel,
+            cameraSettings: attempt?.cameraSettings,
+          })
+          scanAttemptRef.current = null
           setScannerLoading(false)
           setError('카메라를 시작하지 못했습니다.')
           setScannerOpen(false)
@@ -425,9 +640,12 @@ export default function DesignatedSeatPage() {
 
     return () => {
       cancelled = true
+      if (noDecodeTimer !== null) {
+        window.clearTimeout(noDecodeTimer)
+      }
       void stopScanner()
     }
-  }, [handleVerify, scannerOpen, stopScanner])
+  }, [handleVerify, reportScanIssue, reportUnresolvedScanAttempt, scannerOpen, stopScanner])
 
   async function handleReserve(seatId: number) {
     if (!data || !deviceKey) {
@@ -637,7 +855,7 @@ export default function DesignatedSeatPage() {
                 browserContext={presenceFailure.browserContext}
                 errorCode={presenceFailure.errorCode}
                 message={presenceFailure.message}
-                onRetry={() => setScannerOpen(true)}
+                onRetry={openScanner}
               />
             ) : null}
           </section>
@@ -652,7 +870,7 @@ export default function DesignatedSeatPage() {
             </p>
             <button
               type="button"
-              onClick={() => setScannerOpen(true)}
+              onClick={openScanner}
               disabled={working || needsRoomSelection}
               className="student-pill-button student-pill-primary mt-3 w-full disabled:opacity-40"
               style={{ backgroundColor: courseTheme, borderColor: courseTheme }}
@@ -743,11 +961,11 @@ export default function DesignatedSeatPage() {
       </div>
 
       {scannerOpen ? (
-        <div className="student-modal-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setScannerOpen(false)}>
+        <div className="student-modal-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" onClick={closeScannerWithoutDecode}>
           <div className="student-card w-full max-w-md bg-white p-4" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-[15px] font-semibold text-[var(--student-text)]">현장 QR 스캔</h3>
-              <button type="button" onClick={() => setScannerOpen(false)} className="text-[13px] text-[var(--student-link)] transition-all duration-200 ease-ios active:scale-[0.97]">
+              <button type="button" onClick={closeScannerWithoutDecode} className="text-[13px] text-[var(--student-link)] transition-all duration-200 ease-ios active:scale-[0.97]">
                 닫기
               </button>
             </div>

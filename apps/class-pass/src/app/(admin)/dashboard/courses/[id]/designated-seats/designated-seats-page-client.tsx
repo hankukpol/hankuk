@@ -22,8 +22,9 @@ import type {
   Enrollment,
 } from '@/types/database'
 import { DesignatedSeatAttendancePanel } from './designated-seat-attendance-panel'
+import { DesignatedSeatScanIssuesPanel } from './designated-seat-scan-issues-panel'
 
-type TabMode = 'editor' | 'status' | 'attendance' | 'rooms'
+type TabMode = 'editor' | 'status' | 'attendance' | 'scan-issues' | 'rooms'
 type ManualSeatConfirmation =
   | {
     type: 'clear'
@@ -259,6 +260,7 @@ const TAB_ITEMS: Array<{ key: TabMode; label: string }> = [
   { key: 'editor', label: '좌석 맵 편집' },
   { key: 'status', label: '배정 현황' },
   { key: 'attendance', label: '출석 현황' },
+  { key: 'scan-issues', label: 'QR 문제 추적' },
   { key: 'rooms', label: '강의실 관리' },
 ]
 
@@ -1454,7 +1456,7 @@ export default function CourseDesignatedSeatsPage({
         ))}
       </div>
 
-      {tab !== 'attendance' && sortedRooms.length > 0 ? (
+      {tab !== 'attendance' && tab !== 'scan-issues' && sortedRooms.length > 0 ? (
         <section className="rounded-[8px] bg-white px-4 py-3 sm:px-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -2137,6 +2139,10 @@ export default function CourseDesignatedSeatsPage({
 
       {tab === 'attendance' && course ? (
         <DesignatedSeatAttendancePanel courseId={course.id} />
+      ) : null}
+
+      {tab === 'scan-issues' && course ? (
+        <DesignatedSeatScanIssuesPanel courseId={course.id} />
       ) : null}
 
       {tab === 'rooms' ? (

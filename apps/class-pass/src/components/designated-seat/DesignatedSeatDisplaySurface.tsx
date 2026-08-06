@@ -8,6 +8,10 @@ import {
   DESIGNATED_SEAT_DISPLAY_RETRY_MS,
   getDisplayRefreshDelay,
 } from '@/lib/designated-seat/display-runtime'
+import {
+  getDesignatedSeatCompactQrFrameWidth,
+  getDesignatedSeatQrSize,
+} from '@/lib/designated-seat/display-layout'
 import { buildDesignatedSeatQrValue } from '@/lib/designated-seat/scan'
 
 export type DesignatedSeatDisplayClientTarget =
@@ -118,9 +122,10 @@ function getTargetFallbackLabel(target: DesignatedSeatDisplayClientTarget) {
 type DesignatedSeatDisplayTileProps = {
   target: DesignatedSeatDisplayClientTarget
   compact?: boolean
+  targetCount?: number
 }
 
-function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDisplayTileProps) {
+function DesignatedSeatDisplayTile({ target, compact = false, targetCount = 1 }: DesignatedSeatDisplayTileProps) {
   const [payload, setPayload] = useState<DisplayPayload | null>(null)
   const [registrationRequired, setRegistrationRequired] = useState<RegistrationPayload | null>(null)
   const [registrationCode, setRegistrationCode] = useState('')
@@ -253,7 +258,8 @@ function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDi
   const slotLabel = payload?.slot?.label ?? registrationRequired?.slot?.label ?? (target.type === 'slot' ? getTargetFallbackLabel(target) : null)
   const courseName = payload?.course.name ?? registrationRequired?.course?.name ?? getTargetFallbackLabel(target)
   const roomLabel = payload?.status === 'active' ? payload.room?.name ?? null : null
-  const qrSize = compact ? 300 : 520
+  const qrSize = getDesignatedSeatQrSize(targetCount, compact)
+  const qrFrameWidth = compact ? getDesignatedSeatCompactQrFrameWidth(targetCount) : undefined
 
   if (registrationRequired) {
     return (
@@ -327,9 +333,9 @@ function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDi
   }
 
   return (
-    <div className={`${compact ? 'min-h-[620px] px-5 py-6' : 'min-h-dvh px-8 py-10'} flex flex-col bg-slate-950 text-white`}>
-      <div className={`mx-auto flex w-full ${compact ? 'max-w-2xl flex-col gap-4' : 'max-w-6xl items-start justify-between gap-8'}`}>
-        <div>
+    <div className={`${compact ? `min-h-[calc(100dvh-96px)] ${targetCount === 2 ? 'px-4' : 'px-5'} py-6` : 'min-h-dvh px-8 py-10'} flex flex-col bg-slate-950 text-white`}>
+      <div className={`mx-auto flex w-full ${compact ? 'max-w-2xl flex-col gap-4 sm:flex-row sm:items-start sm:justify-between' : 'max-w-6xl items-start justify-between gap-8'}`}>
+        <div className={compact ? 'min-w-0' : ''}>
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">Designated Seat</p>
           {slotLabel ? <p className="mt-3 text-lg font-bold text-sky-100">{slotLabel}</p> : null}
           {roomLabel ? <p className="mt-2 text-base font-bold text-emerald-200">{roomLabel}</p> : null}
@@ -342,14 +348,17 @@ function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDi
           ) : null}
         </div>
 
-        <div className={`${compact ? 'self-start' : ''} rounded-[10px] border border-slate-800 bg-slate-900 px-5 py-4 text-right`}>
+        <div className={`${compact ? 'shrink-0 self-start' : ''} rounded-[10px] border border-slate-800 bg-slate-900 px-5 py-4 text-right`}>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">남은 시간</p>
           <p className={`${compact ? 'text-4xl' : 'text-5xl'} mt-2 font-black text-emerald-300`}>{remainingSeconds}</p>
         </div>
       </div>
 
-      <div className={`mx-auto ${compact ? 'mt-6' : 'mt-10'} flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-6`}>
-        <div className="flex items-center justify-center rounded-[10px] bg-white p-5 shadow-2xl">
+      <div className={`mx-auto ${compact ? 'mt-4 gap-4' : 'mt-10 gap-6'} flex w-full max-w-6xl flex-1 flex-col items-center justify-center`}>
+        <div
+          className="flex items-center justify-center rounded-[10px] bg-white p-5 shadow-2xl"
+          style={qrFrameWidth ? { width: qrFrameWidth } : undefined}
+        >
           <QRCodeSVG
             value={qrValue}
             size={qrSize}
@@ -357,6 +366,7 @@ function DesignatedSeatDisplayTile({ target, compact = false }: DesignatedSeatDi
             includeMargin
             bgColor="#ffffff"
             fgColor="#111827"
+            className={compact ? 'h-auto w-full' : 'h-auto max-w-full'}
           />
         </div>
 
@@ -393,15 +403,15 @@ export function DesignatedSeatDisplaySurface({
   }
 
   return (
-    <div className="min-h-dvh bg-slate-950 p-4 text-white sm:p-6">
+    <div className={`min-h-dvh bg-slate-950 p-4 text-white ${targets.length === 2 ? '' : 'sm:p-6'}`}>
       <div className="mb-4 flex flex-col gap-1 px-1">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">Designated Seat Multi Display</p>
         <h1 className="text-2xl font-black">지정좌석 QR 멀티 표시</h1>
       </div>
-      <div className={`grid gap-4 ${targets.length === 2 ? 'xl:grid-cols-2' : 'lg:grid-cols-2 2xl:grid-cols-3'}`}>
+      <div className={`grid gap-4 lg:grid-cols-2 ${targets.length >= 3 ? '2xl:grid-cols-3' : ''}`}>
         {targets.map((target) => (
           <div key={target.type === 'slot' ? `slot-${target.slotKey}` : `course-${target.courseId}`} className="overflow-hidden rounded-[8px] bg-slate-900">
-            <DesignatedSeatDisplayTile target={target} compact />
+            <DesignatedSeatDisplayTile target={target} compact targetCount={targets.length} />
           </div>
         ))}
       </div>

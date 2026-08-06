@@ -29,6 +29,7 @@ The color story is starkly binary. Product sections alternate between pure black
 - **Apple Blue** (`#0071e3`): `--sk-focus-color`, primary CTA backgrounds, focus rings. The ONLY chromatic color in the interface.
 - **Link Blue** (`#0066cc`): `--sk-body-link-color`, inline text links. Slightly darker than Apple Blue for text-level readability.
 - **Bright Blue** (`#2997ff`): Links on dark backgrounds. Higher luminance for contrast on black sections.
+- **System Red** (`#ff3b30`): Validation errors and destructive status messages only.
 
 ### Text
 - **White** (`#ffffff`): Text on dark backgrounds, button text on blue/dark CTAs.
@@ -46,6 +47,7 @@ The color story is starkly binary. Product sections alternate between pure black
 ### Button States
 - **Button Active** (`#ededf2`): Active/pressed state for light buttons.
 - **Button Default Light** (`#fafafc`): Search/filter button backgrounds.
+- **Control Hover Gray** (`#e8e8ed`): Hover feedback for neutral controls on light surfaces.
 - **Overlay** (`rgba(210, 210, 215, 0.64)`): Media control scrims, overlays.
 - **White 32%** (`rgba(255, 255, 255, 0.32)`): Hover state on dark modal close buttons.
 
@@ -188,6 +190,7 @@ The color story is starkly binary. Product sections alternate between pure black
 
 ### Grid & Container
 - Max content width: approximately 980px (the recurring "980px radius" in pill buttons echoes this width)
+- Operational data tables may use a 760px internal minimum width inside their own horizontal-scroll container.
 - Hero: full-viewport-width sections with centered content block
 - Product grids: 2-3 column layouts within centered container
 - Single-column for hero moments — one product, one message, full attention
@@ -280,6 +283,16 @@ The color story is starkly binary. Product sections alternate between pure black
 - Full-bleed section backgrounds persist at every size
 - Lifestyle images may crop on mobile but maintain their rounded corners
 - Lazy loading for below-fold product images
+
+### Operational QR Sizing
+- Single designated-seat display: 520px.
+- Two-up designated-seat multi display: 420px, preserving at least 6 rendered pixels per module for the current 69-module payload.
+- Three-or-more designated-seat multi display: 340px.
+- Compact QR fallback minimum: 260px, used only when viewport height cannot fit the preferred size.
+- Compact QR frame includes 40px total padding and reserves 280px of viewport height for titles, countdown, page chrome, and session details.
+- Compact multi-display tiles reserve 96px for the multi-display page heading and outer spacing.
+- Two-up displays switch to two columns at the 1024px desktop-small breakpoint.
+- QR SVGs must use `max-width: 100%` with proportional height so narrow viewports never create page-level horizontal scroll.
 
 ## 9. Agent Prompt Guide
 

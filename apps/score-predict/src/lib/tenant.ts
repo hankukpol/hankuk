@@ -3,6 +3,7 @@ export type TenantType = "fire" | "police";
 export const TENANT_HEADER = "x-hankuk-division";
 export const TENANT_COOKIE = "hankuk_division";
 export const TENANT_TYPES: TenantType[] = ["police", "fire"];
+export const POLICE_LOGIN_HOSTNAME = "fullservice.hankukpol.co.kr";
 export const DEFAULT_TENANT_TYPE: TenantType =
   process.env.NEXT_PUBLIC_TENANT_TYPE === "police" ? "police" : "fire";
 
@@ -125,6 +126,24 @@ export function parseTenantTypeFromPathname(pathname: string | null | undefined)
 
   const match = pathname.match(/^\/(police|fire)(?=\/|$)/);
   return match ? normalizeTenantType(match[1]) : null;
+}
+
+function normalizeHostname(hostname: string | null | undefined): string {
+  return (hostname ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .split(":", 1)[0];
+}
+
+export function isPoliceLoginHostname(hostname: string | null | undefined): boolean {
+  return normalizeHostname(hostname) === POLICE_LOGIN_HOSTNAME;
+}
+
+export function parseTenantTypeFromHostname(
+  hostname: string | null | undefined
+): TenantType | null {
+  return isPoliceLoginHostname(hostname) ? "police" : null;
 }
 
 export function stripTenantPrefix(pathname: string): string {

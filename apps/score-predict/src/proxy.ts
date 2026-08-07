@@ -6,9 +6,12 @@ import { getTenantSiteSettingDefaults } from "@/lib/site-settings.defaults";
 import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
 import {
   DEFAULT_TENANT_TYPE,
+  POLICE_LOGIN_HOSTNAME,
   TENANT_COOKIE,
   TENANT_HEADER,
+  isPoliceLoginHostname,
   normalizeTenantType,
+  parseTenantTypeFromHostname,
   parseTenantTypeFromPathname,
   stripTenantPrefix,
   withTenantPrefix,
@@ -149,13 +152,19 @@ export async function proxy(request: NextRequest) {
   const currentPathname = request.nextUrl.pathname;
   const forwardedOriginalPathname = request.headers.get("x-hankuk-original-pathname");
   const originalPathname = forwardedOriginalPathname ?? currentPathname;
+  const requestHostname =
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    request.nextUrl.hostname;
   const tenantFromPath = parseTenantTypeFromPathname(currentPathname);
   const tenantFromOriginalPath = parseTenantTypeFromPathname(originalPathname);
+  const tenantFromHostname = parseTenantTypeFromHostname(requestHostname);
   const tenantFromHeader = normalizeTenantType(request.headers.get(TENANT_HEADER));
   const tenantCookie = request.cookies.get(TENANT_COOKIE)?.value;
   const tenantType =
     tenantFromPath ??
     tenantFromOriginalPath ??
+    tenantFromHostname ??
     tenantFromHeader ??
     normalizeTenantType(tenantCookie) ??
     DEFAULT_TENANT_TYPE;
@@ -163,6 +172,21 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(TENANT_HEADER, tenantType);
   requestHeaders.set("x-hankuk-original-pathname", originalPathname);
+
+  if (
+    isPoliceLoginHostname(requestHostname) &&
+    currentPathname === "/" &&
+    !forwardedOriginalPathname &&
+    request.method === "GET"
+  ) {
+    const loginUrl = prefixedUrl(request, "police", "/login");
+    loginUrl.hostname = POLICE_LOGIN_HOSTNAME;
+
+    return withTenantCookie(
+      NextResponse.redirect(loginUrl),
+      "police"
+    );
+  }
 
   if (
     !tenantFromPath &&

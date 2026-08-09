@@ -1,5 +1,6 @@
 import { ExamType, PassCutSnapshotStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { lockActiveExamStateForWrite, resolveActiveExamForWrite } from "@/lib/active-exam";
 
 export type PassCutReleaseSource = "ADMIN" | "AUTO";
 
@@ -148,6 +149,13 @@ export async function createPassCutRelease(
   };
   try {
     release = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, "police");
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: "police",
+        context: "police/createPassCutRelease",
+        requestedExamId: params.examId,
+      });
       const created = await tx.passCutRelease.create({
         data: {
           examId: params.examId,

@@ -8,15 +8,17 @@ import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import QuickOmrInput from "@/components/exam/QuickOmrInput";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 const ADMIN_EXAM_API = "/api/admin/exam?feature=answers";
 const ADMIN_ANSWERS_API = "/api/admin/answers";
 const ADMIN_ANSWERS_PREVIEW_API = "/api/admin/answers/preview";
 const ADMIN_ANSWERS_LOGS_API = "/api/admin/answers/logs";
 
-type RecruitExamType = "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+type RecruitExamType = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
 
 const EXAM_TYPE_PUBLIC: RecruitExamType = "PUBLIC";
+const EXAM_TYPE_CAREER: RecruitExamType = "CAREER";
 const EXAM_TYPE_CAREER_RESCUE: RecruitExamType = "CAREER_RESCUE";
 const EXAM_TYPE_CAREER_ACADEMIC: RecruitExamType = "CAREER_ACADEMIC";
 const EXAM_TYPE_CAREER_EMT: RecruitExamType = "CAREER_EMT";
@@ -92,7 +94,7 @@ type NoticeState = {
   message: string;
 } | null;
 
-const TEMPLATE_SUBJECTS: Record<RecruitExamType, Array<{ name: string; questionCount: number }>> = {
+const FIRE_TEMPLATE_SUBJECTS: Partial<Record<RecruitExamType, Array<{ name: string; questionCount: number }>>> = {
   PUBLIC: [
     { name: "소방학개론", questionCount: 25 },
     { name: "소방관계법규", questionCount: 25 },
@@ -109,6 +111,19 @@ const TEMPLATE_SUBJECTS: Record<RecruitExamType, Array<{ name: string; questionC
   CAREER_EMT: [
     { name: "소방학개론", questionCount: 25 },
     { name: "응급처치학개론", questionCount: 40 },
+  ],
+};
+
+const POLICE_TEMPLATE_SUBJECTS: Partial<Record<RecruitExamType, Array<{ name: string; questionCount: number }>>> = {
+  PUBLIC: [
+    { name: "헌법", questionCount: 20 },
+    { name: "형사법", questionCount: 40 },
+    { name: "경찰학", questionCount: 40 },
+  ],
+  CAREER: [
+    { name: "범죄학", questionCount: 20 },
+    { name: "형사법", questionCount: 40 },
+    { name: "경찰학", questionCount: 40 },
   ],
 };
 
@@ -181,6 +196,7 @@ function normalizeRescoreSummary(data: {
 }
 
 export default function AdminAnswersPage() {
+  const tenant = useTenantConfig();
   const { enabled: answersEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("answers");
   const [exams, setExams] = useState<ExamItem[]>([]);
@@ -353,7 +369,7 @@ export default function AdminAnswersPage() {
   }, [answersEnabled, examType, isConfirmed, isFeatureLoading, loadAnswers, selectedExamId]);
 
   useEffect(() => {
-    if (!careerExamEnabled && (examType === EXAM_TYPE_CAREER_RESCUE || examType === EXAM_TYPE_CAREER_ACADEMIC || examType === EXAM_TYPE_CAREER_EMT)) {
+    if (!careerExamEnabled && examType !== EXAM_TYPE_PUBLIC) {
       setExamType(EXAM_TYPE_PUBLIC);
     }
   }, [careerExamEnabled, examType]);
@@ -694,7 +710,8 @@ export default function AdminAnswersPage() {
   }
 
   function downloadTemplateCsv(type: RecruitExamType) {
-    const templateSubjects = TEMPLATE_SUBJECTS[type];
+    const templateSubjects =
+      (tenant.type === "police" ? POLICE_TEMPLATE_SUBJECTS[type] : FIRE_TEMPLATE_SUBJECTS[type]) ?? [];
     const lines = ["과목,문항번호,정답"];
 
     for (const subject of templateSubjects) {
@@ -709,7 +726,17 @@ export default function AdminAnswersPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `정답키_양식_${type === EXAM_TYPE_PUBLIC ? "공채" : type === EXAM_TYPE_CAREER_RESCUE ? "구조경채" : type === EXAM_TYPE_CAREER_ACADEMIC ? "소방학과경채" : "구급경채"}.csv`;
+    const typeLabel =
+      type === EXAM_TYPE_PUBLIC
+        ? "공채"
+        : type === EXAM_TYPE_CAREER
+          ? "경행경채"
+          : type === EXAM_TYPE_CAREER_RESCUE
+            ? "구조경채"
+            : type === EXAM_TYPE_CAREER_ACADEMIC
+              ? "소방학과경채"
+              : "구급경채";
+    anchor.download = `정답키_양식_${typeLabel}.csv`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -760,13 +787,21 @@ export default function AdminAnswersPage() {
             value={examType}
             onChange={(event) => setExamType(event.target.value as RecruitExamType)}
           >
-            <option value={EXAM_TYPE_PUBLIC}>공채 (소방학개론/소방관계법규/행정법총론)</option>
+            <option value={EXAM_TYPE_PUBLIC}>
+              {tenant.type === "police"
+                ? "공채 (헌법/형사법/경찰학)"
+                : "공채 (소방학개론/소방관계법규/행정법총론)"}
+            </option>
             {careerExamEnabled ? (
-              <>
-                <option value={EXAM_TYPE_CAREER_RESCUE}>구조 경채 (소방학개론/소방관계법규)</option>
-                <option value={EXAM_TYPE_CAREER_ACADEMIC}>소방학과 경채 (소방학개론/소방관계법규)</option>
-                <option value={EXAM_TYPE_CAREER_EMT}>구급 경채 (소방학개론/응급처치학개론)</option>
-              </>
+              tenant.type === "police" ? (
+                <option value={EXAM_TYPE_CAREER}>경행경채 (범죄학/형사법/경찰학)</option>
+              ) : (
+                <>
+                  <option value={EXAM_TYPE_CAREER_RESCUE}>구조 경채 (소방학개론/소방관계법규)</option>
+                  <option value={EXAM_TYPE_CAREER_ACADEMIC}>소방학과 경채 (소방학개론/소방관계법규)</option>
+                  <option value={EXAM_TYPE_CAREER_EMT}>구급 경채 (소방학개론/응급처치학개론)</option>
+                </>
+              )
             ) : null}
           </select>
         </div>
@@ -808,7 +843,11 @@ export default function AdminAnswersPage() {
             value={rescoreReason}
             onChange={(event) => setRescoreReason(event.target.value)}
             className="min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            placeholder="예: 소방학개론 12번 정답 정정, 가답안에서 확정답안으로 변경"
+            placeholder={
+              tenant.type === "police"
+                ? "예: 형사법 12번 정답 정정, 가답안에서 확정답안으로 변경"
+                : "예: 소방학개론 12번 정답 정정, 가답안에서 확정답안으로 변경"
+            }
           />
         </div>
 
@@ -1015,24 +1054,30 @@ export default function AdminAnswersPage() {
       <section className="space-y-3 rounded-lg border border-slate-200 p-4">
         <h2 className="text-base font-semibold text-slate-900">CSV 업로드</h2>
         <p className="text-sm text-slate-600">
-          CSV는 <code>과목,문항번호,정답</code> 3개 컬럼 형식으로 업로드해 주세요. (예: 소방학개론,1,3)
+          CSV는 <code>과목,문항번호,정답</code> 3개 컬럼 형식으로 업로드해 주세요. (예: {tenant.type === "police" ? "형사법,1,3" : "소방학개론,1,3"})
         </p>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_PUBLIC)}>
             공채 양식 다운로드
           </Button>
           {careerExamEnabled ? (
-            <>
-              <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER_RESCUE)}>
-                구조 경채 양식 다운로드
+            tenant.type === "police" ? (
+              <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER)}>
+                경행경채 양식 다운로드
               </Button>
-              <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER_ACADEMIC)}>
-                소방학과 경채 양식 다운로드
-              </Button>
-              <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER_EMT)}>
-                구급 경채 양식 다운로드
-              </Button>
-            </>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER_RESCUE)}>
+                  구조 경채 양식 다운로드
+                </Button>
+                <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER_ACADEMIC)}>
+                  소방학과 경채 양식 다운로드
+                </Button>
+                <Button type="button" variant="outline" onClick={() => downloadTemplateCsv(EXAM_TYPE_CAREER_EMT)}>
+                  구급 경채 양식 다운로드
+                </Button>
+              </>
+            )
           ) : null}
         </div>
 

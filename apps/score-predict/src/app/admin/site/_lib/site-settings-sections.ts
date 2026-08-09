@@ -6,6 +6,7 @@ export const SITE_FEATURE_FLOW_SETTING_KEYS = [
   "site.preRegistrationEnabled",
   "site.answerInputEnabled",
   "site.finalPredictionEnabled",
+  "site.policePredictionGradesEnabled",
   "site.commentsEnabled",
 ] as const;
 

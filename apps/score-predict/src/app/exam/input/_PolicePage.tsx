@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { withTenantPrefix } from "@/lib/tenant";
+import { isPoliceExamType, type PoliceExamType } from "@/lib/tenant-exam";
 
 type BonusVeteran = 0 | 5 | 10;
 type BonusHero = 0 | 3 | 5;
@@ -70,7 +71,7 @@ interface SubmissionResponse {
 interface PreRegistrationData {
   id: number;
   examId: number;
-  examType: ExamType;
+  examType: PoliceExamType;
   gender: Gender;
   regionId: number;
   examNumber: string;
@@ -83,6 +84,10 @@ interface PreRegistrationResponse {
   message?: string;
   preRegistration?: PreRegistrationData | null;
   error?: string;
+  smsMarketingConsent?: {
+    consented: boolean;
+    consentText: string;
+  };
 }
 
 type PublicSiteSettings = Record<string, string | boolean | number | null>;
@@ -147,7 +152,7 @@ function progressColor(percentage: number): string {
   return "bg-rose-500";
 }
 
-function getRecruitCount(region: RegionInfo, examType: ExamType): number {
+function getRecruitCount(region: RegionInfo, examType: PoliceExamType): number {
   if (examType === ExamType.CAREER) {
     return region.recruitCountCareer;
   }
@@ -231,9 +236,11 @@ export default function ExamInputPage({
   const [editCountInfo, setEditCountInfo] = useState<{ editCount: number; maxEditLimit: number } | null>(null);
   const [preRegistration, setPreRegistration] = useState<PreRegistrationData | null>(null);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>({});
+  const [smsMarketingConsent, setSmsMarketingConsent] = useState<boolean | null>(null);
+  const [smsMarketingConsentText, setSmsMarketingConsentText] = useState("");
 
   const [gender, setGender] = useState<Gender | "">("");
-  const [examType, setExamType] = useState<ExamType>(ExamType.PUBLIC);
+  const [examType, setExamType] = useState<PoliceExamType>(ExamType.PUBLIC);
   const [regionId, setRegionId] = useState<number | "">("");
   const [examNumber, setExamNumber] = useState("");
   const [examNumberStatus, setExamNumberStatus] = useState<
@@ -248,19 +255,13 @@ export default function ExamInputPage({
   const [inputMode, setInputMode] = useState<OmrInputMode>("radio");
   const [quickFocusToken, setQuickFocusToken] = useState(0);
 
-  const [answerStore, setAnswerStore] = useState<Record<ExamType, AnswersBySubject>>({
+  const [answerStore, setAnswerStore] = useState<Record<PoliceExamType, AnswersBySubject>>({
     [ExamType.PUBLIC]: {},
     [ExamType.CAREER]: {},
-    [ExamType.CAREER_RESCUE]: {},
-    [ExamType.CAREER_ACADEMIC]: {},
-    [ExamType.CAREER_EMT]: {},
   });
-  const [difficultyStore, setDifficultyStore] = useState<Record<ExamType, DifficultyBySubject>>({
+  const [difficultyStore, setDifficultyStore] = useState<Record<PoliceExamType, DifficultyBySubject>>({
     [ExamType.PUBLIC]: {},
     [ExamType.CAREER]: {},
-    [ExamType.CAREER_RESCUE]: {},
-    [ExamType.CAREER_ACADEMIC]: {},
-    [ExamType.CAREER_EMT]: {},
   });
 
   const effectiveEditId = editId ? Number(editId) : autoEditId;
@@ -273,10 +274,8 @@ export default function ExamInputPage({
       setIsMetaLoading(true);
       setErrorMessage("");
       try {
-        const [metaRes, editRes, preRegistrationRes, siteSettingsRes] = await Promise.all([
+        const [metaRes, siteSettingsRes] = await Promise.all([
           fetch("/api/exams?active=true", { method: "GET", cache: "no-store" }),
-          fetch(editId ? `/api/result?submissionId=${editId}` : `/api/result?optional=1`, { method: "GET", cache: "no-store" }),
-          fetch("/api/pre-registration", { method: "GET", cache: "no-store" }),
           fetch("/api/site-settings", { method: "GET", cache: "no-store" }),
         ]);
 
@@ -284,6 +283,22 @@ export default function ExamInputPage({
         if (!metaRes.ok) {
           throw new Error(data.error ?? "시험 정보를 불러오지 못했습니다.");
         }
+        if (!data.activeExam) {
+          throw new Error("현재 운영 중인 경찰 시험이 없습니다.");
+        }
+
+        const [editRes, preRegistrationRes] = await Promise.all([
+          fetch(
+            editId
+              ? `/api/result?submissionId=${editId}`
+              : `/api/result?optional=1&examId=${data.activeExam.id}`,
+            { method: "GET", cache: "no-store" }
+          ),
+          fetch(`/api/pre-registration?examId=${data.activeExam.id}`, {
+            method: "GET",
+            cache: "no-store",
+          }),
+        ]);
 
         let editData: EditSubmissionResponse | null = null;
         if (editRes.ok) {
@@ -295,11 +310,14 @@ export default function ExamInputPage({
         }
         // editId 없이 조회했는데 404 → 신규 사용자, 정상 흐름
 
-        let preRegistrationData: PreRegistrationData | null = null;
-        if (preRegistrationRes.ok) {
-          const parsed = (await preRegistrationRes.json()) as PreRegistrationResponse;
-          preRegistrationData = parsed.preRegistration ?? null;
+        if (!preRegistrationRes.ok) {
+          const parsed = (await preRegistrationRes.json().catch(() => ({}))) as { error?: string };
+          throw new Error(parsed.error ?? "사전등록과 문자 수신 설정을 불러오지 못했습니다.");
         }
+        const parsedPreRegistration = (await preRegistrationRes.json()) as PreRegistrationResponse;
+        const preRegistrationData = parsedPreRegistration.preRegistration ?? null;
+        setSmsMarketingConsent(Boolean(parsedPreRegistration.smsMarketingConsent?.consented));
+        setSmsMarketingConsentText(parsedPreRegistration.smsMarketingConsent?.consentText ?? "");
 
         let nextSiteSettings: PublicSiteSettings = {};
         if (siteSettingsRes.ok) {
@@ -315,6 +333,9 @@ export default function ExamInputPage({
 
         if (editData && editData.submission) {
           const sub = editData.submission;
+          if (!isPoliceExamType(sub.examType)) {
+            throw new Error("경찰 서비스의 제출 데이터가 아닙니다.");
+          }
           // 기존 제출 자동 감지: URL에 editId 없어도 submissionId 저장
           if (!editId && sub.id) {
             setAutoEditId(sub.id);
@@ -335,19 +356,13 @@ export default function ExamInputPage({
           else if (sub.bonusType === "HERO_3") setHeroPercent(3);
           else if (sub.bonusType === "HERO_5") setHeroPercent(5);
 
-          const newAnswerStore: Record<ExamType, AnswersBySubject> = {
+          const newAnswerStore: Record<PoliceExamType, AnswersBySubject> = {
             [ExamType.PUBLIC]: createEmptyAnswers(data.subjectGroups.PUBLIC),
             [ExamType.CAREER]: createEmptyAnswers(data.subjectGroups.CAREER),
-            [ExamType.CAREER_RESCUE]: {},
-            [ExamType.CAREER_ACADEMIC]: {},
-            [ExamType.CAREER_EMT]: {},
           };
-          const newDiffStore: Record<ExamType, DifficultyBySubject> = {
+          const newDiffStore: Record<PoliceExamType, DifficultyBySubject> = {
             [ExamType.PUBLIC]: createEmptyDifficulty(data.subjectGroups.PUBLIC),
             [ExamType.CAREER]: createEmptyDifficulty(data.subjectGroups.CAREER),
-            [ExamType.CAREER_RESCUE]: {},
-            [ExamType.CAREER_ACADEMIC]: {},
-            [ExamType.CAREER_EMT]: {},
           };
 
           editData.scores.forEach((score) => {
@@ -377,6 +392,9 @@ export default function ExamInputPage({
           setHeroPercent(0);
 
           if (preRegistrationData) {
+            if (!isPoliceExamType(preRegistrationData.examType)) {
+              throw new Error("경찰 서비스의 사전등록 데이터가 아닙니다.");
+            }
             const restoredExamType =
               preRegistrationData.examType === ExamType.CAREER && !data.careerExamEnabled
                 ? ExamType.PUBLIC
@@ -395,16 +413,10 @@ export default function ExamInputPage({
           setAnswerStore({
             [ExamType.PUBLIC]: createEmptyAnswers(data.subjectGroups.PUBLIC),
             [ExamType.CAREER]: createEmptyAnswers(data.subjectGroups.CAREER),
-            [ExamType.CAREER_RESCUE]: {},
-            [ExamType.CAREER_ACADEMIC]: {},
-            [ExamType.CAREER_EMT]: {},
           });
           setDifficultyStore({
             [ExamType.PUBLIC]: createEmptyDifficulty(data.subjectGroups.PUBLIC),
             [ExamType.CAREER]: createEmptyDifficulty(data.subjectGroups.CAREER),
-            [ExamType.CAREER_RESCUE]: {},
-            [ExamType.CAREER_ACADEMIC]: {},
-            [ExamType.CAREER_EMT]: {},
           });
         }
       } catch (error) {
@@ -626,6 +638,11 @@ export default function ExamInputPage({
       return;
     }
 
+    if (smsMarketingConsent === null) {
+      setErrorMessage("문자 수신 설정을 확인한 뒤 다시 시도해 주세요.");
+      return;
+    }
+
     if (examType === ExamType.CAREER && !careerExamEnabled) {
       setErrorMessage("현재 경행경채 시험은 비활성화 상태입니다.");
       return;
@@ -660,6 +677,7 @@ export default function ExamInputPage({
           gender,
           regionId,
           examNumber: normalizedExamNumber,
+          smsMarketingConsent,
         }),
       });
 
@@ -900,7 +918,7 @@ export default function ExamInputPage({
               id="examType"
               className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={examType}
-              onChange={(event) => setExamType(event.target.value as ExamType)}
+              onChange={(event) => setExamType(event.target.value as PoliceExamType)}
             >
               <option value={ExamType.PUBLIC}>공채</option>
               {careerExamEnabled ? <option value={ExamType.CAREER}>경행경채</option> : null}
@@ -933,7 +951,11 @@ export default function ExamInputPage({
 
           <div className="space-y-2">
             <Label htmlFor="examCategory">시험구분</Label>
-            <Input id="examCategory" value="경찰 1차" readOnly />
+            <Input
+              id="examCategory"
+              value={`${meta.activeExam.year}년 ${meta.activeExam.round}차 경찰`}
+              readOnly
+            />
           </div>
 
           <div className="space-y-2">
@@ -976,13 +998,36 @@ export default function ExamInputPage({
                 ) : (
                   <p className="mt-2 text-xs text-slate-500">아직 사전등록된 정보가 없습니다.</p>
                 )}
+                <label className="mt-4 flex items-start gap-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+                  <input
+                    type="checkbox"
+                    checked={smsMarketingConsent === true}
+                    onChange={(event) => setSmsMarketingConsent(event.target.checked)}
+                    disabled={smsMarketingConsent === null}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-service-600 focus:ring-service-500"
+                  />
+                  <span>
+                    <span className="block text-xs font-semibold text-slate-900">
+                      한국경찰학원 홍보 문자 수신 동의 (선택)
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">
+                      {smsMarketingConsentText ||
+                        "강의, 이벤트, 합격예측 프로모션 문자 수신에 동의합니다. 동의하지 않아도 서비스를 이용할 수 있습니다."}
+                    </span>
+                  </span>
+                </label>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => void handleSavePreRegistration()}
-                  disabled={isPreRegistrationSaving || isPreRegistrationDeleting || isSubmitting}
+                  disabled={
+                    smsMarketingConsent === null ||
+                    isPreRegistrationSaving ||
+                    isPreRegistrationDeleting ||
+                    isSubmitting
+                  }
                 >
                   {isPreRegistrationSaving
                     ? "저장 중..."

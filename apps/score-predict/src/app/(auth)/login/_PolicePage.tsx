@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { normalizeUsername, validateLoginInput } from "@/lib/police/validations";
-import { withTenantPrefix } from "@/lib/tenant";
+import { parseTenantTypeFromHostname, withTenantPrefix } from "@/lib/tenant";
 
 const TENANT_TYPE = "police";
 const POST_LOGIN_REDIRECT_PATH = withTenantPrefix("/", TENANT_TYPE);
@@ -44,7 +44,7 @@ function LoginContent() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const callbackUrl = searchParams.get("callbackUrl") ?? POST_LOGIN_REDIRECT_PATH;
+  const requestedCallbackUrl = searchParams.get("callbackUrl");
   const isRegistered = searchParams.get("registered") === "1";
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -68,6 +68,11 @@ function LoginContent() {
     });
 
     if (result?.ok) {
+      const callbackUrl =
+        requestedCallbackUrl ??
+        (parseTenantTypeFromHostname(window.location.hostname) === TENANT_TYPE
+          ? "/"
+          : POST_LOGIN_REDIRECT_PATH);
       router.replace(callbackUrl);
       router.refresh();
       return;

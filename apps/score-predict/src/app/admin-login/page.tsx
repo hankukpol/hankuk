@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/providers/ToastProvider";
-import { normalizeUsername } from "@/lib/validations";
+import { normalizePhone, normalizeUsername } from "@/lib/validations";
+import { useTenantType } from "@/components/providers/TenantProvider";
 
 const POST_LOGIN_REDIRECT_PATH = "/admin";
 
@@ -34,6 +35,8 @@ const TEXT = {
 };
 
 function AdminLoginContent() {
+  const tenantType = useTenantType();
+  const isPolice = tenantType === "police";
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showErrorToast } = useToast();
@@ -50,7 +53,7 @@ function AdminLoginContent() {
     event.preventDefault();
     setErrorMessage("");
 
-    const normalizedUsername = normalizeUsername(username);
+    const normalizedUsername = isPolice ? normalizeUsername(username) : normalizePhone(username);
     const trimmedPassword = password.trim();
 
     if (!normalizedUsername || !trimmedPassword) {
@@ -61,7 +64,7 @@ function AdminLoginContent() {
     setIsSubmitting(true);
 
     const result = await signIn("credentials", {
-      username: normalizedUsername,
+      ...(isPolice ? { username: normalizedUsername } : { phone: normalizedUsername }),
       password: trimmedPassword,
       adminOnly: "true",
       adminOtp: adminOtp.trim(),
@@ -89,8 +92,8 @@ function AdminLoginContent() {
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <Label htmlFor="username">{TEXT.username}</Label>
-              <Input id="username" type="text" value={username} onChange={(event) => setUsername(normalizeUsername(event.target.value))} placeholder={TEXT.usernamePlaceholder} autoCapitalize="none" autoCorrect="off" required />
+              <Label htmlFor="username">{isPolice ? TEXT.username : "관리자 휴대전화"}</Label>
+              <Input id="username" type="text" value={username} onChange={(event) => setUsername(isPolice ? normalizeUsername(event.target.value) : event.target.value)} placeholder={isPolice ? TEXT.usernamePlaceholder : "010-1234-5678"} autoCapitalize="none" autoCorrect="off" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">{TEXT.password}</Label>

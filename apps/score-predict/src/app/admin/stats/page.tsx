@@ -16,6 +16,7 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "@/components/ui/button";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 const ADMIN_EXAM_API = "/api/admin/exam?feature=stats";
 const STATS_API = "/api/stats";
@@ -32,6 +33,7 @@ interface RegionStat {
   regionId: number;
   regionName: string;
   publicCount: number;
+  careerCount: number;
   careerRescueCount: number;
   careerAcademicCount: number;
   careerEmtCount: number;
@@ -40,13 +42,15 @@ interface RegionStat {
   avgFinalScore: number;
 }
 
-type PredictionExamType = "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+type PredictionExamType = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+type PredictionGender = "MALE" | "FEMALE";
 type DifficultyLabel = "매우 쉬움" | "쉬움" | "보통" | "어려움" | "매우 어려움";
 
 interface RegionPredictionStat {
   regionId: number;
   regionName: string;
   examType: PredictionExamType;
+  gender: PredictionGender | null;
   recruitCount: number;
   participantCount: number;
   oneMultipleBaseRank: number;
@@ -68,6 +72,13 @@ interface ScoreDistributionItem {
   end: number;
   count: number;
   isCutoffRange: boolean;
+}
+
+interface ScoreDistributionSeries {
+  examType: PredictionExamType;
+  maxScore: number;
+  cutoffScore: number | null;
+  items: ScoreDistributionItem[];
 }
 
 interface DifficultySubjectStat {
@@ -114,6 +125,7 @@ interface StatsResponse {
   totalParticipants: number;
   byExamType: {
     PUBLIC: number;
+    CAREER: number;
     CAREER_RESCUE: number;
     CAREER_ACADEMIC: number;
     CAREER_EMT: number;
@@ -125,7 +137,7 @@ interface StatsResponse {
   byRegion: RegionStat[];
   byRegionPrediction: RegionPredictionStat[];
   submissionsByDate: DateStat[];
-  scoreDistribution: ScoreDistributionItem[];
+  scoreDistributions: ScoreDistributionSeries[];
   difficulty: DifficultyStatSummary | null;
 }
 
@@ -166,11 +178,18 @@ function formatPredictionTieCount(value: number | null, isConfirmed: boolean): s
   return `${value.toLocaleString("ko-KR")}명`;
 }
 
-function formatPredictionExamType(type: PredictionExamType): string {
-  if (type === "PUBLIC") return "공채";
+function formatPredictionExamType(
+  type: PredictionExamType,
+  gender?: PredictionGender | null
+): string {
+  const genderSuffix = gender === "MALE" ? "(남)" : gender === "FEMALE" ? "(여)" : "";
+  if (type === "PUBLIC") return `공채${genderSuffix}`;
+  if (type === "CAREER") return "경행경채";
   if (type === "CAREER_RESCUE") return "구조 경채";
-  if (type === "CAREER_ACADEMIC") return "학과 경채";
-  return "구급 경채";
+  if (type === "CAREER_ACADEMIC") {
+    return gender === null ? "학과 경채(통합)" : `학과 경채${genderSuffix}`;
+  }
+  return `구급 경채${genderSuffix}`;
 }
 
 function escapeCsvCell(value: string | number): string {
@@ -191,33 +210,44 @@ async function readResponseJson<T>(response: Response): Promise<T | null> {
   }
 }
 
-function buildStatsCsvContent(stats: StatsResponse): string {
+function buildStatsCsvContent(stats: StatsResponse, tenantType: "police" | "fire"): string {
   const lines: string[] = [];
   lines.push("구분,항목,값");
   lines.push(["시험", "시험명", stats.exam.name].map(escapeCsvCell).join(","));
   lines.push(["시험", "시험차수", `${stats.exam.year}년 ${stats.exam.round}차`].map(escapeCsvCell).join(","));
   lines.push(["참여현황", "총 참여자", stats.totalParticipants].map(escapeCsvCell).join(","));
   lines.push(["참여현황", "공채", stats.byExamType.PUBLIC].map(escapeCsvCell).join(","));
-  lines.push(["참여현황", "구조 경채", stats.byExamType.CAREER_RESCUE].map(escapeCsvCell).join(","));
-  lines.push(["참여현황", "학과 경채", stats.byExamType.CAREER_ACADEMIC].map(escapeCsvCell).join(","));
-  lines.push(["참여현황", "구급 경채", stats.byExamType.CAREER_EMT].map(escapeCsvCell).join(","));
-  lines.push(["성별", "남성", stats.byGender.MALE].map(escapeCsvCell).join(","));
-  lines.push(["성별", "여성", stats.byGender.FEMALE].map(escapeCsvCell).join(","));
+  if (tenantType === "police") {
+    lines.push(["참여현황", "경행경채", stats.byExamType.CAREER].map(escapeCsvCell).join(","));
+  } else {
+    lines.push(["참여현황", "구조 경채", stats.byExamType.CAREER_RESCUE].map(escapeCsvCell).join(","));
+    lines.push(["참여현황", "학과 경채", stats.byExamType.CAREER_ACADEMIC].map(escapeCsvCell).join(","));
+    lines.push(["참여현황", "구급 경채", stats.byExamType.CAREER_EMT].map(escapeCsvCell).join(","));
+    lines.push(["성별", "남성", stats.byGender.MALE].map(escapeCsvCell).join(","));
+    lines.push(["성별", "여성", stats.byGender.FEMALE].map(escapeCsvCell).join(","));
+  }
   lines.push("");
   lines.push("지역별 통계,,,,,,,");
-  lines.push("지역,공채,구조 경채,학과 경채,구급 경채,합계,평균 원점수,평균 최종점수");
+  lines.push(
+    tenantType === "police"
+      ? "지역,공채,경행경채,합계,평균 원점수,평균 최종점수"
+      : "지역,공채,구조 경채,학과 경채,구급 경채,합계,평균 원점수,평균 최종점수"
+  );
   for (const row of stats.byRegion) {
     lines.push(
-      [
-        row.regionName,
-        row.publicCount,
-        row.careerRescueCount,
-        row.careerAcademicCount,
-        row.careerEmtCount,
-        row.total,
-        formatScore(row.avgTotalScore),
-        formatScore(row.avgFinalScore),
-      ].map(escapeCsvCell).join(",")
+      (tenantType === "police"
+        ? [row.regionName, row.publicCount, row.careerCount, row.total, formatScore(row.avgTotalScore), formatScore(row.avgFinalScore)]
+        : [
+            row.regionName,
+            row.publicCount,
+            row.careerRescueCount,
+            row.careerAcademicCount,
+            row.careerEmtCount,
+            row.total,
+            formatScore(row.avgTotalScore),
+            formatScore(row.avgFinalScore),
+          ]
+      ).map(escapeCsvCell).join(",")
     );
   }
   lines.push("");
@@ -227,7 +257,7 @@ function buildStatsCsvContent(stats: StatsResponse): string {
     lines.push(
       [
         row.regionName,
-        formatPredictionExamType(row.examType),
+        formatPredictionExamType(row.examType, row.gender),
         row.participantCount,
         row.oneMultipleBaseRank,
         formatPredictionScore(row.oneMultipleCutScore, row.isOneMultipleCutConfirmed),
@@ -241,16 +271,26 @@ function buildStatsCsvContent(stats: StatsResponse): string {
   lines.push("일자,제출 건수");
   for (const row of stats.submissionsByDate) lines.push([row.date, row.count].map(escapeCsvCell).join(","));
   lines.push("");
-  lines.push("점수 분포,,");
-  lines.push("점수 구간,인원 수");
-  for (const row of stats.scoreDistribution) lines.push([row.label, row.count].map(escapeCsvCell).join(","));
+  lines.push("점수 분포,,,");
+  lines.push("채용유형,점수 구간,인원 수");
+  for (const series of stats.scoreDistributions) {
+    for (const row of series.items) {
+      lines.push(
+        [formatPredictionExamType(series.examType), row.label, row.count]
+          .map(escapeCsvCell)
+          .join(",")
+      );
+    }
+  }
   lines.push("");
   lines.push("체감 난이도,,,,,");
   lines.push("과목,응답 수,쉬움(%),보통(%),어려움(%),우세");
   if (stats.difficulty?.subjects?.length) {
     for (const row of stats.difficulty.subjects) {
       const name =
-        row.examType === "CAREER_RESCUE"
+        row.examType === "CAREER"
+          ? `${row.subjectName}(경행경채)`
+          : row.examType === "CAREER_RESCUE"
           ? `${row.subjectName}(구조 경채)`
           : row.examType === "CAREER_ACADEMIC"
             ? `${row.subjectName}(학과 경채)`
@@ -264,12 +304,15 @@ function buildStatsCsvContent(stats: StatsResponse): string {
 }
 
 export default function AdminStatsPage() {
+  const tenant = useTenantConfig();
   const { enabled: statsEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("stats");
   const [exams, setExams] = useState<ExamItem[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [selectedPredictionExamType, setSelectedPredictionExamType] =
+    useState<PredictionExamType>("PUBLIC");
+  const [selectedScoreExamType, setSelectedScoreExamType] =
     useState<PredictionExamType>("PUBLIC");
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloadingCsv, setIsDownloadingCsv] = useState(false);
@@ -284,6 +327,7 @@ export default function AdminStatsPage() {
     const rows = stats?.byRegionPrediction ?? [];
     const next: PredictionExamType[] = [];
     if (rows.some((item) => item.examType === "PUBLIC")) next.push("PUBLIC");
+    if (rows.some((item) => item.examType === "CAREER")) next.push("CAREER");
     if (rows.some((item) => item.examType === "CAREER_RESCUE")) next.push("CAREER_RESCUE");
     if (rows.some((item) => item.examType === "CAREER_ACADEMIC")) next.push("CAREER_ACADEMIC");
     if (rows.some((item) => item.examType === "CAREER_EMT")) next.push("CAREER_EMT");
@@ -302,6 +346,37 @@ export default function AdminStatsPage() {
         .filter((item) => item.examType === selectedPredictionExamType)
         .sort((a, b) => a.regionName.localeCompare(b.regionName, "ko-KR")),
     [selectedPredictionExamType, stats?.byRegionPrediction]
+  );
+
+  const availableScoreExamTypes = useMemo<PredictionExamType[]>(
+    () => stats?.scoreDistributions.map((series) => series.examType) ?? ["PUBLIC"],
+    [stats?.scoreDistributions]
+  );
+
+  useEffect(() => {
+    if (!availableScoreExamTypes.includes(selectedScoreExamType)) {
+      setSelectedScoreExamType(availableScoreExamTypes[0] ?? "PUBLIC");
+    }
+  }, [availableScoreExamTypes, selectedScoreExamType]);
+
+  const selectedScoreDistribution = useMemo(
+    () =>
+      stats?.scoreDistributions.find((series) => series.examType === selectedScoreExamType) ??
+      stats?.scoreDistributions[0] ??
+      null,
+    [selectedScoreExamType, stats?.scoreDistributions]
+  );
+  const scoreDistributionAxisTicks = useMemo(
+    () =>
+      selectedScoreDistribution?.items
+        .filter(
+          (item) =>
+            item.start === 0 ||
+            item.start === selectedScoreDistribution.maxScore ||
+            item.start % 50 === 0
+        )
+        .map((item) => item.label) ?? [],
+    [selectedScoreDistribution]
   );
 
   const loadExamOptions = useCallback(async () => {
@@ -395,7 +470,7 @@ export default function AdminStatsPage() {
 
     setIsDownloadingCsv(true);
     try {
-      const csvContent = buildStatsCsvContent(stats);
+      const csvContent = buildStatsCsvContent(stats, tenant.type);
       const blob = new Blob(["\uFEFF" + csvContent], {
         type: "text/csv;charset=utf-8",
       });
@@ -483,7 +558,11 @@ export default function AdminStatsPage() {
           </p>
         ) : (
           <>
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+            <section
+              className={`grid gap-4 md:grid-cols-2 ${
+                tenant.type === "police" ? "xl:grid-cols-4" : "xl:grid-cols-6"
+              }`}
+            >
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   총 참여자
@@ -500,30 +579,31 @@ export default function AdminStatsPage() {
                   {stats.byExamType.PUBLIC}
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  구조 경채
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">
-                  {stats.byExamType.CAREER_RESCUE}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  학과 경채
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">
-                  {stats.byExamType.CAREER_ACADEMIC}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  구급 경채
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">
-                  {stats.byExamType.CAREER_EMT}
-                </p>
-              </div>
+              {tenant.type === "police" ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    경행경채
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">
+                    {stats.byExamType.CAREER}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">구조 경채</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.byExamType.CAREER_RESCUE}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">학과 경채</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.byExamType.CAREER_ACADEMIC}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">구급 경채</p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.byExamType.CAREER_EMT}</p>
+                  </div>
+                </>
+              )}
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   시험일
@@ -569,33 +649,68 @@ export default function AdminStatsPage() {
               </div>
 
               <div className="rounded-lg border border-slate-200 p-4">
-                <h2 className="text-sm font-semibold text-slate-900">
-                  점수 분포 히스토그램(최종점수 기준)
-                </h2>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    점수 분포 히스토그램(총점 기준)
+                  </h2>
+                  <div className="inline-flex flex-wrap rounded-md border border-slate-200 bg-slate-100 p-1">
+                    {availableScoreExamTypes.map((examType) => {
+                      const active = selectedScoreExamType === examType;
+                      return (
+                        <button
+                          key={examType}
+                          type="button"
+                          onClick={() => setSelectedScoreExamType(examType)}
+                          className={`rounded px-3 py-1 text-xs font-semibold transition ${
+                            active
+                              ? "bg-white text-slate-900 shadow-sm"
+                              : "text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          {formatPredictionExamType(examType)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="mt-3 h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats.scoreDistribution}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={2} />
-                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <Tooltip />
-                      <Bar dataKey="count">
-                        {stats.scoreDistribution.map((item) => (
-                          <Cell
-                            key={`score-bin-${item.bucket}`}
-                            fill={item.isCutoffRange ? "#ef4444" : "#2563eb"}
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {selectedScoreDistribution ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={selectedScoreDistribution.items}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 10 }}
+                          ticks={scoreDistributionAxisTicks}
+                          interval={0}
+                        />
+                        <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip />
+                        <Bar dataKey="count">
+                          {selectedScoreDistribution.items.map((item) => (
+                            <Cell
+                              key={`score-bin-${selectedScoreDistribution.examType}-${item.bucket}`}
+                              fill={item.isCutoffRange ? "#ef4444" : "#2563eb"}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                      점수 분포 데이터가 없습니다.
+                    </div>
+                  )}
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
-                  합격 구간(100등 미만)은 빨간색으로 표시합니다.
+                  {tenant.type === "fire" && typeof selectedScoreDistribution?.cutoffScore === "number"
+                    ? `소방 총점 과락 구간(${selectedScoreDistribution.cutoffScore}점 미만)은 빨간색으로 표시합니다.`
+                    : "경찰은 총점 과락 없이 과목별 40% 미만을 과락으로 판정합니다."}
                 </p>
               </div>
             </section>
 
+            {tenant.type === "fire" ? (
             <section className="grid gap-4 md:grid-cols-2">
               <div className="rounded-lg border border-slate-200 p-4">
                 <h2 className="text-sm font-semibold text-slate-900">성별 참여</h2>
@@ -615,18 +730,29 @@ export default function AdminStatsPage() {
                 </div>
               </div>
             </section>
+            ) : null}
 
             <section className="space-y-3">
               <h2 className="text-base font-semibold text-slate-900">지역별 참여</h2>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-[960px] w-full divide-y divide-slate-200 text-sm">
+                <table
+                  className={`w-full divide-y divide-slate-200 text-sm ${
+                    tenant.type === "police" ? "min-w-[720px]" : "min-w-[960px]"
+                  }`}
+                >
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-4 py-3">지역</th>
                       <th className="px-4 py-3">공채</th>
-                      <th className="px-4 py-3">구조 경채</th>
-                      <th className="px-4 py-3">학과 경채</th>
-                      <th className="px-4 py-3">구급 경채</th>
+                      {tenant.type === "police" ? (
+                        <th className="px-4 py-3">경행경채</th>
+                      ) : (
+                        <>
+                          <th className="px-4 py-3">구조 경채</th>
+                          <th className="px-4 py-3">학과 경채</th>
+                          <th className="px-4 py-3">구급 경채</th>
+                        </>
+                      )}
                       <th className="px-4 py-3">합계</th>
                       <th className="px-4 py-3">평균 원점수</th>
                       <th className="px-4 py-3">평균 최종점수</th>
@@ -635,7 +761,10 @@ export default function AdminStatsPage() {
                   <tbody className="divide-y divide-slate-100">
                     {stats.byRegion.length === 0 ? (
                       <tr>
-                        <td className="px-4 py-4 text-slate-600" colSpan={8}>
+                        <td
+                          className="px-4 py-4 text-slate-600"
+                          colSpan={tenant.type === "police" ? 6 : 8}
+                        >
                           지역별 데이터가 없습니다.
                         </td>
                       </tr>
@@ -646,13 +775,15 @@ export default function AdminStatsPage() {
                             {region.regionName}
                           </td>
                           <td className="px-4 py-3 text-slate-700">{region.publicCount}</td>
-                          <td className="px-4 py-3 text-slate-700">
-                            {region.careerRescueCount}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">
-                            {region.careerAcademicCount}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">{region.careerEmtCount}</td>
+                          {tenant.type === "police" ? (
+                            <td className="px-4 py-3 text-slate-700">{region.careerCount}</td>
+                          ) : (
+                            <>
+                              <td className="px-4 py-3 text-slate-700">{region.careerRescueCount}</td>
+                              <td className="px-4 py-3 text-slate-700">{region.careerAcademicCount}</td>
+                              <td className="px-4 py-3 text-slate-700">{region.careerEmtCount}</td>
+                            </>
+                          )}
                           <td className="px-4 py-3 font-semibold text-slate-900">{region.total}</td>
                           <td className="px-4 py-3 text-slate-700">
                             {formatScore(region.avgTotalScore)}
@@ -714,9 +845,14 @@ export default function AdminStatsPage() {
                       </tr>
                     ) : (
                       predictionRowsByExamType.map((row) => (
-                        <tr key={`${row.regionId}-${row.examType}`} className="bg-white">
+                        <tr key={`${row.regionId}-${row.examType}-${row.gender ?? "COMBINED"}`} className="bg-white">
                           <td className="px-4 py-3 font-medium text-slate-900">
-                            {row.regionName}
+                            <span>{row.regionName}</span>
+                            {tenant.type === "fire" ? (
+                              <span className="ml-2 text-xs font-normal text-slate-500">
+                                {formatPredictionExamType(row.examType, row.gender)}
+                              </span>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3 text-slate-700">
                             {row.participantCount.toLocaleString("ko-KR")}명
@@ -794,7 +930,11 @@ export default function AdminStatsPage() {
                             <tr key={subject.subjectId} className="bg-white">
                               <td className="px-4 py-3 font-medium text-slate-900">
                                 {subject.subjectName}
-                                {subject.examType === "CAREER_RESCUE" ? (
+                                {subject.examType === "CAREER" ? (
+                                  <span className="ml-1 text-xs font-medium text-sky-700">
+                                    (경행경채)
+                                  </span>
+                                ) : subject.examType === "CAREER_RESCUE" ? (
                                   <span className="ml-1 text-xs font-medium text-sky-700">
                                     (구조 경채)
                                   </span>

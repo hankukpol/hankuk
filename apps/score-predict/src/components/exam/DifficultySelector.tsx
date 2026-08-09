@@ -47,7 +47,7 @@ export default function DifficultySelector({ subjectName, value, onChange }: Dif
               type="button"
               onClick={() => onChange(option.value)}
               className={`border-r border-slate-300 last:border-r-0 px-3 py-1.5 text-xs font-bold transition ${active
-                ? "bg-fire-700 text-white"
+                ? "bg-service-700 text-white"
                 : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
             >

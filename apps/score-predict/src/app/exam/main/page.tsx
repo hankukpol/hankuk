@@ -1,8 +1,7 @@
-import { getServerSession } from "next-auth";
 import ExamFeatureDisabledNotice from "@/components/exam/ExamFeatureDisabledNotice";
 import ExamFunctionArea from "@/components/landing/ExamFunctionArea";
 import VisitorTracker from "@/components/VisitorTracker";
-import { authOptions } from "@/lib/auth";
+import { getCurrentTenantSession } from "@/lib/tenant-session.server";
 import { getExamSurfaceState } from "@/lib/exam-surface";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
@@ -31,7 +30,7 @@ async function getHasSubmission(userId: number): Promise<boolean> {
 }
 
 export default async function ExamMainPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getCurrentTenantSession();
   const userId = Number(session?.user?.id ?? 0);
   const isAuthenticated = Number.isInteger(userId) && userId > 0;
   const isAdmin = session?.user?.role === "ADMIN";

@@ -3,13 +3,13 @@ import {
   buildAnswerKey,
   getSubjectsByExamType,
   normalizeAnswerRows,
-  parseExamType,
   parsePositiveInt,
   type RawAnswerRow,
 } from "@/lib/admin-answer-keys";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
+import { getTenantExamTypeErrorMessage, isExamTypeForTenant } from "@/lib/tenant-exam";
 
 export const runtime = "nodejs";
 
@@ -107,7 +107,10 @@ export async function POST(request: NextRequest) {
     };
 
     const examId = parsePositiveInt(body.examId);
-    const examType = parseExamType(body.examType ?? null);
+    const examTypeValue = body.examType ?? null;
+    const examType = isExamTypeForTenant(guard.tenantType, examTypeValue)
+      ? examTypeValue
+      : null;
 
     if (!examId) {
       return NextResponse.json({ error: "examId는 필수입니다." }, { status: 400 });
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
 
     if (!examType) {
       return NextResponse.json(
-        { error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT 이어야 합니다." },
+        { error: getTenantExamTypeErrorMessage(guard.tenantType) },
         { status: 400 }
       );
     }

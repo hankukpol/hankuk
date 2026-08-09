@@ -9,7 +9,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
-import { syncScorePredictSharedPassword } from "@/lib/shared-auth";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { normalizePhone, validatePasswordStrength } from "@/lib/validations";
 
@@ -147,22 +146,6 @@ export async function POST(request: NextRequest) {
       { error: "전화번호 또는 복구코드가 올바르지 않습니다." },
       { status: 400 }
     );
-  }
-
-  try {
-    await syncScorePredictSharedPassword({
-      tenantType: "fire",
-      identity: {
-        legacyUserId: changed.user.id,
-        name: changed.user.name,
-        email: changed.user.email,
-        loginIdentifier: changed.user.phone,
-        role: changed.user.role,
-      },
-      password: passwordResult.data,
-    });
-  } catch (error) {
-    console.error("[password-reset] Failed to sync fire recovery password.", error);
   }
 
   return NextResponse.json({

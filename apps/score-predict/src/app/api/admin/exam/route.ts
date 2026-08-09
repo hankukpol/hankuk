@@ -7,7 +7,16 @@ import {
   type AdminSiteFeatureKey,
 } from "@/lib/admin-site-features.shared";
 import { prisma } from "@/lib/prisma";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import {
+  getSiteSettingsUncached,
+  resetActivatedExamOperationSettings,
+  revalidateSiteSettingsCache,
+} from "@/lib/site-settings";
+import { POLICE_PREDICTION_MODEL_VERSION } from "@/lib/police/prediction-model";
+import {
+  isNewActiveExamTransition,
+  lockActiveExamStateForTransition,
+} from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +27,18 @@ interface ExamPayload {
   round?: number;
   examDate?: string;
   isActive?: boolean;
+  policeWrittenPassMultiple?: number | null;
+  policePredictionModelVersion?: string | null;
+}
+
+class AdminExamRouteError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = "AdminExamRouteError";
+  }
 }
 
 function parseExamIdFromRequest(request: NextRequest): number | null {
@@ -52,7 +73,7 @@ function validateCreatePayload(payload: ExamPayload) {
   const year = Number(payload.year);
   const round = Number(payload.round);
   const examDate = toDate(payload.examDate);
-  const isActive = payload.isActive ?? true;
+  const isActive = payload.isActive ?? false;
 
   if (!name) {
     return { error: "시험명을 입력해 주세요." };
@@ -155,6 +176,8 @@ export async function POST(request: NextRequest) {
     }
 
     const exam = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForTransition(tx, guard.tenantType);
+
       if (validated.data.isActive) {
         await tx.exam.updateMany({
           where: { isActive: true },
@@ -162,16 +185,33 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      return tx.exam.create({
+      const created = await tx.exam.create({
         data: {
           name: validated.data.name,
           year: validated.data.year,
           round: validated.data.round,
           examDate: validated.data.examDate,
           isActive: validated.data.isActive,
+          ...(guard.tenantType === "police"
+            ? {
+                policeWrittenPassMultiple: 2,
+                policePredictionModelVersion:
+                  payload.policePredictionModelVersion?.trim() || POLICE_PREDICTION_MODEL_VERSION,
+              }
+            : {}),
         },
       });
+
+      if (validated.data.isActive) {
+        await resetActivatedExamOperationSettings(tx, guard.tenantType);
+      }
+
+      return created;
     });
+
+    if (validated.data.isActive) {
+      revalidateSiteSettingsCache();
+    }
 
     return NextResponse.json(
       {
@@ -181,6 +221,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof AdminExamRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
@@ -259,12 +302,45 @@ export async function PUT(request: NextRequest) {
       updateData.isActive = payload.isActive;
     }
 
+    if (guard.tenantType === "police" && payload.policeWrittenPassMultiple !== undefined) {
+      const passMultiple = Number(payload.policeWrittenPassMultiple);
+      if (!Number.isFinite(passMultiple) || passMultiple <= 0 || passMultiple > 10) {
+        return NextResponse.json({ error: "필기 합격배수는 0보다 크고 10 이하여야 합니다." }, { status: 400 });
+      }
+      updateData.policeWrittenPassMultiple = passMultiple;
+    }
+
+    if (guard.tenantType === "police" && payload.policePredictionModelVersion !== undefined) {
+      const modelVersion = payload.policePredictionModelVersion?.trim();
+      if (!modelVersion) {
+        return NextResponse.json({ error: "경찰 예측모델 버전을 입력해 주세요." }, { status: 400 });
+      }
+      updateData.policePredictionModelVersion = modelVersion;
+    }
+
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: "수정할 데이터가 없습니다." }, { status: 400 });
     }
 
-    const exam = await prisma.$transaction(async (tx) => {
-      if (payload.isActive === true) {
+    const transition = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForTransition(tx, guard.tenantType);
+
+      const currentExam = await tx.exam.findUnique({
+        where: { id: examId },
+        select: { id: true, isActive: true },
+      });
+      if (!currentExam) {
+        throw new AdminExamRouteError("수정할 시험을 찾을 수 없습니다.", 404);
+      }
+      if (payload.isActive === false && currentExam.isActive) {
+        throw new AdminExamRouteError(
+          "활성 시험을 단독으로 비활성화할 수 없습니다. 운영할 다른 시험을 활성화해 주세요.",
+          409
+        );
+      }
+      const isNewActivation = isNewActiveExamTransition(currentExam.isActive, payload.isActive);
+
+      if (isNewActivation) {
         await tx.exam.updateMany({
           where: {
             id: { not: examId },
@@ -274,17 +350,30 @@ export async function PUT(request: NextRequest) {
         });
       }
 
-      return tx.exam.update({
+      const updated = await tx.exam.update({
         where: { id: examId },
         data: updateData,
       });
+
+      if (isNewActivation) {
+        await resetActivatedExamOperationSettings(tx, guard.tenantType);
+      }
+
+      return { exam: updated, isNewActivation };
     });
+
+    if (transition.isNewActivation) {
+      revalidateSiteSettingsCache();
+    }
 
     return NextResponse.json({
       success: true,
-      exam,
+      exam: transition.exam,
     });
   } catch (error) {
+    if (error instanceof AdminExamRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"

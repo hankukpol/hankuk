@@ -3,8 +3,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
+import {
+  getTenantExamTypeErrorMessage,
+  isExamTypeForTenant,
+  TENANT_EXAM_TYPES,
+} from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForWrite,
+  resolveActiveExamForWrite,
+} from "@/lib/active-exam";
+import {
+  checkExamNumberAvailability,
+  lockExamNumberMutation,
+  lockUserExamMutation,
+} from "@/lib/police/pre-registration";
 
 export const runtime = "nodejs";
+
+class AdminSubmissionWriteError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = "AdminSubmissionWriteError";
+  }
+}
 
 function parsePositiveInt(value: string | null): number | null {
   if (!value) return null;
@@ -21,12 +47,8 @@ function parseLimit(value: string | null): number {
   return Math.min(parsed, 50);
 }
 
-function parseExamType(value: string | null): ExamType | null {
-  if (value === ExamType.PUBLIC) return ExamType.PUBLIC;
-  if (value === ExamType.CAREER_RESCUE) return ExamType.CAREER_RESCUE;
-  if (value === ExamType.CAREER_ACADEMIC) return ExamType.CAREER_ACADEMIC;
-  if (value === ExamType.CAREER_EMT) return ExamType.CAREER_EMT;
-  return null;
+function parseExamType(tenantType: TenantType, value: string | null): ExamType | null {
+  return isExamTypeForTenant(tenantType, value) ? value : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -42,19 +64,19 @@ export async function GET(request: NextRequest) {
     const examId = parsePositiveInt(searchParams.get("examId"));
     const regionId = parsePositiveInt(searchParams.get("regionId"));
     const userId = parsePositiveInt(searchParams.get("userId"));
-    const examType = parseExamType(searchParams.get("examType"));
+    const examType = parseExamType(guard.tenantType, searchParams.get("examType"));
     const search = searchParams.get("search")?.trim() ?? "";
     const suspicious = searchParams.get("suspicious");
 
     if (searchParams.get("examType") && !examType) {
-      return NextResponse.json({ error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT여야 합니다." }, { status: 400 });
+      return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
     }
 
     const where = {
+      examType: examType ?? { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
       ...(examId ? { examId } : {}),
       ...(regionId ? { regionId } : {}),
       ...(userId ? { userId } : {}),
-      ...(examType ? { examType } : {}),
       ...(suspicious === "true"
         ? { isSuspicious: true }
         : suspicious === "false"
@@ -183,22 +205,74 @@ export async function PUT(request: NextRequest) {
     }
 
     const examNumber = typeof body.examNumber === "string" ? body.examNumber.trim() : "";
-
-    const exists = await prisma.submission.findUnique({
-      where: { id: submissionId },
-      select: { id: true },
-    });
-    if (!exists) {
-      return NextResponse.json({ error: "제출 데이터를 찾을 수 없습니다." }, { status: 404 });
+    if (!examNumber) {
+      return NextResponse.json({ error: "수험번호를 입력해 주세요." }, { status: 400 });
     }
 
-    await prisma.submission.update({
-      where: { id: submissionId },
-      data: { examNumber },
+    await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, guard.tenantType);
+      const submission = await tx.submission.findFirst({
+        where: {
+          id: submissionId,
+          examType: { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
+        },
+        select: {
+          id: true,
+          userId: true,
+          examId: true,
+          regionId: true,
+          examType: true,
+        },
+      });
+      if (!submission) {
+        throw new AdminSubmissionWriteError("제출 데이터를 찾을 수 없습니다.", 404);
+      }
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: guard.tenantType,
+        context: "api/admin/submissions PUT",
+        requestedExamId: submission.examId,
+      });
+      await lockUserExamMutation(tx, { userId: submission.userId, examId: submission.examId });
+      await lockExamNumberMutation(tx, {
+        examId: submission.examId,
+        regionId: submission.regionId,
+        examNumber,
+      });
+      const ownPreRegistration = await tx.preRegistration.findUnique({
+        where: { userId_examId: { userId: submission.userId, examId: submission.examId } },
+        select: { id: true },
+      });
+      const availability = await checkExamNumberAvailability({
+        db: tx,
+        examId: submission.examId,
+        regionId: submission.regionId,
+        examType: submission.examType,
+        examNumber,
+        userId: submission.userId,
+        excludeSubmissionId: submission.id,
+        excludePreRegistrationId: ownPreRegistration?.id,
+      });
+      if (!availability.available) {
+        throw new AdminSubmissionWriteError(
+          availability.reason ?? "수험번호를 사용할 수 없습니다.",
+          409
+        );
+      }
+      await tx.submission.update({
+        where: { id: submission.id },
+        data: { examNumber },
+      });
     });
 
     return NextResponse.json({ success: true, submissionId, examNumber });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof AdminSubmissionWriteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("제출 응시번호 수정 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "응시번호 수정에 실패했습니다." }, { status: 500 });
   }
@@ -222,16 +296,26 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const exists = await prisma.submission.findUnique({
-      where: { id: submissionId },
-      select: { id: true },
-    });
-    if (!exists) {
-      return NextResponse.json({ error: "삭제할 제출 데이터를 찾을 수 없습니다." }, { status: 404 });
-    }
-
-    await prisma.submission.delete({
-      where: { id: submissionId },
+    await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, guard.tenantType);
+      const submission = await tx.submission.findFirst({
+        where: {
+          id: submissionId,
+          examType: { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
+        },
+        select: { id: true, userId: true, examId: true },
+      });
+      if (!submission) {
+        throw new AdminSubmissionWriteError("삭제할 제출 데이터를 찾을 수 없습니다.", 404);
+      }
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: guard.tenantType,
+        context: "api/admin/submissions DELETE",
+        requestedExamId: submission.examId,
+      });
+      await lockUserExamMutation(tx, { userId: submission.userId, examId: submission.examId });
+      await tx.submission.delete({ where: { id: submission.id } });
     });
 
     return NextResponse.json({
@@ -239,6 +323,12 @@ export async function DELETE(request: NextRequest) {
       deletedSubmissionId: submissionId,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof AdminSubmissionWriteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("제출 데이터 삭제 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "제출 데이터 삭제에 실패했습니다." }, { status: 500 });
   }

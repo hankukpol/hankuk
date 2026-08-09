@@ -1,24 +1,50 @@
 import { BonusType, ExamType, Gender, Prisma, SubmissionScoringStatus } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { invalidateCorrectRateCache } from "@/lib/correct-rate";
-import { parseExamNumberInput, validateExamNumberWithRange } from "@/lib/exam-number";
-import { getRegionRecruitCount, normalizeSubjectName, parsePositiveInt } from "@/lib/exam-utils";
-import { getPassMultiple } from "@/lib/prediction";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import * as fireCorrectRate from "@/lib/fire/correct-rate";
+import * as policeCorrectRate from "@/lib/police/correct-rate";
+import {
+  parseExamNumberInput as parseFireExamNumberInput,
+  validateExamNumberWithRange as validateFireExamNumberWithRange,
+} from "@/lib/fire/exam-number";
+import { normalizeSubjectName, parsePositiveInt } from "@/lib/exam-utils";
+import {
+  parsePoliceExamNumberInput,
+  validatePoliceExamNumberWithRange,
+} from "@/lib/police/exam-number";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_TAB_LOCKED_MESSAGE } from "@/lib/exam-surface";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
 import { validateAnswerPattern } from "@/lib/answer-validation";
 import { getClientIp } from "@/lib/request-ip";
 import {
-  calculateScore,
-  getBonusPercent,
-  getBonusTypeFromPercent,
-  isValidBonusType,
-  type AnswerInput,
-  type ScoreResult,
-} from "@/lib/scoring";
+  calculateTenantScore,
+  getTenantApplicantCount,
+  getTenantBonusPercent,
+  getTenantBonusTypeFromPercent,
+  getTenantRecruitCount,
+  isValidTenantBonusType,
+  type TenantAnswerInput as AnswerInput,
+  type TenantScoreResult as ScoreResult,
+} from "@/lib/tenant-calculations.server";
+import {
+  getTenantExamTypeErrorMessage,
+  isCareerExamTypeForTenant,
+  isExamTypeForTenant,
+} from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
+import { resolveFireWrittenBonus } from "@/lib/fire/written-bonus";
+import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForWrite,
+  resolveActiveExamForWrite,
+} from "@/lib/active-exam";
+import {
+  checkExamNumberAvailability,
+  lockExamNumberMutation,
+  lockUserExamMutation,
+} from "@/lib/police/pre-registration";
 
 export const runtime = "nodejs";
 
@@ -57,6 +83,16 @@ interface SubmissionRequestBody {
   answers?: unknown;
 }
 
+class SubmissionRouteError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "SubmissionRouteError";
+    this.status = status;
+  }
+}
+
 type DifficultyRatingValue = "VERY_EASY" | "EASY" | "NORMAL" | "HARD" | "VERY_HARD";
 type DifficultyInput = ReturnType<typeof parseDifficulty>[number];
 
@@ -68,12 +104,8 @@ const ALLOWED_DIFFICULTY_RATINGS: ReadonlySet<DifficultyRatingValue> = new Set([
   "VERY_HARD",
 ]);
 
-function parseExamType(value: unknown): ExamType | null {
-  if (value === ExamType.PUBLIC) return ExamType.PUBLIC;
-  if (value === ExamType.CAREER_RESCUE) return ExamType.CAREER_RESCUE;
-  if (value === ExamType.CAREER_ACADEMIC) return ExamType.CAREER_ACADEMIC;
-  if (value === ExamType.CAREER_EMT) return ExamType.CAREER_EMT;
-  return null;
+function parseExamType(tenantType: TenantType, value: unknown): ExamType | null {
+  return isExamTypeForTenant(tenantType, value) ? value : null;
 }
 
 function parseGender(value: unknown): Gender | null {
@@ -83,8 +115,12 @@ function parseGender(value: unknown): Gender | null {
 }
 
 /** 구조 경채(CAREER_RESCUE)는 남성만 채용 — 여성 제출 시 에러 메시지 반환 */
-function getRescueMaleOnlyError(examType: ExamType, gender: Gender): string | null {
-  if (examType === ExamType.CAREER_RESCUE && gender !== Gender.MALE) {
+function getRescueMaleOnlyError(
+  tenantType: TenantType,
+  examType: ExamType,
+  gender: Gender
+): string | null {
+  if (tenantType === "fire" && examType === ExamType.CAREER_RESCUE && gender !== Gender.MALE) {
     return "구조 경채는 남성만 채용하는 직렬입니다. 성별을 남성으로 선택해주세요.";
   }
   return null;
@@ -226,9 +262,9 @@ function parseAnswers(value: unknown): AnswerInput[] {
   return parsed;
 }
 
-function resolveBonusType(body: SubmissionRequestBody): BonusType {
+function resolveBonusType(tenantType: TenantType, body: SubmissionRequestBody): BonusType {
   if (typeof body.bonusType === "string") {
-    if (!isValidBonusType(body.bonusType)) {
+    if (!isValidTenantBonusType(tenantType, body.bonusType)) {
       throw new Error("가산점 유형이 올바르지 않습니다.");
     }
     return body.bonusType;
@@ -236,13 +272,14 @@ function resolveBonusType(body: SubmissionRequestBody): BonusType {
 
   const veteranPercent = parsePercent(body.veteranPercent);
   const heroPercent = parsePercent(body.heroPercent);
-  return getBonusTypeFromPercent(veteranPercent, heroPercent);
+  return getTenantBonusTypeFromPercent(tenantType, veteranPercent, heroPercent);
 }
 
 interface SubmissionSubjectMeta {
   id: number;
   name: string;
   questionCount: number;
+  maxScore: number;
 }
 
 async function loadSubmissionSubjectMeta(examType: ExamType): Promise<SubmissionSubjectMeta[]> {
@@ -252,6 +289,7 @@ async function loadSubmissionSubjectMeta(examType: ExamType): Promise<Submission
       id: true,
       name: true,
       questionCount: true,
+      maxScore: true,
     },
     orderBy: [{ id: "asc" }],
   });
@@ -264,6 +302,7 @@ async function loadSubmissionSubjectMeta(examType: ExamType): Promise<Submission
     id: subject.id,
     name: subject.name,
     questionCount: subject.questionCount,
+    maxScore: Number(subject.maxScore),
   }));
 }
 
@@ -501,194 +540,12 @@ function inferErrorStatus(message: string): number {
   return BAD_REQUEST_ERROR_PATTERNS.some((pattern) => message.includes(pattern)) ? 400 : 500;
 }
 
-function isHeroBonusType(bonusType: BonusType): boolean {
-  return bonusType === BonusType.HERO_3 || bonusType === BonusType.HERO_5;
-}
-
-function isVeteranBonusType(bonusType: BonusType): boolean {
-  return bonusType === BonusType.VETERAN_5 || bonusType === BonusType.VETERAN_10;
-}
-
-type BonusPassCapRule = {
-  minRecruitCount: number;
-  capRatio: number;
-  capPercentLabel: string;
-  bonusLabel: string;
-  matches: (bonusType: BonusType) => boolean;
-};
-
-function getBonusPassCapRule(bonusType: BonusType): BonusPassCapRule | null {
-  if (isVeteranBonusType(bonusType)) {
-    return {
-      minRecruitCount: 4,
-      capRatio: 0.3,
-      capPercentLabel: "30%",
-      bonusLabel: "취업지원대상자",
-      matches: isVeteranBonusType,
-    };
-  }
-
-  if (isHeroBonusType(bonusType)) {
-    return {
-      minRecruitCount: 10,
-      capRatio: 0.1,
-      capPercentLabel: "10%",
-      bonusLabel: "의사상자",
-      matches: isHeroBonusType,
-    };
-  }
-
-  return null;
-}
-
-function getBonusMinRecruitError(bonusType: BonusType, recruitCount: number): string | null {
-  const rule = getBonusPassCapRule(bonusType);
-  if (!rule) return null;
-  if (recruitCount >= rule.minRecruitCount) return null;
-  return `${rule.bonusLabel} 가산점은 모집인원 ${rule.minRecruitCount}명 이상 지역에서만 선택 가능합니다.`;
-}
-
-function isSameScore(left: number, right: number): boolean {
-  return Math.abs(left - right) < 0.000001;
-}
-
-function includeTieAtCutoff<T>(
-  sortedRows: T[],
-  baseCount: number,
-  scoreSelector: (row: T) => number
-): T[] {
-  if (!Number.isInteger(baseCount) || baseCount < 1) {
-    return [];
-  }
-
-  if (sortedRows.length <= baseCount) {
-    return sortedRows;
-  }
-
-  const boundary = sortedRows[baseCount - 1];
-  if (!boundary) {
-    return sortedRows;
-  }
-
-  const boundaryScore = scoreSelector(boundary);
-  let endIndex = baseCount;
-
-  while (endIndex < sortedRows.length) {
-    const row = sortedRows[endIndex];
-    if (!row || !isSameScore(scoreSelector(row), boundaryScore)) {
-      break;
-    }
-    endIndex += 1;
-  }
-
-  return sortedRows.slice(0, endIndex);
-}
-
-async function validateBonusPassCap(params: {
-  examId: number;
-  regionId: number;
-  examType: ExamType;
-  recruitCount: number;
-  submissionId?: number;
-  bonusType: BonusType;
-  totalScore: number;
-  finalScore: number;
-  hasCutoff: boolean;
-}): Promise<void> {
-  const rule = getBonusPassCapRule(params.bonusType);
-  if (!rule || params.hasCutoff) {
-    return;
-  }
-
-  if (params.recruitCount < rule.minRecruitCount) {
-    throw new Error(`${rule.bonusLabel} 가산점은 모집인원 ${rule.minRecruitCount}명 이상 지역에서만 선택 가능합니다.`);
-  }
-
-  const capCount = Math.floor(params.recruitCount * rule.capRatio);
-  if (capCount < 1) {
-    throw new Error(
-      `${rule.bonusLabel} 가산점 합격 상한(선발예정인원 ${rule.capPercentLabel})을 적용할 수 없는 모집단입니다.`
-    );
-  }
-
-  const passMultiple = getPassMultiple(params.recruitCount, params.examType);
-  const passCount = Math.ceil(params.recruitCount * passMultiple);
-  if (passCount < 1) {
-    return;
-  }
-
-  const existingRows = await prisma.submission.findMany({
-    where: {
-      examId: params.examId,
-      regionId: params.regionId,
-      examType: params.examType,
-      subjectScores: {
-        some: {},
-        none: {
-          isFailed: true,
-        },
-      },
-    },
-    select: {
-      id: true,
-      totalScore: true,
-      finalScore: true,
-      bonusType: true,
-    },
-  });
-
-  const fallbackId =
-    existingRows.reduce((maxId, row) => (row.id > maxId ? row.id : maxId), 0) + 1;
-  const candidateId = params.submissionId ?? fallbackId;
-
-  const rows = existingRows
-    .filter((row) => row.id !== candidateId)
-    .map((row) => ({
-      id: row.id,
-      totalScore: Number(row.totalScore),
-      finalScore: Number(row.finalScore),
-      bonusType: row.bonusType,
-    }));
-
-  rows.push({
-    id: candidateId,
-    totalScore: params.totalScore,
-    finalScore: params.finalScore,
-    bonusType: params.bonusType,
-  });
-
-  // 공문 단서: 응시인원이 선발예정인원 이하인 경우 가점 합격 상한을 적용하지 않음.
-  if (rows.length <= params.recruitCount) {
-    return;
-  }
-
-  const sortedByFinal = [...rows].sort(
-    (left, right) => right.finalScore - left.finalScore || left.id - right.id
-  );
-  const passByFinal = includeTieAtCutoff(sortedByFinal, passCount, (row) => row.finalScore);
-
-  const sortedByRaw = [...rows].sort(
-    (left, right) => right.totalScore - left.totalScore || left.id - right.id
-  );
-  const passByRaw = includeTieAtCutoff(sortedByRaw, passCount, (row) => row.totalScore);
-
-  const rawPasserIds = new Set(passByRaw.map((row) => row.id));
-  const bonusBeneficiaries = passByFinal.filter(
-    (row) => rule.matches(row.bonusType) && !rawPasserIds.has(row.id)
-  );
-
-  if (bonusBeneficiaries.length > capCount) {
-    throw new Error(
-      `${rule.bonusLabel} 가산점으로 합격 가능한 인원 상한(${capCount}명, 선발예정인원의 ${rule.capPercentLabel})을 초과합니다.`
-    );
-  }
-}
-
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   try {
     let body: SubmissionRequestBody;
@@ -703,9 +560,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "사용자 정보를 확인할 수 없습니다." }, { status: 401 });
     }
 
-    const examType = parseExamType(body.examType);
+    const examType = parseExamType(tenantType, body.examType);
     if (!examType) {
-      return NextResponse.json({ error: "채용유형은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT만 가능합니다." }, { status: 400 });
+      return NextResponse.json({ error: getTenantExamTypeErrorMessage(tenantType) }, { status: 400 });
     }
 
     const settings = await getSiteSettingsUncached();
@@ -717,7 +574,7 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
-    if ((examType === ExamType.CAREER_RESCUE || examType === ExamType.CAREER_ACADEMIC || examType === ExamType.CAREER_EMT) && !careerExamEnabled) {
+    if (isCareerExamTypeForTenant(tenantType, examType) && !careerExamEnabled) {
       return NextResponse.json(
         { error: "현재 경채 시험이 비활성화되어 제출할 수 없습니다." },
         { status: 400 }
@@ -729,7 +586,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "성별 정보가 올바르지 않습니다." }, { status: 400 });
     }
 
-    const rescueMaleOnlyError = getRescueMaleOnlyError(examType, gender);
+    const rescueMaleOnlyError = getRescueMaleOnlyError(tenantType, examType, gender);
     if (rescueMaleOnlyError) {
       return NextResponse.json({ error: rescueMaleOnlyError }, { status: 400 });
     }
@@ -747,24 +604,17 @@ export async function POST(request: Request) {
     const difficulty = parseDifficulty(body.difficulty);
     const submitDurationMs = parseNonNegativeInt(body.submitDurationMs);
 
+    const hasRequestedExamId = body.examId !== undefined && body.examId !== null && body.examId !== "";
     const requestedExamId = parsePositiveInt(body.examId);
-    const exam = requestedExamId
-      ? await prisma.exam.findUnique({
-        where: { id: requestedExamId },
-        select: { id: true, name: true, isActive: true },
-      })
-      : await prisma.exam.findFirst({
-        where: { isActive: true },
-        orderBy: [{ examDate: "desc" }, { id: "desc" }],
-        select: { id: true, name: true, isActive: true },
-      });
-
-    if (!exam) {
-      return NextResponse.json({ error: "제출 가능한 시험이 없습니다." }, { status: 404 });
+    if (hasRequestedExamId && !requestedExamId) {
+      return NextResponse.json({ error: "examId가 올바르지 않습니다." }, { status: 400 });
     }
-    if (!exam.isActive) {
-      return NextResponse.json({ error: "현재 활성화된 시험에만 성적 입력이 가능합니다." }, { status: 400 });
-    }
+    const exam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType,
+      context: "api/submission POST",
+      requestedExamId,
+    });
 
     const existingSubmission = await prisma.submission.findFirst({
       where: {
@@ -801,7 +651,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const examNumber = parseExamNumberInput(body.examNumber);
+    const examNumber =
+      tenantType === "police"
+        ? parsePoliceExamNumberInput(body.examNumber)
+        : parseFireExamNumberInput(body.examNumber);
     if (!examNumber) {
       return NextResponse.json({ error: "응시번호는 10자리 숫자로 입력해 주세요." }, { status: 400 });
     }
@@ -809,6 +662,10 @@ export async function POST(request: Request) {
     const quota = await prisma.examRegionQuota.findUnique({
       where: { examId_regionId: { examId: exam.id, regionId } },
       select: {
+        recruitCount: true,
+        recruitCountCareer: true,
+        applicantCount: true,
+        applicantCountCareer: true,
         recruitPublicMale: true,
         recruitPublicFemale: true,
         recruitRescue: true,
@@ -841,20 +698,25 @@ export async function POST(request: Request) {
         examNumberEndCareerEmtMale: true,
         examNumberStartCareerEmtFemale: true,
         examNumberEndCareerEmtFemale: true,
+        examNumberStartCareer: true,
+        examNumberEndCareer: true,
         examNumberStart: true,
         examNumberEnd: true,
       },
     });
 
-    const examNumberValidation = validateExamNumberWithRange({
-      examNumber,
-      context: {
-        examType,
-        gender,
-        recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
-      },
-      quota,
-    });
+    const examNumberValidation =
+      tenantType === "police"
+        ? validatePoliceExamNumberWithRange({ examNumber, examType, quota })
+        : validateFireExamNumberWithRange({
+            examNumber,
+            context: {
+              examType,
+              gender,
+              recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
+            },
+            quota,
+          });
     if (!examNumberValidation.ok) {
       return NextResponse.json(
         { error: examNumberValidation.message ?? "응시번호 검증에 실패했습니다." },
@@ -862,21 +724,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const bonusType = resolveBonusType(body);
-    const bonusRate = getBonusPercent(bonusType);
-    const certificateBonus = parseCertificateBonus(body.certificateBonus);
-    const recruitCount = quota ? getRegionRecruitCount(quota, examType, gender === "MALE" ? "MALE" : "FEMALE") : 0;
+    const bonusType = resolveBonusType(tenantType, body);
+    const bonusRate = getTenantBonusPercent(tenantType, bonusType);
+    const certificateBonus = tenantType === "fire" ? parseCertificateBonus(body.certificateBonus) : 0;
+    const recruitCount = quota ? getTenantRecruitCount(tenantType, quota, examType, gender) : 0;
     if (!Number.isInteger(recruitCount) || recruitCount < 1) {
       const message =
-        (examType === ExamType.CAREER_RESCUE || examType === ExamType.CAREER_ACADEMIC || examType === ExamType.CAREER_EMT)
+        isCareerExamTypeForTenant(tenantType, examType)
           ? "선택한 지역의 경채 모집인원이 설정되지 않았습니다. 관리자에게 문의해주세요."
           : "선택한 지역의 모집인원이 올바르지 않습니다.";
       return NextResponse.json({ error: message }, { status: 400 });
-    }
-
-    const bonusMinRecruitError = getBonusMinRecruitError(bonusType, recruitCount);
-    if (bonusMinRecruitError) {
-      return NextResponse.json({ error: bonusMinRecruitError }, { status: 400 });
     }
 
     const scoringReadiness = await resolveScoringReadiness({
@@ -892,26 +749,55 @@ export async function POST(request: Request) {
     let suspiciousReason: string | null = null;
 
     if (scoringStatus === SubmissionScoringStatus.SCORED) {
-      scoreResult = await calculateScore({
-        examId: exam.id,
-        examType,
-        answers,
-        bonusType,
-        bonusRate,
-      });
+      if (tenantType === "police") {
+        const rawScoreResult = await calculateTenantScore(tenantType, {
+          examId: exam.id,
+          examType,
+          answers,
+          bonusType,
+          bonusRate: 0,
+        });
+        const applicantCountInfo = getTenantApplicantCount(
+          tenantType,
+          quota!,
+          examType,
+          null
+        );
+        const bonusDecision = resolvePoliceWrittenBonus({
+          bonusType,
+          declaredRate: bonusRate,
+          recruitCount,
+          applicantCount: applicantCountInfo.applicantCount,
+          hasCutoff: rawScoreResult.hasCutoff,
+        });
+        scoreResult = bonusDecision.effectiveRate > 0
+          ? await calculateTenantScore(tenantType, {
+              examId: exam.id,
+              examType,
+              answers,
+              bonusType,
+              bonusRate: bonusDecision.effectiveRate,
+            })
+          : rawScoreResult;
+      } else {
+        const bonusDecision = resolveFireWrittenBonus({
+          bonusType,
+          declaredRate: bonusRate,
+          recruitCount,
+        });
+        scoreResult = await calculateTenantScore(tenantType, {
+          examId: exam.id,
+          examType,
+          answers,
+          bonusType,
+          bonusRate: bonusDecision.effectiveRate,
+        });
+      }
 
-      await validateBonusPassCap({
-        examId: exam.id,
-        regionId: region.id,
-        examType,
-        recruitCount,
-        bonusType,
-        totalScore: scoreResult.totalScore,
-        finalScore: scoreResult.finalScore,
-        hasCutoff: scoreResult.hasCutoff,
-      });
-
-      const maxScore = examType === ExamType.PUBLIC ? 300 : 200;
+      const maxScore = scoringReadiness.subjects.reduce(
+        (sum, subject) => sum + subject.maxScore,
+        0
+      );
       const answerPatternResult = validateAnswerPattern({
         answers: answers.map((a) => a.answer),
         totalScore: scoreResult.totalScore,
@@ -925,6 +811,42 @@ export async function POST(request: Request) {
     }
 
     const submission = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, tenantType);
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType,
+        context: "api/submission POST transaction",
+        requestedExamId: exam.id,
+      });
+      await lockUserExamMutation(tx, { userId, examId: exam.id });
+      await lockExamNumberMutation(tx, {
+        examId: exam.id,
+        regionId: region.id,
+        examNumber,
+      });
+
+      if (tenantType === "police") {
+        const ownPreRegistration = await tx.preRegistration.findUnique({
+          where: { userId_examId: { userId, examId: exam.id } },
+          select: { id: true },
+        });
+        const availability = await checkExamNumberAvailability({
+          db: tx,
+          examId: exam.id,
+          regionId: region.id,
+          examType,
+          examNumber,
+          userId,
+          excludePreRegistrationId: ownPreRegistration?.id,
+        });
+        if (!availability.available) {
+          throw new SubmissionRouteError(
+            availability.reason ?? "응시번호를 사용할 수 없습니다.",
+            409
+          );
+        }
+      }
+
       const savedSubmission = await tx.submission.create({
         data: {
           examId: exam.id,
@@ -981,11 +903,27 @@ export async function POST(request: Request) {
         },
       });
 
+      if (tenantType === "police") {
+        await tx.preRegistration.updateMany({
+          where: { userId, examId: exam.id },
+          data: {
+            regionId: region.id,
+            examType,
+            gender,
+            examNumber,
+            submissionId: savedSubmission.id,
+            convertedAt: new Date(),
+          },
+        });
+      }
+
       return savedSubmission;
     });
 
     if (scoreResult) {
-      invalidateCorrectRateCache(exam.id, examType);
+      (tenantType === "police"
+        ? policeCorrectRate.invalidateCorrectRateCache
+        : fireCorrectRate.invalidateCorrectRateCache)(exam.id, examType);
     }
 
     return NextResponse.json({
@@ -999,6 +937,15 @@ export async function POST(request: Request) {
       result: scoreResult,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+    if (error instanceof SubmissionRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const target = getUniqueConstraintTargets(error);
 
@@ -1026,10 +973,11 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   try {
     let body: SubmissionRequestBody & { submissionId: unknown };
@@ -1076,12 +1024,12 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: editLimitErrorMessage }, { status: 403 });
     }
 
-    const examType = parseExamType(body.examType);
+    const examType = parseExamType(tenantType, body.examType);
     if (!examType) {
-      return NextResponse.json({ error: "채용유형은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT만 가능합니다." }, { status: 400 });
+      return NextResponse.json({ error: getTenantExamTypeErrorMessage(tenantType) }, { status: 400 });
     }
 
-    if ((examType === ExamType.CAREER_RESCUE || examType === ExamType.CAREER_ACADEMIC || examType === ExamType.CAREER_EMT) && !careerExamEnabled) {
+    if (isCareerExamTypeForTenant(tenantType, examType) && !careerExamEnabled) {
       return NextResponse.json(
         { error: "현재 경채 시험이 비활성화되어 수정할 수 없습니다." },
         { status: 400 }
@@ -1093,7 +1041,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "성별 정보가 올바르지 않습니다." }, { status: 400 });
     }
 
-    const rescueMaleOnlyErrorEdit = getRescueMaleOnlyError(examType, gender);
+    const rescueMaleOnlyErrorEdit = getRescueMaleOnlyError(tenantType, examType, gender);
     if (rescueMaleOnlyErrorEdit) {
       return NextResponse.json({ error: rescueMaleOnlyErrorEdit }, { status: 400 });
     }
@@ -1111,24 +1059,22 @@ export async function PUT(request: Request) {
     const difficulty = parseDifficulty(body.difficulty);
     const submitDurationMsEdit = parseNonNegativeInt(body.submitDurationMs);
 
+    const hasRequestedExamId = body.examId !== undefined && body.examId !== null && body.examId !== "";
     const requestedExamId = parsePositiveInt(body.examId);
-    if (requestedExamId && requestedExamId !== existingSubmission.examId) {
+    if (hasRequestedExamId && !requestedExamId) {
+      return NextResponse.json({ error: "examId가 올바르지 않습니다." }, { status: 400 });
+    }
+    const exam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType,
+      context: "api/submission PUT",
+      requestedExamId,
+    });
+    if (exam.id !== existingSubmission.examId) {
       return NextResponse.json(
         { error: "기존 제출과 다른 시험으로는 수정할 수 없습니다." },
-        { status: 400 }
+        { status: 409 }
       );
-    }
-
-    const exam = await prisma.exam.findUnique({
-      where: { id: existingSubmission.examId },
-      select: { id: true, name: true, isActive: true },
-    });
-
-    if (!exam) {
-      return NextResponse.json({ error: "기존 제출의 시험 정보를 찾을 수 없습니다." }, { status: 404 });
-    }
-    if (!exam.isActive) {
-      return NextResponse.json({ error: "현재 활성화된 시험에만 성적 수정이 가능합니다." }, { status: 400 });
     }
 
     const region = await prisma.region.findUnique({
@@ -1150,7 +1096,10 @@ export async function PUT(request: Request) {
       );
     }
 
-    const examNumber = parseExamNumberInput(body.examNumber);
+    const examNumber =
+      tenantType === "police"
+        ? parsePoliceExamNumberInput(body.examNumber)
+        : parseFireExamNumberInput(body.examNumber);
     if (!examNumber) {
       return NextResponse.json({ error: "응시번호는 10자리 숫자로 입력해 주세요." }, { status: 400 });
     }
@@ -1158,6 +1107,10 @@ export async function PUT(request: Request) {
     const quotaForEdit = await prisma.examRegionQuota.findUnique({
       where: { examId_regionId: { examId: exam.id, regionId } },
       select: {
+        recruitCount: true,
+        recruitCountCareer: true,
+        applicantCount: true,
+        applicantCountCareer: true,
         recruitPublicMale: true,
         recruitPublicFemale: true,
         recruitRescue: true,
@@ -1190,20 +1143,25 @@ export async function PUT(request: Request) {
         examNumberEndCareerEmtMale: true,
         examNumberStartCareerEmtFemale: true,
         examNumberEndCareerEmtFemale: true,
+        examNumberStartCareer: true,
+        examNumberEndCareer: true,
         examNumberStart: true,
         examNumberEnd: true,
       },
     });
 
-    const editExamNumberValidation = validateExamNumberWithRange({
-      examNumber,
-      context: {
-        examType,
-        gender,
-        recruitAcademicCombined: quotaForEdit?.recruitAcademicCombined ?? 0,
-      },
-      quota: quotaForEdit,
-    });
+    const editExamNumberValidation =
+      tenantType === "police"
+        ? validatePoliceExamNumberWithRange({ examNumber, examType, quota: quotaForEdit })
+        : validateFireExamNumberWithRange({
+            examNumber,
+            context: {
+              examType,
+              gender,
+              recruitAcademicCombined: quotaForEdit?.recruitAcademicCombined ?? 0,
+            },
+            quota: quotaForEdit,
+          });
     if (!editExamNumberValidation.ok) {
       return NextResponse.json(
         { error: editExamNumberValidation.message ?? "응시번호 검증에 실패했습니다." },
@@ -1211,21 +1169,18 @@ export async function PUT(request: Request) {
       );
     }
 
-    const bonusType = resolveBonusType(body);
-    const bonusRate = getBonusPercent(bonusType);
-    const certificateBonus = parseCertificateBonus(body.certificateBonus);
-    const recruitCount = quotaForEdit ? getRegionRecruitCount(quotaForEdit, examType, gender === "MALE" ? "MALE" : "FEMALE") : 0;
+    const bonusType = resolveBonusType(tenantType, body);
+    const bonusRate = getTenantBonusPercent(tenantType, bonusType);
+    const certificateBonus = tenantType === "fire" ? parseCertificateBonus(body.certificateBonus) : 0;
+    const recruitCount = quotaForEdit
+      ? getTenantRecruitCount(tenantType, quotaForEdit, examType, gender)
+      : 0;
     if (!Number.isInteger(recruitCount) || recruitCount < 1) {
       const message =
-        (examType === ExamType.CAREER_RESCUE || examType === ExamType.CAREER_ACADEMIC || examType === ExamType.CAREER_EMT)
+        isCareerExamTypeForTenant(tenantType, examType)
           ? "선택한 지역의 경채 모집인원이 설정되지 않았습니다. 관리자에게 문의해주세요."
           : "선택한 지역의 모집인원이 올바르지 않습니다.";
       return NextResponse.json({ error: message }, { status: 400 });
-    }
-
-    const bonusMinRecruitError = getBonusMinRecruitError(bonusType, recruitCount);
-    if (bonusMinRecruitError) {
-      return NextResponse.json({ error: bonusMinRecruitError }, { status: 400 });
     }
 
     const scoringReadiness = await resolveScoringReadiness({
@@ -1241,27 +1196,55 @@ export async function PUT(request: Request) {
     let suspiciousReason: string | null = null;
 
     if (scoringStatus === SubmissionScoringStatus.SCORED) {
-      scoreResult = await calculateScore({
-        examId: exam.id,
-        examType,
-        answers,
-        bonusType,
-        bonusRate,
-      });
+      if (tenantType === "police") {
+        const rawScoreResult = await calculateTenantScore(tenantType, {
+          examId: exam.id,
+          examType,
+          answers,
+          bonusType,
+          bonusRate: 0,
+        });
+        const applicantCountInfo = getTenantApplicantCount(
+          tenantType,
+          quotaForEdit!,
+          examType,
+          null
+        );
+        const bonusDecision = resolvePoliceWrittenBonus({
+          bonusType,
+          declaredRate: bonusRate,
+          recruitCount,
+          applicantCount: applicantCountInfo.applicantCount,
+          hasCutoff: rawScoreResult.hasCutoff,
+        });
+        scoreResult = bonusDecision.effectiveRate > 0
+          ? await calculateTenantScore(tenantType, {
+              examId: exam.id,
+              examType,
+              answers,
+              bonusType,
+              bonusRate: bonusDecision.effectiveRate,
+            })
+          : rawScoreResult;
+      } else {
+        const bonusDecision = resolveFireWrittenBonus({
+          bonusType,
+          declaredRate: bonusRate,
+          recruitCount,
+        });
+        scoreResult = await calculateTenantScore(tenantType, {
+          examId: exam.id,
+          examType,
+          answers,
+          bonusType,
+          bonusRate: bonusDecision.effectiveRate,
+        });
+      }
 
-      await validateBonusPassCap({
-        examId: exam.id,
-        regionId: region.id,
-        examType,
-        recruitCount,
-        submissionId,
-        bonusType,
-        totalScore: scoreResult.totalScore,
-        finalScore: scoreResult.finalScore,
-        hasCutoff: scoreResult.hasCutoff,
-      });
-
-      const maxScoreEdit = examType === ExamType.PUBLIC ? 300 : 200;
+      const maxScoreEdit = scoringReadiness.subjects.reduce(
+        (sum, subject) => sum + subject.maxScore,
+        0
+      );
       const answerPatternResult = validateAnswerPattern({
         answers: answers.map((a) => a.answer),
         totalScore: scoreResult.totalScore,
@@ -1286,6 +1269,43 @@ export async function PUT(request: Request) {
     changedFields.push("answers");
 
     const updated = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, tenantType);
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType,
+        context: "api/submission PUT transaction",
+        requestedExamId: exam.id,
+      });
+      await lockUserExamMutation(tx, { userId, examId: exam.id });
+      await lockExamNumberMutation(tx, {
+        examId: exam.id,
+        regionId: region.id,
+        examNumber,
+      });
+
+      if (tenantType === "police") {
+        const ownPreRegistration = await tx.preRegistration.findUnique({
+          where: { userId_examId: { userId, examId: exam.id } },
+          select: { id: true },
+        });
+        const availability = await checkExamNumberAvailability({
+          db: tx,
+          examId: exam.id,
+          regionId: region.id,
+          examType,
+          examNumber,
+          userId,
+          excludeSubmissionId: submissionId,
+          excludePreRegistrationId: ownPreRegistration?.id,
+        });
+        if (!availability.available) {
+          throw new SubmissionRouteError(
+            availability.reason ?? "응시번호를 사용할 수 없습니다.",
+            409
+          );
+        }
+      }
+
       const updatedSubmission = await tx.submission.updateMany({
         where: {
           id: submissionId,
@@ -1352,6 +1372,20 @@ export async function PUT(request: Request) {
         },
       });
 
+      if (tenantType === "police") {
+        await tx.preRegistration.updateMany({
+          where: { userId, examId: exam.id },
+          data: {
+            regionId: region.id,
+            examType,
+            gender,
+            examNumber,
+            submissionId,
+            convertedAt: new Date(),
+          },
+        });
+      }
+
       return { id: submissionId };
     });
 
@@ -1360,7 +1394,9 @@ export async function PUT(request: Request) {
     }
 
     if (scoreResult || existingSubmission.scoringStatus === SubmissionScoringStatus.SCORED) {
-      invalidateCorrectRateCache(exam.id, examType);
+      (tenantType === "police"
+        ? policeCorrectRate.invalidateCorrectRateCache
+        : fireCorrectRate.invalidateCorrectRateCache)(exam.id, examType);
     }
 
     return NextResponse.json({
@@ -1374,6 +1410,15 @@ export async function PUT(request: Request) {
       result: scoreResult,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+    if (error instanceof SubmissionRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const target = getUniqueConstraintTargets(error);
 

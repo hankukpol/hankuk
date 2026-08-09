@@ -23,14 +23,6 @@ export interface SubjectMeta {
   pointPerQuestion: number;
 }
 
-export function parseExamType(value: string | null): ExamType | null {
-  if (value === ExamType.PUBLIC) return ExamType.PUBLIC;
-  if (value === ExamType.CAREER_RESCUE) return ExamType.CAREER_RESCUE;
-  if (value === ExamType.CAREER_ACADEMIC) return ExamType.CAREER_ACADEMIC;
-  if (value === ExamType.CAREER_EMT) return ExamType.CAREER_EMT;
-  return null;
-}
-
 export function parseBoolean(value: string | null, fallback = false): boolean {
   if (value === null) return fallback;
   if (value === "true") return true;

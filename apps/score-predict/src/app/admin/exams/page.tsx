@@ -8,6 +8,8 @@ import useConfirmModal from "@/hooks/useConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
+import { POLICE_PREDICTION_MODEL_VERSION } from "@/lib/police/prediction-model";
 
 const ADMIN_EXAM_API = "/api/admin/exam?feature=exams";
 
@@ -18,6 +20,8 @@ interface ExamItem {
   round: number;
   examDate: string;
   isActive: boolean;
+  policeWrittenPassMultiple: number | null;
+  policePredictionModelVersion: string | null;
   _count: {
     answerKeys: number;
     submissions: number;
@@ -47,6 +51,7 @@ function formatDateForView(dateText: string): string {
 }
 
 export default function AdminExamsPage() {
+  const tenant = useTenantConfig();
   const { enabled: examsEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("exams");
   const [exams, setExams] = useState<ExamItem[]>([]);
@@ -59,7 +64,11 @@ export default function AdminExamsPage() {
   const [year, setYear] = useState("");
   const [round, setRound] = useState("");
   const [examDate, setExamDate] = useState("");
-  const [isActive, setIsActive] = useState(true);
+  const [isActive, setIsActive] = useState(false);
+  const [policeWrittenPassMultiple, setPoliceWrittenPassMultiple] = useState("2");
+  const [policePredictionModelVersion, setPolicePredictionModelVersion] = useState(
+    POLICE_PREDICTION_MODEL_VERSION
+  );
   const { confirm, modalProps } = useConfirmModal();
 
   const isEditing = editingId !== null;
@@ -129,7 +138,9 @@ export default function AdminExamsPage() {
     setYear("");
     setRound("");
     setExamDate("");
-    setIsActive(true);
+    setIsActive(false);
+    setPoliceWrittenPassMultiple("2");
+    setPolicePredictionModelVersion(POLICE_PREDICTION_MODEL_VERSION);
   }
 
   function startEdit(exam: ExamItem) {
@@ -139,6 +150,10 @@ export default function AdminExamsPage() {
     setRound(String(exam.round));
     setExamDate(formatDateForInput(exam.examDate));
     setIsActive(exam.isActive);
+    setPoliceWrittenPassMultiple(String(exam.policeWrittenPassMultiple ?? 2));
+    setPolicePredictionModelVersion(
+      exam.policePredictionModelVersion ?? POLICE_PREDICTION_MODEL_VERSION
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -160,9 +175,11 @@ export default function AdminExamsPage() {
 
     const ok = await confirm({
       title: isEditing ? "시험 수정" : "시험 생성",
-      description: isEditing
-        ? "시험 정보를 수정하시겠습니까?"
-        : "새 시험을 생성하시겠습니까?",
+      description: isActive
+        ? "저장과 동시에 이 시험을 활성화하고 사전 운영 단계로 초기화합니다. 계속하시겠습니까?"
+        : isEditing
+          ? "시험 정보를 수정하시겠습니까?"
+          : "새 시험을 비활성 상태로 생성하시겠습니까?",
     });
     if (!ok) return;
 
@@ -175,6 +192,12 @@ export default function AdminExamsPage() {
         round: roundNumber,
         examDate,
         isActive,
+        ...(tenant.type === "police"
+          ? {
+              policeWrittenPassMultiple: Number(policeWrittenPassMultiple),
+              policePredictionModelVersion: policePredictionModelVersion.trim(),
+            }
+          : {}),
       };
 
       const endpoint = isEditing ? `${ADMIN_EXAM_API}&id=${editingId}` : ADMIN_EXAM_API;
@@ -208,12 +231,12 @@ export default function AdminExamsPage() {
   }
 
   async function toggleActivation(exam: ExamItem) {
+    if (exam.isActive) return;
+
     const ok = await confirm({
-      title: exam.isActive ? "시험 비활성화" : "시험 활성화",
-      description: exam.isActive
-        ? `"${exam.year}년 ${exam.round}차" 시험을 비활성화하시겠습니까?`
-        : `"${exam.year}년 ${exam.round}차" 시험을 활성화하시겠습니까?`,
-      variant: exam.isActive ? "danger" : "default",
+      title: "시험 활성화",
+      description: `"${exam.year}년 ${exam.round}차" 시험을 활성화하고 사전 운영 단계로 초기화하시겠습니까?`,
+      variant: "default",
     });
     if (!ok) return;
 
@@ -223,7 +246,7 @@ export default function AdminExamsPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          isActive: !exam.isActive,
+          isActive: true,
         }),
       });
       const data = (await response.json()) as { error?: string };
@@ -233,7 +256,7 @@ export default function AdminExamsPage() {
 
       setNotice({
         type: "success",
-        message: !exam.isActive ? "시험이 활성화되었습니다." : "시험이 비활성화되었습니다.",
+        message: "시험이 활성화되고 사전 운영 단계로 초기화되었습니다.",
       });
       await loadExams();
     } catch (error) {
@@ -259,7 +282,11 @@ export default function AdminExamsPage() {
               id="exam-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="예: 2026년 소방공무원 채용시험"
+              placeholder={
+                tenant.type === "police"
+                  ? "예: 2026년 경찰공무원 채용시험"
+                  : "예: 2026년 소방공무원 채용시험"
+              }
               required
             />
           </div>
@@ -275,6 +302,33 @@ export default function AdminExamsPage() {
               required
             />
           </div>
+
+          {tenant.type === "police" ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="police-written-pass-multiple">필기 합격배수</Label>
+                <Input
+                  id="police-written-pass-multiple"
+                  type="number"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  value={policeWrittenPassMultiple}
+                  onChange={(event) => setPoliceWrittenPassMultiple(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="police-prediction-model-version">예측모델 버전</Label>
+                <Input
+                  id="police-prediction-model-version"
+                  value={policePredictionModelVersion}
+                  onChange={(event) => setPolicePredictionModelVersion(event.target.value)}
+                  required
+                />
+              </div>
+            </>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="exam-round">회차</Label>
@@ -299,15 +353,20 @@ export default function AdminExamsPage() {
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(event) => setIsActive(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300"
-            />
-            저장 후 활성 시험으로 설정
-          </label>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(event) => setIsActive(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              저장 후 활성 시험으로 설정
+            </label>
+            <p className="text-xs leading-5 text-slate-500">
+              활성화하면 기존 시험은 비활성화되고 답안 입력, 최종예측, 자동 컷 공개는 닫힌 상태로 시작합니다.
+            </p>
+          </div>
         </div>
 
         {notice ? (
@@ -383,8 +442,13 @@ export default function AdminExamsPage() {
                         <Button size="sm" variant="outline" onClick={() => startEdit(exam)}>
                           수정
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => void toggleActivation(exam)}>
-                          {exam.isActive ? "비활성화" : "활성화"}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={exam.isActive}
+                          onClick={() => void toggleActivation(exam)}
+                        >
+                          {exam.isActive ? "현재 운영 중" : "활성화"}
                         </Button>
                       </div>
                     </td>

@@ -6,16 +6,19 @@ import {
   normalizeAnswerRows,
   parseBoolean,
   parseCsvRows,
-  parseExamType,
   parsePositiveInt,
   type NormalizedAnswerRow,
   type RawAnswerRow,
 } from "@/lib/admin-answer-keys";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
-import { invalidateCorrectRateCache } from "@/lib/correct-rate";
+import * as fireCorrectRate from "@/lib/fire/correct-rate";
+import * as policeCorrectRate from "@/lib/police/correct-rate";
 import { prisma } from "@/lib/prisma";
-import { rescoreExam } from "@/lib/scoring";
+import { rescoreTenantExam } from "@/lib/tenant-calculations.server";
+import { getTenantExamTypeErrorMessage, isExamTypeForTenant } from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
+import { assertExamWritableForAdminSetup, isActiveExamRouteError } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -95,7 +98,11 @@ function collectChanges(params: {
   };
 }
 
-async function parseRequestPayload(request: NextRequest): Promise<{
+function parseTenantExamType(tenantType: TenantType, value: string | null): ExamType | null {
+  return isExamTypeForTenant(tenantType, value) ? value : null;
+}
+
+async function parseRequestPayload(request: NextRequest, tenantType: TenantType): Promise<{
   examId: number | null;
   examType: ExamType | null;
   isConfirmed: boolean;
@@ -107,7 +114,7 @@ async function parseRequestPayload(request: NextRequest): Promise<{
   if (contentType.includes("multipart/form-data")) {
     const formData = await request.formData();
     const examId = parsePositiveInt(formData.get("examId")?.toString());
-    const examType = parseExamType(formData.get("examType")?.toString() ?? null);
+    const examType = parseTenantExamType(tenantType, formData.get("examType")?.toString() ?? null);
     const isConfirmed = parseBoolean(formData.get("isConfirmed")?.toString() ?? null, false);
     const reasonRaw = formData.get("reason")?.toString() ?? "";
     const reason = reasonRaw.trim() ? reasonRaw.trim() : null;
@@ -141,7 +148,7 @@ async function parseRequestPayload(request: NextRequest): Promise<{
   };
 
   const examId = parsePositiveInt(body.examId);
-  const examType = parseExamType(body.examType ?? null);
+  const examType = parseTenantExamType(tenantType, body.examType ?? null);
 
   if (body.isConfirmed !== undefined && typeof body.isConfirmed !== "boolean") {
     throw new Error("isConfirmed는 boolean 타입이어야 합니다.");
@@ -164,7 +171,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const examId = parsePositiveInt(searchParams.get("examId"));
-  const examType = parseExamType(searchParams.get("examType"));
+  const examType = parseTenantExamType(guard.tenantType, searchParams.get("examType"));
 
   if (!examId) {
     return NextResponse.json({ error: "examId는 필수입니다." }, { status: 400 });
@@ -172,7 +179,7 @@ export async function GET(request: NextRequest) {
 
   if (!examType) {
     return NextResponse.json(
-      { error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT 이어야 합니다." },
+      { error: getTenantExamTypeErrorMessage(guard.tenantType) },
       { status: 400 }
     );
   }
@@ -242,13 +249,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     const examId = parsePositiveInt(body.examId);
-    const examType = parseExamType(body.examType ?? null);
+    const examType = parseTenantExamType(guard.tenantType, body.examType ?? null);
     if (!examId) {
       return NextResponse.json({ error: "examId는 필수입니다." }, { status: 400 });
     }
     if (!examType) {
       return NextResponse.json(
-        { error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT 중 하나여야 합니다." },
+        { error: getTenantExamTypeErrorMessage(guard.tenantType) },
         { status: 400 }
       );
     }
@@ -260,6 +267,12 @@ export async function DELETE(request: NextRequest) {
     if (!exam) {
       return NextResponse.json({ error: "해당 시험을 찾을 수 없습니다." }, { status: 404 });
     }
+    await assertExamWritableForAdminSetup({
+      db: prisma,
+      tenantType: guard.tenantType,
+      context: "api/admin/answers DELETE",
+      examId,
+    });
 
     const subjects = await getSubjectsByExamType(examType);
     if (subjects.length < 1) {
@@ -309,13 +322,18 @@ export async function DELETE(request: NextRequest) {
       };
     });
 
-    invalidateCorrectRateCache(examId, examType);
+    (guard.tenantType === "police"
+      ? policeCorrectRate.invalidateCorrectRateCache
+      : fireCorrectRate.invalidateCorrectRateCache)(examId, examType);
 
     return NextResponse.json({
       success: true,
       ...resetResult,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("정답 초기화 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "정답 초기화 중 오류가 발생했습니다." }, { status: 500 });
   }
@@ -333,7 +351,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { examId, examType, isConfirmed, reason, rawRows } = await parseRequestPayload(request);
+    const { examId, examType, isConfirmed, reason, rawRows } = await parseRequestPayload(
+      request,
+      guard.tenantType
+    );
 
     if (!examId) {
       return NextResponse.json({ error: "examId는 필수입니다." }, { status: 400 });
@@ -341,7 +362,7 @@ export async function POST(request: NextRequest) {
 
     if (!examType) {
       return NextResponse.json(
-        { error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT 이어야 합니다." },
+        { error: getTenantExamTypeErrorMessage(guard.tenantType) },
       { status: 400 }
     );
   }
@@ -354,6 +375,12 @@ export async function POST(request: NextRequest) {
     if (!exam) {
       return NextResponse.json({ error: "해당 시험을 찾을 수 없습니다." }, { status: 404 });
     }
+    await assertExamWritableForAdminSetup({
+      db: prisma,
+      tenantType: guard.tenantType,
+      context: "api/admin/answers POST",
+      examId,
+    });
 
     const subjects = await getSubjectsByExamType(examType);
     if (subjects.length === 0) {
@@ -394,7 +421,7 @@ export async function POST(request: NextRequest) {
     const shouldRunRescore = changedQuestions > 0 || pendingSubmissionCount > 0;
     const subjectNameById = new Map(subjects.map((subject) => [subject.id, subject.name] as const));
     const runRescore = () =>
-      rescoreExam(examId, {
+      rescoreTenantExam(guard.tenantType, examId, {
         reason: reason ?? undefined,
         adminUserId,
         examType,
@@ -516,6 +543,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof Error) {
       const userErrors = [
         "CSV 파일을 첨부해 주세요.",

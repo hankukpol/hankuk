@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { withTenantPrefix } from "@/lib/tenant";
+import { isFireExamType, type FireExamType } from "@/lib/tenant-exam";
 
 type BonusVeteran = 0 | 5 | 10;
 type BonusHero = 0 | 3 | 5;
@@ -90,7 +91,7 @@ interface EditSubmissionResponse {
   submission?: {
     id: number;
     gender: Gender;
-    examType: ExamType;
+    examType: FireExamType;
     regionId: number;
     examNumber: string | null;
     bonusType: EditBonusType;
@@ -140,7 +141,7 @@ function progressColor(percentage: number): string {
   return "bg-rose-500";
 }
 
-function getRecruitCount(region: RegionInfo, examType: ExamType): number {
+function getRecruitCount(region: RegionInfo, examType: FireExamType): number {
   if (examType === ExamType.CAREER_RESCUE) return region.recruitRescue;
   if (examType === ExamType.CAREER_ACADEMIC) return region.recruitAcademicMale + region.recruitAcademicFemale + region.recruitAcademicCombined;
   if (examType === ExamType.CAREER_EMT) return region.recruitEmtMale + region.recruitEmtFemale;
@@ -223,7 +224,7 @@ export default function ExamInputPage({
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>({});
 
   const [gender, setGender] = useState<Gender | "">("");
-  const [examType, setExamType] = useState<ExamType>(ExamType.PUBLIC);
+  const [examType, setExamType] = useState<FireExamType>(ExamType.PUBLIC);
   const [regionId, setRegionId] = useState<number | "">("");
   const [examNumber, setExamNumber] = useState("");
   const [examNumberStatus, setExamNumberStatus] = useState<
@@ -239,16 +240,14 @@ export default function ExamInputPage({
   const [inputMode, setInputMode] = useState<OmrInputMode>("radio");
   const [quickFocusToken, setQuickFocusToken] = useState(0);
 
-  const [answerStore, setAnswerStore] = useState<Record<ExamType, AnswersBySubject>>({
+  const [answerStore, setAnswerStore] = useState<Record<FireExamType, AnswersBySubject>>({
     [ExamType.PUBLIC]: {},
-    [ExamType.CAREER]: {},
     [ExamType.CAREER_RESCUE]: {},
     [ExamType.CAREER_ACADEMIC]: {},
     [ExamType.CAREER_EMT]: {},
   });
-  const [difficultyStore, setDifficultyStore] = useState<Record<ExamType, DifficultyBySubject>>({
+  const [difficultyStore, setDifficultyStore] = useState<Record<FireExamType, DifficultyBySubject>>({
     [ExamType.PUBLIC]: {},
-    [ExamType.CAREER]: {},
     [ExamType.CAREER_RESCUE]: {},
     [ExamType.CAREER_ACADEMIC]: {},
     [ExamType.CAREER_EMT]: {},
@@ -264,9 +263,8 @@ export default function ExamInputPage({
       setIsMetaLoading(true);
       setErrorMessage("");
       try {
-        const [metaRes, editRes, siteSettingsRes] = await Promise.all([
+        const [metaRes, siteSettingsRes] = await Promise.all([
           fetch("/api/exams?active=true", { method: "GET", cache: "no-store" }),
-          fetch(editId ? `/api/result?submissionId=${editId}` : `/api/result?optional=1`, { method: "GET", cache: "no-store" }),
           fetch("/api/site-settings", { method: "GET", cache: "no-store" }),
         ]);
 
@@ -274,6 +272,16 @@ export default function ExamInputPage({
         if (!metaRes.ok) {
           throw new Error(data.error ?? "시험 정보를 불러오지 못했습니다.");
         }
+        if (!data.activeExam) {
+          throw new Error("현재 운영 중인 소방 시험이 없습니다.");
+        }
+
+        const editRes = await fetch(
+          editId
+            ? `/api/result?submissionId=${editId}`
+            : `/api/result?optional=1&examId=${data.activeExam.id}`,
+          { method: "GET", cache: "no-store" }
+        );
 
         let editData: EditSubmissionResponse | null = null;
         if (editRes.ok) {
@@ -298,6 +306,9 @@ export default function ExamInputPage({
 
         if (editData && editData.submission) {
           const sub = editData.submission;
+          if (!isFireExamType(sub.examType)) {
+            throw new Error("소방 서비스의 제출 데이터가 아닙니다.");
+          }
           // 기존 제출 자동 감지: URL에 editId 없어도 submissionId 저장
           if (!editId && sub.id) {
             setAutoEditId(sub.id);
@@ -327,16 +338,14 @@ export default function ExamInputPage({
           else if (sub.bonusType === "HERO_3") setHeroPercent(3);
           else if (sub.bonusType === "HERO_5") setHeroPercent(5);
 
-          const newAnswerStore: Record<ExamType, AnswersBySubject> = {
+          const newAnswerStore: Record<FireExamType, AnswersBySubject> = {
             [ExamType.PUBLIC]: createEmptyAnswers(data.subjectGroups.PUBLIC),
-            [ExamType.CAREER]: {},
             [ExamType.CAREER_RESCUE]: createEmptyAnswers(data.subjectGroups.CAREER_RESCUE),
             [ExamType.CAREER_ACADEMIC]: createEmptyAnswers(data.subjectGroups.CAREER_ACADEMIC),
             [ExamType.CAREER_EMT]: createEmptyAnswers(data.subjectGroups.CAREER_EMT),
           };
-          const newDiffStore: Record<ExamType, DifficultyBySubject> = {
+          const newDiffStore: Record<FireExamType, DifficultyBySubject> = {
             [ExamType.PUBLIC]: createEmptyDifficulty(data.subjectGroups.PUBLIC),
-            [ExamType.CAREER]: {},
             [ExamType.CAREER_RESCUE]: createEmptyDifficulty(data.subjectGroups.CAREER_RESCUE),
             [ExamType.CAREER_ACADEMIC]: createEmptyDifficulty(data.subjectGroups.CAREER_ACADEMIC),
             [ExamType.CAREER_EMT]: createEmptyDifficulty(data.subjectGroups.CAREER_EMT),
@@ -365,14 +374,12 @@ export default function ExamInputPage({
         } else {
           setAnswerStore({
             [ExamType.PUBLIC]: createEmptyAnswers(data.subjectGroups.PUBLIC),
-            [ExamType.CAREER]: {},
             [ExamType.CAREER_RESCUE]: createEmptyAnswers(data.subjectGroups.CAREER_RESCUE),
             [ExamType.CAREER_ACADEMIC]: createEmptyAnswers(data.subjectGroups.CAREER_ACADEMIC),
             [ExamType.CAREER_EMT]: createEmptyAnswers(data.subjectGroups.CAREER_EMT),
           });
           setDifficultyStore({
             [ExamType.PUBLIC]: createEmptyDifficulty(data.subjectGroups.PUBLIC),
-            [ExamType.CAREER]: {},
             [ExamType.CAREER_RESCUE]: createEmptyDifficulty(data.subjectGroups.CAREER_RESCUE),
             [ExamType.CAREER_ACADEMIC]: createEmptyDifficulty(data.subjectGroups.CAREER_ACADEMIC),
             [ExamType.CAREER_EMT]: createEmptyDifficulty(data.subjectGroups.CAREER_EMT),
@@ -757,7 +764,7 @@ export default function ExamInputPage({
               id="examType"
               className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={examType}
-              onChange={(event) => setExamType(event.target.value as ExamType)}
+              onChange={(event) => setExamType(event.target.value as FireExamType)}
             >
               <option value={ExamType.PUBLIC}>공채</option>
               {careerExamEnabled ? <option value={ExamType.CAREER_RESCUE}>구조 경채</option> : null}
@@ -792,7 +799,11 @@ export default function ExamInputPage({
 
           <div className="space-y-2">
             <Label htmlFor="examCategory">시험구분</Label>
-            <Input id="examCategory" value="소방 1차" readOnly />
+            <Input
+              id="examCategory"
+              value={`${meta.activeExam.year}년 ${meta.activeExam.round}차 소방`}
+              readOnly
+            />
           </div>
 
           <div className="space-y-2">

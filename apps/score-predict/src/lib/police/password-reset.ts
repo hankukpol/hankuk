@@ -8,7 +8,6 @@ import { isMailerConfigured, sendPasswordResetCodeEmail } from "@/lib/mailer";
 import { createPasswordResetCode, hashSecret } from "@/lib/police/password-recovery";
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/request-ip";
-import { syncScorePredictSharedPassword } from "@/lib/shared-auth";
 import {
   validatePasswordResetRequestInput,
   validateResetPasswordInput,
@@ -225,23 +224,6 @@ export async function confirmPasswordReset(
       }),
     ]);
   });
-
-  try {
-    await syncScorePredictSharedPassword({
-      tenantType: "police",
-      identity: {
-        legacyUserId: user.id,
-        name: user.name,
-        email: user.email,
-        loginIdentifier: user.phone,
-        contactPhone: user.contactPhone,
-        role: user.role,
-      },
-      password,
-    });
-  } catch (error) {
-    console.error("[password-reset] Failed to sync police shared auth password.", error);
-  }
 
   await resetPersistentFixedWindowRateLimit({
     namespace: "password-reset-confirm-account",

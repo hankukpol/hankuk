@@ -1,6 +1,8 @@
-import { BonusType, ExamType, Gender, Prisma } from "@prisma/client";
+import { BonusType, ExamType, Gender, Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getPassMultiple, getRecruitCount, maskKoreanName } from "@/lib/prediction";
+import { getPassMultiple, getRecruitCount, maskKoreanName } from "@/lib/fire/prediction";
+
+type FinalPredictionDb = PrismaClient | Prisma.TransactionClient;
 
 // 직렬별 필기 만점
 const WRITTEN_MAX_BY_EXAM_TYPE: Partial<Record<ExamType, number>> = {
@@ -115,8 +117,8 @@ export async function calculateKnownFinalRank(params: {
   examType: ExamType;
   gender: Gender | null;
   submissionId: number;
-}): Promise<{ finalRank: number | null; totalParticipants: number }> {
-  const quota = await prisma.examRegionQuota.findUnique({
+}, db: FinalPredictionDb = prisma): Promise<{ finalRank: number | null; totalParticipants: number }> {
+  const quota = await db.examRegionQuota.findUnique({
     where: {
       examId_regionId: {
         examId: params.examId,
@@ -134,7 +136,7 @@ export async function calculateKnownFinalRank(params: {
     quota?.recruitAcademicCombined ?? 0
   );
 
-  const rows = await prisma.finalPrediction.findMany({
+  const rows = await db.finalPrediction.findMany({
     where: {
       finalScore: { not: null },
       submission: {
@@ -251,9 +253,9 @@ export async function calculateFinalRankingDetails(params: {
   examType: ExamType;
   gender: Gender | null;
   submissionId: number;
-}): Promise<FinalRankingDetails | null> {
+}, db: FinalPredictionDb = prisma): Promise<FinalRankingDetails | null> {
   // 1. ExamRegionQuota 조회 (모집인원·지역명)
-  const quota = await prisma.examRegionQuota.findUnique({
+  const quota = await db.examRegionQuota.findUnique({
     where: {
       examId_regionId: {
         examId: params.examId,
@@ -275,7 +277,7 @@ export async function calculateFinalRankingDetails(params: {
   );
 
   // 2. 동일 모집단 FinalPrediction 조회 (사용자 이름 포함)
-  const rows = await prisma.finalPrediction.findMany({
+  const rows = await db.finalPrediction.findMany({
     where: {
       finalScore: { not: null },
       submission: {

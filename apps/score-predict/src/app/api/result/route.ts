@@ -1,25 +1,39 @@
 import { ExamType, Gender, Prisma, Role, SubmissionScoringStatus } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { getCorrectRateRows } from "@/lib/correct-rate";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import * as fireCorrectRate from "@/lib/fire/correct-rate";
+import * as policeCorrectRate from "@/lib/police/correct-rate";
 import { parsePositiveInt } from "@/lib/exam-utils";
-import { SUBJECT_CUTOFF_RATE } from "@/lib/policy";
+import * as firePolicy from "@/lib/fire/policy";
+import * as policePolicy from "@/lib/police/policy";
+import { getFireRecruitCount } from "@/lib/fire/prediction-policy";
+import {
+  finalizeFireWrittenBonus,
+  resolveFireWrittenBonus,
+} from "@/lib/fire/written-bonus";
+import {
+  getPoliceApplicantCount,
+  getPoliceRecruitCount,
+} from "@/lib/police/prediction-policy";
+import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
+import {
+  getTenantSubjectOrder,
+  isExamTypeForTenant,
+  TENANT_EXAM_TYPES,
+} from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
+import {
+  isActiveExamRouteError,
+  requireSoleActiveExam,
+} from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const MOCK_EXAM_NUMBER_PREFIX = "MOCK-";
 const PREVIEW_PRIMARY_EXAM_TYPE = ExamType.PUBLIC;
 const PREVIEW_PRIMARY_GENDER = Gender.MALE;
-
-const SUBJECT_ORDER: Partial<Record<ExamType, string[]>> = {
-  [ExamType.PUBLIC]: ["소방학개론", "소방관계법규", "행정법총론"],
-  [ExamType.CAREER_RESCUE]: ["소방학개론", "소방관계법규"],
-  [ExamType.CAREER_ACADEMIC]: ["소방학개론", "소방관계법규"],
-  [ExamType.CAREER_EMT]: ["소방학개론", "응급처치학개론"],
-};
 
 type CountRow = {
   totalCount: bigint | number | null;
@@ -111,11 +125,16 @@ function getPopulationConditionSql(submissionHasCutoff: boolean): Prisma.Sql {
 }
 
 function getGenderConditionSql(params: {
+  tenantType: TenantType;
   examType: ExamType;
   gender: "MALE" | "FEMALE";
   recruitAcademicCombined: number;
 }): Prisma.Sql {
-  const { examType, gender, recruitAcademicCombined } = params;
+  const { tenantType, examType, gender, recruitAcademicCombined } = params;
+
+  if (tenantType === "police") {
+    return Prisma.empty;
+  }
 
   if (examType === ExamType.CAREER_RESCUE) {
     return Prisma.sql`AND s."gender"::text = ${Gender.MALE}`;
@@ -134,10 +153,11 @@ function getGenderConditionSql(params: {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   const userId = Number(session.user.id);
   const isAdmin = ((session.user.role as Role | undefined) ?? Role.USER) === Role.ADMIN;
@@ -147,18 +167,53 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const submissionId = parsePositiveInt(searchParams.get("submissionId"));
+  const requestedExamId = parsePositiveInt(searchParams.get("examId"));
   const allowMissing = searchParams.get("optional") === "1";
   if (searchParams.get("submissionId") && !submissionId) {
     return NextResponse.json({ error: "submissionId가 올바르지 않습니다." }, { status: 400 });
+  }
+  if (searchParams.get("examId") && !requestedExamId) {
+    return NextResponse.json({ error: "examId가 올바르지 않습니다." }, { status: 400 });
+  }
+
+  let activeExamId: number | null = null;
+  if (!submissionId) {
+    try {
+      const activeExam = await requireSoleActiveExam({
+        db: prisma,
+        tenantType,
+        context: "api/result/default-read",
+      });
+      activeExamId = activeExam.id;
+      if (requestedExamId && requestedExamId !== activeExam.id) {
+        return NextResponse.json(
+          { error: "현재 회차 결과는 활성 시험에서만 조회할 수 있습니다." },
+          { status: 409 }
+        );
+      }
+    } catch (error) {
+      if (isActiveExamRouteError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status: error.status }
+        );
+      }
+      throw error;
+    }
   }
 
   // 1차: submissionId 지정 시 해당 제출, 아니면 본인 제출 조회
   const submissionWhere: Prisma.SubmissionWhereInput = submissionId
     ? {
         id: submissionId,
+        examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
         ...(isAdmin ? {} : { userId }),
       }
-    : { userId };
+    : {
+        userId,
+        examId: activeExamId ?? undefined,
+        examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
+      };
 
   const submissionDetailSelect = {
     id: true,
@@ -229,11 +284,7 @@ export async function GET(request: NextRequest) {
 
   // 2차: 관리자이고 본인 제출이 없으면, 활성 시험의 아무 제출로 대시보드 미리보기
   if (!submission && !submissionId && isAdmin) {
-    const activeExam = await prisma.exam.findFirst({
-      where: { isActive: true },
-      orderBy: [{ examDate: "desc" }, { id: "desc" }],
-      select: { id: true },
-    });
+    const activeExam = activeExamId ? { id: activeExamId } : null;
 
     const findMockPreviewSubmission = async (params: {
       examId?: number;
@@ -243,6 +294,7 @@ export async function GET(request: NextRequest) {
       prisma.submission.findFirst({
         where: {
           examNumber: { startsWith: MOCK_EXAM_NUMBER_PREFIX },
+          examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
           isSuspicious: false,
           ...(params.examId ? { examId: params.examId } : {}),
           ...(params.preferPrimaryProfile
@@ -287,7 +339,10 @@ export async function GET(request: NextRequest) {
 
     if (!submission && activeExam) {
       submission = await prisma.submission.findFirst({
-        where: { examId: activeExam.id },
+        where: {
+          examId: activeExam.id,
+          examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: submissionDetailSelect,
       });
@@ -303,6 +358,10 @@ export async function GET(request: NextRequest) {
 
   if (!submission) {
     return NextResponse.json({ error: "조회할 성적 데이터가 없습니다." }, { status: 404 });
+  }
+
+  if (!isExamTypeForTenant(tenantType, submission.examType)) {
+    return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
   }
 
   const settings = await getSiteSettingsUncached();
@@ -385,7 +444,9 @@ export async function GET(request: NextRequest) {
     where: { examId: submission.examId },
     select: { subjectId: true, questionNumber: true, correctAnswer: true },
   });
-  const correctRateRows = await getCorrectRateRows(submission.examId, submission.examType);
+  const correctRateRows = await (tenantType === "police"
+    ? policeCorrectRate.getCorrectRateRows
+    : fireCorrectRate.getCorrectRateRows)(submission.examId, submission.examType);
   const correctRateByKey = new Map(
     correctRateRows.map((row) => [
       toAnswerKey(row.subjectId, row.questionNumber),
@@ -408,10 +469,41 @@ export async function GET(request: NextRequest) {
       },
     },
     select: {
+      recruitCount: true,
+      recruitCountCareer: true,
+      applicantCount: true,
+      applicantCountCareer: true,
+      recruitPublicMale: true,
+      recruitPublicFemale: true,
+      recruitRescue: true,
+      recruitAcademicMale: true,
+      recruitAcademicFemale: true,
       recruitAcademicCombined: true,
+      recruitEmtMale: true,
+      recruitEmtFemale: true,
     },
   });
+  const policeBonusApplication = tenantType === "police" && quota
+    ? resolvePoliceWrittenBonus({
+        bonusType: submission.bonusType,
+        declaredRate: Number(submission.bonusRate),
+        recruitCount: getPoliceRecruitCount(quota, submission.examType),
+        applicantCount: getPoliceApplicantCount(quota, submission.examType),
+        hasCutoff: submissionHasCutoff,
+      })
+    : null;
+  const fireBonusEligibility = tenantType === "fire" && quota
+    ? resolveFireWrittenBonus({
+        bonusType: submission.bonusType,
+        declaredRate: Number(submission.bonusRate),
+        recruitCount: getFireRecruitCount(quota, submission.examType, submission.gender),
+      })
+    : null;
+  const effectiveBonusRate = policeBonusApplication?.effectiveRate
+    ?? fireBonusEligibility?.effectiveRate
+    ?? Number(submission.bonusRate);
   const genderConditionSql = getGenderConditionSql({
+    tenantType,
     examType: submission.examType,
     gender: submission.gender,
     recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
@@ -441,7 +533,7 @@ export async function GET(request: NextRequest) {
   const totalTopPercent = calculateTopPercentByHigher(totalHigherCount, totalParticipants);
   const totalPercentile = calculatePercentileByLower(totalLowerCount, totalParticipants);
 
-  const subjectOrder = SUBJECT_ORDER[submission.examType] ?? [];
+  const subjectOrder = getTenantSubjectOrder(tenantType, submission.examType);
   const orderedSubjectScores = [...submission.subjectScores].sort((a, b) => {
     const aIndex = subjectOrder.indexOf(a.subject.name);
     const bIndex = subjectOrder.indexOf(b.subject.name);
@@ -583,7 +675,11 @@ export async function GET(request: NextRequest) {
     const rawScore = Number(mySubjectScore.rawScore);
     const maxScore = Number(mySubjectScore.subject.maxScore);
     const pointPerQuestion = Number(mySubjectScore.subject.pointPerQuestion);
-    const bonusScore = mySubjectScore.isFailed ? 0 : roundNumber(maxScore * Number(submission.bonusRate));
+    const bonusScore = tenantType === "police"
+      ? roundNumber(maxScore * effectiveBonusRate)
+      : mySubjectScore.isFailed
+        ? 0
+        : roundNumber(maxScore * effectiveBonusRate);
     const finalScore = roundNumber(rawScore + bonusScore);
 
     const stats = subjectStatsMap.get(mySubjectScore.subjectId);
@@ -622,7 +718,12 @@ export async function GET(request: NextRequest) {
       bonusScore,
       finalScore,
       isCutoff: mySubjectScore.isFailed,
-      cutoffScore: roundNumber(maxScore * SUBJECT_CUTOFF_RATE),
+      cutoffScore: roundNumber(
+        maxScore *
+          (tenantType === "police"
+            ? policePolicy.SUBJECT_CUTOFF_RATE
+            : firePolicy.SUBJECT_CUTOFF_RATE)
+      ),
       rank: calculateRankByHigher(subjectHigher),
       topPercent: calculateTopPercentByHigher(subjectHigher, subjectParticipants),
       percentile: calculatePercentileByLower(subjectLower, subjectParticipants),
@@ -631,6 +732,13 @@ export async function GET(request: NextRequest) {
       answers: userAnswers,
     };
   });
+
+  const calculatedBonusScore = roundNumber(
+    scores.reduce((sum, score) => sum + score.bonusScore, 0)
+  );
+  const bonusApplication = fireBonusEligibility
+    ? finalizeFireWrittenBonus(fireBonusEligibility, calculatedBonusScore)
+    : policeBonusApplication;
 
   const subjectCorrectRateSummaries = scores.map((score) => {
     const rows = correctRateRows.filter((row) => row.subjectId === score.subjectId);
@@ -780,6 +888,7 @@ export async function GET(request: NextRequest) {
     subjectCorrectRateSummaries,
     analysisSummary,
     participantStatus,
+    bonusApplication,
     statistics: {
       totalParticipants,
       totalRank,
@@ -788,7 +897,7 @@ export async function GET(request: NextRequest) {
       hasCutoff,
       rankingBasis,
       cutoffSubjects,
-      bonusScore: roundNumber(Number(submission.finalScore) - Number(submission.totalScore)),
+      bonusScore: calculatedBonusScore,
     },
   });
 }

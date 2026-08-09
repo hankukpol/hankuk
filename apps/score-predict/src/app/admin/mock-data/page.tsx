@@ -8,6 +8,7 @@ import useConfirmModal from "@/hooks/useConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 const ADMIN_EXAM_API = "/api/admin/exam?feature=mockData";
 const MOCK_DATA_API = "/api/admin/mock-data";
@@ -57,6 +58,7 @@ interface MockActionSummary {
 }
 
 export default function AdminMockDataPage() {
+  const tenant = useTenantConfig();
   const { enabled: mockDataEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("mockData");
   const [exams, setExams] = useState<ExamItem[]>([]);
@@ -143,7 +145,9 @@ export default function AdminMockDataPage() {
     const ok = await confirm({
       title: "목업 데이터 생성",
       description: `선택 시험에 목업 데이터를 생성하시겠습니까?\n\n대상: ${selectedExamLabel}\n공채/지역: ${publicPerRegion}명${
-        careerExamEnabled ? `, 경채/지역: ${careerPerRegion}명` : ""
+        careerExamEnabled
+          ? `, ${tenant.type === "police" ? "경행경채" : "경채"}/지역: ${careerPerRegion}명`
+          : ""
       }`,
     });
     if (!ok) return;
@@ -335,7 +339,9 @@ export default function AdminMockDataPage() {
           </div>
           {careerExamEnabled ? (
             <div className="space-y-2">
-              <Label htmlFor="mock-career-per-region">경채 지역당 생성 수</Label>
+              <Label htmlFor="mock-career-per-region">
+                {tenant.type === "police" ? "경행경채" : "경채"} 지역당 생성 수
+              </Label>
               <Input
                 id="mock-career-per-region"
                 type="number"
@@ -348,14 +354,16 @@ export default function AdminMockDataPage() {
           ) : null}
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={includeEmploymentBonus}
-            onChange={(event) => setIncludeEmploymentBonus(event.target.checked)}
-          />
-          취업지원/의사상자 가산점 포함 생성 (기본 해제)
-        </label>
+        {tenant.features.certificateBonus ? (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeEmploymentBonus}
+              onChange={(event) => setIncludeEmploymentBonus(event.target.checked)}
+            />
+            취업지원/의사상자 가산점 포함 생성 (기본 해제)
+          </label>
+        ) : null}
 
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input

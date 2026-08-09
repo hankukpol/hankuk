@@ -1,0 +1,29 @@
+name: score-predict-local
+
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/score-predict/Dockerfile.local
+    env_file:
+      - .env.docker.local
+    environment:
+      NODE_ENV: development
+      NEXTAUTH_URL: http://localhost:3200
+      SCORE_PREDICT_POLICE_ORIGIN: http://police.localhost:3200
+      SCORE_PREDICT_FIRE_ORIGIN: http://fire.localhost:3200
+    ports:
+      - "3200:3200"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3200/police/login').then(r=>{if(!r.ok&&r.status!==307&&r.status!==308)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped

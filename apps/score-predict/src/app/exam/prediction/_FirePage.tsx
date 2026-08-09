@@ -40,15 +40,22 @@ interface PredictionPageResponse {
     oneMultipleTieCount: number | null;
     isOneMultipleCutConfirmed: boolean;
     passMultiple: number;
+    sureMultiple: number;
     likelyMultiple: number;
+    sureMaxRank: number;
+    likelyMaxRank: number;
     passCount: number;
     passLineScore: number | null;
+    modelVersion: string;
+    sampleStage: "INITIAL" | "COLLECTING" | "FORMING" | "RELIABLE" | "ESTIMATED";
+    sampleCoverageRate: number;
+    isReliableSample: boolean;
     predictionGrade: "확실권" | "유력권" | "가능권" | "도전권";
     disclaimer: string;
   };
   pyramid: {
     levels: Array<{
-      key: "sure" | "likely" | "possible" | "challenge" | "belowChallenge";
+      key: "sure" | "likely" | "possible" | "challenge";
       label: string;
       count: number;
       minScore: number | null;
@@ -62,7 +69,6 @@ interface PredictionPageResponse {
       likely: number;
       possible: number;
       challenge: number;
-      belowChallenge: number;
     };
   };
   competitors: {
@@ -147,11 +153,6 @@ interface ExamPredictionPageProps {
 /** 스마트 소수점 포맷: 정수면 소수점 제거, 아니면 1자리 유지 */
 function formatScoreSmart(value: number): string {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
-}
-
-function getParticipationRate(participants: number, estimated: number): number {
-  if (estimated <= 0) return 0;
-  return (participants / estimated) * 100;
 }
 
 /** 등급별 비율 바 색상 */
@@ -476,10 +477,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   }
 
   const { summary, competitors } = prediction;
-  const participationRate = getParticipationRate(
-    summary.totalParticipants,
-    summary.estimatedApplicants
-  );
+  const participationRate = summary.sampleCoverageRate;
 
   return (
     <div className="space-y-6">
@@ -632,6 +630,10 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
           실제 시험 결과와 차이가 있을 수 있습니다.
           참여율({participationRate.toFixed(1)}%)이 낮을수록 예측 정확도가 떨어지며,
           참여자가 늘어남에 따라 순위 및 합격등급이 변동될 수 있습니다.
+        </p>
+        <p>
+          소방 예측은 {summary.examTypeLabel} 모집단과 소방 선발배수만 사용하며,
+          경찰 고정 2배수 계산을 사용하지 않습니다.
         </p>
       </section>
 

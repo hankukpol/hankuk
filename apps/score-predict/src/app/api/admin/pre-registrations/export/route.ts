@@ -1,10 +1,15 @@
 import { ExamType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { buildAdminPreRegistrationWhere, parseAdminExamType } from "@/lib/admin-pre-registrations";
+import {
+  buildAdminPreRegistrationWhere,
+  parseAdminExamType,
+} from "@/lib/police/admin-pre-registrations";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import { prisma } from "@/lib/prisma";
+import { isActiveExamRouteError, requireSoleActiveExam } from "@/lib/active-exam";
+import { isSmsMarketingConsentActive } from "@/lib/police/sms-marketing-consent";
 
 export const runtime = "nodejs";
 
@@ -54,6 +59,9 @@ export async function GET(request: NextRequest) {
   if ("error" in guard) {
     return guard.error;
   }
+  if (guard.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
   const featureError = await requireAdminSiteFeature("preRegistrations");
   if (featureError) {
     return featureError;
@@ -61,22 +69,37 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const examId = parsePositiveInt(searchParams.get("examId"));
+    const requestedExamId = parsePositiveInt(searchParams.get("examId"));
+    const examId = requestedExamId ?? (await requireSoleActiveExam({
+      db: prisma,
+      tenantType: "police",
+      context: "api/admin/pre-registrations/export GET",
+    })).id;
     const regionId = parsePositiveInt(searchParams.get("regionId"));
     const examType = parseAdminExamType(searchParams.get("examType"));
     const search = searchParams.get("search")?.trim() ?? "";
+    const scope = searchParams.get("scope") ?? "all";
+
+    if (scope !== "all" && scope !== "marketing-consented") {
+      return NextResponse.json({ error: "scope 값이 올바르지 않습니다." }, { status: 400 });
+    }
 
     if (searchParams.get("examType") && !examType) {
       return NextResponse.json({ error: "examType은 PUBLIC 또는 CAREER여야 합니다." }, { status: 400 });
     }
 
     const rows = await prisma.preRegistration.findMany({
-      where: buildAdminPreRegistrationWhere({
-        examId,
-        regionId,
-        examType,
-        search,
-      }),
+      where: {
+        ...buildAdminPreRegistrationWhere({ examId, regionId, examType, search }),
+        ...(scope === "marketing-consented"
+          ? {
+              user: {
+                smsMarketingConsentAt: { not: null },
+                smsMarketingConsentWithdrawnAt: null,
+              },
+            }
+          : {}),
+      },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       select: {
         examType: true,
@@ -89,6 +112,9 @@ export async function GET(request: NextRequest) {
             name: true,
             phone: true,
             contactPhone: true,
+            smsMarketingConsentAt: true,
+            smsMarketingConsentVersion: true,
+            smsMarketingConsentWithdrawnAt: true,
           },
         },
         exam: {
@@ -110,6 +136,9 @@ export async function GET(request: NextRequest) {
       "이름",
       "아이디",
       "연락처",
+      "홍보 문자 동의",
+      "동의 일시",
+      "동의 문구 버전",
       "시험",
       "지역",
       "채용유형",
@@ -124,6 +153,9 @@ export async function GET(request: NextRequest) {
         escapeCsvField(row.user.name),
         escapeCsvField(row.user.phone),
         escapeCsvField(row.user.contactPhone),
+        escapeCsvField(isSmsMarketingConsentActive(row.user) ? "동의" : "미동의/철회"),
+        escapeCsvField(row.user.smsMarketingConsentAt ? formatDate(row.user.smsMarketingConsentAt) : ""),
+        escapeCsvField(row.user.smsMarketingConsentVersion ?? ""),
         escapeCsvField(`${row.exam.year}-${row.exam.round} ${row.exam.name}`),
         escapeCsvField(row.region.name),
         escapeCsvField(formatExamType(row.examType)),
@@ -135,7 +167,7 @@ export async function GET(request: NextRequest) {
     );
 
     const csv = "\uFEFF" + [header, ...lines].join("\n");
-    const filename = `사전등록목록_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `${scope === "marketing-consented" ? "문자수신동의자" : "사전등록전체"}_${new Date().toISOString().slice(0, 10)}.csv`;
 
     return new NextResponse(csv, {
       status: 200,
@@ -145,6 +177,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("사전등록 CSV 내보내기 오류:", error);
     return NextResponse.json({ error: "사전등록 CSV 내보내기에 실패했습니다." }, { status: 500 });
   }

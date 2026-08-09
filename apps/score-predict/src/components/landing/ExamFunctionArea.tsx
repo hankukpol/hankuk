@@ -64,21 +64,21 @@ function isAdminLocked(tabKey: TabKey, tabEnabled: TabEnabledSettings): boolean 
 
 function tabClassName(active: boolean, disabled: boolean, locked: boolean) {
   const base =
-    "relative inline-flex w-full min-w-0 items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition sm:w-auto sm:px-6 sm:py-4 sm:text-base";
+    "relative inline-flex w-full min-w-0 items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition xl:w-auto xl:px-6 xl:py-4 xl:text-base";
 
   if (disabled) {
     return `${base} cursor-not-allowed text-slate-400`;
   }
 
   if (locked && !active) {
-    return `${base} text-slate-400 hover:text-slate-500 sm:bg-transparent sm:text-slate-400 sm:hover:text-slate-500`;
+    return `${base} text-slate-400 hover:text-slate-500 xl:bg-transparent xl:text-slate-400 xl:hover:text-slate-500`;
   }
 
   if (active) {
-    return `${base} bg-slate-100 text-slate-900 sm:bg-transparent sm:after:absolute sm:after:bottom-0 sm:after:left-0 sm:after:h-[2px] sm:after:w-full sm:after:bg-slate-900`;
+    return `${base} bg-service-50 text-service-700 xl:bg-transparent xl:after:absolute xl:after:bottom-0 xl:after:left-0 xl:after:h-[2px] xl:after:w-full xl:after:bg-service-700`;
   }
 
-  return `${base} text-slate-500 hover:bg-slate-100 hover:text-slate-700 sm:bg-transparent sm:text-slate-400 sm:hover:bg-transparent sm:hover:text-slate-600`;
+  return `${base} text-slate-500 hover:bg-service-50 hover:text-service-700 xl:bg-transparent xl:text-slate-400 xl:hover:bg-transparent xl:hover:text-service-600`;
 }
 
 const LOCK_ICON = (
@@ -362,7 +362,7 @@ export default function ExamFunctionArea({
             <div className="flex items-center justify-center gap-3">
               <Link
                 href={withTenantPrefix("/login", tenant.type)}
-                className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="rounded-lg bg-service-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-service-800"
               >
                 로그인
               </Link>
@@ -384,7 +384,7 @@ export default function ExamFunctionArea({
   return (
     <section id="exam-functions" className="border border-slate-200 bg-slate-50 p-0">
       <div className="border-b border-slate-200 bg-white px-1 sm:px-3">
-        <div className="grid grid-cols-3 gap-1 py-1 sm:flex sm:min-w-max sm:items-center sm:gap-0 sm:py-0">
+        <div className="grid grid-cols-3 gap-1 py-1 xl:flex xl:min-w-max xl:items-center xl:gap-0 xl:py-0">
           {visibleTabs.map((tab) => {
             const locked = isAdminLocked(tab.key, mergedTabEnabled);
             const disabled = isAuthenticated && !locked && tab.requireSubmission && !canAccessRestrictedTabs;

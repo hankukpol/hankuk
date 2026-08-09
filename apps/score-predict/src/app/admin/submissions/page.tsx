@@ -7,8 +7,9 @@ import useConfirmModal from "@/hooks/useConfirmModal";
 import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
-type ExamTypeValue = "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+type ExamTypeValue = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
 
 interface ExamOption {
   id: number;
@@ -119,6 +120,7 @@ function formatDateTimeText(dateText: string): string {
 
 function formatExamType(type: ExamTypeValue): string {
   if (type === "PUBLIC") return "공채";
+  if (type === "CAREER") return "경행경채";
   if (type === "CAREER_RESCUE") return "구조 경채";
   if (type === "CAREER_ACADEMIC") return "학과 경채";
   if (type === "CAREER_EMT") return "구급 경채";
@@ -126,6 +128,7 @@ function formatExamType(type: ExamTypeValue): string {
 }
 
 export default function AdminSubmissionsPage() {
+  const tenant = useTenantConfig();
   const { enabled: submissionsEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("submissions");
   const [examOptions, setExamOptions] = useState<ExamOption[]>([]);
@@ -194,12 +197,7 @@ export default function AdminSubmissionsPage() {
   }, []);
 
   useEffect(() => {
-    if (
-      !careerExamEnabled &&
-      (selectedExamType === "CAREER_RESCUE" ||
-        selectedExamType === "CAREER_ACADEMIC" ||
-        selectedExamType === "CAREER_EMT")
-    ) {
+    if (!careerExamEnabled && selectedExamType !== "" && selectedExamType !== "PUBLIC") {
       setSelectedExamType("");
     }
   }, [careerExamEnabled, selectedExamType]);
@@ -442,11 +440,15 @@ export default function AdminSubmissionsPage() {
           <option value="">전체 유형</option>
           <option value="PUBLIC">공채</option>
           {careerExamEnabled ? (
-            <>
-              <option value="CAREER_RESCUE">구조 경채</option>
-              <option value="CAREER_ACADEMIC">학과 경채</option>
-              <option value="CAREER_EMT">구급 경채</option>
-            </>
+            tenant.type === "police" ? (
+              <option value="CAREER">경행경채</option>
+            ) : (
+              <>
+                <option value="CAREER_RESCUE">구조 경채</option>
+                <option value="CAREER_ACADEMIC">학과 경채</option>
+                <option value="CAREER_EMT">구급 경채</option>
+              </>
+            )
           ) : null}
         </select>
 

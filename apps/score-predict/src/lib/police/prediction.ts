@@ -1,23 +1,28 @@
 import { ExamType, Prisma, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-
-const SMALL_RECRUIT_PASS_COUNTS: Record<number, number> = {
-  1: 3,
-  2: 6,
-  3: 8,
-  4: 9,
-  5: 10,
-};
+import {
+  getPoliceApplicantCount,
+  getPolicePassMultiple,
+  getPoliceRecruitCount,
+} from "@/lib/police/prediction-policy";
+import {
+  buildPolicePredictionBands,
+  classifyPolicePredictionGrade,
+  resolvePoliceGradeAvailability,
+  type PoliceGradeUnavailableReason,
+  type PoliceSampleStage,
+} from "@/lib/police/prediction-model";
+import { estimateApplicants } from "@/lib/police/policy";
+import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { requireSoleActiveExam } from "@/lib/active-exam";
 
 const SCORE_KEY_SCALE = 1000000;
-const LIKELY_MULTIPLE_STANDARD = 1.2;
-
 export const PREDICTION_DISCLAIMER =
-  "본 서비스는 참여자 데이터 기반 예측이며, 실제 합격 결과와 다를 수 있습니다.";
+  "본 서비스는 공개된 표본 해석 원칙을 참고한 자체 예측이며, 실제 합격 결과와 다를 수 있습니다.";
 
 export type PredictionGrade = "확실권" | "유력권" | "가능권" | "도전권";
 
-export type PyramidLevelKey = "sure" | "likely" | "possible" | "challenge" | "belowChallenge";
+export type PyramidLevelKey = "sure" | "likely" | "possible" | "challenge";
 
 export interface PredictionCompetitor {
   submissionId: number;
@@ -57,17 +62,27 @@ export interface PredictionSummary {
   totalParticipants: number;
   myScore: number;
   myRank: number;
-  myMultiple: number;
+  myMultiple: number | null;
+  sampleTopPercent: number;
   oneMultipleBaseRank: number;
   oneMultipleActualRank: number | null;
   oneMultipleCutScore: number | null;
   oneMultipleTieCount: number | null;
   isOneMultipleCutConfirmed: boolean;
   passMultiple: number;
-  likelyMultiple: number;
-  passCount: number;
+  sureMultiple: number | null;
+  likelyMultiple: number | null;
+  sureMaxRank: number | null;
+  likelyMaxRank: number | null;
+  passCount: number | null;
   passLineScore: number | null;
-  predictionGrade: PredictionGrade;
+  modelVersion: string;
+  sampleStage: PoliceSampleStage;
+  sampleCoverageRate: number;
+  isReliableSample: boolean;
+  predictionGrade: PredictionGrade | null;
+  gradeAvailability: "AVAILABLE" | "UNAVAILABLE";
+  unavailableReasons: PoliceGradeUnavailableReason[];
   disclaimer: string;
 }
 
@@ -171,39 +186,29 @@ export function getCompetitorDisplayName(identity: CompetitorIdentitySource): st
   return maskKoreanName(identity.name);
 }
 
-export function getPassMultiple(recruitCount: number): number {
-  if (recruitCount >= 150) return 1.5;
-  if (recruitCount >= 100) return 1.6;
-  if (recruitCount >= 50) return 1.7;
-  if (recruitCount >= 6) return 1.8;
-
-  const passCount = SMALL_RECRUIT_PASS_COUNTS[recruitCount];
-  if (!passCount) {
+export function getPassMultiple(recruitCount: number, configuredMultiple?: number | null): number {
+  const multiple = typeof configuredMultiple === "number" && Number.isFinite(configuredMultiple)
+    && configuredMultiple > 0
+    ? configuredMultiple
+    : getPolicePassMultiple(recruitCount);
+  if (multiple === null) {
     throw new PredictionError("유효하지 않은 선발인원입니다.", 500);
   }
-
-  return passCount / recruitCount;
-}
-
-export function getLikelyMultiple(passMultiple: number): number {
-  return Math.min(LIKELY_MULTIPLE_STANDARD, passMultiple);
+  return multiple;
 }
 
 export function getRecruitCount(
   quota: { recruitCount: number; recruitCountCareer: number },
   examType: ExamType
 ): number {
-  if (examType === ExamType.CAREER) {
-    return quota.recruitCountCareer;
-  }
-  return quota.recruitCount;
+  return getPoliceRecruitCount(quota, examType);
 }
 
 function getRegionApplicantCount(
   quota: { applicantCount: number | null; applicantCountCareer: number | null },
   examType: ExamType
 ): { applicantCount: number | null; isExact: boolean } {
-  const raw = examType === ExamType.PUBLIC ? quota.applicantCount : quota.applicantCountCareer;
+  const raw = getPoliceApplicantCount(quota, examType);
   if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
     return {
       applicantCount: Math.floor(raw),
@@ -215,19 +220,6 @@ function getRegionApplicantCount(
     applicantCount: null,
     isExact: false,
   };
-}
-
-function classifyGrade(myMultiple: number, passMultiple: number): PredictionGrade {
-  const likelyMultiple = getLikelyMultiple(passMultiple);
-
-  if (myMultiple <= 1) return "확실권";
-  if (myMultiple <= likelyMultiple) return "유력권";
-  if (myMultiple <= passMultiple) return "가능권";
-  return "도전권";
-}
-
-function getMaxRankByMultiple(recruitCount: number, multiple: number): number {
-  return Math.max(1, Math.floor(recruitCount * multiple));
 }
 
 function getMinScoreWithinRank(scoreBands: ScoreBand[], maxRank: number): number | null {
@@ -378,6 +370,8 @@ export async function calculatePrediction(
         name: true,
         year: true,
         round: true,
+        policeWrittenPassMultiple: true,
+        policePredictionModelVersion: true,
       },
     },
     region: {
@@ -400,13 +394,21 @@ export async function calculatePrediction(
     },
   } satisfies Prisma.SubmissionSelect;
 
+  const activeExam = options.submissionId
+    ? null
+    : await requireSoleActiveExam({
+        db: prisma,
+        tenantType: "police",
+        context: "police/prediction/default-read",
+      });
+
   // 1차: submissionId 지정 시 해당 제출 조회, 아니면 본인 제출 조회
   const submissionWhere: Prisma.SubmissionWhereInput = options.submissionId
     ? {
         id: options.submissionId,
         ...(isAdmin ? {} : { userId }),
       }
-    : { userId };
+    : { userId, examId: activeExam!.id };
 
   let submission = await prisma.submission.findFirst({
     where: submissionWhere,
@@ -416,14 +418,9 @@ export async function calculatePrediction(
 
   // 2차: 관리자이고 본인 제출이 없으면, 활성 시험의 아무 비과락 제출로 대시보드 미리보기
   if (!submission && !options.submissionId && isAdmin) {
-    const activeExam = await prisma.exam.findFirst({
-      where: { isActive: true },
-      orderBy: [{ examDate: "desc" }, { id: "desc" }],
-      select: { id: true },
-    });
     submission = await prisma.submission.findFirst({
       where: {
-        ...(activeExam ? { examId: activeExam.id } : {}),
+        examId: activeExam!.id,
         subjectScores: {
           some: {},
           none: { isFailed: true },
@@ -436,6 +433,10 @@ export async function calculatePrediction(
 
   if (!submission) {
     throw new PredictionError("합격예측을 위한 제출 데이터가 없습니다.", 404);
+  }
+
+  if (submission.examType !== ExamType.PUBLIC && submission.examType !== ExamType.CAREER) {
+    throw new PredictionError("경찰 서비스의 시험유형이 아닌 제출 데이터입니다.", 409);
   }
 
   if (submission.subjectScores.some((subjectScore) => subjectScore.isFailed)) {
@@ -470,13 +471,15 @@ export async function calculatePrediction(
     throw new PredictionError("선발인원 정보가 올바르지 않습니다.", 500);
   }
 
-  const passMultiple = getPassMultiple(recruitCount);
-  const likelyMultiple = getLikelyMultiple(passMultiple);
-  const challengeMultiple = passMultiple * 1.3;
-  const passCount = Math.ceil(recruitCount * passMultiple);
-  const likelyMaxRank = getMaxRankByMultiple(recruitCount, likelyMultiple);
-  const challengeMaxRank = getMaxRankByMultiple(recruitCount, challengeMultiple);
+  const passMultiple = getPassMultiple(
+    recruitCount,
+    submission.exam.policeWrittenPassMultiple
+  );
   const applicantCountInfo = getRegionApplicantCount(quota, submission.examType);
+  const estimatedApplicants = estimateApplicants({
+    applicantCount: applicantCountInfo.applicantCount,
+    recruitCount,
+  });
 
   const populationWhere = buildPopulationWhere(submission);
 
@@ -507,7 +510,24 @@ export async function calculatePrediction(
   if (totalParticipants < 1) {
     throw new PredictionError("합격예측을 위한 참여 데이터가 아직 없습니다.", 404);
   }
-  const isLowSampleSize = totalParticipants < Math.max(10, Math.ceil(recruitCount * 0.2));
+  const bands = buildPolicePredictionBands({
+    recruitCount,
+    participantCount: totalParticipants,
+    referenceApplicantCount: estimatedApplicants,
+    isApplicantCountExact: applicantCountInfo.isExact,
+    passMultiple,
+  });
+  const settings = await getSiteSettingsUncached();
+  const gradeState = resolvePoliceGradeAvailability({
+    featureEnabled: Boolean(settings["site.policePredictionGradesEnabled"] ?? false),
+    participantCount: totalParticipants,
+    recruitCount,
+    applicantCount: applicantCountInfo.applicantCount,
+  });
+  const gradesAvailable = gradeState.gradeAvailability === "AVAILABLE";
+  const passCount = gradesAvailable ? bands.possibleMaxRank : null;
+  const likelyMaxRank = gradesAvailable ? bands.likelyMaxRank : null;
+  const sureMaxRank = gradesAvailable ? bands.sureMaxRank : null;
 
   const myScore = toSafeNumber(submission.finalScore);
   const myRank = rankByScore.get(toScoreKey(myScore));
@@ -516,60 +536,64 @@ export async function calculatePrediction(
   }
 
   const myMultiple = myRank / recruitCount;
-  const predictionGrade = classifyGrade(myMultiple, passMultiple);
-  const passLineScore = getMinScoreWithinRank(scoreBands, passCount);
+  const sampleTopPercent = toSafeNumber((myRank / totalParticipants) * 100);
+  const predictionGrade = gradesAvailable ? classifyPolicePredictionGrade(myRank, bands) : null;
+  const passLineScore = passCount === null ? null : getMinScoreWithinRank(scoreBands, passCount);
   const oneMultipleBand = getScoreBandAtRank(scoreBands, recruitCount) ?? getLastScoreBand(scoreBands);
   const isOneMultipleCutConfirmed = totalParticipants >= recruitCount;
   const oneMultipleActualRank = oneMultipleBand?.endRank ?? null;
   const oneMultipleCutScore = isOneMultipleCutConfirmed ? oneMultipleBand?.score ?? null : null;
   const oneMultipleTieCount = isOneMultipleCutConfirmed ? oneMultipleBand?.count ?? null : null;
 
-  const sureCount = countByRankRange(scoreBands, 0, recruitCount);
-  const likelyCount = countByRankRange(scoreBands, recruitCount, likelyMaxRank);
-  const possibleCount = countByRankRange(scoreBands, likelyMaxRank, passCount);
-  const challengeCount = countByRankRange(scoreBands, passCount, challengeMaxRank);
-  const aboveChallengeCount = countByRankRange(scoreBands, 0, challengeMaxRank);
-  const belowChallengeCount = Math.max(0, totalParticipants - aboveChallengeCount);
+  const sureCount = sureMaxRank === null ? 0 : countByRankRange(scoreBands, 0, sureMaxRank);
+  const likelyCount = sureMaxRank === null || likelyMaxRank === null
+    ? 0
+    : countByRankRange(scoreBands, sureMaxRank, likelyMaxRank);
+  const possibleCount = likelyMaxRank === null || passCount === null
+    ? 0
+    : countByRankRange(scoreBands, likelyMaxRank, passCount);
+  const challengeCount = gradesAvailable
+    ? Math.max(0, totalParticipants - sureCount - likelyCount - possibleCount)
+    : 0;
 
-  const myLevelKey: PyramidLevelKey =
-    myMultiple <= 1
+  const myLevelKey: PyramidLevelKey | null = predictionGrade === null
+    ? null
+    : predictionGrade === "확실권"
       ? "sure"
-      : myMultiple <= likelyMultiple
+      : predictionGrade === "유력권"
         ? "likely"
-        : myMultiple <= passMultiple
+        : predictionGrade === "가능권"
           ? "possible"
-          : myMultiple <= challengeMultiple
-            ? "challenge"
-            : "belowChallenge";
+          : "challenge";
 
-  const levels: PredictionLevel[] = [
+  const levels: PredictionLevel[] = gradesAvailable ? [
     toLevel(
       "sure",
       "확실권",
       sureCount,
-      getMinScoreWithinRank(scoreBands, recruitCount),
+      sureMaxRank !== null && sureMaxRank > 0 ? getMinScoreWithinRank(scoreBands, sureMaxRank) : null,
       getMaxScoreWithinRank(scoreBands, 1),
       null,
-      1,
+      bands.sureMultiple > 0 ? bands.sureMultiple : null,
       myLevelKey === "sure"
     ),
     toLevel(
       "likely",
       "유력권",
       likelyCount,
-      getMinScoreWithinRank(scoreBands, likelyMaxRank),
-      getMaxScoreWithinRank(scoreBands, recruitCount + 1),
-      1,
-      likelyMultiple,
+      likelyMaxRank !== null && likelyMaxRank > 0 ? getMinScoreWithinRank(scoreBands, likelyMaxRank) : null,
+      getMaxScoreWithinRank(scoreBands, (sureMaxRank ?? 0) + 1),
+      bands.sureMultiple > 0 ? bands.sureMultiple : null,
+      bands.likelyMultiple > 0 ? bands.likelyMultiple : null,
       myLevelKey === "likely"
     ),
     toLevel(
       "possible",
       "가능권",
       possibleCount,
-      getMinScoreWithinRank(scoreBands, passCount),
-      getMaxScoreWithinRank(scoreBands, likelyMaxRank + 1),
-      likelyMultiple,
+      passCount === null ? null : getMinScoreWithinRank(scoreBands, passCount),
+      getMaxScoreWithinRank(scoreBands, (likelyMaxRank ?? 0) + 1),
+      bands.likelyMultiple > 0 ? bands.likelyMultiple : null,
       passMultiple,
       myLevelKey === "possible"
     ),
@@ -577,23 +601,13 @@ export async function calculatePrediction(
       "challenge",
       "도전권",
       challengeCount,
-      getMinScoreWithinRank(scoreBands, challengeMaxRank),
-      getMaxScoreWithinRank(scoreBands, passCount + 1),
+      challengeCount > 0 ? getMinScoreWithinRank(scoreBands, totalParticipants) : null,
+      getMaxScoreWithinRank(scoreBands, (passCount ?? 0) + 1),
       passMultiple,
-      challengeMultiple,
+      null,
       myLevelKey === "challenge"
     ),
-    toLevel(
-      "belowChallenge",
-      "도전권 이하",
-      belowChallengeCount,
-      null,
-      getMaxScoreWithinRank(scoreBands, challengeMaxRank + 1),
-      challengeMultiple,
-      null,
-      myLevelKey === "belowChallenge"
-    ),
-  ];
+  ] : [];
 
   const totalPages = Math.max(1, Math.ceil(totalParticipants / limit));
   const safePage = Math.min(page, totalPages);
@@ -635,9 +649,9 @@ export async function calculatePrediction(
     };
   });
 
-  const disclaimer = isLowSampleSize
-    ? `${PREDICTION_DISCLAIMER} 현재 참여인원이 적어 예측 신뢰도가 낮습니다.`
-    : PREDICTION_DISCLAIMER;
+  const disclaimer = gradesAvailable
+    ? `${PREDICTION_DISCLAIMER} 현재 표본 순위와 예측 구간은 추가 입력에 따라 변동될 수 있습니다.`
+    : "현재는 검증되지 않은 합격 등급을 제공하지 않습니다. 입력자 표본 안의 순위와 백분위만 확인해 주세요.";
 
   return {
     summary: {
@@ -653,22 +667,32 @@ export async function calculatePrediction(
       regionName: submission.region.name,
       recruitCount,
       applicantCount: applicantCountInfo.applicantCount,
-      estimatedApplicants: applicantCountInfo.applicantCount ?? 0,
+      estimatedApplicants,
       isApplicantCountExact: applicantCountInfo.isExact,
       totalParticipants,
       myScore,
       myRank,
-      myMultiple: toSafeNumber(myMultiple),
+      myMultiple: gradesAvailable ? toSafeNumber(myMultiple) : null,
+      sampleTopPercent,
       oneMultipleBaseRank: recruitCount,
       oneMultipleActualRank,
       oneMultipleCutScore: oneMultipleCutScore === null ? null : toSafeNumber(oneMultipleCutScore),
       oneMultipleTieCount,
       isOneMultipleCutConfirmed,
       passMultiple: toSafeNumber(passMultiple),
-      likelyMultiple: toSafeNumber(likelyMultiple),
+      sureMultiple: gradesAvailable ? bands.sureMultiple : null,
+      likelyMultiple: gradesAvailable ? bands.likelyMultiple : null,
+      sureMaxRank,
+      likelyMaxRank,
       passCount,
       passLineScore: passLineScore === null ? null : toSafeNumber(passLineScore),
+      modelVersion: submission.exam.policePredictionModelVersion ?? bands.modelVersion,
+      sampleStage: bands.sampleStage,
+      sampleCoverageRate: bands.coverageRate,
+      isReliableSample: bands.isReliableSample,
       predictionGrade,
+      gradeAvailability: gradeState.gradeAvailability,
+      unavailableReasons: gradeState.unavailableReasons,
       disclaimer,
     },
     pyramid: {
@@ -678,7 +702,6 @@ export async function calculatePrediction(
         likely: likelyCount,
         possible: possibleCount,
         challenge: challengeCount,
-        belowChallenge: belowChallengeCount,
       },
     },
     competitors: {

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
+import Link from "next/link";
+import { withTenantPrefix } from "@/lib/tenant";
 
 interface SiteSettingsResponse {
   settings?: {
@@ -47,6 +49,14 @@ export default function Footer() {
     <footer className="border-t border-slate-800 bg-black">
       <div className="mx-auto w-full max-w-6xl px-4 py-5">
         <p className="text-xs leading-relaxed text-white/70 sm:text-sm">{disclaimer}</p>
+        {tenant.type === "police" ? (
+          <Link
+            href={withTenantPrefix("/account/notifications", tenant.type)}
+            className="mt-3 inline-block text-xs font-medium text-white/80 underline underline-offset-4 hover:text-white"
+          >
+            문자 수신 설정 및 철회
+          </Link>
+        ) : null}
       </div>
     </footer>
   );

@@ -14,6 +14,17 @@ export async function POST(request: NextRequest) {
   const featureError = await requireAdminSiteFeature("openReset");
   if (featureError) return featureError;
 
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    console.error("[open-reset-blocked]", {
+      tenantType: guard.tenantType,
+      environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV,
+    });
+    return NextResponse.json(
+      { error: "운영 환경에서는 전체 운영 초기화를 실행할 수 없습니다." },
+      { status: 403 }
+    );
+  }
+
   let body: { confirmText?: unknown };
   try {
     body = (await request.json()) as { confirmText?: unknown };

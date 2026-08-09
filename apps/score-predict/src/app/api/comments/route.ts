@@ -1,12 +1,17 @@
 import type { Role } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { maskKoreanName } from "@/lib/prediction";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import { maskTenantName } from "@/lib/tenant-calculations.server";
+import type { TenantType } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
 import { getSiteSettings } from "@/lib/site-settings";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForWrite,
+  requireSoleActiveExam,
+} from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -14,6 +19,13 @@ const MAX_COMMENT_LENGTH = 500;
 const COMMENT_POST_WINDOW_MS = 60 * 1000;
 const COMMENT_POST_LIMIT_PER_USER = 5;
 const COMMENT_POST_LIMIT_PER_IP = 20;
+
+class PastCommentWriteError extends Error {
+  constructor() {
+    super("지난 회차의 댓글은 현재 운영 중에 삭제할 수 없습니다.");
+    this.name = "PastCommentWriteError";
+  }
+}
 
 interface CommentPayload {
   content?: unknown;
@@ -54,27 +66,13 @@ function parseLimit(value: string | null): number {
   return Math.min(parsed, 50);
 }
 
-async function getTargetExamId(): Promise<number> {
-  const activeExam = await prisma.exam.findFirst({
-    where: { isActive: true },
-    orderBy: [{ examDate: "desc" }, { id: "desc" }],
-    select: { id: true },
+async function getTargetExamId(tenantType: TenantType): Promise<number> {
+  const activeExam = await requireSoleActiveExam({
+    db: prisma,
+    tenantType,
+    context: "api/comments",
   });
-
-  if (activeExam) {
-    return activeExam.id;
-  }
-
-  const latestExam = await prisma.exam.findFirst({
-    orderBy: [{ examDate: "desc" }, { id: "desc" }],
-    select: { id: true },
-  });
-
-  if (!latestExam) {
-    throw new Error("시험 정보가 없습니다.");
-  }
-
-  return latestExam.id;
+  return activeExam.id;
 }
 
 function getSessionUserId(sessionUserId: string | undefined): number {
@@ -93,12 +91,13 @@ function formatComment(
     createdAt: Date;
     user: { name: string };
   },
-  currentUserId: number
+  currentUserId: number,
+  tenantType: TenantType
 ) {
   return {
     id: comment.id,
     userId: comment.userId,
-    maskedName: maskKoreanName(comment.user.name),
+    maskedName: maskTenantName(tenantType, comment.user.name),
     content: comment.content,
     createdAt: comment.createdAt.toISOString(),
     isMine: comment.userId === currentUserId,
@@ -111,10 +110,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "댓글 기능이 비활성화되어 있습니다." }, { status: 403 });
   }
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   let userId: number;
   try {
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const examId = await getTargetExamId();
+    const examId = await getTargetExamId(tenantType);
     const { searchParams } = new URL(request.url);
     const after = parsePositiveInteger(searchParams.get("after"));
 
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         examId,
-        comments: comments.map((comment) => formatComment(comment, userId)),
+        comments: comments.map((comment) => formatComment(comment, userId, tenantType)),
       });
     }
 
@@ -208,9 +208,12 @@ export async function GET(request: NextRequest) {
         totalCount,
         totalPages,
       },
-      comments: normalizedComments.map((comment) => formatComment(comment, userId)),
+      comments: normalizedComments.map((comment) => formatComment(comment, userId, tenantType)),
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("GET /api/comments error", error);
     return NextResponse.json({ error: "댓글을 불러오지 못했습니다." }, { status: 500 });
   }
@@ -222,10 +225,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "댓글 기능이 비활성화되어 있습니다." }, { status: 403 });
   }
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   let userId: number;
   try {
@@ -291,26 +295,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const examId = await getTargetExamId();
-    const created = await prisma.comment.create({
-      data: {
-        examId,
-        userId,
-        content,
-      },
-      include: {
-        user: {
-          select: {
-            name: true,
+    const created = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, tenantType);
+      const activeExam = await requireSoleActiveExam({
+        db: tx,
+        tenantType,
+        context: "api/comments POST transaction",
+      });
+      return tx.comment.create({
+        data: {
+          examId: activeExam.id,
+          userId,
+          content,
+        },
+        include: {
+          user: {
+            select: {
+              name: true,
+            },
           },
         },
-      },
+      });
     });
 
     return NextResponse.json({
-      comment: formatComment(created, userId),
+      comment: formatComment(created, userId, tenantType),
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("POST /api/comments error", error);
     return NextResponse.json({ error: "댓글 등록에 실패했습니다." }, { status: 500 });
   }
@@ -322,10 +336,11 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "댓글 기능이 비활성화되어 있습니다." }, { status: 403 });
   }
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   let userId: number;
   try {
@@ -355,6 +370,7 @@ export async function DELETE(request: NextRequest) {
       select: {
         id: true,
         userId: true,
+        examId: true,
       },
     });
 
@@ -368,8 +384,19 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "본인 댓글만 삭제할 수 있습니다." }, { status: 403 });
     }
 
-    await prisma.comment.delete({
-      where: { id: commentId },
+    await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, tenantType);
+      const activeExam = await requireSoleActiveExam({
+        db: tx,
+        tenantType,
+        context: "api/comments DELETE transaction",
+      });
+      if (comment.examId !== activeExam.id) {
+        throw new PastCommentWriteError();
+      }
+      await tx.comment.delete({
+        where: { id: commentId },
+      });
     });
 
     return NextResponse.json({
@@ -377,6 +404,12 @@ export async function DELETE(request: NextRequest) {
       deletedId: commentId,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof PastCommentWriteError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("DELETE /api/comments error", error);
     return NextResponse.json({ error: "댓글 삭제에 실패했습니다." }, { status: 500 });
   }

@@ -1,8 +1,11 @@
 import { BonusType, ExamType, Gender, Prisma, SubmissionScoringStatus } from "@prisma/client";
-import { invalidateCorrectRateCache } from "@/lib/correct-rate";
-import { normalizeSubjectName } from "@/lib/exam-utils";
-import { SUBJECT_CUTOFF_RATE, TOTAL_CUTOFF_RATE } from "@/lib/policy";
+import { invalidateCorrectRateCache } from "@/lib/fire/correct-rate";
+import { normalizeSubjectName } from "@/lib/fire/exam-utils";
+import { SUBJECT_CUTOFF_RATE, TOTAL_CUTOFF_RATE } from "@/lib/fire/policy";
+import { getFireRecruitCount } from "@/lib/fire/prediction-policy";
+import { resolveFireWrittenBonus } from "@/lib/fire/written-bonus";
 import { prisma } from "@/lib/prisma";
+import { FIRE_EXAM_TYPES, isFireExamType } from "@/lib/tenant-exam";
 
 const RESCORE_BATCH_SIZE = 100;
 
@@ -480,6 +483,10 @@ export function getBonusTypeFromPercent(veteranPercent: number, heroPercent: num
 export async function calculateScore(params: CalculateScoreParams): Promise<ScoreResult> {
   const { examId, examType, answers, bonusType, bonusRate } = params;
 
+  if (!isFireExamType(examType)) {
+    throw new Error("소방 서비스에서 사용할 수 없는 채용유형입니다.");
+  }
+
   if (!Number.isInteger(examId) || examId <= 0) {
     throw new Error("유효한 examId가 필요합니다.");
   }
@@ -503,10 +510,14 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
     throw new Error("유효한 examId가 필요합니다.");
   }
 
+  if (options && !isFireExamType(options.examType)) {
+    throw new Error("소방 서비스에서 사용할 수 없는 채용유형입니다.");
+  }
+
   const targetExamType = options?.examType;
   const submissionWhere: Prisma.SubmissionWhereInput = {
     examId,
-    ...(targetExamType ? { examType: targetExamType } : {}),
+    examType: targetExamType ?? { in: [...FIRE_EXAM_TYPES] },
   };
 
   const allSubmissions = await prisma.submission.findMany({
@@ -534,6 +545,22 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
       },
     };
   }
+
+  const quotas = await prisma.examRegionQuota.findMany({
+    where: { examId },
+    select: {
+      regionId: true,
+      recruitPublicMale: true,
+      recruitPublicFemale: true,
+      recruitRescue: true,
+      recruitAcademicMale: true,
+      recruitAcademicFemale: true,
+      recruitAcademicCombined: true,
+      recruitEmtMale: true,
+      recruitEmtFemale: true,
+    },
+  });
+  const quotaByRegionId = new Map(quotas.map((quota) => [quota.regionId, quota] as const));
 
   const detailedMode =
     options !== undefined &&
@@ -603,6 +630,7 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
           userId: true,
           regionId: true,
           examType: true,
+          gender: true,
           totalScore: true,
           finalScore: true,
           bonusType: true,
@@ -648,6 +676,20 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
           }
 
           const normalizedBonusRate = normalizeBonusRate(submission.bonusType, submission.bonusRate);
+          const quota = quotaByRegionId.get(submission.regionId);
+          if (!quota) {
+            throw new Error(`지역 ${submission.regionId}의 모집 설정을 찾을 수 없습니다.`);
+          }
+          const recruitCount = getFireRecruitCount(
+            quota,
+            submission.examType,
+            submission.gender
+          );
+          const bonusDecision = resolveFireWrittenBonus({
+            bonusType: submission.bonusType,
+            declaredRate: normalizedBonusRate,
+            recruitCount,
+          });
           const oldTotalScore = roundScore(submission.totalScore);
           const oldFinalScore = roundScore(submission.finalScore);
           const result = scoreByAnswerMap({
@@ -655,7 +697,7 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
             subjects: context.subjects,
             answerKeyMap: context.answerKeyMap,
             selectedAnswers,
-            bonusRate: normalizedBonusRate,
+            bonusRate: bonusDecision.effectiveRate,
           });
 
           await tx.submission.update({
@@ -663,6 +705,7 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
             data: {
               totalScore: result.totalScore,
               finalScore: result.finalScore,
+              // 선택값은 보존하고 실제 적용률은 모집 설정과 과락 기준으로 다시 계산한다.
               bonusRate: normalizedBonusRate,
               scoringStatus: SubmissionScoringStatus.SCORED,
             },

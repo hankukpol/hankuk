@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getPrismaClientForTenant, prisma, withPrismaConnectionRetry } from "@/lib/prisma";
 import { getTenantSiteSettingDefaults } from "@/lib/site-settings.defaults";
@@ -31,6 +32,22 @@ function isSiteSettingKey(key: string): key is SiteSettingKey {
 function toScopedSiteSettingKey(tenantType: TenantType, key: SiteSettingKey) {
   return `${tenantType}::${key}`;
 }
+
+const ACTIVATED_EXAM_SAFE_SETTINGS: Record<TenantType, Partial<Record<SiteSettingKey, string>>> = {
+  police: {
+    "site.preRegistrationEnabled": "true",
+    "site.answerInputEnabled": "false",
+    "site.finalPredictionEnabled": "false",
+    "site.autoPassCutEnabled": "false",
+    "site.policePredictionGradesEnabled": "false",
+  },
+  fire: {
+    "site.preRegistrationEnabled": "false",
+    "site.answerInputEnabled": "false",
+    "site.finalPredictionEnabled": "false",
+    "site.autoPassCutEnabled": "false",
+  },
+};
 
 export function isAllowedSiteSettingKey(key: string): key is SiteSettingKey {
   return isSiteSettingKey(key);
@@ -142,14 +159,12 @@ async function readSiteSettingsFromDb(tenantType: TenantType): Promise<SiteSetti
       "site settings read"
     );
 
-    if (tenantType === "fire") {
-      for (const row of rows) {
-        if (!isSiteSettingKey(row.key)) {
-          continue;
-        }
-
-        merged[row.key] = parseStoredSiteSettingValue(row.key, row.value);
+    for (const row of rows) {
+      if (!isSiteSettingKey(row.key)) {
+        continue;
       }
+
+      merged[row.key] = parseStoredSiteSettingValue(row.key, row.value);
     }
 
     for (const row of rows) {
@@ -301,6 +316,27 @@ export async function upsertSiteSettings(entries: Array<{ key: SiteSettingKey; v
 
   revalidateTag(SITE_SETTINGS_TAG, "max");
   revalidateTag(`${SITE_SETTINGS_TAG}:${tenantType}`, "max");
+}
+
+export async function resetActivatedExamOperationSettings(
+  tx: Prisma.TransactionClient,
+  tenantType: TenantType
+) {
+  const entries = Object.entries(ACTIVATED_EXAM_SAFE_SETTINGS[tenantType]) as Array<
+    [SiteSettingKey, string]
+  >;
+
+  await Promise.all(
+    entries.map(([key, value]) =>
+      tx.siteSetting.upsert({
+        where: { key: toScopedSiteSettingKey(tenantType, key) },
+        update: { value },
+        create: { key: toScopedSiteSettingKey(tenantType, key), value },
+      })
+    )
+  );
+
+  return entries.map(([key]) => key);
 }
 
 export function revalidateSiteSettingsCache() {

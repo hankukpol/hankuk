@@ -79,7 +79,7 @@ export default function LiveStatsCounter({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-bold tracking-tight text-slate-900">합격예측 실시간 참여 현황</h2>
-            <p className="mt-1 text-sm font-semibold text-fire-600">
+            <p className="mt-1 text-sm font-semibold text-service-600">
               {stats.examYear}년 {stats.examRound}차 · {stats.examName}
             </p>
           </div>

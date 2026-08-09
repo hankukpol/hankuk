@@ -1,9 +1,13 @@
 import { ExamType, Gender, Prisma, Role } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { calculatePrediction, maskKoreanName, PredictionError } from "@/lib/prediction";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import {
+  calculateTenantPrediction,
+  isTenantPredictionError,
+  maskTenantName,
+} from "@/lib/tenant-calculations.server";
 import { prisma } from "@/lib/prisma";
+import type { TenantType } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 
@@ -18,6 +22,7 @@ function toSafeNumber(value: number): number {
 }
 
 function buildPopulationWhere(params: {
+  tenantType: TenantType;
   examId: number;
   regionId: number;
   examType: ExamType;
@@ -36,6 +41,10 @@ function buildPopulationWhere(params: {
       },
     },
   };
+
+  if (params.tenantType === "police") {
+    return where;
+  }
 
   switch (params.examType) {
     case ExamType.PUBLIC:
@@ -56,10 +65,11 @@ function buildPopulationWhere(params: {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   const userId = Number(session.user.id);
   if (!Number.isInteger(userId) || userId < 1) {
@@ -76,7 +86,8 @@ export async function GET(request: NextRequest) {
   const requesterRole = session.user.role === "ADMIN" ? Role.ADMIN : Role.USER;
 
   try {
-    const prediction = await calculatePrediction(
+    const prediction = await calculateTenantPrediction(
+      tenantType,
       userId,
       baseSubmissionId ? { submissionId: baseSubmissionId } : {},
       requesterRole
@@ -112,6 +123,7 @@ export async function GET(request: NextRequest) {
     });
 
     const populationWhere = buildPopulationWhere({
+      tenantType,
       examId: baseSubmission.examId,
       regionId: baseSubmission.regionId,
       examType: baseSubmission.examType,
@@ -173,7 +185,7 @@ export async function GET(request: NextRequest) {
       competitor: {
         submissionId: target.id,
         rank: higherCount + 1,
-        maskedName: isMine ? "★ 나" : maskKoreanName(target.user.name),
+        maskedName: isMine ? "★ 나" : maskTenantName(tenantType, target.user.name),
         score,
         isMine,
         totalParticipants: prediction.summary.totalParticipants,
@@ -195,7 +207,7 @@ export async function GET(request: NextRequest) {
       }),
     });
   } catch (error) {
-    if (error instanceof PredictionError) {
+    if (isTenantPredictionError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 

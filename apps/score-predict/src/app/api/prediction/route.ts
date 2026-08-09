@@ -1,8 +1,11 @@
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { buildAdminPreviewCandidates } from "@/lib/admin-preview";
-import { authOptions } from "@/lib/auth";
-import { PredictionError, calculatePrediction } from "@/lib/prediction";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import {
+  calculateTenantPrediction,
+  isTenantPredictionError,
+} from "@/lib/tenant-calculations.server";
+import { isActiveExamRouteError } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -17,10 +20,11 @@ function parsePositiveInteger(value: string | null): number | undefined {
   return parsed;
 }
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   const userId = Number(session.user.id);
   if (!Number.isInteger(userId) || userId < 1) {
@@ -35,7 +39,9 @@ export async function GET(request: NextRequest) {
   const role = isAdmin ? "ADMIN" : "USER";
 
   try {
-    const adminPreviewCandidates = isAdmin ? await buildAdminPreviewCandidates() : [];
+    const adminPreviewCandidates = isAdmin
+      ? await buildAdminPreviewCandidates(tenantType)
+      : [];
 
     // MOCK 데이터 없고 명시적 submissionId도 없으면 관리자 미리보기 불가
     if (isAdmin && !submissionId && adminPreviewCandidates.length === 0) {
@@ -53,7 +59,7 @@ export async function GET(request: NextRequest) {
       ? (submissionId ?? adminPreviewCandidates[0]?.submissionId)
       : submissionId;
 
-    const result = await calculatePrediction(userId, {
+    const result = await calculateTenantPrediction(tenantType, userId, {
       submissionId: effectiveSubmissionId,
       page,
       limit,
@@ -69,7 +75,10 @@ export async function GET(request: NextRequest) {
         : result
     );
   } catch (error) {
-    if (error instanceof PredictionError) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (isTenantPredictionError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 

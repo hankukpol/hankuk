@@ -1,6 +1,9 @@
 import { ExamType, Gender, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { buildAdminPreRegistrationWhere, parseAdminExamType } from "@/lib/admin-pre-registrations";
+import {
+  buildAdminPreRegistrationWhere,
+  parseAdminExamType,
+} from "@/lib/police/admin-pre-registrations";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { parsePositiveInt } from "@/lib/exam-utils";
@@ -10,8 +13,15 @@ import {
   getQuotaValidationError,
   lockExamNumberMutation,
   lockUserExamMutation,
-} from "@/lib/pre-registration";
+} from "@/lib/police/pre-registration";
 import { prisma } from "@/lib/prisma";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForWrite,
+  requireSoleActiveExam,
+  resolveActiveExamForWrite,
+} from "@/lib/active-exam";
+import { isSmsMarketingConsentActive } from "@/lib/police/sms-marketing-consent";
 
 export const runtime = "nodejs";
 
@@ -121,6 +131,9 @@ function getUniqueConstraintMessage(error: Prisma.PrismaClientKnownRequestError)
 export async function GET(request: NextRequest) {
   const guard = await requireAdminRoute();
   if ("error" in guard) return guard.error;
+  if (guard.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
   const featureError = await requireAdminSiteFeature("preRegistrations");
   if (featureError) return featureError;
 
@@ -128,7 +141,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const requestedPage = parsePage(searchParams.get("page"));
     const limit = parseLimit(searchParams.get("limit"));
-    const examId = parsePositiveInt(searchParams.get("examId"));
+    const requestedExamId = parsePositiveInt(searchParams.get("examId"));
+    const examId = requestedExamId ?? (await requireSoleActiveExam({
+      db: prisma,
+      tenantType: "police",
+      context: "api/admin/pre-registrations GET",
+    })).id;
     const regionId = parsePositiveInt(searchParams.get("regionId"));
     const examType = parseAdminExamType(searchParams.get("examType"));
     const search = searchParams.get("search")?.trim() ?? "";
@@ -182,6 +200,9 @@ export async function GET(request: NextRequest) {
             name: true,
             phone: true,
             contactPhone: true,
+            smsMarketingConsentAt: true,
+            smsMarketingConsentVersion: true,
+            smsMarketingConsentWithdrawnAt: true,
           },
         },
         exam: {
@@ -226,6 +247,9 @@ export async function GET(request: NextRequest) {
         userName: row.user.name,
         userPhone: row.user.phone, // 로그인 아이디
         userContactPhone: row.user.contactPhone, // 연락처
+        smsMarketingConsented: isSmsMarketingConsentActive(row.user),
+        smsMarketingConsentAt: row.user.smsMarketingConsentAt,
+        smsMarketingConsentVersion: row.user.smsMarketingConsentVersion,
         regionId: row.regionId,
         regionName: row.region.name,
         examType: row.examType,
@@ -236,6 +260,9 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("관리자 사전등록 목록 조회 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "사전등록 목록 조회에 실패했습니다." }, { status: 500 });
   }
@@ -244,6 +271,9 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const guard = await requireAdminRoute();
   if ("error" in guard) return guard.error;
+  if (guard.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
   const featureError = await requireAdminSiteFeature("preRegistrations");
   if (featureError) return featureError;
 
@@ -259,6 +289,12 @@ export async function PUT(request: NextRequest) {
     }
 
     const payload = parseUpdatePayload(body);
+    await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: "police",
+      context: "api/admin/pre-registrations PUT",
+      requestedExamId: payload.examId,
+    });
 
     const currentPreRegistration = await prisma.preRegistration.findUnique({
       where: { id },
@@ -300,6 +336,13 @@ export async function PUT(request: NextRequest) {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, "police");
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: "police",
+        context: "api/admin/pre-registrations PUT transaction",
+        requestedExamId: payload.examId,
+      });
       await lockUserExamMutation(tx, {
         userId: currentPreRegistration.userId,
         examId: currentPreRegistration.examId,
@@ -395,6 +438,9 @@ export async function PUT(request: NextRequest) {
       preRegistration: updated,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof AdminPreRegistrationRouteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -414,6 +460,9 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const guard = await requireAdminRoute();
   if ("error" in guard) return guard.error;
+  if (guard.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
   const featureError = await requireAdminSiteFeature("preRegistrations");
   if (featureError) return featureError;
 
@@ -430,6 +479,7 @@ export async function DELETE(request: NextRequest) {
       where: { id },
       select: {
         id: true,
+        examId: true,
       },
     });
 
@@ -437,8 +487,24 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "삭제할 사전등록을 찾을 수 없습니다." }, { status: 404 });
     }
 
-    await prisma.preRegistration.delete({
-      where: { id },
+    await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: "police",
+      context: "api/admin/pre-registrations DELETE",
+      requestedExamId: preRegistration.examId,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, "police");
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: "police",
+        context: "api/admin/pre-registrations DELETE transaction",
+        requestedExamId: preRegistration.examId,
+      });
+      await tx.preRegistration.delete({
+        where: { id },
+      });
     });
 
     return NextResponse.json({
@@ -446,6 +512,9 @@ export async function DELETE(request: NextRequest) {
       deletedPreRegistrationId: id,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof AdminPreRegistrationRouteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

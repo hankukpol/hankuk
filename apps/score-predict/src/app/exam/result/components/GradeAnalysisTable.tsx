@@ -56,6 +56,20 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
         <p className="text-xs text-slate-500">순위 기준: {formatRankingBasis(result.statistics.rankingBasis)}</p>
       </div>
 
+      {result.bonusApplication?.message ? (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            result.bonusApplication.status === "APPLIED"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : result.bonusApplication.status === "PENDING"
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-slate-200 bg-slate-50 text-slate-700"
+          }`}
+        >
+          {result.bonusApplication.message}
+        </div>
+      ) : null}
+
       {result.statistics.hasCutoff && (
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-rose-700">

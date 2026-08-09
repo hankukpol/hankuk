@@ -4,6 +4,10 @@ export const TENANT_HEADER = "x-hankuk-division";
 export const TENANT_COOKIE = "hankuk_division";
 export const TENANT_TYPES: TenantType[] = ["police", "fire"];
 export const POLICE_LOGIN_HOSTNAME = "fullservice.hankukpol.co.kr";
+export const FIRE_LOGIN_HOSTNAME = "fullservice.119sobang.co.kr";
+export const SCORE_PREDICT_VERCEL_HOSTNAME = "score-predict.vercel.app";
+export const LOCAL_POLICE_HOSTNAME = "police.localhost";
+export const LOCAL_FIRE_HOSTNAME = "fire.localhost";
 export const DEFAULT_TENANT_TYPE: TenantType =
   process.env.NEXT_PUBLIC_TENANT_TYPE === "police" ? "police" : "fire";
 
@@ -128,7 +132,7 @@ export function parseTenantTypeFromPathname(pathname: string | null | undefined)
   return match ? normalizeTenantType(match[1]) : null;
 }
 
-function normalizeHostname(hostname: string | null | undefined): string {
+export function normalizeHostname(hostname: string | null | undefined): string {
   return (hostname ?? "")
     .trim()
     .toLowerCase()
@@ -137,13 +141,34 @@ function normalizeHostname(hostname: string | null | undefined): string {
 }
 
 export function isPoliceLoginHostname(hostname: string | null | undefined): boolean {
-  return normalizeHostname(hostname) === POLICE_LOGIN_HOSTNAME;
+  const normalized = normalizeHostname(hostname);
+  return normalized === POLICE_LOGIN_HOSTNAME || normalized === LOCAL_POLICE_HOSTNAME;
+}
+
+export function isFireLoginHostname(hostname: string | null | undefined): boolean {
+  const normalized = normalizeHostname(hostname);
+  return normalized === FIRE_LOGIN_HOSTNAME || normalized === LOCAL_FIRE_HOSTNAME;
+}
+
+export function isScorePredictVercelHostname(hostname: string | null | undefined): boolean {
+  return normalizeHostname(hostname) === SCORE_PREDICT_VERCEL_HOSTNAME;
+}
+
+export function isLocalTenantHostname(hostname: string | null | undefined): boolean {
+  const normalized = normalizeHostname(hostname);
+  return normalized === LOCAL_POLICE_HOSTNAME || normalized === LOCAL_FIRE_HOSTNAME;
 }
 
 export function parseTenantTypeFromHostname(
   hostname: string | null | undefined
 ): TenantType | null {
-  return isPoliceLoginHostname(hostname) ? "police" : null;
+  if (isPoliceLoginHostname(hostname)) return "police";
+  if (isFireLoginHostname(hostname)) return "fire";
+  return null;
+}
+
+export function getCanonicalHostname(tenantType: TenantType): string {
+  return tenantType === "police" ? POLICE_LOGIN_HOSTNAME : FIRE_LOGIN_HOSTNAME;
 }
 
 export function stripTenantPrefix(pathname: string): string {
@@ -167,6 +192,7 @@ export function getTenantType(): TenantType {
   }
 
   return (
+    parseTenantTypeFromHostname(window.location.hostname) ??
     parseTenantTypeFromPathname(window.location.pathname) ??
     normalizeTenantType(readBrowserCookie(TENANT_COOKIE)) ??
     DEFAULT_TENANT_TYPE

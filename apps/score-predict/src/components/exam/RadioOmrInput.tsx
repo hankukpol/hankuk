@@ -35,8 +35,8 @@ export default function RadioOmrInput({
                     type="button"
                     onClick={() => onAnswerChange(questionNo, active ? null : choice)}
                     className={`h-10 w-10 border text-sm font-bold transition rounded-none ${active
-                      ? "border-red-600 bg-red-600 text-white"
-                      : "border-slate-300 bg-white text-slate-600 hover:border-red-400 hover:bg-red-50"
+                      ? "border-service-600 bg-service-600 text-white"
+                      : "border-slate-300 bg-white text-slate-600 hover:border-service-400 hover:bg-service-50"
                       }`}
                     aria-label={`${subjectName} ${questionNo}번 ${choice}번 선택`}
                   >

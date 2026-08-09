@@ -1,9 +1,9 @@
 ﻿import { Role } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import { prisma } from "@/lib/prisma";
+import { isExamTypeForTenant, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ type ChangedQuestionSummary = {
 };
 
 type RescoreSummaryPayload = {
-  examType?: "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+  examType?: "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
   changedQuestions?: ChangedQuestionSummary[];
 };
 
@@ -49,11 +49,12 @@ function toImpactText(totalDelta: number, rankDelta: number | null): string {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession?.session.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
+  const { session, tenantType } = tenantSession;
   const userId = Number(session.user.id);
   const isAdmin = ((session.user.role as Role | undefined) ?? Role.USER) === Role.ADMIN;
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -70,9 +71,10 @@ export async function GET(request: NextRequest) {
     where: submissionId
       ? {
           id: submissionId,
+          examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
           ...(isAdmin ? {} : { userId }),
         }
-      : { userId },
+      : { userId, examType: { in: [...TENANT_EXAM_TYPES[tenantType]] } },
     orderBy: submissionId ? undefined : [{ createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true,
@@ -102,6 +104,10 @@ export async function GET(request: NextRequest) {
 
   if (!submission) {
     return NextResponse.json({ error: "조회할 성적 데이터가 없습니다." }, { status: 404 });
+  }
+
+  if (!isExamTypeForTenant(tenantType, submission.examType)) {
+    return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
   }
 
   const rescoreEvent = await prisma.rescoreEvent.findFirst({

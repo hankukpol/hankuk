@@ -4,7 +4,14 @@ import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import { prisma } from "@/lib/prisma";
-import { rescoreExam } from "@/lib/scoring";
+import { rescoreTenantExam } from "@/lib/tenant-calculations.server";
+import {
+  getTenantExamTypeErrorMessage,
+  isExamTypeForTenant,
+  TENANT_EXAM_TYPES,
+} from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
+import { isActiveExamRouteError, resolveActiveExamForWrite } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -14,12 +21,8 @@ interface RescoreRequestBody {
   reason?: unknown;
 }
 
-function parseExamType(value: unknown): ExamType | null {
-  if (value === ExamType.PUBLIC) return ExamType.PUBLIC;
-  if (value === ExamType.CAREER_RESCUE) return ExamType.CAREER_RESCUE;
-  if (value === ExamType.CAREER_ACADEMIC) return ExamType.CAREER_ACADEMIC;
-  if (value === ExamType.CAREER_EMT) return ExamType.CAREER_EMT;
-  return null;
+function parseExamType(tenantType: TenantType, value: unknown): ExamType | null {
+  return isExamTypeForTenant(tenantType, value) ? value : null;
 }
 
 function parseOptionalText(value: unknown): string | undefined {
@@ -51,11 +54,17 @@ export async function POST(request: NextRequest) {
     if (!examId) {
       return NextResponse.json({ error: "유효한 examId가 필요합니다." }, { status: 400 });
     }
+    await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: guard.tenantType,
+      context: "api/admin/rescore POST",
+      requestedExamId: examId,
+    });
 
     const hasExamTypeField = body.examType !== undefined && body.examType !== null;
-    const requestedExamType = parseExamType(body.examType);
+    const requestedExamType = parseExamType(guard.tenantType, body.examType);
     if (hasExamTypeField && !requestedExamType) {
-      return NextResponse.json({ error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT만 가능합니다." }, { status: 400 });
+      return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
     }
 
     const reason = parseOptionalText(body.reason);
@@ -63,14 +72,17 @@ export async function POST(request: NextRequest) {
       ? [requestedExamType]
       : (
           await prisma.submission.findMany({
-            where: { examId },
+            where: {
+              examId,
+              examType: { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
+            },
             select: { examType: true },
             distinct: ["examType"],
           })
         ).map((row) => row.examType);
 
     if (targetExamTypes.length < 1) {
-      const rescoreResult = await rescoreExam(examId);
+      const rescoreResult = await rescoreTenantExam(guard.tenantType, examId);
       return NextResponse.json({
         success: true,
         examId,
@@ -92,7 +104,7 @@ export async function POST(request: NextRequest) {
     let rescoredCount = 0;
 
     for (const examType of targetExamTypes) {
-      const result = await rescoreExam(examId, {
+      const result = await rescoreTenantExam(guard.tenantType, examId, {
         reason,
         adminUserId,
         examType,
@@ -118,6 +130,9 @@ export async function POST(request: NextRequest) {
       message: `${rescoredCount}건의 제출 데이터 재채점이 완료되었습니다.`,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("재채점 처리 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "재채점 처리 중 오류가 발생했습니다." }, { status: 500 });
   }

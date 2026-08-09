@@ -1,6 +1,6 @@
-import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getCurrentTenantSession } from "@/lib/tenant-session.server";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getCurrentTenantSession();
   const userId = session?.user?.id ? Number(session.user.id) : null;
   const isValidUserId = userId !== null && Number.isInteger(userId) && userId > 0;
 
@@ -49,7 +49,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ ok: true });
+    }
     // 에러가 나도 사용자 경험에 영향 없도록 조용히 처리
     return NextResponse.json({ ok: false }, { status: 500 });
   }

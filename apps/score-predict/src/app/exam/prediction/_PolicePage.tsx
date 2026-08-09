@@ -28,22 +28,34 @@ interface PredictionPageResponse {
     totalParticipants: number;
     myScore: number;
     myRank: number;
-    myMultiple: number;
+    myMultiple: number | null;
+    sampleTopPercent: number;
     oneMultipleBaseRank: number;
     oneMultipleActualRank: number | null;
     oneMultipleCutScore: number | null;
     oneMultipleTieCount: number | null;
     isOneMultipleCutConfirmed: boolean;
     passMultiple: number;
-    likelyMultiple: number;
-    passCount: number;
+    sureMultiple: number | null;
+    likelyMultiple: number | null;
+    sureMaxRank: number | null;
+    likelyMaxRank: number | null;
+    passCount: number | null;
     passLineScore: number | null;
-    predictionGrade: "확실권" | "유력권" | "가능권" | "도전권";
+    modelVersion: string;
+    sampleStage: "INITIAL" | "COLLECTING" | "FORMING" | "RELIABLE" | "ESTIMATED";
+    sampleCoverageRate: number;
+    isReliableSample: boolean;
+    predictionGrade: "확실권" | "유력권" | "가능권" | "도전권" | null;
+    gradeAvailability: "AVAILABLE" | "UNAVAILABLE";
+    unavailableReasons: Array<
+      "FEATURE_DISABLED" | "MISSING_APPLICANTS" | "INSUFFICIENT_SAMPLE" | "UNCALIBRATED"
+    >;
     disclaimer: string;
   };
   pyramid: {
     levels: Array<{
-      key: "sure" | "likely" | "possible" | "challenge" | "belowChallenge";
+      key: "sure" | "likely" | "possible" | "challenge";
       label: string;
       count: number;
       minScore: number | null;
@@ -57,7 +69,6 @@ interface PredictionPageResponse {
       likely: number;
       possible: number;
       challenge: number;
-      belowChallenge: number;
     };
   };
   competitors: {
@@ -143,37 +154,39 @@ function formatScoreSmart(value: number): string {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
 
-function getParticipationRate(participants: number, estimated: number): number {
-  if (estimated <= 0) return 0;
-  return (participants / estimated) * 100;
-}
-
-function getConfidenceLevel(rate: number): {
+function getConfidenceLevel(stage: PredictionPageResponse["summary"]["sampleStage"]): {
   label: string;
   message: string;
   barColor: string;
   badgeClass: string;
 } {
-  if (rate >= 30)
+  if (stage === "RELIABLE")
     return {
-      label: "확정적",
-      message: "충분한 데이터가 모여 신뢰도가 높습니다.",
+      label: "신뢰 구간 진입",
+      message: "전체 출원자 대비 표본 30% 이상이 입력되었습니다. 최종 결과를 보장하는 단계는 아닙니다.",
       barColor: "bg-emerald-500",
       badgeClass: "bg-emerald-200 text-emerald-800 font-bold",
     };
-  if (rate >= 15)
+  if (stage === "FORMING")
     return {
-      label: "신뢰도 높음",
-      message: "어느 정도 신뢰할 수 있는 데이터입니다.",
+      label: "예측 윤곽 형성 중",
+      message: "표본이 15% 이상 모였습니다. 후기 고득점자 입력에 따라 컷이 달라질 수 있습니다.",
       barColor: "bg-blue-500",
       badgeClass: "bg-emerald-100 text-emerald-700",
     };
-  if (rate >= 5)
+  if (stage === "COLLECTING")
     return {
       label: "집계 중",
       message: "데이터 수집 중입니다. 순위 변동 가능성이 있습니다.",
       barColor: "bg-blue-400",
       badgeClass: "bg-blue-100 text-blue-700",
+    };
+  if (stage === "ESTIMATED")
+    return {
+      label: "출원인원 확인 전",
+      message: "출원인원 추정치로 참여율을 계산하고 있어 확실권은 표시하지 않습니다.",
+      barColor: "bg-amber-400",
+      badgeClass: "bg-amber-100 text-amber-700",
     };
   return {
     label: "초기 집계",
@@ -452,17 +465,15 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   }
 
   const { summary, competitors } = prediction;
-  const participationRate = getParticipationRate(
-    summary.totalParticipants,
-    summary.applicantCount ?? 0
-  );
-  const confidence = getConfidenceLevel(participationRate);
+  const participationRate = summary.sampleCoverageRate;
+  const confidence = getConfidenceLevel(summary.sampleStage);
+  const sureCutScore = prediction.pyramid.levels.find((level) => level.key === "sure")?.minScore ?? null;
   const currentStageMeta = passCutHistory ? getSnapshotStageMeta(passCutHistory.current) : null;
   const stageCards = passCutHistory
     ? [
         {
           key: "live",
-          title: "실시간 예측",
+          title: "실시간 표본",
           subtitle: currentStageMeta?.label ?? "표본 수집 중",
           detail:
             currentStageMeta?.description ??
@@ -470,10 +481,10 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
         },
         ...passCutHistory.releases.map((release) => ({
           key: `release-${release.releaseNumber}`,
-          title: `${release.releaseNumber}차 컷 발표`,
+          title: `${release.releaseNumber}차 표본 집계`,
           subtitle: release.snapshot ? formatStageDate(release.releasedAt) : "데이터 없음",
           detail: release.snapshot
-            ? `참여 ${release.snapshot.participantCount.toLocaleString("ko-KR")}명 기준 · 1배수 ${formatScore(
+            ? `참여 ${release.snapshot.participantCount.toLocaleString("ko-KR")}명 기준 · 표본 1배수 지점 ${formatScore(
                 release.snapshot.oneMultipleCutScore
               )}`
             : "발표 데이터가 없습니다.",
@@ -485,32 +496,47 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
     <div className="space-y-6">
       <PredictionLiveDashboard prediction={prediction} />
 
-      <section className={`rounded-xl border p-5 text-sm ${confidence.badgeClass}`}>
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold tracking-wide">예측 신호</p>
-            <p className="mt-1 text-base font-bold">{confidence.label}</p>
-            <p className="mt-2">{confidence.message}</p>
+      {summary.gradeAvailability === "AVAILABLE" ? (
+        <section className={`rounded-xl border p-5 text-sm ${confidence.badgeClass}`}>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold tracking-wide">예측 신호</p>
+              <p className="mt-1 text-base font-bold">{confidence.label}</p>
+              <p className="mt-2">{confidence.message}</p>
+            </div>
+            <div className="rounded-lg bg-white/70 px-4 py-3 text-slate-700">
+              <p>
+                표본 {summary.totalParticipants.toLocaleString("ko-KR")}명 · 응시인원 기준{" "}
+                {participationRate.toFixed(1)}%
+              </p>
+              <p className="mt-1">
+                표본 1배수 지점 {formatScore(summary.oneMultipleCutScore)}, 확실권 컷 {formatScore(sureCutScore)},
+                필기 예상컷 {formatScore(summary.passLineScore)}
+              </p>
+            </div>
           </div>
-          <div className="rounded-lg bg-white/70 px-4 py-3 text-slate-700">
-            <p>
-              표본 {summary.totalParticipants.toLocaleString("ko-KR")}명 · 응시인원 기준{" "}
-              {participationRate.toFixed(1)}%
-            </p>
-            <p className="mt-1">
-              1배수 컷 {formatScore(summary.oneMultipleCutScore)} · 합격확실권 {formatScore(summary.passLineScore)}
-            </p>
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">표본 1배수 지점</p>
+          <p className="mt-2">
+            {summary.isOneMultipleCutConfirmed
+              ? `${formatScore(summary.oneMultipleCutScore)} · 입력자 중 모집인원 ${summary.recruitCount.toLocaleString("ko-KR")}번째 점수`
+              : `입력자가 모집인원 ${summary.recruitCount.toLocaleString("ko-KR")}명보다 적어 아직 표시할 수 없습니다.`}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            입력자 표본 안의 위치이며 실제 필기 합격선이나 2배수 합격 경계가 아닙니다.
+          </p>
+        </section>
+      )}
 
       {stageCards.length > 0 ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">컷 공개 단계</h2>
+              <h2 className="text-base font-semibold text-slate-900">표본 집계 단계</h2>
               <p className="text-sm text-slate-500">
-                실시간 예측과 컷 발표 이력을 한 흐름에서 확인할 수 있습니다.
+                실시간 표본과 시점별 집계 이력을 한 흐름에서 확인할 수 있습니다.
               </p>
             </div>
           </div>
@@ -533,12 +559,27 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
 
       {isPassCutLoading ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-          합격컷 발표 이력을 불러오는 중입니다...
+          표본 집계 이력을 불러오는 중입니다...
         </section>
       ) : passCutHistory ? (
         <>
-          <PassCutHistoryTable releases={passCutHistory.releases} current={passCutHistory.current} myScore={summary.myScore} />
-          <PassCutTrendChart releases={passCutHistory.releases} current={passCutHistory.current} myScore={summary.myScore} />
+          <PassCutHistoryTable
+            releases={passCutHistory.releases}
+            current={passCutHistory.current}
+            myScore={summary.myScore}
+            showGradeThresholds={false}
+            oneMultipleLabel="표본 1배수 지점"
+            title="표본 지점 발표 현황"
+          />
+          <PassCutTrendChart
+            releases={passCutHistory.releases}
+            current={passCutHistory.current}
+            myScore={summary.myScore}
+            showGradeThresholds={false}
+            oneMultipleLabel="표본 1배수 지점"
+            title="표본 지점 변동 추이"
+            oneMultipleColor="#2563eb"
+          />
         </>
       ) : null}
 
@@ -625,7 +666,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
           본 서비스의 모든 분석은 <strong>서비스 참여자({summary.totalParticipants.toLocaleString()}명) 기준</strong>이며,
           실제 시험 결과와 차이가 있을 수 있습니다.
           참여율({participationRate.toFixed(1)}%)이 낮을수록 예측 정확도가 떨어지며,
-          참여자가 늘어남에 따라 순위 및 합격등급이 변동될 수 있습니다.
+          참여자가 늘어남에 따라 표본 순위와 백분위가 변동될 수 있습니다.
         </p>
       </section>
 

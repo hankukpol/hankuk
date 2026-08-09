@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
-import { generateMockData, resetMockData } from "@/lib/mock-data";
+import * as fireMockData from "@/lib/fire/mock-data";
+import * as policeMockData from "@/lib/police/mock-data";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { prisma } from "@/lib/prisma";
+import { isActiveExamRouteError, resolveActiveExamForWrite } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -73,21 +76,37 @@ export async function POST(request: NextRequest) {
     }
     const settings = await getSiteSettingsUncached();
     const careerExamEnabled = Boolean(settings["site.careerExamEnabled"] ?? true);
+    const activeExam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: guard.tenantType,
+      context: "api/admin/mock-data POST",
+      requestedExamId: parsePositiveInt(body.examId) ?? null,
+    });
 
     const careerPerRegion = parsePositiveInt(body.careerPerRegion);
-    const result = await generateMockData({
-      examId: parsePositiveInt(body.examId),
+    const commonOptions = {
+      examId: activeExam.id,
       publicPerRegion: parsePositiveInt(body.publicPerRegion),
-      careerRescuePerRegion: careerPerRegion,
-      careerAcademicPerRegion: careerPerRegion,
-      careerEmtPerRegion: careerPerRegion,
-      careerRescueEnabled: careerExamEnabled,
-      careerAcademicEnabled: careerExamEnabled,
-      careerEmtEnabled: careerExamEnabled,
-      includeEmploymentBonus: parseBoolean(body.includeEmploymentBonus, false),
       resetBeforeGenerate: parseBoolean(body.resetBeforeGenerate, true),
       includeFinalPredictionMock: parseBoolean(body.includeFinalPredictionMock, true),
-    });
+    };
+    const result =
+      guard.tenantType === "police"
+        ? await policeMockData.generateMockData({
+            ...commonOptions,
+            careerPerRegion,
+            careerEnabled: careerExamEnabled,
+          })
+        : await fireMockData.generateMockData({
+            ...commonOptions,
+            careerRescuePerRegion: careerPerRegion,
+            careerAcademicPerRegion: careerPerRegion,
+            careerEmtPerRegion: careerPerRegion,
+            careerRescueEnabled: careerExamEnabled,
+            careerAcademicEnabled: careerExamEnabled,
+            careerEmtEnabled: careerExamEnabled,
+            includeEmploymentBonus: parseBoolean(body.includeEmploymentBonus, false),
+          });
 
     return NextResponse.json({
       success: true,
@@ -95,6 +114,9 @@ export async function POST(request: NextRequest) {
       result,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     const message = toUserErrorMessage(error, "목업 데이터 생성에 실패했습니다.");
     console.error("POST /api/admin/mock-data error", error);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -115,10 +137,20 @@ export async function DELETE(request: NextRequest) {
     if (scope !== "all" && !examId) {
       return NextResponse.json({ error: "scope=all 이 아니면 examId가 필요합니다." }, { status: 400 });
     }
+    if (scope !== "all") {
+      await resolveActiveExamForWrite({
+        db: prisma,
+        tenantType: guard.tenantType,
+        context: "api/admin/mock-data DELETE",
+        requestedExamId: examId ?? null,
+      });
+    }
 
-    const result = await resetMockData({
-      examId: scope === "all" ? undefined : examId,
-    });
+    const result = await (guard.tenantType === "police"
+      ? policeMockData.resetMockData
+      : fireMockData.resetMockData)({
+        examId: scope === "all" ? undefined : examId,
+      });
 
     return NextResponse.json({
       success: true,
@@ -126,6 +158,9 @@ export async function DELETE(request: NextRequest) {
       result,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     const message = toUserErrorMessage(error, "목업 데이터 초기화에 실패했습니다.");
     console.error("DELETE /api/admin/mock-data error", error);
     return NextResponse.json({ error: message }, { status: 500 });

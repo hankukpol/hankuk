@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runAutoPassCutRelease } from "@/lib/pass-cut-auto-release";
+import { runTenantAutoPassCutRelease } from "@/lib/tenant-calculations.server";
+import { getServerTenantType } from "@/lib/tenant.server";
 import { revalidateNoticeCache } from "@/lib/site-settings";
+import { prisma } from "@/lib/prisma";
+import { isActiveExamRouteError, resolveActiveExamForWrite } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,14 +49,21 @@ async function runCronTrigger(request: NextRequest, body: Record<string, unknown
   const force = parseBoolean(body.force ?? searchParams.get("force"));
 
   try {
-    const result = await runAutoPassCutRelease({
-      examId: examId ?? undefined,
+    const tenantType = await getServerTenantType();
+    const activeExam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType,
+      context: "api/internal/pass-cut-auto-release",
+      requestedExamId: examId,
+    });
+    const result = await runTenantAutoPassCutRelease(tenantType, {
+      examId: activeExam.id,
       trigger: "cron",
       force,
     });
 
     if (result.releaseId) {
-      revalidateNoticeCache("police");
+      revalidateNoticeCache(tenantType);
     }
 
     return NextResponse.json({
@@ -67,6 +77,9 @@ async function runCronTrigger(request: NextRequest, body: Record<string, unknown
       reason: result.reason,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("/api/internal/pass-cut-auto-release 실행 중 오류가 발생했습니다.", error);
     return NextResponse.json(
       { error: "자동 합격컷 발표 실행에 실패했습니다." },

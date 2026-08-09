@@ -84,6 +84,14 @@ export default function Header() {
                 </Button>
               </Link>
             ) : null}
+            {tenant.type === "police" ? (
+              <Link
+                href={withTenantPrefix("/account/notifications", tenant.type)}
+                className="hidden text-sm text-white/80 hover:text-white md:inline"
+              >
+                문자 수신 설정
+              </Link>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
@@ -96,7 +104,7 @@ export default function Header() {
         ) : (
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Link href={withTenantPrefix("/login", tenant.type)}>
-              <Button size="sm" className="bg-rose-600 text-white hover:bg-rose-700">
+              <Button size="sm" className="bg-service-600 text-white hover:bg-service-700">
                 로그인
               </Button>
             </Link>

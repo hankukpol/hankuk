@@ -18,7 +18,7 @@ interface ShareDataResponse {
   user: {
     name: string;
   };
-  examType: "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+  examType: "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
   examTypeLabel: string;
   region: {
     id: number;

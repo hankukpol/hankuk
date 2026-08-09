@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseExamType, parsePositiveInt } from "@/lib/admin-answer-keys";
+import { parsePositiveInt } from "@/lib/admin-answer-keys";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
+import { getTenantExamTypeErrorMessage, isExamTypeForTenant } from "@/lib/tenant-exam";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,10 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const examId = parsePositiveInt(searchParams.get("examId"));
-  const examType = parseExamType(searchParams.get("examType"));
+  const examTypeValue = searchParams.get("examType");
+  const examType = isExamTypeForTenant(guard.tenantType, examTypeValue)
+    ? examTypeValue
+    : null;
   const limit = parseLimit(searchParams.get("limit"));
 
   if (!examId) {
@@ -32,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   if (!examType) {
     return NextResponse.json(
-      { error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT 이어야 합니다." },
+      { error: getTenantExamTypeErrorMessage(guard.tenantType) },
       { status: 400 }
     );
   }

@@ -39,6 +39,7 @@ mariadb_manual_install*.log
 .env
 .env.*
 !.env.example
+!.env.docker.example
 .env.local
 .env.production
 
@@ -50,5 +51,6 @@ mariadb_manual_install*.log
 next-env.d.ts
 
 /src/generated/prisma
+/.superloopy/
 
 .vercel

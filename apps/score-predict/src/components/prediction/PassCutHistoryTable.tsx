@@ -32,6 +32,9 @@ interface PassCutHistoryTableProps {
   releases: PassCutHistoryRelease[];
   current: PassCutSnapshot;
   myScore?: number | null;
+  showGradeThresholds?: boolean;
+  oneMultipleLabel?: string;
+  title?: string;
 }
 
 function formatDate(value: string): string {
@@ -97,7 +100,14 @@ function DeltaBadge({ delta }: { delta: number | null }) {
   );
 }
 
-export default function PassCutHistoryTable({ releases, current, myScore }: PassCutHistoryTableProps) {
+export default function PassCutHistoryTable({
+  releases,
+  current,
+  myScore,
+  showGradeThresholds = true,
+  oneMultipleLabel = "1배수컷",
+  title = "합격컷 발표 현황",
+}: PassCutHistoryTableProps) {
   const columns: ColumnDef[] = [
     ...releases.map((release) => ({
       key: `release-${release.releaseNumber}`,
@@ -114,10 +124,14 @@ export default function PassCutHistoryTable({ releases, current, myScore }: Pass
   ];
 
   const scoreRows: ScoreRowDef[] = [
-    { label: "1배수컷", getValue: (s) => s?.oneMultipleCutScore ?? null, useThresholdFormat: true },
-    { label: "확실권", getValue: (s) => s?.sureMinScore ?? null, useThresholdFormat: true },
-    { label: "유력권", getValue: (s) => s?.likelyMinScore ?? null, useThresholdFormat: true },
-    { label: "가능권", getValue: (s) => s?.possibleMinScore ?? null, useThresholdFormat: true },
+    { label: oneMultipleLabel, getValue: (s) => s?.oneMultipleCutScore ?? null, useThresholdFormat: true },
+    ...(showGradeThresholds
+      ? [
+          { label: "확실권", getValue: (s: PassCutSnapshot | null) => s?.sureMinScore ?? null, useThresholdFormat: true },
+          { label: "유력권", getValue: (s: PassCutSnapshot | null) => s?.likelyMinScore ?? null, useThresholdFormat: true },
+          { label: "가능권", getValue: (s: PassCutSnapshot | null) => s?.possibleMinScore ?? null, useThresholdFormat: true },
+        ]
+      : []),
     { label: "평균점", getValue: (s) => s?.averageScore ?? null },
   ];
 
@@ -125,7 +139,7 @@ export default function PassCutHistoryTable({ releases, current, myScore }: Pass
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-      <h3 className="text-base font-semibold text-slate-900">합격컷 발표 현황</h3>
+      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-[640px] w-full border-collapse text-sm">
           <thead>

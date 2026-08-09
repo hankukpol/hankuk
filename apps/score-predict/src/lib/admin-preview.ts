@@ -1,5 +1,8 @@
 import { ExamType, Gender } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getTenantConfigByType, type TenantType } from "@/lib/tenant";
+import { TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
+import { requireSoleActiveExam } from "@/lib/active-exam";
 
 export interface AdminPreviewCandidate {
   submissionId: number;
@@ -7,27 +10,15 @@ export interface AdminPreviewCandidate {
 }
 
 const MOCK_EXAM_NUMBER_PREFIX = "MOCK-";
-const PREVIEW_PRIMARY_EXAM_TYPE = ExamType.PUBLIC;
 const PREVIEW_PRIMARY_GENDER = Gender.MALE;
-const PREVIEW_EXAM_TYPES: readonly ExamType[] = [
-  ExamType.PUBLIC,
-  ExamType.CAREER_RESCUE,
-  ExamType.CAREER_ACADEMIC,
-  ExamType.CAREER_EMT,
-];
 
-function examTypeLabel(examType: ExamType): string {
-  if (examType === ExamType.CAREER_RESCUE) return "Rescue Career";
-  if (examType === ExamType.CAREER_ACADEMIC) return "Academic Career";
-  if (examType === ExamType.CAREER_EMT) return "EMT Career";
-  return "Public";
+function examTypeLabel(tenantType: TenantType, examType: ExamType): string {
+  return getTenantConfigByType(tenantType).examTypeLabels[examType] ?? examType;
 }
 
-function examTypePreviewPriority(examType: ExamType): number {
-  if (examType === ExamType.PUBLIC) return 0;
-  if (examType === ExamType.CAREER_RESCUE) return 1;
-  if (examType === ExamType.CAREER_ACADEMIC) return 2;
-  return 3;
+function examTypePreviewPriority(tenantType: TenantType, examType: ExamType): number {
+  const index = TENANT_EXAM_TYPES[tenantType].indexOf(examType);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
 function genderLabel(gender: Gender): string {
@@ -35,25 +26,28 @@ function genderLabel(gender: Gender): string {
 }
 
 function previewPrimaryPriority(params: { examType: ExamType; gender: Gender }): number {
-  if (params.examType === PREVIEW_PRIMARY_EXAM_TYPE && params.gender === PREVIEW_PRIMARY_GENDER) {
+  if (params.examType === ExamType.PUBLIC && params.gender === PREVIEW_PRIMARY_GENDER) {
     return 0;
   }
-  if (params.examType === PREVIEW_PRIMARY_EXAM_TYPE) {
+  if (params.examType === ExamType.PUBLIC) {
     return 1;
   }
   return 2;
 }
 
-export async function buildAdminPreviewCandidates(): Promise<AdminPreviewCandidate[]> {
-  const activeExam = await prisma.exam.findFirst({
-    where: { isActive: true },
-    orderBy: [{ examDate: "desc" }, { id: "desc" }],
-    select: { id: true },
+export async function buildAdminPreviewCandidates(
+  tenantType: TenantType
+): Promise<AdminPreviewCandidate[]> {
+  const previewExamTypes = TENANT_EXAM_TYPES[tenantType];
+  const activeExam = await requireSoleActiveExam({
+    db: prisma,
+    tenantType,
+    context: "admin-preview",
   });
 
   const loadRows = async (examId?: number) => {
     const rowsByType = await Promise.all(
-      PREVIEW_EXAM_TYPES.map((examType) =>
+      previewExamTypes.map((examType) =>
         prisma.submission.findMany({
           where: {
             examNumber: { startsWith: MOCK_EXAM_NUMBER_PREFIX },
@@ -105,18 +99,18 @@ export async function buildAdminPreviewCandidates(): Promise<AdminPreviewCandida
       const scoreDiff = Number(right.finalScore) - Number(left.finalScore);
       if (scoreDiff !== 0) return scoreDiff;
 
-      const priorityDiff = examTypePreviewPriority(left.examType) - examTypePreviewPriority(right.examType);
+      const priorityDiff =
+        examTypePreviewPriority(tenantType, left.examType) -
+        examTypePreviewPriority(tenantType, right.examType);
       if (priorityDiff !== 0) return priorityDiff;
       return right.id - left.id;
     });
   };
 
-  const rows = activeExam ? await loadRows(activeExam.id) : await loadRows();
-  const fallbackRows = rows.length < 1 && activeExam ? await loadRows() : [];
-  const targetRows = rows.length > 0 ? rows : fallbackRows;
+  const targetRows = await loadRows(activeExam.id);
 
   return targetRows.map((row) => ({
     submissionId: row.id,
-    label: `#${row.id} | ${row.exam.year}-${row.exam.round} ${examTypeLabel(row.examType)} ${genderLabel(row.gender)} | ${row.region.name} | score ${Number(row.finalScore).toFixed(2)} | ${row.user.name}(${row.user.phone}) | ${row.examNumber}`,
+    label: `#${row.id} | ${row.exam.year}-${row.exam.round} ${examTypeLabel(tenantType, row.examType)} ${genderLabel(row.gender)} | ${row.region.name} | score ${Number(row.finalScore).toFixed(2)} | ${row.user.name}(${row.user.phone}) | ${row.examNumber}`,
   }));
 }

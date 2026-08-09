@@ -1,14 +1,14 @@
-import { Prisma } from "@prisma/client";
+import { CalibrationSnapshotPhase, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
-import { evaluateAutoPassCutRows } from "@/lib/pass-cut-auto-release";
-import {
-  createPassCutRelease,
-  PassCutReleaseServiceError,
-} from "@/lib/pass-cut-release.service";
+import { evaluateTenantAutoPassCutRows } from "@/lib/tenant-calculations.server";
+import * as firePassCutRelease from "@/lib/fire/pass-cut-release.service";
+import * as policePassCutRelease from "@/lib/police/pass-cut-release.service";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached, revalidateNoticeCache } from "@/lib/site-settings";
+import { capturePoliceCalibrationSnapshots } from "@/lib/police/calibration-snapshot";
+import { isActiveExamRouteError, resolveActiveExamForWrite } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -137,13 +137,15 @@ export async function POST(request: NextRequest) {
 
     const settings = await getSiteSettingsUncached();
     const includeCareerExamType = Boolean(settings["site.careerExamEnabled"] ?? true);
-    const evaluatedRows = await evaluateAutoPassCutRows({
+    const evaluatedRows = await evaluateTenantAutoPassCutRows(guard.tenantType, {
       examId,
       releaseNumberForThreshold: releaseNumber,
       includeCareerExamType,
     });
 
-    const created = await createPassCutRelease({
+    const releaseService =
+      guard.tenantType === "police" ? policePassCutRelease : firePassCutRelease;
+    const created = await releaseService.createPassCutRelease({
       examId,
       releaseNumber,
       createdBy: adminUserId,
@@ -166,7 +168,27 @@ export async function POST(request: NextRequest) {
     });
 
     if (autoNotice) {
-      revalidateNoticeCache("police");
+      revalidateNoticeCache(guard.tenantType);
+    }
+
+    await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: guard.tenantType,
+      context: "api/admin/pass-cut-release POST",
+      requestedExamId: examId,
+    });
+
+    if (guard.tenantType === "police") {
+      const phaseByRelease = {
+        1: CalibrationSnapshotPhase.EXAM_DAY_CLOSE,
+        2: CalibrationSnapshotPhase.D_PLUS_1,
+        3: CalibrationSnapshotPhase.D_PLUS_2,
+        4: CalibrationSnapshotPhase.D_PLUS_4,
+      } as const;
+      await capturePoliceCalibrationSnapshots({
+        examId,
+        phase: phaseByRelease[releaseNumber as keyof typeof phaseByRelease],
+      });
     }
 
     return NextResponse.json({
@@ -178,7 +200,13 @@ export async function POST(request: NextRequest) {
       snapshotCount: created.snapshotCount,
     });
   } catch (error) {
-    if (error instanceof PassCutReleaseServiceError) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (
+      error instanceof firePassCutRelease.PassCutReleaseServiceError ||
+      error instanceof policePassCutRelease.PassCutReleaseServiceError
+    ) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

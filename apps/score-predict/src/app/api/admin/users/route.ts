@@ -5,11 +5,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
-import {
-  archiveScorePredictSharedIdentity,
-  ensureScorePredictSharedIdentity,
-  syncScorePredictSharedPassword,
-} from "@/lib/shared-auth";
 import { getServerTenantType } from "@/lib/tenant.server";
 
 export const runtime = "nodejs";
@@ -226,45 +221,6 @@ export async function PUT(request: NextRequest) {
       data: updateData,
     });
 
-    const effectiveRole = role ?? user.role;
-
-    if (role !== null) {
-      try {
-        await ensureScorePredictSharedIdentity({
-          tenantType,
-          identity: {
-            legacyUserId: user.id,
-            name: user.name,
-            email: user.email,
-            loginIdentifier: user.phone,
-            contactPhone: tenantType === "police" ? user.contactPhone : undefined,
-            role: effectiveRole,
-          },
-        });
-      } catch (error) {
-        console.error("[admin/users] Failed to sync shared identity after role update.", error);
-      }
-    }
-
-    if (resetPassword && tempPassword) {
-      try {
-        await syncScorePredictSharedPassword({
-          tenantType,
-          identity: {
-            legacyUserId: user.id,
-            name: user.name,
-            email: user.email,
-            loginIdentifier: user.phone,
-            contactPhone: tenantType === "police" ? user.contactPhone : undefined,
-            role: effectiveRole,
-          },
-          password: tempPassword,
-        });
-      } catch (error) {
-        console.error("[admin/users] Failed to sync shared auth password after admin reset.", error);
-      }
-    }
-
     return NextResponse.json({
       success: true,
       updatedUserId: userId,
@@ -306,21 +262,6 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.$transaction(async (tx) => {
-      await archiveScorePredictSharedIdentity(
-        {
-          tenantType,
-          identity: {
-            legacyUserId: user.id,
-            name: user.name,
-            email: user.email,
-            loginIdentifier: user.phone,
-            contactPhone: tenantType === "police" ? user.contactPhone : undefined,
-            role: user.role,
-          },
-        },
-        tx
-      );
-
       const submissions = await tx.submission.findMany({
         where: { userId },
         select: { id: true },

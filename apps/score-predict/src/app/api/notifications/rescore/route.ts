@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getCurrentTenantSession } from "@/lib/tenant-session.server";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -23,7 +22,7 @@ function parseSummary(summaryText: string): RescoreSummaryPayload {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getCurrentTenantSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }

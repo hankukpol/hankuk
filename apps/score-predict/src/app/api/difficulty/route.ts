@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ExamType } from "@prisma/client";
 import { getDifficultyStats } from "@/lib/difficulty";
+import { getServerTenantType } from "@/lib/tenant.server";
 
 export const runtime = "nodejs";
 
@@ -14,7 +16,12 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const examId = parseExamId(searchParams.get("examId"));
-    const stats = await getDifficultyStats(examId);
+    const tenantType = await getServerTenantType();
+    const allowedExamTypes =
+      tenantType === "police"
+        ? [ExamType.PUBLIC, ExamType.CAREER]
+        : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
+    const stats = await getDifficultyStats(examId, allowedExamTypes);
 
     if (!stats) {
       return NextResponse.json({ error: "시험 정보를 찾을 수 없습니다." }, { status: 404 });

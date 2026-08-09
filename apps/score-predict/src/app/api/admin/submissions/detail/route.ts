@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
+import { TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
 
 function maskPhone(phone: string): string {
   // "01012345678" → "010****5678", "010-1234-5678" → "010-****-5678"
@@ -31,8 +32,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const submission = await prisma.submission.findUnique({
-      where: { id: submissionId },
+    const submission = await prisma.submission.findFirst({
+      where: {
+        id: submissionId,
+        examType: { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
+      },
       select: {
         id: true,
         examId: true,

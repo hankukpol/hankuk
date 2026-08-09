@@ -20,6 +20,7 @@ export type SiteSettingKey =
   | "site.mainCardScoreDistributionEnabled"
   | "site.submissionEditLimit"
   | "site.finalPredictionEnabled"
+  | "site.policePredictionGradesEnabled"
   | "site.autoPassCutEnabled"
   | "site.autoPassCutMode"
   | "site.autoPassCutCheckIntervalSec"
@@ -64,6 +65,7 @@ export const SITE_SETTING_TYPES: Record<SiteSettingKey, SiteSettingValueType> = 
   "site.submissionEditLimit": "number",
   "site.commentsEnabled": "boolean",
   "site.finalPredictionEnabled": "boolean",
+  "site.policePredictionGradesEnabled": "boolean",
   "site.autoPassCutEnabled": "boolean",
   "site.autoPassCutMode": "string",
   "site.autoPassCutCheckIntervalSec": "number",
@@ -83,7 +85,7 @@ export const SITE_SETTING_TYPES: Record<SiteSettingKey, SiteSettingValueType> = 
 
 export const SITE_SETTING_DEFAULTS: SiteSettingsMap = {
   "site.title": "한국경찰 합격예측",
-  "site.heroBadge": "2026년 한국경찰 1차 필기시험 합격예측",
+  "site.heroBadge": "경찰 필기시험 합격예측",
   "site.heroTitle": "OMR 답안 입력부터\n합격권 예측까지 한 번에 확인하세요.",
   "site.heroSubtitle":
     "응시정보와 OMR 답안을 입력하면 과목별 분석, 예상 점수, 배수권 위치, 합격 가능성 정보를 실시간으로 확인할 수 있습니다.",
@@ -139,6 +141,7 @@ export const SITE_SETTING_DEFAULTS: SiteSettingsMap = {
   "site.submissionEditLimit": 3,
   "site.commentsEnabled": true,
   "site.finalPredictionEnabled": false,
+  "site.policePredictionGradesEnabled": false,
   "site.autoPassCutEnabled": false,
   "site.autoPassCutMode": "HYBRID",
   "site.autoPassCutCheckIntervalSec": 300,

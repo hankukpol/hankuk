@@ -17,6 +17,7 @@ interface ExamOption {
   year: number;
   round: number;
   name: string;
+  isActive: boolean;
 }
 
 interface RegionOption {
@@ -34,6 +35,7 @@ interface PreRegistrationRow {
   userName: string;
   userPhone: string; // 로그인 아이디
   userContactPhone: string; // 연락처
+  smsMarketingConsented: boolean;
   regionId: number;
   regionName: string;
   examType: ExamTypeValue;
@@ -195,7 +197,9 @@ export default function AdminPreRegistrationsPage() {
       throw new Error(getResponseErrorMessage(examsMetaResponse, "시험 메타데이터를 불러오지 못했습니다.", metaData));
     }
 
-    setExamOptions(examData?.exams ?? []);
+    const nextExamOptions = examData?.exams ?? [];
+    setExamOptions(nextExamOptions);
+    setSelectedExamId((current) => current || nextExamOptions.find((exam) => exam.isActive)?.id || "");
     setRegionOptions(metaData?.regions ?? []);
     setCareerExamEnabled(metaData?.careerExamEnabled ?? true);
   }, []);
@@ -389,7 +393,7 @@ export default function AdminPreRegistrationsPage() {
     }
   }
 
-  async function handleDownloadCsv() {
+  async function handleDownloadCsv(scope: "all" | "marketing-consented") {
     setIsDownloading(true);
     setNotice(null);
     try {
@@ -398,6 +402,7 @@ export default function AdminPreRegistrationsPage() {
       if (selectedRegionId) params.set("regionId", String(selectedRegionId));
       if (selectedExamType) params.set("examType", selectedExamType);
       if (searchKeyword) params.set("search", searchKeyword);
+      params.set("scope", scope);
 
       const response = await fetch(`/api/admin/pre-registrations/export?${params.toString()}`);
       if (!response.ok) {
@@ -408,7 +413,7 @@ export default function AdminPreRegistrationsPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `사전등록목록_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `${scope === "marketing-consented" ? "문자수신동의자" : "사전등록전체"}_${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -594,8 +599,11 @@ export default function AdminPreRegistrationsPage() {
           >
             필터 초기화
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleDownloadCsv()} disabled={isDownloading}>
-            {isDownloading ? "다운로드 중..." : "CSV 내보내기"}
+          <Button type="button" variant="outline" onClick={() => void handleDownloadCsv("all")} disabled={isDownloading}>
+            {isDownloading ? "다운로드 중..." : "전체 CSV"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void handleDownloadCsv("marketing-consented")} disabled={isDownloading}>
+            문자 동의자 CSV
           </Button>
         </div>
       </section>

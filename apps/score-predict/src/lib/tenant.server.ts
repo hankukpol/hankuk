@@ -1,10 +1,8 @@
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import {
   DEFAULT_TENANT_TYPE,
-  TENANT_COOKIE,
-  TENANT_HEADER,
   getTenantConfigByType,
-  normalizeTenantType,
+  parseTenantTypeFromHostname,
   parseTenantTypeFromPathname,
   type TenantConfig,
   type TenantType,
@@ -12,14 +10,22 @@ import {
 
 export async function getServerTenantType(): Promise<TenantType> {
   const headerStore = await headers();
-  const cookieStore = await cookies();
 
-  return (
-    parseTenantTypeFromPathname(headerStore.get("x-hankuk-original-pathname")) ??
-    normalizeTenantType(headerStore.get(TENANT_HEADER)) ??
-    normalizeTenantType(cookieStore.get(TENANT_COOKIE)?.value) ??
-    DEFAULT_TENANT_TYPE
-  );
+  const resolved =
+    parseTenantTypeFromHostname(
+      headerStore.get("x-forwarded-host") ?? headerStore.get("host")
+    ) ??
+    parseTenantTypeFromPathname(headerStore.get("x-hankuk-original-pathname"));
+
+  if (resolved) {
+    return resolved;
+  }
+
+  if (process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build") {
+    throw new Error("요청에서 경찰·소방 서비스 구분을 확인할 수 없습니다.");
+  }
+
+  return DEFAULT_TENANT_TYPE;
 }
 
 export async function getServerTenantConfig(): Promise<TenantConfig> {

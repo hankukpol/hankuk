@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ExamType } from "@prisma/client";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
@@ -6,10 +7,11 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 
 const EXAM_TYPE_LABEL: Record<string, string> = {
-  PUBLIC: "Public",
-  CAREER_RESCUE: "Rescue Career",
-  CAREER_ACADEMIC: "Academic Career",
-  CAREER_EMT: "EMT Career",
+  PUBLIC: "공채",
+  CAREER: "경행경채",
+  CAREER_RESCUE: "구조 경채",
+  CAREER_ACADEMIC: "소방학과 경채",
+  CAREER_EMT: "구급 경채",
 };
 
 const GENDER_LABEL: Record<string, string> = {
@@ -35,10 +37,15 @@ export async function GET(request: NextRequest) {
     orderBy: [{ examDate: "desc" }, { id: "desc" }],
     select: { id: true },
   });
+  const allowedExamTypes =
+    guard.tenantType === "police"
+      ? [ExamType.PUBLIC, ExamType.CAREER]
+      : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
 
   const submissions = await prisma.submission.findMany({
     where: {
       ...(activeExam ? { examId: activeExam.id } : {}),
+      examType: { in: allowedExamTypes },
       OR: [
         { examNumber: { contains: query, mode: "insensitive" } },
         { user: { name: { contains: query, mode: "insensitive" } } },
@@ -74,7 +81,10 @@ export async function GET(request: NextRequest) {
     userName: submission.user.name,
     examNumber: submission.examNumber ?? "-",
     examTypeLabel: EXAM_TYPE_LABEL[submission.examType] ?? submission.examType,
-    genderLabel: GENDER_LABEL[submission.gender] ?? submission.gender,
+    genderLabel:
+      guard.tenantType === "police"
+        ? "-"
+        : GENDER_LABEL[submission.gender] ?? submission.gender,
     regionName: submission.region.name,
     examLabel: `${submission.exam.year} / Round ${submission.exam.round}`,
     totalScore: Number(submission.totalScore),

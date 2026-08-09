@@ -61,7 +61,7 @@ export default function AdminSitePoliciesTabPage() {
           <Label htmlFor="terms-of-service">이용약관</Label>
           <textarea
             id="terms-of-service"
-            className="min-h-56 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-fire-300 transition focus:ring"
+            className="min-h-56 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-service-300 transition focus:ring"
             value={asString(settings["site.termsOfService"])}
             onChange={(event) => updateSetting("site.termsOfService", event.target.value)}
           />
@@ -71,7 +71,7 @@ export default function AdminSitePoliciesTabPage() {
           <Label htmlFor="privacy-policy">개인정보처리방침</Label>
           <textarea
             id="privacy-policy"
-            className="min-h-56 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-fire-300 transition focus:ring"
+            className="min-h-56 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-service-300 transition focus:ring"
             value={asString(settings["site.privacyPolicy"])}
             onChange={(event) => updateSetting("site.privacyPolicy", event.target.value)}
           />

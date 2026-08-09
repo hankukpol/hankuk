@@ -1,7 +1,6 @@
 import { ExamType, Gender, Prisma } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import {
   checkExamNumberAvailability,
@@ -9,9 +8,21 @@ import {
   getQuotaValidationError,
   lockExamNumberMutation,
   lockUserExamMutation,
-} from "@/lib/pre-registration";
+} from "@/lib/police/pre-registration";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForWrite,
+  requireSoleActiveExam,
+  resolveActiveExamForWrite,
+} from "@/lib/active-exam";
+import {
+  buildSmsMarketingConsentUpdate,
+  isSmsMarketingConsentActive,
+  SMS_MARKETING_CONSENT_TEXT,
+  SMS_MARKETING_CONSENT_VERSION,
+} from "@/lib/police/sms-marketing-consent";
 
 export const runtime = "nodejs";
 
@@ -21,6 +32,7 @@ type PreRegistrationRequestBody = {
   gender?: unknown;
   regionId?: unknown;
   examNumber?: unknown;
+  smsMarketingConsent?: unknown;
 };
 
 class PreRegistrationRouteError extends Error {
@@ -77,7 +89,12 @@ function getPreRegistrationDisabledMessage(settings: Record<string, unknown>): s
 async function ensureExistingUser(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true },
+    select: {
+      id: true,
+      smsMarketingConsentAt: true,
+      smsMarketingConsentVersion: true,
+      smsMarketingConsentWithdrawnAt: true,
+    },
   });
 
   if (!user) {
@@ -86,9 +103,10 @@ async function ensureExistingUser(userId: number) {
       401
     );
   }
+  return user;
 }
 
-async function resolveTargetExam(examId: number | null) {
+async function resolveReadTargetExam(examId: number | null) {
   if (examId) {
     return prisma.exam.findUnique({
       where: { id: examId },
@@ -96,18 +114,22 @@ async function resolveTargetExam(examId: number | null) {
     });
   }
 
-  return prisma.exam.findFirst({
-    where: { isActive: true },
-    orderBy: [{ examDate: "desc" }, { id: "desc" }],
-    select: { id: true, name: true, isActive: true },
+  return requireSoleActiveExam({
+    db: prisma,
+    tenantType: "police",
+    context: "api/pre-registration GET",
   });
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession?.session.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  if (tenantSession.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
+  const { session } = tenantSession;
 
   try {
     const userId = parsePositiveInt(session.user.id);
@@ -115,11 +137,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "사용자 정보를 확인할 수 없습니다." }, { status: 401 });
     }
 
-    await ensureExistingUser(userId);
+    const user = await ensureExistingUser(userId);
 
     const { searchParams } = new URL(request.url);
     const requestedExamId = parseOptionalExamId(searchParams.get("examId"), "examId");
-    const exam = await resolveTargetExam(requestedExamId);
+    const exam = await resolveReadTargetExam(requestedExamId);
 
     if (!exam) {
       return NextResponse.json({ preRegistration: null });
@@ -141,11 +163,26 @@ export async function GET(request: NextRequest) {
         examNumber: true,
         createdAt: true,
         updatedAt: true,
+        submissionId: true,
+        convertedAt: true,
       },
     });
 
-    return NextResponse.json({ preRegistration });
+    return NextResponse.json({
+      preRegistration,
+      smsMarketingConsent: {
+        consented: isSmsMarketingConsentActive(user),
+        consentAt: user.smsMarketingConsentAt,
+        consentVersion: user.smsMarketingConsentVersion,
+        withdrawnAt: user.smsMarketingConsentWithdrawnAt,
+        currentVersion: SMS_MARKETING_CONSENT_VERSION,
+        consentText: SMS_MARKETING_CONSENT_TEXT,
+      },
+    });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof PreRegistrationRouteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -156,10 +193,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession?.session.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  if (tenantSession.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
+  const { session } = tenantSession;
 
   try {
     let body: PreRegistrationRequestBody;
@@ -177,12 +218,15 @@ export async function POST(request: Request) {
     await ensureExistingUser(userId);
 
     const requestedExamId = parseOptionalExamId(body.examId, "examId");
-    const exam = await resolveTargetExam(requestedExamId);
-    if (!exam) {
-      return NextResponse.json({ error: "사전등록 가능한 시험이 없습니다." }, { status: 404 });
-    }
-    if (!exam.isActive) {
-      return NextResponse.json({ error: "현재 활성화된 시험만 사전등록할 수 있습니다." }, { status: 400 });
+    const exam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: "police",
+      context: "api/pre-registration POST",
+      requestedExamId,
+    });
+
+    if (body.smsMarketingConsent !== undefined && typeof body.smsMarketingConsent !== "boolean") {
+      return NextResponse.json({ error: "문자 수신 동의 값이 올바르지 않습니다." }, { status: 400 });
     }
 
     const examType = parseExamType(body.examType);
@@ -236,6 +280,13 @@ export async function POST(request: Request) {
     }
 
     const preRegistration = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, "police");
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: "police",
+        context: "api/pre-registration POST transaction",
+        requestedExamId: exam.id,
+      });
       await lockUserExamMutation(tx, { userId, examId: exam.id });
       await lockExamNumberMutation(tx, {
         examId: exam.id,
@@ -252,6 +303,31 @@ export async function POST(request: Request) {
       });
       if (existingSubmission) {
         throw new PreRegistrationRouteError("이미 제출을 완료한 시험은 사전등록으로 변경할 수 없습니다.", 409);
+      }
+
+      if (typeof body.smsMarketingConsent === "boolean") {
+        const currentUser = await tx.user.findUnique({
+          where: { id: userId },
+          select: {
+            smsMarketingConsentAt: true,
+            smsMarketingConsentVersion: true,
+            smsMarketingConsentWithdrawnAt: true,
+          },
+        });
+        if (!currentUser) {
+          throw new PreRegistrationRouteError("사용자 정보를 찾을 수 없습니다.", 401);
+        }
+        const consentUpdate = buildSmsMarketingConsentUpdate(
+          currentUser,
+          body.smsMarketingConsent,
+          new Date()
+        );
+        if (consentUpdate) {
+          await tx.user.update({
+            where: { id: userId },
+            data: consentUpdate,
+          });
+        }
       }
 
       const existingPreRegistration = await tx.preRegistration.findUnique({
@@ -307,6 +383,8 @@ export async function POST(request: Request) {
           examNumber: true,
           createdAt: true,
           updatedAt: true,
+          submissionId: true,
+          convertedAt: true,
         },
       });
     });
@@ -317,6 +395,9 @@ export async function POST(request: Request) {
       message: "사전등록이 저장되었습니다.",
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof PreRegistrationRouteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -334,10 +415,14 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession?.session.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  if (tenantSession.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
+  const { session } = tenantSession;
 
   try {
     const userId = parsePositiveInt(session.user.id);
@@ -349,10 +434,12 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const requestedExamId = parseOptionalExamId(searchParams.get("examId"), "examId");
-    const exam = await resolveTargetExam(requestedExamId);
-    if (!exam) {
-      return NextResponse.json({ error: "대상 시험을 찾을 수 없습니다." }, { status: 404 });
-    }
+    const exam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType: "police",
+      context: "api/pre-registration DELETE",
+      requestedExamId,
+    });
 
     const settings = await getSiteSettingsUncached();
     const preRegistrationEnabled = Boolean(settings["site.preRegistrationEnabled"] ?? true);
@@ -364,6 +451,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, "police");
+      await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: "police",
+        context: "api/pre-registration DELETE transaction",
+        requestedExamId: exam.id,
+      });
       await lockUserExamMutation(tx, { userId, examId: exam.id });
 
       const existingSubmission = await tx.submission.findFirst({
@@ -387,6 +481,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: "사전등록이 취소되었습니다." });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof PreRegistrationRouteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

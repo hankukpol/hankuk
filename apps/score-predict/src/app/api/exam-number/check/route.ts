@@ -1,11 +1,18 @@
 import { ExamType, Gender } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { validateExamNumberWithRange } from "@/lib/exam-number";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import { validateExamNumberWithRange } from "@/lib/fire/exam-number";
+import { validatePoliceExamNumberWithRange } from "@/lib/police/exam-number";
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import { isExamTypeForTenant } from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
+import {
+  isActiveExamRouteError,
+  resolveActiveExamForWrite,
+} from "@/lib/active-exam";
+import { checkExamNumberAvailability } from "@/lib/police/pre-registration";
 
 export const runtime = "nodejs";
 
@@ -18,12 +25,8 @@ function parsePositiveInt(value: string | null): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function parseExamType(value: string | null): ExamType | null {
-  if (value === ExamType.PUBLIC) return ExamType.PUBLIC;
-  if (value === ExamType.CAREER_RESCUE) return ExamType.CAREER_RESCUE;
-  if (value === ExamType.CAREER_ACADEMIC) return ExamType.CAREER_ACADEMIC;
-  if (value === ExamType.CAREER_EMT) return ExamType.CAREER_EMT;
-  return null;
+function parseExamType(tenantType: TenantType, value: string | null): ExamType | null {
+  return isExamTypeForTenant(tenantType, value) ? value : null;
 }
 
 function parseGender(value: string | null): Gender | null {
@@ -33,10 +36,11 @@ function parseGender(value: string | null): Gender | null {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   const ip = getClientIp(request);
   const rateLimit = consumeFixedWindowRateLimit({
@@ -59,24 +63,33 @@ export async function GET(request: NextRequest) {
   const examId = parsePositiveInt(searchParams.get("examId"));
   const regionId = parsePositiveInt(searchParams.get("regionId"));
   const examNumber = searchParams.get("examNumber")?.trim() ?? "";
-  const examType = parseExamType(searchParams.get("examType"));
+  const examType = parseExamType(tenantType, searchParams.get("examType"));
   const gender = parseGender(searchParams.get("gender"));
 
-  if (!examId || !regionId || !examNumber || !examType || !gender) {
+  if (!regionId || !examNumber || !examType || (tenantType === "fire" && !gender)) {
     return NextResponse.json(
-      { error: "examId, regionId, examNumber, examType, gender가 모두 필요합니다." },
+      { error: tenantType === "fire" ? "regionId, examNumber, examType, gender가 모두 필요합니다." : "regionId, examNumber, examType이 모두 필요합니다." },
       { status: 400 }
     );
   }
 
   try {
     const userId = Number(session.user.id);
+    const activeExam = await resolveActiveExamForWrite({
+      db: prisma,
+      tenantType,
+      context: "api/exam-number/check GET",
+      requestedExamId: examId,
+    });
+    const effectiveExamId = activeExam.id;
 
     const quota = await prisma.examRegionQuota.findUnique({
       where: {
-        examId_regionId: { examId, regionId },
+        examId_regionId: { examId: effectiveExamId, regionId },
       },
       select: {
+        examNumberStartCareer: true,
+        examNumberEndCareer: true,
         recruitAcademicCombined: true,
         examNumberStartPublicMale: true,
         examNumberEndPublicMale: true,
@@ -99,15 +112,18 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const validation = validateExamNumberWithRange({
-      examNumber,
-      context: {
-        examType,
-        gender,
-        recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
-      },
-      quota,
-    });
+    const validation =
+      tenantType === "police"
+        ? validatePoliceExamNumberWithRange({ examNumber, examType, quota })
+        : validateExamNumberWithRange({
+            examNumber,
+            context: {
+              examType,
+              gender: gender!,
+              recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
+            },
+            quota,
+          });
     if (!validation.ok) {
       return NextResponse.json({
         available: false,
@@ -115,9 +131,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    if (tenantType === "police") {
+      const availability = await checkExamNumberAvailability({
+        examId: effectiveExamId,
+        regionId,
+        examType,
+        examNumber,
+        userId,
+      });
+      if (!availability.available) {
+        return NextResponse.json({ available: false, reason: availability.reason });
+      }
+      return NextResponse.json({ available: true });
+    }
+
     const duplicate = await prisma.submission.findFirst({
       where: {
-        examId,
+        examId: effectiveExamId,
         regionId,
         examNumber,
         userId: { not: userId },
@@ -134,6 +164,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ available: true });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("응시번호 확인 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "응시번호 확인에 실패했습니다." }, { status: 500 });
   }

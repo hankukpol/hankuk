@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/providers/ToastProvider";
 import { validateLoginInput } from "@/lib/validations";
-import { withTenantPrefix } from "@/lib/tenant";
+import { parseTenantTypeFromHostname, withTenantPrefix } from "@/lib/tenant";
 
 const TENANT_TYPE = "fire";
 const POST_LOGIN_REDIRECT_PATH = withTenantPrefix("/", TENANT_TYPE);
@@ -44,7 +44,11 @@ export default function LoginPage() {
     });
 
     if (result?.ok) {
-      router.replace(POST_LOGIN_REDIRECT_PATH);
+      router.replace(
+        parseTenantTypeFromHostname(window.location.hostname) === TENANT_TYPE
+          ? "/"
+          : POST_LOGIN_REDIRECT_PATH
+      );
       router.refresh();
       return;
     }

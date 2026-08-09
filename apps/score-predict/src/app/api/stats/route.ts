@@ -1,10 +1,15 @@
-import { ExamType, Gender } from "@prisma/client";
+import { ExamType, Gender, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { getDifficultyStats } from "@/lib/difficulty";
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import {
+  getTenantRecruitmentCohorts,
+  type TenantRecruitmentCohort,
+} from "@/lib/tenant-calculations.server";
+import type { TenantType } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 
@@ -52,6 +57,9 @@ interface RegionAggregate {
   regionName: string;
   publicCount: number;
   careerCount: number;
+  careerRescueCount: number;
+  careerAcademicCount: number;
+  careerEmtCount: number;
   total: number;
   avgTotalScore: number;
   avgFinalScore: number;
@@ -61,6 +69,7 @@ interface RegionPredictionAggregate {
   regionId: number;
   regionName: string;
   examType: ExamType;
+  gender: Gender | null;
   recruitCount: number;
   participantCount: number;
   oneMultipleBaseRank: number;
@@ -77,16 +86,6 @@ interface ScoreBand {
 
 function roundTwo(value: number): number {
   return Number(value.toFixed(2));
-}
-
-function getQuotaRecruitCount(
-  quota: { recruitPublicMale: number; recruitPublicFemale: number; recruitRescue: number; recruitAcademicMale: number; recruitAcademicFemale: number; recruitAcademicCombined: number; recruitEmtMale: number; recruitEmtFemale: number },
-  examType: ExamType
-): number {
-  if (examType === ExamType.CAREER_RESCUE) return quota.recruitRescue;
-  if (examType === ExamType.CAREER_ACADEMIC) return quota.recruitAcademicMale + quota.recruitAcademicFemale + quota.recruitAcademicCombined;
-  if (examType === ExamType.CAREER_EMT) return quota.recruitEmtMale + quota.recruitEmtFemale;
-  return quota.recruitPublicMale + quota.recruitPublicFemale;
 }
 
 function getScoreBandInfoAtRank(
@@ -121,9 +120,67 @@ function getScoreBandInfoAtRank(
   return lastBandInfo;
 }
 
+interface ScoreDistributionSeries {
+  examType: ExamType;
+  maxScore: number;
+  cutoffScore: number | null;
+  items: Array<{
+    bucket: number;
+    label: string;
+    start: number;
+    end: number;
+    count: number;
+    isCutoffRange: boolean;
+  }>;
+}
+
+function buildScoreDistributions(
+  tenantType: TenantType,
+  examTypes: readonly ExamType[],
+  subjects: Array<{ examType: ExamType; maxScore: number }>,
+  rows: Array<{ examType: ExamType; totalScore: unknown; _count: { _all: number } }>
+): ScoreDistributionSeries[] {
+  const step = 10;
+
+  return examTypes.flatMap((examType) => {
+    const maxScore = subjects
+      .filter((subject) => subject.examType === examType)
+      .reduce((sum, subject) => sum + Number(subject.maxScore), 0);
+    if (maxScore < 1) return [];
+
+    const cutoffScore = tenantType === "fire" ? maxScore * 0.6 : null;
+    const bucketCount = Math.floor(maxScore / step) + 1;
+    const countByBucket = new Map<number, number>();
+    for (const row of rows) {
+      if (row.examType !== examType) continue;
+      const score = Math.max(0, Math.min(maxScore, toScore(row.totalScore)));
+      const bucket = Math.min(Math.floor(score / step), bucketCount - 1);
+      countByBucket.set(bucket, (countByBucket.get(bucket) ?? 0) + row._count._all);
+    }
+
+    return [{
+      examType,
+      maxScore,
+      cutoffScore,
+      items: Array.from({ length: bucketCount }, (_, bucket) => {
+        const start = bucket * step;
+        const end = Math.min(maxScore, start + step - 1);
+        return {
+          bucket,
+          label: start === maxScore ? `${maxScore}점` : `${start}~${end}점`,
+          start,
+          end,
+          count: countByBucket.get(bucket) ?? 0,
+          isCutoffRange: cutoffScore !== null && end < cutoffScore,
+        };
+      }),
+    }];
+  });
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAdminRoute();
-  if (auth.error) {
+  if ("error" in auth) {
     return auth.error;
   }
 
@@ -163,6 +220,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "통계를 조회할 시험이 없습니다." }, { status: 404 });
     }
 
+    const tenantExamTypes: ExamType[] =
+      auth.tenantType === "police"
+        ? [ExamType.PUBLIC, ExamType.CAREER]
+        : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
+    const scopedSubmissionWhere = {
+      examId: exam.id,
+      examType: { in: tenantExamTypes },
+    };
+
     const [
       totalParticipants,
       byExamTypeRaw,
@@ -172,37 +238,38 @@ export async function GET(request: NextRequest) {
       regions,
       submissionsByDateRaw,
       scoreDistributionRaw,
+      scoreDistributionSubjects,
       difficulty,
       predictionParticipantRaw,
       predictionScoreBandRaw,
     ] = await Promise.all([
       prisma.submission.count({
-        where: { examId: exam.id },
+        where: scopedSubmissionWhere,
       }),
       prisma.submission.groupBy({
         by: ["examType"],
-        where: { examId: exam.id },
+        where: scopedSubmissionWhere,
         _count: {
           _all: true,
         },
       }),
       prisma.submission.groupBy({
         by: ["gender"],
-        where: { examId: exam.id },
+        where: scopedSubmissionWhere,
         _count: {
           _all: true,
         },
       }),
       prisma.submission.groupBy({
         by: ["regionId", "examType"],
-        where: { examId: exam.id },
+        where: scopedSubmissionWhere,
         _count: {
           _all: true,
         },
       }),
       prisma.submission.groupBy({
         by: ["regionId"],
-        where: { examId: exam.id },
+        where: scopedSubmissionWhere,
         _count: {
           _all: true,
         },
@@ -221,23 +288,32 @@ export async function GET(request: NextRequest) {
           COUNT(*)::bigint AS count
         FROM "Submission"
         WHERE "examId" = ${exam.id}
+          AND "examType"::text IN (${Prisma.join(tenantExamTypes)})
         GROUP BY TO_CHAR("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
         ORDER BY TO_CHAR("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
       `,
-      prisma.$queryRaw<Array<{ bucket: bigint | number; count: bigint | number }>>`
-        SELECT
-          LEAST(FLOOR(GREATEST("finalScore", 0) / 10), 24)::int AS bucket,
-          COUNT(*)::bigint AS count
-        FROM "Submission"
-        WHERE "examId" = ${exam.id}
-        GROUP BY bucket
-        ORDER BY bucket
-      `,
-      getDifficultyStats(exam.id),
       prisma.submission.groupBy({
-        by: ["regionId", "examType"],
+        by: ["examType", "totalScore"],
+        where: scopedSubmissionWhere,
+        _count: { _all: true },
+        orderBy: [{ examType: "asc" }, { totalScore: "asc" }],
+      }),
+      prisma.subject.findMany({
+        where: {
+          examType: { in: tenantExamTypes },
+          answerKeys: { some: { examId: exam.id } },
+        },
+        select: {
+          examType: true,
+          maxScore: true,
+        },
+      }),
+      getDifficultyStats(exam.id, tenantExamTypes),
+      prisma.submission.groupBy({
+        by: ["regionId", "examType", "gender"],
         where: {
           examId: exam.id,
+          examType: { in: tenantExamTypes },
           isSuspicious: false,
           subjectScores: {
             some: {},
@@ -249,9 +325,10 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.submission.groupBy({
-        by: ["regionId", "examType", "finalScore"],
+        by: ["regionId", "examType", "gender", "finalScore"],
         where: {
           examId: exam.id,
+          examType: { in: tenantExamTypes },
           isSuspicious: false,
           subjectScores: {
             some: {},
@@ -261,7 +338,7 @@ export async function GET(request: NextRequest) {
         _count: {
           _all: true,
         },
-        orderBy: [{ regionId: "asc" }, { examType: "asc" }, { finalScore: "desc" }],
+        orderBy: [{ regionId: "asc" }, { examType: "asc" }, { gender: "asc" }, { finalScore: "desc" }],
       }),
     ]);
 
@@ -270,7 +347,19 @@ export async function GET(request: NextRequest) {
     // 시험별 모집인원 조회
     const examQuotas = await prisma.examRegionQuota.findMany({
       where: { examId: exam.id },
-      select: { regionId: true, recruitPublicMale: true, recruitPublicFemale: true, recruitRescue: true, recruitAcademicMale: true, recruitAcademicFemale: true, recruitAcademicCombined: true, recruitEmtMale: true, recruitEmtFemale: true },
+      select: {
+        regionId: true,
+        recruitCount: true,
+        recruitCountCareer: true,
+        recruitPublicMale: true,
+        recruitPublicFemale: true,
+        recruitRescue: true,
+        recruitAcademicMale: true,
+        recruitAcademicFemale: true,
+        recruitAcademicCombined: true,
+        recruitEmtMale: true,
+        recruitEmtFemale: true,
+      },
     });
     const quotaByRegionId = new Map(examQuotas.map((q) => [q.regionId, q] as const));
 
@@ -301,6 +390,9 @@ export async function GET(request: NextRequest) {
         regionName: regionNameById.get(item.regionId) ?? "알 수 없음",
         publicCount: 0,
         careerCount: 0,
+        careerRescueCount: 0,
+        careerAcademicCount: 0,
+        careerEmtCount: 0,
         total: 0,
         avgTotalScore: 0,
         avgFinalScore: 0,
@@ -308,13 +400,14 @@ export async function GET(request: NextRequest) {
 
       if (item.examType === ExamType.PUBLIC) {
         existing.publicCount += item._count._all;
-      } else if (
-        item.examType === ExamType.CAREER ||
-        item.examType === ExamType.CAREER_RESCUE ||
-        item.examType === ExamType.CAREER_ACADEMIC ||
-        item.examType === ExamType.CAREER_EMT
-      ) {
+      } else if (item.examType === ExamType.CAREER) {
         existing.careerCount += item._count._all;
+      } else if (item.examType === ExamType.CAREER_RESCUE) {
+        existing.careerRescueCount += item._count._all;
+      } else if (item.examType === ExamType.CAREER_ACADEMIC) {
+        existing.careerAcademicCount += item._count._all;
+      } else if (item.examType === ExamType.CAREER_EMT) {
+        existing.careerEmtCount += item._count._all;
       }
       existing.total += item._count._all;
       byRegionMap.set(item.regionId, existing);
@@ -326,6 +419,9 @@ export async function GET(request: NextRequest) {
         regionName: regionNameById.get(item.regionId) ?? "알 수 없음",
         publicCount: 0,
         careerCount: 0,
+        careerRescueCount: 0,
+        careerAcademicCount: 0,
+        careerEmtCount: 0,
         total: 0,
         avgTotalScore: 0,
         avgFinalScore: 0,
@@ -342,75 +438,70 @@ export async function GET(request: NextRequest) {
       count: toCount(item.count),
     }));
 
-    const scoreDistributionMap = new Map<number, number>();
-    for (const item of scoreDistributionRaw) {
-      const bucket = toCount(item.bucket);
-      if (bucket < 0 || bucket > 24) {
-        continue;
-      }
-      scoreDistributionMap.set(bucket, toCount(item.count));
-    }
-
-    const scoreDistribution = Array.from({ length: 25 }, (_, index) => {
-      const start = index * 10;
-      const end = start + 10;
-      const label = `${start}~${end}`;
-
-      return {
-        bucket: index,
-        label,
-        start,
-        end,
-        count: scoreDistributionMap.get(index) ?? 0,
-        isCutoffRange: start < 100,
-      };
-    });
-
-    const predictionParticipantMap = new Map<string, number>();
-    for (const item of predictionParticipantRaw) {
-      predictionParticipantMap.set(`${item.regionId}-${item.examType}`, item._count._all);
-    }
-
-    const predictionScoreBandMap = new Map<string, ScoreBand[]>();
-    for (const row of predictionScoreBandRaw) {
-      const key = `${row.regionId}-${row.examType}`;
-      const current = predictionScoreBandMap.get(key) ?? [];
-      current.push({
-        score: toScore(row.finalScore),
-        count: row._count._all,
-      });
-      predictionScoreBandMap.set(key, current);
-    }
+    const scoreDistributions = buildScoreDistributions(
+      auth.tenantType,
+      tenantExamTypes,
+      scoreDistributionSubjects.map((subject) => ({
+        examType: subject.examType,
+        maxScore: Number(subject.maxScore),
+      })),
+      scoreDistributionRaw
+    );
 
     const byRegionPrediction: RegionPredictionAggregate[] = [];
+
+    function belongsToCohort(
+      item: { regionId: number; examType: ExamType; gender: Gender },
+      regionId: number,
+      examType: ExamType,
+      cohort: TenantRecruitmentCohort
+    ): boolean {
+      return (
+        item.regionId === regionId &&
+        item.examType === examType &&
+        (cohort.populationGender === null || item.gender === cohort.populationGender)
+      );
+    }
+
     for (const region of regions) {
       const quota = quotaByRegionId.get(region.id);
       if (!quota) continue;
 
-      for (const examType of [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT] as const) {
-        const recruitCount = getQuotaRecruitCount(quota, examType);
-        if (!Number.isInteger(recruitCount) || recruitCount < 1) {
-          continue;
+      for (const examType of tenantExamTypes) {
+        const cohorts = getTenantRecruitmentCohorts(auth.tenantType, quota, examType);
+        for (const cohort of cohorts) {
+          const recruitCount = cohort.recruitCount;
+          if (!Number.isInteger(recruitCount) || recruitCount < 1) continue;
+
+          const participantCount = predictionParticipantRaw
+            .filter((item) => belongsToCohort(item, region.id, examType, cohort))
+            .reduce((sum, item) => sum + item._count._all, 0);
+          const scoreCountByScore = new Map<number, number>();
+          for (const row of predictionScoreBandRaw) {
+            if (!belongsToCohort(row, region.id, examType, cohort)) continue;
+            const score = toScore(row.finalScore);
+            scoreCountByScore.set(score, (scoreCountByScore.get(score) ?? 0) + row._count._all);
+          }
+          const scoreBands: ScoreBand[] = Array.from(scoreCountByScore.entries())
+            .sort(([left], [right]) => right - left)
+            .map(([score, count]) => ({ score, count }));
+          const oneMultipleBand = getScoreBandInfoAtRank(scoreBands, recruitCount);
+          const isOneMultipleCutConfirmed = participantCount >= recruitCount;
+
+          byRegionPrediction.push({
+            regionId: region.id,
+            regionName: region.name,
+            examType,
+            gender: cohort.gender,
+            recruitCount,
+            participantCount,
+            oneMultipleBaseRank: recruitCount,
+            isOneMultipleCutConfirmed,
+            oneMultipleActualRank: isOneMultipleCutConfirmed ? oneMultipleBand?.endRank ?? null : null,
+            oneMultipleCutScore: isOneMultipleCutConfirmed ? oneMultipleBand?.score ?? null : null,
+            oneMultipleTieCount: isOneMultipleCutConfirmed ? oneMultipleBand?.count ?? null : null,
+          });
         }
-
-        const key = `${region.id}-${examType}`;
-        const participantCount = predictionParticipantMap.get(key) ?? 0;
-        const scoreBands = predictionScoreBandMap.get(key) ?? [];
-        const oneMultipleBand = getScoreBandInfoAtRank(scoreBands, recruitCount);
-        const isOneMultipleCutConfirmed = participantCount >= recruitCount;
-
-        byRegionPrediction.push({
-          regionId: region.id,
-          regionName: region.name,
-          examType,
-          recruitCount,
-          participantCount,
-          oneMultipleBaseRank: recruitCount,
-          isOneMultipleCutConfirmed,
-          oneMultipleActualRank: isOneMultipleCutConfirmed ? oneMultipleBand?.endRank ?? null : null,
-          oneMultipleCutScore: isOneMultipleCutConfirmed ? oneMultipleBand?.score ?? null : null,
-          oneMultipleTieCount: isOneMultipleCutConfirmed ? oneMultipleBand?.count ?? null : null,
-        });
       }
     }
 
@@ -420,9 +511,7 @@ export async function GET(request: NextRequest) {
         return regionCompare;
       }
 
-      if (a.examType === b.examType) {
-        return 0;
-      }
+      if (a.examType === b.examType) return String(a.gender ?? "").localeCompare(String(b.gender ?? ""));
 
       return a.examType === ExamType.PUBLIC ? -1 : 1;
     });
@@ -439,6 +528,7 @@ export async function GET(request: NextRequest) {
       totalParticipants,
       byExamType: {
         PUBLIC: byExamType[ExamType.PUBLIC],
+        CAREER: byExamType[ExamType.CAREER],
         CAREER_RESCUE: byExamType[ExamType.CAREER_RESCUE],
         CAREER_ACADEMIC: byExamType[ExamType.CAREER_ACADEMIC],
         CAREER_EMT: byExamType[ExamType.CAREER_EMT],
@@ -450,7 +540,7 @@ export async function GET(request: NextRequest) {
       byRegion: Array.from(byRegionMap.values()).sort((a, b) => b.total - a.total),
       byRegionPrediction,
       submissionsByDate,
-      scoreDistribution,
+      scoreDistributions,
       difficulty,
     });
   } catch (error) {

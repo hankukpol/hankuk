@@ -1,11 +1,16 @@
 import { randomInt } from "crypto";
 import { ExamType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { buildAdminPreRegistrationWhere } from "@/lib/admin-pre-registrations";
+import { buildAdminPreRegistrationWhere } from "@/lib/police/admin-pre-registrations";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import { prisma } from "@/lib/prisma";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForWrite,
+  resolveActiveExamForWrite,
+} from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -38,12 +43,15 @@ function pickRandomItems<T>(items: T[], count: number): T[] {
 export async function POST(request: NextRequest) {
   const guard = await requireAdminRoute();
   if ("error" in guard) return guard.error;
+  if (guard.tenantType !== "police") {
+    return NextResponse.json({ error: "경찰 서비스에서만 제공하는 기능입니다." }, { status: 404 });
+  }
   const featureError = await requireAdminSiteFeature("preRegistrations");
   if (featureError) return featureError;
 
   try {
     const body = (await request.json()) as DrawRequestBody;
-    const examId = parsePositiveInt(body.examId);
+    const requestedExamId = parsePositiveInt(body.examId);
     const regionId = parsePositiveInt(body.regionId);
     const examTypeRaw = body.examType;
     const examType =
@@ -61,40 +69,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "당첨자 수는 1명 이상이어야 합니다." }, { status: 400 });
     }
 
-    const candidates = await prisma.preRegistration.findMany({
-      where: buildAdminPreRegistrationWhere({
-        examId,
-        regionId,
-        examType,
-        search,
-      }),
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      select: {
-        id: true,
-        examType: true,
-        gender: true,
-        examNumber: true,
-        updatedAt: true,
-        user: {
-          select: {
-            name: true,
-            phone: true,
-            contactPhone: true,
+    const candidates = await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForWrite(tx, "police");
+      const exam = await resolveActiveExamForWrite({
+        db: tx,
+        tenantType: "police",
+        context: "api/admin/pre-registrations/draw POST",
+        requestedExamId,
+      });
+      return tx.preRegistration.findMany({
+        where: buildAdminPreRegistrationWhere({
+          examId: exam.id,
+          regionId,
+          examType,
+          search,
+        }),
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          examType: true,
+          gender: true,
+          examNumber: true,
+          updatedAt: true,
+          user: {
+            select: {
+              name: true,
+              phone: true,
+              contactPhone: true,
+            },
+          },
+          exam: {
+            select: {
+              name: true,
+              year: true,
+              round: true,
+            },
+          },
+          region: {
+            select: {
+              name: true,
+            },
           },
         },
-        exam: {
-          select: {
-            name: true,
-            year: true,
-            round: true,
-          },
-        },
-        region: {
-          select: {
-            name: true,
-          },
-        },
-      },
+      });
     });
 
     if (candidates.length < 1) {
@@ -125,6 +142,9 @@ export async function POST(request: NextRequest) {
       })),
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("사전등록 이벤트 추첨 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "이벤트 추첨에 실패했습니다." }, { status: 500 });
   }

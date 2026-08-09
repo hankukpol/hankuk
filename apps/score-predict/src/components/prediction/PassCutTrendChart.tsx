@@ -45,13 +45,25 @@ interface PassCutTrendChartProps {
   releases: PassCutHistoryRelease[];
   current: PassCutSnapshot;
   myScore?: number | null;
+  showGradeThresholds?: boolean;
+  oneMultipleLabel?: string;
+  title?: string;
+  oneMultipleColor?: string;
 }
 
 function roundNumber(value: number): number {
   return Number(value.toFixed(2));
 }
 
-export default function PassCutTrendChart({ releases, current, myScore }: PassCutTrendChartProps) {
+export default function PassCutTrendChart({
+  releases,
+  current,
+  myScore,
+  showGradeThresholds = true,
+  oneMultipleLabel = "1배수컷",
+  title = "합격컷 변동 추이",
+  oneMultipleColor = "#dc2626",
+}: PassCutTrendChartProps) {
   const chartData = [
     ...releases.map((release) => {
       const snapshot = release.snapshot;
@@ -76,7 +88,9 @@ export default function PassCutTrendChart({ releases, current, myScore }: PassCu
   ];
 
   const allScores = chartData
-    .flatMap((row) => [row.sure, row.likely, row.possible, row.oneMultipleCut])
+    .flatMap((row) => showGradeThresholds
+      ? [row.sure, row.likely, row.possible, row.oneMultipleCut]
+      : [row.oneMultipleCut])
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
   if (typeof myScore === "number" && Number.isFinite(myScore)) {
@@ -90,7 +104,7 @@ export default function PassCutTrendChart({ releases, current, myScore }: PassCu
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-      <h3 className="text-base font-semibold text-slate-900">합격컷 변동 추이</h3>
+      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
       <div className="mt-4 h-[370px]">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
@@ -137,14 +151,14 @@ export default function PassCutTrendChart({ releases, current, myScore }: PassCu
                 yAxisId="score"
                 type="monotone"
                 dataKey="oneMultipleCut"
-                name="1배수컷"
-                stroke="#dc2626"
+                name={oneMultipleLabel}
+                stroke={oneMultipleColor}
                 strokeWidth={2.5}
-                dot={{ r: 4, fill: "#dc2626" }}
+                dot={{ r: 4, fill: oneMultipleColor }}
                 connectNulls
               />
             ) : null}
-            {hasScoreData ? (
+            {hasScoreData && showGradeThresholds ? (
               <Line
                 yAxisId="score"
                 type="monotone"
@@ -156,7 +170,7 @@ export default function PassCutTrendChart({ releases, current, myScore }: PassCu
                 connectNulls
               />
             ) : null}
-            {hasScoreData ? (
+            {hasScoreData && showGradeThresholds ? (
               <Line
                 yAxisId="score"
                 type="monotone"
@@ -168,7 +182,7 @@ export default function PassCutTrendChart({ releases, current, myScore }: PassCu
                 connectNulls
               />
             ) : null}
-            {hasScoreData ? (
+            {hasScoreData && showGradeThresholds ? (
               <Line
                 yAxisId="score"
                 type="monotone"

@@ -81,6 +81,40 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --service-50: #fef2f2;
+  --service-100: #fee2e2;
+  --service-200: #fecaca;
+  --service-300: #fca5a5;
+  --service-400: #f87171;
+  --service-500: #ef4444;
+  --service-600: #dc2626;
+  --service-700: #b91c1c;
+  --service-800: #991b1b;
+  --service-900: #7f1d1d;
+  --service-950: #450a0a;
+}
+
+body[data-tenant="police"] {
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --ring: #2563eb;
+  --service-50: #eff6ff;
+  --service-100: #dbeafe;
+  --service-200: #bfdbfe;
+  --service-300: #93c5fd;
+  --service-400: #60a5fa;
+  --service-500: #3b82f6;
+  --service-600: #2563eb;
+  --service-700: #1d4ed8;
+  --service-800: #1e40af;
+  --service-900: #1e3a8a;
+  --service-950: #172554;
+}
+
+body[data-tenant="fire"] {
+  --primary: #dc2626;
+  --primary-foreground: #ffffff;
+  --ring: #dc2626;
 }
 
 .dark {

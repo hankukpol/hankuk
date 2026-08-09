@@ -1,4 +1,8 @@
 export function getCookieDomain() {
+  if (process.env.NODE_ENV === "production") {
+    return undefined;
+  }
+
   const cookieDomain = process.env.COOKIE_DOMAIN?.trim();
   return cookieDomain ? cookieDomain : undefined;
 }

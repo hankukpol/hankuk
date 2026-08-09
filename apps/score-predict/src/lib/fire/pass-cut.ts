@@ -1,6 +1,7 @@
 import { ExamType, Gender } from "@prisma/client";
-import { estimateApplicants } from "@/lib/policy";
-import { getLikelyMultiple, getPassMultiple } from "@/lib/prediction";
+import { estimateApplicants } from "@/lib/fire/policy";
+import { buildFirePredictionBands } from "@/lib/fire/prediction-model";
+import { getPassMultiple } from "@/lib/fire/prediction";
 import { prisma } from "@/lib/prisma";
 
 interface QuotaRow {
@@ -119,21 +120,6 @@ function getScoreAtRank(
   }
 
   return null;
-}
-
-function getScoreRange(
-  scoreBands: Array<{ score: number; count: number }>,
-  startRank: number,
-  endRank: number
-): { min: number | null; max: number | null } {
-  if (!Number.isInteger(startRank) || !Number.isInteger(endRank) || startRank > endRank || startRank < 1) {
-    return { min: null, max: null };
-  }
-
-  return {
-    max: getScoreAtRank(scoreBands, startRank),
-    min: getScoreAtRank(scoreBands, endRank),
-  };
 }
 
 function toSortedScoreBands(scoreCountMap: Map<number, number>): Array<{ score: number; count: number }> {
@@ -394,13 +380,24 @@ export async function buildPassCutPredictionRows(params: {
 
       const oneMultipleCutScore = getScoreAtRank(scoreBands, recruitCount);
       const passMultiple = getPassMultiple(recruitCount, cohort.examType);
-      const likelyMultiple = getLikelyMultiple(passMultiple);
-      const likelyMaxRank = Math.max(1, Math.floor(recruitCount * likelyMultiple));
-      const passCount = Math.ceil(recruitCount * passMultiple);
-
-      const likelyRange = getScoreRange(scoreBands, recruitCount + 1, likelyMaxRank);
-      const possibleRange = getScoreRange(scoreBands, likelyMaxRank + 1, passCount);
-      const sureMinScore = getScoreAtRank(scoreBands, recruitCount);
+      const estimatedApplicants = estimateApplicants({
+        applicantCount: cohort.applicantCount,
+        recruitCount,
+      });
+      const bands = buildFirePredictionBands({
+        recruitCount,
+        participantCount: participant.participantCount,
+        referenceApplicantCount: estimatedApplicants,
+        isApplicantCountExact: cohort.isApplicantCountExact,
+        passMultiple,
+      });
+      const sureMinScore = bands.sureMaxRank > 0
+        ? getScoreAtRank(scoreBands, bands.sureMaxRank)
+        : null;
+      const likelyMinScore = bands.likelyMaxRank > 0
+        ? getScoreAtRank(scoreBands, bands.likelyMaxRank)
+        : null;
+      const possibleMinScore = getScoreAtRank(scoreBands, bands.possibleMaxRank);
 
       rows.push({
         regionId: quota.regionId,
@@ -409,18 +406,15 @@ export async function buildPassCutPredictionRows(params: {
         gender: cohort.gender,
         recruitCount,
         applicantCount: cohort.applicantCount,
-        estimatedApplicants: estimateApplicants({
-          applicantCount: cohort.applicantCount,
-          recruitCount,
-        }),
+        estimatedApplicants,
         isApplicantCountExact: cohort.isApplicantCountExact,
         competitionRate,
         participantCount: participant.participantCount,
         averageScore: participant.averageScore,
         oneMultipleCutScore,
         sureMinScore,
-        likelyMinScore: likelyRange.min,
-        possibleMinScore: possibleRange.min,
+        likelyMinScore,
+        possibleMinScore,
       });
     }
   }

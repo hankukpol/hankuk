@@ -1,6 +1,8 @@
 import { ExamType } from "@prisma/client";
 import { getRegionRecruitCount } from "@/lib/police/exam-utils";
-import { getLikelyMultiple, getPassMultiple } from "@/lib/police/prediction";
+import { buildPolicePredictionBands } from "@/lib/police/prediction-model";
+import { estimateApplicants } from "@/lib/police/policy";
+import { getPassMultiple } from "@/lib/police/prediction";
 import { prisma } from "@/lib/prisma";
 
 interface QuotaRow {
@@ -68,21 +70,6 @@ function getScoreAtRank(
   return null;
 }
 
-function getScoreRange(
-  scoreBands: Array<{ score: number; count: number }>,
-  startRank: number,
-  endRank: number
-): { min: number | null; max: number | null } {
-  if (!Number.isInteger(startRank) || !Number.isInteger(endRank) || startRank > endRank || startRank < 1) {
-    return { min: null, max: null };
-  }
-
-  return {
-    max: getScoreAtRank(scoreBands, startRank),
-    min: getScoreAtRank(scoreBands, endRank),
-  };
-}
-
 function getRegionApplicantCount(
   quota: QuotaRow,
   examType: ExamType
@@ -109,7 +96,11 @@ export async function buildPassCutPredictionRows(params: {
     ? [ExamType.PUBLIC, ExamType.CAREER]
     : [ExamType.PUBLIC];
 
-  const [quotaRows, participantStats, scoreBandStats] = await Promise.all([
+  const [exam, quotaRows, participantStats, scoreBandStats] = await Promise.all([
+    prisma.exam.findUnique({
+      where: { id: params.examId },
+      select: { policeWrittenPassMultiple: true },
+    }),
     prisma.$queryRaw<QuotaRow[]>`
       SELECT
         q."regionId",
@@ -207,14 +198,25 @@ export async function buildPassCutPredictionRows(params: {
       const scoreBands = buildScoreBands(scoreBandMap.get(`${quota.regionId}-${examType}`) ?? []);
       const oneMultipleCutScore = getScoreAtRank(scoreBands, recruitCount);
 
-      const passMultiple = getPassMultiple(recruitCount);
-      const likelyMultiple = getLikelyMultiple(passMultiple);
-      const likelyMaxRank = Math.max(1, Math.floor(recruitCount * likelyMultiple));
-      const passCount = Math.ceil(recruitCount * passMultiple);
-
-      const likelyRange = getScoreRange(scoreBands, recruitCount + 1, likelyMaxRank);
-      const possibleRange = getScoreRange(scoreBands, likelyMaxRank + 1, passCount);
-      const sureMinScore = getScoreAtRank(scoreBands, recruitCount);
+      const passMultiple = getPassMultiple(recruitCount, exam?.policeWrittenPassMultiple);
+      const estimatedApplicants = estimateApplicants({
+        applicantCount: applicantCountInfo.applicantCount,
+        recruitCount,
+      });
+      const bands = buildPolicePredictionBands({
+        recruitCount,
+        participantCount,
+        referenceApplicantCount: estimatedApplicants,
+        isApplicantCountExact: applicantCountInfo.isExact,
+        passMultiple,
+      });
+      const sureMinScore = bands.sureMaxRank > 0
+        ? getScoreAtRank(scoreBands, bands.sureMaxRank)
+        : null;
+      const likelyMinScore = bands.likelyMaxRank > 0
+        ? getScoreAtRank(scoreBands, bands.likelyMaxRank)
+        : null;
+      const possibleMinScore = getScoreAtRank(scoreBands, bands.possibleMaxRank);
 
       rows.push({
         regionId: quota.regionId,
@@ -222,15 +224,15 @@ export async function buildPassCutPredictionRows(params: {
         examType,
         recruitCount,
         applicantCount: applicantCountInfo.applicantCount,
-        estimatedApplicants: applicantCountInfo.applicantCount ?? 0,
+        estimatedApplicants,
         isApplicantCountExact: applicantCountInfo.isExact,
         competitionRate,
         participantCount,
         averageScore,
         oneMultipleCutScore,
         sureMinScore,
-        likelyMinScore: likelyRange.min,
-        possibleMinScore: possibleRange.min,
+        likelyMinScore,
+        possibleMinScore,
       });
     }
   }

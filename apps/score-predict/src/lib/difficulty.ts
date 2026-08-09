@@ -117,7 +117,10 @@ async function getTargetExam(examId?: number) {
   });
 }
 
-export async function getDifficultyStats(examId?: number): Promise<DifficultyStatsResult | null> {
+export async function getDifficultyStats(
+  examId?: number,
+  allowedExamTypes?: readonly ExamType[]
+): Promise<DifficultyStatsResult | null> {
   return withPrismaConnectionRetry(async () => {
     const exam = await getTargetExam(examId);
     if (!exam) return null;
@@ -127,6 +130,7 @@ export async function getDifficultyStats(examId?: number): Promise<DifficultySta
       where: {
         submission: {
           examId: exam.id,
+          ...(allowedExamTypes?.length ? { examType: { in: [...allowedExamTypes] } } : {}),
         },
       },
       _count: {
@@ -148,6 +152,7 @@ export async function getDifficultyStats(examId?: number): Promise<DifficultySta
     const subjects = await prisma.subject.findMany({
       where: {
         id: { in: subjectIds },
+        ...(allowedExamTypes?.length ? { examType: { in: [...allowedExamTypes] } } : {}),
       },
       select: {
         id: true,

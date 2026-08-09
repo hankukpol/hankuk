@@ -1,6 +1,31 @@
 import bcrypt from "bcryptjs";
 import { ExamType, PrismaClient, Role } from "@prisma/client";
 
+function assertFireSeedTarget(): void {
+  const databaseUrl = process.env.DATABASE_URL;
+  const tenant = process.env.SCORE_PREDICT_SEED_TENANT;
+  const confirmation = process.env.SCORE_PREDICT_SEED_CONFIRM;
+
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL이 없어 소방 시드를 중단합니다.");
+  }
+
+  const schema = new URL(databaseUrl).searchParams.get("schema");
+  if (schema !== "score_predict_fire") {
+    throw new Error(
+      `소방 시드는 score_predict_fire 스키마에서만 실행할 수 있습니다. (현재: ${schema ?? "미지정"})`
+    );
+  }
+
+  if (tenant !== "fire" || confirmation !== "SEED_SCORE_PREDICT_FIRE") {
+    throw new Error(
+      "소방 시드 실행에는 SCORE_PREDICT_SEED_TENANT=fire 및 " +
+        "SCORE_PREDICT_SEED_CONFIRM=SEED_SCORE_PREDICT_FIRE 확인값이 필요합니다."
+    );
+  }
+}
+
+assertFireSeedTarget();
 const prisma = new PrismaClient();
 
 // 소방 18개 시도 소방본부

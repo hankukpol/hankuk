@@ -20,16 +20,30 @@ interface PredictionSummaryView {
     regionName: string;
     myScore: number;
     applicantCount: number | null;
+    estimatedApplicants: number;
+    isApplicantCountExact: boolean;
     totalParticipants: number;
     recruitCount: number;
-    myMultiple: number;
+    myMultiple: number | null;
+    sampleTopPercent?: number;
     passMultiple: number;
+    sureMultiple: number | null;
+    likelyMultiple: number | null;
+    sureMaxRank: number | null;
+    likelyMaxRank: number | null;
+    passCount: number | null;
+    sampleCoverageRate: number;
+    sampleStage: "INITIAL" | "COLLECTING" | "FORMING" | "RELIABLE" | "ESTIMATED";
     myRank: number;
-    predictionGrade: string;
+    predictionGrade: string | null;
+    gradeAvailability?: "AVAILABLE" | "UNAVAILABLE";
+    unavailableReasons?: Array<
+        "FEATURE_DISABLED" | "MISSING_APPLICANTS" | "INSUFFICIENT_SAMPLE" | "UNCALIBRATED"
+    >;
 }
 
 interface PredictionPyramidLevel {
-    key: "sure" | "likely" | "possible" | "challenge" | "belowChallenge";
+    key: "sure" | "likely" | "possible" | "challenge";
     label: string;
     count: number;
     minScore: number | null;
@@ -38,35 +52,41 @@ interface PredictionPyramidLevel {
 }
 
 interface PredictionDashboardPayload {
-    summary?: PredictionSummaryView;
-    pyramid?: {
+    summary: PredictionSummaryView;
+    pyramid: {
         levels: PredictionPyramidLevel[];
     };
-    updatedAt?: string;
+    updatedAt: string;
 }
 
-/** 참여율 기반 신뢰도 판정 */
-function getConfidenceLevel(rate: number): {
+/** 서버 계산 모델과 동일한 표본 단계 표시 */
+function getConfidenceLevel(stage: PredictionSummaryView["sampleStage"]): {
     label: string;
     message: string;
     badgeClass: string;
 } {
-    if (rate >= 30)
+    if (stage === "RELIABLE")
         return {
-            label: "신뢰도 높음",
-            message: "충분한 참여자가 모여 신뢰도가 높습니다.",
+            label: "신뢰 구간 진입",
+            message: "표본 30% 이상이 입력되었습니다. 최종 결과를 보장하는 단계는 아닙니다.",
             badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
         };
-    if (rate >= 15)
+    if (stage === "FORMING")
         return {
-            label: "집계 중",
-            message: "어느 정도 신뢰할 수 있는 데이터입니다. 참여자가 늘면 순위가 변동될 수 있습니다.",
+            label: "예측 윤곽 형성 중",
+            message: "표본이 15% 이상 모였습니다. 후기 입력에 따라 순위가 변동될 수 있습니다.",
             badgeClass: "bg-blue-100 text-blue-700 border-blue-200",
         };
-    if (rate >= 5)
+    if (stage === "COLLECTING")
         return {
             label: "데이터 수집 중",
             message: "아직 참여자가 적어 순위 변동 가능성이 큽니다.",
+            badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+        };
+    if (stage === "ESTIMATED")
+        return {
+            label: "출원인원 확인 전",
+            message: "출원인원 추정치로 계산 중이며 확실권은 표시하지 않습니다.",
             badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
         };
     return {
@@ -77,41 +97,43 @@ function getConfidenceLevel(rate: number): {
 }
 
 /** 예측 등급 → 게이지 바늘 각도 (-90도=위험, 0도=경합, +90도=안정) */
-function getGaugeAngle(grade: string, myMultiple: number, passMultiple: number): number {
-    // 반원 게이지: -90도(좌측, 위험) ~ +90도(우측, 안정)
-    // 배수가 낮을수록(1배수 이내) 안정 → 우측(+90 방향)
-    // 배수가 높을수록(합격배수 초과) 위험 → 좌측(-90 방향)
+function getGaugeAngle(
+    grade: string,
+    myMultiple: number,
+    sureMultiple: number,
+    likelyMultiple: number,
+    passMultiple: number
+): number {
+    const progress = (value: number, start: number, end: number): number => {
+        if (end <= start) return 0.5;
+        return Math.min(1, Math.max(0, (value - start) / (end - start)));
+    };
+    // 반원 게이지: -90도(좌측, 도전권) ~ +90도(우측, 확실권)
     if (grade === "확실권") {
-        // 0.0~1.0배: 90도(최안정) ~ 54도
-        const ratio = Math.min(myMultiple / 1.0, 1.0);
-        return 90 - (ratio * 36); // 90 → 54
+        const ratio = progress(myMultiple, 0, sureMultiple);
+        return 90 - (ratio * 45);
     }
     if (grade === "유력권") {
-        // 1.0~likelyMax: 54도 ~ 18도
-        return 54 - 36 * Math.min((myMultiple - 1.0) / 0.2, 1.0);
+        return 45 - 45 * progress(myMultiple, sureMultiple, likelyMultiple);
     }
     if (grade === "가능권") {
-        // 18도 ~ -18도
-        const range = passMultiple - 1.2;
-        const pos = range > 0 ? Math.min((myMultiple - 1.2) / range, 1.0) : 0.5;
-        return 18 - (pos * 36);
+        const pos = progress(myMultiple, likelyMultiple, passMultiple);
+        return 0 - (pos * 45);
     }
     if (grade === "도전권") {
-        // -18도 ~ -54도
         const overRatio = Math.min((myMultiple - passMultiple) / passMultiple, 1.0);
-        return -18 - (overRatio * 36);
+        return -45 - (overRatio * 45);
     }
-    // 도전권 이하
-    return -72;
+    return -90;
 }
 
 /** 예측 등급 → 게이지 메시지 */
 function getGaugeMessage(grade: string, myMultiple: number): { title: string; subtitle: string } {
     if (grade === "확실권") {
-        if (myMultiple <= 0.5) return { title: "확실권 진입 완료!", subtitle: "상위권 내 매우 안정적인 위치입니다." };
-        return { title: "확실권 진입 완료!", subtitle: "1배수 이내의 안정적인 점수입니다." };
+        if (myMultiple <= 0.5) return { title: "합격 확실권", subtitle: "상위권 내 매우 안정적인 위치입니다." };
+        return { title: "합격 확실권", subtitle: "표본 신뢰도를 반영한 보수적인 안전 구간입니다." };
     }
-    if (grade === "유력권") return { title: "합격 유력!", subtitle: "합격 가능성이 높지만 변동 가능성이 있습니다." };
+    if (grade === "유력권") return { title: "합격 유력권", subtitle: "합격 가능성이 높지만 변동 가능성이 있습니다." };
     if (grade === "가능권") return { title: "합격 가능권", subtitle: "합격 배수 근접, 추가 참여자에 따라 변동됩니다." };
     if (grade === "도전권") return { title: "합격 도전권", subtitle: "합격배수를 초과했지만 변동 가능성이 있습니다." };
     return { title: "도전이 필요합니다", subtitle: "현재 기준 합격 가능성이 낮습니다." };
@@ -126,71 +148,48 @@ function getGaugeTitleColor(grade: string): string {
     return "text-slate-500";
 }
 
-const fallbackStatusData: StatusData[] = [
-    { label: "도전권 이하", ratio: "2.21배 초과", count: 0, percent: 0, color: "bg-gray-200", fill: "#e5e7eb", status: "기준점수 미만" },
-    { label: "도전권", ratio: "1.70~2.21배", count: 0, percent: 0, color: "bg-gray-400", fill: "#9ca3af", status: "집계 중..." },
-    { label: "가능권", ratio: "1.20~1.70배", count: 0, percent: 0, color: "bg-teal-400", fill: "#2dd4bf", status: "집계 중..." },
-    { label: "유력권", ratio: "1.00~1.20배", count: 0, percent: 0, color: "bg-blue-400", fill: "#60a5fa", status: "집계 중..." },
-    { label: "확실권", ratio: "0~1.00배", count: 38, percent: 100, color: "bg-blue-800", fill: "#1e40af", status: "집계 중..." },
-];
+export default function PredictionLiveDashboard({ prediction }: { prediction: PredictionDashboardPayload }) {
+    const { summary, pyramid } = prediction;
 
-const fallbackMockData = {
-    region: "공채 - 대구",
-    myScore: 117.20,
-    participationRate: 2.1,
-    participants: 38,
-    totalApplicants: 1840,
-    recruitment: 92,
-    myRatio: 0.41,
-    cutRatio: 1.7,
-    myRank: 38,
-    myStatus: "확실권",
-};
-
-export default function PredictionLiveDashboard({ prediction }: { prediction?: PredictionDashboardPayload }) {
-    const summary = prediction?.summary;
-    const pyramid = prediction?.pyramid;
-
-    const mockData = summary ? {
+    const viewData = {
         region: `${summary.examTypeLabel} - ${summary.regionName}`,
         myScore: summary.myScore,
-        participationRate: summary.applicantCount && summary.applicantCount > 0 ? Number(((summary.totalParticipants / summary.applicantCount) * 100).toFixed(1)) : 0,
+        participationRate: summary.sampleCoverageRate,
         participants: summary.totalParticipants,
-        totalApplicants: summary.applicantCount ?? 0,
-        hasApplicantCount: summary.applicantCount !== null,
+        totalApplicants: summary.applicantCount ?? summary.estimatedApplicants,
+        hasApplicantCount: summary.isApplicantCountExact,
         competitionRate: summary.applicantCount !== null && summary.recruitCount > 0
             ? Number((summary.applicantCount / summary.recruitCount).toFixed(1))
             : null,
         recruitment: summary.recruitCount,
-        myRatio: Number(summary.myMultiple.toFixed(2)),
+        myRatio: Number((summary.myMultiple ?? 0).toFixed(2)),
         cutRatio: Number(summary.passMultiple.toFixed(2)),
         myRank: summary.myRank,
-        myStatus: summary.predictionGrade,
-    } : fallbackMockData;
+        myStatus: summary.predictionGrade ?? "등급 미제공",
+    };
 
-    const confidence = getConfidenceLevel(mockData.participationRate);
-    const gaugeAngle = getGaugeAngle(mockData.myStatus, mockData.myRatio, mockData.cutRatio);
-    const gaugeMsg = getGaugeMessage(mockData.myStatus, mockData.myRatio);
-    const gaugeTitleColor = getGaugeTitleColor(mockData.myStatus);
+    const confidence = getConfidenceLevel(summary.sampleStage);
+    const gaugeAngle = getGaugeAngle(
+        viewData.myStatus,
+        viewData.myRatio,
+        summary.sureMultiple ?? 0,
+        summary.likelyMultiple ?? 0,
+        viewData.cutRatio
+    );
+    const gaugeMsg = getGaugeMessage(viewData.myStatus, viewData.myRatio);
+    const gaugeTitleColor = getGaugeTitleColor(viewData.myStatus);
 
-    // 합격컷 등수 = ceil(모집인원 × 합격배수)
-    const passRank = Math.ceil(mockData.recruitment * mockData.cutRatio);
-    // 1배수 등수 = 모집인원
-    const oneMultipleRank = mockData.recruitment;
-    // 여유 등수 (양수=합격권 내 여유, 음수=합격컷 초과)
-    const marginRank = passRank - mockData.myRank;
+    const statusData: StatusData[] = pyramid.levels.slice().reverse().map((level) => {
+        const ratio = summary.totalParticipants > 0 ? (level.count / summary.totalParticipants) * 100 : 0;
+        let color = "bg-slate-200";
+        let fill = "var(--chart-grid)";
+        if (level.key === "sure") { color = "bg-[var(--predict-safe)]"; fill = "var(--predict-safe)"; }
+        if (level.key === "likely") { color = "bg-[var(--predict-likely)]"; fill = "var(--predict-likely)"; }
+        if (level.key === "possible") { color = "bg-[var(--predict-possible)]"; fill = "var(--predict-possible)"; }
+        if (level.key === "challenge") { color = "bg-[var(--predict-challenge)]"; fill = "var(--predict-challenge)"; }
 
-    const statusData: StatusData[] = pyramid ? pyramid.levels.slice().reverse().map((level) => {
-        const ratio = summary && summary.totalParticipants > 0 ? (level.count / summary.totalParticipants) * 100 : 0;
-        let color = "bg-gray-200";
-        let fill = "#e5e7eb";
-        if (level.key === "sure") { color = "bg-blue-800"; fill = "#1e40af"; }
-        if (level.key === "likely") { color = "bg-blue-400"; fill = "#60a5fa"; }
-        if (level.key === "possible") { color = "bg-teal-400"; fill = "#2dd4bf"; }
-        if (level.key === "challenge") { color = "bg-gray-400"; fill = "#9ca3af"; }
-
-        const isCollectingLevel = level.key !== "belowChallenge" && level.minScore === null;
-        const status = isCollectingLevel ? "집계 중..." : (level.minScore === null ? "기준점수 미만" : `${level.minScore.toFixed(2)}점↑`);
+        const isCollectingLevel = level.minScore === null && level.count === 0;
+        const status = isCollectingLevel ? "집계 중..." : (level.minScore === null ? "점수 하한 없음" : `${level.minScore.toFixed(2)}점↑`);
 
         let ratioText = "";
         if (level.maxMultiple === null) {
@@ -208,7 +207,7 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
             fill,
             status,
         };
-    }) : fallbackStatusData;
+    });
 
     const [animatedScore, setAnimatedScore] = useState(0);
     const [animatedCount, setAnimatedCount] = useState(0);
@@ -224,18 +223,82 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
             const progress = currentFrame / frames;
             const easeOutQuad = 1 - (1 - progress) * (1 - progress);
 
-            setAnimatedScore(Number((mockData.myScore * easeOutQuad).toFixed(2)));
-            setAnimatedCount(Math.round(mockData.participants * easeOutQuad));
+            setAnimatedScore(Number((viewData.myScore * easeOutQuad).toFixed(2)));
+            setAnimatedCount(Math.round(viewData.participants * easeOutQuad));
 
             if (currentFrame >= frames) {
                 clearInterval(interval);
-                setAnimatedScore(mockData.myScore);
-                setAnimatedCount(mockData.participants);
+                setAnimatedScore(viewData.myScore);
+                setAnimatedCount(viewData.participants);
             }
         }, duration / frames);
 
         return () => clearInterval(interval);
-    }, [mockData.myScore, mockData.participants]);
+    }, [viewData.myScore, viewData.participants]);
+
+    if (summary.gradeAvailability === "UNAVAILABLE") {
+        const sampleTopPercent = summary.sampleTopPercent
+            ?? (summary.totalParticipants > 0 ? (summary.myRank / summary.totalParticipants) * 100 : 0);
+        const reasonText = summary.unavailableReasons?.includes("MISSING_APPLICANTS")
+            ? "출원인원이 확정되지 않았고 예측 모델의 실측 보정도 완료되지 않아 등급을 표시하지 않습니다."
+            : summary.unavailableReasons?.includes("INSUFFICIENT_SAMPLE")
+                ? "현재 표본으로는 합격 등급을 신뢰성 있게 산출할 수 없어 표본 내 순위만 제공합니다."
+                : "지역별 실측 보정이 끝나기 전까지 합격 등급은 제공하지 않습니다.";
+
+        return (
+            <div className="w-full space-y-6 font-sans">
+                <div className="flex flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-xs font-semibold text-slate-500">{summary.examName}</span>
+                        <h1 className="text-lg font-bold text-slate-800">{viewData.region} 실시간 분석</h1>
+                    </div>
+                    <div className="flex items-center text-[11px] text-slate-400">
+                        <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        {new Date(prediction.updatedAt).toLocaleString("ko-KR")}
+                    </div>
+                </div>
+
+                <section className="rounded-xl border border-police-200 bg-white p-5 md:p-7">
+                    <div className="flex items-start gap-3">
+                        <Info className="mt-0.5 h-5 w-5 shrink-0 text-police-600" />
+                        <div>
+                            <h2 className="font-bold text-slate-900">표본 순위를 중심으로 안내합니다</h2>
+                            <p className="mt-1 text-sm leading-6 text-slate-600">{reasonText}</p>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-medium text-slate-500">내 점수</p>
+                            <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{animatedScore.toFixed(2)}점</p>
+                        </div>
+                        <div className="rounded-xl border border-police-200 bg-police-50 p-4">
+                            <p className="text-xs font-medium text-police-700">표본 내 순위</p>
+                            <p className="mt-2 text-2xl font-black tabular-nums text-police-800">{summary.myRank}등</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-medium text-slate-500">표본 내 위치</p>
+                            <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">상위 {sampleTopPercent.toFixed(1)}%</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-medium text-slate-500">유효 입력자</p>
+                            <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{animatedCount.toLocaleString("ko-KR")}명</p>
+                        </div>
+                    </div>
+
+                    <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <Target className="mt-0.5 h-5 w-5 shrink-0 text-police-600" />
+                        <div className="text-sm text-slate-700">
+                            <p className="font-semibold">경찰 필기 합격자 선발 기준: 모집인원 × {summary.passMultiple.toFixed(0)}배수</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                이는 실제 응시자 전체에 적용되는 제도 정보입니다. 현재 입력자 표본 순위와 직접 계산하지 않습니다.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full font-sans space-y-6">
@@ -249,11 +312,11 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                         </span>
                     )}
                     <h1 className="text-lg font-bold text-slate-800">
-                        {mockData.region} 실시간 분석
+                        {viewData.region} 실시간 분석
                     </h1>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
-                    {prediction?.updatedAt && (
+                    {prediction.updatedAt && (
                         <span className="text-[11px] text-slate-400 flex items-center">
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5" />
                             {new Date(prediction.updatedAt).toLocaleString("ko-KR", {
@@ -281,18 +344,18 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                             <p className="text-xs font-medium text-slate-400 mb-1">현재 내 등수</p>
                             <div className="flex items-baseline justify-center gap-1.5">
                                 <span className="text-5xl font-black text-slate-900 tabular-nums tracking-tight">
-                                    {mockData.myRank}
+                                    {viewData.myRank}
                                 </span>
                                 <span className="text-lg font-bold text-slate-400">등</span>
                                 <span className="text-sm text-slate-400 ml-1">/ {animatedCount}명</span>
                             </div>
                             <div className="flex items-center justify-center gap-2 mt-2">
-                                <span className={`px-2.5 py-1 text-white rounded-md font-bold text-xs ${mockData.myStatus === "확실권" ? "bg-blue-800" :
-                                    mockData.myStatus === "유력권" ? "bg-blue-600" :
-                                        mockData.myStatus === "가능권" ? "bg-cyan-600" :
-                                            mockData.myStatus === "도전권" ? "bg-slate-500" : "bg-slate-400"
+                                <span className={`px-2.5 py-1 text-white rounded-md font-bold text-xs ${viewData.myStatus === "확실권" ? "bg-[var(--predict-safe)]" :
+                                    viewData.myStatus === "유력권" ? "bg-[var(--predict-likely)]" :
+                                        viewData.myStatus === "가능권" ? "bg-[var(--predict-possible)]" :
+                                            viewData.myStatus === "도전권" ? "bg-[var(--predict-challenge)]" : "bg-slate-400"
                                     }`}>
-                                    {mockData.myStatus}
+                                    {viewData.myStatus}
                                 </span>
                                 <span className={`px-2 py-0.5 rounded text-xs font-bold border ${confidence.badgeClass}`}>
                                     {confidence.label}
@@ -300,39 +363,23 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                             </div>
                         </div>
 
-                        {/* 합격컷 대비 프로그레스 */}
+                        {/* 표본 내부에서 완결되는 순위 정보 */}
                         <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs font-medium text-slate-500">합격컷까지</span>
-                                <span className={`text-sm font-bold tabular-nums ${marginRank >= 0 ? 'text-blue-700' : 'text-rose-600'}`}>
-                                    {marginRank >= 0 ? `${marginRank}등 여유` : `${Math.abs(marginRank)}등 초과`}
+                                <span className="text-xs font-medium text-slate-500">표본 내 위치</span>
+                                <span className="text-sm font-bold tabular-nums text-police-700">
+                                    상위 {((viewData.myRank / Math.max(1, viewData.participants)) * 100).toFixed(1)}%
                                 </span>
                             </div>
-                            {/* 트랙바: 1등 ~ 합격컷(passRank) 구간 내 위치 */}
                             <div className="relative w-full h-3 bg-slate-200 rounded-full overflow-hidden">
-                                {/* 1배수 영역 */}
                                 <div
-                                    className="absolute left-0 top-0 h-full bg-blue-800 rounded-l-full"
-                                    style={{ width: `${Math.min((oneMultipleRank / passRank) * 100, 100)}%` }}
-                                />
-                                {/* 1배수~합격배수 영역 */}
-                                <div
-                                    className="absolute top-0 h-full bg-blue-400"
-                                    style={{
-                                        left: `${(oneMultipleRank / passRank) * 100}%`,
-                                        width: `${100 - (oneMultipleRank / passRank) * 100}%`,
-                                    }}
-                                />
-                                {/* 내 위치 마커 */}
-                                <div
-                                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-[3px] border-blue-600 rounded-full z-10 transition-all duration-1000"
-                                    style={{ left: `clamp(0%, ${(mockData.myRank / passRank) * 100}%, 100%)`, transform: 'translate(-50%, -50%)' }}
+                                    className="h-full rounded-full bg-police-600"
+                                    style={{ width: `${Math.min(100, (viewData.myRank / Math.max(1, viewData.participants)) * 100)}%` }}
                                 />
                             </div>
                             <div className="flex justify-between mt-1.5 text-[10px] text-slate-400 tabular-nums">
                                 <span>1등</span>
-                                <span>{oneMultipleRank}등 (1배수)</span>
-                                <span>{passRank}등 (합격컷)</span>
+                                <span>{viewData.participants.toLocaleString("ko-KR")}명</span>
                             </div>
                         </div>
 
@@ -343,12 +390,12 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                                 <p className="text-base font-bold text-slate-700 tabular-nums">{animatedScore.toFixed(2)}</p>
                             </div>
                             <div className="bg-slate-50 rounded-lg p-2.5 text-center border border-slate-100">
-                                <p className="text-[10px] text-slate-400 font-medium mb-0.5">내 배수</p>
-                                <p className="text-base font-bold text-blue-700 tabular-nums">{mockData.myRatio}배</p>
+                                <p className="text-[10px] text-slate-400 font-medium mb-0.5">표본 상위</p>
+                                <p className="text-base font-bold text-service-700 tabular-nums">{((viewData.myRank / Math.max(1, viewData.participants)) * 100).toFixed(1)}%</p>
                             </div>
                             <div className="bg-slate-50 rounded-lg p-2.5 text-center border border-slate-100">
-                                <p className="text-[10px] text-slate-400 font-medium mb-0.5">합격배수</p>
-                                <p className="text-base font-bold text-slate-700 tabular-nums">{mockData.cutRatio}배</p>
+                                <p className="text-[10px] text-slate-400 font-medium mb-0.5">제도 기준</p>
+                                <p className="text-base font-bold text-slate-700 tabular-nums">{viewData.cutRatio}배수</p>
                             </div>
                         </div>
 
@@ -356,27 +403,27 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                         <div className="grid grid-cols-4 gap-2">
                             <div className="text-center">
                                 <p className="text-[10px] text-slate-400 font-medium">모집인원</p>
-                                <p className="text-sm font-bold text-slate-700">{mockData.recruitment}명</p>
+                                <p className="text-sm font-bold text-slate-700">{viewData.recruitment}명</p>
                             </div>
                             <div className="text-center">
                                 <p className="text-[10px] text-slate-400 font-medium">접수인원</p>
                                 <p className="text-sm font-bold text-slate-700">
-                                    {("hasApplicantCount" in mockData && !mockData.hasApplicantCount)
+                                    {!viewData.hasApplicantCount
                                         ? "미입력"
-                                        : `${mockData.totalApplicants.toLocaleString()}명`}
+                                        : `${viewData.totalApplicants.toLocaleString()}명`}
                                 </p>
                             </div>
                             <div className="text-center">
                                 <p className="text-[10px] text-slate-400 font-medium">경쟁률</p>
                                 <p className="text-sm font-bold text-slate-700">
-                                    {("competitionRate" in mockData && mockData.competitionRate !== null)
-                                        ? `${mockData.competitionRate} : 1`
+                                    {viewData.competitionRate !== null
+                                        ? `${viewData.competitionRate} : 1`
                                         : "미입력"}
                                 </p>
                             </div>
                             <div className="text-center">
-                                <p className="text-[10px] text-blue-500 font-medium">참여인원</p>
-                                <p className="text-sm font-bold text-blue-700">{animatedCount}명</p>
+                                <p className="text-[10px] text-service-500 font-medium">참여인원</p>
+                                <p className="text-sm font-bold text-service-700">{animatedCount}명</p>
                             </div>
                         </div>
 
@@ -384,12 +431,12 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                         <div className="mt-auto">
                             <div className="flex justify-between text-xs mb-1">
                                 <span className="text-slate-500">참여율</span>
-                                <span className="font-semibold text-slate-600">{mockData.participationRate}%</span>
+                                <span className="font-semibold text-slate-600">{viewData.participationRate}%</span>
                             </div>
                             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                 <div
-                                    className="bg-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
-                                    style={{ width: `${Math.min(mockData.participationRate, 100)}%` }}
+                                    className="bg-service-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
+                                    style={{ width: `${Math.min(viewData.participationRate, 100)}%` }}
                                 />
                             </div>
                             <p className="text-[10px] text-slate-400 mt-1">{confidence.message}</p>
@@ -406,7 +453,7 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                         {/* 2. 당선 유력 미터기 (Gauge Chart) */}
                         <div className="bg-white rounded-xl p-6 border border-slate-200 flex flex-col items-center overflow-hidden h-full">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center self-start mb-4">
-                                <Target className="w-5 h-5 mr-2 text-blue-600" />
+                                <Target className="w-5 h-5 mr-2 text-service-600" />
                                 나의 합격예측
                             </h3>
 
@@ -416,11 +463,10 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                                         <PieChart>
                                             <Pie
                                                 data={[
-                                                    { value: 1, fill: "#cbd5e1" },
-                                                    { value: 1, fill: "#94a3b8" },
-                                                    { value: 1, fill: "#34d399" },
-                                                    { value: 1, fill: "#60a5fa" },
-                                                    { value: 1, fill: "#2563eb" },
+                                                    { value: 1, fill: "var(--predict-challenge)" },
+                                                    { value: 1, fill: "var(--predict-possible)" },
+                                                    { value: 1, fill: "var(--predict-likely)" },
+                                                    { value: 1, fill: "var(--predict-safe)" },
                                                 ]}
                                                 cx="50%"
                                                 cy="100%"
@@ -432,7 +478,7 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                                                 dataKey="value"
                                                 stroke="none"
                                             >
-                                                {[...Array(5)].map((_, index) => (
+                                                {[...Array(4)].map((_, index) => (
                                                     <Cell key={`cell-${index}`} />
                                                 ))}
                                             </Pie>
@@ -450,11 +496,10 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
 
                                     {/* Labels outside Gauge curve */}
                                     <div className="absolute inset-0 pointer-events-none">
-                                        <div className="absolute bottom-2 left-1 text-[11px] font-bold text-slate-400">도전이하</div>
-                                        <div className="absolute top-[44%] left-[12%] text-[11px] font-bold text-slate-500">도전권</div>
-                                        <div className="absolute top-[20%] left-1/2 transform -translate-x-1/2 text-[11px] font-bold text-emerald-500">가능권</div>
-                                        <div className="absolute top-[44%] right-[12%] text-[11px] font-bold text-blue-500">유력권</div>
-                                        <div className="absolute bottom-2 right-1 text-[11px] font-bold text-blue-700">확실권</div>
+                                        <div className="absolute bottom-2 left-1 text-[11px] font-bold text-[var(--predict-challenge)]">도전권</div>
+                                        <div className="absolute top-[28%] left-[21%] text-[11px] font-bold text-[var(--predict-possible)]">가능권</div>
+                                        <div className="absolute top-[28%] right-[21%] text-[11px] font-bold text-[var(--predict-likely)]">유력권</div>
+                                        <div className="absolute bottom-2 right-1 text-[11px] font-bold text-[var(--predict-safe)]">확실권</div>
                                     </div>
                                 </div>
                             </div>
@@ -464,38 +509,42 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                             </div>
                         </div>
 
-                        {/* 3. 초박빙 경합지역 줌인 (Battleground Zoom-in) */}
-                        <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl p-6 border border-blue-500 text-white relative h-full flex flex-col justify-center">
+                        {/* 3. 서버 모델이 계산한 예측 구간 경계 */}
+                        <div className="bg-gradient-to-br from-service-600 to-service-800 rounded-xl p-6 border border-service-500 text-white relative h-full flex flex-col justify-center">
                             <div className="absolute top-0 right-0 p-4 opacity-10">
                                 <ZoomIn className="w-24 h-24 text-white" />
                             </div>
                             <h3 className="text-lg font-bold text-white flex items-center mb-6 relative z-10 w-full pl-2">
-                                <Activity className="w-5 h-5 mr-2 text-blue-200" />
-                                1배수 컷라인 초박빙 경합지역
+                                <Activity className="w-5 h-5 mr-2 text-service-200" />
+                                예측 구간 경계
                             </h3>
 
                             <div className="space-y-4 relative z-10">
                                 <div className="flex items-center justify-between p-3 bg-white/10 rounded-xl backdrop-blur-sm border border-white/20">
                                     <div className="flex items-center space-x-3">
                                         <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-emerald-200 font-bold text-sm">
-                                            ↑2
+                                            확실
                                         </div>
                                         <div>
-                                            <p className="text-sm font-semibold text-emerald-100">가능권 추격 그룹</p>
-                                            <p className="text-xs text-blue-100">내 앞 0.15점 차이 (2명)</p>
+                                            <p className="text-sm font-semibold text-emerald-100">합격 확실권 경계</p>
+                                            <p className="text-xs text-service-100">
+                                                {(summary.sureMaxRank ?? 0) > 0 ? `${summary.sureMaxRank}등 이내` : "표본 수집 중 · 현재 미표시"}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center justify-between p-4 bg-white rounded-xl shadow-lg ring-2 ring-white/50 transform scale-105 relative z-20">
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+                                        <div className="w-3 h-3 rounded-full bg-service-600 animate-pulse"></div>
                                         <div>
-                                            <p className="text-sm font-black text-blue-900">나의 현재 위치</p>
-                                            <p className="text-xs font-semibold text-blue-600">1배수 내 안정권 수성 집중</p>
+                                            <p className="text-sm font-black text-service-900">나의 현재 위치</p>
+                                            <p className="text-xs font-semibold text-service-600">
+                                                {summary.myRank}등 · {summary.predictionGrade}
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className="text-xl font-bold text-blue-900 tabular-nums">
+                                    <div className="text-xl font-bold text-service-900 tabular-nums">
                                         {animatedScore.toFixed(2)}
                                     </div>
                                 </div>
@@ -503,17 +552,17 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                                 <div className="flex items-center justify-between p-3 bg-white/10 rounded-xl backdrop-blur-sm border border-white/20">
                                     <div className="flex items-center space-x-3">
                                         <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-rose-200 font-bold text-sm">
-                                            ↓3
+                                            가능
                                         </div>
                                         <div>
-                                            <p className="text-sm font-semibold text-rose-100">유력권 진입 대기</p>
-                                            <p className="text-xs text-blue-100">내 뒤 0.40점 차이 (3명)</p>
+                                            <p className="text-sm font-semibold text-rose-100">필기 합격 가능권 경계</p>
+                                            <p className="text-xs text-service-100">{summary.passCount}등 이내 · {summary.passMultiple.toFixed(2)}배수</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <p className="text-[11px] text-blue-200 mt-6 text-center font-medium opacity-80">
-                                * 1배수(92등) 부근 표본 변동 시 실시간 반영됩니다.
+                            <p className="text-[11px] text-service-200 mt-6 text-center font-medium opacity-80">
+                                * 유력권 경계 {(summary.likelyMaxRank ?? 0) > 0 ? `${summary.likelyMaxRank}등` : "집계 중"} · 표본 변동 시 실시간 반영
                             </p>
                         </div>
                     </div>
@@ -530,11 +579,12 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                         {/* Stacked Bar */}
                         <div className="w-full h-12 flex rounded-lg overflow-hidden mb-6 relative">
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent w-[200%] animate-[shimmer_2s_infinite]"></div>
-                            {statusData.map((d, i: number) => (
+                            {statusData.filter((d) => d.count > 0).map((d, i: number) => (
                                 <div
                                     key={i}
                                     className={`${d.color} h-full flex items-center justify-center border-r border-white/20 transition-all duration-500 ease-in-out`}
-                                    style={{ width: d.count > 0 ? '100%' : '15%' }} // Mock visual sizing since all except one is 0
+                                    style={{ width: `${d.percent}%` }}
+                                    title={`${d.label} ${d.count}명 (${d.percent.toFixed(1)}%)`}
                                 >
                                     <div className="text-center">
                                         <span className="block text-[10px] font-bold text-white/90">{d.label}</span>
@@ -547,7 +597,7 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                         {/* List */}
                         <div className="space-y-1">
                             {statusData.slice().reverse().map((d, i: number) => {
-                                const isMe = d.label === mockData.myStatus;
+                                const isMe = d.label === viewData.myStatus;
                                 return (
                                     <div key={i} className={`flex items-center py-3 px-4 rounded-xl transition-colors ${isMe ? 'bg-blue-50/80 border border-blue-100' : 'hover:bg-slate-50 border border-transparent'}`}>
                                         <div className="w-24">
@@ -587,10 +637,10 @@ export default function PredictionLiveDashboard({ prediction }: { prediction?: P
                             <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
                             <div className="text-xs text-slate-500 leading-relaxed">
                                 <p>
-                                    본 분포는 <strong className="text-slate-600">서비스 참여자 {mockData.participants.toLocaleString()}명 기준</strong>이며,
-                                    {("hasApplicantCount" in mockData && !mockData.hasApplicantCount)
+                                    본 분포는 <strong className="text-slate-600">서비스 참여자 {viewData.participants.toLocaleString()}명 기준</strong>이며,
+                                    {!viewData.hasApplicantCount
                                         ? " 응시인원 미입력 상태입니다."
-                                        : ` 실제 응시인원(${mockData.totalApplicants.toLocaleString()}명) 전체의 성적 분포와 다를 수 있습니다.`}
+                                        : ` 실제 응시인원(${viewData.totalApplicants.toLocaleString()}명) 전체의 성적 분포와 다를 수 있습니다.`}
                                 </p>
                                 <p className="mt-1">
                                     일반적으로 합격 가능성이 높은 응시자의 참여율이 높아, 상위권 비율이 실제보다 높게 나타나는 경향이 있습니다.

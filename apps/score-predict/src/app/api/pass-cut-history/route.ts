@@ -1,16 +1,18 @@
 import { ExamType, Gender, PassCutSnapshotStatus } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { buildPassCutPredictionRows } from "@/lib/pass-cut";
 import {
-  evaluateAutoPassCutRows,
-  resolveNextReleaseNumberFromList,
-  runAutoPassCutRelease,
-  toSnapshotFromEvaluatedRow,
-} from "@/lib/pass-cut-auto-release";
+  buildTenantPassCutPredictionRows,
+  evaluateTenantAutoPassCutRows,
+  resolveTenantNextPassCutReleaseNumber,
+  runTenantAutoPassCutRelease,
+  toTenantPassCutSnapshot,
+  type TenantAutoPassCutRow,
+} from "@/lib/tenant-calculations.server";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getTenantExamTypeErrorMessage, isExamTypeForTenant } from "@/lib/tenant-exam";
+import type { TenantType } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,12 +23,8 @@ function parsePositiveInt(value: string | null): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function parseExamType(value: string | null): ExamType | null {
-  if (value === ExamType.PUBLIC) return ExamType.PUBLIC;
-  if (value === ExamType.CAREER_RESCUE) return ExamType.CAREER_RESCUE;
-  if (value === ExamType.CAREER_ACADEMIC) return ExamType.CAREER_ACADEMIC;
-  if (value === ExamType.CAREER_EMT) return ExamType.CAREER_EMT;
-  return null;
+function parseExamType(tenantType: TenantType, value: string | null): ExamType | null {
+  return isExamTypeForTenant(tenantType, value) ? value : null;
 }
 
 function parseGender(value: string | null): Gender | null {
@@ -36,11 +34,16 @@ function parseGender(value: string | null): Gender | null {
 }
 
 function resolveCohortGender(params: {
+  tenantType: TenantType;
   examType: ExamType;
   requestedGender: Gender | null;
   recruitAcademicCombined: number;
 }): { gender: Gender | null; error: string | null } {
-  const { examType, requestedGender, recruitAcademicCombined } = params;
+  const { tenantType, examType, requestedGender, recruitAcademicCombined } = params;
+
+  if (tenantType === "police") {
+    return { gender: null, error: null };
+  }
 
   if (examType === ExamType.CAREER_RESCUE) {
     return { gender: Gender.MALE, error: null };
@@ -99,18 +102,19 @@ function toFallbackStatus(params: {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { tenantType } = tenantSession;
 
   const { searchParams } = new URL(request.url);
   const examIdQuery = parsePositiveInt(searchParams.get("examId"));
   const regionId = parsePositiveInt(searchParams.get("regionId"));
-  const examType = parseExamType(searchParams.get("examType"));
+  const examType = parseExamType(tenantType, searchParams.get("examType"));
   const genderQueryRaw = searchParams.get("gender");
   const requestedGender = parseGender(genderQueryRaw);
-  if (genderQueryRaw !== null && !requestedGender) {
+  if (tenantType === "fire" && genderQueryRaw !== null && !requestedGender) {
     return NextResponse.json({ error: "gender는 MALE 또는 FEMALE이어야 합니다." }, { status: 400 });
   }
 
@@ -119,7 +123,7 @@ export async function GET(request: NextRequest) {
   }
   if (!examType) {
     return NextResponse.json(
-      { error: "examType은 PUBLIC, CAREER_RESCUE, CAREER_ACADEMIC, CAREER_EMT 중 하나여야 합니다." },
+      { error: getTenantExamTypeErrorMessage(tenantType) },
       { status: 400 }
     );
   }
@@ -154,6 +158,7 @@ export async function GET(request: NextRequest) {
     },
   });
   const cohortGenderResolved = resolveCohortGender({
+    tenantType,
     examType,
     requestedGender,
     recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
@@ -163,9 +168,9 @@ export async function GET(request: NextRequest) {
   }
   const cohortGender = cohortGenderResolved.gender;
 
-  let autoRows = [] as Awaited<ReturnType<typeof evaluateAutoPassCutRows>>;
+  let autoRows: TenantAutoPassCutRow[] = [];
   try {
-    const autoResult = await runAutoPassCutRelease({
+    const autoResult = await runTenantAutoPassCutRelease(tenantType, {
       examId,
       trigger: "traffic",
     });
@@ -215,11 +220,14 @@ export async function GET(request: NextRequest) {
   });
 
   const nextReleaseNumber =
-    resolveNextReleaseNumberFromList(releases.map((item) => item.releaseNumber)) ?? 4;
+    resolveTenantNextPassCutReleaseNumber(
+      tenantType,
+      releases.map((item) => item.releaseNumber)
+    ) ?? 4;
 
   if (autoRows.length < 1) {
     try {
-      autoRows = await evaluateAutoPassCutRows({
+      autoRows = await evaluateTenantAutoPassCutRows(tenantType, {
         examId,
         releaseNumberForThreshold: nextReleaseNumber,
       });
@@ -228,7 +236,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  let current = toSnapshotFromEvaluatedRow(
+  let current = toTenantPassCutSnapshot(
+    tenantType,
     autoRows.find(
       (row) =>
         row.regionId === regionId &&
@@ -240,7 +249,7 @@ export async function GET(request: NextRequest) {
   if (autoRows.length < 1) {
     try {
       const settings = await getSiteSettingsUncached();
-      const rows = await buildPassCutPredictionRows({
+      const rows = await buildTenantPassCutPredictionRows(tenantType, {
         examId,
         includeCareerExamType: Boolean(settings["site.careerExamEnabled"] ?? true),
       });
@@ -299,13 +308,20 @@ export async function GET(request: NextRequest) {
               statusReason: snapshot.statusReason,
               averageScore: snapshot.averageScore,
               oneMultipleCutScore: snapshot.oneMultipleCutScore,
-              sureMinScore: snapshot.sureMinScore,
-              likelyMinScore: snapshot.likelyMinScore,
-              possibleMinScore: snapshot.possibleMinScore,
+              sureMinScore: tenantType === "police" ? null : snapshot.sureMinScore,
+              likelyMinScore: tenantType === "police" ? null : snapshot.likelyMinScore,
+              possibleMinScore: tenantType === "police" ? null : snapshot.possibleMinScore,
             }
           : null,
       };
     }),
-    current,
+    current: tenantType === "police"
+      ? {
+          ...current,
+          sureMinScore: null,
+          likelyMinScore: null,
+          possibleMinScore: null,
+        }
+      : current,
   });
 }

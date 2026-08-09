@@ -18,6 +18,7 @@ export type SiteSettingKey =
   | "site.mainCardScoreDistributionEnabled"
   | "site.submissionEditLimit"
   | "site.finalPredictionEnabled"
+  | "site.policePredictionGradesEnabled"
   | "site.autoPassCutEnabled"
   | "site.autoPassCutMode"
   | "site.autoPassCutCheckIntervalSec"
@@ -84,6 +85,7 @@ export const SITE_SETTING_TYPES: Record<SiteSettingKey, SiteSettingValueType> = 
   "site.submissionEditLimit": "number",
   "site.commentsEnabled": "boolean",
   "site.finalPredictionEnabled": "boolean",
+  "site.policePredictionGradesEnabled": "boolean",
   "site.autoPassCutEnabled": "boolean",
   "site.autoPassCutMode": "string",
   "site.autoPassCutCheckIntervalSec": "number",
@@ -148,6 +150,7 @@ export const SITE_SETTING_DEFAULTS: SiteSettingsMap = {
   "site.submissionEditLimit": 3,
   "site.commentsEnabled": true,
   "site.finalPredictionEnabled": false,
+  "site.policePredictionGradesEnabled": false,
   "site.autoPassCutEnabled": false,
   "site.autoPassCutMode": "HYBRID",
   "site.autoPassCutCheckIntervalSec": 300,

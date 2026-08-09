@@ -1,0 +1,17 @@
+.git
+.git-backups
+apps/*
+!apps/score-predict
+!apps/score-predict/**
+packages/*
+!packages/config
+!packages/config/**
+**/node_modules
+**/.next
+**/.next-dev
+**/.vercel
+**/.env
+**/.env.*
+**/*.log
+**/test-results
+**/.superloopy

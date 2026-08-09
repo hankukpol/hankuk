@@ -83,7 +83,7 @@ export default function AdminSiteBasicTabPage() {
           <Label htmlFor="hero-title">히어로 제목</Label>
           <textarea
             id="hero-title"
-            className="min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-fire-300 transition focus:ring"
+            className="min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-service-300 transition focus:ring"
             value={asString(settings["site.heroTitle"])}
             onChange={(event) => updateSetting("site.heroTitle", event.target.value)}
           />
@@ -93,7 +93,7 @@ export default function AdminSiteBasicTabPage() {
           <Label htmlFor="hero-subtitle">히어로 부제목</Label>
           <textarea
             id="hero-subtitle"
-            className="min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-fire-300 transition focus:ring"
+            className="min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-service-300 transition focus:ring"
             value={asString(settings["site.heroSubtitle"])}
             onChange={(event) => updateSetting("site.heroSubtitle", event.target.value)}
           />
@@ -103,7 +103,7 @@ export default function AdminSiteBasicTabPage() {
           <Label htmlFor="footer-disclaimer">푸터 면책 문구</Label>
           <textarea
             id="footer-disclaimer"
-            className="min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-fire-300 transition focus:ring"
+            className="min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-service-300 transition focus:ring"
             value={asString(settings["site.footerDisclaimer"])}
             onChange={(event) => updateSetting("site.footerDisclaimer", event.target.value)}
           />

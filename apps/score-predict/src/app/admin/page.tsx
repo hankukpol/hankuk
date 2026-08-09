@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExamType, Prisma } from "@prisma/client";
 import DashboardSetupChecklist from "@/components/admin/DashboardSetupChecklist";
 import DashboardSubmissionTrendChart from "@/components/admin/DashboardSubmissionTrendChart";
 import {
@@ -44,6 +45,7 @@ type ActiveExamSummary = {
 type RegionBreakdownItem = {
   name: string;
   publicCount: number;
+  careerCount: number;
   careerRescueCount: number;
   careerAcademicCount: number;
   careerEmtCount: number;
@@ -51,7 +53,7 @@ type RegionBreakdownItem = {
 };
 
 const statCardStyles = [
-  { label: "text-fire-600" },
+  { label: "text-service-600" },
   { label: "text-rose-600" },
   { label: "text-amber-600" },
   { label: "text-cyan-600" },
@@ -65,8 +67,8 @@ const quickActions: DashboardQuickAction[] = [
     num: "1",
     title: "시험 생성/활성화",
     desc: "새 시험을 만들고 현재 운영 시험을 전환합니다.",
-    color: "text-fire-600",
-    hoverBg: "hover:border-fire-300",
+    color: "text-service-600",
+    hoverBg: "hover:border-service-300",
     feature: "exams",
   },
   {
@@ -151,10 +153,12 @@ export default async function AdminDashboardPage() {
   let totalUsers = 0;
   let todaySubmissions = 0;
   let publicCount = 0;
+  let careerCount = 0;
   let careerRescueCount = 0;
   let careerAcademicCount = 0;
   let careerEmtCount = 0;
   let publicAnswerKeyCount = 0;
+  let careerAnswerKeyCount = 0;
   let careerRescueAnswerKeyCount = 0;
   let careerAcademicAnswerKeyCount = 0;
   let careerEmtAnswerKeyCount = 0;
@@ -169,6 +173,10 @@ export default async function AdminDashboardPage() {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const tenantExamTypes: ExamType[] =
+      tenantType === "police"
+        ? [ExamType.PUBLIC, ExamType.CAREER]
+        : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
 
     const [dbActiveExam, dbTotalExams, dbTotalUsers] = await prisma.$transaction(async (tx) =>
       Promise.all([
@@ -192,6 +200,7 @@ export default async function AdminDashboardPage() {
         dbTodaySubmissions,
         dbExamTypeCounts,
         dbPublicAnswerKeys,
+        dbCareerAnswerKeys,
         dbCareerRescueAnswerKeys,
         dbCareerAcademicAnswerKeys,
         dbCareerEmtAnswerKeys,
@@ -199,17 +208,26 @@ export default async function AdminDashboardPage() {
         dbRegionsTotal,
         dbLastSubmission,
       ] = await Promise.all([
-        prisma.submission.count({ where: { examId: dbActiveExam.id } }),
         prisma.submission.count({
-          where: { examId: dbActiveExam.id, createdAt: { gte: todayStart } },
+          where: { examId: dbActiveExam.id, examType: { in: tenantExamTypes } },
+        }),
+        prisma.submission.count({
+          where: {
+            examId: dbActiveExam.id,
+            examType: { in: tenantExamTypes },
+            createdAt: { gte: todayStart },
+          },
         }),
         prisma.submission.groupBy({
           by: ["examType"],
-          where: { examId: dbActiveExam.id },
+          where: { examId: dbActiveExam.id, examType: { in: tenantExamTypes } },
           _count: true,
         }),
         prisma.answerKey.count({
           where: { examId: dbActiveExam.id, subject: { examType: "PUBLIC" } },
+        }),
+        prisma.answerKey.count({
+          where: { examId: dbActiveExam.id, subject: { examType: "CAREER" } },
         }),
         prisma.answerKey.count({
           where: { examId: dbActiveExam.id, subject: { examType: "CAREER_RESCUE" } },
@@ -221,11 +239,14 @@ export default async function AdminDashboardPage() {
           where: { examId: dbActiveExam.id, subject: { examType: "CAREER_EMT" } },
         }),
         prisma.examRegionQuota.count({
-          where: { examId: dbActiveExam.id, recruitPublicMale: { gt: 0 } },
+          where:
+            tenantType === "police"
+              ? { examId: dbActiveExam.id, recruitCount: { gt: 0 } }
+              : { examId: dbActiveExam.id, recruitPublicMale: { gt: 0 } },
         }),
         prisma.examRegionQuota.count({ where: { examId: dbActiveExam.id } }),
         prisma.submission.findFirst({
-          where: { examId: dbActiveExam.id },
+          where: { examId: dbActiveExam.id, examType: { in: tenantExamTypes } },
           orderBy: { createdAt: "desc" },
           select: { createdAt: true },
         }),
@@ -235,12 +256,14 @@ export default async function AdminDashboardPage() {
       todaySubmissions = dbTodaySubmissions;
       for (const row of dbExamTypeCounts) {
         if (row.examType === "PUBLIC") publicCount = row._count;
+        if (row.examType === "CAREER") careerCount = row._count;
         if (row.examType === "CAREER_RESCUE") careerRescueCount = row._count;
         if (row.examType === "CAREER_ACADEMIC") careerAcademicCount = row._count;
         if (row.examType === "CAREER_EMT") careerEmtCount = row._count;
       }
 
       publicAnswerKeyCount = dbPublicAnswerKeys;
+      careerAnswerKeyCount = dbCareerAnswerKeys;
       careerRescueAnswerKeyCount = dbCareerRescueAnswerKeys;
       careerAcademicAnswerKeyCount = dbCareerAcademicAnswerKeys;
       careerEmtAnswerKeyCount = dbCareerEmtAnswerKeys;
@@ -256,6 +279,7 @@ export default async function AdminDashboardPage() {
           COUNT(*)::bigint AS count
         FROM "Submission"
         WHERE "examId" = ${dbActiveExam.id}
+          AND "examType"::text IN (${Prisma.join(tenantExamTypes)})
         GROUP BY TO_CHAR("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
         ORDER BY TO_CHAR("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
       `;
@@ -269,6 +293,7 @@ export default async function AdminDashboardPage() {
         Array<{
           name: string;
           publicCount: bigint | number;
+          careerCount: bigint | number;
           careerRescueCount: bigint | number;
           careerAcademicCount: bigint | number;
           careerEmtCount: bigint | number;
@@ -278,6 +303,7 @@ export default async function AdminDashboardPage() {
         SELECT
           r."name",
           SUM(CASE WHEN s."examType" = 'PUBLIC' THEN 1 ELSE 0 END)::bigint AS "publicCount",
+          SUM(CASE WHEN s."examType" = 'CAREER' THEN 1 ELSE 0 END)::bigint AS "careerCount",
           SUM(CASE WHEN s."examType" = 'CAREER_RESCUE' THEN 1 ELSE 0 END)::bigint AS "careerRescueCount",
           SUM(CASE WHEN s."examType" = 'CAREER_ACADEMIC' THEN 1 ELSE 0 END)::bigint AS "careerAcademicCount",
           SUM(CASE WHEN s."examType" = 'CAREER_EMT' THEN 1 ELSE 0 END)::bigint AS "careerEmtCount",
@@ -285,6 +311,7 @@ export default async function AdminDashboardPage() {
         FROM "Submission" s
         JOIN "Region" r ON s."regionId" = r."id"
         WHERE s."examId" = ${dbActiveExam.id}
+          AND s."examType"::text IN (${Prisma.join(tenantExamTypes)})
         GROUP BY r."id", r."name"
         ORDER BY "total" DESC
         LIMIT 5
@@ -293,6 +320,7 @@ export default async function AdminDashboardPage() {
       regionBreakdown = regionRaw.map((row) => ({
         name: row.name,
         publicCount: Number(row.publicCount),
+        careerCount: Number(row.careerCount),
         careerRescueCount: Number(row.careerRescueCount),
         careerAcademicCount: Number(row.careerAcademicCount),
         careerEmtCount: Number(row.careerEmtCount),
@@ -309,20 +337,17 @@ export default async function AdminDashboardPage() {
     hasStatsError = true;
   }
 
-  const baseChecklistItems: DashboardChecklistItem[] = activeExam
-    ? [
+  const careerAnswerChecklistItems: DashboardChecklistItem[] =
+    tenantType === "police"
+      ? [
           {
-            label: "시험 생성 완료",
-            completed: true,
-            href: "/admin/exams",
-            feature: "exams",
-          },
-          {
-            label: "정답 입력 (공채)",
-            completed: publicAnswerKeyCount >= 75,
+            label: "정답 입력 (경행경채)",
+            completed: careerAnswerKeyCount >= 100,
             href: "/admin/answers",
             feature: "answers",
           },
+        ]
+      : [
           {
             label: "정답 입력 (구조 경채)",
             completed: careerRescueAnswerKeyCount >= 65,
@@ -341,6 +366,23 @@ export default async function AdminDashboardPage() {
             href: "/admin/answers",
             feature: "answers",
           },
+        ];
+
+  const baseChecklistItems: DashboardChecklistItem[] = activeExam
+    ? [
+          {
+            label: "시험 생성 완료",
+            completed: true,
+            href: "/admin/exams",
+            feature: "exams",
+          },
+          {
+            label: "정답 입력 (공채)",
+            completed: publicAnswerKeyCount >= (tenantType === "police" ? 100 : 75),
+            href: "/admin/answers",
+            feature: "answers",
+          },
+          ...careerAnswerChecklistItems,
           {
             label: "모집인원 설정",
             completed: regionsConfigured > 0 && regionsConfigured === regionsTotal,
@@ -373,17 +415,22 @@ export default async function AdminDashboardPage() {
   const totalPercent =
     totalSubmissions > 0 ? Math.round((publicCount / totalSubmissions) * 100) : 0;
   const careerTotal =
-    careerRescueCount + careerAcademicCount + careerEmtCount;
+    tenantType === "police"
+      ? careerCount
+      : careerRescueCount + careerAcademicCount + careerEmtCount;
+  const publicAnswerKeyRequired = tenantType === "police" ? 100 : 75;
   const answerKeyStatus =
-    publicAnswerKeyCount >= 75 &&
-    careerRescueAnswerKeyCount >= 65 &&
-    careerAcademicAnswerKeyCount >= 65 &&
-    careerEmtAnswerKeyCount >= 65
+    publicAnswerKeyCount >= publicAnswerKeyRequired &&
+    (tenantType === "police"
+      ? careerAnswerKeyCount >= 100
+      : careerRescueAnswerKeyCount >= 65 &&
+        careerAcademicAnswerKeyCount >= 65 &&
+        careerEmtAnswerKeyCount >= 65)
       ? "등록 완료"
       : publicAnswerKeyCount +
-            careerRescueAnswerKeyCount +
-            careerAcademicAnswerKeyCount +
-            careerEmtAnswerKeyCount >
+            (tenantType === "police"
+              ? careerAnswerKeyCount
+              : careerRescueAnswerKeyCount + careerAcademicAnswerKeyCount + careerEmtAnswerKeyCount) >
           0
         ? "일부 등록"
         : "미등록";
@@ -407,12 +454,18 @@ export default async function AdminDashboardPage() {
     {
       label: "공채 / 경채",
       value: totalSubmissions > 0 ? `${totalPercent}% / ${100 - totalPercent}%` : "-",
-      sub: `공채 ${publicCount}명 / 경채 ${careerTotal}명 (구조 ${careerRescueCount} / 학과 ${careerAcademicCount} / 구급 ${careerEmtCount})`,
+      sub:
+        tenantType === "police"
+          ? `공채 ${publicCount}명 / 경행경채 ${careerCount}명`
+          : `공채 ${publicCount}명 / 경채 ${careerTotal}명 (구조 ${careerRescueCount} / 학과 ${careerAcademicCount} / 구급 ${careerEmtCount})`,
     },
     {
       label: "정답표 상태",
       value: answerKeyStatus,
-      sub: `공채 ${publicAnswerKeyCount} / 구조 ${careerRescueAnswerKeyCount} / 학과 ${careerAcademicAnswerKeyCount} / 구급 ${careerEmtAnswerKeyCount} 문항`,
+      sub:
+        tenantType === "police"
+          ? `공채 ${publicAnswerKeyCount} / 경행경채 ${careerAnswerKeyCount} 문항`
+          : `공채 ${publicAnswerKeyCount} / 구조 ${careerRescueAnswerKeyCount} / 학과 ${careerAcademicAnswerKeyCount} / 구급 ${careerEmtAnswerKeyCount} 문항`,
     },
     {
       label: "등록 시험 수",
@@ -424,40 +477,45 @@ export default async function AdminDashboardPage() {
   const baseSystemStatus: DashboardSystemStatusItem[] = [
     {
       label: "정답표 (공채)",
-      ok: publicAnswerKeyCount >= 75,
+      ok: publicAnswerKeyCount >= publicAnswerKeyRequired,
       value:
-        publicAnswerKeyCount >= 75
+        publicAnswerKeyCount >= publicAnswerKeyRequired
           ? `${publicAnswerKeyCount}문항 등록`
           : `${publicAnswerKeyCount}문항 (미완료)`,
       feature: "answers",
     },
-    {
-      label: "정답표 (구조 경채)",
-      ok: careerRescueAnswerKeyCount >= 65,
-      value:
-        careerRescueAnswerKeyCount >= 65
-          ? `${careerRescueAnswerKeyCount}문항 등록`
-          : `${careerRescueAnswerKeyCount}문항 (미완료)`,
-      feature: "answers",
-    },
-    {
-      label: "정답표 (학과 경채)",
-      ok: careerAcademicAnswerKeyCount >= 65,
-      value:
-        careerAcademicAnswerKeyCount >= 65
-          ? `${careerAcademicAnswerKeyCount}문항 등록`
-          : `${careerAcademicAnswerKeyCount}문항 (미완료)`,
-      feature: "answers",
-    },
-    {
-      label: "정답표 (구급 경채)",
-      ok: careerEmtAnswerKeyCount >= 65,
-      value:
-        careerEmtAnswerKeyCount >= 65
-          ? `${careerEmtAnswerKeyCount}문항 등록`
-          : `${careerEmtAnswerKeyCount}문항 (미완료)`,
-      feature: "answers",
-    },
+    ...(tenantType === "police"
+      ? [
+          {
+            label: "정답표 (경행경채)",
+            ok: careerAnswerKeyCount >= 100,
+            value:
+              careerAnswerKeyCount >= 100
+                ? `${careerAnswerKeyCount}문항 등록`
+                : `${careerAnswerKeyCount}문항 (미완료)`,
+            feature: "answers" as const,
+          },
+        ]
+      : [
+          {
+            label: "정답표 (구조 경채)",
+            ok: careerRescueAnswerKeyCount >= 65,
+            value: `${careerRescueAnswerKeyCount}문항${careerRescueAnswerKeyCount >= 65 ? " 등록" : " (미완료)"}`,
+            feature: "answers" as const,
+          },
+          {
+            label: "정답표 (학과 경채)",
+            ok: careerAcademicAnswerKeyCount >= 65,
+            value: `${careerAcademicAnswerKeyCount}문항${careerAcademicAnswerKeyCount >= 65 ? " 등록" : " (미완료)"}`,
+            feature: "answers" as const,
+          },
+          {
+            label: "정답표 (구급 경채)",
+            ok: careerEmtAnswerKeyCount >= 65,
+            value: `${careerEmtAnswerKeyCount}문항${careerEmtAnswerKeyCount >= 65 ? " 등록" : " (미완료)"}`,
+            feature: "answers" as const,
+          },
+        ]),
     {
       label: "모집인원 설정",
       ok: regionsConfigured > 0 && regionsConfigured === regionsTotal,
@@ -484,7 +542,9 @@ export default async function AdminDashboardPage() {
   );
 
   const visibleQuickActions = quickActions.filter(
-    (action) => !action.feature || featureState[action.feature]
+    (action) =>
+      (!action.feature || featureState[action.feature]) &&
+      (action.feature !== "preRegistrations" || tenantType === "police")
   );
   const tenantQuickActions = visibleQuickActions.map((action) => ({
     ...action,
@@ -544,7 +604,7 @@ export default async function AdminDashboardPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-slate-800">최근 제출 추이</h2>
-                <span className="rounded-full bg-fire-50 px-3 py-1 text-xs font-medium text-fire-600">
+                <span className="rounded-full bg-service-50 px-3 py-1 text-xs font-medium text-service-600">
                   최근 10일
                 </span>
               </div>
@@ -587,7 +647,7 @@ export default async function AdminDashboardPage() {
                   <p className="mt-1 text-xs text-slate-500">{activeExam.name}</p>
                   <Link
                     href={withTenantPrefix("/admin/exams", tenantType)}
-                    className="mt-3 inline-block rounded-lg bg-fire-50 px-3 py-1.5 text-xs font-medium text-fire-600 transition hover:bg-fire-100"
+                    className="mt-3 inline-block rounded-lg bg-service-50 px-3 py-1.5 text-xs font-medium text-service-600 transition hover:bg-service-100"
                   >
                     시험 관리
                   </Link>
@@ -606,7 +666,7 @@ export default async function AdminDashboardPage() {
             </h2>
             <Link
               href={withTenantPrefix("/admin/stats", tenantType)}
-              className="text-xs font-medium text-fire-600 hover:text-fire-700"
+              className="text-xs font-medium text-service-600 hover:text-service-700"
             >
               전체 보기
             </Link>
@@ -617,9 +677,15 @@ export default async function AdminDashboardPage() {
                 <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
                   <th className="pb-2 pr-4">지역</th>
                   <th className="pb-2 pr-4 text-right">공채</th>
-                  <th className="pb-2 pr-4 text-right">구조</th>
-                  <th className="pb-2 pr-4 text-right">학과</th>
-                  <th className="pb-2 pr-4 text-right">구급</th>
+                  {tenantType === "police" ? (
+                    <th className="pb-2 pr-4 text-right">경행경채</th>
+                  ) : (
+                    <>
+                      <th className="pb-2 pr-4 text-right">구조</th>
+                      <th className="pb-2 pr-4 text-right">학과</th>
+                      <th className="pb-2 pr-4 text-right">구급</th>
+                    </>
+                  )}
                   <th className="pb-2 text-right">합계</th>
                 </tr>
               </thead>
@@ -628,13 +694,15 @@ export default async function AdminDashboardPage() {
                   <tr key={row.name} className="border-b border-slate-100 last:border-0">
                     <td className="py-2 pr-4 font-medium text-slate-700">{row.name}</td>
                     <td className="py-2 pr-4 text-right text-slate-600">{row.publicCount}</td>
-                    <td className="py-2 pr-4 text-right text-slate-600">
-                      {row.careerRescueCount}
-                    </td>
-                    <td className="py-2 pr-4 text-right text-slate-600">
-                      {row.careerAcademicCount}
-                    </td>
-                    <td className="py-2 pr-4 text-right text-slate-600">{row.careerEmtCount}</td>
+                    {tenantType === "police" ? (
+                      <td className="py-2 pr-4 text-right text-slate-600">{row.careerCount}</td>
+                    ) : (
+                      <>
+                        <td className="py-2 pr-4 text-right text-slate-600">{row.careerRescueCount}</td>
+                        <td className="py-2 pr-4 text-right text-slate-600">{row.careerAcademicCount}</td>
+                        <td className="py-2 pr-4 text-right text-slate-600">{row.careerEmtCount}</td>
+                      </>
+                    )}
                     <td className="py-2 text-right font-semibold text-slate-900">{row.total}</td>
                   </tr>
                 ))}

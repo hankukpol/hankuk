@@ -3,9 +3,14 @@ import { ExamType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
-import { buildAdminSubmissionWhere, parseAdminSubmissionExamType } from "@/lib/admin-submissions";
+import { buildAdminSubmissionWhere } from "@/lib/admin-submissions";
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/request-ip";
+import {
+  getTenantExamTypeErrorMessage,
+  isExamTypeForTenant,
+  TENANT_EXAM_TYPES,
+} from "@/lib/tenant-exam";
 
 export const runtime = "nodejs";
 
@@ -79,12 +84,15 @@ export async function GET(request: NextRequest) {
     const examId = parsePositiveInt(searchParams.get("examId"));
     const regionId = parsePositiveInt(searchParams.get("regionId"));
     const userId = parsePositiveInt(searchParams.get("userId"));
-    const examType = parseAdminSubmissionExamType(searchParams.get("examType"));
+    const examTypeValue = searchParams.get("examType");
+    const examType = isExamTypeForTenant(guard.tenantType, examTypeValue)
+      ? examTypeValue
+      : null;
     const search = searchParams.get("search")?.trim() ?? "";
     const suspicious = searchParams.get("suspicious");
 
     if (searchParams.get("examType") && !examType) {
-      return NextResponse.json({ error: "examType은 PUBLIC 또는 CAREER여야 합니다." }, { status: 400 });
+      return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
     }
 
     const rows = await prisma.submission.findMany({
@@ -95,6 +103,8 @@ export async function GET(request: NextRequest) {
         examType,
         search,
         suspicious,
+      }, {
+        allowedExamTypes: TENANT_EXAM_TYPES[guard.tenantType],
       }),
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {

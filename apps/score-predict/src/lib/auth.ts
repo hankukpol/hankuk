@@ -9,10 +9,6 @@ import {
   getPersistentFixedWindowRateLimitState,
   resetPersistentFixedWindowRateLimit,
 } from "@/lib/police/persistent-rate-limit";
-import {
-  authenticateScorePredictSharedIdentity,
-  ensureScorePredictSharedIdentity,
-} from "@/lib/shared-auth";
 import { prisma } from "@/lib/prisma";
 import {
   consumeFixedWindowRateLimit,
@@ -25,10 +21,13 @@ import {
   TENANT_COOKIE,
   TENANT_HEADER,
   normalizeTenantType,
+  parseTenantTypeFromHostname,
+  parseTenantTypeFromPathname,
   type TenantType,
 } from "@/lib/tenant";
 import { normalizePhone, normalizeUsername } from "@/lib/validations";
 import { getCookieDomain, withConfiguredCookieDomain } from "@/lib/cookie-domain";
+import { SCORE_PREDICT_SESSION_VERSION } from "@/lib/auth-session";
 
 const INSECURE_SECRETS = new Set([
   "change-this-to-a-long-random-string",
@@ -152,7 +151,8 @@ type AuthUser = User & {
   role: Role;
   phone?: string;
   username?: string;
-  sharedUserId?: string;
+  tenantType: TenantType;
+  sessionVersion: number;
 };
 
 function readRequestHeader(
@@ -194,14 +194,35 @@ function resolveTenantFromAuthRequest(
   request: { headers?: Headers | Record<string, string | string[] | undefined> } | undefined
 ): TenantType {
   const tenantHeader = readRequestHeader(request, TENANT_HEADER);
-  if (tenantHeader) {
-    return normalizeTenantType(tenantHeader) ?? DEFAULT_TENANT_TYPE;
+  const normalizedHeader = normalizeTenantType(tenantHeader);
+  if (normalizedHeader) {
+    return normalizedHeader;
+  }
+
+  const tenantFromPath = parseTenantTypeFromPathname(
+    readRequestHeader(request, "x-hankuk-original-pathname")
+  );
+  if (tenantFromPath) {
+    return tenantFromPath;
+  }
+
+  const tenantFromHostname = parseTenantTypeFromHostname(
+    readRequestHeader(request, "x-forwarded-host") ?? readRequestHeader(request, "host")
+  );
+  if (tenantFromHostname) {
+    return tenantFromHostname;
   }
 
   const cookieHeader = readRequestHeader(request, "cookie");
-  const cookieTenant = readCookieValue(cookieHeader, TENANT_COOKIE);
-  if (cookieTenant) {
-    return normalizeTenantType(cookieTenant) ?? DEFAULT_TENANT_TYPE;
+  const cookieTenant = normalizeTenantType(readCookieValue(cookieHeader, TENANT_COOKIE));
+  const allowsPreviewPathTenantCookie =
+    process.env.NODE_ENV !== "production" || process.env.VERCEL_ENV === "preview";
+  if (cookieTenant && allowsPreviewPathTenantCookie) {
+    return cookieTenant;
+  }
+
+  if (!allowsPreviewPathTenantCookie) {
+    throw new Error("로그인 요청의 경찰·소방 서비스 구분을 확인할 수 없습니다.");
   }
 
   return DEFAULT_TENANT_TYPE;
@@ -291,6 +312,7 @@ async function authorizeFireUser(
 ): Promise<AuthUser | null> {
   const phone = normalizePhone(credentials.phone ?? "");
   const password = credentials.password?.trim();
+  const adminOnly = credentials.adminOnly === "true";
   const clientIp = getClientIp(request as Request);
 
   const ipRateLimit = consumeFixedWindowRateLimit({
@@ -329,68 +351,26 @@ async function authorizeFireUser(
     return null;
   }
 
-  const identity = {
-    legacyUserId: user.id,
-    name: user.name,
-    email: user.email,
-    loginIdentifier: user.phone,
-    role: user.role,
-  } as const;
-
-  let sharedUserId: string | undefined;
-  let shouldFallbackToLocalPassword = true;
-  try {
-    const sharedLogin = await authenticateScorePredictSharedIdentity({
-      tenantType: "fire",
-      identity,
-      password,
-    });
-
-    if (sharedLogin.status === "success") {
-      shouldFallbackToLocalPassword = false;
-      sharedUserId = sharedLogin.sharedUserId;
-      clearFireLoginFailures(phone);
-      await ensureScorePredictSharedIdentity({
-        tenantType: "fire",
-        identity,
-      });
-    } else if (sharedLogin.status === "invalid") {
-      recordFireLoginFailure(phone);
-      return null;
-    } else if (sharedLogin.status === "unavailable") {
-      console.error("[auth] Fire shared auth is unavailable.", sharedLogin.error);
-    }
-  } catch (error) {
-    console.error("[auth] Failed to authenticate fire shared identity.", error);
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  if (!isPasswordValid) {
+    recordFireLoginFailure(phone);
+    return null;
   }
 
-  if (shouldFallbackToLocalPassword) {
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      recordFireLoginFailure(phone);
-      return null;
-    }
-
-    clearFireLoginFailures(phone);
-
-    try {
-      const result = await ensureScorePredictSharedIdentity({
-        tenantType: "fire",
-        identity,
-        password,
-      });
-      sharedUserId = result.sharedUserId;
-    } catch (error) {
-      console.error("[auth] Failed to sync fire shared identity.", error);
-    }
+  if (adminOnly && user.role !== "ADMIN") {
+    recordFireLoginFailure(phone);
+    return null;
   }
+
+  clearFireLoginFailures(phone);
 
   return {
     id: String(user.id),
     name: user.name,
     role: user.role,
     phone: user.phone,
-    sharedUserId,
+    tenantType: "fire",
+    sessionVersion: SCORE_PREDICT_SESSION_VERSION,
   };
 }
 
@@ -457,79 +437,26 @@ async function authorizePoliceUser(
     return null;
   }
 
-  const identity = {
-    legacyUserId: user.id,
-    name: user.name,
-    email: user.email,
-    loginIdentifier: user.phone,
-    contactPhone: user.contactPhone,
-    role: user.role,
-  } as const;
-
-  let sharedUserId: string | undefined;
-  let shouldFallbackToLocalPassword = true;
-  try {
-    const sharedLogin = await authenticateScorePredictSharedIdentity({
-      tenantType: "police",
-      identity,
-      password,
-    });
-
-    if (sharedLogin.status === "success") {
-      if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
-        await recordPoliceLoginFailure(username);
-        return null;
-      }
-
-      shouldFallbackToLocalPassword = false;
-      sharedUserId = sharedLogin.sharedUserId;
-      await clearPoliceLoginFailures(username);
-      await ensureScorePredictSharedIdentity({
-        tenantType: "police",
-        identity,
-      });
-    } else if (sharedLogin.status === "invalid") {
-      await recordPoliceLoginFailure(username);
-      return null;
-    } else if (sharedLogin.status === "unavailable") {
-      console.error("[auth] Police shared auth is unavailable.", sharedLogin.error);
-    }
-  } catch (error) {
-    console.error("[auth] Failed to authenticate police shared identity.", error);
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  if (!isPasswordValid) {
+    await recordPoliceLoginFailure(username);
+    return null;
   }
 
-  if (shouldFallbackToLocalPassword) {
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      await recordPoliceLoginFailure(username);
-      return null;
-    }
-
-    if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
-      await recordPoliceLoginFailure(username);
-      return null;
-    }
-
-    await clearPoliceLoginFailures(username);
-
-    try {
-      const result = await ensureScorePredictSharedIdentity({
-        tenantType: "police",
-        identity,
-        password,
-      });
-      sharedUserId = result.sharedUserId;
-    } catch (error) {
-      console.error("[auth] Failed to sync police shared identity.", error);
-    }
+  if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
+    await recordPoliceLoginFailure(username);
+    return null;
   }
+
+  await clearPoliceLoginFailures(username);
 
   return {
     id: String(user.id),
     name: user.name,
     role: user.role,
     username: user.phone,
-    sharedUserId,
+    tenantType: "police",
+    sessionVersion: SCORE_PREDICT_SESSION_VERSION,
   };
 }
 
@@ -586,7 +513,8 @@ export const authOptions: NextAuthOptions = {
         token.role = authUser.role;
         token.phone = authUser.phone;
         token.username = authUser.username;
-        token.sharedUserId = authUser.sharedUserId;
+        token.tenantType = authUser.tenantType;
+        token.sessionVersion = authUser.sessionVersion;
       }
 
       return token;
@@ -597,8 +525,9 @@ export const authOptions: NextAuthOptions = {
         session.user.role = (token.role as Role | undefined) ?? "USER";
         session.user.phone = typeof token.phone === "string" ? token.phone : "";
         session.user.username = typeof token.username === "string" ? token.username : "";
-        session.user.sharedUserId =
-          typeof token.sharedUserId === "string" ? token.sharedUserId : "";
+        session.user.tenantType = normalizeTenantType(token.tenantType as string | undefined) ?? null;
+        session.user.sessionVersion =
+          typeof token.sessionVersion === "number" ? token.sessionVersion : 0;
       }
 
       return session;

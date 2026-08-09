@@ -49,6 +49,10 @@ async function safeDeleteMany<TArgs>(
 }
 
 export async function runOpenReset(): Promise<OpenResetResult> {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    throw new Error("운영 환경에서는 전체 운영 초기화를 실행할 수 없습니다.");
+  }
+
   return prisma.$transaction(
     async (tx) => {
       const adminUsers = await safeCount(tx.user, { where: { role: Role.ADMIN } });

@@ -9,6 +9,7 @@ import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import useConfirmModal from "@/hooks/useConfirmModal";
 import { Button } from "@/components/ui/button";
 import { withTenantPrefix } from "@/lib/tenant";
+import PoliceAdminRegionsPage from "./_PolicePage";
 
 interface ExamItem {
   id: number;
@@ -159,7 +160,7 @@ function toSafeNonNegativeInt(value: string): number {
   return Math.max(0, Math.floor(parsed));
 }
 
-export default function AdminRegionsPage() {
+function FireAdminRegionsPage() {
   const tenant = useTenantConfig();
   const { enabled: regionsEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("regions");
@@ -863,4 +864,9 @@ export default function AdminRegionsPage() {
       <ConfirmModal {...modalProps} />
     </div>
   );
+}
+
+export default function AdminRegionsPage() {
+  const tenant = useTenantConfig();
+  return tenant.type === "police" ? <PoliceAdminRegionsPage /> : <FireAdminRegionsPage />;
 }

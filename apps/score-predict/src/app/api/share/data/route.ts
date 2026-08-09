@@ -1,9 +1,10 @@
 import { ExamType, Gender, Prisma, Role } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { calculatePrediction } from "@/lib/prediction";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import { calculateTenantPrediction } from "@/lib/tenant-calculations.server";
 import { prisma } from "@/lib/prisma";
+import { getTenantConfigByType, type TenantType } from "@/lib/tenant";
+import { isExamTypeForTenant, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
 
 export const runtime = "nodejs";
 
@@ -43,11 +44,16 @@ function getPopulationConditionSql(submissionHasCutoff: boolean): Prisma.Sql {
 }
 
 function getGenderConditionSql(params: {
+  tenantType: TenantType;
   examType: ExamType;
   gender: Gender;
   recruitAcademicCombined: number;
 }): Prisma.Sql {
-  const { examType, gender, recruitAcademicCombined } = params;
+  const { tenantType, examType, gender, recruitAcademicCombined } = params;
+
+  if (tenantType === "police") {
+    return Prisma.empty;
+  }
 
   if (examType === ExamType.CAREER_RESCUE) {
     return Prisma.sql`AND s."gender"::text = ${Gender.MALE}`;
@@ -61,10 +67,11 @@ function getGenderConditionSql(params: {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   const userId = Number(session.user.id);
   const isAdmin = ((session.user.role as Role | undefined) ?? Role.USER) === Role.ADMIN;
@@ -79,9 +86,11 @@ export async function GET(request: NextRequest) {
     where: submissionId
       ? {
           id: submissionId,
+          examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
           ...(isAdmin ? {} : { userId }),
         }
       : {
+          examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
           ...(isAdmin ? {} : { userId }),
         },
     orderBy: submissionId ? undefined : [{ createdAt: "desc" }, { id: "desc" }],
@@ -122,6 +131,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "공유 가능한 제출 데이터가 없습니다." }, { status: 404 });
   }
 
+  if (!isExamTypeForTenant(tenantType, submission.examType)) {
+    return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
+  }
+
   const submissionHasCutoff = submission.subjectScores.some((score) => score.isFailed);
   const rankingBasis: RankingBasis = submissionHasCutoff
     ? "ALL_PARTICIPANTS"
@@ -139,6 +152,7 @@ export async function GET(request: NextRequest) {
     },
   });
   const genderConditionSql = getGenderConditionSql({
+    tenantType,
     examType: submission.examType,
     gender: submission.gender,
     recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
@@ -161,7 +175,8 @@ export async function GET(request: NextRequest) {
 
   let predictionGrade: string | null = null;
   try {
-    const prediction = await calculatePrediction(
+    const prediction = await calculateTenantPrediction(
+      tenantType,
       userId,
       { submissionId: submission.id },
       isAdmin ? Role.ADMIN : Role.USER
@@ -183,7 +198,8 @@ export async function GET(request: NextRequest) {
       name: submission.user.name,
     },
     examType: submission.examType,
-    examTypeLabel: submission.examType === "PUBLIC" ? "공채" : submission.examType === "CAREER_RESCUE" ? "구조" : submission.examType === "CAREER_ACADEMIC" ? "소방학과" : "구급",
+    examTypeLabel:
+      getTenantConfigByType(tenantType).examTypeLabels[submission.examType] ?? submission.examType,
     region: {
       id: submission.region.id,
       name: submission.region.name,

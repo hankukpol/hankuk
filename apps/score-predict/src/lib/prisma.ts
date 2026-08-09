@@ -18,14 +18,6 @@ const globalForPrisma = globalThis as unknown as {
   prismaClients?: Partial<Record<TenantType, PrismaClient>>;
 };
 
-function normalizeTenantType(value: string | null | undefined): TenantType | null {
-  if (value === "fire" || value === "police") {
-    return value;
-  }
-
-  return null;
-}
-
 function readSchemaFromUrl(url: string | undefined): string | null {
   if (!url) {
     return null;
@@ -46,20 +38,6 @@ function replaceSchemaInUrl(url: string | undefined, schema: string): string {
   const parsed = new URL(url);
   parsed.searchParams.set("schema", schema);
   return parsed.toString();
-}
-
-function resolveExplicitTenantType(): TenantType | null {
-  const explicitTenant = normalizeTenantType(process.env.SCORE_PREDICT_TENANT);
-  if (explicitTenant) {
-    return explicitTenant;
-  }
-
-  const explicitSchema = process.env.SCORE_PREDICT_PRISMA_SCHEMA;
-  if (explicitSchema) {
-    return TENANT_BY_SCHEMA.get(explicitSchema) ?? null;
-  }
-
-  return null;
 }
 
 function resolveTenantTypeFromDatabaseUrls(): TenantType | null {
@@ -97,14 +75,13 @@ function getTenantClient(tenantType: TenantType): PrismaClient {
 }
 
 async function resolveTenantType(): Promise<TenantType> {
-  const explicitTenant = resolveExplicitTenantType();
-  if (explicitTenant) {
-    return explicitTenant;
-  }
-
   try {
     return await getServerTenantType();
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build") {
+      throw error;
+    }
+
     const tenantFromDatabaseUrls = resolveTenantTypeFromDatabaseUrls();
     if (tenantFromDatabaseUrls) {
       return tenantFromDatabaseUrls;

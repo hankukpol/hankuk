@@ -10,7 +10,7 @@ interface AnswerValidationInput {
   answers: number[];
   /** 채점 결과 총점 (원점수 합계) */
   totalScore: number;
-  /** 시험 만점 (소방 공채 300, 경채 200) */
+  /** 현재 직렬의 활성 과목 maxScore 합계 */
   maxScore: number;
   /** 페이지 로드 → 제출까지 소요시간 (밀리초), 없으면 검사 생략 */
   submitDurationMs?: number | null;

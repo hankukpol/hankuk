@@ -68,7 +68,9 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-slate-900">
                   {subject.subjectName}
-                  {subject.examType === "CAREER_RESCUE" ? (
+                  {subject.examType === "CAREER" ? (
+                    <span className="ml-1 text-xs font-medium text-sky-700">(경행경채)</span>
+                  ) : subject.examType === "CAREER_RESCUE" ? (
                     <span className="ml-1 text-xs font-medium text-sky-700">(구조 경채)</span>
                   ) : subject.examType === "CAREER_ACADEMIC" ? (
                     <span className="ml-1 text-xs font-medium text-sky-700">(소방학과 경채)</span>

@@ -5,7 +5,6 @@ import {
   PassCutReleaseServiceError,
   type PassCutSnapshotStatusPayload,
 } from "@/lib/police/pass-cut-release.service";
-import { getPassMultiple } from "@/lib/police/prediction";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
 
@@ -74,19 +73,19 @@ export interface AutoPassCutRunResult {
 
 const PROFILE_MAP: Record<AutoPassCutProfile, ThresholdBundle> = {
   BALANCED: {
-    coverageByRelease: [30, 50, 70, 90],
+    coverageByRelease: [15, 20, 30, 40],
     stabilityByRelease: [45, 55, 65, 75],
     readyRatioByRelease: [25, 45, 65, 85],
     minSampleCount: 10,
   },
   CONSERVATIVE: {
-    coverageByRelease: [40, 60, 80, 95],
+    coverageByRelease: [20, 30, 40, 50],
     stabilityByRelease: [55, 65, 75, 85],
     readyRatioByRelease: [35, 55, 75, 95],
     minSampleCount: 15,
   },
   AGGRESSIVE: {
-    coverageByRelease: [20, 35, 50, 70],
+    coverageByRelease: [10, 15, 20, 30],
     stabilityByRelease: [35, 45, 55, 65],
     readyRatioByRelease: [15, 30, 50, 70],
     minSampleCount: 8,
@@ -474,17 +473,16 @@ async function evaluateRows(params: {
   for (const row of baseRows) {
     const key = buildRegionExamKey(row.regionId, row.examType);
 
-    const passMultiple = getPassMultiple(row.recruitCount);
-    const targetParticipantCount = Math.ceil(row.recruitCount * passMultiple);
+    const targetParticipantCount = row.applicantCount ?? row.estimatedApplicants;
     const coverageRate =
       targetParticipantCount > 0
-        ? roundNumber((row.participantCount / targetParticipantCount) * 100)
+        ? roundNumber(Math.min(100, (row.participantCount / targetParticipantCount) * 100))
         : 0;
 
     const recentInflowCount = inflowMap.get(key) ?? 0;
     const recentInflowRatePct =
       targetParticipantCount > 0
-        ? roundNumber((recentInflowCount / targetParticipantCount) * 100)
+        ? roundNumber(Math.min(100, (recentInflowCount / targetParticipantCount) * 100))
         : 0;
 
     const tieKey =

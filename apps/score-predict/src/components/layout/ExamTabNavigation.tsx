@@ -28,10 +28,10 @@ function tabClassName(active: boolean, disabled: boolean): string {
   }
 
   if (active) {
-    return `${base} bg-slate-100 text-slate-900 sm:border-slate-900 sm:bg-transparent`;
+    return `${base} bg-service-50 text-service-700 sm:border-service-700 sm:bg-transparent`;
   }
 
-  return `${base} text-slate-500 hover:bg-slate-100 hover:text-slate-800 sm:border-transparent sm:bg-transparent sm:hover:border-slate-300 sm:hover:bg-transparent`;
+  return `${base} text-slate-500 hover:bg-service-50 hover:text-service-700 sm:border-transparent sm:bg-transparent sm:hover:border-service-300 sm:hover:bg-transparent`;
 }
 
 export default function ExamTabNavigation({

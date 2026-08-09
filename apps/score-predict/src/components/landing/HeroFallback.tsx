@@ -45,7 +45,7 @@ export default function HeroFallback({
 
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href={resolvedPrimaryHref}>
-              <Button className="h-11 rounded-none bg-slate-900 px-6 text-sm font-bold text-white hover:bg-slate-800">
+              <Button className="h-11 rounded-none bg-service-700 px-6 text-sm font-bold text-white hover:bg-service-800">
                 {primaryText}
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>

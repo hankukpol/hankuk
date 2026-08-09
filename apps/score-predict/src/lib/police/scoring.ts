@@ -1,8 +1,11 @@
 import { BonusType, ExamType, Prisma } from "@prisma/client";
-import { invalidateCorrectRateCache } from "@/lib/correct-rate";
-import { normalizeSubjectName } from "@/lib/exam-utils";
-import { SUBJECT_CUTOFF_RATE } from "@/lib/policy";
+import { invalidateCorrectRateCache } from "@/lib/police/correct-rate";
+import { normalizeSubjectName } from "@/lib/police/exam-utils";
+import { SUBJECT_CUTOFF_RATE } from "@/lib/police/policy";
 import { prisma } from "@/lib/prisma";
+import { isPoliceExamType, POLICE_EXAM_TYPES } from "@/lib/tenant-exam";
+import { getPoliceApplicantCount, getPoliceRecruitCount } from "@/lib/police/prediction-policy";
+import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
 
 const RESCORE_BATCH_SIZE = 100;
 
@@ -266,10 +269,9 @@ function scoreByAnswerMap(params: {
   bonusRate: number;
 }): ScoreResult {
   const { examType, subjects, answerKeyMap, selectedAnswers, bonusRate } = params;
-  const scores: SubjectScoreResult[] = [];
+  const rawScores: Array<Omit<SubjectScoreResult, "bonusScore" | "finalScore">> = [];
   const userAnswers: UserAnswerResult[] = [];
   let totalScore = 0;
-  let totalBonusScore = 0;
   let hasCutoff = false;
 
   for (const subject of subjects) {
@@ -304,28 +306,34 @@ function scoreByAnswerMap(params: {
     const rawScore = roundScore(correctCount * subject.pointPerQuestion);
     const cutoffScore = roundScore(subject.maxScore * SUBJECT_CUTOFF_RATE);
     const isCutoff = rawScore < cutoffScore;
-    const bonusScore = isCutoff ? 0 : roundScore(subject.maxScore * bonusRate);
-    const finalScore = roundScore(rawScore + bonusScore);
-
     if (isCutoff) {
       hasCutoff = true;
     }
 
     totalScore = roundScore(totalScore + rawScore);
-    totalBonusScore = roundScore(totalBonusScore + bonusScore);
-
-    scores.push({
+    rawScores.push({
       subjectId: subject.id,
       subjectName: subject.name,
       questionCount: subject.questionCount,
       correctCount,
       rawScore,
       maxScore: subject.maxScore,
-      bonusScore,
-      finalScore,
       isCutoff,
     });
   }
+
+  // 경찰 공고 기준: 한 과목이라도 과락이면 모든 필기 법정 가산점을 적용하지 않는다.
+  const effectiveBonusRate = hasCutoff ? 0 : bonusRate;
+  let totalBonusScore = 0;
+  const scores: SubjectScoreResult[] = rawScores.map((score) => {
+    const bonusScore = roundScore(score.maxScore * effectiveBonusRate);
+    totalBonusScore = roundScore(totalBonusScore + bonusScore);
+    return {
+      ...score,
+      bonusScore,
+      finalScore: roundScore(score.rawScore + bonusScore),
+    };
+  });
 
   return {
     examType,
@@ -428,6 +436,10 @@ export function getBonusTypeFromPercent(veteranPercent: number, heroPercent: num
 export async function calculateScore(params: CalculateScoreParams): Promise<ScoreResult> {
   const { examId, examType, answers, bonusType, bonusRate } = params;
 
+  if (!isPoliceExamType(examType)) {
+    throw new Error("경찰 서비스에서 사용할 수 없는 채용유형입니다.");
+  }
+
   if (!Number.isInteger(examId) || examId <= 0) {
     throw new Error("유효한 examId가 필요합니다.");
   }
@@ -451,10 +463,14 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
     throw new Error("유효한 examId가 필요합니다.");
   }
 
+  if (options && !isPoliceExamType(options.examType)) {
+    throw new Error("경찰 서비스에서 사용할 수 없는 채용유형입니다.");
+  }
+
   const targetExamType = options?.examType;
   const submissionWhere: Prisma.SubmissionWhereInput = {
     examId,
-    ...(targetExamType ? { examType: targetExamType } : {}),
+    examType: targetExamType ?? { in: [...POLICE_EXAM_TYPES] },
   };
 
   const allSubmissions = await prisma.submission.findMany({
@@ -481,6 +497,18 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
       },
     };
   }
+
+  const quotas = await prisma.examRegionQuota.findMany({
+    where: { examId },
+    select: {
+      regionId: true,
+      recruitCount: true,
+      recruitCountCareer: true,
+      applicantCount: true,
+      applicantCountCareer: true,
+    },
+  });
+  const quotaByRegionId = new Map(quotas.map((quota) => [quota.regionId, quota] as const));
 
   const detailedMode =
     options !== undefined &&
@@ -583,13 +611,33 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
           const normalizedBonusRate = normalizeBonusRate(submission.bonusType, submission.bonusRate);
           const oldTotalScore = roundScore(submission.totalScore);
           const oldFinalScore = roundScore(submission.finalScore);
-          const result = scoreByAnswerMap({
+          const rawResult = scoreByAnswerMap({
             examType: submission.examType,
             subjects: context.subjects,
             answerKeyMap: context.answerKeyMap,
             selectedAnswers,
-            bonusRate: normalizedBonusRate,
+            bonusRate: 0,
           });
+          const quota = quotaByRegionId.get(submission.regionId);
+          if (!quota) {
+            throw new Error(`지역 ${submission.regionId}의 모집인원 정보를 찾을 수 없습니다.`);
+          }
+          const bonusDecision = resolvePoliceWrittenBonus({
+            bonusType: submission.bonusType,
+            declaredRate: normalizedBonusRate,
+            recruitCount: getPoliceRecruitCount(quota, submission.examType),
+            applicantCount: getPoliceApplicantCount(quota, submission.examType),
+            hasCutoff: rawResult.hasCutoff,
+          });
+          const result = bonusDecision.effectiveRate > 0
+            ? scoreByAnswerMap({
+                examType: submission.examType,
+                subjects: context.subjects,
+                answerKeyMap: context.answerKeyMap,
+                selectedAnswers,
+                bonusRate: bonusDecision.effectiveRate,
+              })
+            : rawResult;
 
           await tx.submission.update({
             where: { id: submission.id },

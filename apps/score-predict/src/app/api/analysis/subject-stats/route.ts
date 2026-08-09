@@ -1,19 +1,16 @@
 ﻿import { Prisma, Role } from "@prisma/client";
-import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
+import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import { prisma } from "@/lib/prisma";
+import {
+  getTenantSubjectOrder,
+  isExamTypeForTenant,
+  TENANT_EXAM_TYPES,
+} from "@/lib/tenant-exam";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const SUBJECT_ORDER = {
-  PUBLIC: ["소방학개론", "소방관계법규", "행정법총론"],
-  CAREER_RESCUE: ["소방학개론", "소방관계법규"],
-  CAREER_ACADEMIC: ["소방학개론", "소방관계법규"],
-  CAREER_EMT: ["소방학개론", "응급처치학개론"],
-} as const;
 
 type ParticipantRow = {
   totalCount: bigint | number | null;
@@ -49,10 +46,11 @@ function roundNumber(value: number): number {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const tenantSession = await getCurrentTenantSessionContext();
+  if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  const { session, tenantType } = tenantSession;
 
   const userId = Number(session.user.id);
   const isAdmin = ((session.user.role as Role | undefined) ?? Role.USER) === Role.ADMIN;
@@ -67,7 +65,13 @@ export async function GET(request: NextRequest) {
   }
 
   const submission = await prisma.submission.findFirst({
-    where: submissionId ? { id: submissionId, ...(isAdmin ? {} : { userId }) } : { userId },
+    where: submissionId
+      ? {
+          id: submissionId,
+          examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
+          ...(isAdmin ? {} : { userId }),
+        }
+      : { userId, examType: { in: [...TENANT_EXAM_TYPES[tenantType]] } },
     orderBy: submissionId ? undefined : [{ createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true,
@@ -90,6 +94,10 @@ export async function GET(request: NextRequest) {
 
   if (!submission) {
     return NextResponse.json({ error: "조회할 성적 데이터가 없습니다." }, { status: 404 });
+  }
+
+  if (!isExamTypeForTenant(tenantType, submission.examType)) {
+    return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
   }
 
   const [participantRow] = await prisma.$queryRaw<ParticipantRow[]>(Prisma.sql`
@@ -124,12 +132,7 @@ export async function GET(request: NextRequest) {
     averageRows.map((row) => [row.subjectId, roundNumber(toNumeric(row.averageScore))] as const)
   );
 
-  const subjectOrder =
-    submission.examType === "CAREER_EMT"
-      ? ([...SUBJECT_ORDER.CAREER_EMT] as string[])
-      : submission.examType === "CAREER_RESCUE" || submission.examType === "CAREER_ACADEMIC"
-        ? ([...SUBJECT_ORDER.CAREER_RESCUE] as string[])
-        : ([...SUBJECT_ORDER.PUBLIC] as string[]);
+  const subjectOrder = getTenantSubjectOrder(tenantType, submission.examType);
   const subjects = [...submission.subjectScores]
     .sort((a, b) => {
       const aIndex = subjectOrder.indexOf(a.subject.name);

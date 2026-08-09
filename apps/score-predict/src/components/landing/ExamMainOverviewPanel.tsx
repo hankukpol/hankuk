@@ -14,9 +14,16 @@ import {
   YAxis,
 } from "recharts";
 
-type ExamType = "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+type TenantType = "police" | "fire";
+type ExamType = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
 type Gender = "MALE" | "FEMALE";
-type ScoreDistributionKey = "TOTAL" | "FIRE_INTRO" | "FIRE_LAW" | "ADMIN_LAW" | "EMERGENCY";
+type ScoreDistributionKey = string;
+
+interface ExamTypeOption {
+  key: ExamType;
+  label: string;
+  requiresGender: boolean;
+}
 
 interface MainStatsRow {
   regionId: number;
@@ -85,6 +92,8 @@ interface ScoreDistributionItem {
 }
 
 interface MainStatsResponse {
+  tenantType: TenantType;
+  examTypes: ExamTypeOption[];
   updatedAt: string;
   careerExamEnabled: boolean;
   sectionVisibility: {
@@ -98,6 +107,7 @@ interface MainStatsResponse {
     examYear: number;
     examRound: number;
     totalParticipants: number;
+    participantsByExamType: Partial<Record<ExamType, number>>;
     publicParticipants: number;
     careerRescueParticipants: number;
     careerAcademicParticipants: number;
@@ -126,12 +136,7 @@ interface MainStatsResponse {
     sureMinScore: number;
     gap: number;
   }>;
-  scoreDistributions: {
-    PUBLIC: ScoreDistributionItem[];
-    CAREER_RESCUE: ScoreDistributionItem[];
-    CAREER_ACADEMIC: ScoreDistributionItem[];
-    CAREER_EMT: ScoreDistributionItem[];
-  };
+  scoreDistributions: Partial<Record<ExamType, ScoreDistributionItem[]>>;
   refresh: {
     enabled: boolean;
     intervalSec: number;
@@ -146,8 +151,11 @@ interface DifficultySummary {
   veryHard: number;
 }
 
-function getExamTypeLabel(examType: ExamType): string {
+function getExamTypeLabel(examType: ExamType, options: ExamTypeOption[] = []): string {
+  const configured = options.find((option) => option.key === examType)?.label;
+  if (configured) return configured;
   if (examType === "PUBLIC") return "공채";
+  if (examType === "CAREER") return "경행경채";
   if (examType === "CAREER_RESCUE") return "구조 경채";
   if (examType === "CAREER_ACADEMIC") return "소방학과 경채";
   return "구급 경채";
@@ -316,21 +324,14 @@ export default function ExamMainOverviewPanel() {
   );
 
   const availableExamTypes = useMemo<ExamType[]>(() => {
-    const rows = data?.rows ?? [];
-    const hasPublic = rows.some((row) => row.examType === "PUBLIC");
-    const hasCareerRescue = rows.some((row) => row.examType === "CAREER_RESCUE");
-    const hasCareerAcademic = rows.some((row) => row.examType === "CAREER_ACADEMIC");
-    const hasCareerEmt = rows.some((row) => row.examType === "CAREER_EMT");
-    const careerEnabled = data?.careerExamEnabled ?? true;
+    const configured = data?.examTypes.map((option) => option.key) ?? [];
+    return configured.length > 0 ? configured : ["PUBLIC"];
+  }, [data?.examTypes]);
 
-    const next: ExamType[] = [];
-    if (hasPublic) next.push("PUBLIC");
-    if (careerEnabled && hasCareerRescue) next.push("CAREER_RESCUE");
-    if (careerEnabled && hasCareerAcademic) next.push("CAREER_ACADEMIC");
-    if (careerEnabled && hasCareerEmt) next.push("CAREER_EMT");
-
-    return next.length > 0 ? next : ["PUBLIC"];
-  }, [data?.careerExamEnabled, data?.rows]);
+  const selectedExamTypeOption = useMemo(
+    () => data?.examTypes.find((option) => option.key === selectedExamType) ?? null,
+    [data?.examTypes, selectedExamType]
+  );
 
   useEffect(() => {
     if (!availableExamTypes.includes(selectedExamType)) {
@@ -374,10 +375,9 @@ export default function ExamMainOverviewPanel() {
   const selectedRow = useMemo(() => {
     const candidates = rowsByExamType.filter((row) => row.regionId === selectedRegionId);
     if (candidates.length === 0) return null;
-    // 구조경채는 gender 없음, 나머지는 선택된 성별로 필터
-    if (selectedExamType === "CAREER_RESCUE") return candidates[0] ?? null;
+    if (!selectedExamTypeOption?.requiresGender) return candidates[0] ?? null;
     return candidates.find((row) => row.gender === selectedGender) ?? null;
-  }, [rowsByExamType, selectedRegionId, selectedExamType, selectedGender]);
+  }, [rowsByExamType, selectedRegionId, selectedExamTypeOption?.requiresGender, selectedGender]);
 
   const isCollecting = selectedRow !== null && selectedRow.participantCount < 10;
   const isLowSample =
@@ -391,14 +391,17 @@ export default function ExamMainOverviewPanel() {
     : "응시인원";
 
   const difficultySubjects = useMemo(() => {
-    const original = data?.difficulty?.subjects ?? [];
+    const enabledExamTypeSet = new Set(data?.examTypes.map((option) => option.key) ?? []);
+    const original = (data?.difficulty?.subjects ?? []).filter((subject) =>
+      enabledExamTypeSet.has(subject.examType)
+    );
 
     const mergedMap = new Map<string, DifficultySubject>();
     const others: DifficultySubject[] = [];
 
     original.forEach(sub => {
       // 소방학개론은 직렬(공채, 경채) 구분 없이 공통 과목으로 합산 처리
-      if (sub.subjectName === "소방학개론") {
+      if (data?.tenantType === "fire" && sub.subjectName === "소방학개론") {
         if (!mergedMap.has(sub.subjectName)) {
           mergedMap.set(sub.subjectName, {
             ...sub,
@@ -423,7 +426,7 @@ export default function ExamMainOverviewPanel() {
 
     const mergedSubjects = Array.from(mergedMap.values());
     return [...others, ...mergedSubjects].sort((a, b) => b.subjectId - a.subjectId);
-  }, [data?.difficulty?.subjects]);
+  }, [data?.difficulty?.subjects, data?.examTypes, data?.tenantType]);
 
   useEffect(() => {
     // difficultySubjectId가 null 이 아닐 때만 유효성 검증
@@ -500,7 +503,7 @@ export default function ExamMainOverviewPanel() {
     const base = rowsByExamType
       .filter((row) => row.participantCount >= 10 && row.averageFinalScore !== null && row.sureMinScore !== null)
       .map((row) => ({
-        label: `${row.regionName}-${getExamTypeLabel(row.examType)}`,
+        label: `${row.regionName}-${row.examTypeLabel}`,
         averageFinalScore: row.averageFinalScore as number,
         sureMinScore: row.sureMinScore as number,
         gap: (row.sureMinScore as number) - (row.averageFinalScore as number),
@@ -562,7 +565,7 @@ export default function ExamMainOverviewPanel() {
       {sectionVisibility.overview ? (
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white p-5 sm:p-6 sm:pb-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <p className="text-xl font-bold tracking-tight text-fire-600">
+          <p className="text-xl font-bold tracking-tight text-service-600">
             {data.liveStats.examYear}.{String(data.liveStats.examRound).padStart(2, "0")} 시행
           </p>
           <p className="text-xs font-semibold text-slate-400">UPDATE {formatDateTime(data.updatedAt)}</p>
@@ -578,18 +581,17 @@ export default function ExamMainOverviewPanel() {
                 type="button"
                 onClick={() => setSelectedExamType(examType)}
                 className={`rounded-md px-6 py-2 text-sm font-bold transition ${active
-                  ? "bg-white text-fire-600 border border-slate-200/50"
+                  ? "bg-white text-service-600 border border-slate-200/50"
                   : "text-slate-500 hover:text-slate-700"
                   }`}
               >
-                {getExamTypeLabel(examType)}
+                {getExamTypeLabel(examType, data.examTypes)}
               </button>
             );
           })}
         </div>
 
-        {/* 공채/소방학과/구급: 남녀 구분 탭 (별도 줄 표시) */}
-        {selectedExamType !== "CAREER_RESCUE" && (
+        {selectedExamTypeOption?.requiresGender ? (
           <div className="mt-3 block">
           <div className="inline-flex gap-1 rounded-md bg-slate-100 p-1">
             {(["MALE", "FEMALE"] as const).map((g) => {
@@ -601,7 +603,7 @@ export default function ExamMainOverviewPanel() {
                   onClick={() => setSelectedGender(g)}
                   className={`rounded-md px-6 py-2 text-sm font-bold transition ${
                     active
-                      ? "bg-white text-fire-600 border border-slate-200/50"
+                      ? "bg-white text-service-600 border border-slate-200/50"
                       : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
@@ -611,7 +613,7 @@ export default function ExamMainOverviewPanel() {
             })}
           </div>
           </div>
-        )}
+        ) : null}
 
         <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-5">
           <p className="text-sm font-bold text-slate-800">지역 선택</p>
@@ -623,7 +625,7 @@ export default function ExamMainOverviewPanel() {
                   key={region.id}
                   type="button"
                   className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${active
-                    ? "border-fire-600 bg-fire-600 text-white"
+                    ? "border-service-600 bg-service-600 text-white"
                     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100"
                     }`}
                   onClick={() => setSelectedRegionId(region.id)}
@@ -635,8 +637,8 @@ export default function ExamMainOverviewPanel() {
           </div>
         </div>
 
-        <p className="mt-6 text-sm font-bold text-fire-600">
-          {selectedRow ? `${getExamTypeLabel(selectedExamType)} : ${selectedRow.regionName}` : "지역을 선택해 주세요."}
+        <p className="mt-6 text-sm font-bold text-service-600">
+          {selectedRow ? `${getExamTypeLabel(selectedExamType, data.examTypes)} : ${selectedRow.regionName}` : "지역을 선택해 주세요."}
         </p>
 
         <div className="mt-3 grid gap-4 xl:grid-cols-2 xl:items-stretch">
@@ -648,7 +650,7 @@ export default function ExamMainOverviewPanel() {
                     지역-직렬
                   </th>
                   <td className="px-4 py-3.5 font-bold text-slate-900">
-                    {selectedRow ? `${selectedRow.regionName}-${getExamTypeLabel(selectedRow.examType)}` : "-"}
+                    {selectedRow ? `${selectedRow.regionName}-${selectedRow.examTypeLabel}` : "-"}
                   </td>
                 </tr>
                 <tr className="divide-x divide-slate-200">
@@ -692,7 +694,7 @@ export default function ExamMainOverviewPanel() {
                     실시간 평균점수
                     <span className="ml-1 text-xs font-normal text-slate-400">(과락 제외)</span>
                   </th>
-                  <td className="px-4 py-3.5 font-bold text-fire-700">
+                  <td className="px-4 py-3.5 font-bold text-service-700">
                     {selectedRow
                       ? selectedRow.participantCount === 0
                         ? <span className="font-medium text-amber-600">데이터 수집 중</span>
@@ -727,7 +729,7 @@ export default function ExamMainOverviewPanel() {
                   </tr>
                   <tr className="flex flex-1 divide-x divide-slate-200">
                     <th className="flex w-[140px] items-center bg-slate-50 px-4 py-3.5 text-left font-bold text-slate-700 sm:w-[170px]">합격확실권</th>
-                    <td className="flex flex-1 items-center px-4 py-3.5 font-bold text-fire-700">
+                    <td className="flex flex-1 items-center px-4 py-3.5 font-bold text-service-700">
                       {selectedRow
                         ? isCollecting || selectedRow.sureMinScore === null
                           ? "데이터 수집 중"
@@ -762,7 +764,7 @@ export default function ExamMainOverviewPanel() {
       {sectionVisibility.difficulty ? (
       <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
         <h3 className="text-xl font-bold tracking-tight text-slate-900">
-          과목별 체감난이도 <span className="text-fire-600">설문 결과</span>
+          과목별 체감난이도 <span className="text-service-600">설문 결과</span>
         </h3>
 
         <div className="mt-5 rounded-md bg-slate-50 p-4 sm:p-6">
@@ -785,7 +787,7 @@ export default function ExamMainOverviewPanel() {
                 <option value="">전체 과목 (평균)</option>
                 {difficultySubjects.map((subject) => (
                   <option key={subject.subjectId} value={subject.subjectId}>
-                    {subject.subjectName} {subject.subjectId < 0 ? "(공통)" : `(${getExamTypeLabel(subject.examType)})`}
+                    {subject.subjectName} {subject.subjectId < 0 ? "(공통)" : `(${getExamTypeLabel(subject.examType, data.examTypes)})`}
                   </option>
                 ))}
               </select>
@@ -806,7 +808,7 @@ export default function ExamMainOverviewPanel() {
                   contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
                   formatter={(value: unknown) => `${Number(value ?? 0).toFixed(1)}%`}
                 />
-                <Bar dataKey="value" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                <Bar dataKey="value" fill="var(--service-500)" radius={[4, 4, 0, 0]} maxBarSize={60}>
                   <LabelList dataKey="value" position="top" formatter={(v: unknown) => `${Number(v ?? 0).toFixed(1)}%`} style={{ fontSize: "12px", fill: "#64748b", fontWeight: 600 }} dy={-4} />
                 </Bar>
               </BarChart>
@@ -839,7 +841,7 @@ export default function ExamMainOverviewPanel() {
                     key={item.key}
                     type="button"
                     className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${active
-                      ? "border-fire-700 bg-fire-700 text-white"
+                      ? "border-service-700 bg-service-700 text-white"
                       : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-700"
                       }`}
                     onClick={() => setSelectedScoreDistributionKey(item.key)}

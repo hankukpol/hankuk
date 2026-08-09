@@ -2,14 +2,26 @@ import { ExamType, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
-import { validateAdminExamNumberRange } from "@/lib/exam-number";
+import { validateAdminExamNumberRange as validateFireAdminExamNumberRange } from "@/lib/fire/exam-number";
+import { validatePoliceAdminExamNumberRange } from "@/lib/police/exam-number";
 import { prisma } from "@/lib/prisma";
+import { sortTenantRegions } from "@/lib/tenant-regions";
+import { rescoreTenantExam } from "@/lib/tenant-calculations.server";
+import { assertExamWritableForAdminSetup, isActiveExamRouteError } from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
 interface QuotaUpdateItem {
   regionId?: unknown;
   isActive?: unknown;
+  recruitCount?: unknown;
+  recruitCountCareer?: unknown;
+  applicantCount?: unknown;
+  applicantCountCareer?: unknown;
+  examNumberStart?: unknown;
+  examNumberEnd?: unknown;
+  examNumberStartCareer?: unknown;
+  examNumberEndCareer?: unknown;
   recruitPublicMale?: unknown;
   recruitPublicFemale?: unknown;
   recruitRescue?: unknown;
@@ -394,7 +406,7 @@ function validateRangeRow(row: {
   ];
 
   for (const check of checks) {
-    const error = validateAdminExamNumberRange({
+    const error = validateFireAdminExamNumberRange({
       cohort: check.cohort,
       label: check.label,
       start: check.start,
@@ -406,11 +418,272 @@ function validateRangeRow(row: {
   return null;
 }
 
+async function getPoliceRegions(request: NextRequest) {
+  const exams = await prisma.exam.findMany({
+    orderBy: [{ isActive: "desc" }, { examDate: "desc" }],
+    select: { id: true, name: true, year: true, round: true, isActive: true },
+  });
+  const requestedExamId = parsePositiveInt(request.nextUrl.searchParams.get("examId"));
+  const selectedExamId =
+    requestedExamId ?? exams.find((exam) => exam.isActive)?.id ?? exams[0]?.id ?? null;
+  const [regions, quotas, groupedCounts] = await Promise.all([
+    prisma.region.findMany({
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isActive: true },
+    }),
+    selectedExamId
+      ? prisma.examRegionQuota.findMany({
+          where: { examId: selectedExamId },
+          select: {
+            regionId: true,
+            recruitCount: true,
+            recruitCountCareer: true,
+            applicantCount: true,
+            applicantCountCareer: true,
+            examNumberStart: true,
+            examNumberEnd: true,
+            examNumberStartCareer: true,
+            examNumberEndCareer: true,
+          },
+        })
+      : Promise.resolve([]),
+    selectedExamId
+      ? prisma.submission.groupBy({
+          by: ["regionId", "examType"],
+          where: {
+            examId: selectedExamId,
+            examType: { in: [ExamType.PUBLIC, ExamType.CAREER] },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const quotaByRegionId = new Map(quotas.map((quota) => [quota.regionId, quota] as const));
+  const countByRegionId = new Map<number, { publicCount: number; careerCount: number }>();
+  for (const row of groupedCounts) {
+    const counts = countByRegionId.get(row.regionId) ?? { publicCount: 0, careerCount: 0 };
+    if (row.examType === ExamType.PUBLIC) counts.publicCount += row._count._all;
+    if (row.examType === ExamType.CAREER) counts.careerCount += row._count._all;
+    countByRegionId.set(row.regionId, counts);
+  }
+
+  return NextResponse.json({
+    exams,
+    selectedExamId,
+    regions: sortTenantRegions("police", regions).map((region) => {
+      const quota = quotaByRegionId.get(region.id);
+      const counts = countByRegionId.get(region.id) ?? { publicCount: 0, careerCount: 0 };
+      return {
+        ...region,
+        recruitCount: quota?.recruitCount ?? 0,
+        recruitCountCareer: quota?.recruitCountCareer ?? 0,
+        applicantCount: quota?.applicantCount ?? null,
+        applicantCountCareer: quota?.applicantCountCareer ?? null,
+        examNumberStart: quota?.examNumberStart ?? null,
+        examNumberEnd: quota?.examNumberEnd ?? null,
+        examNumberStartCareer: quota?.examNumberStartCareer ?? null,
+        examNumberEndCareer: quota?.examNumberEndCareer ?? null,
+        submissionCount: counts.publicCount + counts.careerCount,
+        submissionCountPublic: counts.publicCount,
+        submissionCountCareer: counts.careerCount,
+      };
+    }),
+  });
+}
+
+async function putPoliceRegions(request: NextRequest) {
+  const body = (await request.json()) as QuotaUpdatePayload;
+  const examId = parsePositiveInt(body.examId);
+  if (!examId) {
+    return NextResponse.json({ error: "유효한 시험 ID가 필요합니다." }, { status: 400 });
+  }
+  if (!Array.isArray(body.regions) || body.regions.length === 0) {
+    return NextResponse.json({ error: "수정할 지역 데이터가 없습니다." }, { status: 400 });
+  }
+
+  const normalized = body.regions.map((item) => {
+    const publicRange = validatePoliceAdminExamNumberRange(
+      item.examNumberStart,
+      item.examNumberEnd,
+      "공채"
+    );
+    const careerRange = validatePoliceAdminExamNumberRange(
+      item.examNumberStartCareer,
+      item.examNumberEndCareer,
+      "경행경채"
+    );
+    const applicantCount = parseNullableNonNegativeInt(item.applicantCount);
+    const applicantCountCareer = parseNullableNonNegativeInt(item.applicantCountCareer);
+    return {
+      regionId: parsePositiveInt(item.regionId),
+      isActive: parseBoolean(item.isActive),
+      recruitCount: parseNonNegativeInt(item.recruitCount),
+      recruitCountCareer: parseNonNegativeInt(item.recruitCountCareer),
+      applicantCount,
+      applicantCountCareer,
+      publicRange,
+      careerRange,
+    };
+  });
+
+  const uniqueRegionIds = new Set<number>();
+  for (const row of normalized) {
+    if (!row.regionId || row.isActive === null) {
+      return NextResponse.json({ error: "지역 또는 활성 상태가 올바르지 않습니다." }, { status: 400 });
+    }
+    if (row.recruitCount === null || row.recruitCountCareer === null) {
+      return NextResponse.json({ error: "모집인원은 0 이상의 정수여야 합니다." }, { status: 400 });
+    }
+    if (!row.applicantCount.ok || !row.applicantCountCareer.ok) {
+      return NextResponse.json({ error: "출원인원은 비우거나 0 이상의 정수여야 합니다." }, { status: 400 });
+    }
+    if (row.publicRange.error || row.careerRange.error) {
+      return NextResponse.json(
+        { error: row.publicRange.error ?? row.careerRange.error },
+        { status: 400 }
+      );
+    }
+    if (uniqueRegionIds.has(row.regionId)) {
+      return NextResponse.json({ error: "중복된 지역 ID가 포함되어 있습니다." }, { status: 400 });
+    }
+    uniqueRegionIds.add(row.regionId);
+  }
+
+  const [exam, regionCount] = await Promise.all([
+    prisma.exam.findUnique({ where: { id: examId }, select: { id: true } }),
+    prisma.region.count({ where: { id: { in: Array.from(uniqueRegionIds) } } }),
+  ]);
+  if (!exam) return NextResponse.json({ error: "존재하지 않는 시험입니다." }, { status: 404 });
+  await assertExamWritableForAdminSetup({
+    db: prisma,
+    tenantType: "police",
+    context: "api/admin/regions police PUT",
+    examId,
+  });
+  if (regionCount !== uniqueRegionIds.size) {
+    return NextResponse.json({ error: "존재하지 않는 지역 ID가 포함되어 있습니다." }, { status: 404 });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const row of normalized) {
+      const regionId = row.regionId!;
+      await tx.region.update({ where: { id: regionId }, data: { isActive: row.isActive! } });
+      await tx.examRegionQuota.upsert({
+        where: { examId_regionId: { examId, regionId } },
+        update: {
+          recruitCount: row.recruitCount!,
+          recruitCountCareer: row.recruitCountCareer!,
+          applicantCount: row.applicantCount.value,
+          applicantCountCareer: row.applicantCountCareer.value,
+          examNumberStart: row.publicRange.start,
+          examNumberEnd: row.publicRange.end,
+          examNumberStartCareer: row.careerRange.start,
+          examNumberEndCareer: row.careerRange.end,
+        },
+        create: {
+          examId,
+          regionId,
+          recruitCount: row.recruitCount!,
+          recruitCountCareer: row.recruitCountCareer!,
+          applicantCount: row.applicantCount.value,
+          applicantCountCareer: row.applicantCountCareer.value,
+          examNumberStart: row.publicRange.start,
+          examNumberEnd: row.publicRange.end,
+          examNumberStartCareer: row.careerRange.start,
+          examNumberEndCareer: row.careerRange.end,
+        },
+      });
+    }
+  });
+
+  // 출원인원 확정 또는 모집인원 변경 시 경찰 법정 가산점 예외를 즉시 다시 판정한다.
+  let rescoredCount = 0;
+  let rescorePending = false;
+  try {
+    const rescoreResult = await rescoreTenantExam("police", examId);
+    rescoredCount = rescoreResult.rescoredCount;
+  } catch (error) {
+    // 가답안이 아직 완성되지 않은 시험은 답안 저장 시 기존 자동 재채점 흐름에서 처리된다.
+    rescorePending = true;
+    console.warn("경찰 모집 설정 변경 후 즉시 재채점을 보류했습니다.", error);
+  }
+
+  return NextResponse.json({
+    success: true,
+    updatedCount: normalized.length,
+    rescoredCount,
+    rescorePending,
+    message: `${normalized.length}개 지역의 경찰 모집 설정을 업데이트했습니다.`,
+  });
+}
+
+async function postPoliceRegions(request: NextRequest) {
+  const body = (await request.json()) as { sourceExamId?: unknown; targetExamId?: unknown };
+  const sourceExamId = parsePositiveInt(body.sourceExamId);
+  const targetExamId = parsePositiveInt(body.targetExamId);
+  if (!sourceExamId || !targetExamId || sourceExamId === targetExamId) {
+    return NextResponse.json({ error: "서로 다른 원본·대상 시험 ID가 필요합니다." }, { status: 400 });
+  }
+  await assertExamWritableForAdminSetup({
+    db: prisma,
+    tenantType: "police",
+    context: "api/admin/regions police POST target",
+    examId: targetExamId,
+  });
+  const sourceQuotas = await prisma.examRegionQuota.findMany({
+    where: { examId: sourceExamId },
+    select: {
+      regionId: true,
+      recruitCount: true,
+      recruitCountCareer: true,
+      applicantCount: true,
+      applicantCountCareer: true,
+      examNumberStart: true,
+      examNumberEnd: true,
+      examNumberStartCareer: true,
+      examNumberEndCareer: true,
+    },
+  });
+  if (sourceQuotas.length === 0) {
+    return NextResponse.json({ error: "원본 시험에 모집인원 데이터가 없습니다." }, { status: 404 });
+  }
+  await prisma.$transaction(async (tx) => {
+    for (const quota of sourceQuotas) {
+      const data = {
+        recruitCount: quota.recruitCount,
+        recruitCountCareer: quota.recruitCountCareer,
+        applicantCount: quota.applicantCount,
+        applicantCountCareer: quota.applicantCountCareer,
+        examNumberStart: quota.examNumberStart,
+        examNumberEnd: quota.examNumberEnd,
+        examNumberStartCareer: quota.examNumberStartCareer,
+        examNumberEndCareer: quota.examNumberEndCareer,
+      };
+      await tx.examRegionQuota.upsert({
+        where: { examId_regionId: { examId: targetExamId, regionId: quota.regionId } },
+        update: data,
+        create: { examId: targetExamId, regionId: quota.regionId, ...data },
+      });
+    }
+  });
+  return NextResponse.json({ success: true, copiedCount: sourceQuotas.length });
+}
+
 export async function GET(request: NextRequest) {
   const guard = await requireAdminRoute();
   if ("error" in guard) return guard.error;
   const featureError = await requireAdminSiteFeature("regions");
   if (featureError) return featureError;
+
+  if (guard.tenantType === "police") {
+    try {
+      return await getPoliceRegions(request);
+    } catch (error) {
+      console.error("경찰 모집인원 목록 조회 중 오류가 발생했습니다.", error);
+      return NextResponse.json({ error: "경찰 모집인원 목록 조회에 실패했습니다." }, { status: 500 });
+    }
+  }
 
   try {
     const exams = await prisma.exam.findMany({
@@ -479,7 +752,17 @@ export async function GET(request: NextRequest) {
     const groupedCounts = examId
       ? await prisma.submission.groupBy({
           by: ["regionId", "examType"],
-          where: { examId },
+          where: {
+            examId,
+            examType: {
+              in: [
+                ExamType.PUBLIC,
+                ExamType.CAREER_RESCUE,
+                ExamType.CAREER_ACADEMIC,
+                ExamType.CAREER_EMT,
+              ],
+            },
+          },
           _count: { _all: true },
         })
       : [];
@@ -515,7 +798,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       exams,
       selectedExamId: examId,
-      regions: regions.map((region) => {
+      regions: sortTenantRegions("fire", regions).map((region) => {
         const quota = quotaByRegionId.get(region.id);
         const counts = countByRegion.get(region.id) ?? {
           total: 0,
@@ -589,6 +872,18 @@ export async function PUT(request: NextRequest) {
   const featureError = await requireAdminSiteFeature("regions");
   if (featureError) return featureError;
 
+  if (guard.tenantType === "police") {
+    try {
+      return await putPoliceRegions(request);
+    } catch (error) {
+      if (isActiveExamRouteError(error)) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      }
+      console.error("경찰 모집인원 저장 중 오류가 발생했습니다.", error);
+      return NextResponse.json({ error: "경찰 모집인원 저장에 실패했습니다." }, { status: 500 });
+    }
+  }
+
   try {
     const body = (await request.json()) as QuotaUpdatePayload;
 
@@ -605,6 +900,12 @@ export async function PUT(request: NextRequest) {
     if (!exam) {
       return NextResponse.json({ error: "존재하지 않는 시험입니다." }, { status: 404 });
     }
+    await assertExamWritableForAdminSetup({
+      db: prisma,
+      tenantType: "fire",
+      context: "api/admin/regions fire PUT",
+      examId,
+    });
 
     const normalized = body.regions.map((item) => {
       const regionId = parsePositiveInt(item.regionId);
@@ -772,12 +1073,29 @@ export async function PUT(request: NextRequest) {
       }
     });
 
+    // 모집인원 변경은 소방 법정 가산점의 최소 모집인원 적용 여부를 바꿀 수 있다.
+    let rescoredCount = 0;
+    let rescorePending = false;
+    try {
+      const rescoreResult = await rescoreTenantExam("fire", examId);
+      rescoredCount = rescoreResult.rescoredCount;
+    } catch (error) {
+      // 가답안이 아직 완성되지 않은 시험은 답안 저장 시 기존 자동 재채점 흐름에서 처리된다.
+      rescorePending = true;
+      console.warn("소방 모집 설정 변경 후 즉시 재채점을 보류했습니다.", error);
+    }
+
     return NextResponse.json({
       success: true,
       updatedCount: normalized.length,
-      message: `${normalized.length}개 지역의 설정을 업데이트했습니다.`,
+      rescoredCount,
+      rescorePending,
+      message: `${normalized.length}개 지역의 소방 모집 설정을 업데이트했습니다.`,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("모집인원 저장 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "모집인원 저장에 실패했습니다." }, { status: 500 });
   }
@@ -788,6 +1106,18 @@ export async function POST(request: NextRequest) {
   if ("error" in guard) return guard.error;
   const featureError = await requireAdminSiteFeature("regions");
   if (featureError) return featureError;
+
+  if (guard.tenantType === "police") {
+    try {
+      return await postPoliceRegions(request);
+    } catch (error) {
+      if (isActiveExamRouteError(error)) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      }
+      console.error("경찰 모집인원 복사 중 오류가 발생했습니다.", error);
+      return NextResponse.json({ error: "경찰 모집인원 복사에 실패했습니다." }, { status: 500 });
+    }
+  }
 
   try {
     const body = (await request.json()) as { sourceExamId?: unknown; targetExamId?: unknown };
@@ -800,6 +1130,12 @@ export async function POST(request: NextRequest) {
     if (sourceExamId === targetExamId) {
       return NextResponse.json({ error: "같은 시험으로 복사할 수 없습니다." }, { status: 400 });
     }
+    await assertExamWritableForAdminSetup({
+      db: prisma,
+      tenantType: "fire",
+      context: "api/admin/regions fire POST target",
+      examId: targetExamId,
+    });
 
     const sourceQuotas = await prisma.examRegionQuota.findMany({
       where: { examId: sourceExamId },
@@ -900,6 +1236,9 @@ export async function POST(request: NextRequest) {
       message: `${sourceQuotas.length}개 지역 모집인원을 복사했습니다.`,
     });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("모집인원 복사 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "모집인원 복사에 실패했습니다." }, { status: 500 });
   }

@@ -13,20 +13,16 @@ import { getActiveEvents } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
 import { getActiveNotices, getSiteSettingsUncached } from "@/lib/site-settings";
 import { withTenantPrefix } from "@/lib/tenant";
+import { requireSoleActiveExam } from "@/lib/active-exam";
 
 export const dynamic = "force-dynamic";
 
 async function getLiveStats(): Promise<LandingLiveStats | null> {
   try {
-    const activeExam = await prisma.exam.findFirst({
-      where: { isActive: true },
-      orderBy: [{ examDate: "desc" }, { id: "desc" }],
-      select: {
-        id: true,
-        name: true,
-        year: true,
-        round: true,
-      },
+    const activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType: "fire",
+      context: "fire/landing/live-stats",
     });
 
     if (!activeExam) {
@@ -86,21 +82,19 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
 }
 
 async function getHasSubmission(userId: number): Promise<boolean> {
-  const activeExam = await prisma.exam.findFirst({
-    where: { isActive: true },
-    orderBy: [{ examDate: "desc" }, { id: "desc" }],
-    select: { id: true },
-  });
+  let activeExam;
+  try {
+    activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType: "fire",
+      context: "fire/landing/has-submission",
+    });
+  } catch {
+    return false;
+  }
 
   const submissionCount = await prisma.submission.count({
-    where: activeExam
-      ? {
-        userId,
-        examId: activeExam.id,
-      }
-      : {
-        userId,
-      },
+    where: { userId, examId: activeExam.id },
   });
 
   return submissionCount > 0;
@@ -126,7 +120,12 @@ export default async function HomePage() {
   const bannersByZone = groupBannersByZone(activeBanners);
   const heroBanner = bannersByZone.hero[0] ?? null;
   const heroSubBanners = bannersByZone.hero.slice(1);
-  const heroBadge = String(siteSettings["site.heroBadge"] ?? "2026 소방 1차 필기시험 합격예측");
+  const heroBadge = String(
+    siteSettings["site.heroBadge"] ??
+      (liveStats
+        ? `${liveStats.examYear}년 ${liveStats.examRound}차 소방 필기시험 합격예측`
+        : "소방 필기시험 합격예측")
+  );
   const careerExamEnabled = Boolean(siteSettings["site.careerExamEnabled"] ?? true);
   const liveStatsCardEnabled = Boolean(siteSettings["site.mainCardLiveStatsEnabled"] ?? true);
   const examSurfaceState = getExamSurfaceState(siteSettings, {

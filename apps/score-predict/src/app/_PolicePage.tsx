@@ -13,20 +13,16 @@ import { getActiveEvents } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
 import { getActiveNotices, getSiteSettingsUncached } from "@/lib/site-settings";
 import { withTenantPrefix } from "@/lib/tenant";
+import { requireSoleActiveExam } from "@/lib/active-exam";
 
 export const dynamic = "force-dynamic";
 
 async function getLiveStats(): Promise<LandingLiveStats | null> {
   try {
-    const activeExam = await prisma.exam.findFirst({
-      where: { isActive: true },
-      orderBy: [{ examDate: "desc" }, { id: "desc" }],
-      select: {
-        id: true,
-        name: true,
-        year: true,
-        round: true,
-      },
+    const activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType: "police",
+      context: "police/landing/live-stats",
     });
 
     if (!activeExam) {
@@ -80,21 +76,19 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
 }
 
 async function getHasSubmission(userId: number): Promise<boolean> {
-  const activeExam = await prisma.exam.findFirst({
-    where: { isActive: true },
-    orderBy: [{ examDate: "desc" }, { id: "desc" }],
-    select: { id: true },
-  });
+  let activeExam;
+  try {
+    activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType: "police",
+      context: "police/landing/has-submission",
+    });
+  } catch {
+    return false;
+  }
 
   const submissionCount = await prisma.submission.count({
-    where: activeExam
-      ? {
-        userId,
-        examId: activeExam.id,
-      }
-      : {
-        userId,
-      },
+    where: { userId, examId: activeExam.id },
   });
 
   return submissionCount > 0;
@@ -120,7 +114,16 @@ export default async function HomePage() {
   const bannersByZone = groupBannersByZone(activeBanners);
   const heroBanner = bannersByZone.hero[0] ?? null;
   const heroSubBanners = bannersByZone.hero.slice(1);
-  const heroBadge = String(siteSettings["site.heroBadge"] ?? "2026 경찰 1차 필기시험 합격예측");
+  const derivedHeroBadge = liveStats
+    ? `${liveStats.examYear}년 ${liveStats.examRound}차 경찰 필기시험 합격예측`
+    : "경찰 필기시험 합격예측";
+  const configuredHeroBadge = String(siteSettings["site.heroBadge"] ?? "").trim();
+  const heroBadge =
+    !configuredHeroBadge ||
+    configuredHeroBadge === "경찰 필기시험 합격예측" ||
+    /경찰.*1차|1차.*경찰/.test(configuredHeroBadge)
+      ? derivedHeroBadge
+      : configuredHeroBadge;
   const careerExamEnabled = Boolean(siteSettings["site.careerExamEnabled"] ?? true);
   const examSurfaceState = getExamSurfaceState(siteSettings, {
     defaultLockedMessage: "시험 중 오픈 예정입니다.",
@@ -136,7 +139,7 @@ export default async function HomePage() {
   );
   const heroSubtitle = String(
     siteSettings["site.heroSubtitle"] ??
-    "응시정보와 OMR 답안을 입력하면 과목별 분석, 예상점수, 배수 위치, 합격권 등급을 실시간으로 제공합니다."
+    "응시정보와 OMR 답안을 입력하면 과목별 분석, 점수, 과락 여부, 표본 등수와 백분위를 확인할 수 있습니다."
   );
 
   const primaryExamRoute = getPreferredExamRoute(siteSettings, { isAuthenticated: isLoggedIn, hasSubmission });

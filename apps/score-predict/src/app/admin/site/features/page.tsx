@@ -14,6 +14,7 @@ import {
 import { asBoolean, asString, type SettingValue } from "../_lib/site-settings-client";
 import { useSiteSettingsManager } from "../_lib/use-site-settings-manager";
 import SiteSettingsSectionCard from "../_components/SiteSettingsSectionCard";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 type ToggleField = {
   key: string;
@@ -48,6 +49,12 @@ const FLOW_TOGGLES: ToggleField[] = [
     key: "site.finalPredictionEnabled",
     label: "최종 예상 컷",
     description: "최종 예상 컷 공개와 관련 API를 활성화합니다.",
+    defaultValue: false,
+  },
+  {
+    key: "site.policePredictionGradesEnabled",
+    label: "경찰 합격 등급(캘리브레이션 후)",
+    description: "경찰 실측 보정이 완료된 뒤에만 확실권·유력권·가능권 등급을 공개합니다.",
     defaultValue: false,
   },
   {
@@ -276,6 +283,10 @@ function FeatureToggleGroup({
 }
 
 export default function AdminSiteFeaturesPage() {
+  const tenant = useTenantConfig();
+  const flowToggles = tenant.type === "police"
+    ? FLOW_TOGGLES
+    : FLOW_TOGGLES.filter((field) => field.key !== "site.policePredictionGradesEnabled");
   const { settings, updateSetting, isLoading, isSaving, notice, handleSave, modalProps } =
     useSiteSettingsManager({
       section: "features",
@@ -319,6 +330,14 @@ export default function AdminSiteFeaturesPage() {
             currentSettings["site.finalPredictionEnabled"],
             false
           ),
+          ...(tenant.type === "police"
+            ? {
+                "site.policePredictionGradesEnabled": asBoolean(
+                  currentSettings["site.policePredictionGradesEnabled"],
+                  false
+                ),
+              }
+            : {}),
           "site.commentsEnabled": asBoolean(currentSettings["site.commentsEnabled"], true),
           "site.tabMainEnabled": asBoolean(currentSettings["site.tabMainEnabled"], true),
           "site.tabInputEnabled": asBoolean(currentSettings["site.tabInputEnabled"], true),
@@ -375,7 +394,7 @@ export default function AdminSiteFeaturesPage() {
         <FeatureToggleGroup
           title="시험/입력 흐름"
           description="응시자 참여 흐름과 공개 시험 기능을 제어합니다."
-          fields={FLOW_TOGGLES}
+          fields={flowToggles}
           settings={settings}
           updateSetting={updateSetting}
         />

@@ -1,6 +1,8 @@
-import { BonusType, ExamType, Prisma } from "@prisma/client";
+import { BonusType, ExamType, Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCompetitorDisplayName, getPassMultiple, getRecruitCount } from "@/lib/police/prediction";
+
+type FinalPredictionDb = PrismaClient | Prisma.TransactionClient;
 
 export interface KnownFinalScoreResult {
   writtenScore: number;
@@ -51,6 +53,11 @@ export function roundScore(value: number): number {
 const finalPredictionQuotaSelect = {
   recruitCount: true,
   recruitCountCareer: true,
+  exam: {
+    select: {
+      policeWrittenPassMultiple: true,
+    },
+  },
   region: {
     select: {
       name: true,
@@ -153,8 +160,8 @@ export async function calculateFinalRankingDetails(params: {
   regionId: number;
   examType: ExamType;
   submissionId: number;
-}): Promise<FinalRankingDetails | null> {
-  const quota = await prisma.examRegionQuota.findUnique({
+}, db: FinalPredictionDb = prisma): Promise<FinalRankingDetails | null> {
+  const quota = await db.examRegionQuota.findUnique({
     where: {
       examId_regionId: {
         examId: params.examId,
@@ -168,10 +175,13 @@ export async function calculateFinalRankingDetails(params: {
   const recruitCount = getRecruitCount(quota, params.examType);
   if (recruitCount < 1) return null;
 
-  const passMultiple = getPassMultiple(recruitCount);
+  const passMultiple = getPassMultiple(
+    recruitCount,
+    quota.exam.policeWrittenPassMultiple
+  );
   const rankingCte = buildFinalRankingCte(params);
 
-  const [summaryRow] = await prisma.$queryRaw<
+  const [summaryRow] = await db.$queryRaw<
     Array<{ totalParticipants: number; oneMultipleCutScore: number | null }>
   >(Prisma.sql`
     ${rankingCte}
@@ -184,7 +194,7 @@ export async function calculateFinalRankingDetails(params: {
   const totalParticipants = Number(summaryRow?.totalParticipants ?? 0);
   if (totalParticipants < 1) return null;
 
-  const [myRow] = await prisma.$queryRaw<FinalRankingQueryRow[]>(Prisma.sql`
+  const [myRow] = await db.$queryRaw<FinalRankingQueryRow[]>(Prisma.sql`
     ${rankingCte}
     SELECT
       "submissionId",
@@ -199,7 +209,7 @@ export async function calculateFinalRankingDetails(params: {
     LIMIT 1
   `);
 
-  const competitorRows = await prisma.$queryRaw<FinalRankingQueryRow[]>(Prisma.sql`
+  const competitorRows = await db.$queryRaw<FinalRankingQueryRow[]>(Prisma.sql`
     ${rankingCte}
     SELECT
       "submissionId",
@@ -251,8 +261,8 @@ export async function calculateKnownFinalRank(params: {
   regionId: number;
   examType: ExamType;
   submissionId: number;
-}): Promise<{ finalRank: number | null; totalParticipants: number }> {
-  const details = await calculateFinalRankingDetails(params);
+}, db: FinalPredictionDb = prisma): Promise<{ finalRank: number | null; totalParticipants: number }> {
+  const details = await calculateFinalRankingDetails(params, db);
   return {
     finalRank: details?.finalRank ?? null,
     totalParticipants: details?.totalParticipants ?? 0,

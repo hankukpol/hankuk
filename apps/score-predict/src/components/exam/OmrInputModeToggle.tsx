@@ -16,7 +16,7 @@ export default function OmrInputModeToggle({ value, onChange }: OmrInputModeTogg
           type="button"
           onClick={() => onChange("quick")}
           className={`border-r last:border-r-0 px-5 py-2.5 text-sm font-bold transition ${value === "quick"
-            ? "bg-fire-700 text-white border-fire-700"
+            ? "bg-service-700 text-white border-service-700"
             : "bg-white text-slate-700 hover:bg-slate-50 border-transparent"
             }`}
         >
@@ -26,7 +26,7 @@ export default function OmrInputModeToggle({ value, onChange }: OmrInputModeTogg
           type="button"
           onClick={() => onChange("radio")}
           className={`border-r last:border-r-0 px-5 py-2.5 text-sm font-bold transition ${value === "radio"
-            ? "bg-fire-700 text-white border-fire-700"
+            ? "bg-service-700 text-white border-service-700"
             : "bg-white text-slate-700 hover:bg-slate-50 border-transparent"
             }`}
         >

@@ -114,6 +114,20 @@ export interface ResultResponse {
     percentile: number;
     lastUpdated: string;
   };
+  bonusApplication?: {
+    status: "NONE" | "APPLIED" | "NOT_APPLIED" | "PENDING";
+    reason:
+      | "NONE"
+      | "APPLIED_STANDARD"
+      | "APPLIED_APPLICANT_EXCEPTION"
+      | "CUTOFF"
+      | "BELOW_MIN_RECRUIT_COUNT"
+      | "MISSING_APPLICANT_COUNT";
+    declaredRate: number;
+    effectiveRate: number;
+    minRecruitCount: number | null;
+    message: string | null;
+  } | null;
   statistics: {
     totalParticipants: number;
     totalRank: number;

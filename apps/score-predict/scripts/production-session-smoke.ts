@@ -103,11 +103,19 @@ async function verifyTenant(tenantType: TenantType, cookie: string) {
   const publicDistribution = stats.scoreDistributions?.PUBLIC ?? [];
   const labels = new Set(publicDistribution.map((item) => item.label));
   if (tenantType === "police") {
-    assert(examTypes.has("PUBLIC") && examTypes.has("CAREER") && !examTypes.has("CAREER_EMT"), "Police Production exam types are mixed.");
+    const allowedPoliceExamTypes = new Set(["PUBLIC", "CAREER"]);
+    assert(
+      examTypes.has("PUBLIC") && [...examTypes].every((examType) => allowedPoliceExamTypes.has(examType)),
+      `Police Production exam types are mixed: ${JSON.stringify([...examTypes])}`
+    );
     assert(labels.has("헌법") && labels.has("형사법") && labels.has("경찰학") && !labels.has("소방학개론"), "Police Production subjects are mixed.");
     assert(publicDistribution.find((item) => item.label === "총점")?.maxScore === 250, "Police Production total max score is not 250.");
   } else {
-    assert(examTypes.has("CAREER_RESCUE") && examTypes.has("CAREER_EMT") && !examTypes.has("CAREER"), "Fire Production exam types are mixed.");
+    const allowedFireExamTypes = new Set(["PUBLIC", "CAREER_RESCUE", "CAREER_ACADEMIC", "CAREER_EMT"]);
+    assert(
+      examTypes.has("PUBLIC") && [...examTypes].every((examType) => allowedFireExamTypes.has(examType)),
+      `Fire Production exam types are mixed: ${JSON.stringify([...examTypes])}`
+    );
     assert(labels.has("소방학개론") && labels.has("소방관계법규") && !labels.has("헌법"), "Fire Production subjects are mixed.");
     assert(publicDistribution.find((item) => item.label === "총점")?.maxScore === 300, "Fire Production total max score is not 300.");
   }

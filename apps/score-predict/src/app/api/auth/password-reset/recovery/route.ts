@@ -113,9 +113,17 @@ export async function POST(request: NextRequest) {
       return null;
     }
 
+    const consumed = await tx.recoveryCode.updateMany({
+      where: { id: validRecoveryCode.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    if (consumed.count !== 1) {
+      return null;
+    }
+
     await tx.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, credentialVersion: { increment: 1 } },
     });
 
     await tx.passwordResetToken.updateMany({

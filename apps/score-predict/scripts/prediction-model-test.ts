@@ -11,9 +11,15 @@ import {
   classifyPolicePredictionGrade,
   POLICE_PREDICTION_MODEL_CALIBRATED,
   POLICE_PREDICTION_MODEL_VERSION,
+  POLICE_SAMPLE_RANK_GRADE_OUTPUT_ENABLED,
   resolvePoliceGradeAvailability,
 } from "../src/lib/police/prediction-model";
 import { getPolicePassMultiple } from "../src/lib/police/prediction-policy";
+import {
+  calculateSampleTopPercent,
+  canShowSampleAverage,
+  canShowSampleOneMultiplePoint,
+} from "../src/lib/public-sample-policy";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -50,6 +56,7 @@ function verifyPoliceModel() {
     applicantCount: 1000,
   });
   assert(POLICE_PREDICTION_MODEL_CALIBRATED === false, "캘리브레이션 전 경찰 등급은 잠겨 있어야 합니다.");
+  assert(POLICE_SAMPLE_RANK_GRADE_OUTPUT_ENABLED === false, "표본 2배수 기반 경찰 등급 출력은 잠겨 있어야 합니다.");
   assert(unavailable.gradeAvailability === "UNAVAILABLE", "경찰 등급 기본 OFF가 적용되지 않았습니다.");
   assert(unavailable.unavailableReasons.includes("FEATURE_DISABLED"), "기능 비활성 사유가 누락되었습니다.");
   assert(unavailable.unavailableReasons.includes("UNCALIBRATED"), "미보정 사유가 누락되었습니다.");
@@ -96,6 +103,15 @@ function verifyPoliceModel() {
   });
   assert(forming.sampleStage === "FORMING", "경찰 15% 표본 단계 오류");
   assert(forming.sureMaxRank === 75, "경찰 예측 윤곽 단계의 확실권 안전계수 오류");
+}
+
+function verifyPublicSamplePolicy() {
+  assert(!canShowSampleAverage(14) && canShowSampleAverage(15), "입력자 평균 공개 하한은 15명이어야 합니다.");
+  assert(!canShowSampleOneMultiplePoint(29, 2), "소수 모집에서 30명 미만 표본 1배수 지점이 공개됩니다.");
+  assert(!canShowSampleOneMultiplePoint(99, 100), "모집인원보다 적은 표본으로 1배수 지점이 공개됩니다.");
+  assert(canShowSampleOneMultiplePoint(100, 100), "공개 기준을 충족한 표본 1배수 지점이 차단됩니다.");
+  assert(calculateSampleTopPercent(1, 1) === null, "소표본 상위 비율이 노출됩니다.");
+  assert(calculateSampleTopPercent(1, 20) === 5, "표본 상위 비율 산식이 등수 기준과 다릅니다.");
 }
 
 function verifyFireModel() {
@@ -189,7 +205,9 @@ async function verifySourceIsolation() {
   assert(!files.dashboard.includes("marginRank"), "표본 순위와 모집단 경계를 뺀 여유 등수가 남아 있습니다.");
   assert(
     files.predictionRoute.includes("gradeAvailability") &&
-      files.predictionRoute.includes("predictionGrade: PredictionGrade | null"),
+      files.predictionRoute.includes("predictionGrade: PredictionGrade | null") &&
+      files.predictionRoute.includes("const passCount: number | null = null") &&
+      files.predictionRoute.includes("const passLineScore: number | null = null"),
     "경찰 등급이 서버 응답에서 차단되지 않았습니다."
   );
   assert(
@@ -214,6 +232,7 @@ async function verifySourceIsolation() {
 
 async function main() {
   verifyPoliceModel();
+  verifyPublicSamplePolicy();
   verifyFireModel();
   await verifySourceIsolation();
 

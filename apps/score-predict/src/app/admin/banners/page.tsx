@@ -139,7 +139,6 @@ export default function AdminBannersPage() {
 
   async function loadBanners() {
     setIsLoading(true);
-    setNotice(null);
     try {
       const response = await fetch("/api/admin/banners", { method: "GET", cache: "no-store" });
       const data = (await response.json()) as BannersResponse & { error?: string };
@@ -244,7 +243,7 @@ export default function AdminBannersPage() {
     if (!current.id && !current.htmlContent.trim()) {
       setNotice({
         type: "error",
-        message: `${ZONE_LABELS[zone]}은 배너 콘텐츠가 필요합니다.`,
+        message: `${ZONE_LABELS[zone]}에는 배너 콘텐츠가 필요합니다.`,
       });
       return;
     }

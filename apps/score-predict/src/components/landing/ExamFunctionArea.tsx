@@ -11,6 +11,7 @@ import ExamPredictionPageContent from "@/components/exam/ExamPredictionPageConte
 import ExamResultPageContent from "@/components/exam/ExamResultPageContent";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import ExamMainOverviewPanel from "@/components/landing/ExamMainOverviewPanel";
+import PublicExamOverviewPanel from "@/components/landing/PublicExamOverviewPanel";
 import {
   DEFAULT_TAB_LOCKED_MESSAGE,
   getPreferredExamTab,
@@ -57,6 +58,8 @@ const ALL_TABS: TabItem[] = [
   { key: "notices", label: "공지사항", requireSubmission: false },
   { key: "faq", label: "FAQ", requireSubmission: false },
 ];
+
+const PUBLIC_TAB_KEYS = new Set<TabKey>(["main", "notices", "faq"]);
 
 function isAdminLocked(tabKey: TabKey, tabEnabled: TabEnabledSettings): boolean {
   return tabEnabled[tabKey] === false;
@@ -113,36 +116,14 @@ function BlurOverlay({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="relative min-h-[400px] select-none overflow-hidden rounded-lg">
-      <div className="pointer-events-none blur-sm" aria-hidden="true">
-        <div className="space-y-6 p-4">
-          <div className="h-8 w-2/3 rounded bg-slate-200" />
-          <div className="grid grid-cols-3 gap-4">
-            <div className="h-32 rounded-lg bg-slate-100" />
-            <div className="h-32 rounded-lg bg-slate-100" />
-            <div className="h-32 rounded-lg bg-slate-100" />
-          </div>
-          <div className="space-y-3">
-            <div className="h-4 w-full rounded bg-slate-100" />
-            <div className="h-4 w-5/6 rounded bg-slate-100" />
-            <div className="h-4 w-4/6 rounded bg-slate-100" />
-          </div>
-          <div className="h-48 rounded-lg bg-slate-50" />
-          <div className="grid grid-cols-2 gap-4">
-            <div className="h-24 rounded-lg bg-slate-100" />
-            <div className="h-24 rounded-lg bg-slate-100" />
-          </div>
-        </div>
-      </div>
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-[2px]">
-        <div className="rounded-2xl bg-white/95 px-8 py-6 text-center shadow-xl">
+    <div className="flex min-h-72 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-6">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
             {LOCK_ICON}
           </div>
           <p className="text-lg font-semibold text-slate-900">{title}</p>
           <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
           {action ? <div className="mt-4">{action}</div> : null}
-        </div>
       </div>
     </div>
   );
@@ -230,7 +211,10 @@ export default function ExamFunctionArea({
     [mergedTabEnabled, tenant.type]
   );
 
-  const visibleTabs = useMemo(() => ALL_TABS, []);
+  const visibleTabs = useMemo(
+    () => (isAuthenticated || isAdmin ? ALL_TABS : ALL_TABS.filter((tab) => PUBLIC_TAB_KEYS.has(tab.key))),
+    [isAdmin, isAuthenticated]
+  );
 
   useEffect(() => {
     setLocalHasSubmission(hasSubmission);
@@ -284,7 +268,7 @@ export default function ExamFunctionArea({
   function getTabContent(tabKey: TabKey) {
     switch (tabKey) {
       case "main":
-        return <ExamMainOverviewPanel />;
+        return isAuthenticated || isAdmin ? <ExamMainOverviewPanel /> : <PublicExamOverviewPanel />;
       case "input":
         return (
           <ExamInputPageContent
@@ -353,7 +337,7 @@ export default function ExamFunctionArea({
       );
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !PUBLIC_TAB_KEYS.has(tabKey)) {
       return (
         <BlurOverlay
           title="로그인 후 이용할 수 있습니다"
@@ -388,18 +372,19 @@ export default function ExamFunctionArea({
           {visibleTabs.map((tab) => {
             const locked = isAdminLocked(tab.key, mergedTabEnabled);
             const disabled = isAuthenticated && !locked && tab.requireSubmission && !canAccessRestrictedTabs;
+            const publicAccessible = !isAuthenticated && PUBLIC_TAB_KEYS.has(tab.key);
 
             return (
               <button
                 key={tab.key}
                 type="button"
-                className={tabClassName(activeTab === tab.key, disabled, locked || !isAuthenticated)}
+                className={tabClassName(activeTab === tab.key, disabled, locked || (!isAuthenticated && !publicAccessible))}
                 disabled={disabled}
                 onClick={() => setActiveTab(tab.key)}
                 title={
                   locked
                     ? tabLockedMessage
-                    : !isAuthenticated
+                    : !isAuthenticated && !publicAccessible
                       ? "로그인 후 이용할 수 있습니다."
                       : disabled
                         ? "답안 제출 후 열리는 기능입니다."

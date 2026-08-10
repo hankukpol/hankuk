@@ -12,7 +12,7 @@ import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { withTenantPrefix } from "@/lib/tenant";
+import { withBrowserTenantPath } from "@/lib/tenant";
 import { isPoliceExamType, type PoliceExamType } from "@/lib/tenant-exam";
 
 type BonusVeteran = 0 | 5 | 10;
@@ -832,7 +832,7 @@ export default function ExamInputPage({
         onSubmitted(data.submissionId);
       } else {
         router.push(
-          `${withTenantPrefix("/exam/result", tenantType)}?submissionId=${data.submissionId}`
+          `${withBrowserTenantPath("/exam/result", tenantType)}?submissionId=${data.submissionId}`
         );
         router.refresh();
       }

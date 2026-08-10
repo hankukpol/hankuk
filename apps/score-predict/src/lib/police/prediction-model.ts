@@ -1,5 +1,8 @@
 export const POLICE_PREDICTION_MODEL_VERSION = "police-2026-2x-rank-first-v2";
 export const POLICE_PREDICTION_MODEL_CALIBRATED = false;
+// 모집단 2배수 경계를 입력자 표본 순위에 직접 적용하는 현재 등급 모델은 공개 금지다.
+// 실측 매핑을 사용하는 새 모델 버전이 구현되기 전에는 true로 바꾸지 않는다.
+export const POLICE_SAMPLE_RANK_GRADE_OUTPUT_ENABLED = false;
 
 export const POLICE_GRADE_MINIMUMS = {
   coverageRate: 30,
@@ -54,7 +57,9 @@ export function resolvePoliceGradeAvailability(params: {
   applicantCount: number | null;
 }): PoliceGradeAvailability {
   const reasons: PoliceGradeUnavailableReason[] = [];
-  const calibrated = params.calibrated ?? POLICE_PREDICTION_MODEL_CALIBRATED;
+  const calibrated =
+    (params.calibrated ?? POLICE_PREDICTION_MODEL_CALIBRATED) &&
+    POLICE_SAMPLE_RANK_GRADE_OUTPUT_ENABLED;
 
   if (!params.featureEnabled) reasons.push("FEATURE_DISABLED");
   if (params.applicantCount === null || params.applicantCount < 1) {

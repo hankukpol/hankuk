@@ -85,6 +85,7 @@ export interface ResultResponse {
       questionCount: number;
       topPercent: number;
       percentile: number;
+      percentileAvailable: boolean;
       averageScore: number;
       highestScore: number;
       lowestScore: number;
@@ -100,6 +101,7 @@ export interface ResultResponse {
       questionCount: number;
       topPercent: number;
       percentile: number;
+      percentileAvailable: boolean;
       averageScore: number;
       highestScore: number;
       lowestScore: number;
@@ -112,6 +114,7 @@ export interface ResultResponse {
     totalParticipants: number;
     topPercent: number;
     percentile: number;
+    percentileAvailable: boolean;
     lastUpdated: string;
   };
   bonusApplication?: {
@@ -133,6 +136,7 @@ export interface ResultResponse {
     totalRank: number;
     topPercent: number;
     totalPercentile: number;
+    percentileAvailable: boolean;
     hasCutoff: boolean;
     rankingBasis: "ALL_PARTICIPANTS" | "NON_CUTOFF_PARTICIPANTS";
     cutoffSubjects: Array<{

@@ -9,8 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/providers/ToastProvider";
-import { normalizePhone, validateRegisterInput } from "@/lib/validations";
-import { withTenantPrefix } from "@/lib/tenant";
+import { normalizeEmail, normalizePhone, validateRegisterInput } from "@/lib/validations";
+import { withBrowserTenantPath, withTenantPrefix } from "@/lib/tenant";
 
 interface RegisterResponse {
   error?: string;
@@ -31,6 +31,7 @@ export default function RegisterPage() {
   const { showErrorToast, showToast } = useToast();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -76,6 +77,7 @@ export default function RegisterPage() {
 
     const validationResult = validateRegisterInput({
       name,
+      email,
       phone,
       password,
       agreedToTerms,
@@ -115,7 +117,7 @@ export default function RegisterPage() {
 
       if (!Array.isArray(data.recoveryCodes) || data.recoveryCodes.length === 0) {
         setTimeout(() => {
-          router.push(withTenantPrefix("/login", TENANT_TYPE));
+          router.push(withBrowserTenantPath("/login", TENANT_TYPE));
         }, 800);
       }
     } catch {
@@ -132,7 +134,7 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">회원가입</CardTitle>
-          <p className="text-sm text-slate-500">한글 이름과 연락처로 가입하고 복구코드를 안전하게 보관해 주세요.</p>
+          <p className="text-sm text-slate-500">이름, 연락처, 비밀번호 찾기에 사용할 이메일로 가입합니다.</p>
         </CardHeader>
         <CardContent>
           {recoveryCodes.length > 0 ? (
@@ -154,7 +156,7 @@ export default function RegisterPage() {
                   ))}
                 </div>
               </div>
-              <Button className="w-full" onClick={() => router.push(withTenantPrefix("/login", TENANT_TYPE))}>로그인으로 이동</Button>
+              <Button className="w-full" onClick={() => router.push(withBrowserTenantPath("/login", TENANT_TYPE))}>로그인으로 이동</Button>
             </div>
           ) : (
             <>
@@ -177,6 +179,20 @@ export default function RegisterPage() {
                     value={phone}
                     onChange={(event) => handlePhoneChange(event.target.value)}
                     placeholder="010-1234-5678"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">이메일</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(normalizeEmail(event.target.value))}
+                    placeholder="비밀번호 찾기에 사용할 이메일"
+                    autoCapitalize="none"
+                    autoCorrect="off"
                     required
                   />
                 </div>

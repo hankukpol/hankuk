@@ -57,6 +57,7 @@ export default function AdminExamsPage() {
   const [exams, setExams] = useState<ExamItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [notice, setNotice] = useState<NoticeState>(null);
 
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -267,6 +268,41 @@ export default function AdminExamsPage() {
     }
   }
 
+  async function deleteExam(exam: ExamItem) {
+    if (exam.isActive) return;
+
+    const ok = await confirm({
+      title: "시험 삭제",
+      description: `"${exam.year}년 ${exam.round}차" 시험을 삭제하시겠습니까? 정답과 모집인원 설정도 함께 삭제됩니다.`,
+      variant: "danger",
+      confirmLabel: "삭제",
+    });
+    if (!ok) return;
+
+    setDeletingId(exam.id);
+    setNotice(null);
+    try {
+      const response = await fetch(`${ADMIN_EXAM_API}&id=${exam.id}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? "시험 삭제에 실패했습니다.");
+      }
+
+      if (editingId === exam.id) resetForm();
+      setNotice({ type: "success", message: "사용 이력이 없는 비활성 시험을 삭제했습니다." });
+      await loadExams();
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "시험 삭제 중 오류가 발생했습니다.",
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -449,6 +485,14 @@ export default function AdminExamsPage() {
                           onClick={() => void toggleActivation(exam)}
                         >
                           {exam.isActive ? "현재 운영 중" : "활성화"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={exam.isActive || deletingId === exam.id}
+                          onClick={() => void deleteExam(exam)}
+                        >
+                          {deletingId === exam.id ? "삭제 중..." : "삭제"}
                         </Button>
                       </div>
                     </td>

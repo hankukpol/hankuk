@@ -15,7 +15,7 @@ import {
   normalizeUsername,
   validateRegisterInput,
 } from "@/lib/police/validations";
-import { withTenantPrefix } from "@/lib/tenant";
+import { withBrowserTenantPath, withTenantPrefix } from "@/lib/tenant";
 
 interface RegisterResponse {
   message?: string;
@@ -157,7 +157,7 @@ export default function RegisterPage() {
       return;
     }
 
-    router.push(`${withTenantPrefix("/login", TENANT_TYPE)}?registered=1`);
+    router.push(`${withBrowserTenantPath("/login", TENANT_TYPE)}?registered=1`);
     router.refresh();
   };
 

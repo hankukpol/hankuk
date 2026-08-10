@@ -171,7 +171,12 @@ export default function AnswerSheet({ subjects, summaries }: AnswerSheetProps) {
   return (
     <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">정오표 - 문항별 정답률 분석</h2>
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">정오표 - 문항별 정답률 분석</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            본 서비스의 동일 시험·채용유형 답안 제출자 기준이며, 지역을 구분하지 않은 표본입니다.
+          </p>
+        </div>
         <select
           className="h-9 rounded-md border border-slate-300 px-3 text-sm"
           value={effectiveSubjectId}

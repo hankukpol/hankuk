@@ -2,16 +2,24 @@ import "server-only";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import type { TenantType } from "@/lib/tenant";
 
-interface PasswordResetCodeEmailParams {
+export type AccountEmailPurpose =
+  | "PASSWORD_RESET"
+  | "EMAIL_VERIFICATION"
+  | "PASSWORD_CHANGED";
+
+interface AccountCodeEmailParams {
+  tenantType: TenantType;
+  purpose: AccountEmailPurpose;
   to: string;
   name?: string | null;
-  username?: string | null;
-  code: string;
-  expireMinutes: number;
+  identity?: string | null;
+  code?: string;
+  expireMinutes?: number;
 }
 
-interface PasswordResetCodeEmailResult {
+interface AccountCodeEmailResult {
   previewFile?: string;
 }
 
@@ -21,41 +29,72 @@ interface MailMessage {
   html: string;
 }
 
-function hasResendConfig(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
+function getMailFrom(tenantType: TenantType): string {
+  const tenantFrom =
+    tenantType === "police" ? process.env.POLICE_MAIL_FROM : process.env.FIRE_MAIL_FROM;
+  return tenantFrom?.trim() || process.env.MAIL_FROM?.trim() || "";
+}
+
+function hasResendConfig(tenantType: TenantType): boolean {
+  return Boolean(process.env.RESEND_API_KEY && getMailFrom(tenantType));
 }
 
 function hasWebhookConfig(): boolean {
   return Boolean(process.env.PASSWORD_RESET_MAIL_WEBHOOK_URL);
 }
 
-export function isMailerConfigured(): boolean {
-  return hasResendConfig() || hasWebhookConfig();
+export function isMailerConfigured(tenantType: TenantType): boolean {
+  return hasResendConfig(tenantType) || hasWebhookConfig();
 }
 
-function buildMessage(params: PasswordResetCodeEmailParams): MailMessage {
-  const subject =
-    process.env.PASSWORD_RESET_CODE_MAIL_SUBJECT ?? "[합격예측] 비밀번호 재설정 인증코드 안내";
-  const greetingName = params.name?.trim() || params.username?.trim() || "회원";
+export function isLocalMailPreviewEnabled(): boolean {
+  return process.env.NODE_ENV !== "production" && process.env.PASSWORD_RESET_DEBUG_LINK === "true";
+}
+
+function getServiceName(tenantType: TenantType): string {
+  return tenantType === "police" ? "경찰 합격예측" : "소방 합격예측";
+}
+
+function buildMessage(params: AccountCodeEmailParams): MailMessage {
+  const serviceName = getServiceName(params.tenantType);
+  const greetingName = params.name?.trim() || params.identity?.trim() || "회원";
+
+  if (params.purpose === "PASSWORD_CHANGED") {
+    const subject = `[${serviceName}] 비밀번호 변경 안내`;
+    const text = [
+      `${greetingName}님, 비밀번호가 변경되었습니다.`,
+      "",
+      "본인이 변경하지 않았다면 즉시 학원 관리자에게 문의해 주세요.",
+    ].join("\n");
+    const html = [
+      `<p>${greetingName}님, 비밀번호가 변경되었습니다.</p>`,
+      "<p>본인이 변경하지 않았다면 즉시 학원 관리자에게 문의해 주세요.</p>",
+    ].join("");
+    return { subject, text, html };
+  }
+
+  const isVerification = params.purpose === "EMAIL_VERIFICATION";
+  const actionText = isVerification ? "이메일 확인" : "비밀번호 재설정";
+  const subject = `[${serviceName}] ${actionText} 인증코드 안내`;
   const text = [
-    `${greetingName}님, 비밀번호 재설정 인증코드를 안내드립니다.`,
+    `${greetingName}님, ${actionText} 인증코드를 안내드립니다.`,
     "",
-    `인증코드: ${params.code}`,
-    `유효시간: ${params.expireMinutes}분`,
+    `인증코드: ${params.code ?? ""}`,
+    `유효시간: ${params.expireMinutes ?? 15}분`,
     "",
     "본인이 요청하지 않았다면 이 메일을 무시해 주세요.",
   ].join("\n");
   const html = [
-    `<p>${greetingName}님, 비밀번호 재설정 인증코드를 안내드립니다.</p>`,
-    `<p><strong>인증코드:</strong> ${params.code}</p>`,
-    `<p><strong>유효시간:</strong> ${params.expireMinutes}분</p>`,
+    `<p>${greetingName}님, ${actionText} 인증코드를 안내드립니다.</p>`,
+    `<p><strong>인증코드:</strong> ${params.code ?? ""}</p>`,
+    `<p><strong>유효시간:</strong> ${params.expireMinutes ?? 15}분</p>`,
     "<p>본인이 요청하지 않았다면 이 메일을 무시해 주세요.</p>",
   ].join("");
 
   return { subject, text, html };
 }
 
-async function sendViaResend(params: PasswordResetCodeEmailParams): Promise<void> {
+async function sendViaResend(params: AccountCodeEmailParams): Promise<void> {
   const message = buildMessage(params);
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -64,7 +103,7 @@ async function sendViaResend(params: PasswordResetCodeEmailParams): Promise<void
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.MAIL_FROM,
+      from: getMailFrom(params.tenantType),
       to: [params.to],
       subject: message.subject,
       text: message.text,
@@ -78,7 +117,7 @@ async function sendViaResend(params: PasswordResetCodeEmailParams): Promise<void
   }
 }
 
-async function sendViaWebhook(params: PasswordResetCodeEmailParams): Promise<void> {
+async function sendViaWebhook(params: AccountCodeEmailParams): Promise<void> {
   const message = buildMessage(params);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -93,8 +132,10 @@ async function sendViaWebhook(params: PasswordResetCodeEmailParams): Promise<voi
     headers,
     body: JSON.stringify({
       to: params.to,
+      tenantType: params.tenantType,
+      purpose: params.purpose,
       name: params.name,
-      username: params.username,
+      identity: params.identity,
       code: params.code,
       expireMinutes: params.expireMinutes,
       subject: message.subject,
@@ -109,7 +150,7 @@ async function sendViaWebhook(params: PasswordResetCodeEmailParams): Promise<voi
   }
 }
 
-async function writePreviewFile(params: PasswordResetCodeEmailParams): Promise<string> {
+async function writePreviewFile(params: AccountCodeEmailParams): Promise<string> {
   const previewDir = path.join(process.cwd(), ".mail-preview");
   const fileName = `password-reset-code-${Date.now()}-${randomUUID()}.txt`;
   const previewPath = path.join(previewDir, fileName);
@@ -130,10 +171,10 @@ async function writePreviewFile(params: PasswordResetCodeEmailParams): Promise<s
   return path.join(".mail-preview", fileName);
 }
 
-export async function sendPasswordResetCodeEmail(
-  params: PasswordResetCodeEmailParams
-): Promise<PasswordResetCodeEmailResult> {
-  if (hasResendConfig()) {
+export async function sendAccountCodeEmail(
+  params: AccountCodeEmailParams
+): Promise<AccountCodeEmailResult> {
+  if (hasResendConfig(params.tenantType)) {
     await sendViaResend(params);
     return {};
   }
@@ -143,7 +184,17 @@ export async function sendPasswordResetCodeEmail(
     return {};
   }
 
-  return {
-    previewFile: await writePreviewFile(params),
-  };
+  if (isLocalMailPreviewEnabled()) {
+    return {
+      previewFile: await writePreviewFile(params),
+    };
+  }
+
+  throw new Error(`[mailer] ${params.tenantType} mail delivery is not configured.`);
+}
+
+export async function sendPasswordResetCodeEmail(
+  params: Omit<AccountCodeEmailParams, "purpose">
+): Promise<AccountCodeEmailResult> {
+  return sendAccountCodeEmail({ ...params, purpose: "PASSWORD_RESET" });
 }

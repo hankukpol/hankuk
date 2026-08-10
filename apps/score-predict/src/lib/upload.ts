@@ -163,6 +163,23 @@ function resolveSupabaseUrl(): string {
   }
 }
 
+function resolveSupabasePublicUrl(): string {
+  const fromPublic = readEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const fromServer = readEnv("SUPABASE_URL");
+  const value = fromPublic || fromServer;
+  if (!value) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL) is required for public storage URLs.");
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    throw new Error(
+      "NEXT_PUBLIC_SUPABASE_URL is invalid. Use a full URL such as https://<project>.supabase.co"
+    );
+  }
+}
+
 function resolveServiceRoleKey(): string {
   const key = readEnv("SUPABASE_SERVICE_ROLE_KEY") || readEnv("SUPABASE_SECRET_KEY");
   if (!key) {
@@ -242,7 +259,7 @@ function encodeObjectPath(objectPath: string): string {
 }
 
 function buildSupabasePublicUrl(objectPath: string): string {
-  const origin = resolveSupabaseUrl();
+  const origin = resolveSupabasePublicUrl();
   const bucket = resolveStorageBucket();
   const encodedBucket = encodeURIComponent(bucket);
   const encodedPath = encodeObjectPath(objectPath);
@@ -389,7 +406,7 @@ export async function deleteUploadedFileByPublicUrl(publicUrl: string | null | u
       apikey: serviceRoleKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify([parsed.objectPath]),
+    body: JSON.stringify({ prefixes: [parsed.objectPath] }),
     cache: "no-store",
   });
 

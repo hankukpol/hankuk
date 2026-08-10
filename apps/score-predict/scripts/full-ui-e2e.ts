@@ -16,6 +16,7 @@ type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string
 type UserIdentity = {
   name: string;
   phone: string;
+  email: string;
   password: string;
 };
 
@@ -345,6 +346,7 @@ async function registerViaUi(page: Page, user: UserIdentity): Promise<void> {
 
   await page.fill("#name", user.name);
   await page.fill("#phone", user.phone);
+  await page.fill("#email", user.email);
   await page.fill("#password", user.password);
   await page.fill("#passwordConfirm", user.password);
   await page.check("#allAgreed");
@@ -595,6 +597,7 @@ async function main(): Promise<void> {
   const user: UserIdentity = {
     name: "\uD14C\uC2A4\uD2B8\uC720\uC800",
     phone: makeRandomPhone(),
+    email: `ui-${Date.now()}@example.test`,
     password: "Usertest!123",
   };
   initArtifacts();

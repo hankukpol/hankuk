@@ -97,7 +97,6 @@ export default function AdminEventsPage() {
 
   async function loadEvents() {
     setIsLoading(true);
-    setNotice(null);
     try {
       const response = await fetch("/api/admin/events", {
         method: "GET",

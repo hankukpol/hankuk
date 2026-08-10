@@ -7,6 +7,7 @@ import NotificationBell from "@/components/layout/NotificationBell";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import { Button } from "@/components/ui/button";
 import { withTenantPrefix } from "@/lib/tenant";
+import { ShieldCheck } from "lucide-react";
 
 interface SiteSettingsResponse {
   settings?: {
@@ -18,6 +19,10 @@ export default function Header() {
   const tenant = useTenantConfig();
   const { data: session, status } = useSession();
   const [siteTitleOverride, setSiteTitleOverride] = useState<string | null>(null);
+  const [recoveryEmailState, setRecoveryEmailState] = useState<{
+    userId: string;
+    needsVerification: boolean;
+  } | null>(null);
   const siteTitle = siteTitleOverride ?? tenant.siteTitle;
 
   useEffect(() => {
@@ -49,6 +54,34 @@ export default function Header() {
       cancelled = true;
     };
   }, [tenant.type]);
+
+  useEffect(() => {
+    if (!session?.user) {
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/account/security", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as { email?: string | null; emailVerifiedAt?: string | null };
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setRecoveryEmailState({
+            userId: session.user.id,
+            needsVerification: Boolean(data && (!data.email || !data.emailVerifiedAt)),
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRecoveryEmailState({ userId: session.user.id, needsVerification: false });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user, tenant.type]);
 
   return (
     <header className="border-b border-[#111111] bg-[#111111] text-white">
@@ -92,6 +125,14 @@ export default function Header() {
                 문자 수신 설정
               </Link>
             ) : null}
+            <Link
+              href={withTenantPrefix("/account/security", tenant.type)}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-white/40 bg-white/10 px-2 text-sm text-white hover:bg-white/20"
+              aria-label="계정 보안"
+            >
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden md:inline">계정 보안</span>
+            </Link>
             <Button
               variant="outline"
               size="sm"
@@ -120,6 +161,16 @@ export default function Header() {
           </div>
         )}
       </div>
+      {session?.user &&
+      recoveryEmailState?.userId === session.user.id &&
+      recoveryEmailState.needsVerification ? (
+        <div className="border-t border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
+          비밀번호 분실에 대비해 복구 이메일 인증을 완료해 주세요.{" "}
+          <Link href={withTenantPrefix("/account/security", tenant.type)} className="font-semibold underline underline-offset-4">
+            지금 설정
+          </Link>
+        </div>
+      ) : null}
     </header>
   );
 }

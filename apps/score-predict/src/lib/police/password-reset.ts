@@ -1,18 +1,27 @@
-﻿import "server-only";
+import "server-only";
 import bcrypt from "bcryptjs";
 import {
   consumePersistentFixedWindowRateLimit,
   resetPersistentFixedWindowRateLimit,
 } from "@/lib/police/persistent-rate-limit";
-import { isMailerConfigured, sendPasswordResetCodeEmail } from "@/lib/mailer";
+import {
+  isLocalMailPreviewEnabled,
+  isMailerConfigured,
+  sendAccountCodeEmail,
+  sendPasswordResetCodeEmail,
+} from "@/lib/mailer";
 import { createPasswordResetCode, hashSecret } from "@/lib/police/password-recovery";
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/request-ip";
+import type { TenantType } from "@/lib/tenant";
 import {
-  validatePasswordResetRequestInput,
-  validateResetPasswordInput,
-} from "@/lib/police/validations";
-import type { PasswordResetRequestFormData, ResetPasswordFormData } from "@/types";
+  isValidEmail,
+  normalizeEmail,
+  normalizePhone,
+  normalizeResetCode,
+  normalizeUsername,
+  validatePasswordStrength,
+} from "@/lib/validations";
 
 interface PasswordResetResult {
   ok: boolean;
@@ -25,7 +34,18 @@ interface PasswordResetResult {
   };
 }
 
+type PasswordResetInput = {
+  identity?: unknown;
+  username?: unknown;
+  phone?: unknown;
+  email?: unknown;
+  resetCode?: unknown;
+  password?: unknown;
+  recoveryChannel?: unknown;
+};
+
 const PASSWORD_RESET_CODE_EXPIRE_MINUTES = 15;
+const ADMIN_RESET_CODE_EXPIRE_MINUTES = 10;
 const PASSWORD_RESET_REQUEST_IP_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_REQUEST_IP_LIMIT = 5;
 const PASSWORD_RESET_REQUEST_ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
@@ -34,24 +54,31 @@ const PASSWORD_RESET_CONFIRM_IP_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_CONFIRM_IP_LIMIT = 10;
 const PASSWORD_RESET_CONFIRM_ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_CONFIRM_ACCOUNT_LIMIT = 5;
-const MSG = {
-  inputFallback: "\uC785\uB825\uAC12\uC744 \uB2E4\uC2DC \uD655\uC778\uD574 \uC8FC\uC138\uC694.",
-  genericMessage:
-    "\uC785\uB825\uD55C \uC815\uBCF4\uC640 \uC77C\uCE58\uD558\uB294 \uACC4\uC815\uC774 \uC788\uC73C\uBA74 \uBE44\uBC00\uBC88\uD638 \uC7AC\uC124\uC815 \uC778\uC99D\uCF54\uB4DC\uB97C \uC774\uBA54\uC77C\uB85C \uBCF4\uB0C8\uC2B5\uB2C8\uB2E4. \uBA54\uC77C\uD568\uACFC \uC2A4\uD338\uD568\uC744 \uD568\uAED8 \uD655\uC778\uD574 \uC8FC\uC138\uC694.",
-  previewMessage:
-    "\uC778\uC99D\uCF54\uB4DC\uB97C \uB85C\uCEEC \uBA54\uC77C \uD504\uB9AC\uBDF0 \uD30C\uC77C\uB85C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.",
-  sendMailError:
-    "\uC778\uC99D\uCF54\uB4DC \uBA54\uC77C \uBC1C\uC1A1\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.",
-  invalidResetInput:
-    "\uC544\uC774\uB514, \uC774\uBA54\uC77C \uB610\uB294 \uC778\uC99D\uCF54\uB4DC\uB97C \uD655\uC778\uD574 \uC8FC\uC138\uC694.",
-  resetSuccess:
-    "\uBE44\uBC00\uBC88\uD638\uAC00 \uC7AC\uC124\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uC0C8 \uBE44\uBC00\uBC88\uD638\uB85C \uB85C\uADF8\uC778\uD574 \uC8FC\uC138\uC694.",
-  tooMany:
-    "\uC694\uCCAD\uC774 \uB108\uBB34 \uB9CE\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.",
-};
+const GENERIC_MESSAGE =
+  "입력한 정보와 일치하는 계정이 있으면 비밀번호 재설정 인증코드를 이메일로 보냈습니다. 메일함과 스팸함을 함께 확인해 주세요.";
+const PREVIEW_MESSAGE = "인증코드를 로컬 메일 미리보기 파일로 저장했습니다.";
 
-function buildAccountKey(username: string, email: string): string {
-  return `${username}:${email}`;
+function normalizeIdentity(tenantType: TenantType, input: PasswordResetInput): string {
+  const raw =
+    typeof input.identity === "string"
+      ? input.identity
+      : typeof input.username === "string"
+        ? input.username
+        : typeof input.phone === "string"
+          ? input.phone
+          : "";
+  return tenantType === "police" ? normalizeUsername(raw) : normalizePhone(raw);
+}
+
+function isValidIdentity(tenantType: TenantType, identity: string): boolean {
+  if (tenantType === "police") {
+    return /^[a-z0-9][a-z0-9._-]{3,29}$/.test(identity);
+  }
+  return /^010-\d{4}-\d{4}$/.test(identity);
+}
+
+function buildAccountKey(identity: string, email: string): string {
+  return `${identity}:${email}`;
 }
 
 function buildRateLimitError(retryAfterSec: number): PasswordResetResult {
@@ -59,73 +86,96 @@ function buildRateLimitError(retryAfterSec: number): PasswordResetResult {
     ok: false,
     status: 429,
     body: {
-      error: MSG.tooMany,
+      error: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
       retryAfterSec,
     },
   };
 }
 
+function buildMailerUnavailableError(): PasswordResetResult {
+  return {
+    ok: false,
+    status: 503,
+    body: {
+      error: "현재 이메일 인증 서비스를 사용할 수 없습니다. 학원 관리자에게 문의해 주세요.",
+    },
+  };
+}
+
 export async function requestPasswordResetCode(
-  input: Partial<PasswordResetRequestFormData>,
+  input: PasswordResetInput,
+  tenantType: TenantType,
   requestLike?: Request
 ): Promise<PasswordResetResult> {
-  const validation = validatePasswordResetRequestInput(input);
-  if (!validation.isValid || !validation.data) {
-    return {
-      ok: false,
-      status: 400,
-      body: { error: validation.errors[0] ?? MSG.inputFallback },
-    };
+  if (!isMailerConfigured(tenantType) && !isLocalMailPreviewEnabled()) {
+    return buildMailerUnavailableError();
   }
 
-  const { username, email } = validation.data;
-  const clientIp = requestLike ? getClientIp(requestLike) : "unknown";
+  const identity = normalizeIdentity(tenantType, input);
+  const email = normalizeEmail(typeof input.email === "string" ? input.email : "");
+  if (!isValidIdentity(tenantType, identity) || !isValidEmail(email)) {
+    return { ok: false, status: 400, body: { error: "로그인 정보와 이메일을 확인해 주세요." } };
+  }
 
+  const clientIp = requestLike ? getClientIp(requestLike) : "unknown";
   const ipRateLimit = await consumePersistentFixedWindowRateLimit({
     namespace: "password-reset-request-ip",
     key: clientIp,
     limit: PASSWORD_RESET_REQUEST_IP_LIMIT,
     windowMs: PASSWORD_RESET_REQUEST_IP_WINDOW_MS,
   });
-  if (!ipRateLimit.allowed) {
-    return buildRateLimitError(ipRateLimit.retryAfterSec);
-  }
+  if (!ipRateLimit.allowed) return buildRateLimitError(ipRateLimit.retryAfterSec);
 
+  const accountKey = buildAccountKey(identity, email);
   const accountRateLimit = await consumePersistentFixedWindowRateLimit({
     namespace: "password-reset-request-account",
-    key: buildAccountKey(username, email),
+    key: accountKey,
     limit: PASSWORD_RESET_REQUEST_ACCOUNT_LIMIT,
     windowMs: PASSWORD_RESET_REQUEST_ACCOUNT_WINDOW_MS,
   });
-  if (!accountRateLimit.allowed) {
-    return buildRateLimitError(accountRateLimit.retryAfterSec);
-  }
+  if (!accountRateLimit.allowed) return buildRateLimitError(accountRateLimit.retryAfterSec);
 
   const user = await prisma.user.findFirst({
-    where: { phone: username, email },
+    where: { phone: identity, email },
     select: { id: true, name: true, email: true, phone: true },
   });
-
   if (!user?.email) {
-    return { ok: true, status: 200, body: { message: MSG.genericMessage } };
+    return { ok: true, status: 200, body: { message: GENERIC_MESSAGE } };
   }
 
   const { code, tokenHash, expiresAt } = createPasswordResetCode(PASSWORD_RESET_CODE_EXPIRE_MINUTES);
-  const requestedIp = clientIp;
   const requestedAgent = requestLike?.headers.get("user-agent") ?? undefined;
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.passwordResetToken.deleteMany({ where: { userId: user.id, usedAt: null } });
+      await tx.passwordResetToken.updateMany({
+        where: {
+          userId: user.id,
+          purpose: "PASSWORD_RESET",
+          channel: "EMAIL",
+          usedAt: null,
+        },
+        data: { usedAt: new Date() },
+      });
       await tx.passwordResetToken.create({
-        data: { userId: user.id, tokenHash, expiresAt, requestedIp, requestedAgent },
+        data: {
+          userId: user.id,
+          tokenHash,
+          purpose: "PASSWORD_RESET",
+          channel: "EMAIL",
+          targetEmail: user.email,
+          expiresAt,
+          requestedIp: clientIp,
+          requestedAgent,
+        },
       });
     });
 
     const mailResult = await sendPasswordResetCodeEmail({
+      tenantType,
       to: user.email,
       name: user.name,
-      username: user.phone,
+      identity: user.phone,
       code,
       expireMinutes: PASSWORD_RESET_CODE_EXPIRE_MINUTES,
     });
@@ -134,101 +184,174 @@ export async function requestPasswordResetCode(
       ok: true,
       status: 200,
       body: {
-        message: isMailerConfigured() ? MSG.genericMessage : MSG.previewMessage,
+        message: isMailerConfigured(tenantType) ? GENERIC_MESSAGE : PREVIEW_MESSAGE,
         previewFile: mailResult.previewFile,
       },
     };
-  } catch {
+  } catch (error) {
+    console.error(`[password-reset] ${tenantType} email delivery failed.`, error);
     await prisma.passwordResetToken.deleteMany({ where: { userId: user.id, tokenHash } });
-    return { ok: false, status: 500, body: { error: MSG.sendMailError } };
+    return {
+      ok: false,
+      status: 500,
+      body: { error: "인증코드 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요." },
+    };
   }
 }
 
 export async function confirmPasswordReset(
-  input: Partial<ResetPasswordFormData>,
+  input: PasswordResetInput,
+  tenantType: TenantType,
   requestLike?: Request
 ): Promise<PasswordResetResult> {
-  const validation = validateResetPasswordInput(input);
-  if (!validation.isValid || !validation.data) {
+  const identity = normalizeIdentity(tenantType, input);
+  const email = normalizeEmail(typeof input.email === "string" ? input.email : "");
+  const resetCode = normalizeResetCode(typeof input.resetCode === "string" ? input.resetCode : "");
+  const passwordResult = validatePasswordStrength(
+    typeof input.password === "string" ? input.password : ""
+  );
+  const isAdminCode = input.recoveryChannel === "ADMIN_MANUAL_SMS";
+
+  if (
+    !isValidIdentity(tenantType, identity) ||
+    (!isAdminCode && !isValidEmail(email)) ||
+    resetCode.length !== 8 ||
+    !passwordResult.isValid ||
+    !passwordResult.data
+  ) {
     return {
       ok: false,
       status: 400,
-      body: { error: validation.errors[0] ?? MSG.inputFallback },
+      body: { error: passwordResult.errors[0] ?? "로그인 정보, 이메일 또는 인증코드를 확인해 주세요." },
     };
   }
 
-  const { username, email, resetCode, password } = validation.data;
   const clientIp = requestLike ? getClientIp(requestLike) : "unknown";
-
   const ipRateLimit = await consumePersistentFixedWindowRateLimit({
     namespace: "password-reset-confirm-ip",
     key: clientIp,
     limit: PASSWORD_RESET_CONFIRM_IP_LIMIT,
     windowMs: PASSWORD_RESET_CONFIRM_IP_WINDOW_MS,
   });
-  if (!ipRateLimit.allowed) {
-    return buildRateLimitError(ipRateLimit.retryAfterSec);
-  }
+  if (!ipRateLimit.allowed) return buildRateLimitError(ipRateLimit.retryAfterSec);
 
-  const accountKey = buildAccountKey(username, email);
+  const accountKey = buildAccountKey(identity, isAdminCode ? "admin-code" : email);
   const accountRateLimit = await consumePersistentFixedWindowRateLimit({
     namespace: "password-reset-confirm-account",
     key: accountKey,
     limit: PASSWORD_RESET_CONFIRM_ACCOUNT_LIMIT,
     windowMs: PASSWORD_RESET_CONFIRM_ACCOUNT_WINDOW_MS,
   });
-  if (!accountRateLimit.allowed) {
-    return buildRateLimitError(accountRateLimit.retryAfterSec);
-  }
+  if (!accountRateLimit.allowed) return buildRateLimitError(accountRateLimit.retryAfterSec);
 
   const user = await prisma.user.findFirst({
-    where: { phone: username, email },
-    select: {
-      contactPhone: true,
-      email: true,
-      id: true,
-      name: true,
-      phone: true,
-      role: true,
-    },
+    where: { phone: identity, ...(isAdminCode ? {} : { email }) },
+    select: { email: true, id: true, name: true, phone: true },
   });
-
   if (!user) {
-    return { ok: false, status: 400, body: { error: MSG.invalidResetInput } };
+    return { ok: false, status: 400, body: { error: "로그인 정보 또는 인증코드를 확인해 주세요." } };
   }
 
   const tokenHash = hashSecret(resetCode);
   const now = new Date();
+  const channel = isAdminCode ? "ADMIN_MANUAL_SMS" : "EMAIL";
   const token = await prisma.passwordResetToken.findFirst({
     where: {
       userId: user.id,
       tokenHash,
+      purpose: "PASSWORD_RESET",
+      channel,
+      ...(isAdminCode ? {} : { targetEmail: email }),
       usedAt: null,
       expiresAt: { gt: now },
     },
     select: { id: true },
   });
-
   if (!token) {
-    return { ok: false, status: 400, body: { error: MSG.invalidResetInput } };
+    return { ok: false, status: 400, body: { error: "유효하지 않거나 만료된 인증코드입니다." } };
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12);
+  const hashedPassword = await bcrypt.hash(passwordResult.data, 12);
+  const changed = await prisma.$transaction(async (tx) => {
+    const consumed = await tx.passwordResetToken.updateMany({
+      where: { id: token.id, usedAt: null, expiresAt: { gt: now } },
+      data: { usedAt: now },
+    });
+    if (consumed.count !== 1) return false;
 
-  await prisma.$transaction(async (tx) => {
-    await Promise.all([
-      tx.user.update({ where: { id: user.id }, data: { password: hashedPassword } }),
-      tx.passwordResetToken.update({ where: { id: token.id }, data: { usedAt: now } }),
-      tx.passwordResetToken.deleteMany({
-        where: { userId: user.id, usedAt: null, id: { not: token.id } },
-      }),
-    ]);
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        credentialVersion: { increment: 1 },
+        ...(!isAdminCode && !user.email ? {} : !isAdminCode ? { emailVerifiedAt: now } : {}),
+      },
+    });
+    await tx.passwordResetToken.updateMany({
+      where: { userId: user.id, purpose: "PASSWORD_RESET", usedAt: null },
+      data: { usedAt: now },
+    });
+    return true;
   });
+  if (!changed) {
+    return { ok: false, status: 400, body: { error: "이미 사용했거나 만료된 인증코드입니다." } };
+  }
 
   await resetPersistentFixedWindowRateLimit({
     namespace: "password-reset-confirm-account",
     key: accountKey,
   });
 
-  return { ok: true, status: 200, body: { message: MSG.resetSuccess } };
+  if (user.email && isMailerConfigured(tenantType)) {
+    void sendAccountCodeEmail({
+      tenantType,
+      purpose: "PASSWORD_CHANGED",
+      to: user.email,
+      name: user.name,
+      identity: user.phone,
+    }).catch((error) => console.error("[password-reset] confirmation email failed.", error));
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    body: { message: "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해 주세요." },
+  };
+}
+
+export async function issueAdminPasswordResetCode(params: {
+  userId: number;
+  adminUserId: number;
+  requestLike?: Request;
+}) {
+  const { code, tokenHash, expiresAt } = createPasswordResetCode(ADMIN_RESET_CODE_EXPIRE_MINUTES);
+  const requestedIp = params.requestLike ? getClientIp(params.requestLike) : "unknown";
+  const requestedAgent = params.requestLike?.headers.get("user-agent") ?? undefined;
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.passwordResetToken.updateMany({
+      where: {
+        userId: params.userId,
+        purpose: "PASSWORD_RESET",
+        channel: "ADMIN_MANUAL_SMS",
+        usedAt: null,
+      },
+      data: { usedAt: now },
+    });
+    await tx.passwordResetToken.create({
+      data: {
+        userId: params.userId,
+        tokenHash,
+        purpose: "PASSWORD_RESET",
+        channel: "ADMIN_MANUAL_SMS",
+        issuedByAdminId: params.adminUserId,
+        expiresAt,
+        requestedIp,
+        requestedAgent,
+      },
+    });
+  });
+
+  return { code, expiresAt, expireMinutes: ADMIN_RESET_CODE_EXPIRE_MINUTES };
 }

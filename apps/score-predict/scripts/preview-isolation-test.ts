@@ -142,7 +142,7 @@ async function main() {
       assert(sessionResponse.status === 200, `${tenantType}: Preview session lookup failed.`);
       const session = json<{ user?: { tenantType?: string; sessionVersion?: number } }>(sessionResponse, `${tenantType} session`);
       assert(session.user?.tenantType === tenantType, `${tenantType}: Preview session tenant claim mismatch.`);
-      assert(session.user?.sessionVersion === 2, `${tenantType}: Preview session version mismatch.`);
+      assert(session.user?.sessionVersion === 3, `${tenantType}: Preview session version mismatch.`);
 
       const statsResponse = request(tenantPath(tenantType, "/api/main-stats"), userJar);
       assert(statsResponse.status === 200, `${tenantType}: Preview main stats failed.`);

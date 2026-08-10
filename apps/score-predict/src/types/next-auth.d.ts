@@ -11,6 +11,7 @@ declare module "next-auth" {
       username?: string;
       tenantType: TenantType | null;
       sessionVersion: number;
+      credentialVersion: number;
     };
   }
 
@@ -21,6 +22,7 @@ declare module "next-auth" {
     username?: string;
     tenantType?: TenantType;
     sessionVersion?: number;
+    credentialVersion?: number;
   }
 }
 
@@ -32,5 +34,6 @@ declare module "next-auth/jwt" {
     username?: string;
     tenantType?: TenantType;
     sessionVersion?: number;
+    credentialVersion?: number;
   }
 }

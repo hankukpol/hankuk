@@ -1,5 +1,6 @@
 import { ExamType, Prisma, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { calculateSampleTopPercent } from "@/lib/public-sample-policy";
 import {
   getPoliceApplicantCount,
   getPolicePassMultiple,
@@ -63,7 +64,7 @@ export interface PredictionSummary {
   myScore: number;
   myRank: number;
   myMultiple: number | null;
-  sampleTopPercent: number;
+  sampleTopPercent: number | null;
   oneMultipleBaseRank: number;
   oneMultipleActualRank: number | null;
   oneMultipleCutScore: number | null;
@@ -525,7 +526,10 @@ export async function calculatePrediction(
     applicantCount: applicantCountInfo.applicantCount,
   });
   const gradesAvailable = gradeState.gradeAvailability === "AVAILABLE";
-  const passCount = gradesAvailable ? bands.possibleMaxRank : null;
+  // 경찰의 모집인원 x 2배수는 실제 응시자 모집단에 적용되는 제도값이다.
+  // 이를 입력자 표본 순위에 직접 적용한 경계는 척도가 다르므로 공개하지 않는다.
+  // 향후 실측 캘리브레이션 모델을 새 버전으로 구현하기 전까지 항상 null을 유지한다.
+  const passCount: number | null = null;
   const likelyMaxRank = gradesAvailable ? bands.likelyMaxRank : null;
   const sureMaxRank = gradesAvailable ? bands.sureMaxRank : null;
 
@@ -536,9 +540,9 @@ export async function calculatePrediction(
   }
 
   const myMultiple = myRank / recruitCount;
-  const sampleTopPercent = toSafeNumber((myRank / totalParticipants) * 100);
+  const sampleTopPercent = calculateSampleTopPercent(myRank, totalParticipants);
   const predictionGrade = gradesAvailable ? classifyPolicePredictionGrade(myRank, bands) : null;
-  const passLineScore = passCount === null ? null : getMinScoreWithinRank(scoreBands, passCount);
+  const passLineScore: number | null = null;
   const oneMultipleBand = getScoreBandAtRank(scoreBands, recruitCount) ?? getLastScoreBand(scoreBands);
   const isOneMultipleCutConfirmed = totalParticipants >= recruitCount;
   const oneMultipleActualRank = oneMultipleBand?.endRank ?? null;

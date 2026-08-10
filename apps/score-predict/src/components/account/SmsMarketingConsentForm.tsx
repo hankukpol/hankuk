@@ -65,7 +65,7 @@ export default function SmsMarketingConsentForm() {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <h1 className="text-xl font-bold text-slate-900">문자 수신 설정</h1>
       <p className="mt-2 text-sm text-slate-600">
         합격예측 서비스 이용과 별개인 선택 동의입니다. 동의하지 않아도 채점과 합격예측을 이용할 수 있습니다.

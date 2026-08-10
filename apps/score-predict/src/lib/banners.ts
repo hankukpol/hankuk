@@ -108,8 +108,8 @@ export function groupBannersByZone(banners: PublicBannerItem[]) {
 }
 
 export function revalidateBannerCache(tenantType?: TenantType) {
-  revalidateTag(ACTIVE_BANNERS_TAG, "max");
+  revalidateTag(ACTIVE_BANNERS_TAG, { expire: 0 });
   if (tenantType) {
-    revalidateTag(`${ACTIVE_BANNERS_TAG}:${tenantType}`, "max");
+    revalidateTag(`${ACTIVE_BANNERS_TAG}:${tenantType}`, { expire: 0 });
   }
 }

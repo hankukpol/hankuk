@@ -186,7 +186,7 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
       },
     });
 
-    const regionNames = tenantType === "police" ? ["서울", "부산", "경기남부"] : ["서울", "부산", "경기"];
+    const regionNames = tenantType === "police" ? ["서울", "부산", "경기남부", "경북"] : ["서울", "부산", "경기"];
     const regions = [];
     for (const name of regionNames) {
       regions.push(await prisma.region.create({ data: { name, isActive: true } }));
@@ -203,6 +203,12 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
                 recruitCountCareer: 8 + index * 2,
                 applicantCount: 180 + index * 25,
                 applicantCountCareer: 54 + index * 10,
+                ...(region.name === "경북"
+                  ? {
+                      examNumberStart: "2026003000",
+                      examNumberEnd: "2026003999",
+                    }
+                  : {}),
               }
             : {
                 examId: exam.id,

@@ -9,7 +9,7 @@ import AdminStudentSearchBar from "@/components/admin/AdminStudentSearchBar";
 import { useToast } from "@/components/providers/ToastProvider";
 import ShareButton from "@/components/share/ShareButton";
 import { Button } from "@/components/ui/button";
-import { withTenantPrefix } from "@/lib/tenant";
+import { withBrowserTenantPath } from "@/lib/tenant";
 
 interface ExamResultPageProps {
   embedded?: boolean;
@@ -64,7 +64,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
               setResult(null);
               setErrorMessage("아직 제출된 성적이 없습니다. 먼저 OMR 답안을 제출해 주세요.");
             } else {
-              router.replace(withTenantPrefix("/exam/input", tenantType));
+              router.replace(withBrowserTenantPath("/exam/input", tenantType));
             }
             return;
           }
@@ -177,7 +177,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
               variant="outline"
               onClick={() =>
                 router.push(
-                  `${withTenantPrefix("/exam/input", tenantType)}?edit=${result.submission.id}`
+                  `${withBrowserTenantPath("/exam/input", tenantType)}?edit=${result.submission.id}`
                 )
               }
             >
@@ -189,7 +189,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push(withTenantPrefix("/exam/final", tenantType))}
+              onClick={() => router.push(withBrowserTenantPath("/exam/final", tenantType))}
             >
               최종 환산 예측
             </Button>
@@ -198,7 +198,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
             <Button
               type="button"
               className="rounded-none border border-transparent bg-slate-900 text-white shadow-sm hover:bg-slate-800"
-              onClick={() => router.push(withTenantPrefix("/exam/prediction", tenantType))}
+              onClick={() => router.push(withBrowserTenantPath("/exam/prediction", tenantType))}
             >
               합격예측 분석 보기
             </Button>

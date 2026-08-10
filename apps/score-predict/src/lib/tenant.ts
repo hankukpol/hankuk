@@ -182,6 +182,17 @@ export function withTenantPrefix(pathname: string, tenant: TenantType): string {
   return stripped === "/" ? `/${tenant}` : `/${tenant}${stripped}`;
 }
 
+export function withBrowserTenantPath(pathname: string, tenant: TenantType): string {
+  if (
+    typeof window !== "undefined" &&
+    parseTenantTypeFromHostname(window.location.hostname) === tenant
+  ) {
+    return stripTenantPrefix(pathname);
+  }
+
+  return withTenantPrefix(pathname, tenant);
+}
+
 export function getTenantConfigByType(type: TenantType): TenantConfig {
   return type === "police" ? POLICE_CONFIG : FIRE_CONFIG;
 }

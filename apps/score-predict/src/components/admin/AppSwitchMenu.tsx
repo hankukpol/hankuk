@@ -37,14 +37,14 @@ export default function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMe
 
   return (
     <details className="relative">
-      <summary className="flex list-none cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-950 [&::-webkit-details-marker]:hidden">
+      <summary className="flex list-none cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-950 [&::-webkit-details-marker]:hidden">
         앱 전환
         <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
         </svg>
       </summary>
 
-      <div className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/10">
+      <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
         <div className="px-3 py-2">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Quick Switch</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">

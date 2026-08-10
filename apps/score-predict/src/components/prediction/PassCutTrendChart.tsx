@@ -98,6 +98,26 @@ export default function PassCutTrendChart({
   }
 
   const hasScoreData = allScores.length > 0;
+  const releasedScorePointCount = releases.filter(
+    (release) =>
+      release.snapshot?.status === "READY" &&
+      typeof release.snapshot.oneMultipleCutScore === "number"
+  ).length;
+
+  if (releasedScorePointCount < 2) {
+    return (
+      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">변동 추이 축적 중</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">
+            비교 가능한 표본 집계가 2회 이상 발표되면 변동 차트를 표시합니다.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   const minScore = hasScoreData ? Math.floor(Math.min(...allScores) / 5) * 5 - 5 : 0;
   const maxScore = hasScoreData ? Math.ceil(Math.max(...allScores) / 5) * 5 + 5 : 100;
   const showMyScore = typeof myScore === "number" && Number.isFinite(myScore) && hasScoreData;

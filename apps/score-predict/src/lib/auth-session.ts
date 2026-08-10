@@ -1,7 +1,7 @@
 import type { JWT } from "next-auth/jwt";
 import type { TenantType } from "@/lib/tenant";
 
-export const SCORE_PREDICT_SESSION_VERSION = 2;
+export const SCORE_PREDICT_SESSION_VERSION = 3;
 
 export function isCurrentTenantToken(
   token: JWT | null,

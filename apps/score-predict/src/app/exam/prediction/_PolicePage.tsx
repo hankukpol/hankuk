@@ -29,7 +29,7 @@ interface PredictionPageResponse {
     myScore: number;
     myRank: number;
     myMultiple: number | null;
-    sampleTopPercent: number;
+    sampleTopPercent: number | null;
     oneMultipleBaseRank: number;
     oneMultipleActualRank: number | null;
     oneMultipleCutScore: number | null;
@@ -494,7 +494,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
 
   return (
     <div className="space-y-6">
-      <PredictionLiveDashboard prediction={prediction} />
+      <PredictionLiveDashboard prediction={prediction} serviceName="경찰" />
 
       {summary.gradeAvailability === "AVAILABLE" ? (
         <section className={`rounded-xl border p-5 text-sm ${confidence.badgeClass}`}>

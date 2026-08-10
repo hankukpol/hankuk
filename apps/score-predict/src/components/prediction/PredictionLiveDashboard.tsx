@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { Activity, Users, Target, ZoomIn, Radio, Info } from "lucide-react";
+import { calculateSampleTopPercent } from "@/lib/public-sample-policy";
 
 interface StatusData {
     label: string;
@@ -25,7 +26,7 @@ interface PredictionSummaryView {
     totalParticipants: number;
     recruitCount: number;
     myMultiple: number | null;
-    sampleTopPercent?: number;
+    sampleTopPercent?: number | null;
     passMultiple: number;
     sureMultiple: number | null;
     likelyMultiple: number | null;
@@ -148,7 +149,14 @@ function getGaugeTitleColor(grade: string): string {
     return "text-slate-500";
 }
 
-export default function PredictionLiveDashboard({ prediction }: { prediction: PredictionDashboardPayload }) {
+export default function PredictionLiveDashboard({
+    prediction,
+    serviceName,
+}: {
+    prediction: PredictionDashboardPayload;
+    /** 테넌트 표시명(경찰·소방). 공용 컴포넌트이므로 호출부가 반드시 지정한다. */
+    serviceName: string;
+}) {
     const { summary, pyramid } = prediction;
 
     const viewData = {
@@ -169,6 +177,7 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
     };
 
     const confidence = getConfidenceLevel(summary.sampleStage);
+    const visibleTopPercent = calculateSampleTopPercent(viewData.myRank, viewData.participants);
     const gaugeAngle = getGaugeAngle(
         viewData.myStatus,
         viewData.myRatio,
@@ -237,8 +246,7 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
     }, [viewData.myScore, viewData.participants]);
 
     if (summary.gradeAvailability === "UNAVAILABLE") {
-        const sampleTopPercent = summary.sampleTopPercent
-            ?? (summary.totalParticipants > 0 ? (summary.myRank / summary.totalParticipants) * 100 : 0);
+        const sampleTopPercent = calculateSampleTopPercent(summary.myRank, summary.totalParticipants);
         const reasonText = summary.unavailableReasons?.includes("MISSING_APPLICANTS")
             ? "출원인원이 확정되지 않았고 예측 모델의 실측 보정도 완료되지 않아 등급을 표시하지 않습니다."
             : summary.unavailableReasons?.includes("INSUFFICIENT_SAMPLE")
@@ -258,9 +266,9 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
                     </div>
                 </div>
 
-                <section className="rounded-xl border border-police-200 bg-white p-5 md:p-7">
+                <section className="rounded-xl border border-service-200 bg-white p-6">
                     <div className="flex items-start gap-3">
-                        <Info className="mt-0.5 h-5 w-5 shrink-0 text-police-600" />
+                        <Info className="mt-0.5 h-5 w-5 shrink-0 text-service-600" />
                         <div>
                             <h2 className="font-bold text-slate-900">표본 순위를 중심으로 안내합니다</h2>
                             <p className="mt-1 text-sm leading-6 text-slate-600">{reasonText}</p>
@@ -272,13 +280,15 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
                             <p className="text-xs font-medium text-slate-500">내 점수</p>
                             <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{animatedScore.toFixed(2)}점</p>
                         </div>
-                        <div className="rounded-xl border border-police-200 bg-police-50 p-4">
-                            <p className="text-xs font-medium text-police-700">표본 내 순위</p>
-                            <p className="mt-2 text-2xl font-black tabular-nums text-police-800">{summary.myRank}등</p>
+                        <div className="rounded-xl border border-service-200 bg-service-50 p-4">
+                            <p className="text-xs font-medium text-service-700">표본 내 순위</p>
+                            <p className="mt-2 text-2xl font-black tabular-nums text-service-800">{summary.myRank}등</p>
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                             <p className="text-xs font-medium text-slate-500">표본 내 위치</p>
-                            <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">상위 {sampleTopPercent.toFixed(1)}%</p>
+                            <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">
+                                {sampleTopPercent === null ? "표본 축적 중" : `상위 ${sampleTopPercent.toFixed(1)}%`}
+                            </p>
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                             <p className="text-xs font-medium text-slate-500">유효 입력자</p>
@@ -287,9 +297,9 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
                     </div>
 
                     <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <Target className="mt-0.5 h-5 w-5 shrink-0 text-police-600" />
+                        <Target className="mt-0.5 h-5 w-5 shrink-0 text-service-600" />
                         <div className="text-sm text-slate-700">
-                            <p className="font-semibold">경찰 필기 합격자 선발 기준: 모집인원 × {summary.passMultiple.toFixed(0)}배수</p>
+                            <p className="font-semibold">{serviceName} 필기 합격자 선발 기준: 모집인원 × {summary.passMultiple.toFixed(0)}배수</p>
                             <p className="mt-1 text-xs leading-5 text-slate-500">
                                 이는 실제 응시자 전체에 적용되는 제도 정보입니다. 현재 입력자 표본 순위와 직접 계산하지 않습니다.
                             </p>
@@ -367,14 +377,16 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
                         <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
                             <div className="flex justify-between items-center mb-2">
                                 <span className="text-xs font-medium text-slate-500">표본 내 위치</span>
-                                <span className="text-sm font-bold tabular-nums text-police-700">
-                                    상위 {((viewData.myRank / Math.max(1, viewData.participants)) * 100).toFixed(1)}%
+                                <span className="text-sm font-bold tabular-nums text-service-700">
+                                    {visibleTopPercent === null
+                                        ? "유효 입력자 15명부터 표시"
+                                        : `상위 ${visibleTopPercent.toFixed(1)}%`}
                                 </span>
                             </div>
                             <div className="relative w-full h-3 bg-slate-200 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full rounded-full bg-police-600"
-                                    style={{ width: `${Math.min(100, (viewData.myRank / Math.max(1, viewData.participants)) * 100)}%` }}
+                                    className="h-full rounded-full bg-service-600"
+                                    style={{ width: `${visibleTopPercent ?? 0}%` }}
                                 />
                             </div>
                             <div className="flex justify-between mt-1.5 text-[10px] text-slate-400 tabular-nums">
@@ -391,7 +403,9 @@ export default function PredictionLiveDashboard({ prediction }: { prediction: Pr
                             </div>
                             <div className="bg-slate-50 rounded-lg p-2.5 text-center border border-slate-100">
                                 <p className="text-[10px] text-slate-400 font-medium mb-0.5">표본 상위</p>
-                                <p className="text-base font-bold text-service-700 tabular-nums">{((viewData.myRank / Math.max(1, viewData.participants)) * 100).toFixed(1)}%</p>
+                                <p className="text-base font-bold text-service-700 tabular-nums">
+                                    {visibleTopPercent === null ? "축적 중" : `${visibleTopPercent.toFixed(1)}%`}
+                                </p>
                             </div>
                             <div className="bg-slate-50 rounded-lg p-2.5 text-center border border-slate-100">
                                 <p className="text-[10px] text-slate-400 font-medium mb-0.5">제도 기준</p>

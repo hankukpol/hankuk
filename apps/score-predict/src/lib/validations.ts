@@ -77,7 +77,9 @@ export function validateRegisterInput(
     errors.push("연락처는 010-XXXX-XXXX 형식으로 입력해 주세요.");
   }
 
-  if (email && !isValidEmail(email)) {
+  if (!email) {
+    errors.push("비밀번호 찾기에 사용할 이메일을 입력해 주세요.");
+  } else if (!isValidEmail(email)) {
     errors.push("이메일 형식이 올바르지 않습니다.");
   }
 
@@ -104,7 +106,7 @@ export function validateRegisterInput(
     errors: [],
     data: {
       name,
-      email: email || undefined,
+      email,
       phone,
       password: passwordResult.data ?? "",
       agreedToTerms,

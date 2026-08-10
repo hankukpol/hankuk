@@ -153,6 +153,7 @@ type AuthUser = User & {
   username?: string;
   tenantType: TenantType;
   sessionVersion: number;
+  credentialVersion: number;
 };
 
 function readRequestHeader(
@@ -343,6 +344,7 @@ async function authorizeFireUser(
       phone: true,
       password: true,
       role: true,
+      credentialVersion: true,
     },
   });
 
@@ -371,6 +373,7 @@ async function authorizeFireUser(
     phone: user.phone,
     tenantType: "fire",
     sessionVersion: SCORE_PREDICT_SESSION_VERSION,
+    credentialVersion: user.credentialVersion,
   };
 }
 
@@ -425,6 +428,7 @@ async function authorizePoliceUser(
       phone: true,
       password: true,
       role: true,
+      credentialVersion: true,
     },
   });
   if (!user) {
@@ -457,6 +461,7 @@ async function authorizePoliceUser(
     username: user.phone,
     tenantType: "police",
     sessionVersion: SCORE_PREDICT_SESSION_VERSION,
+    credentialVersion: user.credentialVersion,
   };
 }
 
@@ -515,6 +520,7 @@ export const authOptions: NextAuthOptions = {
         token.username = authUser.username;
         token.tenantType = authUser.tenantType;
         token.sessionVersion = authUser.sessionVersion;
+        token.credentialVersion = authUser.credentialVersion;
       }
 
       return token;
@@ -528,6 +534,8 @@ export const authOptions: NextAuthOptions = {
         session.user.tenantType = normalizeTenantType(token.tenantType as string | undefined) ?? null;
         session.user.sessionVersion =
           typeof token.sessionVersion === "number" ? token.sessionVersion : 0;
+        session.user.credentialVersion =
+          typeof token.credentialVersion === "number" ? token.credentialVersion : 0;
       }
 
       return session;

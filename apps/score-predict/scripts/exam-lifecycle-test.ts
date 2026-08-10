@@ -7,6 +7,10 @@ import {
   resolveActiveExamForWrite,
 } from "../src/lib/active-exam";
 import { SITE_FEATURE_FLOW_SETTING_KEYS } from "../src/app/admin/site/_lib/site-settings-sections";
+import {
+  getExamOperationWarnings,
+  resolveExamOperationStage,
+} from "../src/lib/exam-operation-stage";
 
 type FakeExam = {
   id: number;
@@ -65,6 +69,36 @@ async function main() {
   assert(
     SITE_FEATURE_FLOW_SETTING_KEYS.includes("site.policePredictionGradesEnabled"),
     "the police prediction-grade switch must be accepted by the admin feature settings API"
+  );
+  assert.equal(
+    resolveExamOperationStage({
+      preRegistrationEnabled: true,
+      answerInputEnabled: false,
+      latestReleaseNumber: null,
+    }).key,
+    "PRE_REGISTRATION",
+    "사전등록만 열린 회차의 랜딩 단계가 잘못됐습니다."
+  );
+  assert.equal(
+    resolveExamOperationStage({
+      preRegistrationEnabled: true,
+      answerInputEnabled: true,
+      latestReleaseNumber: 1,
+    }).key,
+    "RELEASED",
+    "발표 스냅샷이 있는 회차의 표시 단계가 잘못됐습니다."
+  );
+  const examDayWarnings = getExamOperationWarnings({
+    examDate: roundTwo.examDate,
+    now: new Date("2026-08-22T01:00:00.000Z"),
+    preRegistrationEnabled: true,
+    answerInputEnabled: false,
+    resultEnabled: true,
+    latestReleaseNumber: null,
+  });
+  assert(
+    examDayWarnings.some((warning) => warning.includes("답안 입력이 꺼져")),
+    "시험일 답안 입력 OFF 경고가 누락됐습니다."
   );
   const policeDb = fakeDb([roundOne, roundTwo]);
   const fireDb = fakeDb([

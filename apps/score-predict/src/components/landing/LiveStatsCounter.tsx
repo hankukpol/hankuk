@@ -5,6 +5,9 @@ export interface LandingLiveStats {
   examName: string;
   examYear: number;
   examRound: number;
+  examDate: Date;
+  latestReleaseNumber: number | null;
+  latestReleasedAt: Date | null;
   totalParticipants: number;
   publicParticipants: number;
   careerParticipants?: number;
@@ -74,7 +77,7 @@ export default function LiveStatsCounter({
     : "xl:grid-cols-3";
 
   return (
-    <section className="relative overflow-hidden border border-slate-200 bg-white p-6 sm:p-7">
+    <section className="relative overflow-hidden border border-slate-200 bg-white p-6 sm:p-8">
       <div className="relative">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>

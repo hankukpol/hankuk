@@ -50,6 +50,7 @@ const RUN_ID = Date.now();
 const USER_PASSWORD = "Usertest!123";
 const USER_NAME = "\uD14C\uC2A4\uD2B8\uC0AC\uC6A9\uC790";
 const USER_PHONE = makeRandomPhone();
+const USER_EMAIL = `e2e-${RUN_ID}@example.test`;
 const CRON_SECRET = process.env.AUTO_PASSCUT_CRON_SECRET ?? process.env.CRON_SECRET ?? "fire-exam-cron-2026-secret";
 
 const results: StepResult[] = [];
@@ -773,6 +774,7 @@ async function main(): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: USER_NAME,
+        email: USER_EMAIL,
         phone: USER_PHONE,
         password: USER_PASSWORD,
         agreedToTerms: true,

@@ -57,16 +57,16 @@ async function findAdminId(tenantType: TenantType, databaseUrl: string) {
     const admin = await prisma.user.findFirst({
       where: { role: Role.ADMIN },
       orderBy: { id: "asc" },
-      select: { id: true },
+      select: { id: true, credentialVersion: true },
     });
     assert(admin, `${tenantType}: no Production admin exists for a read-only session smoke test.`);
-    return admin.id;
+    return admin;
   } finally {
     await prisma.$disconnect();
   }
 }
 
-async function buildSessionCookie(secret: string, tenantType: TenantType, adminId: number) {
+async function buildSessionCookie(secret: string, tenantType: TenantType, adminId: number, credentialVersion: number) {
   const token = await encode({
     secret,
     maxAge: 5 * 60,
@@ -76,7 +76,8 @@ async function buildSessionCookie(secret: string, tenantType: TenantType, adminI
       name: "deployment-smoke",
       role: "ADMIN",
       tenantType,
-      sessionVersion: 2,
+      sessionVersion: 3,
+      credentialVersion,
     },
   });
   return `__Secure-next-auth.session-token=${token}`;
@@ -89,7 +90,7 @@ async function verifyTenant(tenantType: TenantType, cookie: string) {
   const sessionResponse = await fetch(`${origin}/api/auth/session`, { headers });
   assert(sessionResponse.status === 200, `${tenantType}: Production tenant session returned ${sessionResponse.status}.`);
   const session = await sessionResponse.json() as { user?: { tenantType?: string; sessionVersion?: number; role?: string } };
-  assert(session.user?.tenantType === tenantType && session.user.sessionVersion === 2 && session.user.role === "ADMIN", `${tenantType}: Production session claims are invalid.`);
+  assert(session.user?.tenantType === tenantType && session.user.sessionVersion === 3 && session.user.role === "ADMIN", `${tenantType}: Production session claims are invalid.`);
 
   const statsResponse = await fetch(`${origin}/api/main-stats`, { headers });
   assert(statsResponse.status === 200, `${tenantType}: authenticated Production main stats returned ${statsResponse.status}.`);
@@ -146,8 +147,8 @@ async function main() {
 
   const report: Record<string, unknown> = { generatedAt: new Date().toISOString(), mode: "read-only signed session" };
   for (const tenantType of ["police", "fire"] as const) {
-    const adminId = await findAdminId(tenantType, databaseUrl);
-    const cookie = await buildSessionCookie(secret, tenantType, adminId);
+    const admin = await findAdminId(tenantType, databaseUrl);
+    const cookie = await buildSessionCookie(secret, tenantType, admin.id, admin.credentialVersion);
     report[tenantType] = await verifyTenant(tenantType, cookie);
   }
   mkdirSync(evidenceDir, { recursive: true });

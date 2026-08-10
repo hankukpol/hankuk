@@ -35,7 +35,11 @@ function formatInt(value: number): string {
 }
 
 function formatPercent(value: number): string {
-  return `${value.toFixed(2)}%`;
+  return `${value.toFixed(1)}%`;
+}
+
+function formatSamplePercent(value: number, available: boolean): string {
+  return available ? formatPercent(value) : "표본 축적 중";
 }
 
 function formatStat(value: number): string {
@@ -119,10 +123,12 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                       {formatScore(subject.myScore)}
                       <span className="text-xs text-slate-400">/{formatInt(subject.maxScore)}</span>
                     </td>
-                    <td className={`${TD} ${subject.topPercent === 0 ? "font-semibold text-blue-600" : ""}`}>
-                      {formatPercent(subject.topPercent)}
+                    <td className={`${TD} ${subject.percentileAvailable ? "" : "text-slate-400"}`}>
+                      {formatSamplePercent(subject.topPercent, subject.percentileAvailable)}
                     </td>
-                    <td className={TD}>{formatPercent(subject.percentile)}</td>
+                    <td className={`${TD} ${subject.percentileAvailable ? "" : "text-slate-400"}`}>
+                      {formatSamplePercent(subject.percentile, subject.percentileAvailable)}
+                    </td>
                   </tr>
                 ))}
                 <tr className="bg-slate-50 font-semibold text-slate-900">
@@ -134,10 +140,12 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                     {formatScore(summary.total.myScore)}
                     <span className="text-xs font-normal text-slate-400">/{formatInt(summary.total.maxScore)}</span>
                   </td>
-                  <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${summary.total.topPercent === 0 ? "text-blue-600" : ""}`}>
-                    {formatPercent(summary.total.topPercent)}
+                  <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${summary.total.percentileAvailable ? "" : "text-slate-400"}`}>
+                    {formatSamplePercent(summary.total.topPercent, summary.total.percentileAvailable)}
                   </td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatPercent(summary.total.percentile)}</td>
+                  <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${summary.total.percentileAvailable ? "" : "text-slate-400"}`}>
+                    {formatSamplePercent(summary.total.percentile, summary.total.percentileAvailable)}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -162,13 +170,15 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-slate-500">상위%</span>
-                    <span className={`font-semibold ${subject.topPercent === 0 ? "text-blue-600" : "text-slate-900"}`}>
-                      {formatPercent(subject.topPercent)}
+                    <span className={`font-semibold ${subject.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                      {formatSamplePercent(subject.topPercent, subject.percentileAvailable)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-slate-500">백분위</span>
-                    <span className="font-semibold text-slate-900">{formatPercent(subject.percentile)}</span>
+                    <span className={`font-semibold ${subject.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                      {formatSamplePercent(subject.percentile, subject.percentileAvailable)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -191,13 +201,15 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-slate-500">상위%</span>
-                  <span className={`font-semibold ${summary.total.topPercent === 0 ? "text-blue-600" : "text-slate-900"}`}>
-                    {formatPercent(summary.total.topPercent)}
+                  <span className={`font-semibold ${summary.total.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                    {formatSamplePercent(summary.total.topPercent, summary.total.percentileAvailable)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-slate-500">백분위</span>
-                  <span className="font-semibold text-slate-900">{formatPercent(summary.total.percentile)}</span>
+                  <span className={`font-semibold ${summary.total.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                    {formatSamplePercent(summary.total.percentile, summary.total.percentileAvailable)}
+                  </span>
                 </div>
               </div>
             </div>

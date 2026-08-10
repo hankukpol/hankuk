@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 
-type LocalCommand = "up" | "reset" | "test" | "down";
+type LocalCommand = "dev" | "up" | "reset" | "test" | "down";
 type SupabaseStatus = Record<string, string>;
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -201,6 +201,49 @@ async function up() {
   console.log("Path mode: http://localhost:3200/police and /fire");
 }
 
+function createLocalDevelopmentEnvironment(status: SupabaseStatus): NodeJS.ProcessEnv {
+  assertSafeLocalDatabaseUrl(status.DB_URL);
+
+  return {
+    ...process.env,
+    DATABASE_URL: status.DB_URL,
+    DIRECT_URL: status.DB_URL,
+    NEXTAUTH_URL: "http://localhost:3200",
+    NEXTAUTH_SECRET: "local-dev-nextauth-secret-at-least-32-characters",
+    COOKIE_DOMAIN: "",
+    NEXT_PUBLIC_TENANT_TYPE: "",
+    NEXT_PUBLIC_SUPABASE_URL: status.API_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: status.ANON_KEY,
+    SUPABASE_URL: status.API_URL,
+    SUPABASE_SERVICE_ROLE_KEY: status.SERVICE_ROLE_KEY,
+    SUPABASE_STORAGE_BUCKET: "uploads",
+    SCORE_PREDICT_POLICE_ORIGIN: "http://police.localhost:3200",
+    SCORE_PREDICT_FIRE_ORIGIN: "http://fire.localhost:3200",
+    PASSWORD_RESET_DEBUG_LINK: "true",
+    RESEND_API_KEY: "",
+    PASSWORD_RESET_MAIL_WEBHOOK_URL: "",
+    PASSWORD_RESET_MAIL_WEBHOOK_TOKEN: "",
+  };
+}
+
+async function dev() {
+  const status = await ensureSupabase();
+
+  // Docker 이미지는 소스를 복사하므로 핫 리로드가 되지 않는다. DB는 유지하고 웹 컨테이너만 멈춘다.
+  dockerCompose(["stop", "web"]);
+
+  console.log("Fast local development mode (Turbopack + hot reload)");
+  console.log("Police: http://police.localhost:3200");
+  console.log("Fire:   http://fire.localhost:3200");
+  console.log("Path mode: http://localhost:3200/police and /fire");
+  console.log("Local Supabase data is preserved. Press Ctrl+C to stop the Next.js server.");
+
+  pnpm(["dev:fast"], {
+    cwd: appDir,
+    env: createLocalDevelopmentEnvironment(status),
+  });
+}
+
 async function test() {
   const status = getSupabaseStatus();
   assertSafeLocalDatabaseUrl(status.DB_URL);
@@ -226,7 +269,9 @@ async function test() {
   pnpm(["lint"], { cwd: appDir, env: testEnv });
   pnpm(["build"], { cwd: appDir, env: testEnv });
   pnpm(["verify:calculations"], { cwd: appDir, env: testEnv });
+  pnpm(["test:mailer-safety"], { cwd: appDir, env: testEnv });
   pnpm(["exec", "tsx", "scripts/local-isolation-test.ts"], { cwd: appDir, env: testEnv });
+  pnpm(["test:account-recovery"], { cwd: appDir, env: testEnv });
   pnpm(["local:visual"], { cwd: appDir, env: testEnv });
 }
 
@@ -237,11 +282,12 @@ async function down() {
 
 async function main() {
   const command = process.argv[2] as LocalCommand | undefined;
+  if (command === "dev") return dev();
   if (command === "up") return up();
   if (command === "reset") return reset();
   if (command === "test") return test();
   if (command === "down") return down();
-  throw new Error("Usage: local-environment.ts <up|reset|test|down>");
+  throw new Error("Usage: local-environment.ts <dev|up|reset|test|down>");
 }
 
 main().catch((error) => {

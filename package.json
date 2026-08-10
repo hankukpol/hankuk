@@ -7,6 +7,7 @@
   },
   "scripts": {
     "prepare:pnpm": "corepack prepare pnpm@10.0.0 --activate",
+    "local:dev:score-predict": "pnpm --dir ./apps/score-predict local:dev",
     "dev:score-predict": "pnpm --dir ./apps/score-predict dev",
     "dev:study-hall": "pnpm --dir ./apps/study-hall dev",
     "dev:interview-pass": "pnpm --dir ./apps/interview-pass dev",

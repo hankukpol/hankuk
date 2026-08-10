@@ -398,3 +398,73 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const guard = await requireAdminRoute();
+  if ("error" in guard) return guard.error;
+  const featureError = await requireAdminSiteFeature("exams");
+  if (featureError) return featureError;
+
+  const examId = parseExamIdFromRequest(request);
+  if (!examId) {
+    return NextResponse.json({ error: "삭제할 시험 ID가 필요합니다." }, { status: 400 });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockActiveExamStateForTransition(tx, guard.tenantType);
+
+      const exam = await tx.exam.findUnique({
+        where: { id: examId },
+        select: {
+          id: true,
+          isActive: true,
+          _count: {
+            select: {
+              submissions: true,
+              preRegistrations: true,
+              passCutReleases: true,
+            },
+          },
+        },
+      });
+
+      if (!exam) {
+        throw new AdminExamRouteError("삭제할 시험을 찾을 수 없습니다.", 404);
+      }
+      if (exam.isActive) {
+        throw new AdminExamRouteError("현재 운영 중인 활성 시험은 삭제할 수 없습니다.", 409);
+      }
+      if (
+        exam._count.submissions > 0 ||
+        exam._count.preRegistrations > 0 ||
+        exam._count.passCutReleases > 0
+      ) {
+        throw new AdminExamRouteError(
+          "제출, 사전등록 또는 합격컷 발표 이력이 있는 시험은 삭제할 수 없습니다.",
+          409
+        );
+      }
+
+      await tx.exam.delete({ where: { id: examId } });
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof AdminExamRouteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return NextResponse.json({ error: "삭제할 시험을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    console.error("시험 삭제 중 오류가 발생했습니다.", error);
+    return NextResponse.json(
+      { error: "시험 삭제 중 오류가 발생했습니다." },
+      { status: 500 }
+    );
+  }
+}

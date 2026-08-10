@@ -1,11 +1,12 @@
 import type { Role } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
 import { getServerTenantType } from "@/lib/tenant.server";
+import { issueAdminPasswordResetCode } from "@/lib/police/password-reset";
+import { isSmsMarketingConsentActive } from "@/lib/police/sms-marketing-consent";
 
 export const runtime = "nodejs";
 
@@ -57,12 +58,6 @@ function parseResetPasswordFlag(value: unknown): boolean | null {
   return null;
 }
 
-function buildTempPassword(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  const suffix = digits.length >= 4 ? digits.slice(-4) : "0000";
-  return `fire${suffix}!`;
-}
-
 async function loadEditableUser(userId: number, tenantType: "fire" | "police"): Promise<EditableUser | null> {
   if (tenantType === "police") {
     return prisma.user.findUnique({
@@ -97,6 +92,7 @@ export async function GET(request: NextRequest) {
   if (featureError) return featureError;
 
   try {
+    const tenantType = await getServerTenantType();
     const { searchParams } = new URL(request.url);
     const page = parsePage(searchParams.get("page"));
     const limit = parseLimit(searchParams.get("limit"));
@@ -112,7 +108,13 @@ export async function GET(request: NextRequest) {
       ...(role ? { role } : {}),
       ...(search
         ? {
-            OR: [{ name: { contains: search } }, { phone: { contains: search } }],
+            OR: [
+              { name: { contains: search } },
+              { phone: { contains: search } },
+              ...(tenantType === "police"
+                ? [{ contactPhone: { contains: search } }]
+                : []),
+            ],
           }
         : {}),
     };
@@ -129,8 +131,12 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             phone: true,
+            contactPhone: true,
             role: true,
             createdAt: true,
+            smsMarketingConsentAt: true,
+            smsMarketingConsentVersion: true,
+            smsMarketingConsentWithdrawnAt: true,
             _count: {
               select: {
                 submissions: true,
@@ -156,6 +162,12 @@ export async function GET(request: NextRequest) {
         id: user.id,
         name: user.name,
         phone: user.phone,
+        contactPhone: user.contactPhone,
+        deliveryPhone: tenantType === "police" ? user.contactPhone : user.phone,
+        smsMarketingConsentAt: user.smsMarketingConsentAt,
+        smsMarketingConsentVersion: user.smsMarketingConsentVersion,
+        smsMarketingConsentWithdrawnAt: user.smsMarketingConsentWithdrawnAt,
+        smsMarketingConsentActive: isSmsMarketingConsentActive(user),
         role: user.role,
         createdAt: user.createdAt,
         submissionCount: user._count.submissions,
@@ -201,30 +213,35 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "수정할 사용자를 찾을 수 없습니다." }, { status: 404 });
     }
 
-    let tempPassword: string | null = null;
-    const updateData: {
-      role?: Role;
-      password?: string;
-    } = {};
+    let resetCode: string | null = null;
+    let resetCodeExpiresAt: Date | null = null;
+    const updateData: { role?: Role } = {};
 
     if (role !== null) {
       updateData.role = role;
     }
 
     if (resetPassword) {
-      tempPassword = buildTempPassword(user.phone);
-      updateData.password = await bcrypt.hash(tempPassword, 12);
+      const adminUserId = Number(guard.session.user.id);
+      const issued = await issueAdminPasswordResetCode({
+        userId,
+        adminUserId,
+        requestLike: request,
+      });
+      resetCode = issued.code;
+      resetCodeExpiresAt = issued.expiresAt;
     }
 
-    await prisma.user.updateMany({
-      where: { id: userId },
-      data: updateData,
-    });
+    if (role !== null) {
+      await prisma.user.updateMany({ where: { id: userId }, data: updateData });
+    }
 
     return NextResponse.json({
       success: true,
       updatedUserId: userId,
-      tempPassword,
+      resetCode,
+      resetCodeExpiresAt,
+      deliveryPhone: tenantType === "police" ? user.contactPhone ?? "" : user.phone,
     });
   } catch (error) {
     console.error("사용자 정보 수정 중 오류가 발생했습니다.", error);

@@ -17,6 +17,7 @@ import {
 } from "@/lib/police/prediction-policy";
 import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
 import { prisma } from "@/lib/prisma";
+import { canShowSamplePercentile } from "@/lib/public-sample-policy";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
 import {
   getTenantSubjectOrder,
@@ -100,7 +101,7 @@ function calculateRankByHigher(higherCount: number): number {
 
 function calculateTopPercentByHigher(higherCount: number, totalCount: number): number {
   if (totalCount <= 0) return 0;
-  return roundNumber((higherCount / totalCount) * 100);
+  return roundNumber(((higherCount + 1) / totalCount) * 100);
 }
 
 function calculatePercentileByLower(lowerCount: number, totalCount: number): number {
@@ -826,6 +827,7 @@ export async function GET(request: NextRequest) {
         questionCount: score.questionCount,
         topPercent: score.topPercent,
         percentile: score.percentile,
+        percentileAvailable: canShowSamplePercentile(score.totalParticipants),
         averageScore: aggregate?.averageScore ?? 0,
         highestScore: aggregate?.highestScore ?? 0,
         lowestScore: aggregate?.lowestScore ?? 0,
@@ -842,6 +844,7 @@ export async function GET(request: NextRequest) {
       questionCount: scores.reduce((sum, s) => sum + s.questionCount, 0),
       topPercent: totalTopPercent,
       percentile: totalPercentile,
+      percentileAvailable: canShowSamplePercentile(totalParticipants),
       averageScore: totalAggregate.averageScore,
       highestScore: totalAggregate.highestScore,
       lowestScore: totalAggregate.lowestScore,
@@ -855,6 +858,7 @@ export async function GET(request: NextRequest) {
     totalParticipants,
     topPercent: totalTopPercent,
     percentile: totalPercentile,
+    percentileAvailable: canShowSamplePercentile(totalParticipants),
     lastUpdated,
   };
 
@@ -894,6 +898,7 @@ export async function GET(request: NextRequest) {
       totalRank,
       topPercent: totalTopPercent,
       totalPercentile,
+      percentileAvailable: canShowSamplePercentile(totalParticipants),
       hasCutoff,
       rankingBasis,
       cutoffSubjects,

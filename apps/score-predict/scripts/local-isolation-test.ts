@@ -320,7 +320,7 @@ async function verifyLoginIsolation() {
     assert(sessionResponse.ok, `${tenantType}: session lookup failed with ${sessionResponse.status}.`);
     const session = (await sessionResponse.json()) as { user?: { tenantType?: string; sessionVersion?: number } };
     assert(session.user?.tenantType === tenantType, `${tenantType}: session tenant claim mismatch.`);
-    assert(session.user?.sessionVersion === 2, `${tenantType}: session version mismatch.`);
+    assert(session.user?.sessionVersion === 3, `${tenantType}: session version mismatch.`);
 
     const statsResponse = await requestLocalHost(own.host, "/api/main-stats", {}, own.jar);
     assert(statsResponse.ok, `${tenantType}: main stats failed with ${statsResponse.status}.`);
@@ -355,7 +355,7 @@ async function verifyLoginIsolation() {
           passCount: number | null;
           predictionGrade: string | null;
           gradeAvailability: "AVAILABLE" | "UNAVAILABLE";
-          sampleTopPercent: number;
+          sampleTopPercent: number | null;
           myRank: number;
           totalParticipants: number;
         };
@@ -374,10 +374,12 @@ async function verifyLoginIsolation() {
         "police: uncalibrated grade or sample-derived pass boundary leaked through the API."
       );
       assert(
-        prediction.summary.sampleTopPercent === Number(
-          ((prediction.summary.myRank / prediction.summary.totalParticipants) * 100).toFixed(2)
-        ),
-        "police: sample percentile does not match the internal sample rank."
+        prediction.summary.totalParticipants < 15
+          ? prediction.summary.sampleTopPercent === null
+          : prediction.summary.sampleTopPercent === Number(
+              ((prediction.summary.myRank / prediction.summary.totalParticipants) * 100).toFixed(1)
+            ),
+        "police: sample percentile suppression or rank formula is inconsistent."
       );
     } else {
       assert(examTypeKeys.has("CAREER_RESCUE") && examTypeKeys.has("CAREER_EMT"), "Fire exam types are incomplete.");

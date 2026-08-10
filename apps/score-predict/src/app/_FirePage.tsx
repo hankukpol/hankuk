@@ -8,7 +8,8 @@ import LiveStatsCounter, { type LandingLiveStats } from "@/components/landing/Li
 import NoticeBar from "@/components/landing/NoticeBar";
 import { authOptions } from "@/lib/auth";
 import { getActiveBanners, groupBannersByZone } from "@/lib/banners";
-import { getExamSurfaceState, getPreferredExamRoute, getSecondaryExamRoute } from "@/lib/exam-surface";
+import { getExamSurfaceState, getPreferredExamRoute } from "@/lib/exam-surface";
+import { resolveExamOperationStage, resolveLandingHeroCopy } from "@/lib/exam-operation-stage";
 import { getActiveEvents } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
 import { getActiveNotices, getSiteSettingsUncached } from "@/lib/site-settings";
@@ -30,7 +31,7 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
     }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const [totalParticipants, examTypeStats, recentParticipants, latestSubmission] = await Promise.all([
+    const [totalParticipants, examTypeStats, recentParticipants, latestSubmission, latestRelease] = await Promise.all([
       prisma.submission.count({
         where: { examId: activeExam.id },
       }),
@@ -52,6 +53,11 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
+      prisma.passCutRelease.findFirst({
+        where: { examId: activeExam.id },
+        orderBy: [{ releaseNumber: "desc" }, { releasedAt: "desc" }],
+        select: { releaseNumber: true, releasedAt: true },
+      }),
     ]);
 
     const publicParticipants =
@@ -67,6 +73,9 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
       examName: activeExam.name,
       examYear: activeExam.year,
       examRound: activeExam.round,
+      examDate: activeExam.examDate,
+      latestReleaseNumber: latestRelease?.releaseNumber ?? null,
+      latestReleasedAt: latestRelease?.releasedAt ?? null,
       totalParticipants,
       publicParticipants,
       careerRescueParticipants,
@@ -136,16 +145,42 @@ export default async function HomePage() {
   const noticesEnabled = examSurfaceState.noticesEnabled;
   const tabEnabled = examSurfaceState.tabEnabled;
   const tabLockedMessage = examSurfaceState.tabLockedMessage;
-  const heroTitle = String(
+  const preRegistrationEnabled = false;
+  const answerInputEnabled = Boolean(siteSettings["site.answerInputEnabled"] ?? false);
+  const operationStage = resolveExamOperationStage({
+    preRegistrationEnabled,
+    answerInputEnabled,
+    latestReleaseNumber: liveStats?.latestReleaseNumber ?? null,
+  });
+  const configuredHeroTitle = String(
     siteSettings["site.heroTitle"] ?? "OMR 입력부터 합격권 예측까지\n한 번에 확인하세요"
   );
-  const heroSubtitle = String(
+  const configuredHeroSubtitle = String(
     siteSettings["site.heroSubtitle"] ??
     "응시정보와 OMR 답안을 입력하면 과목별 분석, 예상점수, 배수 위치, 합격권 등급을 실시간으로 제공합니다."
   );
+  const heroCopy = resolveLandingHeroCopy({
+    serviceName: "소방",
+    operationStage,
+    answerInputEnabled,
+    preRegistrationEnabled,
+    isAuthenticated: isLoggedIn,
+    hasSubmission,
+    fallbackTitle: configuredHeroTitle,
+    fallbackSubtitle: configuredHeroSubtitle,
+  });
 
   const primaryExamRoute = getPreferredExamRoute(siteSettings, { isAuthenticated: isLoggedIn, hasSubmission });
-  const secondaryExamRoute = getSecondaryExamRoute(siteSettings, { isAuthenticated: isLoggedIn, hasSubmission });
+  const authenticatedPrimaryHref = hasSubmission
+    ? "/exam/result"
+    : answerInputEnabled
+      ? "/exam/input"
+      : primaryExamRoute.href;
+  const authenticatedSecondaryHref = hasSubmission
+    ? liveStats?.latestReleaseNumber
+      ? "/exam/prediction"
+      : "/exam/input"
+    : "/exam/notices";
 
   return (
     <main>
@@ -158,17 +193,21 @@ export default async function HomePage() {
           <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 px-4 pt-8 sm:pt-10">
             <HeroFallback
               badge={heroBadge}
-              title={heroTitle}
-              subtitle={heroSubtitle}
+              title={heroCopy.title}
+              subtitle={heroCopy.subtitle}
               isLoggedIn={isLoggedIn}
+              primaryText={heroCopy.primaryText}
+              secondaryText={heroCopy.secondaryText}
+              operationLabel={operationStage.label}
+              operationDescription={operationStage.description}
               primaryHref={
                 isLoggedIn
-                  ? withTenantPrefix(primaryExamRoute.href, tenantType)
+                  ? withTenantPrefix(authenticatedPrimaryHref, tenantType)
                   : withTenantPrefix("/login", tenantType)
               }
               secondaryHref={
                 isLoggedIn
-                  ? withTenantPrefix(secondaryExamRoute.href, tenantType)
+                  ? withTenantPrefix(authenticatedSecondaryHref, tenantType)
                   : withTenantPrefix("/register", tenantType)
               }
             />
@@ -188,7 +227,7 @@ export default async function HomePage() {
             </div>
           ) : null}
 
-          {liveStatsCardEnabled ? (
+          {liveStatsCardEnabled && isLoggedIn ? (
             <LiveStatsCounter stats={liveStats} careerExamEnabled={careerExamEnabled} />
           ) : null}
           {noticesEnabled ? <NoticeBar notices={activeNotices} /> : null}

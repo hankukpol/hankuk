@@ -14,6 +14,9 @@ interface UserRow {
   id: number;
   name: string;
   phone: string;
+  contactPhone: string;
+  deliveryPhone: string;
+  smsMarketingConsentActive: boolean;
   role: UserRole;
   createdAt: string;
   submissionCount: number;
@@ -35,9 +38,11 @@ type NoticeState = {
   message: string;
 } | null;
 
-type TempPasswordInfo = {
+type ResetCodeInfo = {
   userName: string;
-  password: string;
+  code: string;
+  deliveryPhone: string;
+  expiresAt: string;
 } | null;
 
 const PAGE_LIMIT = 20;
@@ -64,9 +69,9 @@ export default function AdminUsersPage() {
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const { confirm, modalProps } = useConfirmModal();
   const [draftRoles, setDraftRoles] = useState<Record<number, UserRole>>({});
-  const [tempPasswordInfo, setTempPasswordInfo] = useState<TempPasswordInfo>(null);
+  const [resetCodeInfo, setResetCodeInfo] = useState<ResetCodeInfo>(null);
   const [copied, setCopied] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingScope, setDownloadingScope] = useState<"all" | "marketing-consented" | null>(null);
 
   const canGoPrev = page > 1;
   const canGoNext = page < totalPages;
@@ -82,7 +87,6 @@ export default function AdminUsersPage() {
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
-    setNotice(null);
 
     try {
       const response = await fetch(`/api/admin/users?${queryString}`, {
@@ -186,8 +190,8 @@ export default function AdminUsersPage() {
 
   async function handleResetPassword(user: UserRow) {
     const ok = await confirm({
-      title: "비밀번호 초기화",
-      description: `${user.name}님의 비밀번호를 초기화하시겠습니까?`,
+      title: "일회용 재설정 코드 발급",
+      description: `${user.name}님에게 10분 동안 사용할 수 있는 비밀번호 재설정 코드를 발급하시겠습니까?`,
     });
     if (!ok) return;
 
@@ -201,33 +205,40 @@ export default function AdminUsersPage() {
       });
       const data = (await response.json()) as {
         success?: boolean;
-        tempPassword?: string | null;
+        resetCode?: string | null;
+        resetCodeExpiresAt?: string | null;
+        deliveryPhone?: string | null;
         error?: string;
       };
       if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "비밀번호 초기화에 실패했습니다.");
+        throw new Error(data.error ?? "재설정 코드 발급에 실패했습니다.");
       }
 
-      const tempPassword = data.tempPassword ?? "";
-      setTempPasswordInfo({ userName: user.name, password: tempPassword });
+      setResetCodeInfo({
+        userName: user.name,
+        code: data.resetCode ?? "",
+        deliveryPhone: data.deliveryPhone ?? "",
+        expiresAt: data.resetCodeExpiresAt ?? "",
+      });
       setCopied(false);
     } catch (error) {
       setNotice({
         type: "error",
         message:
-          error instanceof Error ? error.message : "비밀번호 초기화에 실패했습니다.",
+          error instanceof Error ? error.message : "재설정 코드 발급에 실패했습니다.",
       });
     } finally {
       setUpdatingUserId(null);
     }
   }
 
-  async function handleDownloadCsv() {
-    setIsDownloading(true);
+  async function handleDownloadCsv(scope: "all" | "marketing-consented") {
+    setDownloadingScope(scope);
     try {
       const params = new URLSearchParams();
       if (searchKeyword) params.set("search", searchKeyword);
       if (roleFilter) params.set("role", roleFilter);
+      params.set("scope", scope);
 
       const response = await fetch(`/api/admin/users/export?${params.toString()}`);
       if (!response.ok) throw new Error("다운로드에 실패했습니다.");
@@ -236,7 +247,7 @@ export default function AdminUsersPage() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `회원목록_${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.download = `${scope === "marketing-consented" ? "문자수신동의회원" : "전체회원"}_${new Date().toISOString().slice(0, 10)}.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -246,7 +257,7 @@ export default function AdminUsersPage() {
           error instanceof Error ? error.message : "CSV 다운로드에 실패했습니다.",
       });
     } finally {
-      setIsDownloading(false);
+      setDownloadingScope(null);
     }
   }
 
@@ -287,30 +298,44 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">사용자 관리</h1>
           <p className="mt-1 text-sm text-slate-600">
-            사용자 검색, 권한 변경, 비밀번호 초기화, 계정 삭제를 관리합니다.
+            사용자 검색, 권한 변경, 일회용 재설정 코드 발급, 계정 삭제를 관리합니다.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => void handleDownloadCsv()}
-          disabled={isDownloading || isLoading}
-          className="shrink-0"
-        >
-          {isDownloading ? "다운로드 중..." : "CSV 다운로드"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleDownloadCsv("all")}
+            disabled={downloadingScope !== null || isLoading}
+          >
+            {downloadingScope === "all" ? "다운로드 중..." : "전체 회원 CSV"}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleDownloadCsv("marketing-consented")}
+            disabled={downloadingScope !== null || isLoading}
+          >
+            {downloadingScope === "marketing-consented"
+              ? "다운로드 중..."
+              : "문자 수신 동의자 CSV"}
+          </Button>
+        </div>
       </header>
+
+      <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        이벤트·강의 홍보 문자에는 반드시 문자 수신 동의자 CSV를 사용하세요. 전체 회원 CSV는 계정 확인과 서비스 운영 안내용입니다.
+      </p>
 
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
           <Input
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="이름 또는 연락처 검색"
+            placeholder="이름, 아이디 또는 연락처 검색"
           />
           <select
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -357,7 +382,9 @@ export default function AdminUsersPage() {
               <tr>
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">연락처</th>
+                <th className="px-4 py-3">로그인 아이디</th>
+                <th className="px-4 py-3">문자 연락처</th>
+                <th className="px-4 py-3">문자 수신</th>
                 <th className="px-4 py-3">가입일</th>
                 <th className="px-4 py-3">제출</th>
                 <th className="px-4 py-3">댓글</th>
@@ -368,7 +395,7 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-slate-100">
               {users.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-slate-600" colSpan={8}>
+                  <td className="px-4 py-4 text-slate-600" colSpan={10}>
                     조회된 사용자가 없습니다.
                   </td>
                 </tr>
@@ -381,6 +408,10 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3 text-slate-700">{user.id}</td>
                       <td className="px-4 py-3 font-medium text-slate-900">{user.name}</td>
                       <td className="px-4 py-3 text-slate-700">{user.phone}</td>
+                      <td className="px-4 py-3 text-slate-700">{user.deliveryPhone || "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {user.smsMarketingConsentActive ? "동의" : "미동의/철회"}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">
                         {formatDateText(user.createdAt)}
                       </td>
@@ -422,7 +453,7 @@ export default function AdminUsersPage() {
                             disabled={rowBusy}
                             onClick={() => void handleResetPassword(user)}
                           >
-                            비밀번호 초기화
+                            재설정 코드
                           </Button>
                           <Button
                             type="button"
@@ -471,27 +502,27 @@ export default function AdminUsersPage() {
 
       <ConfirmModal {...modalProps} />
 
-      {tempPasswordInfo ? (
+      {resetCodeInfo ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h2 className="text-lg font-semibold text-slate-900">
-              임시 비밀번호 발급 완료
+              일회용 재설정 코드 발급 완료
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              <span className="font-medium">{tempPasswordInfo.userName}</span>님의
-              비밀번호가 초기화되었습니다. 아래 임시 비밀번호를 카카오톡 또는 문자로
-              전달해 주세요.
+              <span className="font-medium">{resetCodeInfo.userName}</span>님의 등록 연락처
+              {resetCodeInfo.deliveryPhone ? ` (${resetCodeInfo.deliveryPhone})` : ""}로 학원 자체 문자를 보내 주세요.
+              학생은 비밀번호 찾기 화면에서 직접 새 비밀번호를 설정합니다.
             </p>
 
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <p className="mb-1 text-xs font-medium text-amber-700">임시 비밀번호</p>
+              <p className="mb-1 text-xs font-medium text-amber-700">10분 유효 일회용 코드</p>
               <p className="font-mono text-2xl font-bold tracking-widest text-amber-900">
-                {tempPasswordInfo.password}
+                {resetCodeInfo.code}
               </p>
             </div>
 
             <p className="mt-3 text-xs text-slate-500">
-              로그인 후 반드시 새 비밀번호로 변경하도록 안내해 주세요.
+              이 코드는 로그인 비밀번호가 아니며 한 번 사용하거나 만료되면 다시 사용할 수 없습니다.
             </p>
 
             <div className="mt-5 flex gap-2">
@@ -500,7 +531,7 @@ export default function AdminUsersPage() {
                 variant="outline"
                 className="flex-1"
                 onClick={() => {
-                  void navigator.clipboard.writeText(tempPasswordInfo.password).then(() => {
+                  void navigator.clipboard.writeText(resetCodeInfo.code).then(() => {
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   });
@@ -511,7 +542,7 @@ export default function AdminUsersPage() {
               <Button
                 type="button"
                 className="flex-1"
-                onClick={() => setTempPasswordInfo(null)}
+                onClick={() => setResetCodeInfo(null)}
               >
                 확인
               </Button>

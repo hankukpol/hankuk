@@ -13,6 +13,16 @@ enum Role {
   ADMIN
 }
 
+enum AccountRecoveryPurpose {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
+enum AccountRecoveryChannel {
+  EMAIL
+  ADMIN_MANUAL_SMS
+}
+
 enum ExamType {
   PUBLIC // 공채
   CAREER // 경찰: 경행경채
@@ -78,9 +88,11 @@ model User {
   id                     Int                  @id @default(autoincrement())
   name                   String
   email                  String?              @unique
+  emailVerifiedAt        DateTime?
   phone                  String               @unique
   contactPhone           String               @default("") // 경찰: 문자 수신용 연락처 (필수)
   password               String
+  credentialVersion      Int                  @default(1)
   role                   Role                 @default(USER)
   createdAt              DateTime             @default(now())
   termsAgreedAt          DateTime? // 서비스 이용약관 동의 일시
@@ -106,6 +118,10 @@ model PasswordResetToken {
   id             Int       @id @default(autoincrement())
   userId         Int
   tokenHash      String    @unique
+  purpose        AccountRecoveryPurpose @default(PASSWORD_RESET)
+  channel        AccountRecoveryChannel @default(EMAIL)
+  targetEmail    String?
+  issuedByAdminId Int?
   expiresAt      DateTime
   usedAt         DateTime?
   requestedIp    String?
@@ -114,6 +130,7 @@ model PasswordResetToken {
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([userId, purpose, channel, expiresAt])
   @@index([expiresAt])
 }
 

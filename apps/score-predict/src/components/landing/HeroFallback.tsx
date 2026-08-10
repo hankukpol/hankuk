@@ -9,7 +9,10 @@ interface HeroFallbackProps {
   isLoggedIn: boolean;
   primaryHref?: string;
   secondaryHref?: string;
+  primaryText?: string;
   secondaryText?: string;
+  operationLabel?: string;
+  operationDescription?: string;
 }
 
 export default function HeroFallback({
@@ -19,11 +22,14 @@ export default function HeroFallback({
   isLoggedIn,
   primaryHref,
   secondaryHref,
+  primaryText,
   secondaryText,
+  operationLabel = "서비스 운영 준비 중",
+  operationDescription = "공지사항에서 시험 운영 일정을 확인해 주세요.",
 }: HeroFallbackProps) {
   const resolvedPrimaryHref = primaryHref ?? (isLoggedIn ? "/exam/main" : "/login");
   const resolvedSecondaryHref = secondaryHref ?? (isLoggedIn ? "/exam/input" : "/register");
-  const primaryText = isLoggedIn ? "풀서비스 시작하기" : "로그인 후 시작";
+  const resolvedPrimaryText = primaryText ?? (isLoggedIn ? "풀서비스 시작하기" : "로그인 후 시작");
   const resolvedSecondaryText = secondaryText ?? (isLoggedIn ? "빠른 채점 바로가기" : "회원가입");
 
   return (
@@ -46,7 +52,7 @@ export default function HeroFallback({
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href={resolvedPrimaryHref}>
               <Button className="h-11 rounded-none bg-service-700 px-6 text-sm font-bold text-white hover:bg-service-800">
-                {primaryText}
+                {resolvedPrimaryText}
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
             </Link>
@@ -66,27 +72,15 @@ export default function HeroFallback({
             <p className="text-sm font-semibold text-slate-800">서비스 운영 안내</p>
             <Timer className="h-4 w-4 text-slate-500" />
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <article className="border border-slate-200 bg-white/80 p-3">
-              <p className="text-xs text-slate-500">모드</p>
-              <p className="mt-1 text-base font-bold text-slate-900">실시간</p>
-            </article>
-            <article className="border border-slate-200 bg-white/80 p-3">
-              <p className="text-xs text-slate-500">분석</p>
-              <p className="mt-1 text-base font-bold text-slate-900">합격 예측</p>
-            </article>
-            <article className="border border-slate-200 bg-white/80 p-3">
-              <p className="text-xs text-slate-500">지원</p>
-              <p className="mt-1 text-base font-bold text-slate-900">모바일 · PC</p>
-            </article>
-            <article className="border border-slate-200 bg-white/80 p-3">
-              <p className="text-xs text-slate-500">업데이트</p>
-              <p className="mt-1 text-base font-bold text-slate-900">자동 반영</p>
-            </article>
+          <div className="mt-4 rounded-lg border border-service-200 bg-service-50 p-4">
+            <p className="text-base font-bold text-service-900">{operationLabel}</p>
+            <p className="mt-2 text-sm leading-6 text-service-800">{operationDescription}</p>
           </div>
-          <p className="mt-4 text-xs leading-relaxed text-slate-500">
-            답안을 입력하면 채점 결과, 체감, 지역 경쟁 분석까지 한 번에 확인할 수 있습니다.
-          </p>
+          <ul className="mt-4 space-y-2 text-sm text-slate-600">
+            <li>정확한 채점과 과락 여부를 확인합니다.</li>
+            <li>동일 시험 참여자의 문항별 정답률을 분석합니다.</li>
+            <li>지역별 표본 수치는 참여인원과 함께 제공합니다.</li>
+          </ul>
         </div>
       </div>
     </section>

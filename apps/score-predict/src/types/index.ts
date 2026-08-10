@@ -39,7 +39,7 @@ export interface SubjectDefinition {
 // ── 소방 회원가입 ──
 export interface FireRegisterFormData {
   name: string;
-  email?: string;
+  email: string;
   phone: string;
   password: string;
   agreedToTerms: boolean;

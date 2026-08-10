@@ -82,8 +82,8 @@ export async function getActiveEvents(): Promise<PublicEventItem[]> {
 }
 
 export function revalidateEventsCache(tenantType?: TenantType) {
-  revalidateTag(ACTIVE_EVENTS_TAG, "max");
+  revalidateTag(ACTIVE_EVENTS_TAG, { expire: 0 });
   if (tenantType) {
-    revalidateTag(`${ACTIVE_EVENTS_TAG}:${tenantType}`, "max");
+    revalidateTag(`${ACTIVE_EVENTS_TAG}:${tenantType}`, { expire: 0 });
   }
 }

@@ -509,7 +509,7 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                     />
                     {/* 내 위치 마커 */}
                     <div
-                      className={`absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ${
+                      className={`absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm ${
                         ranking.isWithinOneMultiple ? "bg-emerald-600" : "bg-rose-600"
                       }`}
                       style={{

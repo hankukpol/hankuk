@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { generateRecoveryCodes, hashRecoveryCode } from "@/lib/password-recovery";
 import { validateRegisterInput as validatePoliceRegisterInput } from "@/lib/police/validations";
 import { prisma } from "@/lib/prisma";
 import { getServerTenantType } from "@/lib/tenant.server";
@@ -120,14 +119,11 @@ async function handleFireRegister(body: FireRegisterRequestBody) {
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
-  const recoveryCodes = generateRecoveryCodes(8);
   const now = new Date();
-
-  let createdUserId: number;
 
   const supportsContactPhoneColumn = await hasUserContactPhoneColumn();
   if (!supportsContactPhoneColumn) {
-    createdUserId = await createLegacyUser({
+    await createLegacyUser({
       name,
       email: email ?? null,
       phone,
@@ -136,7 +132,7 @@ async function handleFireRegister(body: FireRegisterRequestBody) {
     });
   } else {
     try {
-      const created = await prisma.user.create({
+      await prisma.user.create({
         data: {
           name,
           email,
@@ -145,15 +141,13 @@ async function handleFireRegister(body: FireRegisterRequestBody) {
           termsAgreedAt: now,
           privacyAgreedAt: now,
         },
-        select: { id: true },
       });
-      createdUserId = created.id;
     } catch (error) {
       if (!isMissingContactPhoneColumnError(error)) {
         throw error;
       }
 
-      createdUserId = await createLegacyUser({
+      await createLegacyUser({
         name,
         email: email ?? null,
         phone,
@@ -163,23 +157,10 @@ async function handleFireRegister(body: FireRegisterRequestBody) {
     }
   }
 
-  try {
-    await prisma.recoveryCode.createMany({
-      data: recoveryCodes.map((code) => ({
-        userId: createdUserId,
-        codeHash: hashRecoveryCode(code),
-      })),
-    });
-  } catch (error) {
-    await prisma.user.delete({ where: { id: createdUserId } }).catch(() => undefined);
-    throw error;
-  }
-
   return NextResponse.json(
     {
       success: true,
       message: "회원가입이 완료되었습니다.",
-      recoveryCodes,
     },
     { status: 201 }
   );

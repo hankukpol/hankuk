@@ -8,6 +8,7 @@ import {
 } from "@/lib/admin-site-features.shared";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getExamOperationWarnings, resolveExamOperationStage } from "@/lib/exam-operation-stage";
 import { withTenantPrefix } from "@/lib/tenant";
 import { getServerTenantType } from "@/lib/tenant.server";
 
@@ -40,6 +41,7 @@ type ActiveExamSummary = {
   year: number;
   round: number;
   name: string;
+  examDate: Date;
 };
 
 type RegionBreakdownItem = {
@@ -149,6 +151,8 @@ export default async function AdminDashboardPage() {
 
   let activeExam: ActiveExamSummary | null = null;
   let totalExams = 0;
+  let activeExamCount = 0;
+  let latestReleaseNumber: number | null = null;
   let totalSubmissions = 0;
   let totalUsers = 0;
   let todaySubmissions = 0;
@@ -178,19 +182,21 @@ export default async function AdminDashboardPage() {
         ? [ExamType.PUBLIC, ExamType.CAREER]
         : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
 
-    const [dbActiveExam, dbTotalExams, dbTotalUsers] = await prisma.$transaction(async (tx) =>
+    const [dbActiveExam, dbActiveExamCount, dbTotalExams, dbTotalUsers] = await prisma.$transaction(async (tx) =>
       Promise.all([
         tx.exam.findFirst({
           where: { isActive: true },
           orderBy: [{ examDate: "desc" }, { id: "desc" }],
-          select: { id: true, year: true, round: true, name: true },
+          select: { id: true, year: true, round: true, name: true, examDate: true },
         }),
+        tx.exam.count({ where: { isActive: true } }),
         tx.exam.count(),
         tx.user.count(),
       ])
     );
 
     activeExam = dbActiveExam;
+    activeExamCount = dbActiveExamCount;
     totalExams = dbTotalExams;
     totalUsers = dbTotalUsers;
 
@@ -207,6 +213,7 @@ export default async function AdminDashboardPage() {
         dbRegionsConfigured,
         dbRegionsTotal,
         dbLastSubmission,
+        dbLatestRelease,
       ] = await Promise.all([
         prisma.submission.count({
           where: { examId: dbActiveExam.id, examType: { in: tenantExamTypes } },
@@ -250,6 +257,11 @@ export default async function AdminDashboardPage() {
           orderBy: { createdAt: "desc" },
           select: { createdAt: true },
         }),
+        prisma.passCutRelease.findFirst({
+          where: { examId: dbActiveExam.id },
+          orderBy: [{ releaseNumber: "desc" }, { releasedAt: "desc" }],
+          select: { releaseNumber: true },
+        }),
       ]);
 
       totalSubmissions = dbTotalSubmissions;
@@ -270,6 +282,7 @@ export default async function AdminDashboardPage() {
       regionsConfigured = dbRegionsConfigured;
       regionsTotal = dbRegionsTotal;
       lastSubmissionAt = dbLastSubmission?.createdAt ?? null;
+      latestReleaseNumber = dbLatestRelease?.releaseNumber ?? null;
 
       const trendRaw = await prisma.$queryRaw<
         Array<{ date: string; count: bigint | number }>
@@ -335,6 +348,26 @@ export default async function AdminDashboardPage() {
   } catch (error) {
     console.error("관리자 대시보드 통계 조회 중 오류:", error);
     hasStatsError = true;
+  }
+
+  const preRegistrationEnabled =
+    tenantType === "police" && Boolean(siteSettings["site.preRegistrationEnabled"] ?? true);
+  const answerInputEnabled = Boolean(siteSettings["site.answerInputEnabled"] ?? false);
+  const resultEnabled = Boolean(siteSettings["site.tabResultEnabled"] ?? true);
+  const operationStage = resolveExamOperationStage({
+    preRegistrationEnabled,
+    answerInputEnabled,
+    latestReleaseNumber,
+  });
+  const operationWarnings = getExamOperationWarnings({
+    examDate: activeExam?.examDate ?? null,
+    preRegistrationEnabled,
+    answerInputEnabled,
+    resultEnabled,
+    latestReleaseNumber,
+  });
+  if (activeExamCount !== 1) {
+    operationWarnings.unshift(`활성 시험이 ${activeExamCount}개입니다. 정확히 1개여야 합니다.`);
   }
 
   const careerAnswerChecklistItems: DashboardChecklistItem[] =
@@ -570,6 +603,46 @@ export default async function AdminDashboardPage() {
         </div>
       ) : null}
 
+      {!hasStatsError ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">현재 운영 단계</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">{operationStage.label}</h2>
+              <p className="mt-1 text-sm text-slate-600">{operationStage.description}</p>
+            </div>
+            <Link
+              href={withTenantPrefix("/admin/site/features", tenantType)}
+              className="inline-flex rounded-md border border-service-300 bg-service-50 px-4 py-2 text-sm font-semibold text-service-800 transition hover:bg-service-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-400"
+            >
+              운영 기능 설정
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">사전등록</p>
+              <p className="mt-1 font-semibold text-slate-900">{preRegistrationEnabled ? "켜짐" : "꺼짐"}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">답안 입력</p>
+              <p className="mt-1 font-semibold text-slate-900">{answerInputEnabled ? "켜짐" : "꺼짐"}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">최신 표본 집계</p>
+              <p className="mt-1 font-semibold text-slate-900">{latestReleaseNumber ? `${latestReleaseNumber}차` : "발표 전"}</p>
+            </div>
+          </div>
+          {operationWarnings.length > 0 ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-900">운영 확인이 필요합니다</p>
+              <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                {operationWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {!hasStatsError && checklistItems.length > 0 ? (
         <DashboardSetupChecklist items={tenantChecklistItems} />
       ) : null}
@@ -580,7 +653,7 @@ export default async function AdminDashboardPage() {
           return (
             <div
               key={stat.label}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
             >
               <p className={`text-xs font-bold uppercase tracking-wider ${style.label}`}>
                 {stat.label}
@@ -601,7 +674,7 @@ export default async function AdminDashboardPage() {
           }`}
         >
           {showTrendPanel ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-slate-800">최근 제출 추이</h2>
                 <span className="rounded-full bg-service-50 px-3 py-1 text-xs font-medium text-service-600">
@@ -615,7 +688,7 @@ export default async function AdminDashboardPage() {
           {showStatusColumn ? (
             <div className="flex flex-col gap-4">
               {systemStatus.length > 0 ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     시스템 상태
                   </h3>
@@ -637,7 +710,7 @@ export default async function AdminDashboardPage() {
               ) : null}
 
               {activeExam && featureState.exams ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     활성 시험
                   </h3>
@@ -659,7 +732,7 @@ export default async function AdminDashboardPage() {
       ) : null}
 
       {!hasStatsError && featureState.stats && regionBreakdown.length > 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-800">
               지역별 제출 현황 (상위 5개)
@@ -720,7 +793,7 @@ export default async function AdminDashboardPage() {
               <Link
                 key={action.href}
                 href={action.href}
-                className={`group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md ${action.hoverBg}`}
+                className={`group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md ${action.hoverBg}`}
               >
                 <div className="flex items-center gap-2">
                   <span

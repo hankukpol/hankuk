@@ -123,16 +123,24 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
           (table_name = 'User' AND column_name IN (
             'smsMarketingConsentAt',
             'smsMarketingConsentVersion',
-            'smsMarketingConsentWithdrawnAt'
+            'smsMarketingConsentWithdrawnAt',
+            'emailVerifiedAt',
+            'credentialVersion'
           ))
           OR (table_name = 'PreRegistration' AND column_name IN ('submissionId', 'convertedAt'))
           OR (table_name = 'Exam' AND column_name IN (
             'policeWrittenPassMultiple',
             'policePredictionModelVersion'
           ))
+          OR (table_name = 'PasswordResetToken' AND column_name IN (
+            'purpose',
+            'channel',
+            'targetEmail',
+            'issuedByAdminId'
+          ))
         )
     `;
-    assert(requiredColumns.length === 7, `${schema}: required migration columns are incomplete.`);
+    assert(requiredColumns.length === 13, `${schema}: required migration columns are incomplete.`);
 
     const objects = await prisma.$queryRaw<
       Array<{ calibration_table: string | null; active_index: string | null }>
@@ -155,6 +163,7 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
       "20260808_add_exam_lifecycle_and_sms_consent",
       "20260808_add_police_prediction_calibration",
       "20260808_enforce_single_active_exam",
+      "20260809_unify_account_recovery",
     ]) {
       assert(applied.has(migration), `${schema}: migration ledger is missing ${migration}.`);
     }

@@ -314,8 +314,8 @@ export async function upsertSiteSettings(entries: Array<{ key: SiteSettingKey; v
     );
   });
 
-  revalidateTag(SITE_SETTINGS_TAG, "max");
-  revalidateTag(`${SITE_SETTINGS_TAG}:${tenantType}`, "max");
+  revalidateTag(SITE_SETTINGS_TAG, { expire: 0 });
+  revalidateTag(`${SITE_SETTINGS_TAG}:${tenantType}`, { expire: 0 });
 }
 
 export async function resetActivatedExamOperationSettings(
@@ -340,12 +340,12 @@ export async function resetActivatedExamOperationSettings(
 }
 
 export function revalidateSiteSettingsCache() {
-  revalidateTag(SITE_SETTINGS_TAG, "max");
+  revalidateTag(SITE_SETTINGS_TAG, { expire: 0 });
 }
 
 export function revalidateNoticeCache(tenantType?: TenantType) {
-  revalidateTag(ACTIVE_NOTICES_TAG, "max");
+  revalidateTag(ACTIVE_NOTICES_TAG, { expire: 0 });
   if (tenantType) {
-    revalidateTag(`${ACTIVE_NOTICES_TAG}:${tenantType}`, "max");
+    revalidateTag(`${ACTIVE_NOTICES_TAG}:${tenantType}`, { expire: 0 });
   }
 }

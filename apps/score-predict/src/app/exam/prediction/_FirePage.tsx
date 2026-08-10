@@ -533,7 +533,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
         </section>
       ) : null}
 
-      <PredictionLiveDashboard prediction={prediction} />
+      <PredictionLiveDashboard prediction={prediction} serviceName="소방" />
 
       {isPassCutLoading ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">

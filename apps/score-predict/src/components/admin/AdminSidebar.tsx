@@ -354,7 +354,7 @@ export default function AdminSidebar() {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 rounded-lg bg-service-600 p-2 text-white shadow-lg md:hidden"
+        className="absolute left-4 top-4 z-40 rounded-lg bg-service-600 p-2 text-white shadow-lg md:hidden"
         aria-label="메뉴 열기"
       >
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -367,7 +367,7 @@ export default function AdminSidebar() {
       ) : null}
 
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-full w-60 flex-col bg-service-600 transition-transform duration-300 md:hidden ${
+        className={`fixed left-0 top-0 z-50 flex h-full w-60 flex-col bg-service-700 transition-transform duration-300 md:hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

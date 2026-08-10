@@ -209,7 +209,7 @@ export const SITE_SETTING_DEFAULTS: SiteSettingsMap = {
   "site.privacyPolicy": `한국소방 합격예측 서비스는 관련 법령에 따라 이용자의 개인정보를 아래와 같이 처리합니다.
 
 1. 수집 항목
-- 필수: 이름, 휴대전화번호, 비밀번호, 응시정보, OMR 답안
+- 필수: 이름, 휴대전화번호, 복구 이메일, 비밀번호, 응시정보, OMR 답안
 
 2. 이용 목적
 - 회원 식별과 로그인 처리

@@ -2,6 +2,7 @@ import "server-only";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import nodemailer from "nodemailer";
 import type { TenantType } from "@/lib/tenant";
 
 export type AccountEmailPurpose =
@@ -29,6 +30,15 @@ interface MailMessage {
   html: string;
 }
 
+interface TenantSmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  appPassword: string;
+  from: string;
+}
+
 function getMailFrom(tenantType: TenantType): string {
   const tenantFrom =
     tenantType === "police" ? process.env.POLICE_MAIL_FROM : process.env.FIRE_MAIL_FROM;
@@ -39,12 +49,51 @@ function hasResendConfig(tenantType: TenantType): boolean {
   return Boolean(process.env.RESEND_API_KEY && getMailFrom(tenantType));
 }
 
+function getTenantSmtpEnv(
+  tenantType: TenantType,
+  key: "HOST" | "PORT" | "SECURE" | "USER" | "APP_PASSWORD"
+): string {
+  const prefix = tenantType === "police" ? "POLICE" : "FIRE";
+  return process.env[`${prefix}_SMTP_${key}`]?.trim() || "";
+}
+
+function getTenantSmtpConfig(tenantType: TenantType): TenantSmtpConfig | null {
+  const host = getTenantSmtpEnv(tenantType, "HOST");
+  const portText = getTenantSmtpEnv(tenantType, "PORT");
+  const user = getTenantSmtpEnv(tenantType, "USER");
+  const appPassword = getTenantSmtpEnv(tenantType, "APP_PASSWORD");
+  const from = getMailFrom(tenantType);
+  const port = Number(portText);
+
+  if (
+    !host ||
+    !portText ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    !user ||
+    !appPassword ||
+    !from
+  ) {
+    return null;
+  }
+
+  const secureText = getTenantSmtpEnv(tenantType, "SECURE").toLowerCase();
+  const secure = secureText ? secureText === "true" : port === 465;
+
+  return { host, port, secure, user, appPassword, from };
+}
+
+function hasTenantSmtpConfig(tenantType: TenantType): boolean {
+  return getTenantSmtpConfig(tenantType) !== null;
+}
+
 function hasWebhookConfig(): boolean {
   return Boolean(process.env.PASSWORD_RESET_MAIL_WEBHOOK_URL);
 }
 
 export function isMailerConfigured(tenantType: TenantType): boolean {
-  return hasResendConfig(tenantType) || hasWebhookConfig();
+  return hasResendConfig(tenantType) || hasTenantSmtpConfig(tenantType) || hasWebhookConfig();
 }
 
 export function isLocalMailPreviewEnabled(): boolean {
@@ -117,6 +166,47 @@ async function sendViaResend(params: AccountCodeEmailParams): Promise<void> {
   }
 }
 
+async function sendViaTenantSmtp(params: AccountCodeEmailParams): Promise<void> {
+  const config = getTenantSmtpConfig(params.tenantType);
+  if (!config) {
+    throw new Error(`[mailer] ${params.tenantType} SMTP configuration is incomplete.`);
+  }
+
+  const message = buildMessage(params);
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.appPassword,
+    },
+    authMethod: "LOGIN",
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+
+  try {
+    const result = await transporter.sendMail({
+      from: config.from,
+      to: params.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
+
+    if (result.rejected.length > 0) {
+      throw new Error(`recipient rejected: ${result.rejected.join(", ")}`);
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown SMTP error";
+    throw new Error(`[mailer] ${params.tenantType} SMTP delivery failed: ${reason}`);
+  } finally {
+    transporter.close();
+  }
+}
+
 async function sendViaWebhook(params: AccountCodeEmailParams): Promise<void> {
   const message = buildMessage(params);
   const headers: Record<string, string> = {
@@ -176,6 +266,11 @@ export async function sendAccountCodeEmail(
 ): Promise<AccountCodeEmailResult> {
   if (hasResendConfig(params.tenantType)) {
     await sendViaResend(params);
+    return {};
+  }
+
+  if (hasTenantSmtpConfig(params.tenantType)) {
+    await sendViaTenantSmtp(params);
     return {};
   }
 

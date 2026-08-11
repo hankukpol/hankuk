@@ -51,6 +51,11 @@ export async function GET(request: NextRequest) {
         bonusRate: true,
         isSuspicious: true,
         suspiciousReason: true,
+        suspicionStatus: true,
+        suspicionAutoReason: true,
+        suspicionManualDecision: true,
+        suspicionReviewNote: true,
+        suspicionReviewedAt: true,
         createdAt: true,
         user: {
           select: {
@@ -140,6 +145,11 @@ export async function GET(request: NextRequest) {
         bonusRate: Number(submission.bonusRate),
         isSuspicious: submission.isSuspicious,
         suspiciousReason: submission.suspiciousReason,
+        suspicionStatus: submission.suspicionStatus,
+        suspicionAutoReason: submission.suspicionAutoReason,
+        suspicionManualDecision: submission.suspicionManualDecision,
+        suspicionReviewNote: submission.suspicionReviewNote,
+        suspicionReviewedAt: submission.suspicionReviewedAt,
         createdAt: submission.createdAt,
       },
       subjectScores: submission.subjectScores.map((subjectScore) => ({

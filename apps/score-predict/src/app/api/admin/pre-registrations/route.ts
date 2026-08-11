@@ -318,7 +318,7 @@ export async function PUT(request: NextRequest) {
       }),
       prisma.region.findUnique({
         where: { id: payload.regionId },
-        select: { id: true },
+        select: { id: true, name: true, isActive: true },
       }),
     ]);
 
@@ -327,6 +327,12 @@ export async function PUT(request: NextRequest) {
     }
     if (!region) {
       return NextResponse.json({ error: "선택한 지역을 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (!region.isActive) {
+      return NextResponse.json(
+        { error: "비활성 지역은 사전등록 정보를 수정할 수 없습니다." },
+        { status: 400 }
+      );
     }
 
     const quota = await getExamRegionQuotaSnapshot(prisma, payload.examId, payload.regionId);

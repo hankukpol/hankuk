@@ -647,13 +647,13 @@ export default function AdminPreRegistrationsPage() {
               <table className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-100 text-slate-700">
-                    <th className="border border-slate-200 px-3 py-2 text-left">순번</th>
-                    <th className="border border-slate-200 px-3 py-2 text-left">이름</th>
-                    <th className="border border-slate-200 px-3 py-2 text-left">아이디</th>
-                    <th className="border border-slate-200 px-3 py-2 text-left">연락처</th>
-                    <th className="border border-slate-200 px-3 py-2 text-left">지역</th>
-                    <th className="border border-slate-200 px-3 py-2 text-left">유형</th>
-                    <th className="border border-slate-200 px-3 py-2 text-left">응시번호</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">순번</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">이름</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">아이디</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">연락처</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">지역</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">유형</th>
+                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">응시번호</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -692,17 +692,17 @@ export default function AdminPreRegistrationsPage() {
           <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>
               <tr className="bg-slate-100 text-slate-700">
-                <th className="border border-slate-200 px-3 py-2 text-left">이름</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">아이디</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">연락처</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">시험</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">지역</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">채용</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">성별</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">응시번호</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">최초 등록</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">최종 수정</th>
-                <th className="border border-slate-200 px-3 py-2 text-left">관리</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">이름</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">아이디</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">연락처</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">시험</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">지역</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">채용</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">성별</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">응시번호</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">최초 등록</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">최종 수정</th>
+                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">관리</th>
               </tr>
             </thead>
             <tbody>

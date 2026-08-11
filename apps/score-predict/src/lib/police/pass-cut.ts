@@ -112,6 +112,7 @@ export async function buildPassCutPredictionRows(params: {
       FROM "exam_region_quotas" q
       JOIN "Region" r ON r.id = q."regionId"
       WHERE q."examId" = ${params.examId}
+        AND r."isActive" = true
       ORDER BY r."name" ASC
     `,
     prisma.submission.groupBy({

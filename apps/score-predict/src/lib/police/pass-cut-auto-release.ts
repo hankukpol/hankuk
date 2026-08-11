@@ -406,14 +406,17 @@ async function evaluateRows(params: {
   const coverageThreshold = params.thresholdBundle.coverageByRelease[index];
   const stabilityThreshold = params.thresholdBundle.stabilityByRelease[index];
 
-  const populationWhere = {
+  const populationWhere: import("@prisma/client").Prisma.SubmissionWhereInput = {
     examId: params.examId,
     isSuspicious: false,
+    region: {
+      isActive: true,
+    },
     subjectScores: {
       some: {},
       none: { isFailed: true },
     },
-  } as const;
+  };
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 

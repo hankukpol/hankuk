@@ -57,6 +57,12 @@ enum SubmissionScoringStatus {
   SCORED
 }
 
+enum SubmissionSuspicionStatus {
+  CLEAR
+  REVIEW
+  EXCLUDED
+}
+
 enum PassCutSnapshotStatus {
   READY
   COLLECTING_LOW_PARTICIPATION
@@ -300,6 +306,11 @@ model Submission {
   editCount         Int                     @default(0)
   isSuspicious      Boolean                 @default(false)
   suspiciousReason  String?                 @db.Text
+  suspicionStatus   SubmissionSuspicionStatus @default(CLEAR)
+  suspicionAutoReason String?                @db.Text
+  suspicionManualDecision Boolean            @default(false)
+  suspicionReviewNote String?                @db.Text
+  suspicionReviewedAt DateTime?
   submitDurationMs  Int? // 페이지 로드 후 제출까지 소요시간 (밀리초)
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @default(now()) @updatedAt

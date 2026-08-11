@@ -1,4 +1,4 @@
-import { ExamType, Gender } from "@prisma/client";
+import { ExamType, Gender, SubmissionSuspicionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getTenantConfigByType, type TenantType } from "@/lib/tenant";
 import { TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
@@ -54,6 +54,14 @@ export async function buildAdminPreviewCandidates(
             ...(examId ? { examId } : {}),
             examType,
             isSuspicious: false,
+            suspicionStatus: SubmissionSuspicionStatus.CLEAR,
+            ...(tenantType === "police"
+              ? {
+                  region: {
+                    isActive: true,
+                  },
+                }
+              : {}),
             subjectScores: {
               some: {},
               none: { isFailed: true },

@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { getTenantRegionOrder } from "@/lib/tenant-regions";
 
 type TenantType = "police" | "fire";
 type ExamType = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
@@ -194,33 +195,6 @@ function normalizePercent(value: number): number {
   return Number(value.toFixed(1));
 }
 
-const REGION_GRID_ORDER = [
-  "강원",
-  "경기남부",
-  "경기북",
-  "경남",
-  "경북",
-  "광주",
-  "대구",
-  "대전",
-  "부산",
-  "서울",
-  "101경비단",
-  "세종",
-  "울산",
-  "인천",
-  "전남",
-  "전북",
-  "충남",
-  "충북",
-  "제주",
-];
-
-function getRegionDisplayOrder(regionName: string): number {
-  const index = REGION_GRID_ORDER.findIndex((keyword) => regionName.includes(keyword));
-  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
-}
-
 function CompetitiveChart({
   title,
   data,
@@ -354,12 +328,13 @@ export default function ExamMainOverviewPanel() {
     return Array.from(map.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => {
-        const orderA = getRegionDisplayOrder(a.name);
-        const orderB = getRegionDisplayOrder(b.name);
+        const tenantType = data?.tenantType ?? "police";
+        const orderA = getTenantRegionOrder(tenantType, a.name);
+        const orderB = getTenantRegionOrder(tenantType, b.name);
         if (orderA !== orderB) return orderA - orderB;
         return a.name.localeCompare(b.name, "ko-KR");
       });
-  }, [rowsByExamType]);
+  }, [data?.tenantType, rowsByExamType]);
 
   useEffect(() => {
     if (regionOptions.length < 1) {
@@ -692,7 +667,7 @@ export default function ExamMainOverviewPanel() {
                 <tr className="divide-x divide-slate-200">
                   <th className="w-[140px] bg-slate-50 px-4 py-3.5 text-left font-bold text-slate-700 sm:w-[170px]">
                     실시간 평균점수
-                    <span className="ml-1 text-xs font-normal text-slate-400">(과락 제외)</span>
+                    <span className="ml-1 whitespace-nowrap text-xs font-normal text-slate-400">(과락 제외)</span>
                   </th>
                   <td className="px-4 py-3.5 font-bold text-service-700">
                     {selectedRow

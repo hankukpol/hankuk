@@ -114,7 +114,7 @@ export function resolveLandingHeroCopy(params: {
   if (operationStage.key === "RELEASED") {
     return {
       title: `${operationStage.label}`,
-      subtitle: "대구·경북 지역의 발표 표본 수와 표본 1배수 지점을 확인할 수 있습니다.",
+      subtitle: "현재 활성 지역의 발표 표본 수와 표본 1배수 지점을 확인할 수 있습니다.",
       primaryText: params.isAuthenticated ? "최신 집계 확인" : "로그인 후 내 성적 확인",
       secondaryText: params.isAuthenticated ? "공지사항" : "회원가입",
     };

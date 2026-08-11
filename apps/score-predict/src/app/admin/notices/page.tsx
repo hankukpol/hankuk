@@ -2,12 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import AdminFeatureDisabledState from "@/components/admin/AdminFeatureDisabledState";
+import AdminHtmlEditor from "@/components/admin/AdminHtmlEditor";
 import ConfirmModal from "@/components/admin/ConfirmModal";
 import useConfirmModal from "@/hooks/useConfirmModal";
 import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { hasMeaningfulRichText, richTextToPlainText } from "@/lib/rich-text";
 
 interface NoticeItem {
   id: number;
@@ -59,6 +61,7 @@ export default function AdminNoticesPage() {
   const [items, setItems] = useState<NoticeItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [message, setMessage] = useState<StatusMessage>(null);
   const { confirm, modalProps } = useConfirmModal();
 
@@ -111,6 +114,7 @@ export default function AdminNoticesPage() {
   }, [isFeatureLoading, noticesEnabled]);
 
   function resetForm() {
+    setIsFormOpen(false);
     setEditingId(null);
     setTitle("");
     setContent("");
@@ -120,7 +124,13 @@ export default function AdminNoticesPage() {
     setEndAt("");
   }
 
+  function startCreate() {
+    resetForm();
+    setIsFormOpen(true);
+  }
+
   function startEdit(item: NoticeItem) {
+    setIsFormOpen(true);
     setEditingId(item.id);
     setTitle(item.title);
     setContent(item.content);
@@ -138,7 +148,7 @@ export default function AdminNoticesPage() {
       setMessage({ type: "error", text: "공지 제목을 입력해 주세요." });
       return;
     }
-    if (!content.trim()) {
+    if (!hasMeaningfulRichText(content)) {
       setMessage({ type: "error", text: "공지 내용을 입력해 주세요." });
       return;
     }
@@ -155,7 +165,7 @@ export default function AdminNoticesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          content: content.trim(),
+          content,
           priority,
           isActive,
           startAt: startAt ? new Date(startAt).toISOString() : null,
@@ -222,7 +232,7 @@ export default function AdminNoticesPage() {
           <h1 className="text-xl font-semibold text-slate-900">공지사항 게시판 관리</h1>
           <p className="mt-1 text-sm text-slate-600">사용자 화면의 공지사항 탭에 노출될 게시물을 관리합니다.</p>
         </div>
-        <Button type="button" variant="outline" onClick={resetForm}>
+        <Button type="button" onClick={startCreate}>
           새 공지 작성
         </Button>
       </header>
@@ -239,62 +249,84 @@ export default function AdminNoticesPage() {
         </p>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <div className="space-y-2">
-          <Label htmlFor="notice-title">제목</Label>
-          <Input id="notice-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-        </div>
+      {isFormOpen ? (
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{editingId ? "공지사항 수정" : "새 공지 작성"}</h2>
+              <p className="mt-1 text-xs text-slate-600">작성한 내용은 공개 상태와 게시기간 조건에 따라 사용자 게시판에 표시됩니다.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={resetForm}>
+              닫기
+            </Button>
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="notice-content">내용</Label>
-          <textarea
-            id="notice-content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-            required
-          />
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="notice-priority">우선순위</Label>
-            <Input
-              id="notice-priority"
-              type="number"
-              value={priority}
-              onChange={(e) => setPriority(Number(e.target.value) || 0)}
+            <Label htmlFor="notice-title">제목</Label>
+            <Input id="notice-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </div>
+
+          <div className="space-y-2">
+            <Label>내용</Label>
+            <AdminHtmlEditor
+              key={`notice-editor-${editingId ?? "new"}`}
+              value={content}
+              onChange={setContent}
+              uploadUrl="/api/admin/notices/upload-image"
+              height="360"
+              ariaLabel="공지사항 본문 편집기"
             />
+            <p className="text-xs text-slate-500">
+              글자 서식, 목록, 링크, 이미지 삽입과 HTML 소스 보기를 사용할 수 있습니다. 이미지는 최대 5MB까지 업로드됩니다.
+            </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="notice-start">게시 시작</Label>
-            <Input id="notice-start" type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="notice-end">게시 종료</Label>
-            <Input id="notice-end" type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
-          </div>
-        </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-          활성 공지로 표시
-        </label>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="notice-priority">우선순위</Label>
+              <Input
+                id="notice-priority"
+                type="number"
+                value={priority}
+                onChange={(e) => setPriority(Number(e.target.value) || 0)}
+              />
+              <p className="text-xs text-slate-500">1 이상이면 사용자 게시판 상단에 공지로 표시됩니다.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="notice-start">게시 시작</Label>
+              <Input id="notice-start" type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="notice-end">게시 종료</Label>
+              <Input id="notice-end" type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
+            </div>
+          </div>
 
-        <Button type="submit" disabled={isSaving}>
-          {isSaving ? "저장 중..." : editingId ? "공지 수정" : "공지 등록"}
-        </Button>
-      </form>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+            활성 공지로 표시
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={resetForm} disabled={isSaving}>
+              취소
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "저장 중..." : editingId ? "수정 저장" : "공지 등록"}
+            </Button>
+          </div>
+        </form>
+      ) : null}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
             <tr>
-              <th className="px-4 py-3">ID</th>
-              <th className="px-4 py-3">제목</th>
-              <th className="px-4 py-3">상태</th>
-              <th className="px-4 py-3">게시기간</th>
-              <th className="px-4 py-3 text-right">작업</th>
+              <th className="whitespace-nowrap px-4 py-3">ID</th>
+              <th className="whitespace-nowrap px-4 py-3">제목</th>
+              <th className="whitespace-nowrap px-4 py-3">상태</th>
+              <th className="whitespace-nowrap px-4 py-3">게시기간</th>
+              <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -310,7 +342,7 @@ export default function AdminNoticesPage() {
                   <td className="px-4 py-3 text-slate-700">{item.id}</td>
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-900">{item.title}</p>
-                    <p className="mt-1 line-clamp-1 text-xs text-slate-600">{item.content}</p>
+                    <p className="mt-1 line-clamp-1 text-xs text-slate-600">{richTextToPlainText(item.content)}</p>
                   </td>
                   <td className="px-4 py-3">
                     {item.isActive ? (

@@ -83,6 +83,19 @@ export async function GET(request: NextRequest) {
     });
     const effectiveExamId = activeExam.id;
 
+    if (tenantType === "police") {
+      const region = await prisma.region.findUnique({
+        where: { id: regionId },
+        select: { name: true, isActive: true },
+      });
+      if (!region?.isActive) {
+        return NextResponse.json({
+          available: false,
+          reason: "비활성 지역은 수험번호를 확인할 수 없습니다.",
+        });
+      }
+    }
+
     const quota = await prisma.examRegionQuota.findUnique({
       where: {
         examId_regionId: { examId: effectiveExamId, regionId },

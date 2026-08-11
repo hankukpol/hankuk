@@ -29,6 +29,7 @@
 !**/.env.example
 !**/.env.local.example
 **/*수파베이스*.txt
+apps/score-predict/*비밀번호*.txt
 
 # Logs and temp files
 **/*.log

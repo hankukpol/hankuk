@@ -380,16 +380,16 @@ export default function AdminUsersPage() {
           <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">로그인 아이디</th>
-                <th className="px-4 py-3">문자 연락처</th>
-                <th className="px-4 py-3">문자 수신</th>
-                <th className="px-4 py-3">가입일</th>
-                <th className="px-4 py-3">제출</th>
-                <th className="px-4 py-3">댓글</th>
-                <th className="px-4 py-3">권한</th>
-                <th className="px-4 py-3 text-right">작업</th>
+                <th className="whitespace-nowrap px-4 py-3">ID</th>
+                <th className="whitespace-nowrap px-4 py-3">이름</th>
+                <th className="whitespace-nowrap px-4 py-3">로그인 아이디</th>
+                <th className="whitespace-nowrap px-4 py-3">문자 연락처</th>
+                <th className="whitespace-nowrap px-4 py-3">문자 수신</th>
+                <th className="whitespace-nowrap px-4 py-3">가입일</th>
+                <th className="whitespace-nowrap px-4 py-3">제출</th>
+                <th className="whitespace-nowrap px-4 py-3">댓글</th>
+                <th className="whitespace-nowrap px-4 py-3">권한</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -409,7 +409,7 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3 font-medium text-slate-900">{user.name}</td>
                       <td className="px-4 py-3 text-slate-700">{user.phone}</td>
                       <td className="px-4 py-3 text-slate-700">{user.deliveryPhone || "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                         {user.smsMarketingConsentActive ? "동의" : "미동의/철회"}
                       </td>
                       <td className="px-4 py-3 text-slate-700">

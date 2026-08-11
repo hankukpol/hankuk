@@ -224,10 +224,28 @@ export async function GET(request: NextRequest) {
       auth.tenantType === "police"
         ? [ExamType.PUBLIC, ExamType.CAREER]
         : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
-    const scopedSubmissionWhere = {
+    const policeRegionScope: Prisma.SubmissionWhereInput =
+      auth.tenantType === "police"
+        ? {
+            region: {
+              isActive: true,
+            },
+          }
+        : {};
+    const scopedSubmissionWhere: Prisma.SubmissionWhereInput = {
       examId: exam.id,
       examType: { in: tenantExamTypes },
+      ...policeRegionScope,
     };
+    const policeRegionDateSql =
+      auth.tenantType === "police"
+        ? Prisma.sql`AND EXISTS (
+            SELECT 1
+            FROM "Region" r
+            WHERE r.id = "Submission"."regionId"
+              AND r."isActive" = true
+          )`
+        : Prisma.sql``;
 
     const [
       totalParticipants,
@@ -279,6 +297,12 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.region.findMany({
+        where:
+          auth.tenantType === "police"
+            ? {
+                isActive: true,
+              }
+            : undefined,
         orderBy: { name: "asc" },
         select: { id: true, name: true },
       }),
@@ -289,6 +313,7 @@ export async function GET(request: NextRequest) {
         FROM "Submission"
         WHERE "examId" = ${exam.id}
           AND "examType"::text IN (${Prisma.join(tenantExamTypes)})
+          ${policeRegionDateSql}
         GROUP BY TO_CHAR("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
         ORDER BY TO_CHAR("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
       `,
@@ -308,12 +333,17 @@ export async function GET(request: NextRequest) {
           maxScore: true,
         },
       }),
-      getDifficultyStats(exam.id, tenantExamTypes),
+      getDifficultyStats(
+        exam.id,
+        tenantExamTypes,
+        auth.tenantType === "police"
+      ),
       prisma.submission.groupBy({
         by: ["regionId", "examType", "gender"],
         where: {
           examId: exam.id,
           examType: { in: tenantExamTypes },
+          ...policeRegionScope,
           isSuspicious: false,
           subjectScores: {
             some: {},
@@ -329,6 +359,7 @@ export async function GET(request: NextRequest) {
         where: {
           examId: exam.id,
           examType: { in: tenantExamTypes },
+          ...policeRegionScope,
           isSuspicious: false,
           subjectScores: {
             some: {},
@@ -346,7 +377,16 @@ export async function GET(request: NextRequest) {
 
     // 시험별 모집인원 조회
     const examQuotas = await prisma.examRegionQuota.findMany({
-      where: { examId: exam.id },
+      where: {
+        examId: exam.id,
+        ...(auth.tenantType === "police"
+          ? {
+              region: {
+                isActive: true,
+              },
+            }
+          : {}),
+      },
       select: {
         regionId: true,
         recruitCount: true,

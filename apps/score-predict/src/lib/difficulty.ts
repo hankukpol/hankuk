@@ -119,7 +119,8 @@ async function getTargetExam(examId?: number) {
 
 export async function getDifficultyStats(
   examId?: number,
-  allowedExamTypes?: readonly ExamType[]
+  allowedExamTypes?: readonly ExamType[],
+  activeRegionsOnly = false
 ): Promise<DifficultyStatsResult | null> {
   return withPrismaConnectionRetry(async () => {
     const exam = await getTargetExam(examId);
@@ -130,7 +131,15 @@ export async function getDifficultyStats(
       where: {
         submission: {
           examId: exam.id,
+          isSuspicious: false,
           ...(allowedExamTypes?.length ? { examType: { in: [...allowedExamTypes] } } : {}),
+          ...(activeRegionsOnly
+            ? {
+                region: {
+                  isActive: true,
+                },
+              }
+            : {}),
         },
       },
       _count: {

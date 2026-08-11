@@ -742,20 +742,20 @@ export default function AdminStatsPage() {
                 >
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-4 py-3">지역</th>
-                      <th className="px-4 py-3">공채</th>
+                      <th className="whitespace-nowrap px-4 py-3">지역</th>
+                      <th className="whitespace-nowrap px-4 py-3">공채</th>
                       {tenant.type === "police" ? (
-                        <th className="px-4 py-3">경행경채</th>
+                        <th className="whitespace-nowrap px-4 py-3">경행경채</th>
                       ) : (
                         <>
-                          <th className="px-4 py-3">구조 경채</th>
-                          <th className="px-4 py-3">학과 경채</th>
-                          <th className="px-4 py-3">구급 경채</th>
+                          <th className="whitespace-nowrap px-4 py-3">구조 경채</th>
+                          <th className="whitespace-nowrap px-4 py-3">학과 경채</th>
+                          <th className="whitespace-nowrap px-4 py-3">구급 경채</th>
                         </>
                       )}
-                      <th className="px-4 py-3">합계</th>
-                      <th className="px-4 py-3">평균 원점수</th>
-                      <th className="px-4 py-3">평균 최종점수</th>
+                      <th className="whitespace-nowrap px-4 py-3">합계</th>
+                      <th className="whitespace-nowrap px-4 py-3">평균 원점수</th>
+                      <th className="whitespace-nowrap px-4 py-3">평균 최종점수</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -828,12 +828,12 @@ export default function AdminStatsPage() {
                 <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-4 py-3">지역</th>
-                      <th className="px-4 py-3">참여인원</th>
-                      <th className="px-4 py-3">모집인원(1배수 기준)</th>
-                      <th className="px-4 py-3">1배수 컷 점수</th>
-                      <th className="px-4 py-3">실제 1배수 석등</th>
-                      <th className="px-4 py-3">1배수 동점 인원</th>
+                      <th className="whitespace-nowrap px-4 py-3">지역</th>
+                      <th className="whitespace-nowrap px-4 py-3">참여인원</th>
+                      <th className="whitespace-nowrap px-4 py-3">모집인원(1배수 기준)</th>
+                      <th className="whitespace-nowrap px-4 py-3">1배수 컷 점수</th>
+                      <th className="whitespace-nowrap px-4 py-3">실제 1배수 석등</th>
+                      <th className="whitespace-nowrap px-4 py-3">1배수 동점 인원</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -854,10 +854,10 @@ export default function AdminStatsPage() {
                               </span>
                             ) : null}
                           </td>
-                          <td className="px-4 py-3 text-slate-700">
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                             {row.participantCount.toLocaleString("ko-KR")}명
                           </td>
-                          <td className="px-4 py-3 text-slate-700">
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                             {row.oneMultipleBaseRank.toLocaleString("ko-KR")}명
                           </td>
                           <td className="px-4 py-3 text-slate-700">
@@ -910,12 +910,12 @@ export default function AdminStatsPage() {
                     <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
                       <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="px-4 py-3">과목</th>
-                          <th className="px-4 py-3">응답 수</th>
-                          <th className="px-4 py-3">쉬움</th>
-                          <th className="px-4 py-3">보통</th>
-                          <th className="px-4 py-3">어려움</th>
-                          <th className="px-4 py-3">우세</th>
+                          <th className="whitespace-nowrap px-4 py-3">과목</th>
+                          <th className="whitespace-nowrap px-4 py-3">응답 수</th>
+                          <th className="whitespace-nowrap px-4 py-3">쉬움</th>
+                          <th className="whitespace-nowrap px-4 py-3">보통</th>
+                          <th className="whitespace-nowrap px-4 py-3">어려움</th>
+                          <th className="whitespace-nowrap px-4 py-3">우세</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">

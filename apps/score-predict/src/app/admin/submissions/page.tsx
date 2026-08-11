@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 type ExamTypeValue = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+type SuspicionStatusValue = "CLEAR" | "REVIEW" | "EXCLUDED";
 
 interface ExamOption {
   id: number;
@@ -42,6 +43,10 @@ interface SubmissionRow {
   hasCutoff: boolean;
   isSuspicious: boolean;
   suspiciousReason: string | null;
+  suspicionStatus: SuspicionStatusValue;
+  suspicionManualDecision: boolean;
+  suspicionReviewNote: string | null;
+  suspicionReviewedAt: string | null;
   createdAt: string;
 }
 
@@ -71,6 +76,13 @@ interface SubmissionDetailResponse {
     finalScore: number;
     bonusType: string;
     bonusRate: number;
+    isSuspicious: boolean;
+    suspiciousReason: string | null;
+    suspicionStatus: SuspicionStatusValue;
+    suspicionAutoReason: string | null;
+    suspicionManualDecision: boolean;
+    suspicionReviewNote: string | null;
+    suspicionReviewedAt: string | null;
     createdAt: string;
   };
   subjectScores: Array<{
@@ -127,6 +139,37 @@ function formatExamType(type: ExamTypeValue): string {
   return type;
 }
 
+function formatSuspicionStatus(status: SuspicionStatusValue, manual: boolean): string {
+  if (status === "EXCLUDED") return manual ? "통계 제외 확정" : "자동 통계 제외";
+  if (status === "REVIEW") return "검토 필요";
+  return manual ? "정상 확인" : "정상";
+}
+
+function getSuspicionBadgeClass(status: SuspicionStatusValue, manual: boolean): string {
+  if (status === "EXCLUDED") return "bg-rose-100 text-rose-700";
+  if (status === "REVIEW") return "bg-amber-100 text-amber-700";
+  return manual ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600";
+}
+
+function formatLogDetails(value: string | null): string {
+  if (!value) return "-";
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) return parsed.map(String).join(", ");
+    if (parsed && typeof parsed === "object") {
+      const data = parsed as Record<string, unknown>;
+      return [
+        data.previousStatus ? `이전 ${String(data.previousStatus)}` : null,
+        data.nextStatus ? `변경 ${String(data.nextStatus)}` : null,
+        data.note ? `메모 ${String(data.note)}` : null,
+      ].filter(Boolean).join(" / ") || "-";
+    }
+  } catch {
+    return value;
+  }
+  return value;
+}
+
 export default function AdminSubmissionsPage() {
   const tenant = useTenantConfig();
   const { enabled: submissionsEnabled, isLoading: isFeatureLoading } =
@@ -138,7 +181,7 @@ export default function AdminSubmissionsPage() {
   const [selectedExamId, setSelectedExamId] = useState<number | "">("");
   const [selectedRegionId, setSelectedRegionId] = useState<number | "">("");
   const [selectedExamType, setSelectedExamType] = useState<"" | ExamTypeValue>("");
-  const [selectedSuspicious, setSelectedSuspicious] = useState<"" | "true" | "false">("");
+  const [selectedSuspicious, setSelectedSuspicious] = useState<"" | SuspicionStatusValue>("");
   const [searchInput, setSearchInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
 
@@ -155,6 +198,8 @@ export default function AdminSubmissionsPage() {
   const { confirm, modalProps } = useConfirmModal();
   const [examNumberDraft, setExamNumberDraft] = useState("");
   const [isSavingExamNumber, setIsSavingExamNumber] = useState(false);
+  const [suspicionNote, setSuspicionNote] = useState("");
+  const [isSavingSuspicion, setIsSavingSuspicion] = useState(false);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -163,7 +208,7 @@ export default function AdminSubmissionsPage() {
     if (selectedExamId) params.set("examId", String(selectedExamId));
     if (selectedRegionId) params.set("regionId", String(selectedRegionId));
     if (selectedExamType) params.set("examType", selectedExamType);
-    if (selectedSuspicious) params.set("suspicious", selectedSuspicious);
+    if (selectedSuspicious) params.set("suspicionStatus", selectedSuspicious);
     if (searchKeyword) params.set("search", searchKeyword);
     return params.toString();
   }, [page, searchKeyword, selectedExamId, selectedExamType, selectedRegionId, selectedSuspicious]);
@@ -293,6 +338,7 @@ export default function AdminSubmissionsPage() {
 
       setDetail(data);
       setExamNumberDraft(data.submission.examNumber ?? "");
+      setSuspicionNote(data.submission.suspicionReviewNote ?? "");
     } catch (error) {
       setNotice({
         type: "error",
@@ -301,6 +347,50 @@ export default function AdminSubmissionsPage() {
       });
     } finally {
       setIsDetailLoading(false);
+    }
+  }
+
+  async function handleSuspicionDecision(
+    submissionId: number,
+    decision: "CLEAR" | "EXCLUDE"
+  ) {
+    const isExclude = decision === "EXCLUDE";
+    const ok = await confirm({
+      title: isExclude ? "통계 제외 확정" : "정상 성적 처리",
+      description: isExclude
+        ? "이 성적을 표본 통계, 등수와 합격예측에서 제외하시겠습니까?"
+        : "답안을 확인했고 정상 성적으로 집계해도 되는지 확인해 주세요.",
+      variant: isExclude ? "danger" : "default",
+    });
+    if (!ok) return;
+
+    setIsSavingSuspicion(true);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/submissions?id=${submissionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note: suspicionNote }),
+      });
+      const data = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? "성적 판정을 저장하지 못했습니다.");
+      }
+
+      await Promise.all([loadSubmissions(), handleOpenDetail(submissionId)]);
+      setNotice({
+        type: "success",
+        message: isExclude
+          ? `제출 ID ${submissionId}를 통계 제외로 확정했습니다.`
+          : `제출 ID ${submissionId}를 정상 성적으로 처리했습니다.`,
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "성적 판정을 저장하지 못했습니다.",
+      });
+    } finally {
+      setIsSavingSuspicion(false);
     }
   }
 
@@ -456,13 +546,14 @@ export default function AdminSubmissionsPage() {
           className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedSuspicious}
           onChange={(event) => {
-            setSelectedSuspicious(event.target.value as "" | "true" | "false");
+            setSelectedSuspicious(event.target.value as "" | SuspicionStatusValue);
             setPage(1);
           }}
         >
-          <option value="">전체 상태</option>
-          <option value="true">수상 답안</option>
-          <option value="false">정상 답안</option>
+          <option value="">전체 검토 상태</option>
+          <option value="REVIEW">검토 필요</option>
+          <option value="EXCLUDED">통계 제외</option>
+          <option value="CLEAR">정상</option>
         </select>
 
         <Input
@@ -500,18 +591,18 @@ export default function AdminSubmissionsPage() {
           <table className="min-w-[1200px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">이름</th>
-                <th className="px-4 py-3">연락처</th>
-                <th className="px-4 py-3">유형</th>
-                <th className="px-4 py-3">지역</th>
-                <th className="px-4 py-3">응시번호</th>
-                <th className="px-4 py-3">총점</th>
-                <th className="px-4 py-3">최종점수</th>
-                <th className="px-4 py-3">과락</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3">제출일</th>
-                <th className="px-4 py-3 text-right">작업</th>
+                <th className="whitespace-nowrap px-4 py-3">ID</th>
+                <th className="whitespace-nowrap px-4 py-3">이름</th>
+                <th className="whitespace-nowrap px-4 py-3">연락처</th>
+                <th className="whitespace-nowrap px-4 py-3">유형</th>
+                <th className="whitespace-nowrap px-4 py-3">지역</th>
+                <th className="whitespace-nowrap px-4 py-3">응시번호</th>
+                <th className="whitespace-nowrap px-4 py-3">총점</th>
+                <th className="whitespace-nowrap px-4 py-3">최종점수</th>
+                <th className="whitespace-nowrap px-4 py-3">과락</th>
+                <th className="whitespace-nowrap px-4 py-3">상태</th>
+                <th className="whitespace-nowrap px-4 py-3">제출일</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -552,16 +643,18 @@ export default function AdminSubmissionsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {submission.isSuspicious ? (
-                        <span
-                          className="cursor-help rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
-                          title={submission.suspiciousReason ?? "수상 답안"}
-                        >
-                          수상
-                        </span>
-                      ) : (
-                        <span className="text-slate-500">-</span>
-                      )}
+                      <span
+                        className={`cursor-help whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getSuspicionBadgeClass(
+                          submission.suspicionStatus,
+                          submission.suspicionManualDecision
+                        )}`}
+                        title={submission.suspiciousReason ?? "자동 감지 사유 없음"}
+                      >
+                        {formatSuspicionStatus(
+                          submission.suspicionStatus,
+                          submission.suspicionManualDecision
+                        )}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {formatDateTimeText(submission.createdAt)}
@@ -678,16 +771,83 @@ export default function AdminSubmissionsPage() {
               </p>
             </section>
 
+            <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">성적 검토 판정</h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    정상 처리는 표본 집계와 합격예측에 포함하고, 통계 제외는 점수만 보존합니다.
+                  </p>
+                </div>
+                <span
+                  className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getSuspicionBadgeClass(
+                    detail.submission.suspicionStatus,
+                    detail.submission.suspicionManualDecision
+                  )}`}
+                >
+                  {formatSuspicionStatus(
+                    detail.submission.suspicionStatus,
+                    detail.submission.suspicionManualDecision
+                  )}
+                </span>
+              </div>
+
+              {detail.submission.suspicionAutoReason ? (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="font-medium">자동 감지 사유</p>
+                  <p className="mt-1 leading-6">{detail.submission.suspicionAutoReason}</p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">자동 감지된 사유가 없습니다.</p>
+              )}
+
+              <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="suspicion-note">
+                관리자 판정 메모
+              </label>
+              <Input
+                id="suspicion-note"
+                className="mt-2"
+                value={suspicionNote}
+                maxLength={500}
+                disabled={isSavingSuspicion}
+                onChange={(event) => setSuspicionNote(event.target.value)}
+                placeholder="확인 내용이나 학생 안내 사항을 입력해 주세요."
+              />
+              {detail.submission.suspicionReviewedAt ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  마지막 관리자 판정: {formatDateTimeText(detail.submission.suspicionReviewedAt)}
+                </p>
+              ) : null}
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSavingSuspicion}
+                  onClick={() => void handleSuspicionDecision(detail.submission.id, "CLEAR")}
+                >
+                  정상 처리
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isSavingSuspicion}
+                  onClick={() => void handleSuspicionDecision(detail.submission.id, "EXCLUDE")}
+                >
+                  통계 제외
+                </Button>
+              </div>
+            </section>
+
             <section className="mt-5">
               <h4 className="text-sm font-semibold text-slate-900">과목별 점수</h4>
               <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-3 py-2">과목</th>
-                      <th className="px-3 py-2">획득점수</th>
-                      <th className="px-3 py-2">만점</th>
-                      <th className="px-3 py-2">과락</th>
+                      <th className="whitespace-nowrap px-3 py-2">과목</th>
+                      <th className="whitespace-nowrap px-3 py-2">획득점수</th>
+                      <th className="whitespace-nowrap px-3 py-2">만점</th>
+                      <th className="whitespace-nowrap px-3 py-2">과락</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -722,10 +882,10 @@ export default function AdminSubmissionsPage() {
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-3 py-2">과목</th>
-                      <th className="px-3 py-2">문항</th>
-                      <th className="px-3 py-2">선택답안</th>
-                      <th className="px-3 py-2">정오</th>
+                      <th className="whitespace-nowrap px-3 py-2">과목</th>
+                      <th className="whitespace-nowrap px-3 py-2">문항</th>
+                      <th className="whitespace-nowrap px-3 py-2">선택답안</th>
+                      <th className="whitespace-nowrap px-3 py-2">정오</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -763,11 +923,11 @@ export default function AdminSubmissionsPage() {
                   <table className="min-w-full divide-y divide-slate-200 text-sm">
                     <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <tr>
-                        <th className="px-3 py-2">일시</th>
-                        <th className="px-3 py-2">작업</th>
-                        <th className="px-3 py-2">IP</th>
-                        <th className="px-3 py-2">소요시간</th>
-                        <th className="px-3 py-2">변경 필드</th>
+                        <th className="whitespace-nowrap px-3 py-2">일시</th>
+                        <th className="whitespace-nowrap px-3 py-2">작업</th>
+                        <th className="whitespace-nowrap px-3 py-2">IP</th>
+                        <th className="whitespace-nowrap px-3 py-2">소요시간</th>
+                        <th className="whitespace-nowrap px-3 py-2">변경 필드</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -779,12 +939,22 @@ export default function AdminSubmissionsPage() {
                           <td className="px-3 py-2">
                             <span
                               className={`rounded-full px-2 py-1 text-xs font-medium ${
-                                log.action === "CREATE"
+                                  log.action === "CREATE"
                                   ? "bg-blue-100 text-blue-700"
-                                  : "bg-amber-100 text-amber-700"
+                                  : log.action === "SUSPICION_CLEAR"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : log.action === "SUSPICION_EXCLUDE"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-amber-100 text-amber-700"
                               }`}
                             >
-                              {log.action === "CREATE" ? "생성" : "수정"}
+                              {log.action === "CREATE"
+                                ? "생성"
+                                : log.action === "SUSPICION_CLEAR"
+                                  ? "정상 처리"
+                                  : log.action === "SUSPICION_EXCLUDE"
+                                    ? "통계 제외"
+                                    : "수정"}
                             </span>
                           </td>
                           <td className="px-3 py-2 font-mono text-xs text-slate-600">
@@ -796,9 +966,7 @@ export default function AdminSubmissionsPage() {
                               : "-"}
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-600">
-                            {log.changedFields
-                              ? (JSON.parse(log.changedFields) as string[]).join(", ")
-                              : "-"}
+                            {formatLogDetails(log.changedFields)}
                           </td>
                         </tr>
                       ))}

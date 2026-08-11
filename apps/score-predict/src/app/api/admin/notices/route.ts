@@ -4,6 +4,7 @@ import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
 import { revalidateNoticeCache } from "@/lib/site-settings";
 import { getServerTenantType } from "@/lib/tenant.server";
+import { hasMeaningfulRichText, sanitizeRichTextHtml } from "@/lib/rich-text";
 
 export const runtime = "nodejs";
 
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as NoticePayload;
     const title = typeof body.title === "string" ? body.title.trim() : "";
-    const content = typeof body.content === "string" ? body.content.trim() : "";
+    const content = typeof body.content === "string" ? sanitizeRichTextHtml(body.content) : "";
     const isActive = parseBoolean(body.isActive);
     const priority = parsePriority(body.priority);
     const startAt = parseDateTime(body.startAt);
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "공지 제목을 입력해 주세요." }, { status: 400 });
     }
-    if (!content) {
+    if (!hasMeaningfulRichText(content)) {
       return NextResponse.json({ error: "공지 내용을 입력해 주세요." }, { status: 400 });
     }
     if (isActive === null) {
@@ -181,10 +182,11 @@ export async function PUT(request: NextRequest) {
     }
 
     if (body.content !== undefined) {
-      if (typeof body.content !== "string" || !body.content.trim()) {
+      const sanitizedContent = typeof body.content === "string" ? sanitizeRichTextHtml(body.content) : "";
+      if (!hasMeaningfulRichText(sanitizedContent)) {
         return NextResponse.json({ error: "공지 내용이 올바르지 않습니다." }, { status: 400 });
       }
-      updateData.content = body.content.trim();
+      updateData.content = sanitizedContent;
     }
 
     if (body.isActive !== undefined) {

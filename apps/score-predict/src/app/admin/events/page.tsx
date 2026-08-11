@@ -469,11 +469,11 @@ export default function AdminEventsPage() {
         <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">순서</th>
-              <th className="px-4 py-3">제목</th>
-              <th className="px-4 py-3">상태</th>
-              <th className="px-4 py-3">표시 기간</th>
-              <th className="px-4 py-3 text-right">작업</th>
+              <th className="whitespace-nowrap px-4 py-3">순서</th>
+              <th className="whitespace-nowrap px-4 py-3">제목</th>
+              <th className="whitespace-nowrap px-4 py-3">상태</th>
+              <th className="whitespace-nowrap px-4 py-3">표시 기간</th>
+              <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

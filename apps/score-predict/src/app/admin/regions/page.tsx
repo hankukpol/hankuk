@@ -567,7 +567,7 @@ function FireAdminRegionsPage() {
 
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">비활성 지역은 사용자 성적 입력 및 예측 대상에서 제외됩니다.</p>
-        <p className="mt-1">대구/경북만 운영하려면 해당 지역만 활성으로 두고 저장하세요.</p>
+        <p className="mt-1">현재 운영할 지역만 활성으로 두고 저장하세요.</p>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
@@ -643,11 +643,11 @@ function FireAdminRegionsPage() {
             <table className="min-w-[800px] w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">지역</th>
-                  <th className="px-4 py-3">상태</th>
-                  <th className="px-4 py-3">모집인원</th>
-                  <th className="px-4 py-3">응시번호 범위</th>
-                  <th className="px-4 py-3">참여 현황</th>
+                  <th className="whitespace-nowrap px-4 py-3">지역</th>
+                  <th className="whitespace-nowrap px-4 py-3">상태</th>
+                  <th className="whitespace-nowrap px-4 py-3">모집인원</th>
+                  <th className="whitespace-nowrap px-4 py-3">응시번호 범위</th>
+                  <th className="whitespace-nowrap px-4 py-3">참여 현황</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -842,7 +842,7 @@ function FireAdminRegionsPage() {
                       </td>
 
                       {/* 참여 현황 */}
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                         {submissionCount}명
                       </td>
                     </tr>

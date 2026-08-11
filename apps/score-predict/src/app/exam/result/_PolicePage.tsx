@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import AnalysisSubTabs from "@/app/exam/result/components/AnalysisSubTabs";
+import SuspicionReviewNotice from "@/app/exam/result/components/SuspicionReviewNotice";
 import type { ResultResponse } from "@/app/exam/result/types";
 import { useToast } from "@/components/providers/ToastProvider";
 import ShareButton from "@/components/share/ShareButton";
@@ -110,7 +111,9 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-lg font-semibold text-slate-900">내 성적 분석</h1>
-          <ShareButton submissionId={result.submission.id} sharePath="/exam/result" />
+          {!result.submission.rankingWithheld ? (
+            <ShareButton submissionId={result.submission.id} sharePath="/exam/result" />
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-slate-600">
           {result.submission.examYear}년 {result.submission.examRound}차 ·{" "}
@@ -118,6 +121,8 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
         </p>
         <p className="mt-1 text-xs text-slate-500">응시번호: {result.submission.examNumber ?? "-"}</p>
       </section>
+
+      <SuspicionReviewNotice status={result.submission.suspicionStatus} />
 
       <AnalysisSubTabs result={result} />
 
@@ -139,7 +144,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
               {result.submission.maxEditLimit}회 남음)
             </Button>
           ) : null}
-          {result.features.finalPredictionEnabled ? (
+          {result.features.finalPredictionEnabled && !result.submission.rankingWithheld ? (
             <Button
               type="button"
               variant="outline"
@@ -148,13 +153,15 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
               최종 환산 예측
             </Button>
           ) : null}
-          <Button
-            type="button"
-            className="rounded-none border border-transparent bg-slate-900 text-white shadow-sm hover:bg-slate-800"
-            onClick={() => router.push(withBrowserTenantPath("/exam/prediction", tenantType))}
-          >
-            합격예측 분석 보기
-          </Button>
+          {!result.submission.rankingWithheld ? (
+            <Button
+              type="button"
+              className="rounded-none border border-transparent bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+              onClick={() => router.push(withBrowserTenantPath("/exam/prediction", tenantType))}
+            >
+              합격예측 분석 보기
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

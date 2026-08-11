@@ -1,4 +1,4 @@
-import { ExamType, Prisma, Role } from "@prisma/client";
+import { ExamType, Prisma, Role, SubmissionScoringStatus, SubmissionSuspicionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { calculateSampleTopPercent } from "@/lib/public-sample-policy";
 import {
@@ -365,6 +365,9 @@ export async function calculatePrediction(
     regionId: true,
     examType: true,
     finalScore: true,
+    isSuspicious: true,
+    suspicionStatus: true,
+    scoringStatus: true,
     exam: {
       select: {
         id: true,
@@ -379,6 +382,7 @@ export async function calculatePrediction(
       select: {
         id: true,
         name: true,
+        isActive: true,
       },
     },
     user: {
@@ -422,6 +426,7 @@ export async function calculatePrediction(
     submission = await prisma.submission.findFirst({
       where: {
         examId: activeExam!.id,
+        suspicionStatus: SubmissionSuspicionStatus.CLEAR,
         subjectScores: {
           some: {},
           none: { isFailed: true },
@@ -440,8 +445,25 @@ export async function calculatePrediction(
     throw new PredictionError("경찰 서비스의 시험유형이 아닌 제출 데이터입니다.", 409);
   }
 
+  if (!submission.region.isActive) {
+    throw new PredictionError("비활성 지역은 합격예측을 이용할 수 없습니다.", 400);
+  }
+
+  if (submission.scoringStatus === SubmissionScoringStatus.PENDING) {
+    throw new PredictionError("채점 대기 중입니다. 가답안 발표 후 자동 채점 결과를 확인해 주세요.", 409);
+  }
+
   if (submission.subjectScores.some((subjectScore) => subjectScore.isFailed)) {
     throw new PredictionError("과락으로 인해 합격예측을 제공할 수 없습니다.", 400);
+  }
+
+  if (submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR) {
+    throw new PredictionError(
+      submission.suspicionStatus === SubmissionSuspicionStatus.REVIEW
+        ? "성적 검토 중에는 합격예측을 제공하지 않습니다. 검토 완료 후 다시 확인해 주세요."
+        : "통계 제외 성적으로 분류되어 합격예측을 제공하지 않습니다. 관리자에게 문의해 주세요.",
+      400
+    );
   }
 
   const quota = await prisma.examRegionQuota.findUnique({

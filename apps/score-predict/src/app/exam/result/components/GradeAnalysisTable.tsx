@@ -38,8 +38,10 @@ function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-function formatSamplePercent(value: number, available: boolean): string {
-  return available ? formatPercent(value) : "표본 축적 중";
+function formatSamplePercent(value: number | null, available: boolean): string {
+  if (value === null) return "표시 보류";
+  if (!available) return "표본 축적 중";
+  return formatPercent(value);
 }
 
 function formatStat(value: number): string {

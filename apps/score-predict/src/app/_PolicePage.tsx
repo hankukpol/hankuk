@@ -31,13 +31,18 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
     }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const regionalScope = {
+      region: {
+        isActive: true,
+      },
+    };
     const [totalParticipants, examTypeStats, recentParticipants, latestSubmission, latestRelease] = await Promise.all([
       prisma.submission.count({
-        where: { examId: activeExam.id },
+        where: { examId: activeExam.id, ...regionalScope },
       }),
       prisma.submission.groupBy({
         by: ["examType"],
-        where: { examId: activeExam.id },
+        where: { examId: activeExam.id, ...regionalScope },
         _count: {
           _all: true,
         },
@@ -45,11 +50,12 @@ async function getLiveStats(): Promise<LandingLiveStats | null> {
       prisma.submission.count({
         where: {
           examId: activeExam.id,
+          ...regionalScope,
           createdAt: { gte: oneHourAgo },
         },
       }),
       prisma.submission.findFirst({
-        where: { examId: activeExam.id },
+        where: { examId: activeExam.id, ...regionalScope },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
@@ -97,7 +103,13 @@ async function getHasSubmission(userId: number): Promise<boolean> {
   }
 
   const submissionCount = await prisma.submission.count({
-    where: { userId, examId: activeExam.id },
+    where: {
+      userId,
+      examId: activeExam.id,
+      region: {
+        isActive: true,
+      },
+    },
   });
 
   return submissionCount > 0;
@@ -142,7 +154,6 @@ export default async function HomePage() {
   const mainCardLiveStatsEnabled = Boolean(siteSettings["site.mainCardLiveStatsEnabled"] ?? true);
   const noticesEnabled = examSurfaceState.noticesEnabled;
   const tabEnabled = examSurfaceState.tabEnabled;
-  const tabLockedMessage = examSurfaceState.tabLockedMessage;
   const preRegistrationEnabled = Boolean(siteSettings["site.preRegistrationEnabled"] ?? true);
   const answerInputEnabled = Boolean(siteSettings["site.answerInputEnabled"] ?? false);
   const operationStage = resolveExamOperationStage({
@@ -236,7 +247,6 @@ export default async function HomePage() {
             finalPredictionEnabled={finalPredictionEnabled}
             commentsEnabled={commentsEnabled}
             tabEnabled={tabEnabled}
-            tabLockedMessage={tabLockedMessage}
           />
         </div>
       </section>

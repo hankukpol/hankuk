@@ -25,12 +25,18 @@ export default function ParticipantStatus({ participantStatus }: ParticipantStat
       <h2 className="text-base font-semibold text-slate-900">참여 현황</h2>
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
         <p>현재 참여자: {participantStatus.totalParticipants.toLocaleString("ko-KR")}명</p>
-        <p>
-          내 현재 석차: {participantStatus.currentRank.toLocaleString("ko-KR")}등
-          {participantStatus.percentileAvailable
-            ? ` (상위 ${participantStatus.topPercent.toFixed(1)}% / 백분위 ${participantStatus.percentile.toFixed(1)}%)`
-            : " (상위 비율은 유효 입력자 15명부터 표시)"}
-        </p>
+        {participantStatus.currentRank === null ? (
+          <p className="font-medium text-amber-700">내 현재 석차: 관리자 검토 완료 후 표시</p>
+        ) : (
+          <p>
+            내 현재 석차: {participantStatus.currentRank.toLocaleString("ko-KR")}등
+            {participantStatus.percentileAvailable &&
+            participantStatus.topPercent !== null &&
+            participantStatus.percentile !== null
+              ? ` (상위 ${participantStatus.topPercent.toFixed(1)}% / 백분위 ${participantStatus.percentile.toFixed(1)}%)`
+              : " (상위 비율은 유효 입력자 15명부터 표시)"}
+          </p>
+        )}
         <p>마지막 업데이트: {formatDateTime(participantStatus.lastUpdated)}</p>
       </div>
       <p className="mt-3 text-xs text-slate-500">

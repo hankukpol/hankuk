@@ -259,7 +259,7 @@ export async function POST(request: Request) {
 
     const region = await prisma.region.findUnique({
       where: { id: regionId },
-      select: { id: true, isActive: true },
+      select: { id: true, name: true, isActive: true },
     });
     if (!region) {
       return NextResponse.json({ error: "선택한 지역을 찾을 수 없습니다." }, { status: 404 });
@@ -267,7 +267,6 @@ export async function POST(request: Request) {
     if (!region.isActive) {
       return NextResponse.json({ error: "비활성화된 지역은 사전등록할 수 없습니다." }, { status: 400 });
     }
-
     const examNumber = parseExamNumber(body.examNumber);
     if (!examNumber) {
       return NextResponse.json({ error: "수험번호는 필수 입력 항목입니다." }, { status: 400 });

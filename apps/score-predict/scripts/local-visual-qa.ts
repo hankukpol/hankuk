@@ -280,6 +280,30 @@ async function verifyMainAtViewport(
   await gotoWithRetry(page, `http://${tenantType}.localhost:3200/exam/main`, { waitUntil: "networkidle" });
   await verifyTenantPalette(page, tenantType, `${tenantType} main`);
   await page.getByRole("heading", { name: "채점자 성적분포도" }).waitFor();
+  const settingsPayload = await page.evaluate(async () => {
+    const response = await fetch("/api/site-settings", { cache: "no-store" });
+    return (await response.json()) as { settings?: Record<string, unknown> };
+  });
+  const settings = settingsPayload.settings ?? {};
+  const tabVisibility = [
+    { label: "풀서비스 메인", enabled: settings["site.tabMainEnabled"] !== false },
+    { label: "응시정보 입력", enabled: settings["site.tabInputEnabled"] !== false },
+    { label: "내 성적 분석", enabled: settings["site.tabResultEnabled"] !== false },
+    { label: "최종 예상 컷", enabled: settings["site.finalPredictionEnabled"] === true },
+    { label: "합격 예측 정보", enabled: settings["site.tabPredictionEnabled"] !== false },
+    { label: "실시간 댓글", enabled: settings["site.commentsEnabled"] !== false },
+    { label: "공지사항", enabled: settings["site.tabNoticesEnabled"] !== false },
+    { label: "FAQ", enabled: settings["site.tabFaqEnabled"] !== false },
+  ];
+  const tabNavigation = page.locator("#exam-functions > div").first();
+  for (const tab of tabVisibility) {
+    const count = await tabNavigation.getByRole("button", { name: tab.label, exact: true }).count();
+    assert(
+      count === (tab.enabled ? 1 : 0),
+      `${tenantType} ${tab.label} tab visibility does not match the admin setting.`
+    );
+  }
+  assert(await tabNavigation.locator("svg").count() === 0, `${tenantType} unopened tab lock icon is visible.`);
   const bodyText = await page.locator("body").innerText();
   if (tenantType === "police") {
     assert(bodyText.includes("헌법") && bodyText.includes("형사법") && bodyText.includes("경찰학"), "Police distribution subjects are missing.");
@@ -309,7 +333,11 @@ async function verifyMainAtViewport(
     );
     throw new Error(`${tenantType} ${width}px has horizontal overflow: ${JSON.stringify(overflowDetails)}`);
   }
-  record(`${tenantType}-main-${width}`, true, `tenant palette and subjects separated, no horizontal overflow, ${filename}`);
+  record(
+    `${tenantType}-main-${width}`,
+    true,
+    `tenant palette and subjects separated, unopened tabs hidden without lock icons, no horizontal overflow, ${filename}`
+  );
   await page.close();
 }
 

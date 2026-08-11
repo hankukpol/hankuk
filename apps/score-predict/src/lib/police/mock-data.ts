@@ -5,6 +5,7 @@ import {
   Gender,
   Prisma,
   Role,
+  SubmissionSuspicionStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -22,6 +23,8 @@ interface SubjectInfo {
   id: number;
   name: string;
   examType: ExamType;
+  questionCount: number;
+  pointPerQuestion: number;
   maxScore: number;
 }
 
@@ -47,8 +50,12 @@ interface SubmissionDraft {
   bonusType: BonusType;
   bonusRate: number;
   finalScore: number;
+  isSuspicious: boolean;
+  suspiciousReason: string | null;
+  submitDurationMs: number;
   subjectScores: Array<{
     subjectId: number;
+    correctCount: number;
     rawScore: number;
     isFailed: boolean;
     rating: DifficultyRatingLevel;
@@ -89,6 +96,7 @@ export interface GenerateMockDataResult {
     users: number;
     submissions: number;
     subjectScores: number;
+    userAnswers: number;
     difficultyRatings: number;
     finalPredictions: number;
   };
@@ -130,16 +138,11 @@ function randomGender(): Gender {
   return Math.random() < 0.7 ? Gender.MALE : Gender.FEMALE;
 }
 
-function chooseBonusType(recruitCount: number): BonusType {
-  const roll = Math.random();
-  if (roll < 0.8) return BonusType.NONE;
-  if (roll < 0.9) return BonusType.VETERAN_5;
-  if (roll < 0.95) return BonusType.VETERAN_10;
-
-  if (recruitCount >= 10) {
-    return roll < 0.975 ? BonusType.HERO_3 : BonusType.HERO_5;
-  }
-
+function chooseBonusType(recruitCount: number, localIndex: number): BonusType {
+  if (localIndex === 2) return BonusType.VETERAN_5;
+  if (localIndex === 3) return BonusType.VETERAN_10;
+  if (localIndex === 4 && recruitCount >= 10) return BonusType.HERO_3;
+  if (localIndex === 5 && recruitCount >= 10) return BonusType.HERO_5;
   return BonusType.NONE;
 }
 
@@ -251,12 +254,17 @@ function createScoreDraft(
       percent = clamp(percent - 0.28, 0.18, 0.5);
     }
 
-    const rawScore = roundOne(subject.maxScore * percent);
+    const correctCount = Math.max(
+      0,
+      Math.min(subject.questionCount, Math.round(subject.questionCount * percent))
+    );
+    const rawScore = roundOne(correctCount * subject.pointPerQuestion);
     const isFailed = rawScore < subject.maxScore * 0.4;
     const rating = pickDifficultyByPercent((rawScore / subject.maxScore) * 100);
 
     return {
       subjectId: subject.id,
+      correctCount,
       rawScore,
       isFailed,
       rating,
@@ -439,9 +447,11 @@ export async function generateMockData(
   const resetBeforeGenerate = options.resetBeforeGenerate !== false;
   const includeFinalPredictionMock = options.includeFinalPredictionMock !== false;
 
-  const [regionsRaw, quotas, subjects] = await Promise.all([
+  const [regionsRaw, quotas, subjects, answerKeys] = await Promise.all([
     prisma.region.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+      },
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -458,7 +468,18 @@ export async function generateMockData(
         id: true,
         name: true,
         examType: true,
+        questionCount: true,
+        pointPerQuestion: true,
         maxScore: true,
+      },
+    }),
+    prisma.answerKey.findMany({
+      where: { examId: targetExam.id },
+      orderBy: [{ subjectId: "asc" }, { questionNumber: "asc" }],
+      select: {
+        subjectId: true,
+        questionNumber: true,
+        correctAnswer: true,
       },
     }),
   ]);
@@ -509,6 +530,11 @@ export async function generateMockData(
     for (const examType of examTypes) {
       const subjectsOfType = subjectsByType[examType] ?? [];
       if (subjectsOfType.length < 1) continue;
+      const hasCompleteAnswerKeys = subjectsOfType.every(
+        (subject) =>
+          answerKeys.filter((key) => key.subjectId === subject.id).length === subject.questionCount
+      );
+      if (!hasCompleteAnswerKeys) continue;
 
       const recruitCount =
         examType === ExamType.PUBLIC ? region.recruitCount : region.recruitCountCareer;
@@ -517,17 +543,63 @@ export async function generateMockData(
       const perRegionCount = examType === ExamType.PUBLIC ? publicPerRegion : careerPerRegion;
       const maxTotal = subjectsOfType.reduce((sum, subject) => sum + subject.maxScore, 0);
       const regionBias = ((regionIndex % 9) - 4) * 0.028;
+      let tieAnchor: {
+        subjectScores: SubmissionDraft["subjectScores"];
+        totalScore: number;
+        bonusType: BonusType;
+        bonusRate: number;
+        finalScore: number;
+      } | null = null;
 
       for (let localIndex = 0; localIndex < perRegionCount; localIndex += 1) {
         serial += 1;
         const rankRatio = perRegionCount > 1 ? localIndex / (perRegionCount - 1) : 0;
         const basePercent = 0.92 - rankRatio * 0.36 + regionBias + (Math.random() - 0.5) * 0.03;
         const scorePercent = clamp(basePercent, 0.4, 0.98);
-        const subjectScores = createScoreDraft(subjectsOfType, scorePercent, rankRatio > 0.82);
+        const isCutoffScenario = localIndex === perRegionCount - 1;
+        const isSuspiciousScenario = localIndex === perRegionCount - 2;
+        let subjectScores = createScoreDraft(
+          subjectsOfType,
+          scorePercent,
+          rankRatio > 0.82 && !isCutoffScenario && !isSuspiciousScenario
+        );
 
-        const totalScore = roundOne(subjectScores.reduce((sum, item) => sum + item.rawScore, 0));
-        const bonusType = chooseBonusType(recruitCount);
-        const bonusRate = bonusRateOf(bonusType);
+        if (isCutoffScenario && subjectScores.length > 0) {
+          const cutoffSubject = subjectsOfType[0];
+          const correctCount = Math.floor(cutoffSubject.questionCount * 0.3);
+          const rawScore = roundOne(correctCount * cutoffSubject.pointPerQuestion);
+          subjectScores = [
+            {
+              ...subjectScores[0],
+              correctCount,
+              rawScore,
+              isFailed: true,
+              rating: pickDifficultyByPercent(30),
+            },
+            ...subjectScores.slice(1),
+          ];
+        } else if (isSuspiciousScenario) {
+          subjectScores = subjectScores.map((score) => {
+            const subject = subjectsOfType.find((candidate) => candidate.id === score.subjectId);
+            if (!subject) return score;
+            const correctCount = Math.max(
+              score.correctCount,
+              Math.ceil(subject.questionCount * 0.45)
+            );
+            const rawScore = roundOne(correctCount * subject.pointPerQuestion);
+            return {
+              ...score,
+              correctCount,
+              rawScore,
+              isFailed: false,
+              rating: pickDifficultyByPercent((rawScore / subject.maxScore) * 100),
+            };
+          });
+        }
+
+        let totalScore = roundOne(subjectScores.reduce((sum, item) => sum + item.rawScore, 0));
+        let bonusType = chooseBonusType(recruitCount, localIndex);
+        let bonusRate = bonusRateOf(bonusType);
         const hasSubjectCutoff = subjectScores.some((item) => item.isFailed);
         const bonusScore = hasSubjectCutoff
           ? 0
@@ -540,7 +612,26 @@ export async function generateMockData(
                 return sum + subject.maxScore * bonusRate;
               }, 0)
             );
-        const finalScore = roundTwo(totalScore + bonusScore);
+        let finalScore = roundTwo(totalScore + bonusScore);
+
+        if (localIndex === 0) {
+          bonusType = BonusType.NONE;
+          bonusRate = 0;
+          finalScore = totalScore;
+          tieAnchor = {
+            subjectScores: subjectScores.map((score) => ({ ...score })),
+            totalScore,
+            bonusType,
+            bonusRate,
+            finalScore,
+          };
+        } else if (localIndex === 1 && tieAnchor) {
+          subjectScores = tieAnchor.subjectScores.map((score) => ({ ...score }));
+          totalScore = tieAnchor.totalScore;
+          bonusType = tieAnchor.bonusType;
+          bonusRate = tieAnchor.bonusRate;
+          finalScore = tieAnchor.finalScore;
+        }
 
         const phone = `${MOCK_PHONE_PREFIX}${runPhoneSeed}${String(serial).padStart(4, "0")}`;
         const examNumber = `${MOCK_EXAM_NUMBER_PREFIX}-${targetExam.id}-${runKey}-${region.id}-${examType}-${String(
@@ -564,6 +655,11 @@ export async function generateMockData(
           bonusType,
           bonusRate,
           finalScore: clamp(finalScore, 0, maxTotal * 1.12),
+          isSuspicious: isSuspiciousScenario,
+          suspiciousReason: isSuspiciousScenario
+            ? "[MOCK] 반복·편중 답안으로 자동 제외된 표본"
+            : null,
+          submitDurationMs: isSuspiciousScenario ? 1500 : 90_000 + localIndex * 1000,
           subjectScores,
         });
       }
@@ -618,6 +714,13 @@ export async function generateMockData(
         bonusType: draft.bonusType,
         bonusRate: draft.bonusRate,
         finalScore: draft.finalScore,
+        isSuspicious: draft.isSuspicious,
+        suspiciousReason: draft.suspiciousReason,
+        suspicionStatus: draft.isSuspicious
+          ? SubmissionSuspicionStatus.EXCLUDED
+          : SubmissionSuspicionStatus.CLEAR,
+        suspicionAutoReason: draft.suspiciousReason,
+        submitDurationMs: draft.submitDurationMs,
       };
     });
 
@@ -645,6 +748,7 @@ export async function generateMockData(
     );
 
     const subjectScoreRows: Prisma.SubjectScoreCreateManyInput[] = [];
+    const userAnswerRows: Prisma.UserAnswerCreateManyInput[] = [];
     const difficultyRows: Prisma.DifficultyRatingCreateManyInput[] = [];
     const finalPredictionSeeds: FinalPredictionSeedRow[] = [];
 
@@ -672,6 +776,22 @@ export async function generateMockData(
           subjectId: score.subjectId,
           rating: score.rating,
         });
+
+        const subjectAnswerKeys = answerKeys.filter((key) => key.subjectId === score.subjectId);
+        const subject = subjects.find((item) => item.id === score.subjectId);
+        if (!subject || subjectAnswerKeys.length !== subject.questionCount) {
+          throw new Error(`목업 OMR 생성에 필요한 확정답안이 부족합니다. subjectId=${score.subjectId}`);
+        }
+        for (const [answerIndex, key] of subjectAnswerKeys.entries()) {
+          const isCorrect = answerIndex < score.correctCount;
+          userAnswerRows.push({
+            submissionId,
+            subjectId: score.subjectId,
+            questionNumber: key.questionNumber,
+            selectedAnswer: isCorrect ? key.correctAnswer : (key.correctAnswer % 4) + 1,
+            isCorrect,
+          });
+        }
       }
 
       if (includeFinalPredictionMock) {
@@ -687,6 +807,12 @@ export async function generateMockData(
 
     for (const chunk of chunkArray(subjectScoreRows, 1000)) {
       await tx.subjectScore.createMany({
+        data: chunk,
+      });
+    }
+
+    for (const chunk of chunkArray(userAnswerRows, 1000)) {
+      await tx.userAnswer.createMany({
         data: chunk,
       });
     }
@@ -731,6 +857,7 @@ export async function generateMockData(
         users: createdUsers.length,
         submissions: createdSubmissions.length,
         subjectScores: subjectScoreRows.length,
+        userAnswers: userAnswerRows.length,
         difficultyRatings: difficultyRows.length,
         finalPredictions: createdFinalPredictionCount,
       },

@@ -329,15 +329,15 @@ export default function AdminCommentsPage() {
           <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-3">
+                <th className="whitespace-nowrap px-4 py-3">
                   <input type="checkbox" checked={isAllChecked} onChange={toggleSelectAll} />
                 </th>
-                <th className="px-4 py-3">작성자</th>
-                <th className="px-4 py-3">연락처</th>
-                <th className="px-4 py-3">시험</th>
-                <th className="px-4 py-3">내용</th>
-                <th className="px-4 py-3">작성일</th>
-                <th className="px-4 py-3 text-right">삭제</th>
+                <th className="whitespace-nowrap px-4 py-3">작성자</th>
+                <th className="whitespace-nowrap px-4 py-3">연락처</th>
+                <th className="whitespace-nowrap px-4 py-3">시험</th>
+                <th className="whitespace-nowrap px-4 py-3">내용</th>
+                <th className="whitespace-nowrap px-4 py-3">작성일</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">삭제</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

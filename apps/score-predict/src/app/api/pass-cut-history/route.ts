@@ -155,8 +155,20 @@ export async function GET(request: NextRequest) {
     },
     select: {
       recruitAcademicCombined: true,
+      region: {
+        select: {
+          name: true,
+          isActive: true,
+        },
+      },
     },
   });
+  if (tenantType === "police" && !quota?.region.isActive) {
+    return NextResponse.json(
+      { error: "비활성 지역은 합격컷 이력을 조회할 수 없습니다." },
+      { status: 400 }
+    );
+  }
   const cohortGenderResolved = resolveCohortGender({
     tenantType,
     examType,

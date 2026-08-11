@@ -6,8 +6,10 @@ import {
   Gender,
   PrismaClient,
   Role,
+  SubmissionSuspicionStatus,
 } from "@prisma/client";
 import { POLICE_PREDICTION_MODEL_VERSION } from "../src/lib/police/prediction-model";
+import { POLICE_REGION_ORDER } from "../src/lib/police/regions";
 
 type TenantType = "police" | "fire";
 
@@ -186,29 +188,50 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
       },
     });
 
-    const regionNames = tenantType === "police" ? ["서울", "부산", "경기남부", "경북"] : ["서울", "부산", "경기"];
-    const regions = [];
+    const activePoliceRegionNames = new Set(["대구", "경북"]);
+    const regionNames = tenantType === "police" ? [...POLICE_REGION_ORDER] : ["서울", "부산", "경기"];
+    const allRegions = [];
     for (const name of regionNames) {
-      regions.push(await prisma.region.create({ data: { name, isActive: true } }));
+      allRegions.push(
+        await prisma.region.create({
+          data: {
+            name,
+            isActive: tenantType === "police" ? activePoliceRegionNames.has(name) : true,
+          },
+        })
+      );
     }
+    const regions = allRegions.filter((region) => region.isActive);
 
     for (const [index, region] of regions.entries()) {
+      const policeQuota = region.name === "대구"
+        ? {
+            recruitCount: 46,
+            recruitCountCareer: 3,
+            applicantCount: 1045,
+            applicantCountCareer: 45,
+            examNumberStart: "2026004000",
+            examNumberEnd: "2026004999",
+            examNumberStartCareer: "2026104000",
+            examNumberEndCareer: "2026104999",
+          }
+        : {
+            recruitCount: 192,
+            recruitCountCareer: 9,
+            applicantCount: 1595,
+            applicantCountCareer: 56,
+            examNumberStart: "2026003000",
+            examNumberEnd: "2026003999",
+            examNumberStartCareer: "2026103000",
+            examNumberEndCareer: "2026103999",
+          };
       await prisma.examRegionQuota.create({
         data:
           tenantType === "police"
             ? {
                 examId: exam.id,
                 regionId: region.id,
-                recruitCount: 20 + index * 5,
-                recruitCountCareer: 8 + index * 2,
-                applicantCount: 180 + index * 25,
-                applicantCountCareer: 54 + index * 10,
-                ...(region.name === "경북"
-                  ? {
-                      examNumberStart: "2026003000",
-                      examNumberEnd: "2026003999",
-                    }
-                  : {}),
+                ...policeQuota,
               }
             : {
                 examId: exam.id,
@@ -294,8 +317,12 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
           bonusRate: declaredBonusRate,
           certificateBonus: 0,
           finalScore,
-          isSuspicious,
-          suspiciousReason: isSuspicious ? "LOCAL_FIXED_SUSPICIOUS_SAMPLE" : null,
+           isSuspicious,
+           suspiciousReason: isSuspicious ? "LOCAL_FIXED_SUSPICIOUS_SAMPLE" : null,
+           suspicionStatus: isSuspicious
+             ? SubmissionSuspicionStatus.EXCLUDED
+             : SubmissionSuspicionStatus.CLEAR,
+           suspicionAutoReason: isSuspicious ? "LOCAL_FIXED_SUSPICIOUS_SAMPLE" : null,
           submitDurationMs: isSuspicious ? 500 : 90_000 + index * 1000,
         },
       });

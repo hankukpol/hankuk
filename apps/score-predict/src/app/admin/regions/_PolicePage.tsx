@@ -168,7 +168,7 @@ export default function PoliceAdminRegionsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">경찰 지역 및 모집인원 관리</h1>
           <p className="mt-1 text-sm text-slate-600">
-            공채와 경행경채 모집인원, 출원인원, 응시번호 범위를 관리합니다.
+            전국 지역의 활성 상태와 공채·경행경채 모집인원, 출원인원, 응시번호 범위를 관리합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -209,18 +209,23 @@ export default function PoliceAdminRegionsPage() {
           등록된 경찰 지역이 없습니다.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1180px] w-full text-sm">
+        <div className="space-y-3">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            활성 지역만 학생의 지역 선택·성적 제출·합격예측에 표시됩니다. 현재 운영할 지역만 활성으로 두고 저장하세요.
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="overflow-x-auto">
+              <table className="min-w-[1280px] w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-700">
                 <tr>
-                  <th className="px-4 py-3">지역</th>
-                  <th className="px-4 py-3">직렬</th>
-                  <th className="px-4 py-3">모집인원</th>
-                  <th className="px-4 py-3">출원인원</th>
-                  <th className="px-4 py-3">응시번호 시작</th>
-                  <th className="px-4 py-3">응시번호 끝</th>
-                  <th className="px-4 py-3">참여</th>
+                  <th className="w-28 whitespace-nowrap px-4 py-3">지역</th>
+                  <th className="w-28 whitespace-nowrap px-4 py-3">운영 상태</th>
+                  <th className="w-24 whitespace-nowrap px-4 py-3">직렬</th>
+                  <th className="whitespace-nowrap px-4 py-3">모집인원</th>
+                  <th className="whitespace-nowrap px-4 py-3">출원인원</th>
+                  <th className="whitespace-nowrap px-4 py-3">응시번호 시작</th>
+                  <th className="whitespace-nowrap px-4 py-3">응시번호 끝</th>
+                  <th className="w-24 whitespace-nowrap px-4 py-3 text-right">참여</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -246,10 +251,30 @@ export default function PoliceAdminRegionsPage() {
                     },
                   ]).map((cohort, index) => (
                     <tr key={`${row.id}-${cohort.key}`} className="align-top">
-                      <td className="px-4 py-3 font-medium text-slate-900">
+                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
                         {index === 0 ? row.name : ""}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{cohort.label}</td>
+                      {index === 0 ? (
+                        <td className="whitespace-nowrap px-4 py-3" rowSpan={2}>
+                          <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap font-medium text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={row.isActive}
+                              onChange={(event) =>
+                                setRows((current) =>
+                                  current.map((item) =>
+                                    item.id === row.id ? { ...item, isActive: event.target.checked } : item
+                                  )
+                                )
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-police-600 focus:ring-police-500"
+                              aria-label={`${row.name} 지역 활성화`}
+                            />
+                            {row.isActive ? "활성" : "비활성"}
+                          </label>
+                        </td>
+                      ) : null}
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">{cohort.label}</td>
                       <td className="px-4 py-3">
                         <Input
                           type="number"
@@ -287,12 +312,15 @@ export default function PoliceAdminRegionsPage() {
                           aria-label={`${row.name} ${cohort.label} 응시번호 끝`}
                         />
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{cohort.participants}명</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700">
+                        {cohort.participants}명
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -21,8 +21,8 @@ export interface ResultScore {
   finalScore: number;
   isCutoff: boolean;
   cutoffScore: number;
-  rank: number;
-  percentile: number;
+  rank: number | null;
+  percentile: number | null;
   totalParticipants: number;
   difficulty: DifficultyLevel | null;
   answers: ResultSubjectAnswer[];
@@ -55,7 +55,7 @@ export interface ResultResponse {
     examName: string;
     examYear: number;
     examRound: number;
-    examType: "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+    examType: "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
     regionId: number;
     regionName: string;
     gender: "MALE" | "FEMALE";
@@ -63,6 +63,9 @@ export interface ResultResponse {
     totalScore: number;
     finalScore: number;
     scoringStatus: "PENDING" | "SCORED";
+    isSuspicious: boolean;
+    suspicionStatus: "CLEAR" | "REVIEW" | "EXCLUDED";
+    rankingWithheld: boolean;
     bonusType: "NONE" | "VETERAN_5" | "VETERAN_10" | "HERO_3" | "HERO_5";
     bonusRate: number;
     certificateBonus: number;
@@ -73,18 +76,18 @@ export interface ResultResponse {
   scores: ResultScore[];
   subjectCorrectRateSummaries: ResultSubjectCorrectRateSummary[];
   analysisSummary: {
-    examType: "PUBLIC" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
+    examType: "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
     subjects: Array<{
       subjectId: number;
       subjectName: string;
       myScore: number;
       maxScore: number;
-      myRank: number;
+      myRank: number | null;
       totalParticipants: number;
       correctCount: number;
       questionCount: number;
-      topPercent: number;
-      percentile: number;
+      topPercent: number | null;
+      percentile: number | null;
       percentileAvailable: boolean;
       averageScore: number;
       highestScore: number;
@@ -95,12 +98,12 @@ export interface ResultResponse {
     total: {
       myScore: number;
       maxScore: number;
-      myRank: number;
+      myRank: number | null;
       totalParticipants: number;
       correctCount: number;
       questionCount: number;
-      topPercent: number;
-      percentile: number;
+      topPercent: number | null;
+      percentile: number | null;
       percentileAvailable: boolean;
       averageScore: number;
       highestScore: number;
@@ -110,10 +113,10 @@ export interface ResultResponse {
     };
   };
   participantStatus: {
-    currentRank: number;
+    currentRank: number | null;
     totalParticipants: number;
-    topPercent: number;
-    percentile: number;
+    topPercent: number | null;
+    percentile: number | null;
     percentileAvailable: boolean;
     lastUpdated: string;
   };
@@ -133,9 +136,9 @@ export interface ResultResponse {
   } | null;
   statistics: {
     totalParticipants: number;
-    totalRank: number;
-    topPercent: number;
-    totalPercentile: number;
+    totalRank: number | null;
+    topPercent: number | null;
+    totalPercentile: number | null;
     percentileAvailable: boolean;
     hasCutoff: boolean;
     rankingBasis: "ALL_PARTICIPANTS" | "NON_CUTOFF_PARTICIPANTS";

@@ -92,6 +92,9 @@ export async function capturePoliceCalibrationSnapshots(params: {
     where: {
       examId: params.examId,
       ...(params.regionId ? { regionId: params.regionId } : {}),
+      region: {
+        isActive: true,
+      },
     },
     select: {
       regionId: true,

@@ -157,5 +157,10 @@ body[data-tenant="fire"] {
   }
   body {
     @apply bg-background text-foreground;
+    /* 한글은 어절(공백) 단위로만 줄바꿈한다. keep-all 이 없으면 "비활성"이
+       "비활 / 성"처럼 단어 중간에서 잘린다. 공백 없는 긴 토큰(URL 등)은
+       overflow-wrap 으로 넘침을 막는다. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
 }

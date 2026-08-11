@@ -295,12 +295,12 @@ export default function AdminPassCutPage() {
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">차수</th>
-              <th className="px-4 py-3">발표일시</th>
-              <th className="px-4 py-3">참여자</th>
-              <th className="px-4 py-3">스냅샷</th>
-              <th className="px-4 py-3">발표자</th>
-              <th className="px-4 py-3">메모</th>
+              <th className="whitespace-nowrap px-4 py-3">차수</th>
+              <th className="whitespace-nowrap px-4 py-3">발표일시</th>
+              <th className="whitespace-nowrap px-4 py-3">참여자</th>
+              <th className="whitespace-nowrap px-4 py-3">스냅샷</th>
+              <th className="whitespace-nowrap px-4 py-3">발표자</th>
+              <th className="whitespace-nowrap px-4 py-3">메모</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -315,10 +315,10 @@ export default function AdminPassCutPage() {
                 <tr key={release.id} className="bg-white">
                   <td className="px-4 py-3 font-semibold text-slate-900">{release.releaseNumber}차</td>
                   <td className="px-4 py-3 text-slate-700">{formatDateTime(release.releasedAt)}</td>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                     {release.participantCount.toLocaleString("ko-KR")}명
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{release.snapshotCount.toLocaleString("ko-KR")}건</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-700">{release.snapshotCount.toLocaleString("ko-KR")}건</td>
                   <td className="px-4 py-3 text-slate-700">{release.createdBy.name}</td>
                   <td className="px-4 py-3 text-slate-700">{release.memo ?? "-"}</td>
                 </tr>

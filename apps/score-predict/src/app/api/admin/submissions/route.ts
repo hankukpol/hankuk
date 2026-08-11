@@ -1,4 +1,4 @@
-import { ExamType } from "@prisma/client";
+import { ExamType, SubmissionSuspicionStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
@@ -9,6 +9,7 @@ import {
   TENANT_EXAM_TYPES,
 } from "@/lib/tenant-exam";
 import type { TenantType } from "@/lib/tenant";
+import { getClientIp } from "@/lib/request-ip";
 import {
   isActiveExamRouteError,
   lockActiveExamStateForWrite,
@@ -67,6 +68,12 @@ export async function GET(request: NextRequest) {
     const examType = parseExamType(guard.tenantType, searchParams.get("examType"));
     const search = searchParams.get("search")?.trim() ?? "";
     const suspicious = searchParams.get("suspicious");
+    const suspicionStatusValue = searchParams.get("suspicionStatus");
+    const suspicionStatus = Object.values(SubmissionSuspicionStatus).includes(
+      suspicionStatusValue as SubmissionSuspicionStatus
+    )
+      ? (suspicionStatusValue as SubmissionSuspicionStatus)
+      : null;
 
     if (searchParams.get("examType") && !examType) {
       return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
@@ -77,6 +84,7 @@ export async function GET(request: NextRequest) {
       ...(examId ? { examId } : {}),
       ...(regionId ? { regionId } : {}),
       ...(userId ? { userId } : {}),
+      ...(suspicionStatus ? { suspicionStatus } : {}),
       ...(suspicious === "true"
         ? { isSuspicious: true }
         : suspicious === "false"
@@ -116,6 +124,10 @@ export async function GET(request: NextRequest) {
             bonusRate: true,
             isSuspicious: true,
             suspiciousReason: true,
+            suspicionStatus: true,
+            suspicionManualDecision: true,
+            suspicionReviewNote: true,
+            suspicionReviewedAt: true,
             createdAt: true,
             user: {
               select: {
@@ -175,6 +187,10 @@ export async function GET(request: NextRequest) {
         bonusRate: Number(submission.bonusRate),
         isSuspicious: submission.isSuspicious,
         suspiciousReason: submission.suspiciousReason,
+        suspicionStatus: submission.suspicionStatus,
+        suspicionManualDecision: submission.suspicionManualDecision,
+        suspicionReviewNote: submission.suspicionReviewNote,
+        suspicionReviewedAt: submission.suspicionReviewedAt,
         hasCutoff: submission.subjectScores.length > 0,
         createdAt: submission.createdAt,
       })),
@@ -182,6 +198,108 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("관리자 제출 목록 조회 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "제출 목록 조회에 실패했습니다." }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const guard = await requireAdminRoute();
+  if ("error" in guard) return guard.error;
+  const featureError = await requireAdminSiteFeature("submissions");
+  if (featureError) return featureError;
+
+  const { searchParams } = new URL(request.url);
+  const submissionId = parsePositiveInt(searchParams.get("id"));
+  if (!submissionId) {
+    return NextResponse.json({ error: "판정할 제출 ID가 필요합니다." }, { status: 400 });
+  }
+
+  const adminUserId = Number(guard.session.user.id);
+  if (!Number.isInteger(adminUserId) || adminUserId < 1) {
+    return NextResponse.json({ error: "관리자 정보를 확인할 수 없습니다." }, { status: 401 });
+  }
+
+  try {
+    const body = (await request.json()) as { decision?: unknown; note?: unknown };
+    const decision = body.decision === "CLEAR" || body.decision === "EXCLUDE"
+      ? body.decision
+      : null;
+    const note = typeof body.note === "string" ? body.note.trim() : "";
+
+    if (!decision) {
+      return NextResponse.json(
+        { error: "판정은 정상 처리 또는 통계 제외 중에서 선택해 주세요." },
+        { status: 400 }
+      );
+    }
+    if (note.length > 500) {
+      return NextResponse.json({ error: "판정 메모는 500자 이내로 입력해 주세요." }, { status: 400 });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const submission = await tx.submission.findFirst({
+        where: {
+          id: submissionId,
+          examType: { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
+        },
+        select: {
+          id: true,
+          suspicionStatus: true,
+          suspicionAutoReason: true,
+        },
+      });
+      if (!submission) {
+        throw new AdminSubmissionWriteError("제출 데이터를 찾을 수 없습니다.", 404);
+      }
+
+      const nextStatus = decision === "EXCLUDE"
+        ? SubmissionSuspicionStatus.EXCLUDED
+        : SubmissionSuspicionStatus.CLEAR;
+      const reviewedAt = new Date();
+
+      await tx.submission.update({
+        where: { id: submission.id },
+        data: {
+          isSuspicious: decision === "EXCLUDE",
+          suspicionStatus: nextStatus,
+          suspicionManualDecision: true,
+          suspicionReviewNote: note || null,
+          suspicionReviewedAt: reviewedAt,
+          suspiciousReason:
+            decision === "EXCLUDE"
+              ? note || submission.suspicionAutoReason || "관리자 통계 제외 판정"
+              : submission.suspicionAutoReason,
+        },
+      });
+
+      await tx.submissionLog.create({
+        data: {
+          submissionId: submission.id,
+          userId: adminUserId,
+          action: decision === "EXCLUDE" ? "SUSPICION_EXCLUDE" : "SUSPICION_CLEAR",
+          ipAddress: getClientIp(request),
+          changedFields: JSON.stringify({
+            previousStatus: submission.suspicionStatus,
+            nextStatus,
+            note: note || null,
+          }),
+        },
+      });
+
+      return { nextStatus, reviewedAt };
+    });
+
+    return NextResponse.json({
+      success: true,
+      submissionId,
+      suspicionStatus: result.nextStatus,
+      reviewedAt: result.reviewedAt,
+    });
+  } catch (error) {
+    if (error instanceof AdminSubmissionWriteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("성적 의심 판정 처리 중 오류가 발생했습니다.", error);
+    return NextResponse.json({ error: "성적 의심 판정을 저장하지 못했습니다." }, { status: 500 });
   }
 }
 

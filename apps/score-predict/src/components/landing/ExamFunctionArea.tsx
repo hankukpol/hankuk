@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import ExamCommentsPageContent from "@/components/exam/ExamCommentsPageContent";
 import ExamFinalPageContent from "@/components/exam/ExamFinalPageContent";
@@ -12,11 +11,7 @@ import ExamResultPageContent from "@/components/exam/ExamResultPageContent";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import ExamMainOverviewPanel from "@/components/landing/ExamMainOverviewPanel";
 import PublicExamOverviewPanel from "@/components/landing/PublicExamOverviewPanel";
-import {
-  DEFAULT_TAB_LOCKED_MESSAGE,
-  getPreferredExamTab,
-  type ExamSurfaceItem,
-} from "@/lib/exam-surface";
+import { getPreferredExamTab, type ExamSurfaceItem } from "@/lib/exam-surface";
 import { withTenantPrefix } from "@/lib/tenant";
 
 type TabKey = "main" | "input" | "result" | "final" | "prediction" | "comments" | "notices" | "faq";
@@ -39,7 +34,6 @@ interface ExamFunctionAreaProps {
   finalPredictionEnabled?: boolean;
   commentsEnabled?: boolean;
   tabEnabled?: TabEnabledSettings;
-  tabLockedMessage?: string;
 }
 
 interface TabItem {
@@ -61,20 +55,12 @@ const ALL_TABS: TabItem[] = [
 
 const PUBLIC_TAB_KEYS = new Set<TabKey>(["main", "notices", "faq"]);
 
-function isAdminLocked(tabKey: TabKey, tabEnabled: TabEnabledSettings): boolean {
-  return tabEnabled[tabKey] === false;
-}
-
-function tabClassName(active: boolean, disabled: boolean, locked: boolean) {
+function tabClassName(active: boolean, disabled: boolean) {
   const base =
     "relative inline-flex w-full min-w-0 items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition xl:w-auto xl:px-6 xl:py-4 xl:text-base";
 
   if (disabled) {
     return `${base} cursor-not-allowed text-slate-400`;
-  }
-
-  if (locked && !active) {
-    return `${base} text-slate-400 hover:text-slate-500 xl:bg-transparent xl:text-slate-400 xl:hover:text-slate-500`;
   }
 
   if (active) {
@@ -84,51 +70,6 @@ function tabClassName(active: boolean, disabled: boolean, locked: boolean) {
   return `${base} text-slate-500 hover:bg-service-50 hover:text-service-700 xl:bg-transparent xl:text-slate-400 xl:hover:bg-transparent xl:hover:text-service-600`;
 }
 
-const LOCK_ICON = (
-  <svg className="h-7 w-7 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-    />
-  </svg>
-);
-
-const LOCK_ICON_SMALL = (
-  <svg className="mr-1 inline-block h-3 w-3 flex-shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-    />
-  </svg>
-);
-
-function BlurOverlay({
-  title,
-  subtitle,
-  action,
-}: {
-  title: string;
-  subtitle: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-72 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
-            {LOCK_ICON}
-          </div>
-          <p className="text-lg font-semibold text-slate-900">{title}</p>
-          <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
-          {action ? <div className="mt-4">{action}</div> : null}
-      </div>
-    </div>
-  );
-}
-
 export default function ExamFunctionArea({
   isAuthenticated,
   hasSubmission,
@@ -136,7 +77,6 @@ export default function ExamFunctionArea({
   finalPredictionEnabled = false,
   commentsEnabled = true,
   tabEnabled = {},
-  tabLockedMessage = DEFAULT_TAB_LOCKED_MESSAGE,
 }: ExamFunctionAreaProps) {
   const tenant = useTenantConfig();
   const [activeTab, setActiveTab] = useState<TabKey>("main");
@@ -212,8 +152,13 @@ export default function ExamFunctionArea({
   );
 
   const visibleTabs = useMemo(
-    () => (isAuthenticated || isAdmin ? ALL_TABS : ALL_TABS.filter((tab) => PUBLIC_TAB_KEYS.has(tab.key))),
-    [isAdmin, isAuthenticated]
+    () =>
+      ALL_TABS.filter(
+        (tab) =>
+          surfaceItems[tab.key].enabled &&
+          (isAuthenticated || isAdmin || PUBLIC_TAB_KEYS.has(tab.key))
+      ),
+    [isAdmin, isAuthenticated, surfaceItems]
   );
 
   useEffect(() => {
@@ -230,40 +175,15 @@ export default function ExamFunctionArea({
     [canAccessRestrictedTabs, isAdmin, isAuthenticated, surfaceItems]
   );
 
-  const activeTabMeta = useMemo(
-    () => visibleTabs.find((tab) => tab.key === activeTab) ?? visibleTabs[0],
-    [activeTab, visibleTabs]
-  );
-
   useEffect(() => {
     const activeItem = surfaceItems[activeTab];
-    const activeLocked = isAdminLocked(activeTab, mergedTabEnabled);
     const activeBlockedBySubmission =
-      isAuthenticated && !activeLocked && activeItem.requiresSubmission && !canAccessRestrictedTabs;
+      isAuthenticated && activeItem.requiresSubmission && !canAccessRestrictedTabs;
 
     if ((!activeItem.enabled || activeBlockedBySubmission) && activeTab !== preferredTab) {
       setActiveTab(preferredTab);
     }
-  }, [activeTab, canAccessRestrictedTabs, isAuthenticated, mergedTabEnabled, preferredTab, surfaceItems]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-
-    const locked = isAdminLocked(activeTabMeta.key, mergedTabEnabled);
-    if (!locked && activeTabMeta.requireSubmission && !canAccessRestrictedTabs && activeTab !== preferredTab) {
-      setActiveTab(preferredTab);
-    }
-  }, [
-    activeTab,
-    activeTabMeta.key,
-    activeTabMeta.requireSubmission,
-    canAccessRestrictedTabs,
-    isAuthenticated,
-    mergedTabEnabled,
-    preferredTab,
-  ]);
+  }, [activeTab, canAccessRestrictedTabs, isAuthenticated, preferredTab, surfaceItems]);
 
   function getTabContent(tabKey: TabKey) {
     switch (tabKey) {
@@ -305,64 +225,11 @@ export default function ExamFunctionArea({
   }
 
   function renderTabContent(tabKey: TabKey) {
-    const locked = isAdminLocked(tabKey, mergedTabEnabled);
-
-    if (locked && !isAdmin) {
-      return (
-        <BlurOverlay
-          title={tabLockedMessage}
-          subtitle="관리자 설정에 따라 이 기능은 현재 열려 있지 않습니다."
-        />
-      );
-    }
-
-    if (locked && isAdmin) {
-      return (
-        <>
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-            <svg className="h-5 w-5 flex-shrink-0 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
-            <p className="text-sm text-amber-800">
-              <span className="font-semibold">잠금 상태</span>로 저장된 기능입니다. 현재 화면은 관리자 미리보기입니다.
-            </p>
-          </div>
-          {getTabContent(tabKey)}
-        </>
-      );
-    }
-
-    if (!isAuthenticated && !PUBLIC_TAB_KEYS.has(tabKey)) {
-      return (
-        <BlurOverlay
-          title="로그인 후 이용할 수 있습니다"
-          subtitle="회원가입 또는 로그인 후 전체 기능을 바로 사용할 수 있습니다."
-          action={
-            <div className="flex items-center justify-center gap-3">
-              <Link
-                href={withTenantPrefix("/login", tenant.type)}
-                className="rounded-lg bg-service-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-service-800"
-              >
-                로그인
-              </Link>
-              <Link
-                href={withTenantPrefix("/register", tenant.type)}
-                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                회원가입
-              </Link>
-            </div>
-          }
-        />
-      );
-    }
-
     return getTabContent(tabKey);
+  }
+
+  if (visibleTabs.length === 0) {
+    return null;
   }
 
   return (
@@ -370,28 +237,17 @@ export default function ExamFunctionArea({
       <div className="border-b border-slate-200 bg-white px-1 sm:px-3">
         <div className="grid grid-cols-3 gap-1 py-1 xl:flex xl:min-w-max xl:items-center xl:gap-0 xl:py-0">
           {visibleTabs.map((tab) => {
-            const locked = isAdminLocked(tab.key, mergedTabEnabled);
-            const disabled = isAuthenticated && !locked && tab.requireSubmission && !canAccessRestrictedTabs;
-            const publicAccessible = !isAuthenticated && PUBLIC_TAB_KEYS.has(tab.key);
+            const disabled = isAuthenticated && tab.requireSubmission && !canAccessRestrictedTabs;
 
             return (
               <button
                 key={tab.key}
                 type="button"
-                className={tabClassName(activeTab === tab.key, disabled, locked || (!isAuthenticated && !publicAccessible))}
+                className={tabClassName(activeTab === tab.key, disabled)}
                 disabled={disabled}
                 onClick={() => setActiveTab(tab.key)}
-                title={
-                  locked
-                    ? tabLockedMessage
-                    : !isAuthenticated && !publicAccessible
-                      ? "로그인 후 이용할 수 있습니다."
-                      : disabled
-                        ? "답안 제출 후 열리는 기능입니다."
-                        : undefined
-                }
+                title={disabled ? "답안 제출 후 열리는 기능입니다." : undefined}
               >
-                {locked ? LOCK_ICON_SMALL : null}
                 {tab.label}
               </button>
             );

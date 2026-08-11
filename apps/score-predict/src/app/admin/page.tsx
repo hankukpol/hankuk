@@ -647,7 +647,7 @@ export default async function AdminDashboardPage() {
         <DashboardSetupChecklist items={tenantChecklistItems} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
         {stats.map((stat, index) => {
           const style = statCardStyles[index % statCardStyles.length];
           return (
@@ -658,7 +658,7 @@ export default async function AdminDashboardPage() {
               <p className={`text-xs font-bold uppercase tracking-wider ${style.label}`}>
                 {stat.label}
               </p>
-              <p className="mt-2 text-2xl font-black tracking-tight text-slate-900 xl:text-3xl">
+              <p className="mt-2 text-2xl font-black tabular-nums tracking-tight text-slate-900">
                 {stat.value}
               </p>
               <p className="mt-1 text-xs font-medium text-slate-500">{stat.sub}</p>
@@ -748,18 +748,18 @@ export default async function AdminDashboardPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
-                  <th className="pb-2 pr-4">지역</th>
-                  <th className="pb-2 pr-4 text-right">공채</th>
+                  <th className="whitespace-nowrap pb-2 pr-4">지역</th>
+                  <th className="whitespace-nowrap pb-2 pr-4 text-right">공채</th>
                   {tenantType === "police" ? (
-                    <th className="pb-2 pr-4 text-right">경행경채</th>
+                    <th className="whitespace-nowrap pb-2 pr-4 text-right">경행경채</th>
                   ) : (
                     <>
-                      <th className="pb-2 pr-4 text-right">구조</th>
-                      <th className="pb-2 pr-4 text-right">학과</th>
-                      <th className="pb-2 pr-4 text-right">구급</th>
+                      <th className="whitespace-nowrap pb-2 pr-4 text-right">구조</th>
+                      <th className="whitespace-nowrap pb-2 pr-4 text-right">학과</th>
+                      <th className="whitespace-nowrap pb-2 pr-4 text-right">구급</th>
                     </>
                   )}
-                  <th className="pb-2 text-right">합계</th>
+                  <th className="whitespace-nowrap pb-2 text-right">합계</th>
                 </tr>
               </thead>
               <tbody>
@@ -788,7 +788,7 @@ export default async function AdminDashboardPage() {
       {visibleQuickActions.length > 0 ? (
         <div>
           <h2 className="mb-3 text-sm font-semibold text-slate-800">빠른 실행</h2>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
             {tenantQuickActions.map((action) => (
               <Link
                 key={action.href}

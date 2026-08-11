@@ -1,4 +1,4 @@
-import { ExamType, Gender, Prisma, Role } from "@prisma/client";
+import { ExamType, Gender, Prisma, Role, SubmissionSuspicionStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { calculateTenantPrediction } from "@/lib/tenant-calculations.server";
@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
       gender: true,
       totalScore: true,
       finalScore: true,
+      suspicionStatus: true,
       subjectScores: {
         select: {
           isFailed: true,
@@ -133,6 +134,13 @@ export async function GET(request: NextRequest) {
 
   if (!isExamTypeForTenant(tenantType, submission.examType)) {
     return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
+  }
+
+  if (submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR) {
+    return NextResponse.json(
+      { error: "성적 검토가 완료되기 전에는 순위가 포함된 결과를 공유할 수 없습니다." },
+      { status: 409 }
+    );
   }
 
   const submissionHasCutoff = submission.subjectScores.some((score) => score.isFailed);

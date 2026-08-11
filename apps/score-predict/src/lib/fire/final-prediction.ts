@@ -143,6 +143,10 @@ export async function calculateKnownFinalRank(params: {
         examId: params.examId,
         regionId: params.regionId,
         examType: params.examType,
+        isSuspicious: false,
+        subjectScores: {
+          none: { isFailed: true },
+        },
         ...genderFilter,
       },
     },
@@ -284,6 +288,10 @@ export async function calculateFinalRankingDetails(params: {
         examId: params.examId,
         regionId: params.regionId,
         examType: params.examType,
+        isSuspicious: false,
+        subjectScores: {
+          none: { isFailed: true },
+        },
         ...genderFilter,
       },
     },

@@ -177,7 +177,9 @@ async function confirmModal(page: Page, confirmLabel = "확인") {
     console.error(`[DEBUG] confirm modal missing URL=${page.url()} BODY=${bodyText.slice(0, 2000)}`);
     throw error;
   }
-  await dialog.getByRole("button", { name: confirmLabel, exact: true }).click();
+  const button = dialog.getByRole("button", { name: confirmLabel, exact: true });
+  // 모달이 사이드바/페이지 전환 애니메이션과 겹쳐도 실제 DOM 버튼 이벤트를 한 번만 보낸다.
+  await button.evaluate((element) => (element as HTMLButtonElement).click());
 }
 
 async function gotoLocal(page: Page, url: string) {
@@ -388,12 +390,24 @@ async function loginAdmin(context: BrowserContext, tenant: TenantCase) {
   try {
     await page.waitForURL((url) => url.pathname === "/admin", { timeout: 60_000 });
   } catch (error) {
+    const sessionAfterSubmit = await page.evaluate(async () =>
+      (await (await fetch("/api/auth/session", { cache: "no-store" })).json()) as {
+        user?: { role?: string; tenantType?: string };
+      }
+    );
+    if (
+      sessionAfterSubmit.user?.role === "ADMIN" &&
+      sessionAfterSubmit.user.tenantType === tenant.type
+    ) {
+      await gotoLocal(page, `${tenant.baseUrl}/admin`);
+    } else {
     const cookies = await context.cookies();
     const bodyText = await page.locator("body").innerText().catch(() => "<body unavailable>");
     console.error(
       `[DEBUG] ${tenant.type} login timeout URL=${page.url()} COOKIES=${JSON.stringify(cookies.map((cookie) => ({ name: cookie.name, domain: cookie.domain, secure: cookie.secure })))} BODY=${bodyText.slice(0, 1200)}`
     );
     throw error;
+    }
   }
   const authenticatedSession = await page.evaluate(async () =>
     (await (await fetch("/api/auth/session", { cache: "no-store" })).json()) as {
@@ -528,8 +542,26 @@ async function exerciseNoticeCrud(page: Page, tenant: TenantCase, prisma: Prisma
   const title = `${PREFIX}-${tenant.type}-공지`;
   const edited = `${title}-수정`;
   await gotoLocal(page, `${tenant.baseUrl}/admin/notices`);
+  await page.getByRole("heading", { name: "공지사항 게시판 관리", exact: true }).waitFor();
+  await page.waitForFunction(() => {
+    const button = [...document.querySelectorAll("button")].find(
+      (element) => element.textContent?.trim() === "새 공지 작성"
+    );
+    return Boolean(
+      button &&
+        Object.keys(button).some(
+          (key) => key.startsWith("__reactProps$") || key.startsWith("__reactFiber$")
+        )
+    );
+  });
+  await page.getByRole("button", { name: "새 공지 작성", exact: true }).click();
+  await page.locator("#notice-title").waitFor();
   await page.locator("#notice-title").fill(title);
-  await page.locator("#notice-content").fill(`${tenant.type} 공개 공지 내용`);
+  const codeViewButton = page.locator('[data-command="codeView"]');
+  await codeViewButton.click();
+  await page.locator("textarea.se-wrapper-code").fill(`<p>${tenant.type} 공개 공지 내용</p>`);
+  await codeViewButton.click();
+  await page.locator(".sun-editor-editable").waitFor();
   await page.locator("#notice-priority").fill("97");
   await page.getByRole("button", { name: "공지 등록", exact: true }).click();
   await confirmModal(page);
@@ -540,7 +572,7 @@ async function exerciseNoticeCrud(page: Page, tenant: TenantCase, prisma: Prisma
   const row = page.getByRole("row", { name: new RegExp(title) });
   await row.getByRole("button", { name: "수정", exact: true }).click();
   await page.locator("#notice-title").fill(edited);
-  await page.getByRole("button", { name: "공지 수정", exact: true }).click();
+  await page.getByRole("button", { name: "수정 저장", exact: true }).click();
   await confirmModal(page);
   await page.getByText("공지사항이 수정되었습니다.", { exact: true }).waitFor();
 
@@ -981,13 +1013,29 @@ async function generateMockAndPublishCuts(
   await page.locator("#exam-id").selectOption(String(operation.examId));
   for (let releaseNumber = 1; releaseNumber <= 2; releaseNumber += 1) {
     await page.locator("#release-memo").fill(`${PREFIX} ${releaseNumber}차 운영 검증`);
+    const releaseResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/admin/pass-cut-release") &&
+        response.request().method() === "POST"
+    );
     await page
       .getByRole("button", { name: `${releaseNumber}차 합격컷 발표하기`, exact: true })
       .click();
     await confirmModal(page);
-    await page
-      .getByText(new RegExp(`${releaseNumber}차 발표가 등록되었습니다\\. \\(스냅샷 \\d+건\\)`))
-      .waitFor({ timeout: 60_000 });
+    const releaseResponse = await releaseResponsePromise;
+    const releaseBody = (await releaseResponse.json()) as {
+      success?: boolean;
+      releaseNumber?: number;
+      snapshotCount?: number;
+      error?: string;
+    };
+    assert(
+      releaseResponse.ok() &&
+        releaseBody.success === true &&
+        releaseBody.releaseNumber === releaseNumber &&
+        Number(releaseBody.snapshotCount) > 0,
+      `${tenant.type}: ${releaseNumber}차 pass-cut release failed: ${JSON.stringify(releaseBody)}`
+    );
   }
   const releases = await prisma.passCutRelease.findMany({
     where: { examId: operation.examId },
@@ -1293,7 +1341,9 @@ async function deleteContentThroughUi(
     await gotoLocal(page, `${tenant.baseUrl}/admin/banners`);
     const marker = page.getByText(`ID #${banner.id}`, { exact: true });
     const card = marker.locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
-    await card.getByRole("button", { name: "삭제", exact: true }).click();
+    await card
+      .getByRole("button", { name: "삭제", exact: true })
+      .evaluate((element) => (element as HTMLButtonElement).click());
     await confirmModal(page);
     await page.getByText("배너가 삭제되었습니다.", { exact: true }).waitFor();
   }
@@ -1426,6 +1476,14 @@ async function verifyOperationalTenantIsolation(
 }
 
 async function cleanupTenant(prisma: PrismaClient, tenant: TenantType) {
+  await prisma.authRateLimitBucket.deleteMany({
+    where: {
+      OR: [
+        { namespace: { startsWith: "auth-login-" } },
+        { namespace: { startsWith: "auth-admin-login-" } },
+      ],
+    },
+  });
   const [events, banners] = await Promise.all([
     prisma.eventSection.findMany({
       where: { title: { contains: PREFIX } },

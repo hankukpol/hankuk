@@ -144,7 +144,6 @@ export default async function HomePage() {
   const commentsEnabled = examSurfaceState.commentsEnabled;
   const noticesEnabled = examSurfaceState.noticesEnabled;
   const tabEnabled = examSurfaceState.tabEnabled;
-  const tabLockedMessage = examSurfaceState.tabLockedMessage;
   const preRegistrationEnabled = false;
   const answerInputEnabled = Boolean(siteSettings["site.answerInputEnabled"] ?? false);
   const operationStage = resolveExamOperationStage({
@@ -238,7 +237,6 @@ export default async function HomePage() {
             finalPredictionEnabled={finalPredictionEnabled}
             commentsEnabled={commentsEnabled}
             tabEnabled={tabEnabled}
-            tabLockedMessage={tabLockedMessage}
           />
         </div>
       </section>

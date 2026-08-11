@@ -15,7 +15,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_TAB_LOCKED_MESSAGE } from "@/lib/exam-surface";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
-import { validateAnswerPattern } from "@/lib/answer-validation";
+import { buildAutomaticSuspicionData, validateAnswerPattern } from "@/lib/answer-validation";
 import { getClientIp } from "@/lib/request-ip";
 import {
   calculateTenantScore,
@@ -650,7 +650,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
     const examNumber =
       tenantType === "police"
         ? parsePoliceExamNumberInput(body.examNumber)
@@ -745,8 +744,10 @@ export async function POST(request: Request) {
       : SubmissionScoringStatus.PENDING;
     const subjectIdByName = buildSubjectIdByName(scoringReadiness.subjects);
     let scoreResult: ScoreResult | null = null;
-    let isSuspicious = false;
-    let suspiciousReason: string | null = null;
+    const maxScore = scoringReadiness.subjects.reduce(
+      (sum, subject) => sum + subject.maxScore,
+      0
+    );
 
     if (scoringStatus === SubmissionScoringStatus.SCORED) {
       if (tenantType === "police") {
@@ -794,21 +795,14 @@ export async function POST(request: Request) {
         });
       }
 
-      const maxScore = scoringReadiness.subjects.reduce(
-        (sum, subject) => sum + subject.maxScore,
-        0
-      );
-      const answerPatternResult = validateAnswerPattern({
-        answers: answers.map((a) => a.answer),
-        totalScore: scoreResult.totalScore,
-        maxScore,
-        submitDurationMs,
-      });
-      isSuspicious = answerPatternResult.isSuspicious;
-      suspiciousReason = answerPatternResult.isSuspicious
-        ? answerPatternResult.reasons.join("; ")
-        : null;
     }
+
+    const suspicionData = buildAutomaticSuspicionData(validateAnswerPattern({
+      answers: answers.map((answer) => answer.answer),
+      totalScore: scoreResult?.totalScore ?? null,
+      maxScore,
+      submitDurationMs,
+    }));
 
     const submission = await prisma.$transaction(async (tx) => {
       await lockActiveExamStateForWrite(tx, tenantType);
@@ -862,8 +856,7 @@ export async function POST(request: Request) {
           finalScore: scoreResult?.finalScore ?? 0,
           scoringStatus,
           submitDurationMs,
-          isSuspicious,
-          suspiciousReason,
+          ...suspicionData,
         },
       });
 
@@ -1002,6 +995,7 @@ export async function PUT(request: Request) {
       select: {
         id: true, userId: true, examId: true, editCount: true,
         examType: true, regionId: true, examNumber: true, gender: true, bonusType: true, certificateBonus: true, scoringStatus: true,
+        suspicionManualDecision: true,
       },
     });
 
@@ -1095,7 +1089,6 @@ export async function PUT(request: Request) {
         { status: 400 }
       );
     }
-
     const examNumber =
       tenantType === "police"
         ? parsePoliceExamNumberInput(body.examNumber)
@@ -1192,8 +1185,10 @@ export async function PUT(request: Request) {
       : SubmissionScoringStatus.PENDING;
     const subjectIdByName = buildSubjectIdByName(scoringReadiness.subjects);
     let scoreResult: ScoreResult | null = null;
-    let isSuspicious = false;
-    let suspiciousReason: string | null = null;
+    const maxScoreEdit = scoringReadiness.subjects.reduce(
+      (sum, subject) => sum + subject.maxScore,
+      0
+    );
 
     if (scoringStatus === SubmissionScoringStatus.SCORED) {
       if (tenantType === "police") {
@@ -1241,21 +1236,15 @@ export async function PUT(request: Request) {
         });
       }
 
-      const maxScoreEdit = scoringReadiness.subjects.reduce(
-        (sum, subject) => sum + subject.maxScore,
-        0
-      );
-      const answerPatternResult = validateAnswerPattern({
-        answers: answers.map((a) => a.answer),
-        totalScore: scoreResult.totalScore,
-        maxScore: maxScoreEdit,
-        submitDurationMs: submitDurationMsEdit,
-      });
-      isSuspicious = answerPatternResult.isSuspicious;
-      suspiciousReason = answerPatternResult.isSuspicious
-        ? answerPatternResult.reasons.join("; ")
-        : null;
     }
+
+    const automaticSuspicionData = buildAutomaticSuspicionData(validateAnswerPattern({
+      answers: answers.map((answer) => answer.answer),
+      totalScore: scoreResult?.totalScore ?? null,
+      maxScore: maxScoreEdit,
+      // 수정 소요시간은 답안 작성 시간을 뜻하지 않으므로 자동 판정에 사용하지 않는다.
+      submitDurationMs: null,
+    }));
 
     // 변경된 필드 감지 (감사 로그용)
     const changedFields: string[] = [];
@@ -1324,10 +1313,9 @@ export async function PUT(request: Request) {
           certificateBonus,
           finalScore: scoreResult?.finalScore ?? 0,
           scoringStatus,
-          submitDurationMs: submitDurationMsEdit,
           editCount: { increment: 1 },
-          isSuspicious,
-          suspiciousReason,
+          // 관리자가 확정한 판정은 학생 수정이나 자동 재채점으로 덮어쓰지 않는다.
+          ...(existingSubmission.suspicionManualDecision ? {} : automaticSuspicionData),
         },
       });
 

@@ -552,7 +552,11 @@ async function putPoliceRegions(request: NextRequest) {
 
   const [exam, regionCount] = await Promise.all([
     prisma.exam.findUnique({ where: { id: examId }, select: { id: true } }),
-    prisma.region.count({ where: { id: { in: Array.from(uniqueRegionIds) } } }),
+    prisma.region.count({
+      where: {
+        id: { in: Array.from(uniqueRegionIds) },
+      },
+    }),
   ]);
   if (!exam) return NextResponse.json({ error: "존재하지 않는 시험입니다." }, { status: 404 });
   await assertExamWritableForAdminSetup({

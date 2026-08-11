@@ -61,6 +61,7 @@ const finalPredictionQuotaSelect = {
   region: {
     select: {
       name: true,
+      isActive: true,
     },
   },
 } satisfies Prisma.ExamRegionQuotaSelect;
@@ -148,6 +149,13 @@ function buildFinalRankingCte(params: {
       JOIN "User" u ON u.id = s."userId"
       WHERE fp."finalScore" IS NOT NULL
         AND fp."interviewGrade" = 'PASS'
+        AND s."isSuspicious" = false
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "SubjectScore" failed_subject
+          WHERE failed_subject."submissionId" = s.id
+            AND failed_subject."isFailed" = true
+        )
         AND s."examId" = ${params.examId}
         AND s."regionId" = ${params.regionId}
         AND s."examType" = CAST(${params.examType} AS "ExamType")
@@ -171,6 +179,7 @@ export async function calculateFinalRankingDetails(params: {
     select: finalPredictionQuotaSelect,
   });
   if (!quota) return null;
+  if (!quota.region.isActive) return null;
 
   const recruitCount = getRecruitCount(quota, params.examType);
   if (recruitCount < 1) return null;

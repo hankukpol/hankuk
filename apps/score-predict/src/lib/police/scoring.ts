@@ -1,4 +1,5 @@
-import { BonusType, ExamType, Prisma } from "@prisma/client";
+import { BonusType, ExamType, Prisma, SubmissionScoringStatus } from "@prisma/client";
+import { buildAutomaticSuspicionData, validateAnswerPattern } from "@/lib/answer-validation";
 import { invalidateCorrectRateCache } from "@/lib/police/correct-rate";
 import { normalizeSubjectName } from "@/lib/police/exam-utils";
 import { SUBJECT_CUTOFF_RATE } from "@/lib/police/policy";
@@ -471,6 +472,9 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
   const submissionWhere: Prisma.SubmissionWhereInput = {
     examId,
     examType: targetExamType ?? { in: [...POLICE_EXAM_TYPES] },
+    region: {
+      isActive: true,
+    },
   };
 
   const allSubmissions = await prisma.submission.findMany({
@@ -499,7 +503,12 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
   }
 
   const quotas = await prisma.examRegionQuota.findMany({
-    where: { examId },
+    where: {
+      examId,
+      region: {
+        isActive: true,
+      },
+    },
     select: {
       regionId: true,
       recruitCount: true,
@@ -568,6 +577,8 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
           finalScore: true,
           bonusType: true,
           bonusRate: true,
+          submitDurationMs: true,
+          suspicionManualDecision: true,
           userAnswers: {
             select: {
               id: true,
@@ -638,6 +649,16 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
                 bonusRate: bonusDecision.effectiveRate,
               })
             : rawResult;
+          const automaticSuspicionData = buildAutomaticSuspicionData(validateAnswerPattern({
+            answers: [...submission.userAnswers]
+              .sort((left, right) =>
+                left.subjectId - right.subjectId || left.questionNumber - right.questionNumber
+              )
+              .map((answer) => answer.selectedAnswer),
+            totalScore: result.totalScore,
+            maxScore: context.subjects.reduce((sum, subject) => sum + subject.maxScore, 0),
+            submitDurationMs: submission.submitDurationMs,
+          }));
 
           await tx.submission.update({
             where: { id: submission.id },
@@ -645,6 +666,8 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
               totalScore: result.totalScore,
               finalScore: result.finalScore,
               bonusRate: normalizedBonusRate,
+              scoringStatus: SubmissionScoringStatus.SCORED,
+              ...(submission.suspicionManualDecision ? {} : automaticSuspicionData),
             },
           });
 

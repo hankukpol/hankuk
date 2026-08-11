@@ -49,10 +49,6 @@ function formatPublishedScore(value: number | null, snapshotPublished: boolean) 
   return snapshotPublished ? formatScore(value) : "집계 발표 전";
 }
 
-function isLocalPriorityRegion(regionName: string) {
-  return regionName.includes("대구") || regionName.includes("경북");
-}
-
 export default function PublicExamOverviewPanel() {
   const [data, setData] = useState<PublicOverviewPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -76,24 +72,17 @@ export default function PublicExamOverviewPanel() {
     };
   }, []);
 
-  const localRows = useMemo(() => {
-    if (!data) return [];
-    const priorityRows = data.rows.filter((row) => isLocalPriorityRegion(row.regionName));
-    return priorityRows.length > 0 ? priorityRows : data.rows;
-  }, [data]);
-  const hasLocalPriorityRows = Boolean(
-    data?.rows.some((row) => isLocalPriorityRegion(row.regionName))
-  );
+  const activeRegionRows = useMemo(() => data?.rows ?? [], [data]);
 
   const examTypeOptions = useMemo(
-    () => [...new Map(localRows.map((row) => [row.examType, row.examTypeLabel.replace(/ (남|여)$/, "")])).entries()],
-    [localRows]
+    () => [...new Map(activeRegionRows.map((row) => [row.examType, row.examTypeLabel.replace(/ (남|여)$/, "")])).entries()],
+    [activeRegionRows]
   );
   const effectiveExamType =
     selectedExamType && examTypeOptions.some(([value]) => value === selectedExamType)
       ? selectedExamType
       : examTypeOptions[0]?.[0] ?? "";
-  const visibleRows = localRows.filter((row) => row.examType === effectiveExamType);
+  const visibleRows = activeRegionRows.filter((row) => row.examType === effectiveExamType);
 
   if (errorMessage) {
     return (
@@ -115,9 +104,7 @@ export default function PublicExamOverviewPanel() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">
-            {hasLocalPriorityRows ? "대구·경북 시험 현황" : "지역별 시험 현황"}
-          </h2>
+          <h2 className="text-xl font-bold text-slate-900">활성 지역 시험 현황</h2>
           <p className="mt-1 text-sm text-slate-600">
             {data.exam.year}년 {data.exam.round}차 {data.exam.name}
           </p>

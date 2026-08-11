@@ -9,6 +9,7 @@ services:
       - .env.docker.local
     environment:
       NODE_ENV: development
+      NODE_OPTIONS: --max-old-space-size=4096
       NEXTAUTH_URL: http://localhost:3200
       SCORE_PREDICT_POLICE_ORIGIN: http://police.localhost:3200
       SCORE_PREDICT_FIRE_ORIGIN: http://fire.localhost:3200

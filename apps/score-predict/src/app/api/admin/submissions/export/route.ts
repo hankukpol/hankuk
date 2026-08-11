@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { ExamType } from "@prisma/client";
+import { ExamType, SubmissionSuspicionStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
@@ -90,6 +90,12 @@ export async function GET(request: NextRequest) {
       : null;
     const search = searchParams.get("search")?.trim() ?? "";
     const suspicious = searchParams.get("suspicious");
+    const suspicionStatusValue = searchParams.get("suspicionStatus");
+    const suspicionStatus = Object.values(SubmissionSuspicionStatus).includes(
+      suspicionStatusValue as SubmissionSuspicionStatus
+    )
+      ? (suspicionStatusValue as SubmissionSuspicionStatus)
+      : null;
 
     if (searchParams.get("examType") && !examType) {
       return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
@@ -103,6 +109,7 @@ export async function GET(request: NextRequest) {
         examType,
         search,
         suspicious,
+        suspicionStatus,
       }, {
         allowedExamTypes: TENANT_EXAM_TYPES[guard.tenantType],
       }),
@@ -119,6 +126,9 @@ export async function GET(request: NextRequest) {
         bonusRate: true,
         isSuspicious: true,
         suspiciousReason: true,
+        suspicionStatus: true,
+        suspicionManualDecision: true,
+        suspicionReviewNote: true,
         createdAt: true,
         user: {
           select: {
@@ -172,8 +182,10 @@ export async function GET(request: NextRequest) {
       { header: "가산점 유형", key: "bonusType", width: 14 },
       { header: "가산점 비율", key: "bonusRate", width: 12 },
       { header: "과락 여부", key: "hasCutoff", width: 12 },
-      { header: "수상 제출", key: "isSuspicious", width: 12 },
-      { header: "수상 사유", key: "suspiciousReason", width: 32 },
+      { header: "검토 상태", key: "suspicionStatus", width: 14 },
+      { header: "자동 감지 사유", key: "suspiciousReason", width: 32 },
+      { header: "관리자 확정", key: "suspicionManualDecision", width: 12 },
+      { header: "관리자 메모", key: "suspicionReviewNote", width: 32 },
       { header: "제출일시", key: "createdAt", width: 22 },
     ];
 
@@ -194,8 +206,15 @@ export async function GET(request: NextRequest) {
         bonusType: formatBonusType(row.bonusType),
         bonusRate: Number(row.bonusRate),
         hasCutoff: row.subjectScores.length > 0 ? "과락" : "정상",
-        isSuspicious: row.isSuspicious ? "수상" : "정상",
+        suspicionStatus:
+          row.suspicionStatus === SubmissionSuspicionStatus.EXCLUDED
+            ? "통계 제외"
+            : row.suspicionStatus === SubmissionSuspicionStatus.REVIEW
+              ? "검토 필요"
+              : "정상",
         suspiciousReason: row.suspiciousReason ?? "",
+        suspicionManualDecision: row.suspicionManualDecision ? "확정" : "자동",
+        suspicionReviewNote: row.suspicionReviewNote ?? "",
         createdAt: formatDate(row.createdAt),
       }))
     );

@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
       tenantType === "police"
         ? [ExamType.PUBLIC, ExamType.CAREER]
         : [ExamType.PUBLIC, ExamType.CAREER_RESCUE, ExamType.CAREER_ACADEMIC, ExamType.CAREER_EMT];
-    const stats = await getDifficultyStats(examId, allowedExamTypes);
+    const stats = await getDifficultyStats(
+      examId,
+      allowedExamTypes,
+      tenantType === "police"
+    );
 
     if (!stats) {
       return NextResponse.json({ error: "시험 정보를 찾을 수 없습니다." }, { status: 404 });

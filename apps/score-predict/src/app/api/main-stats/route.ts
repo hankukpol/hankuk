@@ -509,7 +509,11 @@ export async function GET() {
               gender: Gender.FEMALE,
             },
           }
-        : {};
+        : {
+            region: {
+              isActive: true,
+            },
+          };
 
     const [totalParticipants, examTypeStats, recentParticipants, latestSubmission, difficulty, quotas, mySubmissions] =
       await Promise.all([
@@ -548,7 +552,11 @@ export async function GET() {
           orderBy: { createdAt: "desc" },
           select: { createdAt: true },
         }),
-        getDifficultyStats(activeExam.id, enabledExamTypes),
+        getDifficultyStats(
+          activeExam.id,
+          enabledExamTypes,
+          tenantType === "police"
+        ),
         getQuotasForExam(activeExam.id),
         Number.isInteger(userId) && userId > 0
           ? prisma.submission.findMany({

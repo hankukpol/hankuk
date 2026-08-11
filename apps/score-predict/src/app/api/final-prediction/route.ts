@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SubmissionScoringStatus } from "@prisma/client";
+import { SubmissionScoringStatus, SubmissionSuspicionStatus } from "@prisma/client";
 import { type AdminPreviewCandidate, buildAdminPreviewCandidates } from "@/lib/admin-preview";
 import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { parsePositiveInt } from "@/lib/exam-utils";
@@ -53,6 +53,10 @@ const submissionSelect = {
   scoringStatus: true,
   examNumber: true,
   certificateBonus: true,
+  suspicionStatus: true,
+  subjectScores: {
+    select: { isFailed: true },
+  },
 } as const;
 
 function parseFiniteNumber(value: unknown): number | null {
@@ -216,6 +220,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: "채점 대기 중입니다. 가답안 발표 후 자동 채점 결과를 확인해 주세요." },
       { status: 409 }
+    );
+  }
+  if (submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR) {
+    return NextResponse.json(
+      { error: "성적 검토가 완료되기 전에는 최종 환산 예측을 제공하지 않습니다." },
+      { status: 409 }
+    );
+  }
+  if (submission.subjectScores.some((score) => score.isFailed)) {
+    return NextResponse.json(
+      { error: "과락 성적은 최종 환산 예측을 제공하지 않습니다." },
+      { status: 400 }
     );
   }
 
@@ -419,6 +435,15 @@ export async function POST(request: NextRequest) {
           "채점 대기 중입니다. 가답안 발표 후 자동 채점 결과를 확인해 주세요.",
           409
         );
+      }
+      if (currentSubmission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR) {
+        throw new FinalPredictionWriteError(
+          "성적 검토가 완료되기 전에는 최종 환산 예측을 저장할 수 없습니다.",
+          409
+        );
+      }
+      if (currentSubmission.subjectScores.some((score) => score.isFailed)) {
+        throw new FinalPredictionWriteError("과락 성적은 최종 환산 예측을 저장할 수 없습니다.", 400);
       }
       if (!isExamTypeForTenant(tenantType, currentSubmission.examType)) {
         throw new FinalPredictionWriteError("현재 서비스의 시험유형이 아닙니다.", 409);

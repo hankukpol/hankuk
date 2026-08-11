@@ -46,7 +46,12 @@ export async function GET() {
     const [settings, quotas, latestRelease] = await Promise.all([
       getSiteSettingsUncached(),
       prisma.examRegionQuota.findMany({
-        where: { examId: activeExam.id, region: { isActive: true } },
+        where: {
+          examId: activeExam.id,
+          region: {
+            isActive: true,
+          },
+        },
         include: { region: { select: { id: true, name: true } } },
         orderBy: { region: { name: "asc" } },
       }),

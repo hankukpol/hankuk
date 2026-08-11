@@ -1,4 +1,4 @@
-import { ExamType, Gender, Prisma, Role, SubmissionScoringStatus } from "@prisma/client";
+import { ExamType, Gender, Prisma, Role, SubmissionScoringStatus, SubmissionSuspicionStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import * as fireCorrectRate from "@/lib/fire/correct-rate";
@@ -227,6 +227,8 @@ export async function GET(request: NextRequest) {
     totalScore: true,
     finalScore: true,
     scoringStatus: true,
+    isSuspicious: true,
+    suspicionStatus: true,
     bonusType: true,
     bonusRate: true,
     certificateBonus: true,
@@ -393,6 +395,9 @@ export async function GET(request: NextRequest) {
         totalScore: Number(submission.totalScore),
         finalScore: Number(submission.finalScore),
         scoringStatus: submission.scoringStatus,
+        isSuspicious: submission.isSuspicious,
+        suspicionStatus: submission.suspicionStatus,
+        rankingWithheld: submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR,
         bonusType: submission.bonusType,
         bonusRate: Number(submission.bonusRate),
         certificateBonus: Number(submission.certificateBonus),
@@ -459,6 +464,7 @@ export async function GET(request: NextRequest) {
   );
 
   const submissionHasCutoff = submission.subjectScores.some((score) => score.isFailed);
+  const rankingWithheld = submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR;
   const rankingBasis = submissionHasCutoff ? "ALL_PARTICIPANTS" : "NON_CUTOFF_PARTICIPANTS";
   const populationConditionSql = getPopulationConditionSql(submissionHasCutoff);
   const myFinalScore = Number(submission.finalScore);
@@ -524,15 +530,19 @@ export async function GET(request: NextRequest) {
   `);
 
   const totalParticipants = toCount(overallRow?.totalCount);
-  if (totalParticipants < 1) {
+  if (totalParticipants < 1 && !rankingWithheld) {
     return NextResponse.json({ error: "성적 비교 대상이 없습니다." }, { status: 404 });
   }
 
   const totalHigherCount = toCount(overallRow?.higherCount);
   const totalLowerCount = toCount(overallRow?.lowerCount);
-  const totalRank = calculateRankByHigher(totalHigherCount);
-  const totalTopPercent = calculateTopPercentByHigher(totalHigherCount, totalParticipants);
-  const totalPercentile = calculatePercentileByLower(totalLowerCount, totalParticipants);
+  const totalRank = rankingWithheld ? null : calculateRankByHigher(totalHigherCount);
+  const totalTopPercent = rankingWithheld
+    ? null
+    : calculateTopPercentByHigher(totalHigherCount, totalParticipants);
+  const totalPercentile = rankingWithheld
+    ? null
+    : calculatePercentileByLower(totalLowerCount, totalParticipants);
 
   const subjectOrder = getTenantSubjectOrder(tenantType, submission.examType);
   const orderedSubjectScores = [...submission.subjectScores].sort((a, b) => {
@@ -725,9 +735,13 @@ export async function GET(request: NextRequest) {
             ? policePolicy.SUBJECT_CUTOFF_RATE
             : firePolicy.SUBJECT_CUTOFF_RATE)
       ),
-      rank: calculateRankByHigher(subjectHigher),
-      topPercent: calculateTopPercentByHigher(subjectHigher, subjectParticipants),
-      percentile: calculatePercentileByLower(subjectLower, subjectParticipants),
+      rank: rankingWithheld ? null : calculateRankByHigher(subjectHigher),
+      topPercent: rankingWithheld
+        ? null
+        : calculateTopPercentByHigher(subjectHigher, subjectParticipants),
+      percentile: rankingWithheld
+        ? null
+        : calculatePercentileByLower(subjectLower, subjectParticipants),
       totalParticipants: subjectParticipants,
       difficulty,
       answers: userAnswers,
@@ -827,7 +841,8 @@ export async function GET(request: NextRequest) {
         questionCount: score.questionCount,
         topPercent: score.topPercent,
         percentile: score.percentile,
-        percentileAvailable: canShowSamplePercentile(score.totalParticipants),
+        percentileAvailable:
+          !rankingWithheld && canShowSamplePercentile(score.totalParticipants),
         averageScore: aggregate?.averageScore ?? 0,
         highestScore: aggregate?.highestScore ?? 0,
         lowestScore: aggregate?.lowestScore ?? 0,
@@ -844,7 +859,7 @@ export async function GET(request: NextRequest) {
       questionCount: scores.reduce((sum, s) => sum + s.questionCount, 0),
       topPercent: totalTopPercent,
       percentile: totalPercentile,
-      percentileAvailable: canShowSamplePercentile(totalParticipants),
+      percentileAvailable: !rankingWithheld && canShowSamplePercentile(totalParticipants),
       averageScore: totalAggregate.averageScore,
       highestScore: totalAggregate.highestScore,
       lowestScore: totalAggregate.lowestScore,
@@ -858,7 +873,7 @@ export async function GET(request: NextRequest) {
     totalParticipants,
     topPercent: totalTopPercent,
     percentile: totalPercentile,
-    percentileAvailable: canShowSamplePercentile(totalParticipants),
+    percentileAvailable: !rankingWithheld && canShowSamplePercentile(totalParticipants),
     lastUpdated,
   };
 
@@ -881,6 +896,9 @@ export async function GET(request: NextRequest) {
       totalScore: Number(submission.totalScore),
       finalScore: Number(submission.finalScore),
       scoringStatus: submission.scoringStatus,
+      isSuspicious: submission.isSuspicious,
+      suspicionStatus: submission.suspicionStatus,
+      rankingWithheld,
       bonusType: submission.bonusType,
       bonusRate: Number(submission.bonusRate),
       certificateBonus: Number(submission.certificateBonus),
@@ -898,7 +916,7 @@ export async function GET(request: NextRequest) {
       totalRank,
       topPercent: totalTopPercent,
       totalPercentile,
-      percentileAvailable: canShowSamplePercentile(totalParticipants),
+      percentileAvailable: !rankingWithheld && canShowSamplePercentile(totalParticipants),
       hasCutoff,
       rankingBasis,
       cutoffSubjects,

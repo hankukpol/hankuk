@@ -57,7 +57,6 @@ export default async function ExamMainPage() {
         finalPredictionEnabled={examSurfaceState.finalPredictionEnabled}
         commentsEnabled={examSurfaceState.commentsEnabled}
         tabEnabled={examSurfaceState.tabEnabled}
-        tabLockedMessage={examSurfaceState.tabLockedMessage}
       />
     </>
   );

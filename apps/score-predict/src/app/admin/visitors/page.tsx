@@ -230,10 +230,10 @@ export default function AdminVisitorsPage() {
             <table className="w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">날짜</th>
-                  <th className="px-4 py-3 text-right">방문자</th>
-                  <th className="px-4 py-3 text-right">신규 가입</th>
-                  <th className="px-4 py-3 text-right">답안 제출</th>
+                  <th className="whitespace-nowrap px-4 py-3">날짜</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">방문자</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">신규 가입</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">답안 제출</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -251,13 +251,13 @@ export default function AdminVisitorsPage() {
                         >
                           {row.date} {isToday ? "(오늘)" : ""}
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-blue-600">
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-blue-600">
                           {row.visitors.toLocaleString("ko-KR")}명
                         </td>
-                        <td className="px-4 py-3 text-right text-emerald-600">
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-emerald-600">
                           {row.newUsers.toLocaleString("ko-KR")}명
                         </td>
-                        <td className="px-4 py-3 text-right text-amber-600">
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-amber-600">
                           {row.submissions.toLocaleString("ko-KR")}건
                         </td>
                       </tr>

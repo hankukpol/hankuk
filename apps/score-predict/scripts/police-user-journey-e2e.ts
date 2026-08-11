@@ -127,10 +127,22 @@ function attachDiagnostics(page: Page, scope: string) {
 }
 
 async function assertNoHorizontalScroll(page: Page, label: string) {
-  const metrics = await page.evaluate(() => ({
-    viewport: window.innerWidth,
-    content: document.documentElement.scrollWidth,
-  }));
+  let metrics: { viewport: number; content: number } | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.waitForLoadState("domcontentloaded");
+      metrics = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        content: document.documentElement.scrollWidth,
+      }));
+      break;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("Execution context was destroyed")) {
+        throw error;
+      }
+    }
+  }
+  assert(metrics, `${label} could not be measured after navigation settled.`);
   assert(
     metrics.content <= metrics.viewport + 1,
     `${label} has horizontal scroll (${metrics.content}px > ${metrics.viewport}px).`

@@ -1,4 +1,4 @@
-import { ExamType, Prisma } from "@prisma/client";
+import { ExamType, Prisma, SubmissionSuspicionStatus } from "@prisma/client";
 
 export type AdminSubmissionFilters = {
   examId?: number | null;
@@ -7,6 +7,7 @@ export type AdminSubmissionFilters = {
   examType?: ExamType | null;
   search?: string;
   suspicious?: string | null;
+  suspicionStatus?: SubmissionSuspicionStatus | null;
 };
 
 type BuildAdminSubmissionWhereOptions = {
@@ -34,6 +35,7 @@ export function buildAdminSubmissionWhere(
     ...(filters.examId ? { examId: filters.examId } : {}),
     ...(!options.excludeRegionId && filters.regionId ? { regionId: filters.regionId } : {}),
     ...(filters.userId ? { userId: filters.userId } : {}),
+    ...(filters.suspicionStatus ? { suspicionStatus: filters.suspicionStatus } : {}),
     ...(options.predictionEligibleOnly
       ? {
           isSuspicious: false,

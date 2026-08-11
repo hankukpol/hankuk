@@ -1,4 +1,4 @@
-import { ExamType, Gender, Prisma, Role, SubmissionScoringStatus } from "@prisma/client";
+import { ExamType, Gender, Prisma, Role, SubmissionScoringStatus, SubmissionSuspicionStatus } from "@prisma/client";
 import { estimateApplicants } from "@/lib/fire/policy";
 import { prisma } from "@/lib/prisma";
 import {
@@ -423,6 +423,7 @@ export async function calculatePrediction(
     gender: true,
     scoringStatus: true,
     finalScore: true,
+    suspicionStatus: true,
     exam: {
       select: {
         id: true,
@@ -478,6 +479,7 @@ export async function calculatePrediction(
       where: {
         examId: activeExam!.id,
         examNumber: { startsWith: "MOCK-" },
+        suspicionStatus: SubmissionSuspicionStatus.CLEAR,
         subjectScores: {
           some: {},
           none: { isFailed: true },
@@ -503,6 +505,15 @@ export async function calculatePrediction(
 
   if (submission.scoringStatus === SubmissionScoringStatus.PENDING) {
     throw new PredictionError("채점 대기 중입니다. 가답안 발표 후 자동 채점 결과를 확인해 주세요.", 409);
+  }
+
+  if (submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR) {
+    throw new PredictionError(
+      submission.suspicionStatus === SubmissionSuspicionStatus.REVIEW
+        ? "성적 검토 중에는 합격예측을 제공하지 않습니다. 검토 완료 후 다시 확인해 주세요."
+        : "통계 제외 성적으로 분류되어 합격예측을 제공하지 않습니다. 관리자에게 문의해 주세요.",
+      400
+    );
   }
 
   if (submission.subjectScores.some((subjectScore) => subjectScore.isFailed)) {

@@ -1,4 +1,5 @@
 import { Megaphone } from "lucide-react";
+import { richTextToPlainText } from "@/lib/rich-text";
 import type { PublicNoticeItem } from "@/lib/site-settings";
 
 interface NoticeBarProps {
@@ -18,7 +19,9 @@ export default function NoticeBar({ notices }: NoticeBarProps) {
         {notices.map((notice) => (
           <li key={notice.id} className="rounded-md border border-service-200/60 bg-white p-4">
             <p className="text-sm font-bold text-slate-900">{notice.title}</p>
-            <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">{notice.content}</p>
+            <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">
+              {richTextToPlainText(notice.content)}
+            </p>
           </li>
         ))}
       </ul>

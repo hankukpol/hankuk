@@ -1,4 +1,5 @@
 import { BonusType, ExamType, Gender, Prisma, SubmissionScoringStatus } from "@prisma/client";
+import { buildAutomaticSuspicionData, validateAnswerPattern } from "@/lib/answer-validation";
 import { invalidateCorrectRateCache } from "@/lib/fire/correct-rate";
 import { normalizeSubjectName } from "@/lib/fire/exam-utils";
 import { SUBJECT_CUTOFF_RATE, TOTAL_CUTOFF_RATE } from "@/lib/fire/policy";
@@ -635,6 +636,8 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
           finalScore: true,
           bonusType: true,
           bonusRate: true,
+          submitDurationMs: true,
+          suspicionManualDecision: true,
           userAnswers: {
             select: {
               id: true,
@@ -699,6 +702,16 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
             selectedAnswers,
             bonusRate: bonusDecision.effectiveRate,
           });
+          const automaticSuspicionData = buildAutomaticSuspicionData(validateAnswerPattern({
+            answers: [...submission.userAnswers]
+              .sort((left, right) =>
+                left.subjectId - right.subjectId || left.questionNumber - right.questionNumber
+              )
+              .map((answer) => answer.selectedAnswer),
+            totalScore: result.totalScore,
+            maxScore: context.subjects.reduce((sum, subject) => sum + subject.maxScore, 0),
+            submitDurationMs: submission.submitDurationMs,
+          }));
 
           await tx.submission.update({
             where: { id: submission.id },
@@ -708,6 +721,7 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
               // 선택값은 보존하고 실제 적용률은 모집 설정과 과락 기준으로 다시 계산한다.
               bonusRate: normalizedBonusRate,
               scoringStatus: SubmissionScoringStatus.SCORED,
+              ...(submission.suspicionManualDecision ? {} : automaticSuspicionData),
             },
           });
 

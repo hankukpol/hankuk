@@ -124,7 +124,10 @@ export default function PoliceAdminRegionsPage() {
       const response = await fetch("/api/admin/regions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ examId: selectedExamId, regions: changedRows }),
+        body: JSON.stringify({
+          examId: selectedExamId,
+          regions: changedRows.map(({ id, ...row }) => ({ regionId: id, ...row })),
+        }),
       });
       const payload = (await response.json()) as { error?: string; message?: string };
       if (!response.ok) throw new Error(payload.error ?? "경찰 모집 설정 저장에 실패했습니다.");

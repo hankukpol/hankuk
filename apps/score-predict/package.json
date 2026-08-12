@@ -27,6 +27,7 @@
     "test:account-recovery": "tsx scripts/account-recovery-e2e.ts",
     "test:police-user-journey": "tsx scripts/police-user-journey-e2e.ts",
     "test:police-regional-scope": "tsx --conditions=react-server scripts/police-regional-scope-e2e.ts",
+    "test:police-regions-save:visual": "tsx scripts/police-regions-save-visual-qa.ts",
     "test:admin-workflow": "tsx scripts/admin-workflow-e2e.ts police && tsx scripts/admin-workflow-e2e.ts fire && tsx scripts/tenant-module-isolation-test.ts",
     "test:admin-responsive": "tsx scripts/admin-responsive-qa.ts",
     "test:mailer-safety": "tsx --conditions=react-server scripts/mailer-safety-test.ts",

@@ -484,7 +484,8 @@ async function main() {
           where: { examId_regionId: { examId: exam.id, regionId: unsupportedRegion.id } },
         });
         const activationPayload = {
-          regionId: unsupportedRegion.id,
+          // 배포 전에 열린 관리자 탭이 보내던 id 형식도 계속 허용해야 한다.
+          id: unsupportedRegion.id,
           isActive: true,
           recruitCount: 2,
           recruitCountCareer: 1,

@@ -12,6 +12,8 @@ import { assertExamWritableForAdminSetup, isActiveExamRouteError } from "@/lib/a
 export const runtime = "nodejs";
 
 interface QuotaUpdateItem {
+  /** 이전 경찰 관리자 화면이 사용하던 지역 식별자. 열린 탭 호환을 위해 유지한다. */
+  id?: unknown;
   regionId?: unknown;
   isActive?: unknown;
   recruitCount?: unknown;
@@ -516,7 +518,7 @@ async function putPoliceRegions(request: NextRequest) {
     const applicantCount = parseNullableNonNegativeInt(item.applicantCount);
     const applicantCountCareer = parseNullableNonNegativeInt(item.applicantCountCareer);
     return {
-      regionId: parsePositiveInt(item.regionId),
+      regionId: parsePositiveInt(item.regionId ?? item.id),
       isActive: parseBoolean(item.isActive),
       recruitCount: parseNonNegativeInt(item.recruitCount),
       recruitCountCareer: parseNonNegativeInt(item.recruitCountCareer),

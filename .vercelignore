@@ -3,3 +3,38 @@
 **/.turbo
 **/.vercel
 **/tsconfig.tsbuildinfo
+
+# Repository metadata and local-only artifacts
+.git
+.git-backups
+.claude
+.codex-deploy-class-pass
+.codex-remote-attachments
+.codex-temp
+.pnpm-store
+.superloopy
+**/.superloopy
+**/.env
+**/.env.*
+**/.mail-preview
+**/*.log
+**/*비밀번호*.txt
+**/*수파베이스*.txt
+test-results
+tmp-startup-backup-20260406
+
+# The score-predict Vercel project only needs its app and packages/config.
+# Keep the other workspace applications out of the deployment archive.
+apps/.claude
+apps/academy-ops
+apps/class-pass
+apps/interview-mate
+apps/interview-pass
+apps/police-exam-bank
+apps/portal
+apps/study-hall
+
+# Root-only development and infrastructure material
+docs
+scripts
+supabase

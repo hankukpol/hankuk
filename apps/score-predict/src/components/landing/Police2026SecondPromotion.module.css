@@ -595,15 +595,17 @@
   }
 
   .heroVisual {
-    min-height: 23rem;
+    min-height: 0;
+    margin-top: 1.5rem;
     order: 2;
   }
 
   .heroVisual img {
+    position: relative;
     width: min(43rem, 128vw);
     left: 50%;
-    top: 52%;
-    transform: translate(-51%, -50%);
+    top: auto;
+    transform: translateX(-51%);
   }
 
   .heroCopy {

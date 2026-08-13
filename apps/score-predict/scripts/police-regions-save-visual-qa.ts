@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 
 const baseUrl = "http://police.localhost:3200";
 const widths = [390, 768, 1280] as const;

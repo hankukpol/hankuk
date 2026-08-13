@@ -46,7 +46,7 @@ export default function SiteSettingsHub() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-6">
         <p className="text-sm font-semibold tracking-[0.24em] text-slate-500">
           사이트 설정 허브
         </p>
@@ -80,7 +80,7 @@ export default function SiteSettingsHub() {
           <Link
             key={section.key}
             href={withTenantPrefix(section.href, tenant.type)}
-            className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            className="group rounded-xl border border-slate-200 bg-white p-5 transition hover:border-slate-300"
           >
             <p className="text-xs font-semibold tracking-[0.2em] text-slate-500">
               {section.navLabel}

@@ -17,15 +17,15 @@ export default function EventCard({ event, fullWidth = false }: EventCardProps) 
 
   return (
     <section
-      className={`relative overflow-hidden py-6 sm:py-8 ${fullWidth ? "w-full" : "border border-slate-200 px-5 sm:px-7 shadow-sm"
-        }`}
+      className={`relative overflow-hidden py-6 sm:py-8 ${fullWidth ? "w-full" : "border border-slate-200 px-5 sm:px-7 "
+ }`}
       style={{ backgroundColor: event.bgColor || "#ffffff" }}
     >
       {fullWidth && !event.bgColor && <div className="absolute inset-0 bg-white" />}
       <div className={`relative z-10 mx-auto w-full flex flex-col ${fullWidth ? "max-w-[1200px] px-4" : ""}`}>
         <div className="grid gap-5 md:grid-cols-[minmax(220px,360px)_1fr] md:items-center">
           {event.imageUrl ? (
-            <div className="overflow-hidden border border-black/10 bg-white/80 shadow-sm">
+            <div className="overflow-hidden border border-black/10 bg-white/80">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={event.imageUrl} alt={event.title} className="h-auto w-full object-cover" />
             </div>

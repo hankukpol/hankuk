@@ -36,9 +36,9 @@ const options: Array<{
 
 export default function DifficultySelector({ subjectName, value, onChange }: DifficultySelectorProps) {
   return (
-    <div className="flex items-center gap-2">
-      <p className="text-xs text-slate-500">{subjectName} 체감 난이도</p>
-      <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
+    <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:items-center">
+      <p className="shrink-0 text-xs text-slate-500">{subjectName} 체감 난이도</p>
+      <div className="grid w-full grid-cols-5 overflow-hidden rounded-md border border-slate-300 sm:w-auto">
         {options.map((option) => {
           const active = value === option.value;
           return (
@@ -46,10 +46,10 @@ export default function DifficultySelector({ subjectName, value, onChange }: Dif
               key={`${subjectName}-${option.value}`}
               type="button"
               onClick={() => onChange(option.value)}
-              className={`border-r border-slate-300 last:border-r-0 px-3 py-1.5 text-xs font-bold transition ${active
-                ? "bg-service-700 text-white"
-                : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
+              className={`min-h-9 border-r border-slate-300 px-1 py-1.5 text-[11px] font-bold transition last:border-r-0 sm:px-3 sm:text-xs ${active
+ ? "bg-service-700 text-white"
+ : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+ }`}
             >
               {option.label}
             </button>

@@ -543,7 +543,7 @@ export default function ExamMainOverviewPanel() {
           <p className="text-xl font-bold tracking-tight text-service-600">
             {data.liveStats.examYear}.{String(data.liveStats.examRound).padStart(2, "0")} 시행
           </p>
-          <p className="text-xs font-semibold text-slate-400">UPDATE {formatDateTime(data.updatedAt)}</p>
+          <p className="text-xs font-semibold text-slate-500">최종 갱신 {formatDateTime(data.updatedAt)}</p>
         </div>
         <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">직렬별 실시간 합격예측 분석</h2>
 
@@ -556,9 +556,9 @@ export default function ExamMainOverviewPanel() {
                 type="button"
                 onClick={() => setSelectedExamType(examType)}
                 className={`rounded-md px-6 py-2 text-sm font-bold transition ${active
-                  ? "bg-white text-service-600 border border-slate-200/50"
-                  : "text-slate-500 hover:text-slate-700"
-                  }`}
+ ? "bg-white text-service-600 border border-slate-200/50"
+ : "text-slate-500 hover:text-slate-700"
+ }`}
               >
                 {getExamTypeLabel(examType, data.examTypes)}
               </button>
@@ -577,10 +577,10 @@ export default function ExamMainOverviewPanel() {
                   type="button"
                   onClick={() => setSelectedGender(g)}
                   className={`rounded-md px-6 py-2 text-sm font-bold transition ${
-                    active
-                      ? "bg-white text-service-600 border border-slate-200/50"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
+ active
+ ? "bg-white text-service-600 border border-slate-200/50"
+ : "text-slate-500 hover:text-slate-700"
+ }`}
                 >
                   {g === "MALE" ? "남" : "여"}
                 </button>
@@ -590,7 +590,7 @@ export default function ExamMainOverviewPanel() {
           </div>
         ) : null}
 
-        <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-5">
+        <div className="mt-6 border-y border-slate-200 bg-slate-50 px-4 py-5">
           <p className="text-sm font-bold text-slate-800">지역 선택</p>
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {regionOptions.map((region) => {
@@ -600,9 +600,9 @@ export default function ExamMainOverviewPanel() {
                   key={region.id}
                   type="button"
                   className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${active
-                    ? "border-service-600 bg-service-600 text-white"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100"
-                    }`}
+ ? "border-service-600 bg-service-600 text-white"
+ : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+ }`}
                   onClick={() => setSelectedRegionId(region.id)}
                 >
                   {region.name}
@@ -617,8 +617,8 @@ export default function ExamMainOverviewPanel() {
         </p>
 
         <div className="mt-3 grid gap-4 xl:grid-cols-2 xl:items-stretch">
-          <div className="h-full overflow-hidden rounded-md border border-slate-200 bg-white">
-            <table className="w-full border-collapse text-sm">
+          <div className="h-full overflow-hidden border-y border-slate-200 bg-white">
+            <table className="data-table w-full text-sm">
               <tbody className="divide-y divide-slate-200">
                 <tr className="divide-x divide-slate-200">
                   <th className="w-[140px] bg-slate-50 px-4 py-3.5 text-left font-bold text-slate-700 sm:w-[170px]">
@@ -681,14 +681,14 @@ export default function ExamMainOverviewPanel() {
             </table>
           </div>
 
-          <div className="flex h-full flex-col overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="flex h-full flex-col overflow-hidden border-y border-slate-200 bg-white">
             {isLowSample && selectedRow ? (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
                 참여인원({selectedRow.participantCount.toLocaleString("ko-KR")}명)이 선발인원({selectedRow.recruitCount.toLocaleString("ko-KR")}명)보다 적어 예측 정확도가 낮습니다.
               </div>
             ) : null}
             <div className="flex-1">
-              <table className="h-full w-full border-collapse text-sm">
+              <table className="data-table h-full w-full text-sm">
                 <tbody className="flex h-full flex-col divide-y divide-slate-200 border-b border-slate-200">
                   <tr className="flex flex-1 divide-x divide-slate-200">
                     <th className="flex w-[140px] items-center bg-slate-50 px-4 py-3.5 text-left font-bold text-slate-700 sm:w-[170px]">합격가능권</th>
@@ -808,17 +808,17 @@ export default function ExamMainOverviewPanel() {
         <h3 className="text-xl font-bold tracking-tight text-slate-900">채점자 성적분포도</h3>
         {scoreDistributionItems.length > 0 && selectedScoreDistribution ? (
           <div className="mt-5 rounded-md bg-slate-50 p-4 sm:p-6">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap border-b border-slate-200">
               {scoreDistributionItems.map((item) => {
                 const active = item.key === selectedScoreDistribution.key;
                 return (
                   <button
                     key={item.key}
                     type="button"
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${active
-                      ? "border-service-700 bg-service-700 text-white"
-                      : "border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-700"
-                      }`}
+                    className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition ${active
+ ? "border-service-600 text-service-700"
+ : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
+ }`}
                     onClick={() => setSelectedScoreDistributionKey(item.key)}
                   >
                     {item.label}
@@ -843,9 +843,9 @@ export default function ExamMainOverviewPanel() {
               {selectedScoreDistribution.failThreshold !== null && selectedScoreDistribution.isFail !== null ? (
                 <span
                   className={`rounded-full px-3 py-1 ${selectedScoreDistribution.isFail
-                    ? "bg-rose-100 text-rose-700"
-                    : "bg-emerald-100 text-emerald-700"
-                    }`}
+ ? "bg-rose-100 text-rose-700"
+ : "bg-emerald-100 text-emerald-700"
+ }`}
                 >
                   {selectedScoreDistribution.isFail ? "내 상태: 과락" : "내 상태: 통과"}
                 </span>

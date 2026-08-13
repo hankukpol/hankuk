@@ -47,7 +47,7 @@ function StatCard({
   icon: ReactNode;
 }) {
   return (
-    <article className="rounded-md border border-slate-200 bg-slate-50 p-4">
+    <article className="min-w-0 bg-slate-50 px-4 py-4 sm:px-5">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-slate-500">{label}</p>
         {icon}
@@ -72,9 +72,9 @@ export default function LiveStatsCounter({
   const hasCombinedCareerStats = typeof stats.careerParticipants === "number";
   const gridClass = careerExamEnabled
     ? hasCombinedCareerStats
-      ? "xl:grid-cols-4"
-      : "xl:grid-cols-6"
-    : "xl:grid-cols-3";
+      ? "sm:grid-cols-2 xl:grid-cols-4"
+      : "sm:grid-cols-2 xl:grid-cols-6"
+    : "sm:grid-cols-3";
 
   return (
     <section className="relative overflow-hidden border border-slate-200 bg-white p-6 sm:p-8">
@@ -91,7 +91,7 @@ export default function LiveStatsCounter({
           </p>
         </div>
 
-        <div className={`mt-5 grid gap-3 sm:grid-cols-2 ${gridClass}`}>
+        <div className={`mt-5 grid gap-px border-y border-slate-200 bg-slate-200 ${gridClass}`}>
           <StatCard
             label="전체 참여"
             value={stats.totalParticipants}

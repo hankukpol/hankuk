@@ -555,7 +555,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
         </div>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
+          <table className="data-table w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-slate-100 text-slate-700">
                 <th className="border border-slate-200 px-3 py-2 text-left">석차</th>
@@ -568,7 +568,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
               {competitors.items.map((competitor) => (
                 <tr
                   key={competitor.submissionId}
-                  className={competitor.isMine ? "bg-blue-50 font-semibold text-blue-900" : "bg-white"}
+                  className={competitor.isMine ? "bg-fire-50 font-semibold text-fire-900" : "bg-white"}
                 >
                   <td className="border border-slate-200 px-3 py-2">{competitor.rank}</td>
                   <td className="border border-slate-200 px-3 py-2">
@@ -580,7 +580,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
                   <td className="border border-slate-200 px-3 py-2 text-center">
                     <button
                       type="button"
-                      className="text-sm font-medium text-blue-600 underline underline-offset-2 hover:text-blue-700"
+                      className="text-sm font-medium text-fire-600 underline underline-offset-2 hover:text-fire-700"
                       onClick={() => void handleOpenCompetitorDetail(competitor.submissionId)}
                     >
                       [성적보기]
@@ -683,14 +683,14 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
                   </article>
                   <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-xs text-slate-500">점수</p>
-                    <p className="mt-1 text-lg font-bold text-blue-700">
+                    <p className="mt-1 text-lg font-bold text-fire-700">
                       {formatScoreSmart(competitorDetail.competitor.score)}
                     </p>
                   </article>
                 </section>
 
                 <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[560px] border-collapse text-sm">
+                  <table className="data-table w-full min-w-[560px] text-sm">
                     <thead>
                       <tr className="bg-slate-100 text-slate-700">
                         <th className="border border-slate-200 px-3 py-2 text-left">과목</th>

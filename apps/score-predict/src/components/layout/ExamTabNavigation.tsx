@@ -21,17 +21,17 @@ interface TabItem {
 
 function tabClassName(active: boolean, disabled: boolean): string {
   const base =
-    "inline-flex w-full min-w-0 items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition sm:w-auto sm:min-w-[120px] sm:rounded-none sm:border-b-2 sm:px-4 sm:py-3 sm:text-sm";
+    "inline-flex min-h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition sm:min-w-[120px]";
 
   if (disabled) {
-    return `${base} cursor-not-allowed text-slate-400 sm:border-transparent`;
+    return `${base} cursor-not-allowed border-transparent text-slate-400`;
   }
 
   if (active) {
-    return `${base} bg-service-50 text-service-700 sm:border-service-700 sm:bg-transparent`;
+    return `${base} border-service-700 text-service-700`;
   }
 
-  return `${base} text-slate-500 hover:bg-service-50 hover:text-service-700 sm:border-transparent sm:bg-transparent sm:hover:border-service-300 sm:hover:bg-transparent`;
+  return `${base} border-transparent text-slate-500 hover:border-service-300 hover:text-service-700`;
 }
 
 export default function ExamTabNavigation({
@@ -83,7 +83,7 @@ export default function ExamTabNavigation({
 
   return (
     <nav className="border-b border-slate-200 bg-white">
-      <div className="mx-auto grid w-full grid-cols-3 gap-1 p-1 sm:flex sm:min-w-max sm:max-w-7xl sm:gap-0 sm:p-0">
+      <div className="mx-auto flex w-full max-w-7xl min-w-max overflow-x-auto px-1 sm:px-4">
         {visibleTabs.map((tab) => {
           const active = pathname === tab.href;
 

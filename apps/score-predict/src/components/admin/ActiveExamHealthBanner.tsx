@@ -44,10 +44,10 @@ export default function ActiveExamHealthBanner() {
   return (
     <section
       className={`mb-4 flex flex-col gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
-        healthy
-          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-          : "border-rose-300 bg-rose-50 text-rose-900"
-      }`}
+ healthy
+ ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+ : "border-rose-300 bg-rose-50 text-rose-900"
+ }`}
       aria-live="polite"
     >
       <div className="flex items-start gap-2">

@@ -942,10 +942,10 @@ export default function AdminAnswersPage() {
       {notice ? (
         <p
           className={`rounded-md px-3 py-2 text-sm ${
-            notice.type === "success"
-              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border border-rose-200 bg-rose-50 text-rose-700"
-          }`}
+ notice.type === "success"
+ ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+ : "border border-rose-200 bg-rose-50 text-rose-700"
+ }`}
         >
           {notice.message}
         </p>
@@ -966,10 +966,10 @@ export default function AdminAnswersPage() {
               type="button"
               onClick={() => setInputMode("radio")}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                inputMode === "radio"
-                  ? "bg-slate-900 text-white"
-                  : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
-              }`}
+ inputMode === "radio"
+ ? "bg-slate-900 text-white"
+ : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
+ }`}
             >
               라디오 버튼
             </button>
@@ -977,10 +977,10 @@ export default function AdminAnswersPage() {
               type="button"
               onClick={() => setInputMode("keyboard")}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                inputMode === "keyboard"
-                  ? "bg-slate-900 text-white"
-                  : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
-              }`}
+ inputMode === "keyboard"
+ ? "bg-slate-900 text-white"
+ : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
+ }`}
             >
               키보드 빠른 입력
             </button>

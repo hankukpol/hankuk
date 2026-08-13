@@ -504,7 +504,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
               <p className="mt-1 text-base font-bold">{confidence.label}</p>
               <p className="mt-2">{confidence.message}</p>
             </div>
-            <div className="rounded-lg bg-white/70 px-4 py-3 text-slate-700">
+            <div className="border-l-2 border-current pl-4 text-slate-700">
               <p>
                 표본 {summary.totalParticipants.toLocaleString("ko-KR")}명 · 응시인원 기준{" "}
                 {participationRate.toFixed(1)}%
@@ -540,20 +540,20 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
               </p>
             </div>
           </div>
-          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+          <ol className="data-list-flat mt-4 border-y border-slate-200">
             {stageCards.map((card, index) => (
-              <article
+              <li
                 key={card.key}
-                className={`rounded-lg border p-4 ${
-                  index === 0 ? "border-police-200 bg-police-50" : "border-slate-200 bg-slate-50"
-                }`}
+                className={`grid gap-1 px-4 py-3 sm:grid-cols-[9rem_12rem_1fr] sm:items-center sm:gap-4 ${
+ index === 0 ? "bg-service-50" : "bg-white"
+ }`}
               >
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.title}</p>
-                <p className="mt-2 text-sm font-bold text-slate-900">{card.subtitle}</p>
-                <p className="mt-2 text-sm text-slate-600">{card.detail}</p>
-              </article>
+                <p className="text-xs font-semibold text-slate-500">{card.title}</p>
+                <p className="text-sm font-bold text-slate-900">{card.subtitle}</p>
+                <p className="text-sm text-slate-600">{card.detail}</p>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
       ) : null}
 
@@ -591,8 +591,34 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
           </p>
         </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
+        <ul className="data-list-flat mt-4 border-y border-slate-200 sm:hidden">
+          {competitors.items.map((competitor) => (
+            <li
+              key={competitor.submissionId}
+              className={`grid grid-cols-[3rem_1fr_auto_auto] items-center gap-2 px-3 py-3 ${
+ competitor.isMine
+ ? "bg-service-50 text-service-900"
+ : "bg-white text-slate-800"
+ }`}
+            >
+              <p className="text-xs font-semibold tabular-nums text-slate-500">{competitor.rank}등</p>
+              <p className="truncate text-sm font-semibold">
+                {competitor.isMine ? "본인" : competitor.maskedName}
+              </p>
+              <p className="shrink-0 text-sm font-bold tabular-nums">{competitor.score.toFixed(2)}</p>
+              <button
+                type="button"
+                className="inline-flex min-h-9 items-center justify-center rounded-md border border-service-200 bg-white px-3 text-xs font-semibold text-service-700 hover:bg-service-50"
+                onClick={() => void handleOpenCompetitorDetail(competitor.submissionId)}
+              >
+                상세
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-4 hidden overflow-x-auto sm:block">
+          <table className="data-table w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-slate-100 text-slate-700">
                 <th className="border border-slate-200 px-3 py-2 text-left">석차</th>
@@ -617,10 +643,10 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
                   <td className="border border-slate-200 px-3 py-2 text-center">
                     <button
                       type="button"
-                      className="text-sm font-medium text-blue-600 underline underline-offset-2 hover:text-blue-700"
+                      className="text-sm font-semibold text-service-700 underline underline-offset-4 hover:text-service-800"
                       onClick={() => void handleOpenCompetitorDetail(competitor.submissionId)}
                     >
-                      [성적보기]
+                      상세 보기
                     </button>
                   </td>
                 </tr>
@@ -676,7 +702,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
           onClick={() => setIsCompetitorModalOpen(false)}
         >
           <div
-            className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5"
+            className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -701,29 +727,64 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
               </p>
             ) : competitorDetail ? (
               <>
-                <section className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <dl className="mt-4 grid grid-cols-3 border-y border-slate-200">
+                  <div className="px-3 py-3">
                     <p className="text-xs text-slate-500">석차</p>
                     <p className="mt-1 text-lg font-bold text-slate-900">
                       {competitorDetail.competitor.rank} / {competitorDetail.competitor.totalParticipants}
                     </p>
-                  </article>
-                  <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  </div>
+                  <div className="border-l border-slate-200 px-3 py-3">
                     <p className="text-xs text-slate-500">아이디</p>
                     <p className="mt-1 text-lg font-bold text-slate-900">
                       {competitorDetail.competitor.maskedName}
                     </p>
-                  </article>
-                  <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  </div>
+                  <div className="border-l border-slate-200 bg-service-50 px-3 py-3">
                     <p className="text-xs text-slate-500">점수</p>
-                    <p className="mt-1 text-lg font-bold text-blue-700">
+                    <p className="mt-1 text-lg font-bold text-service-700">
                       {formatScoreSmart(competitorDetail.competitor.score)}
                     </p>
-                  </article>
-                </section>
+                  </div>
+                </dl>
 
-                <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[560px] border-collapse text-sm">
+                <div className="data-list-flat mt-4 border-y border-slate-200 sm:hidden">
+                  {competitorDetail.subjectScores.map((subject) => (
+                    <div key={subject.subjectId} className="px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-slate-900">{subject.subjectName}</p>
+                        {subject.isFailed ? (
+                          <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                            과락
+                          </span>
+                        ) : null}
+                      </div>
+                      <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <dt className="text-xs text-slate-500">원점수</dt>
+                          <dd className="mt-1 font-semibold tabular-nums text-slate-800">
+                            {formatScoreSmart(subject.rawScore)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-slate-500">만점</dt>
+                          <dd className="mt-1 font-semibold tabular-nums text-slate-800">
+                            {Math.round(subject.maxScore)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-slate-500">백분율</dt>
+                          <dd className="mt-1 font-semibold tabular-nums text-slate-800">
+                            {subject.percentage.toFixed(1)}%
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 hidden overflow-x-auto border-y border-slate-200 sm:block">
+                  <table className="data-table w-full min-w-[560px] text-sm">
                     <thead>
                       <tr className="bg-slate-100 text-slate-700">
                         <th className="border border-slate-200 px-3 py-2 text-left">과목</th>

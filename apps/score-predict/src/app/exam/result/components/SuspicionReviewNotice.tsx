@@ -16,10 +16,10 @@ export default function SuspicionReviewNotice({ status }: SuspicionReviewNoticeP
   return (
     <section
       className={`rounded-xl border p-5 ${
-        excluded
-          ? "border-rose-200 bg-rose-50 text-rose-900"
-          : "border-amber-200 bg-amber-50 text-amber-900"
-      }`}
+ excluded
+ ? "border-rose-200 bg-rose-50 text-rose-900"
+ : "border-amber-200 bg-amber-50 text-amber-900"
+ }`}
       role="status"
     >
       <div className="flex items-start gap-3">

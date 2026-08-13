@@ -21,13 +21,6 @@ type AnswersBySubject = Record<string, Record<number, number | null>>;
 type DifficultyBySubject = Record<string, DifficultyRating | null>;
 
 const OMR_INPUT_MODE_STORAGE_KEY = "exam.omr.input-mode";
-const DIFFICULTY_LABEL: Record<DifficultyRating, string> = {
-  VERY_EASY: "매우 쉬움",
-  EASY: "쉬움",
-  NORMAL: "보통",
-  HARD: "어려움",
-  VERY_HARD: "매우 어려움",
-};
 
 interface ExamSummary {
   id: number;
@@ -124,6 +117,7 @@ interface EditSubmissionResponse {
 interface ExamInputPageProps {
   embedded?: boolean;
   onSubmitted?: (submissionId: number) => void;
+  presentation?: "default" | "pre-registration-modal";
 }
 
 function createEmptyAnswers(subjects: SubjectInfo[]): AnswersBySubject {
@@ -218,6 +212,7 @@ function collectSelectedAnswers(
 export default function ExamInputPage({
   embedded = false,
   onSubmitted,
+  presentation = "default",
 }: ExamInputPageProps) {
   const tenantType = "police";
   const router = useRouter();
@@ -265,6 +260,7 @@ export default function ExamInputPage({
   });
 
   const effectiveEditId = editId ? Number(editId) : autoEditId;
+  const isPreRegistrationModal = presentation === "pre-registration-modal";
   const isEditLimitReached = editCountInfo !== null && editCountInfo.maxEditLimit > 0 && editCountInfo.editCount >= editCountInfo.maxEditLimit;
 
   useEffect(() => {
@@ -453,7 +449,9 @@ export default function ExamInputPage({
   }, [siteSettings]);
   const canManagePreRegistration = preRegistrationEnabled && !effectiveEditId;
   const canSubmitAnswers = answerInputEnabled;
-  const isPreRegistrationOnlyMode = canManagePreRegistration && !canSubmitAnswers;
+  const showAnswerInput = canSubmitAnswers && !isPreRegistrationModal;
+  const isPreRegistrationOnlyMode =
+    canManagePreRegistration && (!canSubmitAnswers || isPreRegistrationModal);
   const isInputFullyClosed = !preRegistrationEnabled && !answerInputEnabled;
   const answerInputDisabledMessage = preRegistrationEnabled
     ? "현재는 수험번호 사전등록 기간입니다. 시험 종료 후 답안 입력이 열리면 다시 이용해 주세요."
@@ -869,6 +867,24 @@ export default function ExamInputPage({
     );
   }
 
+  if (isPreRegistrationModal && !preRegistrationEnabled) {
+    return (
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+        <h1 className="text-base font-semibold">사전등록이 마감되었습니다</h1>
+        <p className="mt-2">{preRegistrationClosedMessage}</p>
+      </section>
+    );
+  }
+
+  if (isPreRegistrationModal && effectiveEditId) {
+    return (
+      <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-800">
+        <h1 className="text-base font-semibold">답안 제출이 완료된 계정입니다</h1>
+        <p className="mt-2">현재 시험의 성적이 이미 제출되어 사전등록이 필요하지 않습니다.</p>
+      </section>
+    );
+  }
+
   if (isInputFullyClosed || (!canSubmitAnswers && effectiveEditId)) {
     return (
       <section className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-sm text-amber-800">
@@ -879,7 +895,13 @@ export default function ExamInputPage({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section
+        className={
+          isPreRegistrationModal
+            ? "bg-white"
+            : "rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+        }
+      >
         <h1 className="text-lg font-semibold text-slate-900">
           {isPreRegistrationOnlyMode ? "수험번호 사전등록" : "응시정보 입력"}
         </h1>
@@ -983,7 +1005,7 @@ export default function ExamInputPage({
         </div>
 
         {canManagePreRegistration ? (
-          <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50/70 p-4">
+          <div className="mt-6 border-y border-sky-200 bg-sky-50/70 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">사전등록</h2>
@@ -998,7 +1020,7 @@ export default function ExamInputPage({
                 ) : (
                   <p className="mt-2 text-xs text-slate-500">아직 사전등록된 정보가 없습니다.</p>
                 )}
-                <label className="mt-4 flex items-start gap-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+                <label className="mt-4 flex items-start gap-2 border-t border-sky-200 pt-3">
                   <input
                     type="checkbox"
                     checked={smsMarketingConsent === true}
@@ -1020,7 +1042,7 @@ export default function ExamInputPage({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant="outline"
+                  className="bg-service-700 text-white hover:bg-service-800"
                   onClick={() => void handleSavePreRegistration()}
                   disabled={
                     smsMarketingConsent === null ||
@@ -1039,6 +1061,7 @@ export default function ExamInputPage({
                   <Button
                     type="button"
                     variant="outline"
+                    className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
                     onClick={() => void handleDeletePreRegistration()}
                     disabled={isPreRegistrationSaving || isPreRegistrationDeleting || isSubmitting}
                   >
@@ -1060,8 +1083,8 @@ export default function ExamInputPage({
           </div>
         ) : null}
 
-        {canSubmitAnswers ? (
-          <div className="mt-6 rounded-xl border border-slate-200 p-4">
+        {showAnswerInput ? (
+          <div className="mt-6 border-y border-slate-200 py-4">
           <h2 className="text-sm font-semibold text-slate-900">가산점</h2>
           <p className="mt-1 text-xs text-slate-500">취업지원과 의사상자 가산점은 동시에 적용할 수 없습니다.</p>
 
@@ -1102,10 +1125,16 @@ export default function ExamInputPage({
           </div>
           </div>
         ) : null}
+
+        {errorMessage && !showAnswerInput ? (
+          <p className="mt-4 border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {errorMessage}
+          </p>
+        ) : null}
       </section>
 
       {/* 수정 모드 안내 배너 */}
-      {canSubmitAnswers && effectiveEditId && editCountInfo && (
+      {showAnswerInput && effectiveEditId && editCountInfo && (
         isEditLimitReached ? (
           <section className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
             <p className="font-semibold">답안 수정 횟수({editCountInfo.maxEditLimit}회)를 모두 사용했습니다.</p>
@@ -1125,8 +1154,8 @@ export default function ExamInputPage({
         )
       )}
 
-      {canSubmitAnswers ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-6">
+      {isPreRegistrationModal ? null : showAnswerInput ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <h2 className="text-lg font-semibold text-slate-900">OMR 답안 입력</h2>
         <p className="mt-1 text-sm text-slate-600">
           {examType === ExamType.PUBLIC ? "공채" : "경행경채"} ·
@@ -1146,50 +1175,35 @@ export default function ExamInputPage({
           />
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-5 grid grid-cols-3 border-b border-slate-200">
           {subjects.map((subject, index) => {
             const progress = progressBySubject.find((item) => item.subjectName === subject.name);
             const filled = progress?.filled ?? 0;
             const completed = filled === subject.questionCount;
-            const rating = currentDifficulty[subject.name] ?? "NORMAL";
 
             return (
               <button
                 key={subject.name}
                 type="button"
-                className={`rounded-md border px-4 py-2 text-sm font-bold ${index === activeSubjectIndex
-                  ? "border-police-700 bg-police-700 text-white"
-                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                  }`}
+                className={`min-w-0 border-b-2 px-2 py-3 text-center text-sm font-bold sm:px-4 ${index === activeSubjectIndex
+ ? "border-police-700 text-police-700"
+ : "border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900"
+ }`}
                 onClick={() => setActiveSubjectIndex(index)}
               >
-                <span>{subject.name}</span>
+                <span className="block truncate">{subject.name}</span>
                 <span
-                  className={`ml-2 rounded-md px-2 py-0.5 text-xs font-semibold ${completed
-                    ? "bg-police-600 text-white"
-                    : "bg-rose-100 text-rose-700"
-                    } ${index === activeSubjectIndex && completed ? "bg-white text-police-700" : ""
-                    }`}
+                  className={`mt-1 block text-xs font-semibold ${completed ? "text-emerald-700" : "text-rose-700"}`}
                 >
                   {filled}/{subject.questionCount}
                 </span>
-                {rating ? (
-                  <span
-                    className={`ml-2 rounded-md px-2 py-0.5 text-xs font-semibold ${index === activeSubjectIndex
-                      ? "bg-white text-police-700"
-                      : "bg-blue-100 text-blue-700"
-                      }`}
-                  >
-                    {DIFFICULTY_LABEL[rating]}
-                  </span>
-                ) : null}
               </button>
             );
           })}
         </div>
 
         {currentSubject ? (
-          <div className="mt-4 rounded-xl border border-slate-200 p-4">
+          <div className="mt-4 border-b border-slate-200 pb-5">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-semibold text-slate-900">
                 {currentSubject.name} ({currentSubject.questionCount}문항)
@@ -1221,7 +1235,7 @@ export default function ExamInputPage({
           </div>
         ) : null}
 
-        <div className="mt-5 space-y-3 rounded-xl border border-slate-200 p-4">
+        <div className="mt-5 space-y-3 border-t border-slate-200 pt-5">
           <h3 className="text-sm font-semibold text-slate-900">입력 현황</h3>
           {progressBySubject.map((item) => {
             const percentage = item.total > 0 ? (item.filled / item.total) * 100 : 0;

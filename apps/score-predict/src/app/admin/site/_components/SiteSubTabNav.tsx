@@ -28,10 +28,10 @@ export default function SiteSubTabNav() {
               <Link
                 href={tab.href}
                 className={`inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition ${
-                  isActive
-                    ? "bg-service-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
+ isActive
+ ? "bg-service-600 text-white "
+ : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+ }`}
               >
                 {tab.label}
               </Link>

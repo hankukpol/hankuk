@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Sparkles, Timer } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface HeroFallbackProps {
@@ -38,8 +38,7 @@ export default function HeroFallback({
 
       <div className="relative grid gap-6 px-5 py-8 sm:px-8 sm:py-10 lg:grid-cols-[1.25fr_0.75fr] lg:gap-8">
         <div>
-          <p className="inline-flex items-center gap-2 border border-slate-300 bg-white/60 px-3 py-1 text-xs font-semibold tracking-wide text-slate-700">
-            <Sparkles className="h-3.5 w-3.5" />
+          <p className="inline-flex items-center border-l-2 border-service-600 pl-3 text-xs font-semibold text-slate-700">
             {badge}
           </p>
           <h1 className="mt-4 whitespace-pre-line text-3xl font-black leading-tight sm:text-4xl lg:text-5xl">
@@ -67,12 +66,9 @@ export default function HeroFallback({
           </div>
         </div>
 
-        <div className="border border-slate-300 bg-white/70 p-5 backdrop-blur-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">서비스 운영 안내</p>
-            <Timer className="h-4 w-4 text-slate-500" />
-          </div>
-          <div className="mt-4 rounded-lg border border-service-200 bg-service-50 p-4">
+        <div className="border-l-2 border-service-600 bg-white/70 p-5">
+          <p className="text-sm font-semibold text-slate-800">서비스 운영 안내</p>
+          <div className="mt-4 bg-service-50 px-4 py-3">
             <p className="text-base font-bold text-service-900">{operationLabel}</p>
             <p className="mt-2 text-sm leading-6 text-service-800">{operationDescription}</p>
           </div>

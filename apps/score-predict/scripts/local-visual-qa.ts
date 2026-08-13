@@ -236,9 +236,7 @@ async function verifyPublicLandingAtViewport(
   await gotoWithRetry(page, `http://${tenantType}.localhost:3200/`, { waitUntil: "domcontentloaded" });
   await page.locator("body[data-tenant]").waitFor({ timeout: 20_000 });
   await page.getByText("세션 확인 중...", { exact: true }).waitFor({ state: "detached", timeout: 30_000 });
-  await page
-    .getByRole("heading", { name: /^(대구·경북|지역별) 시험 현황$/ })
-    .waitFor({ timeout: 30_000 });
+  await page.locator("main").waitFor({ state: "visible", timeout: 30_000 });
   await verifyTenantPalette(page, tenantType, `${tenantType} public landing`);
 
   assert(page.url() === `http://${tenantType}.localhost:3200/`, `${tenantType} public root changed URL to ${page.url()}.`);

@@ -56,7 +56,7 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
   const summary = result.analysisSummary;
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">전체 성적 요약</h2>
         <p className="text-xs text-slate-500">순위 기준: {formatRankingBasis(result.statistics.rankingBasis)}</p>
@@ -65,12 +65,12 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
       {result.bonusApplication?.message ? (
         <div
           className={`rounded-lg border px-4 py-3 text-sm ${
-            result.bonusApplication.status === "APPLIED"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : result.bonusApplication.status === "PENDING"
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-slate-200 bg-slate-50 text-slate-700"
-          }`}
+ result.bonusApplication.status === "APPLIED"
+ ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+ : result.bonusApplication.status === "PENDING"
+ ? "border-amber-200 bg-amber-50 text-amber-800"
+ : "border-slate-200 bg-slate-50 text-slate-700"
+ }`}
         >
           {result.bonusApplication.message}
         </div>
@@ -98,13 +98,13 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200">
+        <div className="flex flex-col overflow-hidden border-y border-slate-200">
           <div className="bg-slate-100 px-4 py-2.5">
             <h3 className="text-sm font-semibold text-slate-700">내 점수</h3>
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full border-collapse">
+            <table className="data-table w-full">
               <thead>
                 <tr>
                   <th className={TH}>과목</th>
@@ -153,9 +153,9 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
             </table>
           </div>
 
-          <div className="space-y-2 p-3 md:hidden">
+          <div className="data-list-flat md:hidden">
             {summary.subjects.map((subject) => (
-              <div key={subject.subjectId} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={subject.subjectId} className="px-4 py-3">
                 <p className="text-sm font-semibold text-slate-800">{subject.subjectName}</p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between gap-4">
@@ -186,7 +186,7 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
               </div>
             ))}
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="bg-slate-50 px-4 py-3">
               <p className="text-sm font-semibold text-slate-900">총점</p>
               <div className="mt-2 space-y-1 text-sm">
                 <div className="flex items-center justify-between gap-4">
@@ -238,13 +238,13 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
           </div>
         </div>
 
-        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200">
+        <div className="flex flex-col overflow-hidden border-y border-slate-200">
           <div className="bg-slate-100 px-4 py-2.5">
             <h3 className="text-sm font-semibold text-slate-700">전체 입력자 비교</h3>
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full border-collapse">
+            <table className="data-table w-full">
               <thead>
                 <tr>
                   <th className={TH}>과목</th>
@@ -278,9 +278,9 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
             </table>
           </div>
 
-          <div className="space-y-2 p-3 md:hidden">
+          <div className="data-list-flat md:hidden">
             {summary.subjects.map((subject) => (
-              <div key={subject.subjectId} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={subject.subjectId} className="px-4 py-3">
                 <p className="text-sm font-semibold text-slate-800">{subject.subjectName}</p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between gap-4">
@@ -307,7 +307,7 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
               </div>
             ))}
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="bg-slate-50 px-4 py-3">
               <p className="text-sm font-semibold text-slate-900">총점</p>
               <div className="mt-2 space-y-1 text-sm">
                 <div className="flex items-center justify-between gap-4">

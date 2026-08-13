@@ -20,7 +20,7 @@ export default function DashboardSetupChecklist({ items }: DashboardSetupCheckli
   const progressPercent = Math.round((completedCount / totalCount) * 100);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-800">운영 준비 체크리스트</h2>
         <span className="text-xs font-medium text-slate-500">
@@ -41,10 +41,10 @@ export default function DashboardSetupChecklist({ items }: DashboardSetupCheckli
             key={item.label}
             href={item.href}
             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-              item.completed
-                ? "text-slate-400"
-                : "bg-slate-50 text-slate-700 hover:bg-slate-100"
-            }`}
+ item.completed
+ ? "text-slate-400"
+ : "bg-slate-50 text-slate-700 hover:bg-slate-100"
+ }`}
           >
             {item.completed ? (
               <svg

@@ -137,18 +137,18 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 space-y-2 md:hidden">
+      <div className="data-list-flat mt-4 border-y border-slate-200 md:hidden">
         {chartData.map((item) => (
-          <div key={item.key} className="rounded-lg border border-slate-200 bg-white p-3">
+          <div key={item.key} className="bg-white px-3 py-3">
             <div className="flex items-center justify-between gap-3 text-sm">
               <p className="font-semibold text-slate-800">{item.questionNumber}번</p>
-              <p className={`font-semibold ${item.isCorrect ? "text-blue-700" : "text-rose-700"}`}>
+              <p className={`font-semibold ${item.isCorrect ? "text-service-700" : "text-rose-700"}`}>
                 {item.correctRate.toFixed(1)}%
               </p>
             </div>
             <div className="mt-2 h-2 rounded-full bg-slate-200">
               <div
-                className={`h-2 rounded-full ${item.isCorrect ? "bg-blue-600" : "bg-rose-500"}`}
+                className={`h-2 rounded-full ${item.isCorrect ? "bg-service-600" : "bg-rose-500"}`}
                 style={{ width: `${Math.max(0, Math.min(100, item.correctRate))}%` }}
               />
             </div>
@@ -157,7 +157,7 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-        <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700">파란색: 내가 맞힌 문항</span>
+        <span className="rounded-full bg-service-100 px-3 py-1 text-service-700">서비스 강조색: 내가 맞힌 문항</span>
         <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700">빨간색: 내가 틀린 문항</span>
       </div>
     </section>

@@ -230,7 +230,7 @@ export default async function HomePage() {
                 <BannerImage
                   key={`hero-sub-${banner.id}`}
                   banner={banner}
-                  className="h-auto w-full rounded-2xl border border-black/15 object-cover shadow-sm"
+                  className="h-auto w-full rounded-2xl border border-black/15 object-cover"
                 />
               ))}
             </div>

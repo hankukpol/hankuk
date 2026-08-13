@@ -585,10 +585,10 @@ function FireAdminRegionsPage() {
 
       {notice ? (
         <p className={`rounded-md px-3 py-2 text-sm ${
-          notice.type === "success"
-            ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-            : "border border-rose-200 bg-rose-50 text-rose-700"
-        }`}>
+ notice.type === "success"
+ ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+ : "border border-rose-200 bg-rose-50 text-rose-700"
+ }`}>
           {notice.message}
         </p>
       ) : null}
@@ -620,10 +620,10 @@ function FireAdminRegionsPage() {
                   type="button"
                   onClick={() => setActiveTab(tab.key)}
                   className={`relative px-5 py-2.5 text-sm font-semibold transition-colors ${
-                    activeTab === tab.key
-                      ? "text-fire-700"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
+ activeTab === tab.key
+ ? "text-fire-700"
+ : "text-slate-500 hover:text-slate-700"
+ }`}
                 >
                   {tab.label}
                   {tabChanged > 0 && (
@@ -750,10 +750,10 @@ function FireAdminRegionsPage() {
                       <td className="px-4 py-3">
                         <label
                           className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold ${
-                            isFieldChanged(row, "isActive")
-                              ? "border-amber-300 bg-amber-50"
-                              : "border-slate-300 bg-white"
-                          }`}
+ isFieldChanged(row, "isActive")
+ ? "border-amber-300 bg-amber-50"
+ : "border-slate-300 bg-white"
+ }`}
                         >
                           <input
                             type="checkbox"
@@ -773,10 +773,10 @@ function FireAdminRegionsPage() {
                           value={recruit}
                           onChange={(e) => updateRegionValue(row.id, recruitField, e.target.value)}
                           className={`h-9 w-24 rounded-md border px-2 text-right text-sm ${
-                            isFieldChanged(row, recruitField)
-                              ? "border-amber-300 bg-amber-50"
-                              : "border-slate-300 bg-white"
-                          }`}
+ isFieldChanged(row, recruitField)
+ ? "border-amber-300 bg-amber-50"
+ : "border-slate-300 bg-white"
+ }`}
                         />
                         <span className="ml-1 text-xs text-slate-500">명</span>
                         {recruit > 0 ? (
@@ -794,10 +794,10 @@ function FireAdminRegionsPage() {
                             onChange={(e) => updateRegionNullableValue(row.id, applicantField, e.target.value)}
                             placeholder="미입력"
                             className={`h-8 w-24 rounded-md border px-2 text-right text-sm ${
-                              isFieldChanged(row, applicantField)
-                                ? "border-amber-300 bg-amber-50"
-                                : "border-slate-300 bg-white"
-                            }`}
+ isFieldChanged(row, applicantField)
+ ? "border-amber-300 bg-amber-50"
+ : "border-slate-300 bg-white"
+ }`}
                           />
                           <span className="text-xs text-slate-500">명</span>
                         </div>
@@ -819,10 +819,10 @@ function FireAdminRegionsPage() {
                             inputMode="numeric"
                             maxLength={10}
                             className={`h-9 w-24 rounded-md border px-2 text-center text-sm font-mono ${
-                              isFieldChanged(row, numStartField)
-                                ? "border-amber-300 bg-amber-50"
-                                : "border-slate-300 bg-white"
-                            }`}
+ isFieldChanged(row, numStartField)
+ ? "border-amber-300 bg-amber-50"
+ : "border-slate-300 bg-white"
+ }`}
                           />
                           <span className="text-slate-400">~</span>
                           <input
@@ -833,10 +833,10 @@ function FireAdminRegionsPage() {
                             inputMode="numeric"
                             maxLength={10}
                             className={`h-9 w-24 rounded-md border px-2 text-center text-sm font-mono ${
-                              isFieldChanged(row, numEndField)
-                                ? "border-amber-300 bg-amber-50"
-                                : "border-slate-300 bg-white"
-                            }`}
+ isFieldChanged(row, numEndField)
+ ? "border-amber-300 bg-amber-50"
+ : "border-slate-300 bg-white"
+ }`}
                           />
                         </div>
                       </td>

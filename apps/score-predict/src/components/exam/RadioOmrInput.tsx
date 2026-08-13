@@ -14,7 +14,7 @@ export default function RadioOmrInput({
   onAnswerChange,
 }: RadioOmrInputProps) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+    <div className="grid grid-cols-1 border-l border-t border-slate-200 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {Array.from({ length: questionCount }, (_, index) => {
         const questionNo = index + 1;
         const selected = answers[questionNo];
@@ -22,8 +22,8 @@ export default function RadioOmrInput({
         return (
           <div
             key={`${subjectName}-radio-${questionNo}`}
-            className={`flex flex-col items-center gap-2 border px-2 py-3 ${selected === null ? "border-rose-200 bg-rose-50/60" : "border-slate-200 bg-white"
-              }`}
+            className={`flex flex-col items-center gap-2 border-b border-r px-2 py-3 ${selected === null ? "border-rose-200 bg-rose-50/60" : "border-slate-200 bg-white"
+ }`}
           >
             <span className="text-sm font-semibold text-slate-900">{questionNo}번</span>
             <div className="flex w-full justify-center gap-1.5">
@@ -35,9 +35,9 @@ export default function RadioOmrInput({
                     type="button"
                     onClick={() => onAnswerChange(questionNo, active ? null : choice)}
                     className={`h-10 w-10 border text-sm font-bold transition rounded-none ${active
-                      ? "border-service-600 bg-service-600 text-white"
-                      : "border-slate-300 bg-white text-slate-600 hover:border-service-400 hover:bg-service-50"
-                      }`}
+ ? "border-service-600 bg-service-600 text-white"
+ : "border-slate-300 bg-white text-slate-600 hover:border-service-400 hover:bg-service-50"
+ }`}
                     aria-label={`${subjectName} ${questionNo}번 ${choice}번 선택`}
                   >
                     {choice}

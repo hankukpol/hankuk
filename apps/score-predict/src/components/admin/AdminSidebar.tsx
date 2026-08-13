@@ -274,10 +274,10 @@ export default function AdminSidebar() {
                 href={entry.href}
                 onClick={() => setMobileOpen(false)}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  active
-                    ? "bg-white/15 text-white shadow-sm"
-                    : "text-service-200 hover:bg-white/10 hover:text-white"
-                }`}
+ active
+ ? "bg-white/15 text-white "
+ : "text-service-200 hover:bg-white/10 hover:text-white"
+ }`}
               >
                 <span className={active ? "text-service-300" : "text-service-400"}>
                   {iconMap[entry.icon]}
@@ -296,8 +296,8 @@ export default function AdminSidebar() {
                 type="button"
                 onClick={() => toggleGroup(entry.key)}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
-                  hasActiveChild ? "text-white" : "text-service-400 hover:text-service-200"
-                }`}
+ hasActiveChild ? "text-white" : "text-service-400 hover:text-service-200"
+ }`}
               >
                 <span className={hasActiveChild ? "text-service-300" : "text-service-500"}>
                   {iconMap[entry.icon]}
@@ -316,10 +316,10 @@ export default function AdminSidebar() {
                         href={child.href}
                         onClick={() => setMobileOpen(false)}
                         className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                          active
-                            ? "bg-white/15 text-white shadow-sm"
-                            : "text-service-200 hover:bg-white/10 hover:text-white"
-                        }`}
+ active
+ ? "bg-white/15 text-white "
+ : "text-service-200 hover:bg-white/10 hover:text-white"
+ }`}
                       >
                         <span className={active ? "text-service-300" : "text-service-400"}>
                           {iconMap[child.icon]}
@@ -368,8 +368,8 @@ export default function AdminSidebar() {
 
       <aside
         className={`fixed left-0 top-0 z-50 flex h-full w-60 flex-col bg-service-700 transition-transform duration-300 md:hidden ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+ mobileOpen ? "translate-x-0" : "-translate-x-full"
+ }`}
       >
         <button
           type="button"

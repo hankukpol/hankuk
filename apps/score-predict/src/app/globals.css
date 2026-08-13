@@ -39,17 +39,19 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* radius 위계: 폼 6px < 배지·중첩 표면 8px < 카드 10px < 이미지 16px.
+     카드가 과하게 둥글면 화면 전체가 물러 보이므로 10px로 억제한다. */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 2px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -163,4 +165,26 @@ body[data-tenant="fire"] {
     word-break: keep-all;
     overflow-wrap: break-word;
   }
+}
+
+/* 사용자 데이터 표는 외곽선 한 번과 가로 구분선만 사용한다.
+   기존 셀 유틸리티의 사방 테두리를 이 클래스가 덮어 이중 격자를 방지한다. */
+.data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table th,
+.data-table td {
+  border-top-width: 0 !important;
+  border-right-width: 0 !important;
+  border-left-width: 0 !important;
+}
+
+.data-table tbody tr:last-child > td {
+  border-bottom-width: 0 !important;
+}
+
+.data-list-flat > * + * {
+  border-top-width: 1px;
 }

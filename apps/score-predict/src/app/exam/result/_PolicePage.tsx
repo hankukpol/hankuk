@@ -134,6 +134,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
             <Button
               type="button"
               variant="outline"
+              className="border-service-200 bg-service-50 text-service-800 hover:bg-service-100 hover:text-service-900"
               onClick={() =>
                 router.push(
                   `${withBrowserTenantPath("/exam/input", tenantType)}?edit=${result.submission.id}`
@@ -156,7 +157,6 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
           {!result.submission.rankingWithheld ? (
             <Button
               type="button"
-              className="rounded-none border border-transparent bg-slate-900 text-white shadow-sm hover:bg-slate-800"
               onClick={() => router.push(withBrowserTenantPath("/exam/prediction", tenantType))}
             >
               합격예측 분석 보기

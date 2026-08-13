@@ -3,7 +3,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +61,7 @@ const TEXT = {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showErrorToast } = useToast();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -157,7 +158,12 @@ export default function RegisterPage() {
       return;
     }
 
-    router.push(`${withBrowserTenantPath("/login", TENANT_TYPE)}?registered=1`);
+    const loginParams = new URLSearchParams({ registered: "1" });
+    const callbackUrl = searchParams.get("callbackUrl");
+    if (callbackUrl) {
+      loginParams.set("callbackUrl", callbackUrl);
+    }
+    router.push(`${withBrowserTenantPath("/login", TENANT_TYPE)}?${loginParams.toString()}`);
     router.refresh();
   };
 
@@ -219,7 +225,16 @@ export default function RegisterPage() {
           </form>
           <p className="mt-4 text-center text-sm text-slate-600">
             {TEXT.loginPrompt}{" "}
-            <Link href={withTenantPrefix("/login", TENANT_TYPE)} className="underline-offset-4 hover:underline">{TEXT.loginLink}</Link>
+            <Link
+              href={
+                searchParams.get("callbackUrl")
+                  ? `${withTenantPrefix("/login", TENANT_TYPE)}?callbackUrl=${encodeURIComponent(searchParams.get("callbackUrl") as string)}`
+                  : withTenantPrefix("/login", TENANT_TYPE)
+              }
+              className="underline-offset-4 hover:underline"
+            >
+              {TEXT.loginLink}
+            </Link>
           </p>
         </CardContent>
       </Card>

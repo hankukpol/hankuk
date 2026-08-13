@@ -575,10 +575,10 @@ export default function AdminSubmissionsPage() {
       {notice ? (
         <p
           className={`rounded-md px-3 py-2 text-sm ${
-            notice.type === "success"
-              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border border-rose-200 bg-rose-50 text-rose-700"
-          }`}
+ notice.type === "success"
+ ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+ : "border border-rose-200 bg-rose-50 text-rose-700"
+ }`}
         >
           {notice.message}
         </p>
@@ -645,9 +645,9 @@ export default function AdminSubmissionsPage() {
                     <td className="px-4 py-3">
                       <span
                         className={`cursor-help whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getSuspicionBadgeClass(
-                          submission.suspicionStatus,
-                          submission.suspicionManualDecision
-                        )}`}
+ submission.suspicionStatus,
+ submission.suspicionManualDecision
+ )}`}
                         title={submission.suspiciousReason ?? "자동 감지 사유 없음"}
                       >
                         {formatSuspicionStatus(
@@ -781,9 +781,9 @@ export default function AdminSubmissionsPage() {
                 </div>
                 <span
                   className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${getSuspicionBadgeClass(
-                    detail.submission.suspicionStatus,
-                    detail.submission.suspicionManualDecision
-                  )}`}
+ detail.submission.suspicionStatus,
+ detail.submission.suspicionManualDecision
+ )}`}
                 >
                   {formatSuspicionStatus(
                     detail.submission.suspicionStatus,
@@ -939,14 +939,14 @@ export default function AdminSubmissionsPage() {
                           <td className="px-3 py-2">
                             <span
                               className={`rounded-full px-2 py-1 text-xs font-medium ${
-                                  log.action === "CREATE"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : log.action === "SUSPICION_CLEAR"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : log.action === "SUSPICION_EXCLUDE"
-                                      ? "bg-rose-100 text-rose-700"
-                                      : "bg-amber-100 text-amber-700"
-                              }`}
+ log.action === "CREATE"
+ ? "bg-blue-100 text-blue-700"
+ : log.action === "SUSPICION_CLEAR"
+ ? "bg-emerald-100 text-emerald-700"
+ : log.action === "SUSPICION_EXCLUDE"
+ ? "bg-rose-100 text-rose-700"
+ : "bg-amber-100 text-amber-700"
+ }`}
                             >
                               {log.action === "CREATE"
                                 ? "생성"

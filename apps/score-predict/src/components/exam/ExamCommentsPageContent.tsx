@@ -279,13 +279,17 @@ export default function ExamCommentsPageContent({ embedded = false }: ExamCommen
           </p>
         </div>
 
-        <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="mt-4 space-y-2 border-t border-slate-200 pt-4">
+          <label htmlFor="exam-comment-content" className="text-sm font-semibold text-slate-800">
+            댓글 내용
+          </label>
           <textarea
+            id="exam-comment-content"
             value={content}
             onChange={(event) => setContent(event.target.value)}
             placeholder="댓글을 입력해주세요..."
             maxLength={MAX_COMMENT_LENGTH}
-            className="min-h-24 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="min-h-24 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-service-500 focus:ring-2 focus:ring-service-100"
           />
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className={`text-xs ${remainingChars < 0 ? "text-rose-600" : "text-slate-500"}`}>

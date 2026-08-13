@@ -50,8 +50,8 @@ function difficultyBadge(level: SubjectAnswerRow["difficultyLevel"]): { label: s
 function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
   return (
     <div className="space-y-2">
-      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 md:block">
-        <table className="min-w-[420px] w-full border-collapse text-sm">
+      <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
+        <table className="data-table min-w-[420px] w-full text-sm">
           <thead>
             <tr className="bg-slate-100 text-slate-700">
               <th className="border border-slate-200 px-3 py-2 text-left">번호</th>
@@ -72,8 +72,8 @@ function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
                   <td className="border border-slate-200 px-3 py-2 text-center">{answer.correctAnswer ?? "-"}</td>
                   <td
                     className={`border border-slate-200 px-3 py-2 text-center font-semibold ${
-                      answer.isCorrect ? "text-emerald-700" : "text-rose-700"
-                    }`}
+ answer.isCorrect ? "text-emerald-700" : "text-rose-700"
+ }`}
                   >
                     {answer.isCorrect ? "정답" : "오답"}
                   </td>
@@ -95,12 +95,12 @@ function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
         </table>
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <div className="data-list-flat border-y border-slate-200 md:hidden">
         {rows.length > 0 ? (
           rows.map((answer) => {
             const badge = difficultyBadge(answer.difficultyLevel);
             return (
-              <div key={answer.questionNumber} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div key={answer.questionNumber} className="bg-white px-3 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">{answer.questionNumber}번</p>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${badge.className}`}>{badge.label}</span>
@@ -129,7 +129,7 @@ function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
             );
           })
         ) : (
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-center text-sm text-slate-500">
+          <div className="bg-white px-3 py-4 text-center text-sm text-slate-500">
             표시할 문항이 없습니다.
           </div>
         )}

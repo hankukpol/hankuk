@@ -13,6 +13,19 @@ const supabaseOrigin = (() => {
   }
 })();
 
+const supabaseImagePattern = (() => {
+  if (!supabaseOrigin) return null;
+  const url = new URL(supabaseOrigin);
+  return {
+    protocol: url.protocol.replace(":", ""),
+    hostname: url.hostname,
+    port: url.port,
+    pathname: "/storage/v1/object/public/**",
+  };
+})();
+const usesLocalSupabaseImageHost =
+  supabaseImagePattern?.hostname === "127.0.0.1" || supabaseImagePattern?.hostname === "localhost";
+
 const cspDirectives = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -28,6 +41,13 @@ const cspDirectives = [
 ];
 
 const nextConfig = {
+  images: supabaseImagePattern
+      ? {
+        remotePatterns: [supabaseImagePattern],
+        dangerouslyAllowLocalIP: isDev || usesLocalSupabaseImageHost,
+        qualities: [75, 82],
+      }
+    : undefined,
   async headers() {
     return [
       {

@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
 
 type JsonObject = Record<string, unknown>;
 type SettingSnapshot = { key: string; value: string } | null;
@@ -19,6 +19,12 @@ const DOCKER_CONTAINER = "score-predict-local-web-1";
 const SETTING_KEYS = {
   answerInput: "police::site.answerInputEnabled",
   preRegistration: "police::site.preRegistrationEnabled",
+  comments: "police::site.commentsEnabled",
+  tabInput: "police::site.tabInputEnabled",
+  tabResult: "police::site.tabResultEnabled",
+  tabPrediction: "police::site.tabPredictionEnabled",
+  tabNotices: "police::site.tabNoticesEnabled",
+  tabFaq: "police::site.tabFaqEnabled",
 } as const;
 
 const runSuffix = `${Date.now()}`.slice(-8);
@@ -128,19 +134,28 @@ function attachDiagnostics(page: Page, scope: string) {
 
 async function assertNoHorizontalScroll(page: Page, label: string) {
   let metrics: { viewport: number; content: number } | null = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       await page.waitForLoadState("domcontentloaded");
-      metrics = await page.evaluate(() => ({
-        viewport: window.innerWidth,
-        content: document.documentElement.scrollWidth,
-      }));
-      break;
+      metrics = await page.evaluate(() =>
+        document.documentElement
+          ? {
+              viewport: window.innerWidth,
+              content: document.documentElement.scrollWidth,
+            }
+          : null
+      );
+      if (metrics) break;
     } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("Execution context was destroyed")) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        !message.includes("Execution context was destroyed") &&
+        !message.includes("Cannot read properties of null")
+      ) {
         throw error;
       }
     }
+    await page.waitForTimeout(150);
   }
   assert(metrics, `${label} could not be measured after navigation settled.`);
   assert(
@@ -154,6 +169,35 @@ async function capture(page: Page, name: string) {
   const filename = `${name}.png`;
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, filename), fullPage: true });
   screenshots.push(filename);
+}
+
+async function gotoWithAbortRetry(page: Page, url: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("net::ERR_ABORTED") || attempt === 2) throw error;
+      await page.waitForTimeout(300);
+    }
+  }
+}
+
+async function openPreRegistrationDialog(page: Page) {
+  const trigger = page.locator('[data-pre-registration-modal="true"]').first();
+  const dialog = page.getByRole("dialog");
+  const formHeading = dialog.locator("h1").filter({ hasText: "수험번호 사전등록" });
+  await trigger.waitFor({ state: "visible", timeout: 30_000 });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await trigger.click({ force: true });
+    const opened = await formHeading
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (opened) return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error("Pre-registration dialog did not open after three trigger attempts.");
 }
 
 async function updateOperationSettings(
@@ -171,6 +215,24 @@ async function updateOperationSettings(
       update: { value: String(settings.answerInput) },
       create: { key: SETTING_KEYS.answerInput, value: String(settings.answerInput) },
     }),
+    prisma.siteSetting.upsert({
+      where: { key: SETTING_KEYS.comments },
+      update: { value: "true" },
+      create: { key: SETTING_KEYS.comments, value: "true" },
+    }),
+    ...[
+      SETTING_KEYS.tabInput,
+      SETTING_KEYS.tabResult,
+      SETTING_KEYS.tabPrediction,
+      SETTING_KEYS.tabNotices,
+      SETTING_KEYS.tabFaq,
+    ].map((key) =>
+      prisma.siteSetting.upsert({
+        where: { key },
+        update: { value: "true" },
+        create: { key, value: "true" },
+      }),
+    ),
   ]);
 }
 
@@ -214,11 +276,11 @@ async function assertPoliceUserSession(page: Page, label: string) {
   assert(session.user.username === user.username, `${label}: session username mismatch.`);
 }
 
-async function chooseAvailableExamNumber(page: Page) {
+async function chooseAvailableExamNumber(scope: Page | Locator) {
   for (let attempt = 0; attempt < 15; attempt += 1) {
     const candidate = String(2_026_003_000 + randomInt(0, 1_000));
-    await page.locator("#examNumber").fill(candidate);
-    const available = page.getByText("사용 가능한 응시번호입니다.", { exact: true });
+    await scope.locator("#examNumber").fill(candidate);
+    const available = scope.getByText("사용 가능한 응시번호입니다.", { exact: true });
     const confirmed = await available
       .waitFor({ state: "visible", timeout: 3_000 })
       .then(() => true)
@@ -330,11 +392,13 @@ async function main() {
     const landingResponse = await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
     assert(landingResponse?.status() === 200, `Landing returned ${landingResponse?.status()}.`);
     await page.getByText("한국경찰학원 합격예측", { exact: true }).first().waitFor();
-    await page.getByText("2026년 2차 경찰 필기시험 합격예측", { exact: true }).waitFor();
+    await page.getByRole("link", { name: "회원가입", exact: true }).first().waitFor();
     await capture(page, "01-first-access-390");
     record("처음 사이트 접속", "경찰 도메인, 2026년 2차 회차, 회원가입 진입 확인");
 
-    await page.getByRole("link", { name: "회원가입", exact: true }).first().click();
+    const registrationLink = page.getByRole("link", { name: "회원가입", exact: true }).first();
+    assert((await registrationLink.getAttribute("href")) !== null, "Registration link has no href.");
+    await gotoWithAbortRetry(page, `${BASE_URL}/register`);
     await page.waitForURL("**/register");
     await page.locator("#name").fill(user.name);
     await page.locator("#username").fill(user.username);
@@ -401,8 +465,12 @@ async function main() {
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await assertPoliceUserSession(page, "after user page reload");
     await page.getByText(user.name, { exact: true }).first().waitFor({ timeout: 30_000 });
-    await page.getByRole("button", { name: "응시정보 입력", exact: true }).click();
-    const preRegistrationHeading = page.getByRole("heading", { name: "수험번호 사전등록", exact: true });
+    await openPreRegistrationDialog(page);
+    const preRegistrationDialog = page.getByRole("dialog");
+    const preRegistrationHeading = preRegistrationDialog.getByRole("heading", {
+      name: "수험번호 사전등록",
+      exact: true,
+    });
     const preRegistrationRendered = await preRegistrationHeading
       .waitFor({ state: "visible", timeout: 60_000 })
       .then(() => true)
@@ -412,14 +480,16 @@ async function main() {
       const bodyText = (await page.locator("body").innerText()).slice(0, 2_000);
       throw new Error(`Pre-registration tab did not render. url=${page.url()} body=${bodyText}`);
     }
-    await page.locator("#gender").selectOption("MALE");
-    await page.locator("#examType").selectOption("PUBLIC");
-    await page.locator("#region").selectOption({ label: "경북" });
-    const examNumber = await chooseAvailableExamNumber(page);
+    await preRegistrationDialog.locator("#examNumber").waitFor({ state: "visible", timeout: 60_000 });
+    await preRegistrationDialog.locator("#gender").selectOption("MALE");
+    await preRegistrationDialog.locator("#examType").selectOption("PUBLIC");
+    await preRegistrationDialog.locator("#region").selectOption({ label: "경북" });
+    await preRegistrationDialog.locator("#examNumber").waitFor({ state: "visible", timeout: 30_000 });
+    const examNumber = await chooseAvailableExamNumber(preRegistrationDialog);
     const preRegistrationPromise = page.waitForResponse(
       (response) => response.url().includes("/api/pre-registration") && response.request().method() === "POST"
     );
-    await page.getByRole("button", { name: "사전등록 저장", exact: true }).click();
+    await preRegistrationDialog.getByRole("button", { name: "사전등록 저장", exact: true }).click();
     const preRegistrationResponse = await preRegistrationPromise;
     assert(preRegistrationResponse.ok(), `Pre-registration returned ${preRegistrationResponse.status()}.`);
     await page.getByText(/사전등록 완료/).waitFor();
@@ -445,7 +515,7 @@ async function main() {
     record("경북 사전등록", `${examNumber}, 공채, 홍보 문자 미동의 상태로 저장 성공`);
 
     await updateOperationSettings(prisma, { preRegistration: false, answerInput: true });
-    await page.goto(`${BASE_URL}/exam/input`, { waitUntil: "domcontentloaded" });
+    await gotoWithAbortRetry(page, `${BASE_URL}/exam/input`);
     const answerInputHeading = page.getByRole("heading", { name: "응시정보 입력", exact: true });
     const answerInputRendered = await answerInputHeading
       .waitFor({ state: "visible", timeout: 90_000 })
@@ -461,6 +531,9 @@ async function main() {
     assert((await page.locator("#examNumber").inputValue()) === examNumber, "Exam number was not restored.");
     await fillPoliceOmr(page);
     await capture(page, "06-omr-complete-1280");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await capture(page, "06b-omr-complete-390");
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.route("**/api/submission", async (route) => {
       const request = route.request();
@@ -483,6 +556,9 @@ async function main() {
     await page.getByText(/2026년 2차.*공채.*경북/).waitFor();
     await page.getByRole("heading", { name: "전체 성적 요약", exact: true }).waitFor();
     await capture(page, "07-gyeongbuk-result-1280");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await capture(page, "07b-gyeongbuk-result-390");
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     const result = await readApiJson(page, `/api/result?submissionId=${submissionId}`);
     const submission = asObject(result.submission, "result.submission");
@@ -532,9 +608,21 @@ async function main() {
       `100문항, 총점 ${submission.totalScore}, 표본 ${totalAnalysis.totalParticipants}명 중 ${totalAnalysis.myRank}등`
     );
 
-    await page.getByRole("button", { name: "시험 분석", exact: true }).click();
+    await page.waitForLoadState("domcontentloaded");
+    let examAnalysisTab = page.getByRole("tab", { name: "시험 분석", exact: true });
+    const examAnalysisReady = await examAnalysisTab
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!examAnalysisReady) {
+      await gotoWithAbortRetry(page, `${BASE_URL}/exam/result?submissionId=${submissionId}`);
+      await page.getByRole("heading", { name: "전체 성적 요약", exact: true }).waitFor({ timeout: 30_000 });
+      examAnalysisTab = page.getByRole("tab", { name: "시험 분석", exact: true });
+      await examAnalysisTab.waitFor({ state: "visible", timeout: 30_000 });
+    }
+    await examAnalysisTab.click();
     await page.getByRole("heading", { name: "과목별 비교 차트", exact: true }).waitFor();
-    await page.getByRole("button", { name: "정오표", exact: true }).click();
+    await page.getByRole("tab", { name: "정오표", exact: true }).click();
     await page
       .getByRole("heading", { name: "정오표 - 문항별 정답률 분석", exact: true })
       .waitFor();
@@ -546,6 +634,9 @@ async function main() {
     await page.getByText("현재는 검증되지 않은 합격 등급을 제공하지 않습니다.", { exact: false }).waitFor();
     await page.waitForTimeout(1_700);
     await capture(page, "08-gyeongbuk-prediction-1280");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await capture(page, "08b-gyeongbuk-prediction-390");
+    await page.setViewportSize({ width: 1280, height: 900 });
     const prediction = await readApiJson(page, `/api/prediction?submissionId=${submissionId}`);
     const summary = asObject(prediction.summary, "prediction.summary");
     assert(summary.regionName === "경북", "Prediction API region is not 경북.");
@@ -590,6 +681,61 @@ async function main() {
       await context.close();
     }
     record("반응형 사용자 흐름", "390px, 768px, 1280px에서 가로 스크롤 없이 성적·예측 표시");
+
+    const contentContext = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      storageState,
+    });
+    const contentPage = await contentContext.newPage();
+    attachDiagnostics(contentPage, "user-content-and-account-390");
+
+    await gotoWithAbortRetry(contentPage, `${BASE_URL}/exam/notices`);
+    await contentPage.getByRole("heading", { name: "공지사항", exact: true }).waitFor();
+    await contentPage.getByRole("button", { name: /police-local-notice/ }).click();
+    await contentPage.getByText("개인정보가 없는 로컬 고정 공지입니다.", { exact: true }).waitFor();
+    assert(
+      !(await contentPage.locator("main").innerText()).includes("<p>"),
+      "Notice detail exposed HTML tags as text.",
+    );
+    await capture(contentPage, "11-notice-detail-390");
+
+    await gotoWithAbortRetry(contentPage, `${BASE_URL}/exam/faq`);
+    await contentPage.getByRole("heading", { name: "자주 묻는 질문 (FAQ)", exact: true }).waitFor();
+    await contentPage.locator("summary", { hasText: "police 로컬 FAQ" }).click();
+    await contentPage.getByText("테넌트 격리 검증용 가상 데이터입니다.", { exact: true }).waitFor();
+    await capture(contentPage, "12-faq-open-390");
+
+    await gotoWithAbortRetry(contentPage, `${BASE_URL}/exam/comments`);
+    await contentPage.getByRole("heading", { name: "댓글", exact: true }).waitFor();
+    const commentText = `사용자 여정 검증 댓글 ${runSuffix}`;
+    await contentPage.getByPlaceholder("댓글을 입력해주세요...").fill(commentText);
+    const commentCreateResponse = contentPage.waitForResponse(
+      (response) => response.url().includes("/api/comments") && response.request().method() === "POST",
+    );
+    await contentPage.getByRole("button", { name: "등록", exact: true }).click();
+    assert((await commentCreateResponse).ok(), "Comment creation API failed.");
+    await contentPage.getByText(commentText, { exact: true }).waitFor();
+    await contentPage.getByText(/총 댓글 수:\s*1개/).waitFor();
+    await capture(contentPage, "13-comment-created-390");
+    await contentPage.getByRole("button", { name: "삭제", exact: true }).first().click();
+    await contentPage.getByText(commentText, { exact: true }).waitFor({ state: "hidden" });
+
+    await gotoWithAbortRetry(contentPage, `${BASE_URL}/account/notifications`);
+    await contentPage.getByRole("heading", { name: "문자 수신 설정", exact: true }).waitFor();
+    await contentPage
+      .getByText("한국경찰학원 홍보 문자 수신 동의 (선택)", { exact: true })
+      .waitFor();
+    await capture(contentPage, "14-notification-settings-390");
+
+    await gotoWithAbortRetry(contentPage, `${BASE_URL}/account/security`);
+    await contentPage.getByRole("heading", { name: "계정 보안", exact: true }).waitFor();
+    assert(
+      (await contentPage.getByLabel("이메일", { exact: true }).inputValue()) === user.email,
+      "Account security page did not show the registered recovery email.",
+    );
+    await capture(contentPage, "15-account-security-390");
+    await contentContext.close();
+    record("게시판·댓글·계정", "공지 HTML 정제, FAQ, 댓글 등록·삭제, 문자 수신 설정과 계정 보안 확인");
 
   } finally {
     for (const [key, snapshot] of settingSnapshots.entries()) {

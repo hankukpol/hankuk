@@ -202,7 +202,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
           {!isPending && !result.submission.rankingWithheld ? (
             <Button
               type="button"
-              className="rounded-none border border-transparent bg-slate-900 text-white shadow-sm hover:bg-slate-800"
+              className="rounded-none border border-transparent bg-slate-900 text-white hover:bg-slate-800"
               onClick={() => router.push(withBrowserTenantPath("/exam/prediction", tenantType))}
             >
               합격예측 분석 보기

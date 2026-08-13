@@ -109,7 +109,7 @@ export default function PublicExamOverviewPanel() {
             {data.exam.year}년 {data.exam.round}차 {data.exam.name}
           </p>
         </div>
-        <div className="rounded-lg border border-service-200 bg-service-50 px-3 py-2 text-sm text-service-800">
+        <div className="border-l-2 border-service-500 pl-3 text-sm text-service-800">
           <p className="font-semibold">{data.operationStage.label}</p>
           <p className="mt-1 text-xs">{data.operationStage.description}</p>
         </div>
@@ -123,10 +123,10 @@ export default function PublicExamOverviewPanel() {
               type="button"
               onClick={() => setSelectedExamType(value)}
               className={`rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-400 ${
-                effectiveExamType === value
-                  ? "border-service-600 bg-service-600 text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-service-300 hover:bg-service-50"
-              }`}
+ effectiveExamType === value
+ ? "border-service-600 bg-service-600 text-white"
+ : "border-slate-200 bg-white text-slate-700 hover:border-service-300 hover:bg-service-50"
+ }`}
             >
               {label}
             </button>
@@ -137,7 +137,7 @@ export default function PublicExamOverviewPanel() {
       {visibleRows.length > 0 ? (
         <>
           <div className="mt-5 hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[880px] border-collapse text-sm">
+            <table className="data-table w-full min-w-[880px] text-sm">
               <thead>
                 <tr className="border-y border-slate-200 bg-slate-50 text-slate-600">
                   <th className="px-3 py-3 text-left">지역·채용</th>
@@ -175,9 +175,9 @@ export default function PublicExamOverviewPanel() {
             </table>
           </div>
 
-          <div className="mt-5 space-y-3 md:hidden">
+          <div className="data-list-flat mt-5 border-y border-slate-200 md:hidden">
             {visibleRows.map((row) => (
-              <article key={`${row.regionId}-${row.examTypeLabel}`} className="rounded-lg border border-slate-200 p-4">
+              <article key={`${row.regionId}-${row.examTypeLabel}`} className="px-4 py-4">
                 <h3 className="font-semibold text-slate-900">{row.regionName} {row.examTypeLabel}</h3>
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div><dt className="text-xs text-slate-500">모집·출원</dt><dd className="mt-1 font-medium">{formatCount(row.recruitCount)} · {formatCount(row.applicantCount)}</dd></div>

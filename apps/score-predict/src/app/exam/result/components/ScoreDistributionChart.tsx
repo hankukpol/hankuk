@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 interface DistributionBucket {
   bucket: number;
@@ -26,6 +27,9 @@ interface ScoreDistributionChartProps {
 }
 
 export default function ScoreDistributionChart({ submissionId }: ScoreDistributionChartProps) {
+  const tenant = useTenantConfig();
+  const highlightColor = tenant.type === "fire" ? "#dc2626" : "#2563eb";
+  const highlightLabel = tenant.type === "fire" ? "빨간색" : "파란색";
   const [buckets, setBuckets] = useState<DistributionBucket[]>([]);
   const [isCollecting, setIsCollecting] = useState(false);
   const [myScore, setMyScore] = useState<number | null>(null);
@@ -129,13 +133,13 @@ export default function ScoreDistributionChart({ submissionId }: ScoreDistributi
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {buckets.map((bucket) => (
-                    <Cell key={bucket.bucket} fill={bucket.isMyBucket ? "#2563eb" : "#94a3b8"} />
+                    <Cell key={bucket.bucket} fill={bucket.isMyBucket ? highlightColor : "#94a3b8"} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-3 text-sm text-slate-600">파란색 막대는 내 점수 구간입니다. {myScore !== null ? `내 점수: ${myScore.toFixed(1)}점` : ""}</p>
+          <p className="mt-3 text-sm text-slate-600">{highlightLabel} 막대는 내 점수 구간입니다. {myScore !== null ? `내 점수: ${myScore.toFixed(1)}점` : ""}</p>
         </>
       ) : null}
     </section>

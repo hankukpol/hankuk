@@ -223,7 +223,7 @@ export default function ExamNoticesPageContent({ embedded = false }: ExamNotices
         </div>
 
         <div className="hidden md:block">
-          <table className="w-full table-fixed text-sm">
+          <table className="data-table w-full table-fixed text-sm">
             <caption className="sr-only">공지사항 목록</caption>
             <colgroup>
               <col className="w-24" />
@@ -318,10 +318,10 @@ export default function ExamNoticesPageContent({ embedded = false }: ExamNotices
               onClick={() => setPage(pageNumber)}
               aria-current={pageNumber === currentPage ? "page" : undefined}
               className={`size-10 rounded-md border text-sm font-semibold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-600 ${
-                pageNumber === currentPage
-                  ? "border-service-700 bg-service-700 text-white"
-                  : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-              }`}
+ pageNumber === currentPage
+ ? "border-service-700 bg-service-700 text-white"
+ : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
+ }`}
             >
               {pageNumber}
             </button>

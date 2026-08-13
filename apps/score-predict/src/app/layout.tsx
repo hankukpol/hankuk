@@ -26,7 +26,7 @@ export default async function RootLayout({
 
   return (
     <html lang="ko">
-      <body data-tenant={tenant.type} className="bg-slate-100 text-slate-100 antialiased">
+      <body data-tenant={tenant.type} className="bg-slate-100 text-slate-900 antialiased">
         <TenantProvider tenantType={tenant.type}>
           <AuthSessionProvider>
             <ToastProvider>

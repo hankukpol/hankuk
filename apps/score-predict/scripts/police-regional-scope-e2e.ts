@@ -184,7 +184,7 @@ async function assertMockLoginFlow(params: {
         : ["범죄학", "형사법", "경찰학"];
     assert(JSON.stringify(names) === JSON.stringify(expectedSubjects), `${params.region} ${params.examType}: subject mix.`);
 
-    const prediction = await fetchJson(page, "/api/prediction");
+    const prediction = await fetchJson(page, `/api/prediction?submissionId=${params.submissionId}`);
     assert(prediction.ok, `${params.region} ${params.examType}: prediction API ${prediction.status}.`);
     const summary = asObject(asObject(prediction.body, "prediction").summary, "prediction.summary");
     assert(summary.regionName === params.region, `${params.region} ${params.examType}: prediction region mismatch.`);
@@ -359,7 +359,14 @@ async function main() {
       }
 
       const sample = await police.submission.findFirst({
-        where: { ...where, isSuspicious: false, subjectScores: { some: {}, none: { isFailed: true } } },
+        // 예측 API는 운영 판정과 동일하게 명시적인 CLEAR 상태만 허용한다.
+        // isSuspicious=false만으로는 과거 REVIEW 행이 섞일 수 있다.
+        where: {
+          ...where,
+          isSuspicious: false,
+          suspicionStatus: "CLEAR",
+          subjectScores: { some: {}, none: { isFailed: true } },
+        },
         orderBy: [{ finalScore: "desc" }, { id: "asc" }],
         select: { id: true, user: { select: { phone: true } } },
       });

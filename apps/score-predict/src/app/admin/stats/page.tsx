@@ -541,10 +541,10 @@ export default function AdminStatsPage() {
         {notice ? (
           <p
             className={`rounded-md px-3 py-2 text-sm ${
-              notice.type === "success"
-                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border border-rose-200 bg-rose-50 text-rose-700"
-            }`}
+ notice.type === "success"
+ ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+ : "border border-rose-200 bg-rose-50 text-rose-700"
+ }`}
           >
             {notice.message}
           </p>
@@ -560,8 +560,8 @@ export default function AdminStatsPage() {
           <>
             <section
               className={`grid gap-4 md:grid-cols-2 ${
-                tenant.type === "police" ? "xl:grid-cols-4" : "xl:grid-cols-6"
-              }`}
+ tenant.type === "police" ? "xl:grid-cols-4" : "xl:grid-cols-6"
+ }`}
             >
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -662,10 +662,10 @@ export default function AdminStatsPage() {
                           type="button"
                           onClick={() => setSelectedScoreExamType(examType)}
                           className={`rounded px-3 py-1 text-xs font-semibold transition ${
-                            active
-                              ? "bg-white text-slate-900 shadow-sm"
-                              : "text-slate-500 hover:text-slate-700"
-                          }`}
+ active
+ ? "bg-white text-slate-900 "
+ : "text-slate-500 hover:text-slate-700"
+ }`}
                         >
                           {formatPredictionExamType(examType)}
                         </button>
@@ -737,8 +737,8 @@ export default function AdminStatsPage() {
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table
                   className={`w-full divide-y divide-slate-200 text-sm ${
-                    tenant.type === "police" ? "min-w-[720px]" : "min-w-[960px]"
-                  }`}
+ tenant.type === "police" ? "min-w-[720px]" : "min-w-[960px]"
+ }`}
                 >
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
@@ -813,10 +813,10 @@ export default function AdminStatsPage() {
                         type="button"
                         onClick={() => setSelectedPredictionExamType(examType)}
                         className={`rounded px-3 py-1 text-xs font-semibold transition ${
-                          active
-                            ? "bg-white text-slate-900 shadow-sm"
-                            : "text-slate-500 hover:text-slate-700"
-                        }`}
+ active
+ ? "bg-white text-slate-900 "
+ : "text-slate-500 hover:text-slate-700"
+ }`}
                       >
                         {formatPredictionExamType(examType)}
                       </button>

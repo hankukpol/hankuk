@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ExamCommentsPageContent from "@/components/exam/ExamCommentsPageContent";
-import ExamFinalPageContent from "@/components/exam/ExamFinalPageContent";
-import ExamFaqPageContent from "@/components/exam/ExamFaqPageContent";
-import ExamInputPageContent from "@/components/exam/ExamInputPageContent";
-import ExamNoticesPageContent from "@/components/exam/ExamNoticesPageContent";
-import ExamPredictionPageContent from "@/components/exam/ExamPredictionPageContent";
-import ExamResultPageContent from "@/components/exam/ExamResultPageContent";
+import dynamic from "next/dynamic";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
-import ExamMainOverviewPanel from "@/components/landing/ExamMainOverviewPanel";
-import PublicExamOverviewPanel from "@/components/landing/PublicExamOverviewPanel";
+import PreRegistrationModal from "@/components/landing/PreRegistrationModal";
 import { getPreferredExamTab, type ExamSurfaceItem } from "@/lib/exam-surface";
 import { withTenantPrefix } from "@/lib/tenant";
+
+const ExamCommentsPageContent = dynamic(() => import("@/components/exam/ExamCommentsPageContent"));
+const ExamFinalPageContent = dynamic(() => import("@/components/exam/ExamFinalPageContent"));
+const ExamFaqPageContent = dynamic(() => import("@/components/exam/ExamFaqPageContent"));
+const ExamInputPageContent = dynamic(() => import("@/components/exam/ExamInputPageContent"));
+const ExamNoticesPageContent = dynamic(() => import("@/components/exam/ExamNoticesPageContent"));
+const ExamPredictionPageContent = dynamic(() => import("@/components/exam/ExamPredictionPageContent"));
+const ExamResultPageContent = dynamic(() => import("@/components/exam/ExamResultPageContent"));
+const ExamMainOverviewPanel = dynamic(() => import("@/components/landing/ExamMainOverviewPanel"));
+const PublicExamOverviewPanel = dynamic(() => import("@/components/landing/PublicExamOverviewPanel"));
 
 type TabKey = "main" | "input" | "result" | "final" | "prediction" | "comments" | "notices" | "faq";
 
@@ -57,17 +60,17 @@ const PUBLIC_TAB_KEYS = new Set<TabKey>(["main", "notices", "faq"]);
 
 function tabClassName(active: boolean, disabled: boolean) {
   const base =
-    "relative inline-flex w-full min-w-0 items-center justify-center rounded-md px-2 py-2 text-xs font-semibold transition xl:w-auto xl:px-6 xl:py-4 xl:text-base";
+    "relative inline-flex min-h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition sm:px-5 xl:px-6 xl:text-base";
 
   if (disabled) {
-    return `${base} cursor-not-allowed text-slate-400`;
+    return `${base} cursor-not-allowed border-transparent text-slate-400`;
   }
 
   if (active) {
-    return `${base} bg-service-50 text-service-700 xl:bg-transparent xl:after:absolute xl:after:bottom-0 xl:after:left-0 xl:after:h-[2px] xl:after:w-full xl:after:bg-service-700`;
+    return `${base} border-service-700 text-service-700`;
   }
 
-  return `${base} text-slate-500 hover:bg-service-50 hover:text-service-700 xl:bg-transparent xl:text-slate-400 xl:hover:bg-transparent xl:hover:text-service-600`;
+  return `${base} border-transparent text-slate-500 hover:border-service-300 hover:text-service-700`;
 }
 
 export default function ExamFunctionArea({
@@ -81,7 +84,44 @@ export default function ExamFunctionArea({
   const tenant = useTenantConfig();
   const [activeTab, setActiveTab] = useState<TabKey>("main");
   const [localHasSubmission, setLocalHasSubmission] = useState(hasSubmission);
+  const [preRegistrationModalOpen, setPreRegistrationModalOpen] = useState(false);
   const canAccessRestrictedTabs = localHasSubmission || isAdmin;
+
+  function handlePreRegistrationModalOpenChange(nextOpen: boolean) {
+    setPreRegistrationModalOpen(nextOpen);
+  }
+
+  useEffect(() => {
+    if (!tenant.features.preRegistration) return;
+
+    function handlePreRegistrationTrigger(event: MouseEvent) {
+      if (!(event.target instanceof Element)) return;
+      const trigger = event.target.closest<HTMLElement>(
+        'a[href="#pre-registration"], [data-pre-registration-modal="true"]'
+      );
+      if (!trigger) return;
+
+      event.preventDefault();
+      setPreRegistrationModalOpen(true);
+    }
+
+    document.addEventListener("click", handlePreRegistrationTrigger);
+    return () => document.removeEventListener("click", handlePreRegistrationTrigger);
+  }, [tenant.features.preRegistration]);
+
+  useEffect(() => {
+    if (!tenant.features.preRegistration || !isAuthenticated) return;
+
+    try {
+      if (window.sessionStorage.getItem("score-predict:open-pre-registration-after-auth") !== "1") {
+        return;
+      }
+      window.sessionStorage.removeItem("score-predict:open-pre-registration-after-auth");
+      setPreRegistrationModalOpen(true);
+    } catch {
+      // 브라우저 저장소를 사용할 수 없으면 로그인 후 메인 화면을 그대로 유지한다.
+    }
+  }, [isAuthenticated, tenant.features.preRegistration]);
 
   const mergedTabEnabled = useMemo<TabEnabledSettings>(
     () => ({
@@ -228,36 +268,45 @@ export default function ExamFunctionArea({
     return getTabContent(tabKey);
   }
 
+  const preRegistrationModal = (
+    <PreRegistrationModal
+      open={preRegistrationModalOpen}
+      isAuthenticated={isAuthenticated}
+      onOpenChange={handlePreRegistrationModalOpenChange}
+    />
+  );
+
   if (visibleTabs.length === 0) {
-    return null;
+    return preRegistrationModal;
   }
 
   return (
-    <section id="exam-functions" className="border border-slate-200 bg-slate-50 p-0">
-      <div className="border-b border-slate-200 bg-white px-1 sm:px-3">
-        <div className="grid grid-cols-3 gap-1 py-1 xl:flex xl:min-w-max xl:items-center xl:gap-0 xl:py-0">
-          {visibleTabs.map((tab) => {
-            const disabled = isAuthenticated && tab.requireSubmission && !canAccessRestrictedTabs;
+    <>
+      <section id="exam-functions" className="border border-slate-200 bg-white">
+        <div className="overflow-x-auto border-b border-slate-200 bg-white">
+          <div className="flex min-w-max items-center px-1 sm:px-3">
+            {visibleTabs.map((tab) => {
+              const disabled = isAuthenticated && tab.requireSubmission && !canAccessRestrictedTabs;
 
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                className={tabClassName(activeTab === tab.key, disabled)}
-                disabled={disabled}
-                onClick={() => setActiveTab(tab.key)}
-                title={disabled ? "답안 제출 후 열리는 기능입니다." : undefined}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={tabClassName(activeTab === tab.key, disabled)}
+                  disabled={disabled}
+                  onClick={() => setActiveTab(tab.key)}
+                  title={disabled ? "답안 제출 후 열리는 기능입니다." : undefined}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      <div className="bg-slate-50 p-0 sm:p-0">
-        <div className="border border-t-0 border-slate-200 bg-white p-4 sm:p-8">{renderTabContent(activeTab)}</div>
-      </div>
-    </section>
+        <div className="bg-white p-4 sm:p-8">{renderTabContent(activeTab)}</div>
+      </section>
+      {preRegistrationModal}
+    </>
   );
 }

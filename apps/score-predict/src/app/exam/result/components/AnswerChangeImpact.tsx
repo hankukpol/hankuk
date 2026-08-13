@@ -163,15 +163,15 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
       {data.reason ? <p className="text-sm text-slate-600">사유: {data.reason}</p> : null}
 
       {subjects.length > 1 && (
-        <div className="flex flex-wrap gap-2 pt-1 pb-2">
+        <div className="flex flex-wrap border-b border-slate-200 pt-1">
           {subjects.map((subject) => (
             <button
               key={subject}
               onClick={() => setSelectedSubject(subject)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeSubject === subject
-                  ? "bg-slate-800 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${activeSubject === subject
+ ? "border-service-600 text-service-700"
+ : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
+ }`}
             >
               {subject}
             </button>
@@ -180,8 +180,8 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
       )}
 
       <div className="space-y-2">
-        <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
-          <table className="min-w-[720px] w-full border-collapse text-sm">
+        <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
+          <table className="data-table min-w-[720px] w-full text-sm">
             <thead>
               <tr className="bg-slate-100 text-slate-700">
                 <th className="border border-slate-200 px-3 py-2 text-left w-[120px]">과목</th>
@@ -217,10 +217,10 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
           </table>
         </div>
 
-        <div className="space-y-2 md:hidden">
+        <div className="data-list-flat border-y border-slate-200 md:hidden">
           {filteredQuestions.length > 0 ? (
             filteredQuestions.map((item) => (
-              <div key={`${item.subjectName}-${item.questionNumber}`} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={`${item.subjectName}-${item.questionNumber}`} className="bg-white px-3 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">{item.subjectName}</p>
                   <p className="text-sm font-semibold text-slate-700">{item.questionNumber}번</p>
@@ -246,7 +246,7 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
               </div>
             ))
           ) : (
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-500">
+            <div className="bg-white px-3 py-8 text-center text-sm text-slate-500">
               해당 과목의 정답 변경 내역이 없습니다.
             </div>
           )}
@@ -255,8 +255,8 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
 
       {data.scoreChange ? (
         <div className="space-y-3">
-          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
-            <table className="w-full border-collapse text-sm">
+          <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
+            <table className="data-table w-full text-sm">
               <thead>
                 <tr className="bg-slate-100 text-slate-700">
                   <th className="border border-slate-200 px-3 py-2 text-left">구분</th>
@@ -294,9 +294,9 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
             </table>
           </div>
 
-          <div className="space-y-2 md:hidden">
+          <div className="data-list-flat border-y border-slate-200 md:hidden">
             {data.scoreChange.subjects.map((subject) => (
-              <div key={subject.subjectName} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={subject.subjectName} className="bg-white px-3 py-3">
                 <p className="text-sm font-semibold text-slate-800">{subject.subjectName}</p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between gap-4">
@@ -315,7 +315,7 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
               </div>
             ))}
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="bg-slate-50 px-3 py-3">
               <p className="text-sm font-semibold text-slate-900">총점</p>
               <div className="mt-2 space-y-1 text-sm">
                 <div className="flex items-center justify-between gap-4">
@@ -334,7 +334,7 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
             </div>
 
             {data.scoreChange.oldRank !== null && data.scoreChange.newRank !== null ? (
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="bg-white px-3 py-3">
                 <p className="text-sm font-semibold text-slate-800">석차</p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-center justify-between gap-4">

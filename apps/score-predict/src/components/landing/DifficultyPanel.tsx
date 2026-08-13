@@ -8,25 +8,13 @@ interface DifficultyPanelProps {
 export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
   if (difficulty.totalResponses < 1) return null;
 
-  const dominantEmoji =
-    difficulty.overall.dominantLabel === "매우 쉬움"
-      ? "😄"
-      : difficulty.overall.dominantLabel === "쉬움"
-        ? "😊"
-        : difficulty.overall.dominantLabel === "보통"
-          ? "😐"
-          : difficulty.overall.dominantLabel === "어려움"
-            ? "😰"
-            : "🥵";
-
   if (difficulty.totalResponses < 10) {
     return (
       <section className="border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-slate-900">시험 체감 난이도</h2>
           <p className="text-xs text-slate-500">
-            응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · {difficulty.overall.dominantLabel}{" "}
-            {dominantEmoji}
+            응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · {difficulty.overall.dominantLabel}
           </p>
         </div>
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -41,12 +29,11 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <h2 className="text-lg font-semibold text-slate-900">시험 체감 난이도</h2>
         <p className="text-xs text-slate-500">
-          응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · 전체 체감{" "}
-          {difficulty.overall.dominantLabel} {dominantEmoji}
+          응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · 전체 체감 {difficulty.overall.dominantLabel}
         </p>
       </div>
 
-      <div className="mt-4 space-y-3 border border-slate-200 bg-slate-50 p-4">
+      <div className="mt-4 space-y-3 border-y border-slate-200 bg-slate-50 px-4 py-4">
         <div className="flex items-center justify-between text-sm text-slate-700">
           <p className="font-medium text-slate-900">전체 난이도</p>
           <p>
@@ -62,9 +49,9 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
       </div>
 
       {difficulty.subjects.length > 0 ? (
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="mt-4 border-y border-slate-200">
           {difficulty.subjects.map((subject) => (
-            <article key={subject.subjectId} className="border border-slate-200 bg-white p-4">
+            <article key={subject.subjectId} className="border-b border-slate-200 bg-white p-4 last:border-b-0">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-slate-900">
                   {subject.subjectName}

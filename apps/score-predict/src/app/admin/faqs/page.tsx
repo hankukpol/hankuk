@@ -194,10 +194,10 @@ export default function AdminFaqsPage() {
       {message ? (
         <p
           className={`rounded-md px-3 py-2 text-sm ${
-            message.type === "success"
-              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border border-rose-200 bg-rose-50 text-rose-700"
-          }`}
+ message.type === "success"
+ ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+ : "border border-rose-200 bg-rose-50 text-rose-700"
+ }`}
         >
           {message.text}
         </p>

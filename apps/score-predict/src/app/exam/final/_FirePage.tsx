@@ -419,10 +419,10 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                 {/* 순위 헤더 */}
                 <div
                   className={`rounded-lg p-4 ${
-                    ranking.isWithinOneMultiple
-                      ? "border border-emerald-200 bg-emerald-50"
-                      : "border border-rose-200 bg-rose-50"
-                  }`}
+ ranking.isWithinOneMultiple
+ ? "border border-emerald-200 bg-emerald-50"
+ : "border border-rose-200 bg-rose-50"
+ }`}
                 >
                   <p className="text-sm font-medium text-slate-800">
                     <span className="font-bold">{ranking.userName}</span> 님은{" "}
@@ -433,10 +433,10 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                   </p>
                   <span
                     className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${
-                      ranking.isWithinOneMultiple
-                        ? "bg-emerald-600 text-white"
-                        : "bg-rose-600 text-white"
-                    }`}
+ ranking.isWithinOneMultiple
+ ? "bg-emerald-600 text-white"
+ : "bg-rose-600 text-white"
+ }`}
                   >
                     {ranking.isWithinOneMultiple ? "1배수 합격권" : "1배수 초과"}
                   </span>
@@ -486,9 +486,9 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                     />
                     {/* 내 위치 마커 */}
                     <div
-                      className={`absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm ${
-                        ranking.isWithinOneMultiple ? "bg-emerald-600" : "bg-rose-600"
-                      }`}
+                      className={`absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white ${
+ ranking.isWithinOneMultiple ? "bg-emerald-600" : "bg-rose-600"
+ }`}
                       style={{
                         left: `${Math.min(98, Math.max(2, (ranking.finalRank / ranking.totalParticipants) * 100))}%`,
                       }}
@@ -507,7 +507,7 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                     경쟁자 순위 (환산점수 기준, 상위 {Math.min(50, ranking.totalParticipants)}명)
                   </p>
                   <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-sm">
+                    <table className="data-table w-full text-sm">
                       <thead className="sticky top-0 bg-slate-50">
                         <tr className="text-left text-xs text-slate-500">
                           <th className="px-3 py-2 font-semibold">순위</th>
@@ -541,8 +541,8 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                               ) : null}
                               <tr
                                 className={`${c.isMine ? "bg-fire-50 font-bold" : ""} ${
-                                  c.rank > ranking.recruitCount ? "text-slate-400" : ""
-                                }`}
+ c.rank > ranking.recruitCount ? "text-slate-400" : ""
+ }`}
                               >
                                 <td className="px-3 py-2">{c.rank}</td>
                                 <td className="px-3 py-2">{c.maskedName}</td>

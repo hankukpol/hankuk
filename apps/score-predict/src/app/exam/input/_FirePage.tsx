@@ -947,27 +947,27 @@ export default function ExamInputPage({
                 key={subject.name}
                 type="button"
                 className={`rounded-md border px-4 py-2 text-sm font-bold ${index === activeSubjectIndex
-                  ? "border-fire-700 bg-fire-700 text-white"
-                  : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                  }`}
+ ? "border-fire-700 bg-fire-700 text-white"
+ : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+ }`}
                 onClick={() => setActiveSubjectIndex(index)}
               >
                 <span>{subject.name}</span>
                 <span
                   className={`ml-2 rounded-md px-2 py-0.5 text-xs font-semibold ${completed
-                    ? "bg-fire-600 text-white"
-                    : "bg-rose-100 text-rose-700"
-                    } ${index === activeSubjectIndex && completed ? "bg-white text-fire-700" : ""
-                    }`}
+ ? "bg-fire-600 text-white"
+ : "bg-rose-100 text-rose-700"
+ } ${index === activeSubjectIndex && completed ? "bg-white text-fire-700" : ""
+ }`}
                 >
                   {filled}/{subject.questionCount}
                 </span>
                 {rating ? (
                   <span
                     className={`ml-2 rounded-md px-2 py-0.5 text-xs font-semibold ${index === activeSubjectIndex
-                      ? "bg-white text-fire-700"
-                      : "bg-red-100 text-red-700"
-                    }`}
+ ? "bg-white text-fire-700"
+ : "bg-red-100 text-red-700"
+ }`}
                   >
                     {DIFFICULTY_LABEL[rating]}
                   </span>

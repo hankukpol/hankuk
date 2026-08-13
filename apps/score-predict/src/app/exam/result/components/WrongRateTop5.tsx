@@ -111,8 +111,8 @@ export default function WrongRateTop5({ submissionId, subjectOptions }: WrongRat
 
       {!isLoading && !errorMessage && !isCollecting ? (
         <div className="mt-4 space-y-2">
-          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
-            <table className="min-w-[560px] w-full border-collapse text-sm">
+          <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
+            <table className="data-table min-w-[560px] w-full text-sm">
               <thead>
                 <tr className="bg-slate-100 text-slate-700">
                   <th className="border border-slate-200 px-3 py-2 text-center">순위</th>
@@ -143,10 +143,10 @@ export default function WrongRateTop5({ submissionId, subjectOptions }: WrongRat
             </table>
           </div>
 
-          <div className="space-y-2 md:hidden">
+          <div className="data-list-flat border-y border-slate-200 md:hidden">
             {items.length > 0 ? (
               items.map((item) => (
-                <div key={`${item.subjectId}-${item.questionNumber}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div key={`${item.subjectId}-${item.questionNumber}`} className="bg-white px-3 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-slate-800">#{item.rank}</p>
                     <p className="text-sm font-medium text-slate-700">
@@ -166,7 +166,7 @@ export default function WrongRateTop5({ submissionId, subjectOptions }: WrongRat
                 </div>
               ))
             ) : (
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-500">
+              <div className="bg-white px-3 py-6 text-center text-sm text-slate-500">
                 표시할 데이터가 없습니다.
               </div>
             )}

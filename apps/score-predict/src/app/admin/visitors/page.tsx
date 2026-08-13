@@ -151,10 +151,10 @@ export default function AdminVisitorsPage() {
                 type="button"
                 onClick={() => setDays(d)}
                 className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
-                  days === d
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
+ days === d
+ ? "bg-white text-slate-900 "
+ : "text-slate-500 hover:text-slate-700"
+ }`}
               >
                 {d}일
               </button>
@@ -246,8 +246,8 @@ export default function AdminVisitorsPage() {
                       <tr key={row.date} className={isToday ? "bg-blue-50" : "bg-white"}>
                         <td
                           className={`px-4 py-3 font-medium ${
-                            isToday ? "text-blue-700" : "text-slate-700"
-                          }`}
+ isToday ? "text-blue-700" : "text-slate-700"
+ }`}
                         >
                           {row.date} {isToday ? "(오늘)" : ""}
                         </td>

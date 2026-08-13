@@ -17,8 +17,6 @@ type DashboardQuickAction = {
   num: string;
   title: string;
   desc: string;
-  color: string;
-  hoverBg: string;
   feature?: AdminSiteFeatureKey;
 };
 
@@ -54,23 +52,12 @@ type RegionBreakdownItem = {
   total: number;
 };
 
-const statCardStyles = [
-  { label: "text-service-600" },
-  { label: "text-rose-600" },
-  { label: "text-amber-600" },
-  { label: "text-cyan-600" },
-  { label: "text-emerald-600" },
-  { label: "text-violet-600" },
-];
-
 const quickActions: DashboardQuickAction[] = [
   {
     href: "/admin/exams",
     num: "1",
     title: "시험 생성/활성화",
     desc: "새 시험을 만들고 현재 운영 시험을 전환합니다.",
-    color: "text-service-600",
-    hoverBg: "hover:border-service-300",
     feature: "exams",
   },
   {
@@ -78,8 +65,6 @@ const quickActions: DashboardQuickAction[] = [
     num: "2",
     title: "정답 입력/검수",
     desc: "OMR 정답 또는 CSV 업로드로 정답표를 반영합니다.",
-    color: "text-cyan-600",
-    hoverBg: "hover:border-cyan-300",
     feature: "answers",
   },
   {
@@ -87,8 +72,6 @@ const quickActions: DashboardQuickAction[] = [
     num: "3",
     title: "모집인원 관리",
     desc: "지역별 공개/경력 모집인원과 수험번호 범위를 설정합니다.",
-    color: "text-emerald-600",
-    hoverBg: "hover:border-emerald-300",
     feature: "regions",
   },
   {
@@ -96,8 +79,6 @@ const quickActions: DashboardQuickAction[] = [
     num: "4",
     title: "사전등록 관리",
     desc: "사전등록 목록과 추첨, CSV 내보내기 작업을 처리합니다.",
-    color: "text-sky-600",
-    hoverBg: "hover:border-sky-300",
     feature: "preRegistrations",
   },
   {
@@ -105,8 +86,6 @@ const quickActions: DashboardQuickAction[] = [
     num: "5",
     title: "참여 통계",
     desc: "유형, 직렬, 지역별 참여 현황을 확인합니다.",
-    color: "text-amber-600",
-    hoverBg: "hover:border-amber-300",
     feature: "stats",
   },
   {
@@ -114,16 +93,12 @@ const quickActions: DashboardQuickAction[] = [
     num: "6",
     title: "사이트 설정",
     desc: "메인 문구와 운영 모드를 관리자 화면에서 조정합니다.",
-    color: "text-violet-600",
-    hoverBg: "hover:border-violet-300",
   },
   {
     href: "/admin/users",
     num: "7",
     title: "사용자 관리",
     desc: "권한 조정과 비밀번호 초기화를 처리합니다.",
-    color: "text-indigo-600",
-    hoverBg: "hover:border-indigo-300",
     feature: "users",
   },
 ];
@@ -604,7 +579,7 @@ export default async function AdminDashboardPage() {
       ) : null}
 
       {!hasStatsError ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-semibold text-slate-500">현재 운영 단계</p>
@@ -618,16 +593,17 @@ export default async function AdminDashboardPage() {
               운영 기능 설정
             </Link>
           </div>
-          <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {/* 카드 안 카드 대신 하나의 표면을 구분선으로 나눈다. */}
+          <div className="mt-4 grid divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <div className="px-4 py-3">
               <p className="text-xs text-slate-500">사전등록</p>
               <p className="mt-1 font-semibold text-slate-900">{preRegistrationEnabled ? "켜짐" : "꺼짐"}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="px-4 py-3">
               <p className="text-xs text-slate-500">답안 입력</p>
               <p className="mt-1 font-semibold text-slate-900">{answerInputEnabled ? "켜짐" : "꺼짐"}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="px-4 py-3">
               <p className="text-xs text-slate-500">최신 표본 집계</p>
               <p className="mt-1 font-semibold text-slate-900">{latestReleaseNumber ? `${latestReleaseNumber}차` : "발표 전"}</p>
             </div>
@@ -647,34 +623,32 @@ export default async function AdminDashboardPage() {
         <DashboardSetupChecklist items={tenantChecklistItems} />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
-        {stats.map((stat, index) => {
-          const style = statCardStyles[index % statCardStyles.length];
-          return (
-            <div
-              key={stat.label}
-              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+      {/* 지표 요약: 같은 카드를 여러 장 나열하지 않고 하나의 표면을 1px 간격으로 나눈다.
+          첫 지표(활성 시험)만 배경으로 강조해 시선 순서를 만든다. */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 lg:grid-cols-3 2xl:grid-cols-6">
+        {stats.map((stat, index) => (
+          <div key={stat.label} className={index === 0 ? "bg-service-50 p-5" : "bg-white p-5"}>
+            <p className="text-xs font-semibold text-slate-500">{stat.label}</p>
+            <p
+              className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${
+                index === 0 ? "text-service-800" : "text-slate-900"
+              }`}
             >
-              <p className={`text-xs font-bold uppercase tracking-wider ${style.label}`}>
-                {stat.label}
-              </p>
-              <p className="mt-2 text-2xl font-black tabular-nums tracking-tight text-slate-900">
-                {stat.value}
-              </p>
-              <p className="mt-1 text-xs font-medium text-slate-500">{stat.sub}</p>
-            </div>
-          );
-        })}
+              {stat.value}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{stat.sub}</p>
+          </div>
+        ))}
       </div>
 
       {!hasStatsError && (showTrendPanel || showStatusColumn) ? (
         <div
           className={`grid gap-5 ${
-            showTrendPanel && showStatusColumn ? "lg:grid-cols-[1fr_280px]" : ""
-          }`}
+ showTrendPanel && showStatusColumn ? "lg:grid-cols-[1fr_280px]" : ""
+ }`}
         >
           {showTrendPanel ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-slate-800">최근 제출 추이</h2>
                 <span className="rounded-full bg-service-50 px-3 py-1 text-xs font-medium text-service-600">
@@ -688,7 +662,7 @@ export default async function AdminDashboardPage() {
           {showStatusColumn ? (
             <div className="flex flex-col gap-4">
               {systemStatus.length > 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     시스템 상태
                   </h3>
@@ -698,8 +672,8 @@ export default async function AdminDashboardPage() {
                         <span className="text-sm text-slate-600">{item.label}</span>
                         <span
                           className={`text-xs font-semibold ${
-                            item.ok ? "text-emerald-600" : "text-amber-600"
-                          }`}
+ item.ok ? "text-emerald-600" : "text-amber-600"
+ }`}
                         >
                           {item.ok ? "정상" : "주의"} {item.value}
                         </span>
@@ -710,7 +684,7 @@ export default async function AdminDashboardPage() {
               ) : null}
 
               {activeExam && featureState.exams ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     활성 시험
                   </h3>
@@ -732,7 +706,7 @@ export default async function AdminDashboardPage() {
       ) : null}
 
       {!hasStatsError && featureState.stats && regionBreakdown.length > 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-800">
               지역별 제출 현황 (상위 5개)
@@ -793,11 +767,11 @@ export default async function AdminDashboardPage() {
               <Link
                 key={action.href}
                 href={action.href}
-                className={`group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md ${action.hoverBg}`}
+                className="group rounded-xl border border-slate-200 bg-white p-4 transition hover:border-service-300"
               >
                 <div className="flex items-center gap-2">
                   <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold ${action.color} transition group-hover:bg-slate-200`}
+                    className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-xs font-bold text-slate-600 transition group-hover:bg-service-50 group-hover:text-service-700"
                   >
                     {action.num}
                   </span>

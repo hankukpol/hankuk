@@ -23,7 +23,11 @@ export default function AnalysisSubTabs({ result }: AnalysisSubTabsProps) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-4">
+      <div
+        className="flex items-center overflow-x-auto border-b border-slate-200 bg-white px-1 sm:px-3"
+        role="tablist"
+        aria-label="성적 분석 메뉴"
+      >
         {TAB_ITEMS.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -31,11 +35,13 @@ export default function AnalysisSubTabs({ result }: AnalysisSubTabsProps) {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-800"
-              }`}
+              role="tab"
+              aria-selected={isActive}
+              className={`-mb-px h-12 shrink-0 border-b-2 px-4 text-sm font-semibold transition-colors ${
+ isActive
+ ? "border-service-600 text-service-700"
+ : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
+ }`}
             >
               {tab.label}
             </button>

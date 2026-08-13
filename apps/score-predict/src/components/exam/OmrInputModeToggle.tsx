@@ -16,9 +16,9 @@ export default function OmrInputModeToggle({ value, onChange }: OmrInputModeTogg
           type="button"
           onClick={() => onChange("quick")}
           className={`border-r last:border-r-0 px-5 py-2.5 text-sm font-bold transition ${value === "quick"
-            ? "bg-service-700 text-white border-service-700"
-            : "bg-white text-slate-700 hover:bg-slate-50 border-transparent"
-            }`}
+ ? "bg-service-700 text-white border-service-700"
+ : "bg-white text-slate-700 hover:bg-slate-50 border-transparent"
+ }`}
         >
           빠른입력 (키보드)
         </button>
@@ -26,9 +26,9 @@ export default function OmrInputModeToggle({ value, onChange }: OmrInputModeTogg
           type="button"
           onClick={() => onChange("radio")}
           className={`border-r last:border-r-0 px-5 py-2.5 text-sm font-bold transition ${value === "radio"
-            ? "bg-service-700 text-white border-service-700"
-            : "bg-white text-slate-700 hover:bg-slate-50 border-transparent"
-            }`}
+ ? "bg-service-700 text-white border-service-700"
+ : "bg-white text-slate-700 hover:bg-slate-50 border-transparent"
+ }`}
         >
           OMR 마킹 (터치)
         </button>

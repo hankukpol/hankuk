@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import AuthSessionProvider from "@/components/providers/AuthSessionProvider";
@@ -7,6 +8,13 @@ import ToastProvider from "@/components/providers/ToastProvider";
 import VisitorTracker from "@/components/VisitorTracker";
 import { getServerTenantConfig } from "@/lib/tenant.server";
 import "./globals.css";
+
+const pretendard = localFont({
+  src: "./fonts/PretendardVariable.woff2",
+  variable: "--font-pretendard",
+  display: "swap",
+  weight: "100 900",
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const tenant = await getServerTenantConfig();
@@ -26,7 +34,10 @@ export default async function RootLayout({
 
   return (
     <html lang="ko">
-      <body data-tenant={tenant.type} className="bg-slate-100 text-slate-900 antialiased">
+      <body
+        data-tenant={tenant.type}
+        className={`${pretendard.variable} bg-slate-100 text-slate-900 antialiased`}
+      >
         <TenantProvider tenantType={tenant.type}>
           <AuthSessionProvider>
             <ToastProvider>

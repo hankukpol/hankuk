@@ -378,46 +378,16 @@
 }
 
 .giftCollage {
-  position: relative;
-  min-height: 30rem;
+  display: grid;
+  place-items: center;
+  width: calc(100% + 4rem);
+  margin-left: -2rem;
 }
 
-.gift {
-  position: absolute;
-}
-
-.gift > img {
+.giftComposite {
+  display: block;
   width: 100%;
-}
-
-.giftBurger {
-  width: 21.5rem;
-  left: 0;
-  top: 0;
-}
-
-.giftCoffee {
-  width: 10.5rem;
-  left: 17rem;
-  top: 2rem;
-}
-
-.giftGs {
-  width: 12rem;
-  right: 0;
-  top: 8rem;
-}
-
-.giftOlive {
-  width: 12.75rem;
-  left: 17rem;
-  top: 13rem;
-}
-
-.giftPay {
-  width: 12.75rem;
-  right: 4.5rem;
-  top: 17rem;
+  height: auto;
 }
 
 .badge {
@@ -446,12 +416,6 @@
 .badge > span {
   display: grid;
   place-content: center;
-}
-
-.giftBurger .badge {
-  right: 1rem;
-  top: auto;
-  bottom: 2.5rem;
 }
 
 .eventTwo {
@@ -626,37 +590,8 @@
   }
 
   .giftCollage {
-    min-height: 24rem;
     width: 100%;
     max-width: 22rem;
-  }
-
-  .giftBurger {
-    width: 17rem;
-    left: -2rem;
-  }
-
-  .giftCoffee {
-    width: 8rem;
-    left: 12rem;
-  }
-
-  .giftGs {
-    width: 9rem;
-    right: -1rem;
-    top: 6rem;
-  }
-
-  .giftOlive {
-    width: 9rem;
-    left: 11rem;
-    top: 10rem;
-  }
-
-  .giftPay {
-    width: 9rem;
-    right: 1rem;
-    top: 14rem;
   }
 
   .rewardGrid {

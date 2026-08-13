@@ -155,31 +155,16 @@ export default function Police2026SecondPromotion({
             <RegistrationButton />
           </div>
           <div className={styles.giftCollage} aria-label="사전등록 이벤트 경품">
-            <div className={`${styles.gift} ${styles.giftBurger}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event1-gift-cluster.webp")} alt="햄버거 세트" width={489} height={448} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="blue" count={10} />
-            </div>
-            <div className={`${styles.gift} ${styles.giftCoffee}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event1-gift-1.webp")} alt="컴포즈 커피 쿠폰" width={324} height={408} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="purple" count={30} />
-            </div>
-            <div className={`${styles.gift} ${styles.giftGs}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event1-gift-3.webp")} alt="GS25 모바일 금액권" width={459} height={293} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="purple" count={20} />
-            </div>
-            <div className={`${styles.gift} ${styles.giftOlive}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event1-gift-5.webp")} alt="올리브영 모바일 상품권" width={393} height={247} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="purple" count={20} />
-            </div>
-            <div className={`${styles.gift} ${styles.giftPay}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event1-gift-4.webp")} alt="네이버페이 포인트 쿠폰" width={467} height={307} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="purple" count={20} />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className={styles.giftComposite}
+              src={asset("event1-gift-composite.png")}
+              alt="햄버거 세트, 컴포즈 커피, GS25, 네이버페이, 올리브영 경품과 추첨 인원"
+              width={1024}
+              height={600}
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </div>
       </section>

@@ -528,6 +528,24 @@
   height: auto;
 }
 
+@media (min-width: 112.5rem) {
+  .heroVisual {
+    align-self: start;
+    width: 42.125rem;
+    height: 48.5rem;
+    margin-top: 6.9375rem;
+    overflow: hidden;
+  }
+
+  .heroVisual img {
+    width: 117.25%;
+    height: 109.64%;
+    left: -9.95%;
+    top: 0;
+    transform: none;
+  }
+}
+
 @media (max-width: 64rem) {
   .heroInner {
     grid-template-columns: 1fr 1.08fr;

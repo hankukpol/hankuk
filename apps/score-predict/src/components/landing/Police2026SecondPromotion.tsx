@@ -36,8 +36,10 @@ export default function Police2026SecondPromotion({
       <section className={styles.hero} style={heroStyle} aria-labelledby="promotion-hero-title">
         <div className={styles.heroInner}>
           <div className={styles.heroVisual} aria-hidden="true" data-reveal="left">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={asset("hero-devices.webp")} alt="" width={3000} height={3228} fetchPriority="high" />
+            <div className={styles.heroFloat}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={asset("hero-devices.webp")} alt="" width={3000} height={3228} fetchPriority="high" />
+            </div>
           </div>
           <div className={styles.heroCopy} data-reveal="right" data-reveal-delay="1">
             <p className={styles.heroEyebrow}><strong>대구·경북지역</strong> 경찰공무원 시험</p>

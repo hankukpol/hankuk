@@ -12,6 +12,11 @@
   --promotion-card-radius: 1rem;
   --promotion-content: 66.25rem;
   --promotion-wide: 83rem;
+  --promotion-event-two-min-height: 44.25rem;
+  --promotion-event-three-min-height: 55.1875rem;
+  --promotion-event-card-height: 22.5rem;
+  --promotion-event-gift-width: 27.8125rem;
+  --promotion-instructor-width: 18.6875rem;
   color: var(--promotion-ink);
   background: var(--promotion-white);
   font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", sans-serif;
@@ -84,7 +89,9 @@
 .stepCard strong,
 .eventLabel span,
 .eventOne h2 span,
-.eventTwo h2 span {
+.eventTwo h2 span,
+.eventThree h2 span,
+.eventThree strong {
   color: var(--promotion-electric);
 }
 
@@ -158,7 +165,8 @@
 .analysis,
 .steps,
 .eventOne,
-.eventTwo {
+.eventTwo,
+.eventThree {
   padding-inline: 1.5rem;
 }
 
@@ -185,7 +193,8 @@
 }
 
 .sectionHeading h2,
-.eventOne h2 {
+.eventOne h2,
+.eventTwo h2 {
   margin: 0;
   font-size: clamp(2rem, 2.5vw, 3rem);
   font-weight: 800;
@@ -269,7 +278,6 @@
   aspect-ratio: 109 / 49;
   margin: 3rem auto 0;
   overflow: hidden;
-  border: 1px solid var(--promotion-border);
 }
 
 .analysisFigure img {
@@ -390,70 +398,104 @@
   height: auto;
 }
 
-.badge {
-  position: absolute;
-  width: 3.75rem;
-  height: 3.75rem;
-  right: -0.5rem;
-  top: 0.5rem;
-  display: grid;
-  place-items: center;
-  color: var(--promotion-white);
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.2;
-  text-align: center;
-}
-
-.badge > img,
-.badge > span {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.badge > span {
-  display: grid;
-  place-content: center;
-}
-
 .eventTwo {
-  min-height: 50.5rem;
+  min-height: var(--promotion-event-two-min-height);
   padding-top: 9rem;
   padding-bottom: 5rem;
   background: var(--promotion-white);
 }
 
-.rewardGrid {
-  max-width: 66.5rem;
-  margin: 4rem auto 0;
+.eventSplitInner {
+  max-width: var(--promotion-content);
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 2.5rem;
+  align-items: center;
 }
 
-.rewardCard {
-  text-align: center;
+.eventTwo h2 {
+  margin: 0 0 2rem;
 }
 
-.rewardMedia {
-  position: relative;
-  min-height: 15rem;
+@media (min-width: 64.01rem) {
+  .eventTwo {
+    padding-top: 12.3125rem;
+  }
+
+  .eventTwoCopy {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+  }
+
+  .eventTwo h2 {
+    width: 44rem;
+    margin-bottom: 1rem;
+    white-space: nowrap;
+  }
+}
+
+.eventTwoGift {
+  width: min(100%, var(--promotion-event-gift-width));
+  justify-self: end;
   display: grid;
   place-items: center;
 }
 
-.rewardMedia > img {
-  width: 100%;
-  max-height: 14rem;
-  object-fit: contain;
+.eventThree {
+  min-height: var(--promotion-event-three-min-height);
+  padding-top: 9rem;
+  padding-bottom: 5rem;
+  background: var(--promotion-ice);
 }
 
-.rewardCard h3 {
+.eventThreeCard {
+  width: min(100%, var(--promotion-content));
+  min-height: var(--promotion-event-card-height);
+  margin: 4rem auto 0;
+  padding: 0 2.1875rem 0 5.625rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--promotion-instructor-width);
+  gap: 2rem;
+  align-items: center;
+  overflow: hidden;
+  background: var(--promotion-white);
+  border-radius: var(--promotion-card-radius);
+}
+
+.eventThreeCopy > p {
   margin: 0;
   font-size: 1.125rem;
-  line-height: 1.45;
+  line-height: 1.4;
+}
+
+.eventThreeCopy h3 {
+  margin: 0.75rem 0 1.5rem;
+  font-size: 2rem;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.eventThreeCopy .eventDetails > div {
+  margin-top: 0.5rem;
+}
+
+.eventThreeCopy strong {
+  color: var(--promotion-blue);
+}
+
+.instructorImage {
+  width: var(--promotion-instructor-width);
+  height: 100%;
+  align-self: end;
+  display: flex;
+  align-items: flex-end;
+}
+
+.instructorImage img {
+  width: 100%;
+  height: auto;
 }
 
 @media (max-width: 64rem) {
@@ -466,7 +508,9 @@
   }
 
   .featureGrid,
-  .eventOneInner {
+  .eventOneInner,
+  .eventSplitInner,
+  .eventThreeCard {
     max-width: 58rem;
   }
 
@@ -476,11 +520,16 @@
 
   .steps,
   .eventOne,
-  .eventTwo {
+  .eventTwo,
+  .eventThree {
     min-height: 0;
   }
 
   .eventOneInner {
+    grid-template-columns: 1fr;
+  }
+
+  .eventSplitInner {
     grid-template-columns: 1fr;
   }
 
@@ -489,9 +538,17 @@
     margin: 0 auto;
   }
 
-  .rewardGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-width: 40rem;
+  .eventTwoGift {
+    justify-self: center;
+  }
+
+  .eventThreeCard {
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    padding-left: 2rem;
+  }
+
+  .instructorImage {
+    width: 15rem;
   }
 }
 
@@ -540,7 +597,8 @@
   .analysis,
   .steps,
   .eventOne,
-  .eventTwo {
+  .eventTwo,
+  .eventThree {
     min-height: 0;
     padding: 5rem 1rem;
   }
@@ -556,9 +614,13 @@
     display: none;
   }
 
+  .eventTwo h2 br,
+  .eventThree .sectionHeading h2 br {
+    display: block;
+  }
+
   .featureGrid,
-  .stepGrid,
-  .rewardGrid {
+  .stepGrid {
     grid-template-columns: 1fr;
     margin-top: 3rem;
   }
@@ -594,9 +656,31 @@
     max-width: 22rem;
   }
 
-  .rewardGrid {
+  .eventTwoGift {
+    width: 100%;
     max-width: 22rem;
-    gap: 2.5rem;
+    margin: 2rem auto 0;
+  }
+
+  .eventThreeCard {
+    min-height: 0;
+    padding: 2rem 1.25rem 0;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .eventThreeCopy > p {
+    font-size: 1rem;
+  }
+
+  .eventThreeCopy h3 {
+    font-size: 1.75rem;
+  }
+
+  .instructorImage {
+    width: min(100%, var(--promotion-instructor-width));
+    height: auto;
+    margin: 0 auto;
   }
 }
 

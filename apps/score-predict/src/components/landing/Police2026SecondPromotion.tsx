@@ -21,24 +21,6 @@ function RegistrationButton({ className }: { className?: string }) {
   );
 }
 
-function RewardBadge({
-  assetBaseUrl,
-  tone,
-  count,
-}: {
-  assetBaseUrl: string;
-  tone: "blue" | "purple" | "pink";
-  count: number;
-}) {
-  return (
-    <span className={styles.badge}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={joinAssetUrl(assetBaseUrl, `badge-${tone}.svg`)} alt="" aria-hidden="true" />
-      <span>추첨<br />{count}명</span>
-    </span>
-  );
-}
-
 export default function Police2026SecondPromotion({
   assetBaseUrl,
 }: Police2026SecondPromotionProps) {
@@ -105,10 +87,10 @@ export default function Police2026SecondPromotion({
         <figure className={styles.analysisFigure}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={asset("howto-dashboard-current.png")}
+            src={asset("analysis-dashboard-figma-20260813.png")}
             alt="경찰 합격예측 서비스의 실제 성적 분석 화면"
-            width={1280}
-            height={1365}
+            width={1090}
+            height={489}
             loading="lazy"
             decoding="async"
           />
@@ -170,44 +152,58 @@ export default function Police2026SecondPromotion({
       </section>
 
       <section className={styles.eventTwo} aria-labelledby="promotion-event-two-title">
+        <div className={styles.eventSplitInner}>
+          <div className={styles.eventTwoCopy}>
+            <p className={styles.eventLabel}>대구, 경북 합격예측 풀서비스 <span>EVENT 02</span></p>
+            <h2 id="promotion-event-two-title">시험 종료 후 가답안을 입력하면 선물이!<br /><span>합격 가능성과 참여 선물</span><br />모두 받아가세요.</h2>
+            <dl className={styles.eventDetails}>
+              <div><dt>이벤트 기간</dt><dd>8/22(토) ~ 8/24(월)까지</dd></div>
+              <div><dt>참여 방법</dt><dd>경찰시험 종료 후 가채점 완료 시 참여 완료<br /><small>* 이벤트 혜택 : 애플워치SE3, 도미노 피자, 교촌치킨, 투썸 음료·케이크 세트</small></dd></div>
+              <div><dt>당첨자 발표</dt><dd>8/26(수) 학원 홈페이지, 개별 문자 통지</dd></div>
+            </dl>
+          </div>
+          <div className={styles.eventTwoGift} aria-label="답안 입력 이벤트 경품">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className={styles.giftComposite}
+              src={asset("event2-gift-composite-group1004.png")}
+              alt="크리스피 크림 도넛, 교촌치킨, 도미노피자, 투썸 케이크와 음료 경품 및 추첨 인원"
+              width={445}
+              height={362}
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.eventThree} aria-labelledby="promotion-event-three-title">
         <div className={styles.sectionHeading}>
-          <p className={styles.eventLabel}>대구·경북 합격예측 풀서비스 <span>답안 입력 이벤트</span></p>
-          <h2 id="promotion-event-two-title">시험 종료 후 <span>답안을 입력하면 선물이!</span><br />채점 결과와 참여 선물을 함께 확인하세요.</h2>
+          <p className={styles.eventLabel}>대구, 경북 합격예측 풀서비스 <span>EVENT 03</span></p>
+          <h2 id="promotion-event-three-title">합격예측 풀서비스 가채점시<br /><span>최준 경찰면접반 수강 할인권</span> 제공</h2>
         </div>
-        <div className={styles.rewardGrid}>
-          <article className={styles.rewardCard}>
-            <div className={styles.rewardMedia}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event2-gift-1.webp")} alt="도미노피자와 콜라" width={434} height={338} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="pink" count={3} />
-            </div>
-            <h3>도미노피자<br />오리지널 슈퍼슈프림</h3>
-          </article>
-          <article className={styles.rewardCard}>
-            <div className={styles.rewardMedia}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event2-gift-2.webp")} alt="교촌치킨과 콜라" width={555} height={495} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="pink" count={3} />
-            </div>
-            <h3>교촌치킨<br />간장 한 마리와 콜라 1.25L</h3>
-          </article>
-          <article className={styles.rewardCard}>
-            <div className={styles.rewardMedia}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event2-gift-3.webp")} alt="크리스피 크림 도넛" width={523} height={439} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="pink" count={3} />
-            </div>
-            <h3>크리스피 크림 도넛<br />오리지널 글레이즈드 더즌</h3>
-          </article>
-          <article className={styles.rewardCard}>
-            <div className={styles.rewardMedia}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={asset("event2-gift-4.webp")} alt="투썸 케이크와 아메리카노" width={548} height={500} loading="lazy" decoding="async" />
-              <RewardBadge assetBaseUrl={assetBaseUrl} tone="pink" count={3} />
-            </div>
-            <h3>투썸 디저트 2종<br />아메리카노 R 2잔</h3>
-          </article>
-        </div>
+        <article className={styles.eventThreeCard}>
+          <div className={styles.eventThreeCopy}>
+            <p>경찰 면접 프로그램의 새로운 트렌드의 완성! 합격률로 증명하는 최준 면접반!</p>
+            <h3>최준 면접 관리반 설명회</h3>
+            <dl className={styles.eventDetails}>
+              <div><dt>설명회</dt><dd>8월 31일(월) 18:00</dd></div>
+              <div><dt>장소</dt><dd>한국경찰학원</dd></div>
+              <div><dt>혜택</dt><dd>합격예측 풀서비스 가채점 시 <strong>면접 1만원 수강 할인권</strong> 제공</dd></div>
+            </dl>
+          </div>
+          <div className={styles.instructorImage}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={asset("event3-instructor-figma.png")}
+              alt="최준 경찰면접반 강사"
+              width={299}
+              height={356}
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        </article>
       </section>
     </div>
   );

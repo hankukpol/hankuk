@@ -382,6 +382,18 @@
   margin-bottom: 2rem;
 }
 
+.eventOneCopy {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.eventOneCta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: center;
+  margin-top: 0;
+}
+
 .eventDetails {
   margin: 0;
 }
@@ -414,6 +426,8 @@
 }
 
 .giftCollage {
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   place-items: center;
   width: calc(100% + 4rem);
@@ -575,6 +589,24 @@
 
   .eventOneInner {
     grid-template-columns: 1fr;
+  }
+
+  .eventOneCopy,
+  .eventOneCta,
+  .giftCollage {
+    grid-column: 1;
+  }
+
+  .eventOneCopy {
+    grid-row: 1;
+  }
+
+  .eventOneCta {
+    grid-row: 2;
+  }
+
+  .giftCollage {
+    grid-row: 3;
   }
 
   .eventSplitInner {

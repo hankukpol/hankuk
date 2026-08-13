@@ -134,8 +134,8 @@ export default function Police2026SecondPromotion({
               <div><dt>참여 방법</dt><dd>대구·경북 합격예측 풀서비스 응시번호 사전등록 완료<br /><small>햄버거 세트, 커피 쿠폰, 올리브영 상품권, GS25 쿠폰, 네이버페이 포인트를 추첨으로 제공합니다.</small></dd></div>
               <div><dt>당첨자 발표</dt><dd>8월 26일(수), 학원 홈페이지 공지 및 개별 문자 안내</dd></div>
             </dl>
-            <RegistrationButton />
           </div>
+          <RegistrationButton className={styles.eventOneCta} />
           <div className={styles.giftCollage} aria-label="사전등록 이벤트 경품">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

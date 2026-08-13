@@ -158,10 +158,10 @@ export default function Police2026SecondPromotion({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               className={styles.giftComposite}
-              src={asset("event1-gift-composite-group987.png")}
+              src={asset("event1-gift-composite-group987-v2.png")}
               alt="햄버거 세트, 컴포즈 커피, GS25, 네이버페이, 올리브영 경품과 추첨 인원"
               width={616}
-              height={361}
+              height={339}
               loading="lazy"
               decoding="async"
             />

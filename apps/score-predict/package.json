@@ -20,6 +20,7 @@
     "test:promotions": "tsx --conditions=react-server scripts/promotion-operation-test.ts",
     "test:prediction-model": "tsx scripts/prediction-model-test.ts",
     "test:police-written-bonus": "tsx scripts/police-written-bonus-test.ts",
+    "test:police-exam-number": "tsx scripts/police-exam-number-test.ts",
     "test:fire-written-bonus": "tsx scripts/fire-written-bonus-test.ts",
     "test:submission-suspicion": "tsx scripts/submission-suspicion-test.ts",
     "test:submission-suspicion:e2e": "tsx scripts/submission-suspicion-e2e.ts",

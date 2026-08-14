@@ -655,7 +655,10 @@ export async function POST(request: Request) {
         ? parsePoliceExamNumberInput(body.examNumber)
         : parseFireExamNumberInput(body.examNumber);
     if (!examNumber) {
-      return NextResponse.json({ error: "응시번호는 10자리 숫자로 입력해 주세요." }, { status: 400 });
+      return NextResponse.json(
+        { error: `응시번호는 ${tenantType === "police" ? 5 : 10}자리 숫자로 입력해 주세요.` },
+        { status: 400 }
+      );
     }
 
     const quota = await prisma.examRegionQuota.findUnique({
@@ -1094,7 +1097,10 @@ export async function PUT(request: Request) {
         ? parsePoliceExamNumberInput(body.examNumber)
         : parseFireExamNumberInput(body.examNumber);
     if (!examNumber) {
-      return NextResponse.json({ error: "응시번호는 10자리 숫자로 입력해 주세요." }, { status: 400 });
+      return NextResponse.json(
+        { error: `응시번호는 ${tenantType === "police" ? 5 : 10}자리 숫자로 입력해 주세요.` },
+        { status: 400 }
+      );
     }
 
     const quotaForEdit = await prisma.examRegionQuota.findUnique({

@@ -449,8 +449,8 @@ async function main() {
     assert(gyeongbukQuota.recruitCount > 0, "경북 recruit count must be configured.");
     assert(gyeongbukQuota.applicantCount !== null, "경북 applicant count must be configured.");
     assert(
-      gyeongbukQuota.examNumberStart === "2026003000" &&
-        gyeongbukQuota.examNumberEnd === "2026003999",
+      gyeongbukQuota.examNumberStart === "03000" &&
+        gyeongbukQuota.examNumberEnd === "03999",
       "경북 local exam-number range is not configured."
     );
     assert(

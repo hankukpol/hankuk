@@ -517,10 +517,10 @@ async function main() {
           recruitCountCareer: 1,
           applicantCount: 20,
           applicantCountCareer: 10,
-          examNumberStart: "9900000001",
-          examNumberEnd: "9900000099",
-          examNumberStartCareer: "9910000001",
-          examNumberEndCareer: "9910000099",
+          examNumberStart: "90001",
+          examNumberEnd: "90099",
+          examNumberStartCareer: "91001",
+          examNumberEndCareer: "91099",
         };
         const restorePayload = {
           regionId: unsupportedRegion.id,
@@ -568,7 +568,7 @@ async function main() {
 
           const examNumberCheck = await fetchJson(
             page,
-            `/api/exam-number/check?examId=${exam.id}&regionId=${unsupportedRegion.id}&examType=PUBLIC&examNumber=9900000001`
+            `/api/exam-number/check?examId=${exam.id}&regionId=${unsupportedRegion.id}&examType=PUBLIC&examNumber=90001`
           );
           assert(examNumberCheck.ok, `Exam-number check after activation returned ${examNumberCheck.status}.`);
           assert(

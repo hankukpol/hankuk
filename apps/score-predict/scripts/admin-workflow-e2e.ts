@@ -1127,7 +1127,7 @@ async function seedAdminOperationalRows(
       privacyAgreedAt: now,
     },
   });
-  const examNumber = `99${RUN_ID}`;
+  const examNumber = tenant.type === "police" ? `9${RUN_ID.slice(-4)}` : `99${RUN_ID}`;
   const submission = await prisma.submission.create({
     data: {
       examId: operation.examId,
@@ -1188,7 +1188,7 @@ async function seedAdminOperationalRows(
         regionId: quota.regionId,
         examType: ExamType.PUBLIC,
         gender: Gender.MALE,
-        examNumber: `98${RUN_ID}`,
+        examNumber: tenant.type === "police" ? `8${RUN_ID.slice(-4)}` : `98${RUN_ID}`,
       },
     });
   }

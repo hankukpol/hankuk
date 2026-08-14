@@ -1,6 +1,7 @@
 import { ExamType } from "@prisma/client";
 
-export const POLICE_EXAM_NUMBER_PATTERN = /^\d{10}$/;
+export const POLICE_EXAM_NUMBER_LENGTH = 5;
+export const POLICE_EXAM_NUMBER_PATTERN = /^\d{5}$/;
 
 export interface PoliceExamNumberRangeSource {
   examNumberStart?: string | null;
@@ -27,7 +28,7 @@ export function validatePoliceAdminExamNumberRange(
     return { start, end, error: `${label} 응시번호 시작과 끝을 모두 입력해 주세요.` };
   }
   if (!POLICE_EXAM_NUMBER_PATTERN.test(start) || !POLICE_EXAM_NUMBER_PATTERN.test(end)) {
-    return { start, end, error: `${label} 응시번호 범위는 10자리 숫자여야 합니다.` };
+    return { start, end, error: `${label} 응시번호 범위는 5자리 숫자여야 합니다.` };
   }
   if (start > end) {
     return { start, end, error: `${label} 응시번호 시작값은 끝값보다 클 수 없습니다.` };
@@ -47,7 +48,7 @@ export function validatePoliceExamNumberWithRange(params: {
   quota: PoliceExamNumberRangeSource | null | undefined;
 }): { ok: boolean; message?: string; range?: { start: string; end: string } | null } {
   if (!POLICE_EXAM_NUMBER_PATTERN.test(params.examNumber)) {
-    return { ok: false, message: "응시번호는 10자리 숫자여야 합니다." };
+    return { ok: false, message: "응시번호는 5자리 숫자여야 합니다." };
   }
 
   if (params.examType !== ExamType.PUBLIC && params.examType !== ExamType.CAREER) {

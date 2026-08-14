@@ -112,8 +112,9 @@ export default function PoliceAdminRegionsPage() {
   }
 
   function updateText(rowId: number, field: EditableTextField, value: string) {
+    const normalized = value.replace(/\D/g, "").slice(0, 5);
     setRows((current) =>
-      current.map((row) => (row.id === rowId ? { ...row, [field]: value || null } : row))
+      current.map((row) => (row.id === rowId ? { ...row, [field]: normalized || null } : row))
     );
   }
 
@@ -300,7 +301,7 @@ export default function PoliceAdminRegionsPage() {
                       <td className="px-4 py-3">
                         <Input
                           inputMode="numeric"
-                          maxLength={10}
+                          maxLength={5}
                           value={row[cohort.startField] ?? ""}
                           onChange={(event) => updateText(row.id, cohort.startField, event.target.value)}
                           aria-label={`${row.name} ${cohort.label} 응시번호 시작`}
@@ -309,7 +310,7 @@ export default function PoliceAdminRegionsPage() {
                       <td className="px-4 py-3">
                         <Input
                           inputMode="numeric"
-                          maxLength={10}
+                          maxLength={5}
                           value={row[cohort.endField] ?? ""}
                           onChange={(event) => updateText(row.id, cohort.endField, event.target.value)}
                           aria-label={`${row.name} ${cohort.label} 응시번호 끝`}

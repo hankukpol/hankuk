@@ -622,7 +622,7 @@ async function verifyRoundLifecycleAndFailClosed(baseUrl: URL) {
           preRegistration?: { examNumber: string } | null;
         }>(preRegistrationResponse, "police current pre-registration");
         assert(
-          preRegistration.preRegistration?.examNumber === "2026000015",
+          preRegistration.preRegistration?.examNumber === "04015",
           "police: active-round pre-registration was not isolated from the archived submission."
         );
       }

@@ -849,11 +849,13 @@ export default function AdminPreRegistrationsPage() {
                                 current
                                   ? {
                                       ...current,
-                                      examNumber: event.target.value,
+                                      examNumber: event.target.value.replace(/\D/g, "").slice(0, 5),
                                     }
                                   : current
                               )
                             }
+                            inputMode="numeric"
+                            maxLength={5}
                             className="h-9 min-w-[120px]"
                             disabled={isBusy}
                           />

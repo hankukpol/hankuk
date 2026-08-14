@@ -743,8 +743,16 @@ export default function AdminSubmissionsPage() {
                 <span className="shrink-0">응시번호:</span>
                 <Input
                   value={examNumberDraft}
-                  onChange={(event) => setExamNumberDraft(event.target.value)}
+                  onChange={(event) =>
+                    setExamNumberDraft(
+                      tenant.type === "police"
+                        ? event.target.value.replace(/\D/g, "").slice(0, 5)
+                        : event.target.value.replace(/\D/g, "").slice(0, 10)
+                    )
+                  }
                   placeholder="응시번호 없음"
+                  inputMode="numeric"
+                  maxLength={tenant.type === "police" ? 5 : 10}
                   className="h-8 w-40 font-mono text-xs"
                   disabled={isSavingExamNumber}
                 />

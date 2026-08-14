@@ -210,20 +210,20 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
             recruitCountCareer: 3,
             applicantCount: 1045,
             applicantCountCareer: 45,
-            examNumberStart: "2026004000",
-            examNumberEnd: "2026004999",
-            examNumberStartCareer: "2026104000",
-            examNumberEndCareer: "2026104999",
+            examNumberStart: "04000",
+            examNumberEnd: "04999",
+            examNumberStartCareer: "14000",
+            examNumberEndCareer: "14999",
           }
         : {
             recruitCount: 192,
             recruitCountCareer: 9,
             applicantCount: 1595,
             applicantCountCareer: 56,
-            examNumberStart: "2026003000",
-            examNumberEnd: "2026003999",
-            examNumberStartCareer: "2026103000",
-            examNumberEndCareer: "2026103999",
+            examNumberStart: "03000",
+            examNumberEnd: "03999",
+            examNumberStartCareer: "13000",
+            examNumberEndCareer: "13999",
           };
       await prisma.examRegionQuota.create({
         data:
@@ -311,7 +311,9 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
           regionId: regions[index % regions.length].id,
           examType,
           gender,
-          examNumber: `${tenantType === "police" ? "P" : "F"}${String(index + 1).padStart(5, "0")}`,
+          examNumber: tenantType === "police"
+            ? String(index + 1).padStart(5, "0")
+            : `F${String(index + 1).padStart(5, "0")}`,
           totalScore,
           bonusType,
           bonusRate: declaredBonusRate,
@@ -367,7 +369,7 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
           regionId: regions[0].id,
           examType: ExamType.PUBLIC,
           gender: Gender.MALE,
-          examNumber: "2026000015",
+          examNumber: "04015",
         },
       });
     }

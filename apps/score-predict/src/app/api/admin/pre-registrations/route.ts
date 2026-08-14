@@ -22,6 +22,7 @@ import {
   resolveActiveExamForWrite,
 } from "@/lib/active-exam";
 import { resolvePoliceContactPhone } from "@/lib/police/contact-phone";
+import { parsePoliceExamNumberInput } from "@/lib/police/exam-number";
 
 export const runtime = "nodejs";
 
@@ -67,10 +68,7 @@ function parseGender(value: unknown): Gender | null {
 }
 
 function parseExamNumber(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  if (!normalized) return null;
-  return normalized.slice(0, 50);
+  return parsePoliceExamNumberInput(value);
 }
 
 function getGroupCount(group: { _count?: true | { id?: number | null; _all?: number | null } } | undefined): number {
@@ -102,7 +100,7 @@ function parseUpdatePayload(body: PreRegistrationUpdatePayload) {
 
   const examNumber = parseExamNumber(body.examNumber);
   if (!examNumber) {
-    throw new AdminPreRegistrationRouteError("응시번호를 입력해 주세요.", 400);
+    throw new AdminPreRegistrationRouteError("응시번호는 5자리 숫자로 입력해 주세요.", 400);
   }
 
   return {

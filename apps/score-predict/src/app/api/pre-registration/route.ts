@@ -22,6 +22,7 @@ import {
   normalizePoliceContactPhone,
   resolvePoliceContactPhone,
 } from "@/lib/police/contact-phone";
+import { parsePoliceExamNumberInput } from "@/lib/police/exam-number";
 
 export const runtime = "nodejs";
 
@@ -57,11 +58,7 @@ function parseGender(value: unknown): Gender | null {
 }
 
 function parseExamNumber(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-
-  const normalized = value.trim();
-  if (!normalized) return null;
-  return normalized.slice(0, 50);
+  return parsePoliceExamNumberInput(value);
 }
 
 function parseOptionalExamId(rawValue: unknown, sourceLabel: string): number | null {
@@ -265,7 +262,7 @@ export async function POST(request: Request) {
     }
     const examNumber = parseExamNumber(body.examNumber);
     if (!examNumber) {
-      return NextResponse.json({ error: "수험번호는 필수 입력 항목입니다." }, { status: 400 });
+      return NextResponse.json({ error: "응시번호는 5자리 숫자로 입력해 주세요." }, { status: 400 });
     }
 
     const quota = await getExamRegionQuotaSnapshot(prisma, exam.id, regionId);

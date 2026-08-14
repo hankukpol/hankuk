@@ -20,6 +20,8 @@ import {
   lockExamNumberMutation,
   lockUserExamMutation,
 } from "@/lib/police/pre-registration";
+import { parsePoliceExamNumberInput } from "@/lib/police/exam-number";
+import { parseExamNumberInput as parseFireExamNumberInput } from "@/lib/fire/exam-number";
 
 export const runtime = "nodejs";
 
@@ -322,9 +324,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "examNumber 필드가 필요합니다." }, { status: 400 });
     }
 
-    const examNumber = typeof body.examNumber === "string" ? body.examNumber.trim() : "";
+    const examNumber = guard.tenantType === "police"
+      ? parsePoliceExamNumberInput(body.examNumber)
+      : parseFireExamNumberInput(body.examNumber);
     if (!examNumber) {
-      return NextResponse.json({ error: "수험번호를 입력해 주세요." }, { status: 400 });
+      return NextResponse.json(
+        { error: `응시번호는 ${guard.tenantType === "police" ? 5 : 10}자리 숫자로 입력해 주세요.` },
+        { status: 400 }
+      );
     }
 
     await prisma.$transaction(async (tx) => {

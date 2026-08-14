@@ -499,7 +499,7 @@ export default function ExamInputPage({
     }
 
     const trimmed = examNumber.trim();
-    if (!trimmed || !regionId || !meta?.activeExam) {
+    if (!trimmed || !regionId || !meta?.activeExam || !/^\d{5}$/.test(trimmed)) {
       setExamNumberStatus("idle");
       setExamNumberMessage("");
       return;
@@ -653,6 +653,10 @@ export default function ExamInputPage({
       setErrorMessage("수험번호를 입력해 주세요.");
       return;
     }
+    if (!/^\d{5}$/.test(normalizedExamNumber)) {
+      setErrorMessage("응시번호는 5자리 숫자로 입력해 주세요.");
+      return;
+    }
 
     if (examNumberStatus === "unavailable") {
       setErrorMessage(examNumberMessage || "수험번호를 다시 확인해 주세요.");
@@ -756,6 +760,10 @@ export default function ExamInputPage({
     const normalizedExamNumber = examNumber.trim();
     if (!normalizedExamNumber) {
       setErrorMessage("응시번호는 필수 입력 항목입니다.");
+      return;
+    }
+    if (!/^\d{5}$/.test(normalizedExamNumber)) {
+      setErrorMessage("응시번호는 5자리 숫자로 입력해 주세요.");
       return;
     }
 
@@ -1000,8 +1008,11 @@ export default function ExamInputPage({
             <Input
               id="examNumber"
               value={examNumber}
-              onChange={(event) => setExamNumber(event.target.value)}
-              placeholder="응시번호 입력"
+              onChange={(event) => setExamNumber(event.target.value.replace(/\D/g, "").slice(0, 5))}
+              placeholder="5자리 응시번호"
+              inputMode="numeric"
+              maxLength={5}
+              pattern="[0-9]{5}"
               required
             />
             {examNumberStatus === "checking" && (
@@ -1014,7 +1025,7 @@ export default function ExamInputPage({
               <p className="text-xs text-rose-600">{examNumberMessage}</p>
             )}
             {examNumberStatus === "idle" && (
-              <p className="text-xs text-slate-500">수험표에 기재된 응시번호를 정확히 입력해 주세요.</p>
+              <p className="text-xs text-slate-500">수험표에 기재된 5자리 응시번호를 정확히 입력해 주세요.</p>
             )}
           </div>
         </div>

@@ -194,7 +194,12 @@ async function verifyAuthenticatedViewport(
   await dialog.locator("h1").filter({ hasText: "수험번호 사전등록" }).waitFor();
   await dialog.getByLabel("성별").waitFor();
   await dialog.getByLabel("지역").waitFor();
-  await dialog.getByLabel("응시번호 (필수)").waitFor();
+  const examNumberInput = dialog.getByLabel("응시번호 (필수)");
+  await examNumberInput.waitFor();
+  assert((await examNumberInput.getAttribute("maxlength")) === "5", `${width}: police exam number maxlength is not 5.`);
+  await examNumberInput.fill("123456");
+  assert((await examNumberInput.inputValue()) === "12345", `${width}: police exam number was not limited to five digits.`);
+  await examNumberInput.fill("");
   await dialog.getByRole("button", { name: /사전등록.*저장/ }).waitFor();
 
   const layout = await page.evaluate(() => {
@@ -220,7 +225,7 @@ async function verifyAuthenticatedViewport(
   if (width === 1280) {
     await dialog.getByLabel("성별").selectOption("MALE");
     await dialog.getByLabel("지역").selectOption({ label: "대구" });
-    await dialog.getByLabel("응시번호 (필수)").fill("2026004998");
+    await dialog.getByLabel("응시번호 (필수)").fill("04998");
     await dialog.getByText("사용 가능한 응시번호입니다.", { exact: true }).waitFor();
     const responsePromise = page.waitForResponse(
       (response) =>

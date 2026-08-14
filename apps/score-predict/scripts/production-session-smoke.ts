@@ -93,17 +93,25 @@ async function verifyTenant(tenantType: TenantType, cookie: string) {
   assert(session.user?.tenantType === tenantType && session.user.sessionVersion === 3 && session.user.role === "ADMIN", `${tenantType}: Production session claims are invalid.`);
 
   const statsResponse = await fetch(`${origin}/api/main-stats`, { headers });
-  assert(statsResponse.status === 200, `${tenantType}: authenticated Production main stats returned ${statsResponse.status}.`);
+  assert(
+    statsResponse.status === 200 || statsResponse.status === 403,
+    `${tenantType}: authenticated Production main stats returned ${statsResponse.status}.`
+  );
   const stats = await statsResponse.json() as {
     tenantType?: string;
     examTypes?: Array<{ key: string }>;
     scoreDistributions?: Record<string, Array<{ label: string; maxScore: number }>>;
+    error?: string;
   };
-  assert(stats.tenantType === tenantType, `${tenantType}: authenticated Production stats tenant mismatch.`);
+  if (statsResponse.status === 403) {
+    assert(Boolean(stats.error), `${tenantType}: operation-stage stats denial did not include an error message.`);
+  } else {
+    assert(stats.tenantType === tenantType, `${tenantType}: authenticated Production stats tenant mismatch.`);
+  }
   const examTypes = new Set(stats.examTypes?.map((item) => item.key) ?? []);
   const publicDistribution = stats.scoreDistributions?.PUBLIC ?? [];
   const labels = new Set(publicDistribution.map((item) => item.label));
-  if (tenantType === "police") {
+  if (statsResponse.status === 200 && tenantType === "police") {
     const allowedPoliceExamTypes = new Set(["PUBLIC", "CAREER"]);
     assert(
       examTypes.has("PUBLIC") && [...examTypes].every((examType) => allowedPoliceExamTypes.has(examType)),
@@ -117,7 +125,7 @@ async function verifyTenant(tenantType: TenantType, cookie: string) {
       publicDistribution.length === 0 || publicDistribution.find((item) => item.label === "총점")?.maxScore === 250,
       "Police Production total max score is not 250."
     );
-  } else {
+  } else if (statsResponse.status === 200) {
     const allowedFireExamTypes = new Set(["PUBLIC", "CAREER_RESCUE", "CAREER_ACADEMIC", "CAREER_EMT"]);
     assert(
       examTypes.has("PUBLIC") && [...examTypes].every((examType) => allowedFireExamTypes.has(examType)),

@@ -74,7 +74,10 @@ async function verifyTenant(tenantType: TenantType) {
   assert(crossedMutation.status === 421, `${tenantType}: cross-domain mutation expected 421, received ${crossedMutation.status}.`);
 
   const unauthenticatedStats = await request(`${origin}/api/main-stats`);
-  assert(unauthenticatedStats.status === 401, `${tenantType}: unauthenticated stats expected 401, received ${unauthenticatedStats.status}.`);
+  assert(
+    unauthenticatedStats.status === 401 || unauthenticatedStats.status === 403,
+    `${tenantType}: protected stats expected 401 or operation-stage 403, received ${unauthenticatedStats.status}.`
+  );
 
   const bridge = await request(`${origin}/api/auth/portal-bridge`, { method: "POST" });
   assert(bridge.status === 410, `${tenantType}: retired portal bridge expected 410, received ${bridge.status}.`);

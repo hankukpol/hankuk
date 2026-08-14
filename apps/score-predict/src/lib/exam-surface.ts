@@ -1,4 +1,5 @@
 import type { SiteSettingsMap } from "@/lib/site-settings.constants";
+import { stripTenantPrefix } from "@/lib/tenant";
 
 export type ExamSurfaceKey =
   | "main"
@@ -53,6 +54,7 @@ const EXAM_SURFACES: Record<ExamSurfaceKey, Omit<ExamSurfaceItem, "enabled">> = 
 };
 
 const PUBLIC_ROUTE_PRIORITY: ExamSurfaceKey[] = ["main", "input", "notices", "faq"];
+const PUBLIC_EXAM_PAGE_PATHS = new Set(["/exam/notices", "/exam/faq"]);
 const AUTH_ROUTE_PRIORITY: ExamSurfaceKey[] = [
   "main",
   "result",
@@ -75,6 +77,14 @@ const FALLBACK_ROUTE_PRIORITY: ExamSurfaceKey[] = [
 ];
 
 export const DEFAULT_TAB_LOCKED_MESSAGE = "\uc2dc\ud5d8 \uc815\ubcf4\ub294 \uc900\ube44 \uc911\uc785\ub2c8\ub2e4.";
+
+export function isPublicExamPagePath(pathname: string | null | undefined): boolean {
+  if (!pathname) return false;
+
+  const stripped = stripTenantPrefix(pathname);
+  const normalized = stripped.length > 1 ? stripped.replace(/\/+$/, "") : stripped;
+  return PUBLIC_EXAM_PAGE_PATHS.has(normalized);
+}
 
 function isEnabledSurface(item: ExamSurfaceItem, options: ExamSurfaceRouteOptions) {
   if (!item.enabled) {

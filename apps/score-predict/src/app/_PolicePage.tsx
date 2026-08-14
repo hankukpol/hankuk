@@ -131,6 +131,8 @@ export default async function HomePage() {
         <PromotionCampaignBridge
           isAuthenticated={isLoggedIn}
           preRegistrationEnabled={activePromotion.operation.features.preRegistration}
+          noticesEnabled={activePromotion.operation.features.notices}
+          faqEnabled={activePromotion.operation.features.faq}
           templateKey={activePromotion.campaign.templateKey}
           templateVersion={activePromotion.campaign.templateVersion}
           content={activePromotion.campaign.publishedContent}

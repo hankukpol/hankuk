@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ExamOperationPhase, Prisma, PrismaClient, PromotionCampaignStatus, Role } from "@prisma/client";
 import { buildLegacyOperationMigration, normalizeOperationOverrides, OPERATION_PRESETS, overlayOperationSettings, resolveOperationFeatures } from "../src/lib/exam-operation";
+import { isPublicExamPagePath } from "../src/lib/exam-surface";
 import { sanitizeCustomHtmlDocument } from "../src/lib/promotions/custom-html";
 import {
   CUSTOM_HTML_PROMOTION_TEMPLATE_KEY,
@@ -78,6 +79,12 @@ async function main() {
   assert.deepEqual(OPERATION_PRESETS.ANALYSIS_OPEN, { preRegistration: false, answerInput: true, result: true, analysis: true, finalPrediction: false, comments: false, notices: true, faq: true });
   assert.deepEqual(OPERATION_PRESETS.FINAL_OPEN, { preRegistration: false, answerInput: false, result: true, analysis: true, finalPrediction: true, comments: false, notices: true, faq: true });
   assert.deepEqual(OPERATION_PRESETS.CLOSED, { preRegistration: false, answerInput: false, result: false, analysis: false, finalPrediction: false, comments: false, notices: true, faq: true });
+  assert.equal(isPublicExamPagePath("/exam/notices"), true);
+  assert.equal(isPublicExamPagePath("/exam/faq/"), true);
+  assert.equal(isPublicExamPagePath("/police/exam/notices"), true);
+  assert.equal(isPublicExamPagePath("/fire/exam/faq"), true);
+  assert.equal(isPublicExamPagePath("/exam/input"), false);
+  assert.equal(isPublicExamPagePath("/api/notices"), false);
   assert.deepEqual(normalizeOperationOverrides({ comments: true, policePredictionGradesEnabled: true, unknown: true }), { comments: true });
   const effective = overlayOperationSettings(SITE_SETTING_DEFAULTS, OPERATION_PRESETS.PRE_REGISTRATION);
   assert.equal(effective["site.answerInputEnabled"], false);

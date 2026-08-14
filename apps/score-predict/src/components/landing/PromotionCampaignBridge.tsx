@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import CustomHtmlPromotionFrame from "@/components/landing/CustomHtmlPromotionFrame";
 import PreRegistrationModal from "@/components/landing/PreRegistrationModal";
+import PublicExamNavigation from "@/components/layout/PublicExamNavigation";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,12 +23,16 @@ import {
 export default function PromotionCampaignBridge({
   isAuthenticated,
   preRegistrationEnabled,
+  noticesEnabled,
+  faqEnabled,
   templateKey,
   templateVersion,
   content,
 }: {
   isAuthenticated: boolean;
   preRegistrationEnabled: boolean;
+  noticesEnabled: boolean;
+  faqEnabled: boolean;
   templateKey: string;
   templateVersion: number;
   content: unknown;
@@ -96,6 +101,15 @@ export default function PromotionCampaignBridge({
 
   return (
     <>
+      {noticesEnabled || faqEnabled ? (
+        <PublicExamNavigation
+          activeKey="main"
+          tenantType={tenant.type}
+          preRegistrationEnabled={preRegistrationEnabled}
+          noticesEnabled={noticesEnabled}
+          faqEnabled={faqEnabled}
+        />
+      ) : null}
       <div
         data-promotion-modal-open={open ? "true" : "false"}
         data-promotion-pre-registration-enabled={canUsePreRegistration ? "true" : "false"}

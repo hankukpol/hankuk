@@ -302,7 +302,7 @@ export default function ExamCommentsPageContent({ embedded = false }: ExamCommen
         </div>
 
         {errorMessage ? (
-          <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <p className="mt-3 border-l-2 border-rose-400 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {errorMessage}
           </p>
         ) : null}

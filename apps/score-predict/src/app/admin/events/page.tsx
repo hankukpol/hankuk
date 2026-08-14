@@ -396,7 +396,7 @@ export default function AdminEventsPage() {
                 type="color"
                 value={bgColor}
                 onChange={(event) => setBgColor(event.target.value)}
-                className="h-10 w-16 rounded-md border border-slate-300 p-1"
+                className="h-11 w-16 rounded-md border border-slate-300 p-1"
               />
             </div>
           </div>

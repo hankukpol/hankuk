@@ -748,7 +748,7 @@ export default function ExamInputPage({
             <Label htmlFor="gender">성별</Label>
             <select
               id="gender"
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={gender}
               onChange={(event) => setGender(event.target.value as Gender | "")}
             >
@@ -762,7 +762,7 @@ export default function ExamInputPage({
             <Label htmlFor="examType">채용유형</Label>
             <select
               id="examType"
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={examType}
               onChange={(event) => setExamType(event.target.value as FireExamType)}
             >
@@ -777,7 +777,7 @@ export default function ExamInputPage({
             <Label htmlFor="region">지역</Label>
             <select
               id="region"
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={regionId}
               onChange={(event) => setRegionId(Number(event.target.value) || "")}
             >
@@ -832,7 +832,7 @@ export default function ExamInputPage({
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-slate-200 p-4">
+        <div className="mt-6 rounded-lg border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-900">가산점</h2>
           <p className="mt-1 text-xs text-slate-500">취업지원과 의사상자 가산점은 동시에 적용할 수 없습니다.</p>
 
@@ -946,7 +946,7 @@ export default function ExamInputPage({
               <button
                 key={subject.name}
                 type="button"
-                className={`rounded-md border px-4 py-2 text-sm font-bold ${index === activeSubjectIndex
+                className={`inline-flex h-11 items-center rounded-md border px-4 text-sm font-bold ${index === activeSubjectIndex
  ? "border-fire-700 bg-fire-700 text-white"
  : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
  }`}
@@ -978,7 +978,7 @@ export default function ExamInputPage({
         </div>
 
         {currentSubject ? (
-          <div className="mt-4 rounded-xl border border-slate-200 p-4">
+          <div className="mt-4 rounded-lg border border-slate-200 p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-semibold text-slate-900">
                 {currentSubject.name} ({currentSubject.questionCount}문항)
@@ -1010,7 +1010,7 @@ export default function ExamInputPage({
           </div>
         ) : null}
 
-        <div className="mt-5 space-y-3 rounded-xl border border-slate-200 p-4">
+        <div className="mt-5 space-y-3 rounded-lg bg-slate-50 p-4">
           <h3 className="text-sm font-semibold text-slate-900">입력 현황</h3>
           {progressBySubject.map((item) => {
             const percentage = item.total > 0 ? (item.filled / item.total) * 100 : 0;

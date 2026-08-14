@@ -33,7 +33,7 @@ export default function PreRegistrationModal({
   onOpenChange,
 }: PreRegistrationModalProps) {
   const tenant = useTenantConfig();
-  const callbackPath = withTenantPrefix("/", tenant.type);
+  const callbackPath = `${withTenantPrefix("/", tenant.type)}?openPreRegistration=1`;
   const loginHref = `${withTenantPrefix("/login", tenant.type)}?callbackUrl=${encodeURIComponent(callbackPath)}`;
   const registerHref = `${withTenantPrefix("/register", tenant.type)}?callbackUrl=${encodeURIComponent(callbackPath)}`;
 

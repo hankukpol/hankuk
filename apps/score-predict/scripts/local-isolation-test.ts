@@ -620,52 +620,10 @@ async function verifyRoundLifecycleAndFailClosed(baseUrl: URL) {
         assert(preRegistrationResponse.ok, "police: current pre-registration lookup failed.");
         const preRegistration = await readJson<{
           preRegistration?: { examNumber: string } | null;
-          smsMarketingConsent?: { consented: boolean };
         }>(preRegistrationResponse, "police current pre-registration");
         assert(
           preRegistration.preRegistration?.examNumber === "2026000015",
           "police: active-round pre-registration was not isolated from the archived submission."
-        );
-        assert(
-          preRegistration.smsMarketingConsent?.consented === true,
-          "police: optional SMS consent state was not preserved."
-        );
-
-        const withdrawResponse = await requestLocalHost(
-          user.host,
-          "/api/account/sms-marketing-consent",
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ consented: false }),
-          },
-          user.jar
-        );
-        assert(withdrawResponse.ok, "police: SMS consent withdrawal failed.");
-        const withdrawn = await readJson<{ consented?: boolean }>(withdrawResponse, "police SMS withdrawal");
-        assert(withdrawn.consented === false, "police: withdrawn SMS consent remained active.");
-
-        const restoreConsentResponse = await requestLocalHost(
-          user.host,
-          "/api/account/sms-marketing-consent",
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ consented: true }),
-          },
-          user.jar
-        );
-        assert(restoreConsentResponse.ok, "police: SMS consent restore failed.");
-      } else {
-        const fireConsentResponse = await requestLocalHost(
-          user.host,
-          "/api/account/sms-marketing-consent",
-          {},
-          user.jar
-        );
-        assert(
-          fireConsentResponse.status === 404,
-          `fire: police SMS consent endpoint leaked into fire (${fireConsentResponse.status}).`
         );
       }
     }
@@ -680,22 +638,6 @@ async function verifyRoundLifecycleAndFailClosed(baseUrl: URL) {
       "PoliceAdmin!123",
       "010-0000-0000",
       true
-    );
-    const consentedExportResponse = await requestLocalHost(
-      policeAdmin.host,
-      "/api/admin/pre-registrations/export?scope=marketing-consented",
-      {},
-      policeAdmin.jar
-    );
-    assert(consentedExportResponse.ok, "police: consented-only export failed.");
-    const consentedExport = await consentedExportResponse.text();
-    assert(
-      consentedExport.includes("010-9115-1015") && consentedExport.includes("police-sms-marketing-v1"),
-      "police: consented-only export omitted its consent evidence."
-    );
-    assert(
-      !consentedExport.includes(sharedLogin),
-      "police: a non-consenting account leaked into the consented-only export."
     );
     const ownerUser = await clients.police.user.findUnique({
       where: { phone: pastOnlyAccounts.police.identifier },

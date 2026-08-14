@@ -1,7 +1,7 @@
 import { ExamType } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, withPrismaConnectionRetry } from "@/lib/prisma";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { getTenantSubjectOrder, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
 import { sortTenantRegions } from "@/lib/tenant-regions";
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         maxScore: true,
       },
     }),
-    getSiteSettingsUncached(),
+    getEffectiveSiteSettings(),
   ]);
 
   // 활성 시험의 모집인원 조회

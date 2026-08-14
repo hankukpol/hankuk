@@ -117,17 +117,9 @@ export default function Header() {
                 </Button>
               </Link>
             ) : null}
-            {tenant.type === "police" ? (
-              <Link
-                href={withTenantPrefix("/account/notifications", tenant.type)}
-                className="hidden text-sm text-white/80 hover:text-white md:inline"
-              >
-                문자 수신 설정
-              </Link>
-            ) : null}
             <Link
               href={withTenantPrefix("/account/security", tenant.type)}
-              className="inline-flex h-9 items-center gap-1 rounded-md border border-white/40 bg-white/10 px-2 text-sm text-white hover:bg-white/20"
+              className="inline-flex h-11 items-center gap-1 rounded-md border border-white/40 bg-white/10 px-2 text-sm text-white hover:bg-white/20"
               aria-label="계정 보안"
             >
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />

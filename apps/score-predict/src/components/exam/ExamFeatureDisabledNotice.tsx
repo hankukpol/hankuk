@@ -20,7 +20,7 @@ export default function ExamFeatureDisabledNotice({
       </p>
       <Link
         href="/"
-        className="mt-5 inline-flex rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-800"
+        className="mt-5 inline-flex h-11 items-center rounded-md bg-amber-900 px-4 text-sm font-medium text-white transition hover:bg-amber-800"
       >
         메인으로 돌아가기
       </Link>

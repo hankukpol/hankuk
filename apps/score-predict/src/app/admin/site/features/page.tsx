@@ -15,6 +15,7 @@ import { asBoolean, asString, type SettingValue } from "../_lib/site-settings-cl
 import { useSiteSettingsManager } from "../_lib/use-site-settings-manager";
 import SiteSettingsSectionCard from "../_components/SiteSettingsSectionCard";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
+import ExamOperationConsole from "./_components/ExamOperationConsole";
 
 type ToggleField = {
   key: string;
@@ -61,45 +62,6 @@ const FLOW_TOGGLES: ToggleField[] = [
     key: "site.commentsEnabled",
     label: "실시간 댓글",
     description: "댓글 영역과 댓글 API를 공개합니다.",
-    defaultValue: true,
-  },
-];
-
-const TAB_TOGGLES: ToggleField[] = [
-  {
-    key: "site.tabMainEnabled",
-    label: "메인 탭",
-    description: "메인 요약 탭과 직접 접근 페이지를 노출합니다.",
-    defaultValue: true,
-  },
-  {
-    key: "site.tabInputEnabled",
-    label: "입력 탭",
-    description: "입력 탭과 입력 페이지 직접 접근을 허용합니다.",
-    defaultValue: true,
-  },
-  {
-    key: "site.tabResultEnabled",
-    label: "결과 탭",
-    description: "성적 분석 탭과 결과 페이지 직접 접근을 허용합니다.",
-    defaultValue: true,
-  },
-  {
-    key: "site.tabPredictionEnabled",
-    label: "합격 예측 탭",
-    description: "합격 예측 정보 탭과 안내 페이지 직접 접근을 허용합니다.",
-    defaultValue: true,
-  },
-  {
-    key: "site.tabNoticesEnabled",
-    label: "공지사항 탭",
-    description: "공지사항 탭과 공지 페이지 직접 접근을 허용합니다.",
-    defaultValue: true,
-  },
-  {
-    key: "site.tabFaqEnabled",
-    label: "FAQ 탭",
-    description: "FAQ 탭과 FAQ 페이지 직접 접근을 허용합니다.",
     defaultValue: true,
   },
 ];
@@ -252,7 +214,7 @@ function FeatureToggleGroup({
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="rounded-lg bg-slate-50 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-900">{title}</p>
@@ -381,6 +343,7 @@ export default function AdminSiteFeaturesPage() {
 
   return (
     <>
+      <ExamOperationConsole />
       <SiteSettingsSectionCard
         title="기능 설정"
         description="지점 운영 정책에 맞게 기능을 범주별로 켜고 끄면 공개 화면과 관리자 도구에 즉시 반영됩니다."
@@ -391,13 +354,15 @@ export default function AdminSiteFeaturesPage() {
           </Button>
         }
       >
-        <FeatureToggleGroup
-          title="시험/입력 흐름"
-          description="응시자 참여 흐름과 공개 시험 기능을 제어합니다."
-          fields={flowToggles}
-          settings={settings}
-          updateSetting={updateSetting}
-        />
+        <div className="rounded-lg bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-900">운영 단계와 분리된 기능</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">경력채용 사용 여부와 경찰 합격등급 정책은 회차 프리셋으로 바꾸지 않습니다.</p>
+          <div className="mt-4 space-y-3">
+            {flowToggles.filter((field) => field.key === "site.careerExamEnabled" || field.key === "site.policePredictionGradesEnabled").map((field) => (
+              <FeatureToggleItem key={field.key} field={field} checked={asBoolean(settings[field.key], field.defaultValue)} onChange={(nextValue) => updateSetting(field.key, nextValue)} />
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor="pre-registration-closed-message">사전등록 종료 안내 메시지</Label>
@@ -416,14 +381,6 @@ export default function AdminSiteFeaturesPage() {
             사전등록만 닫고 답안 입력은 유지할 때 입력 화면에서 보여 줄 안내 문구입니다.
           </p>
         </div>
-
-        <FeatureToggleGroup
-          title="공개 메뉴"
-          description="메뉴 노출과 직접 접근 허용 여부를 한 번에 제어합니다."
-          fields={TAB_TOGGLES}
-          settings={settings}
-          updateSetting={updateSetting}
-        />
 
         <FeatureToggleGroup
           title="참여자/통계 도구"

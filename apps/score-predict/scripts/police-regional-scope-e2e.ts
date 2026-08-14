@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { BonusType, ExamType, PrismaClient } from "@prisma/client";
+import { BonusType, ExamOperationPhase, ExamType, Prisma, PrismaClient } from "@prisma/client";
 import { chromium, type Page } from "playwright";
 
 type JsonObject = Record<string, unknown>;
@@ -252,6 +252,15 @@ async function main() {
   const police = new PrismaClient({ datasources: { db: { url: policeUrl } } });
   const fire = new PrismaClient({ datasources: { db: { url: fireUrl } } });
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  let operationBaseline: {
+    id: number;
+    phase: ExamOperationPhase;
+    activeCampaignId: number | null;
+    featureOverrides: Prisma.JsonValue | null;
+    version: number;
+    updatedBy: number | null;
+    updatedAt: Date;
+  } | null = null;
 
   try {
     const fireBaseline = {
@@ -271,6 +280,16 @@ async function main() {
     assert(exam.examDate.toISOString().startsWith("2026-08-22"), "Police exam date is not 2026-08-22.");
     assert(exam.policeWrittenPassMultiple === 2, "Stored police pass multiple is not 2.");
     assert(exam.policePredictionModelVersion === EXPECTED_MODEL, "Stored police model version mismatch.");
+
+    operationBaseline = await police.examOperationState.findUnique({
+      where: { examId: exam.id },
+      select: { id: true, phase: true, activeCampaignId: true, featureOverrides: true, version: true, updatedBy: true, updatedAt: true },
+    });
+    assert(operationBaseline, "Active police exam operation state is missing.");
+    await police.examOperationState.update({
+      where: { id: operationBaseline.id },
+      data: { phase: ExamOperationPhase.ANALYSIS_OPEN, featureOverrides: {} },
+    });
 
     const allRegions = await police.region.findMany({ orderBy: { name: "asc" } });
     const regions = allRegions.filter((region) => region.isActive);
@@ -669,6 +688,19 @@ async function main() {
     console.log("\nPolice Daegu/Gyeongbuk regional scope E2E passed.");
   } finally {
     await browser?.close().catch(() => undefined);
+    if (operationBaseline) {
+      await police.examOperationState.update({
+        where: { id: operationBaseline.id },
+        data: {
+          phase: operationBaseline.phase,
+          activeCampaignId: operationBaseline.activeCampaignId,
+          featureOverrides: operationBaseline.featureOverrides ?? Prisma.JsonNull,
+          version: operationBaseline.version,
+          updatedBy: operationBaseline.updatedBy,
+          updatedAt: operationBaseline.updatedAt,
+        },
+      }).catch((error) => console.error("[RECOVERY] operation state restore failed", error));
+    }
     await Promise.all([police.$disconnect(), fire.$disconnect()]);
   }
 }

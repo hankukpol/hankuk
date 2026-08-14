@@ -27,8 +27,6 @@ interface PoliceRegisterRequestBody {
   agreeToPrivacy?: unknown;
 }
 
-let hasUserContactPhoneColumnCache: boolean | null = null;
-
 function isMissingContactPhoneColumnError(error: unknown) {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -38,27 +36,17 @@ function isMissingContactPhoneColumnError(error: unknown) {
 }
 
 async function hasUserContactPhoneColumn() {
-  if (hasUserContactPhoneColumnCache !== null) {
-    return hasUserContactPhoneColumnCache;
-  }
+  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'User'
+        AND column_name = 'contactPhone'
+    ) AS "exists"
+  `;
 
-  try {
-    const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-      SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'User'
-          AND column_name = 'contactPhone'
-      ) AS "exists"
-    `;
-
-    hasUserContactPhoneColumnCache = rows[0]?.exists === true;
-  } catch {
-    hasUserContactPhoneColumnCache = true;
-  }
-
-  return hasUserContactPhoneColumnCache;
+  return rows[0]?.exists === true;
 }
 
 async function createLegacyUser(params: {
@@ -79,7 +67,6 @@ async function createLegacyUser(params: {
     throw new Error("레거시 사용자 스키마에 회원 생성에 실패했습니다.");
   }
 
-  hasUserContactPhoneColumnCache = false;
   return created.id;
 }
 
@@ -211,13 +198,10 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
   const supportsContactPhoneColumn = await hasUserContactPhoneColumn();
 
   if (!supportsContactPhoneColumn) {
-    await createLegacyUser({
-      name,
-      email,
-      phone: username,
-      hashedPassword,
-      now,
-    });
+    return NextResponse.json(
+      { error: "연락처를 안전하게 저장할 수 없어 회원가입을 진행할 수 없습니다. 관리자에게 문의해 주세요." },
+      { status: 503 }
+    );
   } else {
     try {
       await prisma.user.create({
@@ -236,13 +220,10 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
         throw error;
       }
 
-      await createLegacyUser({
-        name,
-        email,
-        phone: username,
-        hashedPassword,
-        now,
-      });
+      return NextResponse.json(
+        { error: "연락처를 안전하게 저장할 수 없어 회원가입을 진행할 수 없습니다. 관리자에게 문의해 주세요." },
+        { status: 503 }
+      );
     }
   }
 

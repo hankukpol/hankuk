@@ -2,6 +2,7 @@ import type { SiteSettingKey } from "@/lib/site-settings.constants";
 
 export type AdminSiteFeatureKey =
   | "banners"
+  | "promotions"
   | "events"
   | "notices"
   | "faqs"
@@ -45,6 +46,15 @@ export const ADMIN_SITE_FEATURES: Record<
   AdminSiteFeatureKey,
   AdminSiteFeatureDefinition
 > = {
+  promotions: {
+    key: "promotions",
+    group: "content",
+    settingKey: "site.adminPromotionsEnabled",
+    label: "프로모션 관리",
+    description: "회차별 전체 랜딩의 임시저장, 미리보기, 게시와 보관을 제어합니다.",
+    disabledTitle: "프로모션 관리가 비활성화되었습니다.",
+    disabledDescription: "이 지점에서는 기능을 다시 켜기 전까지 프로모션 관리 도구를 사용할 수 없습니다.",
+  },
   banners: {
     key: "banners",
     group: "content",
@@ -232,6 +242,7 @@ export const ADMIN_SITE_SYSTEM_FEATURE_LIST = ADMIN_SITE_FEATURE_LIST.filter(
 );
 
 export const ADMIN_SITE_FEATURE_DEFAULTS: AdminSiteFeatureState = {
+  promotions: true,
   banners: true,
   events: true,
   notices: true,

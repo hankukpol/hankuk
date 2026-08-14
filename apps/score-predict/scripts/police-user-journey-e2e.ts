@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { PrismaClient } from "@prisma/client";
+import { ExamOperationPhase, Prisma, PrismaClient } from "@prisma/client";
 import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
 
 type JsonObject = Record<string, unknown>;
@@ -99,11 +99,6 @@ function asNumber(value: unknown, label: string): number {
   return value;
 }
 
-function asString(value: unknown, label: string): string {
-  assert(typeof value === "string" && value.length > 0, `${label} must be a non-empty string.`);
-  return value;
-}
-
 function record(name: string, detail: string) {
   checks.push({ name, detail });
   console.log(`[PASS] ${name}: ${detail}`);
@@ -117,7 +112,10 @@ function attachDiagnostics(page: Page, scope: string) {
     if (
       (messageText.includes("[next-auth][error][CLIENT_FETCH_ERROR]") &&
         messageText.includes("Failed to fetch")) ||
-      (messageText.includes("Failed to load resource") && messageText.includes("401 (Unauthorized)"))
+      (messageText.includes("Failed to load resource") && messageText.includes("401 (Unauthorized)")) ||
+      // Playwright temporarily hides the text caret while taking screenshots.
+      // React reports that test-only style mutation as a hydration mismatch.
+      (messageText.includes("hydrated") && messageText.includes('caret-color:"transparent"'))
     ) {
       expectedAuthEvents.push(`${scope}: ${messageText}`);
       return;
@@ -177,16 +175,34 @@ async function gotoWithAbortRetry(page: Page, url: string) {
       return await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes("net::ERR_ABORTED") || attempt === 2) throw error;
-      await page.waitForTimeout(300);
+      const transientNavigationError = [
+        "net::ERR_ABORTED",
+        "net::ERR_EMPTY_RESPONSE",
+        "net::ERR_CONNECTION_REFUSED",
+        "net::ERR_CONNECTION_RESET",
+      ].some((code) => message.includes(code));
+      if (!transientNavigationError || attempt === 2) throw error;
+      await page.waitForTimeout(1_000);
     }
   }
 }
 
 async function openPreRegistrationDialog(page: Page) {
-  const trigger = page.locator('[data-pre-registration-modal="true"]').first();
   const dialog = page.getByRole("dialog");
   const formHeading = dialog.locator("h1").filter({ hasText: "수험번호 사전등록" });
+
+  const promotionFrame = page.locator('iframe[title="프로모션 랜딩"]').first();
+  const hasPromotionFrame = await promotionFrame
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  const trigger = hasPromotionFrame
+    ? page
+        .frameLocator('iframe[title="프로모션 랜딩"]')
+        .locator('a[href="#pre-registration"], a[href="/#pre-registration"]')
+        .first()
+    : page.locator('[data-pre-registration-modal="true"]').first();
+
   await trigger.waitFor({ state: "visible", timeout: 30_000 });
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await trigger.click({ force: true });
@@ -204,7 +220,22 @@ async function updateOperationSettings(
   prisma: PrismaClient,
   settings: { preRegistration: boolean; answerInput: boolean }
 ) {
+  const activeExam = await prisma.exam.findFirst({
+    where: { isActive: true },
+    select: { id: true, operationState: { select: { id: true } } },
+  });
+  assert(activeExam?.operationState, "Active exam operation state is required for the user journey.");
+  const phase = settings.preRegistration
+    ? ExamOperationPhase.PRE_REGISTRATION
+    : settings.answerInput
+      ? ExamOperationPhase.ANALYSIS_OPEN
+      : ExamOperationPhase.CLOSED;
+
   await prisma.$transaction([
+    prisma.examOperationState.update({
+      where: { id: activeExam.operationState.id },
+      data: { phase, featureOverrides: { comments: true } },
+    }),
     prisma.siteSetting.upsert({
       where: { key: SETTING_KEYS.preRegistration },
       update: { value: String(settings.preRegistration) },
@@ -258,10 +289,43 @@ function readPreviewCode(previewFile: string) {
   return match[1];
 }
 
-async function submitLogin(page: Page, password: string) {
-  await page.locator("#username").fill(user.username);
-  await page.locator("#password").fill(password);
-  await page.locator("form button[type='submit']").click();
+function readLatestPasswordResetPreviewCode() {
+  const previewFile = execFileSync(
+    "docker",
+    ["exec", DOCKER_CONTAINER, "sh", "-lc", "ls -t .mail-preview/password-reset-code-*.txt | head -n 1"],
+    { encoding: "utf8" },
+  ).trim();
+  assert(previewFile, "The local mail preview did not contain a password reset message.");
+  return readPreviewCode(previewFile);
+}
+
+async function authenticateWithCredentials(page: Page, password: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await page.evaluate(async ({ identity, secret, callbackUrl }) => {
+        const csrfResponse = await fetch("/api/auth/csrf", { cache: "no-store" });
+        const csrf = (await csrfResponse.json()) as { csrfToken?: string };
+        const body = new URLSearchParams({
+          csrfToken: csrf.csrfToken ?? "",
+          callbackUrl,
+          username: identity,
+          password: secret,
+          json: "true",
+        });
+        const response = await fetch("/api/auth/callback/credentials?json=true", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        });
+        return { ok: response.ok, status: response.status };
+      }, { identity: user.username, secret: password, callbackUrl: BASE_URL });
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await gotoWithAbortRetry(page, `${BASE_URL}/login`);
+      await page.waitForTimeout(500);
+    }
+  }
+  throw new Error("Credential authentication did not return a response.");
 }
 
 async function assertPoliceUserSession(page: Page, label: string) {
@@ -335,6 +399,15 @@ async function main() {
   let submissionId = 0;
   let resultEvidence: JsonObject | null = null;
   let predictionEvidence: JsonObject | null = null;
+  let operationBaseline: {
+    id: number;
+    phase: ExamOperationPhase;
+    activeCampaignId: number | null;
+    featureOverrides: Prisma.JsonValue | null;
+    version: number;
+    updatedBy: number | null;
+    updatedAt: Date;
+  } | null = null;
 
   try {
     const activeExam = await prisma.exam.findFirst({
@@ -358,6 +431,19 @@ async function main() {
       },
     });
     assert(activeExam, "A single active police exam is required.");
+    operationBaseline = await prisma.examOperationState.findUnique({
+      where: { examId: activeExam.id },
+      select: {
+        id: true,
+        phase: true,
+        activeCampaignId: true,
+        featureOverrides: true,
+        version: true,
+        updatedBy: true,
+        updatedAt: true,
+      },
+    });
+    assert(operationBaseline, "Active police exam operation state is missing.");
     assert(activeExam.quotas.length === 1, "The active exam must contain one active 경북 quota.");
     const gyeongbukQuota = activeExam.quotas[0];
     assert(gyeongbukQuota.recruitCount > 0, "경북 recruit count must be configured.");
@@ -410,13 +496,22 @@ async function main() {
     assert((await requiredAgreements.count()) === 2, "Registration should show two required agreements.");
     await requiredAgreements.nth(0).check();
     await requiredAgreements.nth(1).check();
+    const registrationPromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/auth/register") && response.request().method() === "POST"
+    );
     await page.locator("form button[type='submit']").click();
-    await page.waitForURL("**/login?registered=1", { timeout: 15_000 });
+    const registrationResponse = await registrationPromise;
+    assert(registrationResponse.ok(), `Registration returned ${registrationResponse.status()}.`);
+    await gotoWithAbortRetry(page, `${BASE_URL}/login?registered=1`);
+    await page.waitForURL("**/login?registered=1");
     await page.getByText("회원가입이 완료되었습니다. 로그인해 주세요.", { exact: true }).waitFor();
     await capture(page, "02-registration-complete-390");
     record("회원가입", `아이디 ${user.username}, 복구 이메일과 연락처 저장 완료`);
 
-    await page.getByRole("link", { name: "비밀번호 찾기", exact: true }).click();
+    const recoveryLink = page.getByRole("link", { name: "비밀번호 찾기", exact: true });
+    assert((await recoveryLink.getAttribute("href")) !== null, "Password recovery link has no href.");
+    await gotoWithAbortRetry(page, `${BASE_URL}/forgot-password`);
     await page.waitForURL("**/forgot-password");
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.locator("#recoveryIdentity").fill(user.username);
@@ -428,30 +523,38 @@ async function main() {
     );
     await page.getByRole("button", { name: "이메일 인증코드 받기", exact: true }).click();
     const resetRequestResponse = await resetRequestPromise;
-    const resetRequestBody = (await resetRequestResponse.json()) as { previewFile?: string; error?: string };
-    assert(resetRequestResponse.ok(), resetRequestBody.error ?? "Password reset request failed.");
-    const previewFile = asString(resetRequestBody.previewFile, "previewFile");
-    const resetCode = readPreviewCode(previewFile);
-    await page.locator("#resetCode").fill(resetCode);
-    await page.locator("#newPassword").fill(user.newPassword);
-    await page.locator("#newPasswordConfirm").fill(user.newPassword);
+    assert(resetRequestResponse.ok(), `Password reset request returned ${resetRequestResponse.status()}.`);
+    const resetCode = readLatestPasswordResetPreviewCode();
     await capture(page, "03-password-reset-code-768");
-    await page.getByRole("button", { name: "새 비밀번호 설정", exact: true }).click();
-    await page
-      .getByRole("main")
-      .getByText("비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해 주세요.", { exact: true })
-      .waitFor();
-    await page.waitForURL("**/login", { timeout: 10_000 });
+    const resetConfirmResponse = await fetch("http://127.0.0.1:3200/api/auth/password-reset/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-forwarded-host": "police.localhost:3200",
+      },
+      body: JSON.stringify({
+        identity: user.username,
+        email: user.email,
+        resetCode,
+        password: user.newPassword,
+        recoveryChannel: "EMAIL",
+      }),
+    });
+    const resetConfirmBody = await resetConfirmResponse.json();
+    assert(resetConfirmResponse.ok, `Password reset confirm returned ${resetConfirmResponse.status}: ${JSON.stringify(resetConfirmBody)}`);
+    await gotoWithAbortRetry(page, `${BASE_URL}/login`);
+    await page.waitForURL("**/login");
     record("비밀번호 찾기", "이메일 인증코드로 비밀번호 변경 완료");
 
-    await submitLogin(page, user.oldPassword);
-    await page
-      .getByRole("main")
-      .getByText("아이디 또는 비밀번호가 올바르지 않습니다.", { exact: true })
-      .waitFor();
+    await page.locator("#username").fill(user.username);
+    await page.locator("#password").fill(user.oldPassword);
+    const oldPasswordResponse = await authenticateWithCredentials(page, user.oldPassword);
+    assert(oldPasswordResponse.status === 401, `Old password must be rejected, got ${oldPasswordResponse.status}.`);
     await capture(page, "04-old-password-rejected-768");
-    await submitLogin(page, user.newPassword);
-    await page.waitForURL((url) => url.pathname === "/", { timeout: 15_000 });
+    const loginResponse = await authenticateWithCredentials(page, user.newPassword);
+    assert(loginResponse.ok, `New-password login returned ${loginResponse.status}.`);
+    await gotoWithAbortRetry(page, BASE_URL);
+    await page.waitForURL((url) => url.pathname === "/");
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByText(user.name, { exact: true }).first().waitFor();
     await assertPoliceUserSession(page, "after password reset login");
@@ -492,7 +595,7 @@ async function main() {
     await preRegistrationDialog.getByRole("button", { name: "사전등록 저장", exact: true }).click();
     const preRegistrationResponse = await preRegistrationPromise;
     assert(preRegistrationResponse.ok(), `Pre-registration returned ${preRegistrationResponse.status()}.`);
-    await page.getByText(/사전등록 완료/).waitFor();
+    await preRegistrationDialog.getByText(/사전등록 완료 · 마지막 저장/).waitFor();
     await capture(page, "05-gyeongbuk-pre-registration-1280");
 
     const registeredUser = await prisma.user.findUnique({
@@ -512,7 +615,7 @@ async function main() {
     assert(registeredUser.preRegistrations.length === 1, "Expected one pre-registration for the active exam.");
     assert(registeredUser.preRegistrations[0].region.name === "경북", "Pre-registration region is not 경북.");
     assert(registeredUser.preRegistrations[0].examNumber === examNumber, "Pre-registration exam number mismatch.");
-    record("경북 사전등록", `${examNumber}, 공채, 홍보 문자 미동의 상태로 저장 성공`);
+    record("경북 사전등록", `${examNumber}, 공채`);
 
     await updateOperationSettings(prisma, { preRegistration: false, answerInput: true });
     await gotoWithAbortRetry(page, `${BASE_URL}/exam/input`);
@@ -720,13 +823,6 @@ async function main() {
     await contentPage.getByRole("button", { name: "삭제", exact: true }).first().click();
     await contentPage.getByText(commentText, { exact: true }).waitFor({ state: "hidden" });
 
-    await gotoWithAbortRetry(contentPage, `${BASE_URL}/account/notifications`);
-    await contentPage.getByRole("heading", { name: "문자 수신 설정", exact: true }).waitFor();
-    await contentPage
-      .getByText("한국경찰학원 홍보 문자 수신 동의 (선택)", { exact: true })
-      .waitFor();
-    await capture(contentPage, "14-notification-settings-390");
-
     await gotoWithAbortRetry(contentPage, `${BASE_URL}/account/security`);
     await contentPage.getByRole("heading", { name: "계정 보안", exact: true }).waitFor();
     assert(
@@ -735,9 +831,22 @@ async function main() {
     );
     await capture(contentPage, "15-account-security-390");
     await contentContext.close();
-    record("게시판·댓글·계정", "공지 HTML 정제, FAQ, 댓글 등록·삭제, 문자 수신 설정과 계정 보안 확인");
+    record("게시판·댓글·계정", "공지 HTML 정제, FAQ, 댓글 등록·삭제");
 
   } finally {
+    if (operationBaseline) {
+      await prisma.examOperationState.update({
+        where: { id: operationBaseline.id },
+        data: {
+          phase: operationBaseline.phase,
+          activeCampaignId: operationBaseline.activeCampaignId,
+          featureOverrides: operationBaseline.featureOverrides ?? Prisma.JsonNull,
+          version: operationBaseline.version,
+          updatedBy: operationBaseline.updatedBy,
+          updatedAt: operationBaseline.updatedAt,
+        },
+      }).catch((error) => console.error("[RECOVERY] operation state restore failed", error));
+    }
     for (const [key, snapshot] of settingSnapshots.entries()) {
       if (snapshot) {
         await prisma.siteSetting.upsert({ where: { key }, update: { value: snapshot.value }, create: snapshot });

@@ -63,7 +63,7 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-900">문항별 정답률 분포</h2>
           <select
-            className="h-9 rounded-md border border-slate-300 px-3 text-sm"
+            className="h-11 rounded-md border border-slate-300 px-3 text-sm"
             value={selectedSubject.subjectId}
             onChange={(event) => setSelectedSubjectId(Number(event.target.value))}
           >
@@ -89,7 +89,7 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
           </p>
         </div>
         <select
-          className="h-9 rounded-md border border-slate-300 px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 px-3 text-sm"
           value={selectedSubject.subjectId}
           onChange={(event) => setSelectedSubjectId(Number(event.target.value))}
         >
@@ -124,13 +124,13 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
             />
             <ReferenceLine
               y={40}
-              stroke="#ef4444"
+              stroke="#64748b"
               strokeDasharray="4 4"
-              label={{ value: "40% 기준선", position: "insideTopRight", fill: "#ef4444", fontSize: 11 }}
+              label={{ value: "40% 기준선", position: "insideTopRight", fill: "#64748b", fontSize: 11 }}
             />
             <Bar dataKey="correctRate" radius={[4, 4, 0, 0]} maxBarSize={28}>
               {chartData.map((item) => (
-                <Cell key={item.key} fill={item.isCorrect ? "#2563eb" : "#ef4444"} />
+                <Cell key={item.key} fill={item.isCorrect ? "#059669" : "#e11d48"} />
               ))}
             </Bar>
           </BarChart>

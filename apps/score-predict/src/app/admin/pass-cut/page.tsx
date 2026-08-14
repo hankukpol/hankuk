@@ -245,7 +245,7 @@ export default function AdminPassCutPage() {
           </label>
           <select
             id="exam-id"
-            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm md:max-w-md"
+            className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm md:max-w-md"
             value={selectedExamId ?? ""}
             onChange={(event) => {
               const next = Number(event.target.value);

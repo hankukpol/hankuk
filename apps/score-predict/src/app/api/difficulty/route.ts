@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ExamType } from "@prisma/client";
 import { getDifficultyStats } from "@/lib/difficulty";
+import { isOperationFeatureEnabled } from "@/lib/exam-operation";
 import { getServerTenantType } from "@/lib/tenant.server";
 
 export const runtime = "nodejs";
@@ -14,6 +15,9 @@ function parseExamId(value: string | null): number | undefined {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!(await isOperationFeatureEnabled("analysis"))) {
+      return NextResponse.json({ error: "표본 분석이 아직 공개되지 않았습니다." }, { status: 403 });
+    }
     const { searchParams } = new URL(request.url);
     const examId = parseExamId(searchParams.get("examId"));
     const tenantType = await getServerTenantType();

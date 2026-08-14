@@ -21,7 +21,7 @@ interface TabItem {
 
 function tabClassName(active: boolean, disabled: boolean): string {
   const base =
-    "inline-flex min-h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition sm:min-w-[120px]";
+    "inline-flex h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 text-sm font-semibold transition sm:min-w-[120px]";
 
   if (disabled) {
     return `${base} cursor-not-allowed border-transparent text-slate-400`;

@@ -436,8 +436,8 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
     if (isAdmin) {
       return (
         <div className="space-y-4">
-          <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-            <h2 className="mb-2 text-sm font-semibold text-indigo-900">관리자 학생 조회</h2>
+          <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+            <h2 className="mb-2 text-sm font-semibold text-white">관리자 학생 조회</h2>
             <AdminStudentSearchBar
               currentSubmissionId={
                 selectedAdminSubmissionId ? Number(selectedAdminSubmissionId) : undefined
@@ -482,8 +482,8 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   return (
     <div className="space-y-6">
       {isAdmin && !isAdminPreview && (
-        <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-          <h2 className="mb-2 text-sm font-semibold text-indigo-900">관리자 학생 조회</h2>
+        <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+          <h2 className="mb-2 text-sm font-semibold text-white">관리자 학생 조회</h2>
           <AdminStudentSearchBar
             currentSubmissionId={
               selectedAdminSubmissionId ? Number(selectedAdminSubmissionId) : undefined
@@ -500,7 +500,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
             placeholder="이름 또는 수험번호로 학생 검색..."
           />
           {selectedAdminSubmissionId && (
-            <p className="mt-2 text-xs text-indigo-700">
+            <p className="mt-2 text-xs text-slate-300">
               ※ 선택한 학생의 합격예측을 표시 중입니다. 초기화 시 본인 데이터로 복귀합니다.
             </p>
           )}
@@ -508,14 +508,14 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
       )}
 
       {isAdminPreview ? (
-        <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
-          <h2 className="text-sm font-semibold text-indigo-900">관리자 미리보기</h2>
-          <p className="mt-1 text-xs text-indigo-800">
+        <section className="rounded-xl border border-slate-700 bg-slate-900 p-5">
+          <h2 className="text-sm font-semibold text-white">관리자 미리보기</h2>
+          <p className="mt-1 text-xs text-slate-300">
             MOCK 제출 데이터를 선택하면 실제 데이터 기반으로 합격 예측을 미리 검증할 수 있습니다.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <select
-              className="h-10 flex-1 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+              className="h-11 flex-1 rounded-md border border-slate-600 bg-white px-3 text-sm"
               value={selectedAdminSubmissionId}
               onChange={(event) => setSelectedAdminSubmissionId(event.target.value)}
             >
@@ -663,7 +663,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
                 세부 성적을 불러오는 중입니다...
               </p>
             ) : competitorDetailError ? (
-              <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <p className="mt-4 border-l-2 border-rose-400 bg-rose-50 p-4 text-sm text-rose-700">
                 {competitorDetailError}
               </p>
             ) : competitorDetail ? (

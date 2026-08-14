@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveNotices, getSiteSettings } from "@/lib/site-settings";
 import { requireTenantSessionRoute } from "@/lib/tenant-session.server";
 import type { TenantType } from "@/lib/tenant";
+import { isOperationFeatureEnabled } from "@/lib/exam-operation";
 
 export const runtime = "nodejs";
 
@@ -435,6 +436,7 @@ async function getQuotasForExam(examId: number): Promise<QuotaRow[]> {
 }
 
 export async function GET() {
+  if (!(await isOperationFeatureEnabled("analysis"))) return NextResponse.json({ error: "표본 분석은 아직 공개되지 않았습니다." }, { status: 403 });
   const tenantSession = await requireTenantSessionRoute();
   if ("error" in tenantSession) return tenantSession.error;
   const { session, tenantType } = tenantSession;

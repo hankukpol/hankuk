@@ -86,7 +86,7 @@ export default function WrongRateTop5({ submissionId, subjectOptions }: WrongRat
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-slate-900">오답률 Top5</h2>
         <select
-          className="h-9 rounded-md border border-slate-300 px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 px-3 text-sm"
           value={selectedSubjectId}
           onChange={(event) => {
             const next = event.target.value;

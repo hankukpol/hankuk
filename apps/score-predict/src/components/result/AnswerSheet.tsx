@@ -178,7 +178,7 @@ export default function AnswerSheet({ subjects, summaries }: AnswerSheetProps) {
           </p>
         </div>
         <select
-          className="h-9 rounded-md border border-slate-300 px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 px-3 text-sm"
           value={effectiveSubjectId}
           onChange={(event) => setSelectedSubjectId(Number(event.target.value))}
         >

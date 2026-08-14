@@ -6,7 +6,7 @@ import { parsePositiveInt } from "@/lib/exam-utils";
 import * as fireFinalPrediction from "@/lib/fire/final-prediction";
 import * as policeFinalPrediction from "@/lib/police/final-prediction";
 import { prisma } from "@/lib/prisma";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 import { isExamTypeForTenant, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
 import type { TenantType } from "@/lib/tenant";
 import {
@@ -86,7 +86,7 @@ function isMockSubmissionExamNumber(value: string): boolean {
 }
 
 async function ensureFinalPredictionEnabled() {
-  const settings = await getSiteSettingsUncached();
+  const settings = await getEffectiveSiteSettings();
   return Boolean(settings["site.finalPredictionEnabled"] ?? false);
 }
 

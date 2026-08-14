@@ -190,7 +190,7 @@ export default function PoliceAdminRegionsPage() {
         </label>
         <select
           id="police-region-exam"
-          className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-police-600 sm:max-w-md"
+          className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-police-600 sm:max-w-md"
           value={selectedExamId ?? ""}
           onChange={(event) => void load(Number(event.target.value))}
           disabled={isLoading}
@@ -213,13 +213,13 @@ export default function PoliceAdminRegionsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <div className="rounded-xl border border-service-200 bg-service-50 px-4 py-3 text-sm text-service-900">
             활성 지역만 학생의 지역 선택·성적 제출·합격예측에 표시됩니다. 현재 운영할 지역만 활성으로 두고 저장하세요.
           </div>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-[1280px] w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-700">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="w-28 whitespace-nowrap px-4 py-3">지역</th>
                   <th className="w-28 whitespace-nowrap px-4 py-3">운영 상태</th>

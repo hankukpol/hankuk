@@ -3,6 +3,7 @@ import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+import { loadRuntimeEnvFile } from "./lib/load-runtime-env";
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const tenantSchemas = ["score_predict_police", "score_predict_fire"] as const;
@@ -121,9 +122,6 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
       WHERE table_schema = current_schema()
         AND (
           (table_name = 'User' AND column_name IN (
-            'smsMarketingConsentAt',
-            'smsMarketingConsentVersion',
-            'smsMarketingConsentWithdrawnAt',
             'emailVerifiedAt',
             'credentialVersion'
           ))
@@ -147,17 +145,32 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
           ))
         )
     `;
-    assert(requiredColumns.length === 18, `${schema}: required migration columns are incomplete.`);
+    assert(requiredColumns.length === 15, `${schema}: required migration columns are incomplete.`);
 
     const objects = await prisma.$queryRaw<
-      Array<{ calibration_table: string | null; active_index: string | null }>
+      Array<{
+        calibration_table: string | null;
+        active_index: string | null;
+        promotion_table: string | null;
+        promotion_revision_table: string | null;
+        operation_table: string | null;
+        operation_audit_table: string | null;
+      }>
     >`
       SELECT
         to_regclass('"PredictionCalibrationSnapshot"')::text AS calibration_table,
-        to_regclass('"Exam_single_active_exam_key"')::text AS active_index
+        to_regclass('"Exam_single_active_exam_key"')::text AS active_index,
+        to_regclass('"PromotionCampaign"')::text AS promotion_table,
+        to_regclass('"PromotionCampaignRevision"')::text AS promotion_revision_table,
+        to_regclass('"ExamOperationState"')::text AS operation_table,
+        to_regclass('"ExamOperationAuditLog"')::text AS operation_audit_table
     `;
     assert(objects[0]?.calibration_table, `${schema}: calibration snapshot table is missing.`);
     assert(objects[0]?.active_index, `${schema}: single-active-exam index is missing.`);
+    assert(objects[0]?.promotion_table, `${schema}: promotion campaign table is missing.`);
+    assert(objects[0]?.promotion_revision_table, `${schema}: promotion revision table is missing.`);
+    assert(objects[0]?.operation_table, `${schema}: exam operation state table is missing.`);
+    assert(objects[0]?.operation_audit_table, `${schema}: exam operation audit table is missing.`);
 
     const appliedRows = await prisma.$queryRaw<Array<{ migration_name: string }>>`
       SELECT migration_name
@@ -172,6 +185,8 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
       "20260808_enforce_single_active_exam",
       "20260809_unify_account_recovery",
       "20260811_add_submission_suspicion_review",
+      "20260813_add_promotion_campaign_operations",
+      "20260814_retire_structured_promotion_templates",
     ]) {
       assert(applied.has(migration), `${schema}: migration ledger is missing ${migration}.`);
     }
@@ -198,6 +213,7 @@ function requireDeployConfirmation(rawDirectUrl: string) {
 }
 
 async function main() {
+  loadRuntimeEnvFile();
   const command = process.argv[2] as Command | undefined;
   assert(command === "deploy" || command === "status", "Usage: migrate-tenant-schemas.ts <deploy|status>");
 

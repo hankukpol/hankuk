@@ -6,7 +6,7 @@ import type { TenantType } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
-import { getSiteSettings } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 import {
   isActiveExamRouteError,
   lockActiveExamStateForWrite,
@@ -105,7 +105,7 @@ function formatComment(
 }
 
 export async function GET(request: NextRequest) {
-  const siteSettings = await getSiteSettings();
+  const siteSettings = await getEffectiveSiteSettings();
   if (!siteSettings["site.commentsEnabled"]) {
     return NextResponse.json({ error: "댓글 기능이 비활성화되어 있습니다." }, { status: 403 });
   }
@@ -220,7 +220,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const siteSettings = await getSiteSettings();
+  const siteSettings = await getEffectiveSiteSettings();
   if (!siteSettings["site.commentsEnabled"]) {
     return NextResponse.json({ error: "댓글 기능이 비활성화되어 있습니다." }, { status: 403 });
   }
@@ -331,7 +331,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const siteSettings = await getSiteSettings();
+  const siteSettings = await getEffectiveSiteSettings();
   if (!siteSettings["site.commentsEnabled"]) {
     return NextResponse.json({ error: "댓글 기능이 비활성화되어 있습니다." }, { status: 403 });
   }

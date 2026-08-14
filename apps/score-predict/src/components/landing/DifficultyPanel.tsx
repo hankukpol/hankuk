@@ -10,14 +10,14 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
 
   if (difficulty.totalResponses < 10) {
     return (
-      <section className="border border-slate-200 bg-white p-5 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-slate-900">시험 체감 난이도</h2>
           <p className="text-xs text-slate-500">
             응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · {difficulty.overall.dominantLabel}
           </p>
         </div>
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mt-3 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           아직 충분한 데이터가 수집되지 않았습니다. 응답 10건 이상부터 상세 난이도를 표시합니다.
         </p>
       </section>
@@ -25,7 +25,7 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
   }
 
   return (
-    <section className="border border-slate-200 bg-white p-5 sm:p-6">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <h2 className="text-lg font-semibold text-slate-900">시험 체감 난이도</h2>
         <p className="text-xs text-slate-500">

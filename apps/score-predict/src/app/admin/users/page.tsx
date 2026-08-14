@@ -7,6 +7,7 @@ import useConfirmModal from "@/hooks/useConfirmModal";
 import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { normalizePoliceContactPhone } from "@/lib/police/contact-phone";
 
 type UserRole = "USER" | "ADMIN";
 
@@ -16,7 +17,6 @@ interface UserRow {
   phone: string;
   contactPhone: string;
   deliveryPhone: string;
-  smsMarketingConsentActive: boolean;
   role: UserRole;
   createdAt: string;
   submissionCount: number;
@@ -69,9 +69,10 @@ export default function AdminUsersPage() {
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const { confirm, modalProps } = useConfirmModal();
   const [draftRoles, setDraftRoles] = useState<Record<number, UserRole>>({});
+  const [draftContactPhones, setDraftContactPhones] = useState<Record<number, string>>({});
   const [resetCodeInfo, setResetCodeInfo] = useState<ResetCodeInfo>(null);
   const [copied, setCopied] = useState(false);
-  const [downloadingScope, setDownloadingScope] = useState<"all" | "marketing-consented" | null>(null);
+  const [isDownloadingContacts, setIsDownloadingContacts] = useState(false);
 
   const canGoPrev = page > 1;
   const canGoNext = page < totalPages;
@@ -104,6 +105,11 @@ export default function AdminUsersPage() {
       setTotalCount(data.pagination?.totalCount ?? 0);
       setDraftRoles(
         Object.fromEntries((data.users ?? []).map((item) => [item.id, item.role] as const))
+      );
+      setDraftContactPhones(
+        Object.fromEntries(
+          (data.users ?? []).map((item) => [item.id, item.deliveryPhone] as const)
+        )
       );
     } catch (error) {
       setNotice({
@@ -232,13 +238,48 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleDownloadCsv(scope: "all" | "marketing-consented") {
-    setDownloadingScope(scope);
+  async function handleUpdateContactPhone(user: UserRow) {
+    const contactPhone = normalizePoliceContactPhone(draftContactPhones[user.id] ?? "");
+    if (!/^01[016789]\d{7,8}$/.test(contactPhone)) {
+      setNotice({ type: "error", message: "올바른 휴대전화 번호를 입력해 주세요." });
+      return;
+    }
+
+    const ok = await confirm({
+      title: "연락처 수정",
+      description: `${user.name}님의 연락처를 수정하시겠습니까?`,
+    });
+    if (!ok) return;
+
+    setUpdatingUserId(user.id);
+    setNotice(null);
     try {
-      const params = new URLSearchParams();
-      if (searchKeyword) params.set("search", searchKeyword);
-      if (roleFilter) params.set("role", roleFilter);
-      params.set("scope", scope);
+      const response = await fetch(`/api/admin/users?id=${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactPhone }),
+      });
+      const data = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? "연락처 수정에 실패했습니다.");
+      }
+
+      setNotice({ type: "success", message: `${user.name}님의 연락처를 수정했습니다.` });
+      await loadUsers();
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "연락처 수정에 실패했습니다.",
+      });
+    } finally {
+      setUpdatingUserId(null);
+    }
+  }
+
+  async function handleDownloadCsv() {
+    setIsDownloadingContacts(true);
+    try {
+      const params = new URLSearchParams({ role: "USER" });
 
       const response = await fetch(`/api/admin/users/export?${params.toString()}`);
       if (!response.ok) throw new Error("다운로드에 실패했습니다.");
@@ -247,7 +288,7 @@ export default function AdminUsersPage() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${scope === "marketing-consented" ? "문자수신동의회원" : "전체회원"}_${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.download = `일반회원_연락처_${new Date().toISOString().slice(0, 10)}.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -257,7 +298,7 @@ export default function AdminUsersPage() {
           error instanceof Error ? error.message : "CSV 다운로드에 실패했습니다.",
       });
     } finally {
-      setDownloadingScope(null);
+      setIsDownloadingContacts(false);
     }
   }
 
@@ -309,26 +350,18 @@ export default function AdminUsersPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => void handleDownloadCsv("all")}
-            disabled={downloadingScope !== null || isLoading}
+            onClick={() => void handleDownloadCsv()}
+            disabled={isDownloadingContacts}
           >
-            {downloadingScope === "all" ? "다운로드 중..." : "전체 회원 CSV"}
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void handleDownloadCsv("marketing-consented")}
-            disabled={downloadingScope !== null || isLoading}
-          >
-            {downloadingScope === "marketing-consented"
-              ? "다운로드 중..."
-              : "문자 수신 동의자 CSV"}
+            {isDownloadingContacts ? "다운로드 중..." : "전체 일반회원 연락처 CSV"}
           </Button>
         </div>
       </header>
 
-      <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        이벤트·강의 홍보 문자에는 반드시 문자 수신 동의자 CSV를 사용하세요. 전체 회원 CSV는 계정 확인과 서비스 운영 안내용입니다.
-      </p>
+      <section className="border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+        전체 일반회원 연락처 CSV에는 관리자 계정이 포함되지 않습니다. 사전등록자는 이 목록에도 포함되므로
+        사전등록자 CSV와 함께 사용할 때에는 중복 발송에 주의해 주세요.
+      </section>
 
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
@@ -338,7 +371,7 @@ export default function AdminUsersPage() {
             placeholder="이름, 아이디 또는 연락처 검색"
           />
           <select
-            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
             value={roleFilter}
             onChange={(event) => {
               setRoleFilter(event.target.value as "" | UserRole);
@@ -376,15 +409,14 @@ export default function AdminUsersPage() {
       {isLoading ? (
         <p className="text-sm text-slate-600">사용자 목록을 불러오는 중입니다...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">ID</th>
                 <th className="whitespace-nowrap px-4 py-3">이름</th>
                 <th className="whitespace-nowrap px-4 py-3">로그인 아이디</th>
-                <th className="whitespace-nowrap px-4 py-3">문자 연락처</th>
-                <th className="whitespace-nowrap px-4 py-3">문자 수신</th>
+                <th className="whitespace-nowrap px-4 py-3">연락처</th>
                 <th className="whitespace-nowrap px-4 py-3">가입일</th>
                 <th className="whitespace-nowrap px-4 py-3">제출</th>
                 <th className="whitespace-nowrap px-4 py-3">댓글</th>
@@ -408,9 +440,21 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3 text-slate-700">{user.id}</td>
                       <td className="px-4 py-3 font-medium text-slate-900">{user.name}</td>
                       <td className="px-4 py-3 text-slate-700">{user.phone}</td>
-                      <td className="px-4 py-3 text-slate-700">{user.deliveryPhone || "-"}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
-                        {user.smsMarketingConsentActive ? "동의" : "미동의/철회"}
+                      <td className="px-4 py-3 text-slate-700">
+                        <Input
+                          value={draftContactPhones[user.id] ?? ""}
+                          onChange={(event) =>
+                            setDraftContactPhones((previous) => ({
+                              ...previous,
+                              [user.id]: normalizePoliceContactPhone(event.target.value).slice(0, 11),
+                            }))
+                          }
+                          placeholder="01012345678"
+                          inputMode="numeric"
+                          className="h-9 min-w-32 font-mono text-xs"
+                          disabled={rowBusy}
+                          aria-label={`${user.name} 연락처`}
+                        />
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {formatDateText(user.createdAt)}
@@ -427,7 +471,7 @@ export default function AdminUsersPage() {
                             }))
                           }
                           disabled={rowBusy}
-                          className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+                          className="h-11 rounded-md border border-slate-300 bg-white px-2 text-sm"
                         >
                           <option value="USER">일반 사용자</option>
                           <option value="ADMIN">관리자</option>
@@ -435,6 +479,19 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              rowBusy ||
+                              normalizePoliceContactPhone(draftContactPhones[user.id] ?? "") ===
+                                normalizePoliceContactPhone(user.deliveryPhone)
+                            }
+                            onClick={() => void handleUpdateContactPhone(user)}
+                          >
+                            연락처 저장
+                          </Button>
                           <Button
                             type="button"
                             size="sm"
@@ -514,7 +571,7 @@ export default function AdminUsersPage() {
               학생은 비밀번호 찾기 화면에서 직접 새 비밀번호를 설정합니다.
             </p>
 
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="mt-4 border-l-2 border-amber-400 bg-amber-50 p-4">
               <p className="mb-1 text-xs font-medium text-amber-700">10분 유효 일회용 코드</p>
               <p className="font-mono text-2xl font-bold tracking-widest text-amber-900">
                 {resetCodeInfo.code}

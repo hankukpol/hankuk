@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSession } from "next-auth/react";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import Link from "next/link";
 import { withTenantPrefix } from "@/lib/tenant";
@@ -14,8 +13,6 @@ interface SiteSettingsResponse {
 
 export default function Footer() {
   const tenant = useTenantConfig();
-  const { data: session } = useSession();
-  const isAuthenticated = Boolean(session?.user);
   const defaultDisclaimer = useMemo(
     () =>
       `면책조항: 본 서비스는 수험생의 합격 예측을 위한 참고용 분석 도구이며, 실제 합격 여부를 보장하지 않습니다. ${tenant.footerDisclaimer}`,
@@ -65,15 +62,6 @@ export default function Footer() {
           >
             개인정보처리방침
           </Link>
-          {/* 광고성 문자 수신 철회는 수신 동의 주체(로그인 회원)에게만 의미가 있다. */}
-          {tenant.type === "police" && isAuthenticated ? (
-            <Link
-              href={withTenantPrefix("/account/notifications", tenant.type)}
-              className="whitespace-nowrap underline underline-offset-4 hover:text-white"
-            >
-              문자 수신 설정 및 철회
-            </Link>
-          ) : null}
         </nav>
       </div>
     </footer>

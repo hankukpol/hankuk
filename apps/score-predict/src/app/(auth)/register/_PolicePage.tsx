@@ -206,7 +206,7 @@ export default function RegisterPage() {
                   <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreeToTerms} onChange={(event) => setAgreeToTerms(event.target.checked)} />
                   <span className="font-medium">{TEXT.termsTitle}</span>
                 </label>
-                <div className="max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
                   <span className="whitespace-pre-wrap">{termsBody}</span>
                 </div>
               </div>
@@ -215,7 +215,7 @@ export default function RegisterPage() {
                   <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreeToPrivacy} onChange={(event) => setAgreeToPrivacy(event.target.checked)} />
                   <span className="font-medium">{TEXT.privacyTitle}</span>
                 </label>
-                <div className="max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
                   <span className="whitespace-pre-wrap">{privacyBody}</span>
                 </div>
               </div>

@@ -90,22 +90,33 @@ enum CalibrationScoreBasis {
   WRITTEN_BONUS_APPLIED
 }
 
+enum PromotionCampaignStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ExamOperationPhase {
+  PRE_REGISTRATION
+  SCORING_OPEN
+  ANALYSIS_OPEN
+  FINAL_OPEN
+  CLOSED
+}
+
 model User {
   id                     Int                  @id @default(autoincrement())
   name                   String
   email                  String?              @unique
   emailVerifiedAt        DateTime?
   phone                  String               @unique
-  contactPhone           String               @default("") // 경찰: 문자 수신용 연락처 (필수)
+  contactPhone           String               @default("") // 경찰: 회원 연락처 (필수)
   password               String
   credentialVersion      Int                  @default(1)
   role                   Role                 @default(USER)
   createdAt              DateTime             @default(now())
   termsAgreedAt          DateTime? // 서비스 이용약관 동의 일시
   privacyAgreedAt        DateTime? // 개인정보 수집·이용 동의 일시
-  smsMarketingConsentAt  DateTime? // 선택: 학원 문자 광고성 정보 수신 동의 일시
-  smsMarketingConsentVersion String? @db.VarChar(64) // 동의 문구 버전
-  smsMarketingConsentWithdrawnAt DateTime? // 문자 수신 동의 철회 일시
   submissions            Submission[]
   comments               Comment[]
   answerKeyLogs          AnswerKeyLog[]
@@ -118,6 +129,12 @@ model User {
   recoveryCodes          RecoveryCode[]
   visitorLogs            VisitorLog[]
   preRegistrations       PreRegistration[]
+  promotionCampaignsCreated PromotionCampaign[]         @relation("PromotionCampaignCreatedBy")
+  promotionCampaignsUpdated PromotionCampaign[]         @relation("PromotionCampaignUpdatedBy")
+  promotionCampaignsPublished PromotionCampaign[]       @relation("PromotionCampaignPublishedBy")
+  promotionRevisionsCreated PromotionCampaignRevision[] @relation("PromotionRevisionCreatedBy")
+  examOperationStatesUpdated ExamOperationState[]        @relation("ExamOperationStateUpdatedBy")
+  examOperationAuditLogs ExamOperationAuditLog[]         @relation("ExamOperationAuditChangedBy")
 }
 
 model PasswordResetToken {
@@ -172,6 +189,9 @@ model Exam {
   quotas                       ExamRegionQuota[]
   preRegistrations             PreRegistration[] // 경찰: 사전등록
   calibrationSnapshots         PredictionCalibrationSnapshot[]
+  promotionCampaigns           PromotionCampaign[]
+  operationState               ExamOperationState?
+  operationAuditLogs           ExamOperationAuditLog[]
 
   @@unique([year, round])
 }
@@ -426,6 +446,88 @@ model Banner {
 
   @@index([zone, isActive])
   @@index([tenantType, zone, isActive, sortOrder])
+}
+
+model PromotionCampaign {
+  id               Int                     @id @default(autoincrement())
+  tenantType       String                  @db.VarChar(16)
+  examId           Int
+  name             String                  @db.VarChar(160)
+  templateKey      String                  @db.VarChar(80)
+  templateVersion  Int                     @default(1)
+  draftContent     Json
+  publishedContent Json?
+  publishedVersion Int                     @default(0)
+  status           PromotionCampaignStatus @default(DRAFT)
+  createdBy         Int
+  updatedBy         Int
+  publishedBy       Int?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @default(now()) @updatedAt
+  publishedAt       DateTime?
+  archivedAt        DateTime?
+  exam              Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  creator           User                    @relation("PromotionCampaignCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updater           User                    @relation("PromotionCampaignUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  publisher         User?                   @relation("PromotionCampaignPublishedBy", fields: [publishedBy], references: [id], onDelete: SetNull)
+  revisions         PromotionCampaignRevision[]
+  activeForStates   ExamOperationState[]     @relation("ActivePromotionCampaign")
+
+  @@index([examId, status, updatedAt])
+  @@index([tenantType, examId, status])
+}
+
+model PromotionCampaignRevision {
+  id         Int               @id @default(autoincrement())
+  campaignId Int
+  version    Int
+  content    Json
+  createdBy  Int
+  createdAt  DateTime          @default(now())
+  campaign   PromotionCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator    User              @relation("PromotionRevisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([campaignId, version])
+  @@index([campaignId, createdAt])
+}
+
+model ExamOperationState {
+  id               Int                @id @default(autoincrement())
+  examId           Int                @unique
+  phase            ExamOperationPhase @default(CLOSED)
+  activeCampaignId Int?
+  featureOverrides Json?
+  version          Int                @default(1)
+  updatedBy        Int?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @default(now()) @updatedAt
+  exam             Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  activeCampaign   PromotionCampaign? @relation("ActivePromotionCampaign", fields: [activeCampaignId], references: [id], onDelete: SetNull)
+  updater          User?              @relation("ExamOperationStateUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  auditLogs        ExamOperationAuditLog[]
+
+  @@index([activeCampaignId])
+}
+
+model ExamOperationAuditLog {
+  id                       Int                @id @default(autoincrement())
+  operationStateId         Int
+  examId                   Int
+  previousPhase            ExamOperationPhase?
+  nextPhase                ExamOperationPhase
+  previousCampaignId       Int?
+  nextCampaignId           Int?
+  beforeSnapshot           Json?
+  afterSnapshot            Json
+  changedBy                Int
+  note                     String?            @db.Text
+  createdAt                DateTime           @default(now())
+  operationState           ExamOperationState @relation(fields: [operationStateId], references: [id], onDelete: Cascade)
+  exam                     Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  admin                    User               @relation("ExamOperationAuditChangedBy", fields: [changedBy], references: [id], onDelete: Restrict)
+
+  @@index([examId, createdAt])
+  @@index([operationStateId, createdAt])
 }
 
 model EventSection {

@@ -312,7 +312,7 @@ export default function AdminMockDataPage() {
           <Label htmlFor="mock-exam">대상 시험</Label>
           <select
             id="mock-exam"
-            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+            className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
             value={selectedExamId ?? ""}
             onChange={(event) => setSelectedExamId(Number(event.target.value) || null)}
           >

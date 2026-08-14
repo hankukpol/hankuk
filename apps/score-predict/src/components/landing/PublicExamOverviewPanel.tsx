@@ -122,7 +122,7 @@ export default function PublicExamOverviewPanel() {
               key={value}
               type="button"
               onClick={() => setSelectedExamType(value)}
-              className={`rounded-md border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-400 ${
+              className={`inline-flex h-11 items-center rounded-md border px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-400 ${
  effectiveExamType === value
  ? "border-service-600 bg-service-600 text-white"
  : "border-slate-200 bg-white text-slate-700 hover:border-service-300 hover:bg-service-50"
@@ -195,7 +195,7 @@ export default function PublicExamOverviewPanel() {
           </div>
         </>
       ) : (
-        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mt-5 border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           현재 공개할 지역별 모집정보를 준비하고 있습니다.
         </div>
       )}

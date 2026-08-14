@@ -1,6 +1,7 @@
 import { ExamType, Gender } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import { getEffectiveOperationContext } from "@/lib/exam-operation";
 import { validateExamNumberWithRange } from "@/lib/fire/exam-number";
 import { validatePoliceExamNumberWithRange } from "@/lib/police/exam-number";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +37,10 @@ function parseGender(value: string | null): Gender | null {
 }
 
 export async function GET(request: NextRequest) {
+  const operation = await getEffectiveOperationContext();
+  if (!operation.features.preRegistration && !operation.features.answerInput) {
+    return NextResponse.json({ error: "응시번호 입력 기간이 아닙니다." }, { status: 403 });
+  }
   const tenantSession = await getCurrentTenantSessionContext();
   if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

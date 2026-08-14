@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
 import { getTenantExamTypeErrorMessage, isExamTypeForTenant } from "@/lib/tenant-exam";
 import type { TenantType } from "@/lib/tenant";
+import { isOperationFeatureEnabled } from "@/lib/exam-operation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,6 +103,7 @@ function toFallbackStatus(params: {
 }
 
 export async function GET(request: NextRequest) {
+  if (!(await isOperationFeatureEnabled("analysis"))) return NextResponse.json({ error: "합격컷 정보는 아직 공개되지 않았습니다." }, { status: 403 });
   const tenantSession = await getCurrentTenantSessionContext();
   if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

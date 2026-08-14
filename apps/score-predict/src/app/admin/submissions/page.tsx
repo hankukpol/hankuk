@@ -488,7 +488,7 @@ export default function AdminSubmissionsPage() {
 
       <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-6">
         <select
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedExamId}
           onChange={(event) => {
             setSelectedExamId(Number(event.target.value) || "");
@@ -504,7 +504,7 @@ export default function AdminSubmissionsPage() {
         </select>
 
         <select
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedRegionId}
           onChange={(event) => {
             setSelectedRegionId(Number(event.target.value) || "");
@@ -520,7 +520,7 @@ export default function AdminSubmissionsPage() {
         </select>
 
         <select
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedExamType}
           onChange={(event) => {
             setSelectedExamType(event.target.value as "" | ExamTypeValue);
@@ -543,7 +543,7 @@ export default function AdminSubmissionsPage() {
         </select>
 
         <select
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedSuspicious}
           onChange={(event) => {
             setSelectedSuspicious(event.target.value as "" | SuspicionStatusValue);
@@ -587,7 +587,7 @@ export default function AdminSubmissionsPage() {
       {isLoading ? (
         <p className="text-sm text-slate-600">제출 목록을 불러오는 중입니다...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-[1200px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
@@ -732,7 +732,7 @@ export default function AdminSubmissionsPage() {
               </Button>
             </div>
 
-            <section className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+            <section className="mt-4 grid gap-3 rounded-lg bg-slate-50 p-4 md:grid-cols-2">
               <p className="text-sm text-slate-700">이름: {detail.submission.userName}</p>
               <p className="text-sm text-slate-700">연락처: {detail.submission.userPhone}</p>
               <p className="text-sm text-slate-700">
@@ -793,7 +793,7 @@ export default function AdminSubmissionsPage() {
               </div>
 
               {detail.submission.suspicionAutoReason ? (
-                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <div className="mt-3 border-l-2 border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
                   <p className="font-medium">자동 감지 사유</p>
                   <p className="mt-1 leading-6">{detail.submission.suspicionAutoReason}</p>
                 </div>
@@ -940,7 +940,7 @@ export default function AdminSubmissionsPage() {
                             <span
                               className={`rounded-full px-2 py-1 text-xs font-medium ${
  log.action === "CREATE"
- ? "bg-blue-100 text-blue-700"
+ ? "bg-slate-100 text-slate-700"
  : log.action === "SUSPICION_CLEAR"
  ? "bg-emerald-100 text-emerald-700"
  : log.action === "SUSPICION_EXCLUDE"

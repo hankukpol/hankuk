@@ -168,7 +168,7 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
             <button
               key={subject}
               onClick={() => setSelectedSubject(subject)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${activeSubject === subject
+              className={`-mb-px inline-flex h-10 items-center border-b-2 px-4 text-sm font-semibold transition-colors ${activeSubject === subject
  ? "border-service-600 text-service-700"
  : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
  }`}

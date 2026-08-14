@@ -201,29 +201,6 @@ async function verifyAdminSeparation(context: BrowserContext, tenantType: Tenant
   }
 }
 
-async function verifySmsConsentAtViewport(context: BrowserContext) {
-  await authenticateContext(context, "police", "010-9115-1015", "police-user-15!");
-  const page = await context.newPage();
-  await page.setViewportSize({ width: 390, height: 844 });
-  attachDiagnostics(page, "police-sms-consent-390");
-  await gotoWithRetry(page, "http://police.localhost:3200/account/notifications", {
-    waitUntil: "domcontentloaded",
-  });
-  await page.getByRole("heading", { name: "문자 수신 설정" }).waitFor();
-  await page.getByText("동의하지 않아도 채점과 합격예측을 이용할 수 있습니다.").waitFor();
-  const checkbox = page.locator('input[type="checkbox"]');
-  await checkbox.waitFor({ state: "visible", timeout: 20_000 });
-  assert(await checkbox.isChecked(), "Police SMS consent seed should render as checked.");
-  const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth + 1
-  );
-  assert(!hasHorizontalOverflow, "Police SMS consent page has horizontal overflow at 390px.");
-  const filename = "police-sms-consent-390.png";
-  await page.screenshot({ path: resolve(screenshotsDir, filename), fullPage: true });
-  record("police-sms-consent-390", true, `optional consent and withdrawal control visible, ${filename}`);
-  await page.close();
-}
-
 async function verifyPublicLandingAtViewport(
   context: BrowserContext,
   tenantType: TenantType,
@@ -531,9 +508,6 @@ async function main() {
         await verifyAdminSeparation(adminContext, tenantType);
         await adminContext.close();
       }
-      const consentContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
-      await verifySmsConsentAtViewport(consentContext);
-      await consentContext.close();
     }
   } finally {
     await browser.close();

@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { ExamOperationPhase, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
@@ -17,6 +17,7 @@ import {
   isNewActiveExamTransition,
   lockActiveExamStateForTransition,
 } from "@/lib/active-exam";
+import { revalidatePromotionPublic } from "@/lib/exam-operation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -204,6 +205,9 @@ export async function POST(request: NextRequest) {
 
       if (validated.data.isActive) {
         await resetActivatedExamOperationSettings(tx, guard.tenantType);
+        const phase = guard.tenantType === "police" ? ExamOperationPhase.PRE_REGISTRATION : ExamOperationPhase.CLOSED;
+        const state = await tx.examOperationState.create({ data: { examId: created.id, phase, activeCampaignId: null, featureOverrides: {}, version: 1, updatedBy: Number(guard.session.user.id) } });
+        await tx.examOperationAuditLog.create({ data: { operationStateId: state.id, examId: created.id, previousPhase: null, nextPhase: phase, previousCampaignId: null, nextCampaignId: null, afterSnapshot: { phase, activeCampaignId: null, featureOverrides: {}, version: 1 }, changedBy: Number(guard.session.user.id), note: "시험 활성화 안전 초기값" } });
       }
 
       return created;
@@ -211,6 +215,7 @@ export async function POST(request: NextRequest) {
 
     if (validated.data.isActive) {
       revalidateSiteSettingsCache();
+      revalidatePromotionPublic(guard.tenantType);
     }
 
     return NextResponse.json(
@@ -357,6 +362,14 @@ export async function PUT(request: NextRequest) {
 
       if (isNewActivation) {
         await resetActivatedExamOperationSettings(tx, guard.tenantType);
+        const phase = guard.tenantType === "police" ? ExamOperationPhase.PRE_REGISTRATION : ExamOperationPhase.CLOSED;
+        const previousState = await tx.examOperationState.findUnique({ where: { examId } });
+        const state = await tx.examOperationState.upsert({
+          where: { examId },
+          create: { examId, phase, activeCampaignId: null, featureOverrides: {}, version: 1, updatedBy: Number(guard.session.user.id) },
+          update: { phase, activeCampaignId: null, featureOverrides: {}, version: { increment: 1 }, updatedBy: Number(guard.session.user.id) },
+        });
+        await tx.examOperationAuditLog.create({ data: { operationStateId: state.id, examId, previousPhase: previousState?.phase ?? null, nextPhase: phase, previousCampaignId: previousState?.activeCampaignId ?? null, nextCampaignId: null, beforeSnapshot: previousState ? { phase: previousState.phase, activeCampaignId: previousState.activeCampaignId, featureOverrides: previousState.featureOverrides ?? {}, version: previousState.version } : Prisma.JsonNull, afterSnapshot: { phase, activeCampaignId: null, featureOverrides: {}, version: state.version }, changedBy: Number(guard.session.user.id), note: "시험 활성화 안전 초기값" } });
       }
 
       return { exam: updated, isNewActivation };
@@ -364,6 +377,7 @@ export async function PUT(request: NextRequest) {
 
     if (transition.isNewActivation) {
       revalidateSiteSettingsCache();
+      revalidatePromotionPublic(guard.tenantType);
     }
 
     return NextResponse.json({

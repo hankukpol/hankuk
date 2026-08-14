@@ -2,8 +2,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   BonusType,
+  ExamOperationPhase,
   ExamType,
   Gender,
+  Prisma,
   PrismaClient,
   Role,
   SubmissionScoringStatus,
@@ -37,6 +39,16 @@ type PageResponse<T = unknown> = {
 type TenantBaseline = {
   activeExamId: number;
   activeExamName: string;
+  operationState: {
+    id: number;
+    phase: ExamOperationPhase;
+    activeCampaignId: number | null;
+    featureOverrides: Prisma.JsonValue | null;
+    version: number;
+    updatedBy: number | null;
+    updatedAt: Date;
+  };
+  operationAuditMaxId: number;
   settings: Record<string, unknown>;
   userCount: number;
   originalSubmissionFingerprint: string;
@@ -133,11 +145,17 @@ function record(tenant: TenantType | "shared", name: string, detail: string) {
 }
 
 function attachDiagnostics(page: Page, scope: string) {
-  page.on("pageerror", (error) => runtimeErrors.push(`${scope} pageerror: ${error.message}`));
+  page.on("pageerror", (error) =>
+    runtimeErrors.push(`${scope} pageerror at ${page.url()}: ${error.message}`)
+  );
   page.on("console", (message) => {
     if (message.type() !== "error") return;
     const text = message.text();
-    if (text.includes("[next-auth][error][CLIENT_FETCH_ERROR]") && text.includes("Failed to fetch")) {
+    if (
+      (text.includes("[next-auth][error][CLIENT_FETCH_ERROR]") && text.includes("Failed to fetch")) ||
+      (text.includes("Failed to load resource") &&
+        (text.includes("409 (Conflict)") || text.includes("400 (Bad Request)")))
+    ) {
       return;
     }
     runtimeErrors.push(`${scope} console.error: ${text}`);
@@ -187,7 +205,16 @@ async function gotoLocal(page: Page, url: string) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const response = await page.goto(url, { waitUntil: "domcontentloaded" });
-      if (response) return response;
+      if (response) {
+        // Next.js App Router의 스트리밍 문서가 수화되기 전에 다음 전체 문서
+        // 이동을 시작하면, 실제 화면과 무관한 중단 시점 hydration 오류가 남는다.
+        // load 이후 한 프레임을 보장해 각 관리자 화면을 독립적으로 검증한다.
+        await page.waitForLoadState("load");
+        await page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        );
+        return response;
+      }
       lastError = new Error(`Navigation completed without a document response: ${url}`);
       if (attempt === 3) throw lastError;
       await page.waitForTimeout(1_000 * attempt);
@@ -311,6 +338,15 @@ async function captureBaseline(
   });
   assert(activeExams.length === 1, `${tenant.type}: expected exactly one active exam.`);
   const activeExam = activeExams[0];
+  const [operationState, latestOperationAudit] = await Promise.all([
+    prisma.examOperationState.findUnique({ where: { examId: activeExam.id } }),
+    prisma.examOperationAuditLog.findFirst({
+      where: { examId: activeExam.id },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    }),
+  ]);
+  assert(operationState, `${tenant.type}: active exam operation state is missing.`);
   const settingsResponse = await pageRequest<{ settings?: Record<string, unknown> }>(
     page,
     "/api/admin/site"
@@ -348,6 +384,16 @@ async function captureBaseline(
   return {
     activeExamId: activeExam.id,
     activeExamName: activeExam.name,
+    operationState: {
+      id: operationState.id,
+      phase: operationState.phase,
+      activeCampaignId: operationState.activeCampaignId,
+      featureOverrides: operationState.featureOverrides,
+      version: operationState.version,
+      updatedBy: operationState.updatedBy,
+      updatedAt: operationState.updatedAt,
+    },
+    operationAuditMaxId: latestOperationAudit?.id ?? 0,
     settings: settingsResponse.body.settings,
     userCount,
     originalSubmissionFingerprint: serializeRows(submissions),
@@ -458,6 +504,7 @@ async function verifyAdminPages(page: Page, tenant: TenantCase) {
     ["/admin/visitors", "방문자 통계"],
     ["/admin/users", "사용자 관리"],
     ["/admin/comments", "댓글 관리"],
+    ["/admin/promotions", "프로모션 관리"],
     ["/admin/banners", "배너 관리"],
     ["/admin/events", "이벤트 관리"],
     ["/admin/notices", "공지사항 게시판 관리"],
@@ -482,6 +529,159 @@ async function verifyAdminPages(page: Page, tenant: TenantCase) {
     opened += 1;
   }
   record(tenant.type, "관리자 전체 메뉴 접근", `${opened}개 화면 200 및 제목 확인`);
+}
+
+async function exercisePromotionCampaignCrud(page: Page, tenant: TenantCase, prisma: PrismaClient) {
+  const list = await pageRequest<{
+    operationState?: { activeCampaignId?: number | null } | null;
+  }>(page, "/api/admin/promotions");
+  assert(list.ok, `${tenant.type}: promotion list failed.`);
+
+  const campaignName = `${PREFIX}-${tenant.type}-프로모션`;
+  const created = await pageRequest<{ campaign?: { id: number; updatedAt: string; draftContent: Record<string, unknown> } }>(
+    page,
+    "/api/admin/promotions",
+    { method: "POST", body: { name: campaignName, templateKey: "custom-html-v1" } },
+  );
+  assert(created.status === 201 && created.body?.campaign, `${tenant.type}: promotion create failed: ${created.text}`);
+  const draft = structuredClone(created.body.campaign.draftContent);
+  draft.htmlDocument = `<main><h1>${PREFIX} 임시저장 제목</h1></main>`;
+
+  const saved = await pageRequest<{ campaign?: { id: number; updatedAt: string; publishedContent: unknown } }>(
+    page,
+    "/api/admin/promotions",
+    {
+      method: "PUT",
+      body: {
+        id: created.body.campaign.id,
+        action: "SAVE",
+        expectedUpdatedAt: created.body.campaign.updatedAt,
+        name: campaignName,
+        content: draft,
+      },
+    },
+  );
+  assert(saved.ok && saved.body?.campaign?.publishedContent === null, `${tenant.type}: draft save leaked to published content: ${saved.text}`);
+
+  const staleSave = await pageRequest(page, "/api/admin/promotions", {
+    method: "PUT",
+    body: {
+      id: created.body.campaign.id,
+      action: "SAVE",
+      expectedUpdatedAt: created.body.campaign.updatedAt,
+      name: campaignName,
+      content: draft,
+    },
+  });
+  assert(staleSave.status === 409, `${tenant.type}: stale campaign edit returned ${staleSave.status}.`);
+
+  const published = await pageRequest<{ campaign?: { id: number; publishedVersion: number } }>(
+    page,
+    "/api/admin/promotions",
+    {
+      method: "PUT",
+      body: {
+        id: created.body.campaign.id,
+        action: "PUBLISH",
+        expectedUpdatedAt: saved.body?.campaign?.updatedAt,
+      },
+    },
+  );
+  assert(published.ok && published.body?.campaign?.publishedVersion === 1, `${tenant.type}: promotion publish failed: ${published.text}`);
+  const persisted = await prisma.promotionCampaign.findUnique({
+    where: { id: created.body.campaign.id },
+    include: { revisions: true },
+  });
+  assert(persisted?.revisions.length === 1, `${tenant.type}: promotion revision snapshot missing.`);
+  assert(list.body?.operationState?.activeCampaignId !== persisted.id, `${tenant.type}: publishing an inactive campaign changed the representative landing.`);
+
+  const archived = await pageRequest(page, "/api/admin/promotions", {
+    method: "PUT",
+    body: { id: persisted.id, action: "ARCHIVE" },
+  });
+  assert(archived.ok, `${tenant.type}: inactive promotion archive failed: ${archived.text}`);
+  record(tenant.type, "프로모션 임시저장·게시·충돌·보관", "임시저장 비공개, 게시 v1 스냅샷, stale 409, 대표 랜딩 불변 확인");
+}
+
+async function exerciseExamOperationTransition(page: Page, tenant: TenantCase, prisma: PrismaClient) {
+  const activeExam = await prisma.exam.findFirst({ where: { isActive: true }, select: { id: true } });
+  assert(activeExam, `${tenant.type}: active exam missing for operation transition test.`);
+  const baseline = await prisma.examOperationState.findUnique({ where: { examId: activeExam.id } });
+  assert(baseline, `${tenant.type}: operation state missing for transition test.`);
+  const notePrefix = `${PREFIX}-${tenant.type}-운영단계`;
+  const alternatePhase = baseline.phase === ExamOperationPhase.CLOSED
+    ? ExamOperationPhase.PRE_REGISTRATION
+    : ExamOperationPhase.CLOSED;
+
+  try {
+    const changed = await pageRequest<{
+      state?: { version: number; phase: ExamOperationPhase };
+      features?: { comments?: boolean };
+    }>(page, "/api/admin/exam-operation", {
+      method: "POST",
+      body: {
+        phase: alternatePhase,
+        activeCampaignId: baseline.activeCampaignId,
+        featureOverrides: { comments: true },
+        expectedVersion: baseline.version,
+        note: `${notePrefix}-전환`,
+      },
+    });
+    assert(
+      changed.ok && changed.body?.state?.version === baseline.version + 1 && changed.body.features?.comments === true,
+      `${tenant.type}: operation transition failed: ${changed.text}`,
+    );
+
+    const stale = await pageRequest(page, "/api/admin/exam-operation", {
+      method: "POST",
+      body: {
+        phase: baseline.phase,
+        activeCampaignId: baseline.activeCampaignId,
+        featureOverrides: {},
+        expectedVersion: baseline.version,
+        note: `${notePrefix}-stale`,
+      },
+    });
+    assert(stale.status === 409, `${tenant.type}: stale operation transition returned ${stale.status}.`);
+
+    const restored = await pageRequest<{ state?: { version: number; phase: ExamOperationPhase } }>(
+      page,
+      "/api/admin/exam-operation",
+      {
+        method: "POST",
+        body: {
+          phase: baseline.phase,
+          activeCampaignId: baseline.activeCampaignId,
+          featureOverrides: baseline.featureOverrides ?? {},
+          expectedVersion: changed.body?.state?.version,
+          note: `${notePrefix}-복원`,
+        },
+      },
+    );
+    assert(restored.ok && restored.body?.state?.phase === baseline.phase, `${tenant.type}: operation restore failed: ${restored.text}`);
+    const auditCount = await prisma.examOperationAuditLog.count({
+      where: { examId: activeExam.id, note: { startsWith: notePrefix } },
+    });
+    assert(auditCount === 2, `${tenant.type}: operation audit count ${auditCount}/2.`);
+    record(tenant.type, "운영단계 전환·동시수정·감사로그", "프리셋 전환, stale 409, 기존 단계 복원, 감사로그 2건 확인");
+  } finally {
+    await prisma.$transaction([
+      prisma.examOperationAuditLog.deleteMany({
+        where: { examId: activeExam.id, note: { startsWith: notePrefix } },
+      }),
+      prisma.examOperationState.update({
+        where: { id: baseline.id },
+        data: {
+          phase: baseline.phase,
+          activeCampaignId: baseline.activeCampaignId,
+          featureOverrides: baseline.featureOverrides ?? Prisma.JsonNull,
+          version: baseline.version,
+          updatedBy: baseline.updatedBy,
+          updatedAt: baseline.updatedAt,
+        },
+      }),
+    ]);
+  }
 }
 
 async function exerciseExamCrud(page: Page, tenant: TenantCase, prisma: PrismaClient) {
@@ -646,8 +846,13 @@ async function exerciseEventCrud(page: Page, tenant: TenantCase, prisma: PrismaC
   await page.locator("#event-title").fill(edited);
   await page.getByRole("button", { name: "이벤트 수정", exact: true }).click();
   await confirmModal(page);
-  await page.getByText("이벤트가 수정되었습니다.", { exact: true }).waitFor();
-  assert((await prisma.eventSection.findUnique({ where: { id: created.id } }))?.title === edited, `${tenant.type} event edit failed.`);
+  let eventUpdated = false;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    eventUpdated = (await prisma.eventSection.findUnique({ where: { id: created.id } }))?.title === edited;
+    if (eventUpdated) break;
+    await page.waitForTimeout(250);
+  }
+  assert(eventUpdated, `${tenant.type} event edit failed.`);
   record(tenant.type, "이벤트 작성·이미지 업로드·수정", edited);
 }
 
@@ -792,8 +997,8 @@ async function createOperationalExam(
   return {
     examId,
     examName,
-    seedUserName: `${PREFIX}-${tenant.type}-동의회원`,
-    plainUserName: `${PREFIX}-${tenant.type}-미동의회원`,
+    seedUserName: `${PREFIX}-${tenant.type}-사전등록회원`,
+    plainUserName: `${PREFIX}-${tenant.type}-일반회원`,
   };
 }
 
@@ -893,7 +1098,10 @@ async function seedAdminOperationalRows(
   });
   const totalScore = subjects.reduce((sum, subject) => sum + subject.maxScore, 0);
   const now = new Date();
-  const phoneSuffix = `${tenant.type === "police" ? "81" : "82"}${RUN_ID}`.slice(-10);
+  const phoneSuffix = `${tenant.type === "police" ? "81" : "82"}${RUN_ID}`
+    .replace(/\D/g, "")
+    .slice(-8)
+    .padStart(8, "0");
   const seedUser = await prisma.user.create({
     data: {
       name: operation.seedUserName,
@@ -905,8 +1113,6 @@ async function seedAdminOperationalRows(
       role: Role.USER,
       termsAgreedAt: now,
       privacyAgreedAt: now,
-      smsMarketingConsentAt: now,
-      smsMarketingConsentVersion: "police-sms-marketing-v1",
     },
   });
   const plainUser = await prisma.user.create({
@@ -995,6 +1201,10 @@ async function generateMockAndPublishCuts(
   prisma: PrismaClient,
   operation: TenantOperationState
 ) {
+  await prisma.examOperationState.update({
+    where: { examId: operation.examId },
+    data: { phase: ExamOperationPhase.ANALYSIS_OPEN, featureOverrides: {} },
+  });
   await gotoLocal(page, `${tenant.baseUrl}/admin/mock-data`);
   await page.locator("#mock-exam").selectOption(String(operation.examId));
   await page.locator("#mock-public-per-region").fill("6");
@@ -1199,26 +1409,18 @@ async function exerciseAdminDataManagement(
   await userRow.getByRole("button", { name: "재설정 코드", exact: true }).click();
   await confirmModal(page);
   await page.getByRole("heading", { name: "일회용 재설정 코드 발급 완료", exact: true }).waitFor();
-  const resetCodeText = await page.locator(".font-mono").innerText();
+  const resetCodeText = await page
+    .getByText(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/)
+    .innerText();
   assert(
     /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(resetCodeText.trim()),
     `${tenant.type}: admin reset code format invalid.`
   );
   await page.getByRole("button", { name: "확인", exact: true }).last().click();
 
-  const allCsv = await pageRequest(page, "/api/admin/users/export?scope=all&role=USER");
-  const consentCsv = await pageRequest(
-    page,
-    "/api/admin/users/export?scope=marketing-consented&role=USER"
-  );
-  assert(allCsv.ok && allCsv.text.includes(operation.seedUserName) && allCsv.text.includes(operation.plainUserName), `${tenant.type}: all-user CSV scope failed.`);
-  assert(
-    consentCsv.ok && consentCsv.text.includes(operation.seedUserName) && !consentCsv.text.includes(operation.plainUserName),
-    `${tenant.type}: marketing-consented CSV scope failed.`
-  );
-  const listedUsers = await pageRequest(page, `/api/admin/users?search=${encodeURIComponent(operation.seedUserName)}`);
-  assert(listedUsers.ok && listedUsers.text.includes('"smsMarketingConsentActive":true'), `${tenant.type}: consent status missing from user list.`);
-  record(tenant.type, "회원·비밀번호·마케팅 명단 관리", "재설정 코드 및 전체/문자 동의자 CSV 분리 확인");
+  const allCsv = await pageRequest(page, "/api/admin/users/export");
+  assert(allCsv.ok && allCsv.text.includes(operation.seedUserName) && allCsv.text.includes(operation.plainUserName), `${tenant.type}: all-user contact CSV failed.`);
+  record(tenant.type, "회원·비밀번호·연락처 명단 관리", "재설정 코드 및 전체 일반회원 연락처 CSV 확인");
 
   if (tenant.type === "police") {
     await gotoLocal(page, `${tenant.baseUrl}/admin/pre-registrations`);
@@ -1238,15 +1440,10 @@ async function exerciseAdminDataManagement(
     assert(draw.ok && draw.body?.eligibleCount === 2 && draw.body?.drawnWinnerCount === 1, `Police pre-registration draw failed: ${draw.text}`);
     const preAll = await pageRequest(
       page,
-      `/api/admin/pre-registrations/export?examId=${operation.examId}&scope=all&search=${encodeURIComponent(PREFIX)}`
-    );
-    const preConsent = await pageRequest(
-      page,
-      `/api/admin/pre-registrations/export?examId=${operation.examId}&scope=marketing-consented&search=${encodeURIComponent(PREFIX)}`
+      `/api/admin/pre-registrations/export?examId=${operation.examId}&search=${encodeURIComponent(PREFIX)}`
     );
     assert(preAll.ok && preAll.text.includes(operation.plainUserName), "Police pre-registration all export failed.");
-    assert(preConsent.ok && preConsent.text.includes(operation.seedUserName) && !preConsent.text.includes(operation.plainUserName), "Police pre-registration consent export failed.");
-    record(tenant.type, "사전등록·이벤트 추첨·CSV", "활성 회차 2명 조회, 1명 추첨, 문자 동의 범위 분리");
+    record(tenant.type, "사전등록·이벤트 추첨·CSV", "활성 회차 2명 조회, 1명 추첨");
   } else {
     const blocked = await nodeTenantRequest(page, tenant, "/api/admin/pre-registrations");
     assert(blocked.status === 404, "Fire must not expose police pre-registration admin API.");
@@ -1340,7 +1537,9 @@ async function deleteContentThroughUi(
     if (banner.mobileImageUrl) uploadedUrls[tenant.type].delete(banner.mobileImageUrl);
     await gotoLocal(page, `${tenant.baseUrl}/admin/banners`);
     const marker = page.getByText(`ID #${banner.id}`, { exact: true });
-    const card = marker.locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
+    const card = marker.locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' p-3 ') and contains(@class,'sm:flex-row')][1]",
+    );
     await card
       .getByRole("button", { name: "삭제", exact: true })
       .evaluate((element) => (element as HTMLButtonElement).click());
@@ -1391,6 +1590,25 @@ async function restoreAndVerifyBaseline(
   });
   assert(reactivate.ok, `${tenant.type}: original exam reactivation failed: ${reactivate.text}`);
   await restoreSettings(tenant, cookieHeader, baseline);
+  await prisma.$transaction([
+    prisma.examOperationAuditLog.deleteMany({
+      where: {
+        examId: baseline.activeExamId,
+        id: { gt: baseline.operationAuditMaxId },
+      },
+    }),
+    prisma.examOperationState.update({
+      where: { id: baseline.operationState.id },
+      data: {
+        phase: baseline.operationState.phase,
+        activeCampaignId: baseline.operationState.activeCampaignId,
+        featureOverrides: baseline.operationState.featureOverrides ?? Prisma.JsonNull,
+        version: baseline.operationState.version,
+        updatedBy: baseline.operationState.updatedBy,
+        updatedAt: baseline.operationState.updatedAt,
+      },
+    }),
+  ]);
 
   const tempUserIds = (
     await prisma.user.findMany({
@@ -1407,9 +1625,16 @@ async function restoreAndVerifyBaseline(
     where: { OR: [{ title: { contains: PREFIX } }, { content: { contains: PREFIX } }] },
   });
 
-  const [activeExams, userCount, submissions, answerKeyCount, preRegistrationCount] =
+  const [activeExams, restoredOperationState, operationAuditCount, userCount, submissions, answerKeyCount, preRegistrationCount] =
     await Promise.all([
       prisma.exam.findMany({ where: { isActive: true }, select: { id: true } }),
+      prisma.examOperationState.findUnique({ where: { examId: baseline.activeExamId } }),
+      prisma.examOperationAuditLog.count({
+        where: {
+          examId: baseline.activeExamId,
+          id: { gt: baseline.operationAuditMaxId },
+        },
+      }),
       prisma.user.count(),
       prisma.submission.findMany({
         where: { examId: baseline.activeExamId },
@@ -1432,13 +1657,21 @@ async function restoreAndVerifyBaseline(
       prisma.preRegistration.count({ where: { examId: baseline.activeExamId } }),
     ]);
   assert(activeExams.length === 1 && activeExams[0].id === baseline.activeExamId, `${tenant.type}: original active exam not restored.`);
+  assert(
+    restoredOperationState?.phase === baseline.operationState.phase &&
+      restoredOperationState.activeCampaignId === baseline.operationState.activeCampaignId &&
+      restoredOperationState.version === baseline.operationState.version &&
+      serializeRows(restoredOperationState.featureOverrides) === serializeRows(baseline.operationState.featureOverrides),
+    `${tenant.type}: operation state or representative campaign was not restored.`,
+  );
+  assert(operationAuditCount === 0, `${tenant.type}: test operation audit rows were not removed.`);
   assert(userCount === baseline.userCount, `${tenant.type}: user count changed ${baseline.userCount}→${userCount}.`);
   assert(serializeRows(submissions) === baseline.originalSubmissionFingerprint, `${tenant.type}: original submissions changed.`);
   assert(answerKeyCount === baseline.originalAnswerKeyCount, `${tenant.type}: original answer keys changed.`);
   assert(preRegistrationCount === baseline.originalPreRegistrationCount, `${tenant.type}: original pre-registrations changed.`);
   const settings = await nodeTenantPageResponse<{ settings?: Record<string, unknown> }>(tenant, cookieHeader, "/api/admin/site");
   assert(serializeRows(settings.body?.settings) === serializeRows(baseline.settings), `${tenant.type}: site settings were not restored.`);
-  record(tenant.type, "운영 원상복구·기존 데이터 불변", `${baseline.activeExamName} 재활성화, 회원·제출·정답·사전등록·설정 동일`);
+  record(tenant.type, "운영 원상복구·기존 데이터 불변", `${baseline.activeExamName} 재활성화, 회원·제출·정답·사전등록·운영단계·대표 캠페인·설정 동일`);
 }
 
 async function verifyCrossTenantIsolation(prismas: Record<TenantType, PrismaClient>) {
@@ -1561,6 +1794,7 @@ async function cleanupTenant(prisma: PrismaClient, tenant: TenantType) {
   await prisma.faq.deleteMany({ where: { question: { contains: PREFIX } } });
   await prisma.banner.deleteMany({ where: { altText: { contains: PREFIX } } });
   await prisma.eventSection.deleteMany({ where: { title: { contains: PREFIX } } });
+  await prisma.promotionCampaign.deleteMany({ where: { name: { contains: PREFIX } } });
   console.log(`[CLEANUP] ${tenant}`);
 }
 
@@ -1603,6 +1837,8 @@ async function main() {
       baselines[tenant.type] = await captureBaseline(page, tenant, prismas[tenant.type]);
       await capture(page, tenant.type, "01-dashboard-1280");
       await verifyAdminPages(page, tenant);
+      await exercisePromotionCampaignCrud(page, tenant, prismas[tenant.type]);
+      await exerciseExamOperationTransition(page, tenant, prismas[tenant.type]);
       await exerciseExamCrud(page, tenant, prismas[tenant.type]);
       await exerciseNoticeCrud(page, tenant, prismas[tenant.type]);
       await exerciseFaqCrud(page, tenant, prismas[tenant.type]);

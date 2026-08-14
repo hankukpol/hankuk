@@ -10,7 +10,7 @@ export default function NoticeBar({ notices }: NoticeBarProps) {
   if (notices.length < 1) return null;
 
   return (
-    <section className="border border-service-200 bg-service-50 p-5 sm:p-6">
+    <section className="rounded-xl border border-service-200 bg-service-50 p-5 sm:p-6">
       <div className="flex items-center gap-2">
         <Megaphone className="h-5 w-5 text-service-600" />
         <h2 className="text-base font-bold text-slate-900">공지사항 / 이용안내</h2>

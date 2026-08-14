@@ -60,7 +60,7 @@ const PUBLIC_TAB_KEYS = new Set<TabKey>(["main", "notices", "faq"]);
 
 function tabClassName(active: boolean, disabled: boolean) {
   const base =
-    "relative inline-flex min-h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition sm:px-5 xl:px-6 xl:text-base";
+    "relative inline-flex h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 text-sm font-semibold transition sm:px-5 xl:px-6 xl:text-base";
 
   if (disabled) {
     return `${base} cursor-not-allowed border-transparent text-slate-400`;
@@ -282,8 +282,9 @@ export default function ExamFunctionArea({
 
   return (
     <>
-      <section id="exam-functions" className="border border-slate-200 bg-white">
-        <div className="overflow-x-auto border-b border-slate-200 bg-white">
+      {/* 탭 바가 스스로 하나의 표면이다. 패널까지 감싸면 패널이 '카드 안 카드'가 된다. */}
+      <section id="exam-functions" className="space-y-4">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <div className="flex min-w-max items-center px-1 sm:px-3">
             {visibleTabs.map((tab) => {
               const disabled = isAuthenticated && tab.requireSubmission && !canAccessRestrictedTabs;
@@ -304,7 +305,7 @@ export default function ExamFunctionArea({
           </div>
         </div>
 
-        <div className="bg-white p-4 sm:p-8">{renderTabContent(activeTab)}</div>
+        <div>{renderTabContent(activeTab)}</div>
       </section>
       {preRegistrationModal}
     </>

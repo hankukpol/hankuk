@@ -111,7 +111,7 @@ export default function ToastProvider({ children }: ToastProviderProps) {
           <div
             key={toast.id}
             role="status"
-            className={`pointer-events-auto rounded-lg border px-3 py-2 ${toastContainerClass(toast.type)}`}
+            className={`pointer-events-auto rounded-xl border px-4 py-3 ${toastContainerClass(toast.type)}`}
           >
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium leading-5">{toast.message}</p>

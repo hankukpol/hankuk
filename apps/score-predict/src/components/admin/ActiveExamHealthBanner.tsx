@@ -43,7 +43,7 @@ export default function ActiveExamHealthBanner() {
 
   return (
     <section
-      className={`mb-4 flex flex-col gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
+      className={`mb-4 flex flex-col gap-3 rounded-xl border px-5 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
  healthy
  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
  : "border-rose-300 bg-rose-50 text-rose-900"
@@ -78,7 +78,7 @@ export default function ActiveExamHealthBanner() {
         type="button"
         onClick={() => void loadHealth()}
         disabled={isLoading}
-        className="inline-flex items-center gap-1 self-start rounded-md border border-current/20 bg-white/60 px-2.5 py-1.5 text-xs font-medium hover:bg-white disabled:opacity-60 sm:self-center"
+        className="inline-flex h-9 items-center gap-1 self-start rounded-md border border-current/20 bg-white/60 px-3 text-xs font-medium hover:bg-white disabled:opacity-60 sm:self-center"
       >
         <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} aria-hidden="true" />
         다시 확인

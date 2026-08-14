@@ -32,6 +32,7 @@ export type SiteSettingKey =
   | "site.tabNoticesEnabled"
   | "site.tabFaqEnabled"
   | "site.adminBannersEnabled"
+  | "site.adminPromotionsEnabled"
   | "site.adminEventsEnabled"
   | "site.adminNoticesEnabled"
   | "site.adminFaqsEnabled"
@@ -98,6 +99,7 @@ export const SITE_SETTING_TYPES: Record<SiteSettingKey, SiteSettingValueType> = 
   "site.tabNoticesEnabled": "boolean",
   "site.tabFaqEnabled": "boolean",
   "site.adminBannersEnabled": "boolean",
+  "site.adminPromotionsEnabled": "boolean",
   "site.adminEventsEnabled": "boolean",
   "site.adminNoticesEnabled": "boolean",
   "site.adminFaqsEnabled": "boolean",
@@ -163,6 +165,7 @@ export const SITE_SETTING_DEFAULTS: SiteSettingsMap = {
   "site.tabNoticesEnabled": true,
   "site.tabFaqEnabled": true,
   "site.adminBannersEnabled": true,
+  "site.adminPromotionsEnabled": true,
   "site.adminEventsEnabled": true,
   "site.adminNoticesEnabled": true,
   "site.adminFaqsEnabled": true,

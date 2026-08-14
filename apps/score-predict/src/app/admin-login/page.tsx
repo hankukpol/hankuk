@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,7 +37,6 @@ const TEXT = {
 function AdminLoginContent() {
   const tenantType = useTenantType();
   const isPolice = tenantType === "police";
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { showErrorToast } = useToast();
   const [username, setUsername] = useState("");
@@ -72,8 +71,10 @@ function AdminLoginContent() {
     });
 
     if (result?.ok) {
-      router.replace(callbackUrl);
-      router.refresh();
+      // 관리자 레이아웃은 서버에서 세션 권한을 판정한다. 로그인 전 RSC 트리를
+      // 클라이언트 라우터로 재사용하면 리다이렉트 트리와 관리자 트리가 섞여
+      // hydration mismatch가 날 수 있으므로 인증 경계에서는 새 문서를 요청한다.
+      window.location.assign(callbackUrl);
       return;
     }
 

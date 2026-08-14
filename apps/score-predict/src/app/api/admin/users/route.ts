@@ -6,13 +6,18 @@ import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { issueAdminPasswordResetCode } from "@/lib/police/password-reset";
-import { isSmsMarketingConsentActive } from "@/lib/police/sms-marketing-consent";
+import {
+  isValidPoliceContactPhone,
+  normalizePoliceContactPhone,
+  resolvePoliceContactPhone,
+} from "@/lib/police/contact-phone";
 
 export const runtime = "nodejs";
 
 interface UserUpdatePayload {
   role?: unknown;
   resetPassword?: unknown;
+  contactPhone?: unknown;
 }
 
 type EditableUser = {
@@ -56,6 +61,13 @@ function parseResetPasswordFlag(value: unknown): boolean | null {
   if (value === undefined) return false;
   if (typeof value === "boolean") return value;
   return null;
+}
+
+function parseContactPhoneUpdate(value: unknown): string | null | "invalid" {
+  if (value === undefined) return null;
+  if (typeof value !== "string") return "invalid";
+  const normalized = normalizePoliceContactPhone(value);
+  return isValidPoliceContactPhone(normalized) ? normalized : "invalid";
 }
 
 async function loadEditableUser(userId: number, tenantType: "fire" | "police"): Promise<EditableUser | null> {
@@ -134,9 +146,6 @@ export async function GET(request: NextRequest) {
             contactPhone: true,
             role: true,
             createdAt: true,
-            smsMarketingConsentAt: true,
-            smsMarketingConsentVersion: true,
-            smsMarketingConsentWithdrawnAt: true,
             _count: {
               select: {
                 submissions: true,
@@ -163,11 +172,8 @@ export async function GET(request: NextRequest) {
         name: user.name,
         phone: user.phone,
         contactPhone: user.contactPhone,
-        deliveryPhone: tenantType === "police" ? user.contactPhone : user.phone,
-        smsMarketingConsentAt: user.smsMarketingConsentAt,
-        smsMarketingConsentVersion: user.smsMarketingConsentVersion,
-        smsMarketingConsentWithdrawnAt: user.smsMarketingConsentWithdrawnAt,
-        smsMarketingConsentActive: isSmsMarketingConsentActive(user),
+        deliveryPhone:
+          tenantType === "police" ? resolvePoliceContactPhone(user) : user.phone,
         role: user.role,
         createdAt: user.createdAt,
         submissionCount: user._count.submissions,
@@ -197,6 +203,7 @@ export async function PUT(request: NextRequest) {
     const body = (await request.json()) as UserUpdatePayload;
     const role = parseUpdateRole(body.role);
     const resetPassword = parseResetPasswordFlag(body.resetPassword);
+    const contactPhone = parseContactPhoneUpdate(body.contactPhone);
 
     if (role === "invalid") {
       return NextResponse.json({ error: "role 값은 USER 또는 ADMIN 이어야 합니다." }, { status: 400 });
@@ -204,7 +211,16 @@ export async function PUT(request: NextRequest) {
     if (resetPassword === null) {
       return NextResponse.json({ error: "resetPassword 값은 boolean 이어야 합니다." }, { status: 400 });
     }
-    if (role === null && !resetPassword) {
+    if (contactPhone === "invalid") {
+      return NextResponse.json(
+        { error: "연락처는 올바른 휴대전화 번호로 입력해 주세요." },
+        { status: 400 }
+      );
+    }
+    if (contactPhone !== null && tenantType !== "police") {
+      return NextResponse.json({ error: "경찰 회원 연락처만 수정할 수 있습니다." }, { status: 400 });
+    }
+    if (role === null && !resetPassword && contactPhone === null) {
       return NextResponse.json({ error: "변경할 정보가 없습니다." }, { status: 400 });
     }
 
@@ -215,10 +231,13 @@ export async function PUT(request: NextRequest) {
 
     let resetCode: string | null = null;
     let resetCodeExpiresAt: Date | null = null;
-    const updateData: { role?: Role } = {};
+    const updateData: { role?: Role; contactPhone?: string } = {};
 
     if (role !== null) {
       updateData.role = role;
+    }
+    if (contactPhone !== null) {
+      updateData.contactPhone = contactPhone;
     }
 
     if (resetPassword) {
@@ -232,7 +251,7 @@ export async function PUT(request: NextRequest) {
       resetCodeExpiresAt = issued.expiresAt;
     }
 
-    if (role !== null) {
+    if (role !== null || contactPhone !== null) {
       await prisma.user.updateMany({ where: { id: userId }, data: updateData });
     }
 
@@ -241,7 +260,10 @@ export async function PUT(request: NextRequest) {
       updatedUserId: userId,
       resetCode,
       resetCodeExpiresAt,
-      deliveryPhone: tenantType === "police" ? user.contactPhone ?? "" : user.phone,
+      deliveryPhone:
+        tenantType === "police"
+          ? contactPhone ?? resolvePoliceContactPhone(user)
+          : user.phone,
     });
   } catch (error) {
     console.error("사용자 정보 수정 중 오류가 발생했습니다.", error);

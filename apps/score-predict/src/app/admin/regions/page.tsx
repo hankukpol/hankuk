@@ -516,8 +516,8 @@ function FireAdminRegionsPage() {
 
       {/* 선택된 시험 헤더 */}
       {selectedExam ? (
-        <div className="rounded-xl border border-fire-200 bg-fire-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-fire-600">현재 선택된 시험</p>
+        <div className="rounded-xl border border-service-200 bg-service-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-service-600">현재 선택된 시험</p>
           <p className="mt-1 text-lg font-bold text-slate-900">{selectedExam.name}</p>
           <p className="mt-0.5 text-sm text-slate-600">
             상태: {selectedExam.isActive ? "활성" : "비활성"}
@@ -526,12 +526,12 @@ function FireAdminRegionsPage() {
       ) : null}
 
       {/* 시험 선택 + 복사 */}
-      <section className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
+      <section className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-5">
         <label className="text-sm font-medium text-slate-700">시험 선택</label>
         <select
           value={selectedExamId ?? ""}
           onChange={(e) => void handleExamChange(Number(e.target.value))}
-          className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           disabled={isLoading}
         >
           {exams.map((exam) => (
@@ -545,7 +545,7 @@ function FireAdminRegionsPage() {
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-500">다른 시험에서 복사:</span>
             <select
-              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
               disabled={isCopying}
               defaultValue=""
               onChange={(e) => {
@@ -565,12 +565,12 @@ function FireAdminRegionsPage() {
         )}
       </section>
 
-      <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
         <p className="font-semibold">비활성 지역은 사용자 성적 입력 및 예측 대상에서 제외됩니다.</p>
         <p className="mt-1">현재 운영할 지역만 활성으로 두고 저장하세요.</p>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
         <p>
           1배수 기준 인원은 모집인원과 동일합니다. 실제 1배수 끝등수/동점 인원/컷 점수는{" "}
           <Link
@@ -584,7 +584,7 @@ function FireAdminRegionsPage() {
       </section>
 
       {notice ? (
-        <p className={`rounded-md px-3 py-2 text-sm ${
+        <p className={`rounded-xl px-5 py-3 text-sm ${
  notice.type === "success"
  ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
  : "border border-rose-200 bg-rose-50 text-rose-700"
@@ -596,7 +596,7 @@ function FireAdminRegionsPage() {
       {isLoading ? (
         <p className="text-sm text-slate-600">지역 데이터를 불러오는 중입니다...</p>
       ) : regions.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-300 p-6 text-sm text-slate-600">
+        <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
           등록된 지역이 없습니다.
         </p>
       ) : (
@@ -621,7 +621,7 @@ function FireAdminRegionsPage() {
                   onClick={() => setActiveTab(tab.key)}
                   className={`relative px-5 py-2.5 text-sm font-semibold transition-colors ${
  activeTab === tab.key
- ? "text-fire-700"
+ ? "text-service-700"
  : "text-slate-500 hover:text-slate-700"
  }`}
                 >
@@ -632,14 +632,14 @@ function FireAdminRegionsPage() {
                     </span>
                   )}
                   {activeTab === tab.key && (
-                    <span className="absolute inset-x-0 bottom-0 h-0.5 bg-fire-600" />
+                    <span className="absolute inset-x-0 bottom-0 h-0.5 bg-service-600" />
                   )}
                 </button>
               );
             })}
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-[800px] w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -749,7 +749,7 @@ function FireAdminRegionsPage() {
                       <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
                       <td className="px-4 py-3">
                         <label
-                          className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold ${
+                          className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs font-semibold ${
  isFieldChanged(row, "isActive")
  ? "border-amber-300 bg-amber-50"
  : "border-slate-300 bg-white"

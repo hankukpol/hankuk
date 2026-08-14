@@ -209,15 +209,16 @@ function CompetitiveChart({
 }) {
   if (data.length < 1) {
     return (
-      <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <h4 className="text-sm font-black text-slate-900">{title}</h4>
+      // 카드 안에서는 또 카드를 그리지 않는다. 데이터가 있을 때와 같은 배경 띠를 쓴다.
+      <article className="rounded-lg bg-slate-50 p-5">
+        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
         <p className="mt-3 text-sm text-slate-500">표시할 데이터가 없습니다.</p>
       </article>
     );
   }
 
   return (
-    <article className="rounded-md bg-slate-50 p-5">
+    <article className="rounded-lg bg-slate-50 p-5">
       <h4 className="text-sm font-bold text-slate-800">{title}</h4>
       <div className="mt-4 h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -234,8 +235,8 @@ function CompetitiveChart({
             <Bar dataKey="averageFinalScore" name="실시간 입력자 평균" fill="#cbd5e1" radius={[0, 4, 4, 0]} barSize={16}>
               <LabelList dataKey="averageFinalScore" position="right" formatter={(v: unknown) => Number(v ?? 0).toFixed(2)} style={{ fontSize: "11px", fill: "#64748b", fontWeight: 600 }} />
             </Bar>
-            <Bar dataKey="sureMinScore" name="합격확실권 점수" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={16}>
-              <LabelList dataKey="sureMinScore" position="right" formatter={(v: unknown) => Number(v ?? 0).toFixed(2)} style={{ fontSize: "11px", fill: "#3b82f6", fontWeight: 600 }} />
+            <Bar dataKey="sureMinScore" name="합격확실권 점수" fill="var(--service-600)" radius={[0, 4, 4, 0]} barSize={16}>
+              <LabelList dataKey="sureMinScore" position="right" formatter={(v: unknown) => Number(v ?? 0).toFixed(2)} style={{ fontSize: "11px", fill: "var(--service-600)", fontWeight: 600 }} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -538,7 +539,7 @@ export default function ExamMainOverviewPanel() {
       ) : null}
 
       {sectionVisibility.overview ? (
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white p-5 sm:p-6 sm:pb-8">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white p-5 sm:p-6 sm:pb-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-xl font-bold tracking-tight text-service-600">
             {data.liveStats.examYear}.{String(data.liveStats.examRound).padStart(2, "0")} 시행
@@ -555,7 +556,7 @@ export default function ExamMainOverviewPanel() {
                 key={examType}
                 type="button"
                 onClick={() => setSelectedExamType(examType)}
-                className={`rounded-md px-6 py-2 text-sm font-bold transition ${active
+                className={`inline-flex h-9 items-center rounded-md px-6 text-sm font-bold transition ${active
  ? "bg-white text-service-600 border border-slate-200/50"
  : "text-slate-500 hover:text-slate-700"
  }`}
@@ -576,7 +577,7 @@ export default function ExamMainOverviewPanel() {
                   key={g}
                   type="button"
                   onClick={() => setSelectedGender(g)}
-                  className={`rounded-md px-6 py-2 text-sm font-bold transition ${
+                  className={`inline-flex h-9 items-center rounded-md px-6 text-sm font-bold transition ${
  active
  ? "bg-white text-service-600 border border-slate-200/50"
  : "text-slate-500 hover:text-slate-700"
@@ -599,7 +600,7 @@ export default function ExamMainOverviewPanel() {
                 <button
                   key={region.id}
                   type="button"
-                  className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${active
+                  className={`inline-flex h-8 items-center rounded-md border px-3 text-xs font-semibold transition ${active
  ? "border-service-600 bg-service-600 text-white"
  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100"
  }`}
@@ -737,7 +738,7 @@ export default function ExamMainOverviewPanel() {
       ) : null}
 
       {sectionVisibility.difficulty ? (
-      <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <h3 className="text-xl font-bold tracking-tight text-slate-900">
           과목별 체감난이도 <span className="text-service-600">설문 결과</span>
         </h3>
@@ -747,7 +748,7 @@ export default function ExamMainOverviewPanel() {
             <label className="text-sm font-bold text-slate-700">
               과목 선택
               <select
-                className="ml-3 h-10 min-w-[180px] rounded-md border border-slate-300 px-3 text-sm"
+                className="ml-3 h-11 min-w-[180px] rounded-md border border-slate-300 px-3 text-sm"
                 value={difficultySubjectId ?? ""}
                 onChange={(event) => {
                   const val = event.target.value;
@@ -794,7 +795,7 @@ export default function ExamMainOverviewPanel() {
       ) : null}
 
       {sectionVisibility.competitive ? (
-      <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <h3 className="text-xl font-bold tracking-tight text-slate-900">실시간 최대/최소 경쟁 예상지역 TOP5</h3>
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           <CompetitiveChart title="실시간 최대 경쟁 예상지역 TOP5" data={competitiveRows.top} />
@@ -804,7 +805,7 @@ export default function ExamMainOverviewPanel() {
       ) : null}
 
       {sectionVisibility.scoreDistribution ? (
-      <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <h3 className="text-xl font-bold tracking-tight text-slate-900">채점자 성적분포도</h3>
         {scoreDistributionItems.length > 0 && selectedScoreDistribution ? (
           <div className="mt-5 rounded-md bg-slate-50 p-4 sm:p-6">
@@ -815,7 +816,7 @@ export default function ExamMainOverviewPanel() {
                   <button
                     key={item.key}
                     type="button"
-                    className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition ${active
+                    className={`-mb-px inline-flex h-10 items-center border-b-2 px-4 text-sm font-semibold transition ${active
  ? "border-service-600 text-service-700"
  : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
  }`}
@@ -878,11 +879,13 @@ export default function ExamMainOverviewPanel() {
                   />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={42}>
                     {selectedScoreDistribution.buckets.map((bucket) => {
+                      // 내 구간은 서비스색, 불합격 구간은 경고색, 나머지는 중립.
+                      // 서비스색이 빨강인 소방에서도 구간이 서로 뭉개지지 않는 조합이다.
                       const color = bucket.isMine
-                        ? "#1d4ed8"
+                        ? "var(--service-700)"
                         : bucket.isFailRange
-                          ? "#ef4444"
-                          : "#0ea5e9";
+                          ? "#d97706"
+                          : "#cbd5e1";
                       return <Cell key={bucket.key} fill={color} />;
                     })}
                     <LabelList

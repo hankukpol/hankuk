@@ -125,8 +125,8 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
   return (
     <div className="space-y-6">
       {isAdmin && (
-        <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-          <h2 className="mb-2 text-sm font-semibold text-indigo-900">관리자 학생 조회</h2>
+        <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+          <h2 className="mb-2 text-sm font-semibold text-white">관리자 학생 조회</h2>
           <AdminStudentSearchBar
             currentSubmissionId={adminSelectedId}
             onSelect={(submissionId) => {
@@ -135,7 +135,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
             placeholder="이름 또는 수험번호로 학생 검색..."
           />
           {adminSelectedId && (
-            <p className="mt-2 text-xs text-indigo-700">
+            <p className="mt-2 text-xs text-slate-300">
               ※ 선택한 학생의 성적을 표시 중입니다. 초기화 시 본인 성적으로 복귀합니다.
             </p>
           )}

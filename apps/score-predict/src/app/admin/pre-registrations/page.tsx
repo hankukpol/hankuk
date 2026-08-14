@@ -35,7 +35,6 @@ interface PreRegistrationRow {
   userName: string;
   userPhone: string; // 로그인 아이디
   userContactPhone: string; // 연락처
-  smsMarketingConsented: boolean;
   regionId: number;
   regionName: string;
   examType: ExamTypeValue;
@@ -393,7 +392,7 @@ export default function AdminPreRegistrationsPage() {
     }
   }
 
-  async function handleDownloadCsv(scope: "all" | "marketing-consented") {
+  async function handleDownloadCsv() {
     setIsDownloading(true);
     setNotice(null);
     try {
@@ -402,8 +401,6 @@ export default function AdminPreRegistrationsPage() {
       if (selectedRegionId) params.set("regionId", String(selectedRegionId));
       if (selectedExamType) params.set("examType", selectedExamType);
       if (searchKeyword) params.set("search", searchKeyword);
-      params.set("scope", scope);
-
       const response = await fetch(`/api/admin/pre-registrations/export?${params.toString()}`);
       if (!response.ok) {
         throw new Error("CSV 다운로드에 실패했습니다.");
@@ -413,7 +410,7 @@ export default function AdminPreRegistrationsPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${scope === "marketing-consented" ? "문자수신동의자" : "사전등록전체"}_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `${"사전등록전체"}_${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -494,9 +491,14 @@ export default function AdminPreRegistrationsPage() {
         </p>
       </header>
 
+      <section className="border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+        이 목록은 선택한 시험 회차와 필터 조건의 사전등록자만 포함합니다. 사전등록자는 전체 일반회원 목록에도
+        포함되므로 두 CSV를 함께 사용할 때에는 중복 발송에 주의해 주세요.
+      </section>
+
       {notice ? (
         <section
-          className={`rounded-lg border px-4 py-3 text-sm ${
+          className={`rounded-xl border px-5 py-3 text-sm ${
  notice.type === "success"
  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
  : "border-rose-200 bg-rose-50 text-rose-700"
@@ -506,18 +508,25 @@ export default function AdminPreRegistrationsPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-xl border border-slate-200 bg-white p-5">
+      {/* 지표는 색으로 구분하지 않는다. 하나의 표면 안에서 구분선으로 묶고 주지표만 강조한다 */}
+      <section className="grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 lg:grid-cols-3">
+        <article className="bg-service-50 p-5">
           <p className="text-sm font-semibold text-slate-500">전체 사전등록</p>
-          <p className="mt-2 text-3xl font-black text-slate-900">{totalCount.toLocaleString("ko-KR")}명</p>
+          <p className="mt-2 text-3xl font-black tabular-nums text-service-800">
+            {totalCount.toLocaleString("ko-KR")}명
+          </p>
         </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-5">
+        <article className="bg-white p-5">
           <p className="text-sm font-semibold text-slate-500">공채</p>
-          <p className="mt-2 text-3xl font-black text-police-700">{publicCount.toLocaleString("ko-KR")}명</p>
+          <p className="mt-2 text-3xl font-black tabular-nums text-slate-900">
+            {publicCount.toLocaleString("ko-KR")}명
+          </p>
         </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-5">
+        <article className="bg-white p-5">
           <p className="text-sm font-semibold text-slate-500">경채</p>
-          <p className="mt-2 text-3xl font-black text-cyan-700">{careerCount.toLocaleString("ko-KR")}명</p>
+          <p className="mt-2 text-3xl font-black tabular-nums text-slate-900">
+            {careerCount.toLocaleString("ko-KR")}명
+          </p>
         </article>
       </section>
 
@@ -535,7 +544,7 @@ export default function AdminPreRegistrationsPage() {
               setSelectedExamId(value ? Number(value) : "");
               setPage(1);
             }}
-            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+            className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm"
           >
             <option value="">전체 시험</option>
             {examOptions.map((exam) => (
@@ -551,7 +560,7 @@ export default function AdminPreRegistrationsPage() {
               setSelectedRegionId(value ? Number(value) : "");
               setPage(1);
             }}
-            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+            className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm"
           >
             <option value="">전체 지역</option>
             {regionOptions.map((region) => (
@@ -566,7 +575,7 @@ export default function AdminPreRegistrationsPage() {
               setSelectedExamType((event.target.value as "" | ExamTypeValue) ?? "");
               setPage(1);
             }}
-            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+            className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm"
           >
             <option value="">전체 채용유형</option>
             <option value="PUBLIC">공채</option>
@@ -599,20 +608,17 @@ export default function AdminPreRegistrationsPage() {
           >
             필터 초기화
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleDownloadCsv("all")} disabled={isDownloading}>
-            {isDownloading ? "다운로드 중..." : "전체 CSV"}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => void handleDownloadCsv("marketing-consented")} disabled={isDownloading}>
-            문자 동의자 CSV
+          <Button type="button" variant="outline" onClick={() => void handleDownloadCsv()} disabled={isDownloading}>
+            {isDownloading ? "다운로드 중..." : "현재 조건 사전등록자 연락처 CSV"}
           </Button>
         </div>
       </section>
 
-      <section className="rounded-xl border border-police-200 bg-police-50 p-5">
+      <section className="rounded-xl border border-service-200 bg-service-50 p-5">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-police-900">이벤트 추첨</h2>
-            <p className="mt-1 text-sm text-police-800">
+            <h2 className="text-lg font-bold text-service-900">이벤트 추첨</h2>
+            <p className="mt-1 text-sm text-service-800">
               현재 필터 조건에 맞는 사전등록자를 대상으로 랜덤 추첨을 진행합니다.
             </p>
           </div>
@@ -643,29 +649,29 @@ export default function AdminPreRegistrationsPage() {
               대상자 {drawResult.eligibleCount.toLocaleString("ko-KR")}명 중 {drawResult.drawnWinnerCount.toLocaleString("ko-KR")}명 추첨
               완료 {formatDateTimeText(drawResult.drawnAt)}
             </p>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-sm">
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-700">
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">순번</th>
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">이름</th>
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">아이디</th>
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">연락처</th>
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">지역</th>
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">유형</th>
-                    <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">응시번호</th>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                    <th className="whitespace-nowrap px-3 py-2 text-left">순번</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left">이름</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left">아이디</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left">연락처</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left">지역</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left">유형</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-left">응시번호</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-200">
                   {drawResult.winners.map((winner) => (
                     <tr key={`${winner.id}-${winner.drawRank}`} className="bg-white">
-                      <td className="border border-slate-200 px-3 py-2 font-semibold text-police-700">{winner.drawRank}</td>
-                      <td className="border border-slate-200 px-3 py-2">{winner.userName}</td>
-                      <td className="border border-slate-200 px-3 py-2 font-mono text-xs">{winner.userPhone}</td>
-                      <td className="border border-slate-200 px-3 py-2 font-mono text-xs">{winner.userContactPhone || <span className="text-slate-400">-</span>}</td>
-                      <td className="border border-slate-200 px-3 py-2">{winner.regionName}</td>
-                      <td className="border border-slate-200 px-3 py-2">{formatExamType(winner.examType)}</td>
-                      <td className="border border-slate-200 px-3 py-2 font-mono text-xs">{winner.examNumber}</td>
+                      <td className="px-3 py-2 font-semibold text-service-700">{winner.drawRank}</td>
+                      <td className="px-3 py-2">{winner.userName}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{winner.userPhone}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{winner.userContactPhone || <span className="text-slate-400">-</span>}</td>
+                      <td className="px-3 py-2">{winner.regionName}</td>
+                      <td className="px-3 py-2">{formatExamType(winner.examType)}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{winner.examNumber}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -692,29 +698,29 @@ export default function AdminPreRegistrationsPage() {
           <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>
               <tr className="bg-slate-100 text-slate-700">
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">이름</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">아이디</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">연락처</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">시험</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">지역</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">채용</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">성별</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">응시번호</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">최초 등록</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">최종 수정</th>
-                <th className="whitespace-nowrap border border-slate-200 px-3 py-2 text-left">관리</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">이름</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">아이디</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">연락처</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">시험</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">지역</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">채용</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">성별</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">응시번호</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">최초 등록</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">최종 수정</th>
+                <th className="whitespace-nowrap px-3 py-2 text-left">관리</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={11} className="border border-slate-200 px-4 py-8 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                     사전등록 목록을 불러오는 중입니다...
                   </td>
                 </tr>
               ) : rows.length < 1 ? (
                 <tr>
-                  <td colSpan={11} className="border border-slate-200 px-4 py-8 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                     조건에 맞는 사전등록이 없습니다.
                   </td>
                 </tr>
@@ -727,10 +733,10 @@ export default function AdminPreRegistrationsPage() {
 
                   return (
                     <tr key={row.id} className="bg-white">
-                      <td className="border border-slate-200 px-3 py-2 font-medium text-slate-900">{row.userName}</td>
-                      <td className="border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700">{row.userPhone}</td>
-                      <td className="border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700">{row.userContactPhone || <span className="text-slate-400">-</span>}</td>
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="px-3 py-2 font-medium text-slate-900">{row.userName}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-700">{row.userPhone}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-700">{row.userContactPhone || <span className="text-slate-400">-</span>}</td>
+                      <td className="px-3 py-2">
                         {isEditing ? (
                           <select
                             value={editDraft.examId}
@@ -744,7 +750,7 @@ export default function AdminPreRegistrationsPage() {
                                   : current
                               )
                             }
-                            className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                            className="h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
                             disabled={isBusy}
                           >
                             {examOptions.map((exam) => (
@@ -757,7 +763,7 @@ export default function AdminPreRegistrationsPage() {
                           formatExamLabel(row)
                         )}
                       </td>
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="px-3 py-2">
                         {isEditing ? (
                           <select
                             value={editDraft.regionId}
@@ -771,7 +777,7 @@ export default function AdminPreRegistrationsPage() {
                                   : current
                               )
                             }
-                            className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                            className="h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
                             disabled={isBusy}
                           >
                             {regionOptions.map((region) => (
@@ -784,7 +790,7 @@ export default function AdminPreRegistrationsPage() {
                           row.regionName
                         )}
                       </td>
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="px-3 py-2">
                         {isEditing ? (
                           <select
                             value={editDraft.examType}
@@ -798,7 +804,7 @@ export default function AdminPreRegistrationsPage() {
                                   : current
                               )
                             }
-                            className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                            className="h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
                             disabled={isBusy}
                           >
                             <option value="PUBLIC">공채</option>
@@ -810,7 +816,7 @@ export default function AdminPreRegistrationsPage() {
                           formatExamType(row.examType)
                         )}
                       </td>
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="px-3 py-2">
                         {isEditing ? (
                           <select
                             value={editDraft.gender}
@@ -824,7 +830,7 @@ export default function AdminPreRegistrationsPage() {
                                   : current
                               )
                             }
-                            className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                            className="h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
                             disabled={isBusy}
                           >
                             <option value="MALE">남</option>
@@ -834,7 +840,7 @@ export default function AdminPreRegistrationsPage() {
                           formatGender(row.gender)
                         )}
                       </td>
-                      <td className="border border-slate-200 px-3 py-2 font-mono text-xs">
+                      <td className="px-3 py-2 font-mono text-xs">
                         {isEditing ? (
                           <Input
                             value={editDraft.examNumber}
@@ -855,9 +861,9 @@ export default function AdminPreRegistrationsPage() {
                           row.examNumber
                         )}
                       </td>
-                      <td className="border border-slate-200 px-3 py-2">{formatDateTimeText(row.createdAt)}</td>
-                      <td className="border border-slate-200 px-3 py-2">{formatDateTimeText(row.updatedAt)}</td>
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="px-3 py-2">{formatDateTimeText(row.createdAt)}</td>
+                      <td className="px-3 py-2">{formatDateTimeText(row.updatedAt)}</td>
+                      <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-2">
                           {isEditing ? (
                             <>

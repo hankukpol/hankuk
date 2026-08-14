@@ -28,8 +28,8 @@ export default function DashboardSubmissionTrendChart({
         <AreaChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
           <defs>
             <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#3a66f5" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#3a66f5" stopOpacity={0.02} />
+              <stop offset="5%" stopColor="var(--service-600)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--service-600)" stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -56,11 +56,11 @@ export default function DashboardSubmissionTrendChart({
           <Area
             type="monotone"
             dataKey="count"
-            stroke="#3a66f5"
+            stroke="var(--service-600)"
             strokeWidth={2.5}
             fill="url(#colorCount)"
-            dot={{ r: 4, fill: "#3a66f5", stroke: "#fff", strokeWidth: 2 }}
-            activeDot={{ r: 6, fill: "#3a66f5", stroke: "#fff", strokeWidth: 2 }}
+            dot={{ r: 4, fill: "var(--service-600)", stroke: "#fff", strokeWidth: 2 }}
+            activeDot={{ r: 6, fill: "var(--service-600)", stroke: "#fff", strokeWidth: 2 }}
           />
         </AreaChart>
       </ResponsiveContainer>

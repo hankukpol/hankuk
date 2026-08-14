@@ -66,6 +66,18 @@ $env:TENANT_SCHEMA_MIGRATION_CONFIRM='MIGRATE_SCORE_PREDICT_PRODUCTION_pbonwjwbt
 pnpm db:tenants:deploy
 pnpm db:tenants:status
 
+# 기존 전역 공개 기능을 회차 운영 상태로 그대로 보존해 경찰·소방 각각 백필한다.
+$env:PROMOTION_BACKFILL_CONFIRM='BACKFILL_PROMOTIONS_pbonwjwbtqyrfrxqdwlu'
+pnpm db:promotions:backfill
+
+# 현재 운영 중인 경찰 랜딩을 새 HTML/CSS 캠페인으로 캡처·게시하고 대표 캠페인으로 연결한다.
+# 반드시 기존 랜딩을 제공하는 Vercel Production 배포 전에 실행한다.
+$env:PROMOTION_LANDING_IMPORT_CONFIRM='IMPORT_CURRENT_POLICE_PROMOTION_pbonwjwbtqyrfrxqdwlu'
+pnpm db:promotions:import-current-police
+
+# 경찰·소방 활성 시험, 운영 상태, 기능값과 경찰 대표 캠페인을 읽기 전용으로 검증한다.
+pnpm db:promotions:verify
+
 $env:PRODUCTION_RUNTIME_CONFIRM='CONFIGURE_SCORE_PREDICT_PRODUCTION_RUNTIME_pbonwjwbtqyrfrxqdwlu'
 pnpm production:vercel-runtime
 

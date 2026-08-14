@@ -77,7 +77,7 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
       ) : null}
 
       {result.statistics.hasCutoff && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
+        <div className="border-l-2 border-rose-400 bg-rose-50 px-4 py-3">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-rose-700">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-200 text-xs text-rose-800">!</span>
             과락 과목이 있습니다
@@ -86,7 +86,7 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
             {result.statistics.cutoffSubjects.map((subject) => (
               <li
                 key={subject.subjectName}
-                className="flex items-center gap-2 rounded-lg border border-rose-100 bg-white px-3 py-2 text-sm text-rose-700"
+                className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-sm text-rose-700"
               >
                 <span className="font-semibold">{subject.subjectName}</span>
                 <span className="font-bold">{formatScore(subject.rawScore)}점</span>

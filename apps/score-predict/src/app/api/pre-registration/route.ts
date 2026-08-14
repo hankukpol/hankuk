@@ -10,7 +10,7 @@ import {
   lockUserExamMutation,
 } from "@/lib/police/pre-registration";
 import { prisma } from "@/lib/prisma";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 import {
   isActiveExamRouteError,
   lockActiveExamStateForWrite,
@@ -18,11 +18,10 @@ import {
   resolveActiveExamForWrite,
 } from "@/lib/active-exam";
 import {
-  buildSmsMarketingConsentUpdate,
-  isSmsMarketingConsentActive,
-  SMS_MARKETING_CONSENT_TEXT,
-  SMS_MARKETING_CONSENT_VERSION,
-} from "@/lib/police/sms-marketing-consent";
+  isValidPoliceContactPhone,
+  normalizePoliceContactPhone,
+  resolvePoliceContactPhone,
+} from "@/lib/police/contact-phone";
 
 export const runtime = "nodejs";
 
@@ -32,7 +31,7 @@ type PreRegistrationRequestBody = {
   gender?: unknown;
   regionId?: unknown;
   examNumber?: unknown;
-  smsMarketingConsent?: unknown;
+  contactPhone?: unknown;
 };
 
 class PreRegistrationRouteError extends Error {
@@ -91,9 +90,8 @@ async function ensureExistingUser(userId: number) {
     where: { id: userId },
     select: {
       id: true,
-      smsMarketingConsentAt: true,
-      smsMarketingConsentVersion: true,
-      smsMarketingConsentWithdrawnAt: true,
+      phone: true,
+      contactPhone: true,
     },
   });
 
@@ -170,14 +168,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       preRegistration,
-      smsMarketingConsent: {
-        consented: isSmsMarketingConsentActive(user),
-        consentAt: user.smsMarketingConsentAt,
-        consentVersion: user.smsMarketingConsentVersion,
-        withdrawnAt: user.smsMarketingConsentWithdrawnAt,
-        currentVersion: SMS_MARKETING_CONSENT_VERSION,
-        consentText: SMS_MARKETING_CONSENT_TEXT,
-      },
+      contactPhone: resolvePoliceContactPhone(user),
     });
   } catch (error) {
     if (isActiveExamRouteError(error)) {
@@ -224,9 +215,14 @@ export async function POST(request: Request) {
       context: "api/pre-registration POST",
       requestedExamId,
     });
-
-    if (body.smsMarketingConsent !== undefined && typeof body.smsMarketingConsent !== "boolean") {
-      return NextResponse.json({ error: "문자 수신 동의 값이 올바르지 않습니다." }, { status: 400 });
+    const contactPhone = normalizePoliceContactPhone(
+      typeof body.contactPhone === "string" ? body.contactPhone : ""
+    );
+    if (!isValidPoliceContactPhone(contactPhone)) {
+      return NextResponse.json(
+        { error: "연락처는 올바른 휴대전화 번호로 입력해 주세요." },
+        { status: 400 }
+      );
     }
 
     const examType = parseExamType(body.examType);
@@ -234,7 +230,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "채용유형은 PUBLIC 또는 CAREER만 가능합니다." }, { status: 400 });
     }
 
-    const settings = await getSiteSettingsUncached();
+    const settings = await getEffectiveSiteSettings();
     const preRegistrationEnabled = Boolean(settings["site.preRegistrationEnabled"] ?? true);
     const careerExamEnabled = Boolean(settings["site.careerExamEnabled"] ?? true);
     if (!preRegistrationEnabled) {
@@ -304,30 +300,21 @@ export async function POST(request: Request) {
         throw new PreRegistrationRouteError("이미 제출을 완료한 시험은 사전등록으로 변경할 수 없습니다.", 409);
       }
 
-      if (typeof body.smsMarketingConsent === "boolean") {
-        const currentUser = await tx.user.findUnique({
-          where: { id: userId },
-          select: {
-            smsMarketingConsentAt: true,
-            smsMarketingConsentVersion: true,
-            smsMarketingConsentWithdrawnAt: true,
-          },
-        });
-        if (!currentUser) {
-          throw new PreRegistrationRouteError("사용자 정보를 찾을 수 없습니다.", 401);
-        }
-        const consentUpdate = buildSmsMarketingConsentUpdate(
-          currentUser,
-          body.smsMarketingConsent,
-          new Date()
-        );
-        if (consentUpdate) {
-          await tx.user.update({
-            where: { id: userId },
-            data: consentUpdate,
-          });
-        }
+      const currentUser = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+        },
+      });
+      if (!currentUser) {
+        throw new PreRegistrationRouteError("사용자 정보를 찾을 수 없습니다.", 401);
       }
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          contactPhone,
+        },
+      });
 
       const existingPreRegistration = await tx.preRegistration.findUnique({
         where: {
@@ -440,7 +427,7 @@ export async function DELETE(request: NextRequest) {
       requestedExamId,
     });
 
-    const settings = await getSiteSettingsUncached();
+    const settings = await getEffectiveSiteSettings();
     const preRegistrationEnabled = Boolean(settings["site.preRegistrationEnabled"] ?? true);
     if (!preRegistrationEnabled) {
       return NextResponse.json(

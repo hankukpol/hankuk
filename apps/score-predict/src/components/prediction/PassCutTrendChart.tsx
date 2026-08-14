@@ -108,7 +108,7 @@ export default function PassCutTrendChart({
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-4 py-3">
           <p className="text-sm font-semibold text-amber-900">변동 추이 축적 중</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             비교 가능한 표본 집계가 2회 이상 발표되면 변동 차트를 표시합니다.
@@ -184,9 +184,9 @@ export default function PassCutTrendChart({
                 type="monotone"
                 dataKey="sure"
                 name="확실권"
-                stroke="#16a34a"
+                stroke="var(--service-700)"
                 strokeWidth={2}
-                dot={{ r: 3, fill: "#16a34a" }}
+                dot={{ r: 3, fill: "var(--service-700)" }}
                 connectNulls
               />
             ) : null}
@@ -196,9 +196,9 @@ export default function PassCutTrendChart({
                 type="monotone"
                 dataKey="likely"
                 name="유력권"
-                stroke="#2563eb"
+                stroke="var(--service-500)"
                 strokeWidth={2}
-                dot={{ r: 3, fill: "#2563eb" }}
+                dot={{ r: 3, fill: "var(--service-500)" }}
                 connectNulls
               />
             ) : null}
@@ -208,9 +208,9 @@ export default function PassCutTrendChart({
                 type="monotone"
                 dataKey="possible"
                 name="가능권"
-                stroke="#f97316"
+                stroke="var(--service-300)"
                 strokeWidth={2}
-                dot={{ r: 3, fill: "#f97316" }}
+                dot={{ r: 3, fill: "var(--service-300)" }}
                 connectNulls
               />
             ) : null}
@@ -218,13 +218,13 @@ export default function PassCutTrendChart({
               <ReferenceLine
                 yAxisId="score"
                 y={myScore}
-                stroke="#2563eb"
+                stroke="var(--service-900)"
                 strokeDasharray="6 4"
                 strokeWidth={2}
                 label={{
                   value: `내 점수 ${myScore.toFixed(1)}점`,
                   position: "insideTopRight",
-                  fill: "#2563eb",
+                  fill: "var(--service-900)",
                   fontSize: 12,
                   fontWeight: 600,
                 }}

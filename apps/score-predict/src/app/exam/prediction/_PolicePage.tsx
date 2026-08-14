@@ -608,7 +608,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
               <p className="shrink-0 text-sm font-bold tabular-nums">{competitor.score.toFixed(2)}</p>
               <button
                 type="button"
-                className="inline-flex min-h-9 items-center justify-center rounded-md border border-service-200 bg-white px-3 text-xs font-semibold text-service-700 hover:bg-service-50"
+                className="inline-flex min-h-11 items-center justify-center rounded-md border border-service-200 bg-white px-3 text-xs font-semibold text-service-700 hover:bg-service-50"
                 onClick={() => void handleOpenCompetitorDetail(competitor.submissionId)}
               >
                 상세
@@ -722,7 +722,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
                 세부 성적을 불러오는 중입니다...
               </p>
             ) : competitorDetailError ? (
-              <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <p className="mt-4 border-l-2 border-rose-400 bg-rose-50 p-4 text-sm text-rose-700">
                 {competitorDetailError}
               </p>
             ) : competitorDetail ? (

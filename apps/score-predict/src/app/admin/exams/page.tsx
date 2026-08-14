@@ -310,7 +310,7 @@ export default function AdminExamsPage() {
         <p className="mt-1 text-sm text-slate-600">시험 생성, 수정, 활성화 전환을 관리합니다.</p>
       </header>
 
-      <form className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4" onSubmit={handleSubmit}>
+      <form className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-5" onSubmit={handleSubmit}>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="exam-name">시험명</Label>
@@ -438,7 +438,7 @@ export default function AdminExamsPage() {
             등록된 시험이 없습니다.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>

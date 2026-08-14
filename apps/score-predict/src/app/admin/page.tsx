@@ -588,7 +588,7 @@ export default async function AdminDashboardPage() {
             </div>
             <Link
               href={withTenantPrefix("/admin/site/features", tenantType)}
-              className="inline-flex rounded-md border border-service-300 bg-service-50 px-4 py-2 text-sm font-semibold text-service-800 transition hover:bg-service-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-400"
+              className="inline-flex h-11 items-center rounded-md border border-service-300 bg-service-50 px-4 text-sm font-semibold text-service-800 transition hover:bg-service-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-400"
             >
               운영 기능 설정
             </Link>
@@ -609,7 +609,7 @@ export default async function AdminDashboardPage() {
             </div>
           </div>
           {operationWarnings.length > 0 ? (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">운영 확인이 필요합니다</p>
               <ul className="mt-2 space-y-1 text-sm text-amber-800">
                 {operationWarnings.map((warning) => <li key={warning}>{warning}</li>)}

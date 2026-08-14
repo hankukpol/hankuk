@@ -26,14 +26,17 @@ const supabaseImagePattern = (() => {
 const usesLocalSupabaseImageHost =
   supabaseImagePattern?.hostname === "127.0.0.1" || supabaseImagePattern?.hostname === "localhost";
 
+const promotionAssetOrigin = "https://pbonwjwbtqyrfrxqdwlu.supabase.co";
+const imageOrigins = [...new Set([supabaseOrigin, promotionAssetOrigin].filter(Boolean))];
+
 const cspDirectives = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  `img-src 'self' data: blob:${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
-  "font-src 'self' data:",
-  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob: https:${imageOrigins.length ? ` ${imageOrigins.join(" ")}` : ""}`,
+  "font-src 'self' data: https:",
+  "style-src 'self' 'unsafe-inline' https:",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   `connect-src 'self'${isDev ? " ws: wss:" : ""}${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "form-action 'self'",

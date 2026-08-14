@@ -18,7 +18,7 @@ import {
 import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
 import { prisma } from "@/lib/prisma";
 import { canShowSamplePercentile } from "@/lib/public-sample-policy";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings, isOperationFeatureEnabled } from "@/lib/exam-operation";
 import {
   getTenantSubjectOrder,
   isExamTypeForTenant,
@@ -170,6 +170,10 @@ export async function GET(request: NextRequest) {
   const submissionId = parsePositiveInt(searchParams.get("submissionId"));
   const requestedExamId = parsePositiveInt(searchParams.get("examId"));
   const allowMissing = searchParams.get("optional") === "1";
+  if (!(await isOperationFeatureEnabled("result"))) {
+    if (allowMissing) return NextResponse.json({ submission: null, scores: [] });
+    return NextResponse.json({ error: "성적 결과는 아직 공개되지 않았습니다." }, { status: 403 });
+  }
   if (searchParams.get("submissionId") && !submissionId) {
     return NextResponse.json({ error: "submissionId가 올바르지 않습니다." }, { status: 400 });
   }
@@ -367,7 +371,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
   }
 
-  const settings = await getSiteSettingsUncached();
+  const settings = await getEffectiveSiteSettings();
   const maxEditLimit = (settings["site.submissionEditLimit"] as number) ?? 3;
   const finalPredictionEnabled = Boolean(settings["site.finalPredictionEnabled"] ?? false);
 

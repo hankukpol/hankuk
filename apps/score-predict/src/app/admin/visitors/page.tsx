@@ -118,7 +118,7 @@ export default function AdminVisitorsPage() {
       ) : null}
 
       {data ? (
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard label="오늘 방문자" value={data.today.visitors} unit="명" color="blue" />
           <SummaryCard
             label="오늘 신규 가입"
@@ -150,7 +150,7 @@ export default function AdminVisitorsPage() {
                 key={d}
                 type="button"
                 onClick={() => setDays(d)}
-                className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+                className={`inline-flex h-8 items-center rounded-md px-4 text-sm font-medium transition ${
  days === d
  ? "bg-white text-slate-900 "
  : "text-slate-500 hover:text-slate-700"
@@ -213,9 +213,10 @@ export default function AdminVisitorsPage() {
                         : "제출"
                   }
                 />
-                <Bar dataKey="visitors" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="newUsers" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="submissions" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                {/* 주지표만 서비스색, 나머지는 중립 계조로 둔다(테넌트별 색 유출 방지) */}
+                <Bar dataKey="visitors" fill="var(--service-600)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="newUsers" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="submissions" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -243,21 +244,21 @@ export default function AdminVisitorsPage() {
                   .map((row) => {
                     const isToday = row.date === new Date().toISOString().slice(0, 10);
                     return (
-                      <tr key={row.date} className={isToday ? "bg-blue-50" : "bg-white"}>
+                      <tr key={row.date} className={isToday ? "bg-service-50" : "bg-white"}>
                         <td
                           className={`px-4 py-3 font-medium ${
- isToday ? "text-blue-700" : "text-slate-700"
+ isToday ? "text-service-800" : "text-slate-700"
  }`}
                         >
                           {row.date} {isToday ? "(오늘)" : ""}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-blue-600">
+                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900 tabular-nums">
                           {row.visitors.toLocaleString("ko-KR")}명
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-emerald-600">
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700 tabular-nums">
                           {row.newUsers.toLocaleString("ko-KR")}명
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-amber-600">
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700 tabular-nums">
                           {row.submissions.toLocaleString("ko-KR")}건
                         </td>
                       </tr>
@@ -283,23 +284,17 @@ function SummaryCard({
   unit: string;
   color: "blue" | "emerald" | "amber" | "slate";
 }) {
-  const colorMap = {
-    blue: "border-blue-200 bg-blue-50 text-blue-700",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    amber: "border-amber-200 bg-amber-50 text-amber-700",
-    slate: "border-slate-200 bg-slate-50 text-slate-700",
-  };
-  const numColor = {
-    blue: "text-blue-700",
-    emerald: "text-emerald-700",
-    amber: "text-amber-700",
-    slate: "text-slate-800",
-  };
+  // 지표는 색으로 구분하지 않는다. 가장 중요한 첫 지표(blue)만 서비스색으로 강조한다.
+  const isPrimary = color === "blue";
 
   return (
-    <div className={`rounded-xl border p-5 ${colorMap[color]}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
-      <p className={`mt-2 text-3xl font-black ${numColor[color]}`}>
+    <div className={isPrimary ? "bg-service-50 p-5" : "bg-white p-5"}>
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p
+        className={`mt-2 text-2xl font-bold tabular-nums ${
+          isPrimary ? "text-service-800" : "text-slate-900"
+        }`}
+      >
         {value.toLocaleString("ko-KR")}
         <span className="ml-1 text-base font-semibold">{unit}</span>
       </p>

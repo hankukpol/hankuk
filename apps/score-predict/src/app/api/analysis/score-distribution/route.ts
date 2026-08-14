@@ -4,6 +4,7 @@ import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import { prisma } from "@/lib/prisma";
 import { isExamTypeForTenant, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
+import { isOperationFeatureEnabled } from "@/lib/exam-operation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ function getBucketIndex(score: number, maxScore: number, bucketCount: number): n
 }
 
 export async function GET(request: NextRequest) {
+  if (!(await isOperationFeatureEnabled("analysis"))) return NextResponse.json({ error: "표본 분석은 아직 공개되지 않았습니다." }, { status: 403 });
   const tenantSession = await getCurrentTenantSessionContext();
   if (!tenantSession?.session.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

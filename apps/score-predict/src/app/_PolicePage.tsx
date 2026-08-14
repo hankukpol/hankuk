@@ -6,13 +6,15 @@ import ExamFunctionArea from "@/components/landing/ExamFunctionArea";
 import HeroFallback from "@/components/landing/HeroFallback";
 import LiveStatsCounter, { type LandingLiveStats } from "@/components/landing/LiveStatsCounter";
 import NoticeBar from "@/components/landing/NoticeBar";
+import PromotionCampaignBridge from "@/components/landing/PromotionCampaignBridge";
 import { authOptions } from "@/lib/auth";
 import { getActiveBanners, groupBannersByZone } from "@/lib/banners";
 import { getExamSurfaceState, getPreferredExamRoute } from "@/lib/exam-surface";
+import { getEffectiveSiteSettings, getPublishedActiveCampaign } from "@/lib/exam-operation";
 import { resolveExamOperationStage, resolveLandingHeroCopy } from "@/lib/exam-operation-stage";
 import { getActiveEvents } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
-import { getActiveNotices, getSiteSettingsUncached } from "@/lib/site-settings";
+import { getActiveNotices } from "@/lib/site-settings";
 import { withTenantPrefix } from "@/lib/tenant";
 import { requireSoleActiveExam } from "@/lib/active-exam";
 
@@ -122,10 +124,25 @@ export default async function HomePage() {
   const isLoggedIn = Boolean(session?.user && Number.isInteger(userId) && userId > 0);
   const isAdmin = session?.user?.role === "ADMIN";
 
+  const activePromotion = await getPublishedActiveCampaign();
+  if (activePromotion.campaign) {
+    return (
+      <main>
+        <PromotionCampaignBridge
+          isAuthenticated={isLoggedIn}
+          preRegistrationEnabled={activePromotion.operation.features.preRegistration}
+          templateKey={activePromotion.campaign.templateKey}
+          templateVersion={activePromotion.campaign.templateVersion}
+          content={activePromotion.campaign.publishedContent}
+        />
+      </main>
+    );
+  }
+
   const [liveStats, siteSettings, activeNotices, activeBanners, activeEvents, hasSubmission] =
     await Promise.all([
       getLiveStats(),
-      getSiteSettingsUncached(),
+      getEffectiveSiteSettings(),
       getActiveNotices(),
       getActiveBanners(),
       getActiveEvents(),

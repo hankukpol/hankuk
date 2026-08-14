@@ -82,7 +82,7 @@ export default function AdminSiteVisibilityTabPage() {
           </p>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="rounded-lg bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">미리보기</p>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             {asString(settings["site.tabLockedMessage"], DEFAULT_LOCKED_MESSAGE)}

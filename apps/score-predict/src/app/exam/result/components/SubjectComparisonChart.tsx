@@ -124,8 +124,8 @@ export default function SubjectComparisonChart({ submissionId }: SubjectComparis
               formatter={(value: unknown) => `${Number(value ?? 0).toFixed(1)}점`}
               contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
             />
-            <Bar dataKey="myScore" name="내 점수" fill="#2563eb" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="averageScore" name="전체 평균" fill="#8bc34a" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="myScore" name="내 점수" fill="var(--service-600)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="averageScore" name="전체 평균" fill="#94a3b8" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

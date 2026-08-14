@@ -1,6 +1,7 @@
 import { ExamType, Gender, Prisma, Role, SubmissionSuspicionStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
+import { isOperationFeatureEnabled } from "@/lib/exam-operation";
 import { calculateTenantPrediction } from "@/lib/tenant-calculations.server";
 import { prisma } from "@/lib/prisma";
 import { getTenantConfigByType, type TenantType } from "@/lib/tenant";
@@ -67,6 +68,9 @@ function getGenderConditionSql(params: {
 }
 
 export async function GET(request: NextRequest) {
+  if (!(await isOperationFeatureEnabled("result"))) {
+    return NextResponse.json({ error: "성적 결과가 아직 공개되지 않았습니다." }, { status: 403 });
+  }
   const tenantSession = await getCurrentTenantSessionContext();
   if (!tenantSession) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

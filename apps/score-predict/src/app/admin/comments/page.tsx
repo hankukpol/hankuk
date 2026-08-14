@@ -280,7 +280,7 @@ export default function AdminCommentsPage() {
 
       <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[220px_1fr_auto]">
         <select
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedExamId}
           onChange={(event) => {
             setSelectedExamId(Number(event.target.value) || "");
@@ -325,7 +325,7 @@ export default function AdminCommentsPage() {
       {isLoading ? (
         <p className="text-sm text-slate-600">댓글 목록을 불러오는 중입니다...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>

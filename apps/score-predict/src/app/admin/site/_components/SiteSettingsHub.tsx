@@ -58,9 +58,10 @@ export default function SiteSettingsHub() {
           배너와 공지사항 같은 콘텐츠는 기존 관리자 메뉴에서 관리하고, 여기서는 사이트 동작과 노출 정책 위주로 운영합니다.
         </p>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        {/* 요약 지표는 카드를 반복하지 않고 하나의 표면 안에서 구분선으로 나눈다 */}
+        <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 md:grid-cols-3">
           {overviewItems.map((item) => (
-            <div key={item.label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div key={item.label} className="bg-slate-50 p-4">
               <p className="text-xs font-semibold tracking-[0.2em] text-slate-500">
                 {item.label}
               </p>

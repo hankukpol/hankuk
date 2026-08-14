@@ -21,7 +21,7 @@ import {
   requireSoleActiveExam,
   resolveActiveExamForWrite,
 } from "@/lib/active-exam";
-import { isSmsMarketingConsentActive } from "@/lib/police/sms-marketing-consent";
+import { resolvePoliceContactPhone } from "@/lib/police/contact-phone";
 
 export const runtime = "nodejs";
 
@@ -200,9 +200,6 @@ export async function GET(request: NextRequest) {
             name: true,
             phone: true,
             contactPhone: true,
-            smsMarketingConsentAt: true,
-            smsMarketingConsentVersion: true,
-            smsMarketingConsentWithdrawnAt: true,
           },
         },
         exam: {
@@ -246,10 +243,7 @@ export async function GET(request: NextRequest) {
         userId: row.user.id,
         userName: row.user.name,
         userPhone: row.user.phone, // 로그인 아이디
-        userContactPhone: row.user.contactPhone, // 연락처
-        smsMarketingConsented: isSmsMarketingConsentActive(row.user),
-        smsMarketingConsentAt: row.user.smsMarketingConsentAt,
-        smsMarketingConsentVersion: row.user.smsMarketingConsentVersion,
+        userContactPhone: resolvePoliceContactPhone(row.user), // 연락처
         regionId: row.regionId,
         regionName: row.region.name,
         examType: row.examType,

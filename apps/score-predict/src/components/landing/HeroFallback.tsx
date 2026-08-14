@@ -33,7 +33,7 @@ export default function HeroFallback({
   const resolvedSecondaryText = secondaryText ?? (isLoggedIn ? "빠른 채점 바로가기" : "회원가입");
 
   return (
-    <section className="relative overflow-hidden border border-slate-200 bg-slate-100 text-slate-900">
+    <section className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-slate-900">
       <div className="pointer-events-none absolute inset-0 bg-slate-100" />
 
       <div className="relative grid gap-6 px-5 py-8 sm:px-8 sm:py-10 lg:grid-cols-[1.25fr_0.75fr] lg:gap-8">

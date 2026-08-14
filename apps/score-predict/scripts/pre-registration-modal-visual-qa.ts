@@ -92,7 +92,38 @@ async function verifyUnauthenticated(browser: Awaited<ReturnType<typeof chromium
   await page.getByLabel("비밀번호").fill("police-user-15!");
   await page.getByRole("main").getByRole("button", { name: "로그인", exact: true }).click();
   await page.waitForURL((url) => url.pathname === "/" || url.pathname === "/police");
-  await page.getByRole("dialog").locator("h1").filter({ hasText: "수험번호 사전등록" }).waitFor();
+  const resumed = await page
+    .getByRole("dialog")
+    .locator("h1")
+    .filter({ hasText: "수험번호 사전등록" })
+    .waitFor({ state: "visible", timeout: 30_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!resumed) {
+    const diagnostics = await page.evaluate(async () => {
+      const sessionResponse = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = (await sessionResponse.json()) as { user?: { id?: string } };
+      return {
+        url: window.location.href,
+        pending: window.sessionStorage.getItem("score-predict:open-pre-registration-after-auth"),
+        userId: session.user?.id ?? null,
+        promotionEnabled: document
+          .querySelector("[data-promotion-pre-registration-enabled]")
+          ?.getAttribute("data-promotion-pre-registration-enabled") ?? null,
+        promotionAuthenticated: document
+          .querySelector("[data-promotion-authenticated]")
+          ?.getAttribute("data-promotion-authenticated") ?? null,
+        promotionSessionStatus: document
+          .querySelector("[data-promotion-session-status]")
+          ?.getAttribute("data-promotion-session-status") ?? null,
+        dialogs: [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].map((dialog) =>
+          dialog.innerText.slice(0, 500),
+        ),
+        bodyText: document.body.innerText.slice(0, 1_000),
+      };
+    });
+    throw new Error(`Login callback did not resume pre-registration: ${JSON.stringify(diagnostics)}`);
+  }
   assert(errors.length === 0, `Login callback runtime errors: ${errors.join(" | ")}`);
   await context.close();
 }
@@ -116,10 +147,6 @@ async function verifyAuthenticatedViewport(
         body: JSON.stringify({
           success: true,
           preRegistration: null,
-          smsMarketingConsent: {
-            consented: false,
-            consentText: "강의, 이벤트, 합격예측 프로모션 문자 수신에 동의합니다.",
-          },
         }),
       });
       return;
@@ -206,7 +233,6 @@ async function verifyAuthenticatedViewport(
     assert(typeof savedPayload.examId === "number", "Modal save omitted examId.");
     assert(typeof savedPayload.regionId === "number", "Modal save omitted regionId.");
     assert(typeof savedPayload.examNumber === "string", "Modal save omitted examNumber.");
-    assert(typeof savedPayload.smsMarketingConsent === "boolean", "Modal save omitted SMS consent.");
   }
 
   await dialog.getByRole("button", { name: "닫기" }).click();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 import { getServerTenantType } from "@/lib/tenant.server";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const [settings, tenantType] = await Promise.all([
-      getSiteSettingsUncached(),
+      getEffectiveSiteSettings(),
       getServerTenantType(),
     ]);
     const faqEnabled = Boolean(settings["site.tabFaqEnabled"] ?? true);

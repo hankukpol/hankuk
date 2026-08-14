@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { withBrowserTenantPath } from "@/lib/tenant";
 import { isPoliceExamType, type PoliceExamType } from "@/lib/tenant-exam";
+import { normalizePoliceContactPhone } from "@/lib/police/contact-phone";
 
 type BonusVeteran = 0 | 5 | 10;
 type BonusHero = 0 | 3 | 5;
@@ -77,10 +78,7 @@ interface PreRegistrationResponse {
   message?: string;
   preRegistration?: PreRegistrationData | null;
   error?: string;
-  smsMarketingConsent?: {
-    consented: boolean;
-    consentText: string;
-  };
+  contactPhone?: string;
 }
 
 type PublicSiteSettings = Record<string, string | boolean | number | null>;
@@ -231,8 +229,7 @@ export default function ExamInputPage({
   const [editCountInfo, setEditCountInfo] = useState<{ editCount: number; maxEditLimit: number } | null>(null);
   const [preRegistration, setPreRegistration] = useState<PreRegistrationData | null>(null);
   const [siteSettings, setSiteSettings] = useState<PublicSiteSettings>({});
-  const [smsMarketingConsent, setSmsMarketingConsent] = useState<boolean | null>(null);
-  const [smsMarketingConsentText, setSmsMarketingConsentText] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
 
   const [gender, setGender] = useState<Gender | "">("");
   const [examType, setExamType] = useState<PoliceExamType>(ExamType.PUBLIC);
@@ -308,12 +305,11 @@ export default function ExamInputPage({
 
         if (!preRegistrationRes.ok) {
           const parsed = (await preRegistrationRes.json().catch(() => ({}))) as { error?: string };
-          throw new Error(parsed.error ?? "사전등록과 문자 수신 설정을 불러오지 못했습니다.");
+          throw new Error(parsed.error ?? "사전등록 정보를 불러오지 못했습니다.");
         }
         const parsedPreRegistration = (await preRegistrationRes.json()) as PreRegistrationResponse;
         const preRegistrationData = parsedPreRegistration.preRegistration ?? null;
-        setSmsMarketingConsent(Boolean(parsedPreRegistration.smsMarketingConsent?.consented));
-        setSmsMarketingConsentText(parsedPreRegistration.smsMarketingConsent?.consentText ?? "");
+        setContactPhone(normalizePoliceContactPhone(parsedPreRegistration.contactPhone ?? ""));
 
         let nextSiteSettings: PublicSiteSettings = {};
         if (siteSettingsRes.ok) {
@@ -636,8 +632,9 @@ export default function ExamInputPage({
       return;
     }
 
-    if (smsMarketingConsent === null) {
-      setErrorMessage("문자 수신 설정을 확인한 뒤 다시 시도해 주세요.");
+    const normalizedContactPhone = normalizePoliceContactPhone(contactPhone);
+    if (!/^01[016789]\d{7,8}$/.test(normalizedContactPhone)) {
+      setErrorMessage("연락처는 올바른 휴대전화 번호로 입력해 주세요.");
       return;
     }
 
@@ -675,7 +672,7 @@ export default function ExamInputPage({
           gender,
           regionId,
           examNumber: normalizedExamNumber,
-          smsMarketingConsent,
+          contactPhone: normalizedContactPhone,
         }),
       });
 
@@ -924,7 +921,7 @@ export default function ExamInputPage({
             <Label htmlFor="gender">성별</Label>
             <select
               id="gender"
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={gender}
               onChange={(event) => setGender(event.target.value as Gender | "")}
             >
@@ -935,10 +932,28 @@ export default function ExamInputPage({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="contactPhone">연락처 (필수)</Label>
+            <Input
+              id="contactPhone"
+              type="tel"
+              inputMode="numeric"
+              value={contactPhone}
+              onChange={(event) =>
+                setContactPhone(normalizePoliceContactPhone(event.target.value).slice(0, 11))
+              }
+              placeholder="01012345678"
+              required
+            />
+            <p className="text-xs text-slate-500">
+              사전등록 확인과 합격예측 서비스 운영 안내에 사용하는 회원 연락처입니다.
+            </p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="examType">채용유형</Label>
             <select
               id="examType"
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={examType}
               onChange={(event) => setExamType(event.target.value as PoliceExamType)}
             >
@@ -951,7 +966,7 @@ export default function ExamInputPage({
             <Label htmlFor="region">지역</Label>
             <select
               id="region"
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
               value={regionId}
               onChange={(event) => setRegionId(Number(event.target.value) || "")}
             >
@@ -1005,7 +1020,7 @@ export default function ExamInputPage({
         </div>
 
         {canManagePreRegistration ? (
-          <div className="mt-6 border-y border-sky-200 bg-sky-50/70 py-4">
+          <div className="mt-6 border-y border-sky-200 bg-sky-50/70 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">사전등록</h2>
@@ -1020,24 +1035,6 @@ export default function ExamInputPage({
                 ) : (
                   <p className="mt-2 text-xs text-slate-500">아직 사전등록된 정보가 없습니다.</p>
                 )}
-                <label className="mt-4 flex items-start gap-2 border-t border-sky-200 pt-3">
-                  <input
-                    type="checkbox"
-                    checked={smsMarketingConsent === true}
-                    onChange={(event) => setSmsMarketingConsent(event.target.checked)}
-                    disabled={smsMarketingConsent === null}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-service-600 focus:ring-service-500"
-                  />
-                  <span>
-                    <span className="block text-xs font-semibold text-slate-900">
-                      한국경찰학원 홍보 문자 수신 동의 (선택)
-                    </span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-600">
-                      {smsMarketingConsentText ||
-                        "강의, 이벤트, 합격예측 프로모션 문자 수신에 동의합니다. 동의하지 않아도 서비스를 이용할 수 있습니다."}
-                    </span>
-                  </span>
-                </label>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -1045,7 +1042,6 @@ export default function ExamInputPage({
                   className="bg-service-700 text-white hover:bg-service-800"
                   onClick={() => void handleSavePreRegistration()}
                   disabled={
-                    smsMarketingConsent === null ||
                     isPreRegistrationSaving ||
                     isPreRegistrationDeleting ||
                     isSubmitting

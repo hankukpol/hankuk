@@ -320,7 +320,7 @@ export default function AdminNoticesPage() {
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="whitespace-nowrap px-4 py-3">ID</th>
               <th className="whitespace-nowrap px-4 py-3">제목</th>

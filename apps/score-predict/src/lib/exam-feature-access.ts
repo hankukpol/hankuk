@@ -1,5 +1,5 @@
 import { getExamSurfaceState } from "@/lib/exam-surface";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 
 export type ExamFeatureKey =
   | "main"
@@ -23,7 +23,7 @@ const EXAM_FEATURE_LABELS: Record<ExamFeatureKey, string> = {
 };
 
 export async function getExamFeatureAccess(feature: ExamFeatureKey) {
-  const settings = await getSiteSettingsUncached();
+  const settings = await getEffectiveSiteSettings();
   const surfaceState = getExamSurfaceState(settings);
 
   return {

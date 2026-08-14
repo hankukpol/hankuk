@@ -1,7 +1,6 @@
 import { getImageProps } from "next/image";
 import type { PublicBannerItem } from "@/lib/banners";
 import { sanitizeBannerHtml } from "@/lib/sanitize-banner-html";
-import Police2026SecondPromotion from "@/components/landing/Police2026SecondPromotion";
 
 interface BannerImageProps {
   banner: PublicBannerItem;
@@ -26,37 +25,8 @@ const POLICE_PRE_REGISTRATION_HOTSPOTS = [
 const POLICE_PRE_REGISTRATION_HOTSPOT_SIZE = { width: 17.7084, height: 0.8381 } as const;
 const POLICE_PRE_REGISTRATION_DESKTOP_SIZE = { width: 1920, height: 7637 } as const;
 const POLICE_PRE_REGISTRATION_MOBILE_SIZE = { width: 768, height: 3887 } as const;
-const POLICE_2026_SECOND_PROMOTION_TEMPLATE = "police-2026-second";
-
 function extractFirstImageSource(htmlContent: string): string | null {
   return htmlContent.match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i)?.[1] ?? null;
-}
-
-function extractPolicePromotionAssetBase(htmlContent: string | null): string | null {
-  if (
-    !htmlContent ||
-    !new RegExp(
-      `data-promotion-template=["']${POLICE_2026_SECOND_PROMOTION_TEMPLATE}["']`,
-      "i",
-    ).test(htmlContent)
-  ) {
-    return null;
-  }
-
-  const rawAssetBase = htmlContent.match(
-    /data-promotion-asset-base=["']([^"']+)["']/i,
-  )?.[1];
-  if (!rawAssetBase) return null;
-
-  try {
-    const parsed = new URL(rawAssetBase);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-    if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
-    if (!parsed.pathname.includes("/storage/v1/object/public/")) return null;
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return null;
-  }
 }
 
 function shouldSkipLoopbackOptimization(imageUrl: string): boolean {
@@ -210,12 +180,6 @@ function MobileImage({
 
 export default function BannerImage({ banner, className, fullWidth = false }: BannerImageProps) {
   const safeHtmlContent = banner.htmlContent ? sanitizeBannerHtml(banner.htmlContent) : null;
-  const policePromotionAssetBase = extractPolicePromotionAssetBase(safeHtmlContent);
-
-  if (policePromotionAssetBase) {
-    return <Police2026SecondPromotion assetBaseUrl={policePromotionAssetBase} />;
-  }
-
   const opensPreRegistration = hasPreRegistrationTrigger(safeHtmlContent);
   const desktopHtmlContent = safeHtmlContent
     ? stripPreRegistrationEditorMarker(safeHtmlContent)

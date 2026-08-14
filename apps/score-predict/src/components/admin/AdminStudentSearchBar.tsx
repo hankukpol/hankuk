@@ -159,8 +159,8 @@ export default function AdminStudentSearchBar({
   return (
     <div ref={wrapperRef} className="relative w-full">
       {selectedLabel ? (
-        <div className="flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2">
-          <span className="flex-1 truncate text-sm text-indigo-900">{selectedLabel}</span>
+        <div className="flex h-11 items-center gap-2 rounded-md border border-service-300 bg-service-50 px-3">
+          <span className="flex-1 truncate text-sm text-service-900">{selectedLabel}</span>
           <Button
             type="button"
             variant="outline"

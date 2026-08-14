@@ -64,6 +64,7 @@ const sidebarEntries: SidebarEntry[] = [
     label: "콘텐츠 관리",
     icon: "image",
     items: [
+      { href: "/admin/promotions", label: "프로모션 관리", icon: "image", feature: "promotions" },
       { href: "/admin/banners", label: "배너 관리", icon: "image", feature: "banners" },
       { href: "/admin/events", label: "이벤트 관리", icon: "calendar", feature: "events" },
       { href: "/admin/notices", label: "공지사항 관리", icon: "message", feature: "notices" },

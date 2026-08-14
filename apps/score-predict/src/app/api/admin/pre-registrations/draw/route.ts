@@ -11,6 +11,7 @@ import {
   lockActiveExamStateForWrite,
   resolveActiveExamForWrite,
 } from "@/lib/active-exam";
+import { resolvePoliceContactPhone } from "@/lib/police/contact-phone";
 
 export const runtime = "nodejs";
 
@@ -114,14 +115,18 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    if (candidates.length < 1) {
+    const contactableCandidates = candidates.filter((candidate) =>
+      Boolean(resolvePoliceContactPhone(candidate.user))
+    );
+
+    if (contactableCandidates.length < 1) {
       return NextResponse.json({ error: "현재 조건에 맞는 사전등록자가 없습니다." }, { status: 404 });
     }
 
-    const winners = pickRandomItems(candidates, winnerCount);
+    const winners = pickRandomItems(contactableCandidates, winnerCount);
 
     return NextResponse.json({
-      eligibleCount: candidates.length,
+      eligibleCount: contactableCandidates.length,
       requestedWinnerCount: winnerCount,
       drawnWinnerCount: winners.length,
       drawnAt: new Date().toISOString(),
@@ -130,7 +135,7 @@ export async function POST(request: NextRequest) {
         id: winner.id,
         userName: winner.user.name,
         userPhone: winner.user.phone, // 로그인 아이디
-        userContactPhone: winner.user.contactPhone, // 연락처
+        userContactPhone: resolvePoliceContactPhone(winner.user), // 연락처
         examName: winner.exam.name,
         examYear: winner.exam.year,
         examRound: winner.exam.round,

@@ -370,14 +370,6 @@ async function seedTenant(baseUrl: URL, tenantType: TenantType) {
           examNumber: "2026000015",
         },
       });
-      await prisma.user.update({
-        where: { id: users.at(-1)!.id },
-        data: {
-          smsMarketingConsentAt: new Date("2026-08-08T00:00:00Z"),
-          smsMarketingConsentVersion: "police-sms-marketing-v1",
-          smsMarketingConsentWithdrawnAt: null,
-        },
-      });
     }
 
     await prisma.siteSetting.createMany({

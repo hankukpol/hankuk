@@ -100,7 +100,7 @@ export default function AdminSiteAutoPassCutTabPage() {
             <Label htmlFor="auto-pass-cut-mode">동작 모드</Label>
             <select
               id="auto-pass-cut-mode"
-              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm"
               value={asString(settings["site.autoPassCutMode"], "HYBRID")}
               onChange={(event) => updateSetting("site.autoPassCutMode", event.target.value)}
             >
@@ -127,7 +127,7 @@ export default function AdminSiteAutoPassCutTabPage() {
             <Label htmlFor="auto-pass-cut-threshold-profile">참여자 수 임계치 프로필</Label>
             <select
               id="auto-pass-cut-threshold-profile"
-              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm"
               value={asString(settings["site.autoPassCutThresholdProfile"], "BALANCED")}
               onChange={(event) =>
                 updateSetting("site.autoPassCutThresholdProfile", event.target.value)
@@ -143,7 +143,7 @@ export default function AdminSiteAutoPassCutTabPage() {
             <Label htmlFor="auto-pass-cut-ready-ratio-profile">준비 비율 임계치 프로필</Label>
             <select
               id="auto-pass-cut-ready-ratio-profile"
-              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+              className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm"
               value={asString(settings["site.autoPassCutReadyRatioProfile"], "BALANCED")}
               onChange={(event) =>
                 updateSetting("site.autoPassCutReadyRatioProfile", event.target.value)

@@ -524,7 +524,7 @@ export default function AdminStatsPage() {
           </label>
           <select
             id="exam-select"
-            className="h-9 w-full max-w-xl rounded-md border border-slate-300 bg-white px-3 text-sm"
+            className="h-11 w-full max-w-xl rounded-md border border-slate-300 bg-white px-3 text-sm"
             value={selectedExamId ?? ""}
             onChange={(event) => setSelectedExamId(Number(event.target.value))}
             disabled={isLoading || exams.length === 0}
@@ -559,11 +559,11 @@ export default function AdminStatsPage() {
         ) : (
           <>
             <section
-              className={`grid gap-4 md:grid-cols-2 ${
+              className={`grid gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 md:grid-cols-2 ${
  tenant.type === "police" ? "xl:grid-cols-4" : "xl:grid-cols-6"
  }`}
             >
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="bg-white p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   총 참여자
                 </p>
@@ -571,7 +571,7 @@ export default function AdminStatsPage() {
                   {stats.totalParticipants}
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="bg-white p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   공채
                 </p>
@@ -580,7 +580,7 @@ export default function AdminStatsPage() {
                 </p>
               </div>
               {tenant.type === "police" ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="bg-white p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     경행경채
                   </p>
@@ -590,21 +590,21 @@ export default function AdminStatsPage() {
                 </div>
               ) : (
                 <>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="bg-white p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">구조 경채</p>
                     <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.byExamType.CAREER_RESCUE}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="bg-white p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">학과 경채</p>
                     <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.byExamType.CAREER_ACADEMIC}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="bg-white p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">구급 경채</p>
                     <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.byExamType.CAREER_EMT}</p>
                   </div>
                 </>
               )}
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="bg-white p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   시험일
                 </p>
@@ -615,7 +615,7 @@ export default function AdminStatsPage() {
             </section>
 
             <section className="grid gap-4 xl:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 p-4">
+              <div className="rounded-xl border border-slate-200 p-5">
                 <h2 className="text-sm font-semibold text-slate-900">일자별 제출 추이</h2>
                 <div className="mt-3 h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -627,7 +627,7 @@ export default function AdminStatsPage() {
                       <Line
                         type="monotone"
                         dataKey="count"
-                        stroke="#2563eb"
+                        stroke="var(--service-600)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
                       />
@@ -648,7 +648,7 @@ export default function AdminStatsPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-4">
+              <div className="rounded-xl border border-slate-200 p-5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="text-sm font-semibold text-slate-900">
                     점수 분포 히스토그램(총점 기준)
@@ -690,7 +690,7 @@ export default function AdminStatsPage() {
                           {selectedScoreDistribution.items.map((item) => (
                             <Cell
                               key={`score-bin-${selectedScoreDistribution.examType}-${item.bucket}`}
-                              fill={item.isCutoffRange ? "#ef4444" : "#2563eb"}
+                              fill={item.isCutoffRange ? "#e11d48" : "var(--service-600)"}
                             />
                           ))}
                         </Bar>
@@ -712,18 +712,19 @@ export default function AdminStatsPage() {
 
             {tenant.type === "fire" ? (
             <section className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 p-4">
+              <div className="rounded-xl border border-slate-200 p-5">
                 <h2 className="text-sm font-semibold text-slate-900">성별 참여</h2>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                {/* 지표 두 개를 각각 카드로 만들지 않고 하나의 표면에서 나눈다 */}
+                <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm">
+                  <div className="bg-slate-50 p-3">
                     <p className="text-slate-600">남성</p>
-                    <p className="mt-1 text-xl font-semibold text-slate-900">
+                    <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
                       {stats.byGender.MALE}
                     </p>
                   </div>
-                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div className="bg-slate-50 p-3">
                     <p className="text-slate-600">여성</p>
-                    <p className="mt-1 text-xl font-semibold text-slate-900">
+                    <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
                       {stats.byGender.FEMALE}
                     </p>
                   </div>
@@ -734,7 +735,7 @@ export default function AdminStatsPage() {
 
             <section className="space-y-3">
               <h2 className="text-base font-semibold text-slate-900">지역별 참여</h2>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table
                   className={`w-full divide-y divide-slate-200 text-sm ${
  tenant.type === "police" ? "min-w-[720px]" : "min-w-[960px]"
@@ -824,7 +825,7 @@ export default function AdminStatsPage() {
                   })}
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
@@ -906,7 +907,7 @@ export default function AdminStatsPage() {
                       {stats.difficulty.totalResponses.toLocaleString("ko-KR")}건
                     </span>
                   </p>
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
                       <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
@@ -931,19 +932,19 @@ export default function AdminStatsPage() {
                               <td className="px-4 py-3 font-medium text-slate-900">
                                 {subject.subjectName}
                                 {subject.examType === "CAREER" ? (
-                                  <span className="ml-1 text-xs font-medium text-sky-700">
+                                  <span className="ml-1 text-xs font-medium text-slate-500">
                                     (경행경채)
                                   </span>
                                 ) : subject.examType === "CAREER_RESCUE" ? (
-                                  <span className="ml-1 text-xs font-medium text-sky-700">
+                                  <span className="ml-1 text-xs font-medium text-slate-500">
                                     (구조 경채)
                                   </span>
                                 ) : subject.examType === "CAREER_ACADEMIC" ? (
-                                  <span className="ml-1 text-xs font-medium text-sky-700">
+                                  <span className="ml-1 text-xs font-medium text-slate-500">
                                     (학과 경채)
                                   </span>
                                 ) : subject.examType === "CAREER_EMT" ? (
-                                  <span className="ml-1 text-xs font-medium text-sky-700">
+                                  <span className="ml-1 text-xs font-medium text-slate-500">
                                     (구급 경채)
                                   </span>
                                 ) : null}

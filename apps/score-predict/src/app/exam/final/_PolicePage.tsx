@@ -256,14 +256,14 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
   return (
     <div className="space-y-6">
       {data.isAdminPreview ? (
-        <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
-          <h2 className="text-sm font-semibold text-indigo-900">관리자 미리보기</h2>
-          <p className="mt-1 text-xs text-indigo-800">
+        <section className="rounded-xl border border-slate-700 bg-slate-900 p-5">
+          <h2 className="text-sm font-semibold text-white">관리자 미리보기</h2>
+          <p className="mt-1 text-xs text-slate-300">
             MOCK 제출 데이터를 선택해 최종 환산 예측 계산을 검증할 수 있습니다.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <select
-              className="h-10 flex-1 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+              className="h-11 flex-1 rounded-md border border-slate-600 bg-white px-3 text-sm"
               value={selectedAdminSubmissionId}
               onChange={(event) => setSelectedAdminSubmissionId(event.target.value)}
             >
@@ -294,7 +294,7 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
               면접 점수는 비공개이므로, 필기 + 체력 기준 환산 순위(75점 만점)를 계산합니다.
             </p>
 
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="mt-4 border-l-2 border-amber-400 bg-amber-50 p-3 text-xs text-amber-900">
               체력 통과 여부가 &lsquo;통과&rsquo;가 아니면 환산 순위에서 제외됩니다.
             </div>
 
@@ -317,7 +317,7 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                   id="fitness-passed"
                   value={fitnessPassed ? "pass" : "fail"}
                   onChange={(event) => setFitnessPassed(event.target.value === "pass")}
-                  className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+                  className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm"
                 >
                   <option value="pass">통과</option>
                   <option value="fail">미통과</option>

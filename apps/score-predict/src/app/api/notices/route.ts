@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { getActiveNotices, getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveSiteSettings } from "@/lib/exam-operation";
+import { getActiveNotices } from "@/lib/site-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const settings = await getSiteSettingsUncached();
+    const settings = await getEffectiveSiteSettings();
     const noticesEnabled = Boolean(settings["site.tabNoticesEnabled"] ?? true);
 
     if (!noticesEnabled) {

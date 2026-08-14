@@ -242,14 +242,14 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
   return (
     <div className="space-y-6">
       {data.isAdminPreview ? (
-        <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
-          <h2 className="text-sm font-semibold text-indigo-900">관리자 미리보기</h2>
-          <p className="mt-1 text-xs text-indigo-800">
+        <section className="rounded-xl border border-slate-700 bg-slate-900 p-5">
+          <h2 className="text-sm font-semibold text-white">관리자 미리보기</h2>
+          <p className="mt-1 text-xs text-slate-300">
             MOCK 제출 데이터를 선택해 최종 환산 예측 계산을 검증할 수 있습니다.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <select
-              className="h-10 flex-1 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+              className="h-11 flex-1 rounded-md border border-slate-600 bg-white px-3 text-sm"
               value={selectedAdminSubmissionId}
               onChange={(event) => setSelectedAdminSubmissionId(event.target.value)}
             >

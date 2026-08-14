@@ -8,7 +8,7 @@ import {
   canShowSampleOneMultiplePoint,
   getOneMultipleDisclosureTarget,
 } from "@/lib/public-sample-policy";
-import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { getEffectiveOperationContext, getEffectiveSiteSettings, OPERATION_PHASE_LABELS } from "@/lib/exam-operation";
 import {
   getTenantApplicantCount,
   getTenantRecruitmentCohorts,
@@ -43,8 +43,9 @@ export async function GET() {
       context: `${tenantType}/public-overview`,
     });
 
-    const [settings, quotas, latestRelease] = await Promise.all([
-      getSiteSettingsUncached(),
+    const [settings, operation, quotas, latestRelease] = await Promise.all([
+      getEffectiveSiteSettings(),
+      getEffectiveOperationContext(),
       prisma.examRegionQuota.findMany({
         where: {
           examId: activeExam.id,
@@ -127,12 +128,13 @@ export async function GET() {
     );
 
     const latestReleaseNumber = latestRelease?.releaseNumber ?? null;
-    const operationStage = resolveExamOperationStage({
-      preRegistrationEnabled:
-        tenantType === "police" && Boolean(settings["site.preRegistrationEnabled"] ?? true),
-      answerInputEnabled: Boolean(settings["site.answerInputEnabled"] ?? false),
-      latestReleaseNumber,
-    });
+    const operationStage = operation.source === "EXAM_STATE"
+      ? { key: operation.phase, label: OPERATION_PHASE_LABELS[operation.phase] }
+      : resolveExamOperationStage({
+          preRegistrationEnabled: tenantType === "police" && Boolean(settings["site.preRegistrationEnabled"] ?? true),
+          answerInputEnabled: Boolean(settings["site.answerInputEnabled"] ?? false),
+          latestReleaseNumber,
+        });
 
     return NextResponse.json(
       {

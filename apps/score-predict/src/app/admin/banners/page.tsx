@@ -403,7 +403,7 @@ export default function AdminBannersPage() {
               />
             </div>
 
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="space-y-3 rounded-lg bg-slate-50 p-4">
               <div>
                 <p className="text-sm font-semibold text-slate-900">모바일 배너 이미지</p>
                 <p className="text-xs text-slate-500">모바일(768px 이하)에서 PC용 HTML 배너 대신 표시됩니다. 권장 해상도 750×800~1000px</p>
@@ -414,7 +414,7 @@ export default function AdminBannersPage() {
                   <img
                     src={current.mobileImageUrl}
                     alt="모바일 배너 미리보기"
-                    className="h-24 w-auto rounded-md border border-slate-200 object-contain"
+                    className="h-24 w-auto rounded-lg border border-slate-200 object-contain"
                   />
                   <div className="flex flex-col gap-2">
                     <p className="text-xs text-slate-600 break-all">{current.mobileImageUrl}</p>
@@ -464,7 +464,7 @@ export default function AdminBannersPage() {
                 {showPreview[zone] ? "미리보기 숨기기" : "미리보기 보기"}
               </Button>
               {showPreview[zone] && current.htmlContent.trim() ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-lg bg-slate-50 p-4">
                   <p className="mb-2 text-xs font-semibold text-slate-500">미리보기</p>
                   <div
                     className="overflow-hidden"
@@ -529,16 +529,17 @@ export default function AdminBannersPage() {
               ) : null}
             </div>
 
-            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="space-y-2 rounded-lg bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-900">등록된 배너 목록 ({zoneBannerList.length})</p>
               {zoneBannerList.length < 1 ? (
                 <p className="text-sm text-slate-500">등록된 배너가 없습니다.</p>
               ) : (
-                <div className="space-y-2">
+                // 항목마다 카드를 반복하지 않고 하나의 목록 표면 안에서 행으로 나눈다
+                <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
                   {zoneBannerList.map((banner) => (
                     <div
                       key={banner.id}
-                      className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="flex items-center gap-3">
                         {banner.imageUrl ? (
@@ -546,10 +547,10 @@ export default function AdminBannersPage() {
                           <img
                             src={banner.imageUrl}
                             alt={banner.altText || "배너"}
-                            className="h-14 w-24 rounded-md border border-slate-200 object-cover"
+                            className="h-14 w-24 rounded-lg border border-slate-200 object-cover"
                           />
                         ) : (
-                          <span className="flex h-14 w-24 items-center justify-center rounded-md border border-slate-200 bg-slate-100 text-xs text-slate-500">
+                          <span className="flex h-14 w-24 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500">
                             HTML 배너
                           </span>
                         )}

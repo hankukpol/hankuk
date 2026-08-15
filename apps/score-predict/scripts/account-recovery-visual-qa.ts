@@ -58,7 +58,76 @@ async function captureForgotPassword(tenantType: TenantType, width: number) {
   }
 }
 
-async function authenticateContext(context: BrowserContext, tenantType: TenantType) {
+async function captureAccountLookup(tenantType: TenantType, width: number) {
+  const { browser, context } = await createTenantContext(width, width === 390 ? 844 : 900);
+  try {
+    const page = await context.newPage();
+    await page.goto(`http://${tenantConfig[tenantType].host}/find-account`, { waitUntil: "networkidle" });
+    await page.getByText(tenantType === "police" ? "아이디 찾기" : "아이디 확인", { exact: true }).first().waitFor();
+    if (tenantType === "police") {
+      await page.getByRole("button", { name: "아이디 확인" }).waitFor();
+    } else {
+      await page.getByText("가입한 휴대전화 번호가 아이디입니다.").waitFor();
+    }
+    await assertNoHorizontalScroll(page, `${tenantType}-${width}-account-lookup`);
+    await page.screenshot({ path: resolve(screenshotDir, `${tenantType}-account-lookup-${width}.png`), fullPage: true });
+    if (tenantType === "police") {
+      await page.getByRole("button", { name: "연락처 미등록 기존 회원 확인" }).click();
+      await page.locator("#lookupPassword").waitFor();
+      await assertNoHorizontalScroll(page, `${tenantType}-${width}-legacy-contact-registration`);
+      await page.screenshot({
+        path: resolve(screenshotDir, `${tenantType}-legacy-contact-registration-${width}.png`),
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: "일반 아이디 찾기로 돌아가기" }).click();
+      await page.route("**/api/auth/account-lookup/request", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            username: "CaseLegacy815",
+            usernames: ["CaseLegacy815", "caselegacy815"],
+            message: "같은 회원 정보로 가입된 아이디를 모두 확인했습니다.",
+          }),
+        });
+      });
+      await page.locator("#lookupName").fill("기존회원");
+      await page.locator("#lookupContactPhone").fill("010-1234-5678");
+      await page.getByRole("button", { name: "아이디 확인" }).click();
+      await page.getByTestId("found-username").waitFor();
+      await assertNoHorizontalScroll(page, `${tenantType}-${width}-legacy-account-lookup`);
+      await page.screenshot({ path: resolve(screenshotDir, `${tenantType}-account-lookup-legacy-${width}.png`), fullPage: true });
+    }
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
+async function capturePoliceRegister(width: number) {
+  const { browser, context } = await createTenantContext(width, width === 390 ? 844 : 900);
+  try {
+    const page = await context.newPage();
+    await page.goto("http://police.localhost:3200/register", { waitUntil: "networkidle" });
+    await page.getByText("예전에 가입했는지 확실하지 않다면", { exact: false }).waitFor();
+    await page.getByRole("button", { name: "중복 확인" }).waitFor();
+    await assertNoHorizontalScroll(page, `police-${width}-register-existing-account-guidance`);
+    await page.screenshot({
+      path: resolve(screenshotDir, `police-register-existing-account-guidance-${width}.png`),
+      fullPage: true,
+    });
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
+async function authenticateContext(
+  context: BrowserContext,
+  tenantType: TenantType,
+  options: { admin?: boolean } = {}
+) {
   const api = await playwrightRequest.newContext({
     baseURL: "http://127.0.0.1:3200",
     extraHTTPHeaders: {
@@ -77,10 +146,13 @@ async function authenticateContext(context: BrowserContext, tenantType: TenantTy
         callbackUrl: `http://${tenantConfig[tenantType].host}`,
         json: "true",
         ...(tenantType === "police"
-          ? { username: tenantConfig[tenantType].identity }
+          ? { username: options.admin ? "010-0000-0000" : tenantConfig[tenantType].identity }
           : { phone: tenantConfig[tenantType].identity }),
-        password: tenantConfig[tenantType].password,
-        adminOnly: "false",
+        password:
+          options.admin && tenantType === "police"
+            ? "PoliceAdmin!123"
+            : tenantConfig[tenantType].password,
+        adminOnly: options.admin ? "true" : "false",
       },
     });
     assert(callback.ok(), `${tenantType}: visual QA authentication failed.`);
@@ -93,6 +165,25 @@ async function authenticateContext(context: BrowserContext, tenantType: TenantTy
     );
   } finally {
     await api.dispose();
+  }
+}
+
+async function capturePoliceAdminUsers(width: number) {
+  const { browser, context } = await createTenantContext(width, width === 390 ? 844 : 900);
+  try {
+    await authenticateContext(context, "police", { admin: true });
+    const page = await context.newPage();
+    await page.goto("http://police.localhost:3200/admin/users", { waitUntil: "networkidle" });
+    await page.getByRole("heading", { name: "사용자 관리" }).waitFor();
+    await page.getByText("연락처 미등록 회원", { exact: false }).first().waitFor();
+    await assertNoHorizontalScroll(page, `police-${width}-admin-users`);
+    await page.screenshot({
+      path: resolve(screenshotDir, `police-admin-users-${width}.png`),
+      fullPage: true,
+    });
+  } finally {
+    await context.close();
+    await browser.close();
   }
 }
 
@@ -117,14 +208,19 @@ async function main() {
   for (const tenantType of ["police", "fire"] as const) {
     for (const width of [390, 768, 1280]) {
       await captureForgotPassword(tenantType, width);
+      await captureAccountLookup(tenantType, width);
     }
     await captureAccountSecurity(tenantType);
+  }
+  for (const width of [390, 768, 1280]) {
+    await capturePoliceRegister(width);
+    await capturePoliceAdminUsers(width);
   }
   const report = {
     result: "passed",
     viewports: [390, 768, 1280],
     tenants: ["police", "fire"],
-    states: ["email reset", "administrator code", "authenticated account security"],
+    states: ["direct account lookup", "legacy contact registration", "account lookup result", "existing-account registration guidance", "email password reset", "administrator code", "authenticated account security", "administrator missing-contact management"],
     horizontalScroll: false,
     screenshotDir,
   };

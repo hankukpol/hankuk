@@ -1,7 +1,7 @@
-import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { isMailerConfigured, sendAccountCodeEmail } from "@/lib/mailer";
 import { prisma } from "@/lib/prisma";
+import { hashPassword, verifyPassword } from "@/lib/password-auth.server";
 import { requireTenantSessionRoute } from "@/lib/tenant-session.server";
 import { validatePasswordStrength } from "@/lib/validations";
 
@@ -54,11 +54,11 @@ export async function PUT(request: Request) {
     where: { id: userId },
     select: { email: true, name: true, password: true, phone: true },
   });
-  if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+  if (!user || !(await verifyPassword(currentPassword, user.password)).valid) {
     return NextResponse.json({ error: "현재 비밀번호가 올바르지 않습니다." }, { status: 400 });
   }
 
-  const password = await bcrypt.hash(nextPassword.data, 12);
+  const password = await hashPassword(nextPassword.data);
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.user.update({

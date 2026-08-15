@@ -1,11 +1,11 @@
 import "server-only";
 import type { Role } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { consumeFixedWindowRateLimit, getFixedWindowRateLimitState, resetFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
+import { verifyPassword } from "@/lib/password-auth.server";
 import { normalizePhone } from "@/lib/validations";
 
 const INSECURE_SECRETS = new Set([
@@ -134,8 +134,8 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
+        const passwordVerification = await verifyPassword(password, user.password);
+        if (!passwordVerification.valid) {
           recordLoginFailure(phone);
           return null;
         }

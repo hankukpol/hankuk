@@ -9,7 +9,7 @@ export interface ValidationResult<T> {
 const koreanNameRegex = /^[가-힣]{2,20}$/;
 const phoneRegex = /^010-\d{4}-\d{4}$/;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const passwordHasLowercase = /[a-z]/;
+const passwordHasLetter = /[A-Za-z]/;
 const passwordHasNumber = /\d/;
 const passwordHasSpecial = /[^A-Za-z0-9]/;
 
@@ -40,8 +40,8 @@ export function validatePasswordStrength(rawPassword: string): ValidationResult<
   } else if (password.length < 8) {
     errors.push("비밀번호는 8자 이상이어야 합니다.");
   } else {
-    if (!passwordHasLowercase.test(password)) {
-      errors.push("비밀번호에 영문 소문자를 1자 이상 포함해 주세요.");
+    if (!passwordHasLetter.test(password)) {
+      errors.push("비밀번호에 영문자를 1자 이상 포함해 주세요. 대소문자는 구분하지 않습니다.");
     }
     if (!passwordHasNumber.test(password)) {
       errors.push("비밀번호에 숫자를 1자 이상 포함해 주세요.");

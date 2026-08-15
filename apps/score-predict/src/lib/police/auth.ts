@@ -1,6 +1,5 @@
 ﻿import "server-only";
 import type { Role } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import type { NextAuthOptions, User } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { isAdminMfaEnabled, verifyAdminTotp } from "@/lib/police/admin-mfa";
@@ -12,6 +11,12 @@ import {
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/request-ip";
 import { normalizeUsername } from "@/lib/validations";
+import { hashPassword, verifyPassword } from "@/lib/password-auth.server";
+import {
+  findPoliceUsersByUsername,
+  hasExactPoliceUsername,
+  resolvePreferredPoliceUsername,
+} from "@/lib/police/account-identity";
 
 const INSECURE_SECRETS = new Set([
   "change-this-to-a-long-random-string",
@@ -145,7 +150,8 @@ export const authOptions: NextAuthOptions = {
         },
       },
       async authorize(credentials, request) {
-        const username = normalizeUsername(credentials?.username ?? "");
+        const rawUsername = credentials?.username?.trim() ?? "";
+        const username = normalizeUsername(rawUsername);
         const password = credentials?.password?.trim() ?? "";
         const adminOnly = credentials?.adminOnly === "true";
         const adminOtp = credentials?.adminOtp?.trim() ?? "";
@@ -183,31 +189,37 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { phone: username },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            password: true,
-            role: true,
-          },
-        });
-        if (!user) {
+        const candidates = (await findPoliceUsersByUsername(rawUsername)).filter(
+          (candidate) => !adminOnly || candidate.role === "ADMIN"
+        );
+        if (candidates.length === 0) {
           await recordLoginFailure(username);
           return null;
         }
 
-        if (adminOnly && user.role !== "ADMIN") {
+        const verifiedCandidates = (
+          await Promise.all(
+            candidates.map(async (candidate) => ({
+              candidate,
+              verification: await verifyPassword(password, candidate.password),
+            }))
+          )
+        ).filter((result) => result.verification.valid);
+
+        let verified = verifiedCandidates.length === 1 ? verifiedCandidates[0] : undefined;
+        if (verifiedCandidates.length > 1) {
+          const exactMatches = verifiedCandidates.filter(({ candidate }) =>
+            hasExactPoliceUsername(candidate, rawUsername)
+          );
+          verified = exactMatches.length === 1 ? exactMatches[0] : undefined;
+        }
+
+        if (!verified) {
           await recordLoginFailure(username);
           return null;
         }
 
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-          await recordLoginFailure(username);
-          return null;
-        }
+        const { candidate: user, verification: passwordVerification } = verified;
 
         if (user.role === "ADMIN" && isAdminMfaEnabled() && !verifyAdminTotp(adminOtp)) {
           await recordLoginFailure(username);
@@ -216,11 +228,21 @@ export const authOptions: NextAuthOptions = {
 
         await clearLoginFailures(username);
 
+        if (passwordVerification.needsUpgrade) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              password: await hashPassword(password),
+              credentialVersion: { increment: 1 },
+            },
+          });
+        }
+
         return {
           id: String(user.id),
           name: user.name,
           role: user.role,
-          username: user.phone,
+          username: resolvePreferredPoliceUsername(user),
         } satisfies AppUser;
       },
     }),

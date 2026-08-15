@@ -3,7 +3,7 @@
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TenantType } from "@/lib/tenant";
 import { withTenantPrefix } from "@/lib/tenant";
+import { passwordsMatchIgnoringCase } from "@/lib/credential-policy";
 import {
   isValidEmail,
   normalizeEmail,
@@ -62,6 +63,11 @@ export default function UnifiedPasswordResetForm({ tenantType }: { tenantType: T
   const [newRecoveryCodes, setNewRecoveryCodes] = useState<string[]>([]);
   const identityLabel = tenantType === "police" ? "아이디" : "휴대전화";
   const identityPlaceholder = tenantType === "police" ? "가입한 아이디" : "010-1234-5678";
+
+  useEffect(() => {
+    const initialIdentity = new URLSearchParams(window.location.search).get("identity");
+    if (initialIdentity) setIdentity(normalizeIdentity(tenantType, initialIdentity));
+  }, [tenantType]);
 
   function resetState(nextMode: ResetMode) {
     setMode(nextMode);
@@ -120,7 +126,7 @@ export default function UnifiedPasswordResetForm({ tenantType }: { tenantType: T
       setError(`${identityLabel}를 확인해 주세요.`);
       return;
     }
-    if (password !== passwordConfirm) {
+    if (!passwordsMatchIgnoringCase(password, passwordConfirm)) {
       setError("새 비밀번호 확인이 일치하지 않습니다.");
       return;
     }
@@ -172,8 +178,8 @@ export default function UnifiedPasswordResetForm({ tenantType }: { tenantType: T
       setError("휴대전화 번호를 확인해 주세요.");
       return;
     }
-    if (password !== passwordConfirm || !passwordResult.isValid || !passwordResult.data) {
-      setError(password !== passwordConfirm ? "새 비밀번호 확인이 일치하지 않습니다." : passwordResult.errors[0]);
+    if (!passwordsMatchIgnoringCase(password, passwordConfirm) || !passwordResult.isValid || !passwordResult.data) {
+      setError(!passwordsMatchIgnoringCase(password, passwordConfirm) ? "새 비밀번호 확인이 일치하지 않습니다." : passwordResult.errors[0]);
       return;
     }
 
@@ -207,6 +213,7 @@ export default function UnifiedPasswordResetForm({ tenantType }: { tenantType: T
           <p className="text-sm text-slate-500">
             가입한 이메일로 인증코드를 받아 새 비밀번호를 설정합니다.
           </p>
+          <p className="text-xs text-slate-500">새 비밀번호는 영문 대소문자를 구분하지 않습니다.</p>
         </CardHeader>
         <CardContent className="space-y-6">
           {mode === "EMAIL" ? (
@@ -284,7 +291,7 @@ export default function UnifiedPasswordResetForm({ tenantType }: { tenantType: T
               </div>
               <div className="space-y-2">
                 <Label htmlFor="newPassword">새 비밀번호</Label>
-                <Input id="newPassword" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8자 이상, 영문 소문자·숫자·특수문자 포함" required />
+                <Input id="newPassword" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8자 이상, 영문·숫자·특수문자 포함 (대소문자 구분 없음)" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="newPasswordConfirm">새 비밀번호 확인</Label>

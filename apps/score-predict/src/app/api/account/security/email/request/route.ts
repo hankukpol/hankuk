@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import {
   isLocalMailPreviewEnabled,
@@ -11,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/request-ip";
 import { requireTenantSessionRoute } from "@/lib/tenant-session.server";
 import { isValidEmail, normalizeEmail } from "@/lib/validations";
+import { verifyPassword } from "@/lib/password-auth.server";
 
 export const runtime = "nodejs";
 const EXPIRE_MINUTES = 15;
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     }),
     prisma.user.findFirst({ where: { email, id: { not: userId } }, select: { id: true } }),
   ]);
-  if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+  if (!user || !(await verifyPassword(currentPassword, user.password)).valid) {
     return NextResponse.json({ error: "현재 비밀번호가 올바르지 않습니다." }, { status: 400 });
   }
   if (duplicate) {

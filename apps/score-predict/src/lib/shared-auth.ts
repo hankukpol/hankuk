@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeContactPhone, normalizeUsername } from "@/lib/police/validations";
 import type { TenantType } from "@/lib/tenant";
 import { isValidEmail, normalizeEmail, normalizePhone } from "@/lib/validations";
+import { normalizeCaseInsensitivePassword } from "@/lib/credential-policy";
 
 const APP_KEY = HANKUK_APP_KEYS.SCORE_PREDICT;
 const DEFAULT_APP = HANKUK_APP_KEYS.SCORE_PREDICT;
@@ -316,7 +317,7 @@ async function authenticateSharedAuthAccount(sharedUserId: string, password: str
 
   const { data, error } = await anonClient.auth.signInWithPassword({
     email: account.email,
-    password,
+    password: normalizeCaseInsensitivePassword(password),
   });
 
   if (error || !data.user) {
@@ -365,7 +366,7 @@ async function createManagedAuthUser(params: {
   const generatedPassword = `${randomUUID()}!Aa1`;
   const { data, error } = await adminClient.auth.admin.createUser({
     email: params.email,
-    password: params.password?.trim() || generatedPassword,
+    password: params.password ? normalizeCaseInsensitivePassword(params.password) : generatedPassword,
     email_confirm: true,
     user_metadata: {
       name: params.identity.name,
@@ -584,7 +585,7 @@ export async function syncScorePredictSharedPassword(params: {
   const result = await ensureScorePredictSharedIdentity({
     tenantType: params.tenantType,
     identity: params.identity,
-    password: params.password,
+    password: normalizeCaseInsensitivePassword(params.password),
   });
 
   const account = await findSharedAuthAccountById(result.sharedUserId);
@@ -601,7 +602,7 @@ export async function syncScorePredictSharedPassword(params: {
   }
 
   const { error } = await adminClient.auth.admin.updateUserById(result.sharedUserId, {
-    password: params.password,
+    password: normalizeCaseInsensitivePassword(params.password),
   });
 
   if (error) {

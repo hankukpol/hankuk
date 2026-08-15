@@ -10,9 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/providers/ToastProvider";
 import { normalizeEmail, normalizePhone, validateRegisterInput } from "@/lib/validations";
+import { passwordsMatchIgnoringCase } from "@/lib/credential-policy";
 import { withBrowserTenantPath, withTenantPrefix } from "@/lib/tenant";
 
 interface RegisterResponse {
+  code?: "ACCOUNT_EXISTS";
   error?: string;
   errors?: string[];
   message?: string;
@@ -43,6 +45,7 @@ export default function RegisterPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingAccount, setExistingAccount] = useState(false);
 
   useEffect(() => {
     fetch("/api/terms")
@@ -68,12 +71,14 @@ export default function RegisterPage() {
 
   const handlePhoneChange = (value: string) => {
     setPhone(normalizePhone(value));
+    setExistingAccount(false);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
     setSuccessMessage("");
+    setExistingAccount(false);
 
     const validationResult = validateRegisterInput({
       name,
@@ -88,7 +93,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password !== passwordConfirm) {
+    if (!passwordsMatchIgnoringCase(password, passwordConfirm)) {
       setErrorMessage("비밀번호와 비밀번호 확인이 일치하지 않습니다.");
       return;
     }
@@ -105,6 +110,7 @@ export default function RegisterPage() {
 
       if (!response.ok) {
         const message = data.error ?? "회원가입 처리 중 오류가 발생했습니다.";
+        if (data.code === "ACCOUNT_EXISTS") setExistingAccount(true);
         setErrorMessage(message);
         showErrorToast(message);
         return;
@@ -189,7 +195,7 @@ export default function RegisterPage() {
                     id="email"
                     type="email"
                     value={email}
-                    onChange={(event) => setEmail(normalizeEmail(event.target.value))}
+                    onChange={(event) => { setEmail(normalizeEmail(event.target.value)); setExistingAccount(false); }}
                     placeholder="비밀번호 찾기에 사용할 이메일"
                     autoCapitalize="none"
                     autoCorrect="off"
@@ -204,7 +210,7 @@ export default function RegisterPage() {
                     type="password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="8자 이상, 소문자·숫자·특수문자 포함"
+                    placeholder="8자 이상, 영문·숫자·특수문자 포함 (대소문자 구분 없음)"
                     required
                   />
                 </div>
@@ -273,7 +279,17 @@ export default function RegisterPage() {
                 </div>
 
                 {errorMessage ? (
-                  <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p>
+                  <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p>
+                ) : null}
+
+                {existingAccount ? (
+                  <div className="space-y-2 border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <p>가입한 휴대전화 번호가 아이디입니다. 기존 계정으로 진행해 주세요.</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 font-medium">
+                      <Link href={withTenantPrefix("/login", TENANT_TYPE)} className="underline underline-offset-4">로그인</Link>
+                      <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="underline underline-offset-4">비밀번호 찾기</Link>
+                    </div>
+                  </div>
                 ) : null}
 
                 {successMessage ? (

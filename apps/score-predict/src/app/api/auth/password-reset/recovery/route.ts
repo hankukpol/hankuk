@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
@@ -7,6 +6,7 @@ import {
   normalizeRecoveryCode,
 } from "@/lib/password-recovery";
 import { prisma } from "@/lib/prisma";
+import { hashPassword } from "@/lib/password-auth.server";
 import { consumeFixedWindowRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-ip";
 import { getServerTenantType } from "@/lib/tenant.server";
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   const codeHash = hashRecoveryCode(codeNormalized);
   const now = new Date();
   const nextRecoveryCodes = generateRecoveryCodes(8);
-  const hashedPassword = await bcrypt.hash(passwordResult.data, 12);
+  const hashedPassword = await hashPassword(passwordResult.data);
 
   const changed = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({

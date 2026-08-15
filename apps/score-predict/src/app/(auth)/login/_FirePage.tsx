@@ -103,11 +103,11 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-3 text-right text-sm">
-            <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="text-slate-700 underline">
-              복구코드로 비밀번호 재설정
-            </Link>
-          </p>
+          <p className="mt-3 text-xs text-slate-500">비밀번호는 영문 대소문자를 구분하지 않습니다.</p>
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="text-slate-700 underline underline-offset-4">아이디 확인</Link>
+            <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="text-slate-700 underline underline-offset-4">비밀번호 찾기</Link>
+          </div>
 
           <p className="mt-4 text-sm text-slate-600">
             계정이 없으신가요?{" "}

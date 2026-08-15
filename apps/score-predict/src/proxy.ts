@@ -24,11 +24,12 @@ import {
 } from "@/lib/tenant";
 import type { SiteSettingsMap } from "@/lib/site-settings.constants";
 
-const publicAuthPaths = new Set(["/login", "/register", "/forgot-password", "/reset-password", "/admin-login"]);
+const publicAuthPaths = new Set(["/login", "/register", "/find-account", "/forgot-password", "/reset-password", "/admin-login"]);
 const maintenanceBypassPaths = new Set([
   "/maintenance",
   "/login",
   "/register",
+  "/find-account",
   "/forgot-password",
   "/reset-password",
   "/admin-login",

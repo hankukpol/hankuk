@@ -14,7 +14,7 @@ export interface ValidationResult<T> {
 const MSG = {
   passwordRequired: "\uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694.",
   passwordMin: "\uBE44\uBC00\uBC88\uD638\uB294 8\uC790 \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4.",
-  passwordLowercase: "\uBE44\uBC00\uBC88\uD638\uC5D0 \uC601\uBB38 \uC18C\uBB38\uC790\uB97C 1\uC790 \uC774\uC0C1 \uD3EC\uD568\uD574 \uC8FC\uC138\uC694.",
+  passwordLetter: "비밀번호에 영문자를 1자 이상 포함해 주세요. 대소문자는 구분하지 않습니다.",
   passwordNumber: "\uBE44\uBC00\uBC88\uD638\uC5D0 \uC22B\uC790\uB97C 1\uC790 \uC774\uC0C1 \uD3EC\uD568\uD574 \uC8FC\uC138\uC694.",
   passwordSpecial: "\uBE44\uBC00\uBC88\uD638\uC5D0 \uD2B9\uC218\uBB38\uC790\uB97C 1\uC790 \uC774\uC0C1 \uD3EC\uD568\uD574 \uC8FC\uC138\uC694.",
   nameInvalid: "\uC774\uB984\uC740 \uD55C\uAE00 2\uC790 \uC774\uC0C1 20\uC790 \uC774\uD558\uB85C \uC785\uB825\uD574 \uC8FC\uC138\uC694.",
@@ -34,12 +34,16 @@ const usernameRegex = /^[A-Za-z0-9][A-Za-z0-9_-]{3,19}$/;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // 한국 휴대폰 번호: 010-1234-5678, 01012345678, 010 1234 5678 형식 허용
 const contactPhoneRegex = /^01[016789][- ]?\d{3,4}[- ]?\d{4}$/;
-const passwordHasLowercase = /[a-z]/;
+const passwordHasLetter = /[A-Za-z]/;
 const passwordHasNumber = /\d/;
 const passwordHasSpecial = /[^A-Za-z0-9]/;
 
 export function normalizeUsername(rawUsername: string): string {
-  return rawUsername.trim();
+  return rawUsername.trim().toLowerCase();
+}
+
+export function isValidUsername(username: string): boolean {
+  return usernameRegex.test(normalizeUsername(username));
 }
 
 export function normalizeEmail(rawEmail: string): string {
@@ -58,8 +62,8 @@ function validatePasswordRules(password: string): string[] {
   } else if (password.length < 8) {
     errors.push(MSG.passwordMin);
   } else {
-    if (!passwordHasLowercase.test(password)) {
-      errors.push(MSG.passwordLowercase);
+    if (!passwordHasLetter.test(password)) {
+      errors.push(MSG.passwordLetter);
     }
     if (!passwordHasNumber.test(password)) {
       errors.push(MSG.passwordNumber);

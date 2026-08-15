@@ -1,5 +1,4 @@
 import "server-only";
-import bcrypt from "bcryptjs";
 import {
   consumePersistentFixedWindowRateLimit,
   resetPersistentFixedWindowRateLimit,
@@ -12,8 +11,14 @@ import {
 } from "@/lib/mailer";
 import { createPasswordResetCode, hashSecret } from "@/lib/police/password-recovery";
 import { prisma } from "@/lib/prisma";
+import { hashPassword } from "@/lib/password-auth.server";
 import { getClientIp } from "@/lib/request-ip";
 import type { TenantType } from "@/lib/tenant";
+import {
+  findPoliceUsersByUsername,
+  getPreferredPoliceUsername,
+  resolvePreferredPoliceUsername,
+} from "@/lib/police/account-identity";
 import {
   isValidEmail,
   normalizeEmail,
@@ -135,10 +140,21 @@ export async function requestPasswordResetCode(
   });
   if (!accountRateLimit.allowed) return buildRateLimitError(accountRateLimit.retryAfterSec);
 
-  const user = await prisma.user.findFirst({
-    where: { phone: identity, email },
-    select: { id: true, name: true, email: true, phone: true },
-  });
+  const matchingPoliceUsers =
+    tenantType === "police"
+      ? (await findPoliceUsersByUsername(identity)).filter(
+          (candidate) => candidate.email?.toLowerCase() === email
+        )
+      : [];
+  const user =
+    tenantType === "police"
+      ? matchingPoliceUsers.length === 1
+        ? matchingPoliceUsers[0]
+        : null
+      : await prisma.user.findFirst({
+          where: { phone: identity, email: { equals: email, mode: "insensitive" } },
+          select: { id: true, name: true, email: true, phone: true },
+        });
   if (!user?.email) {
     return { ok: true, status: 200, body: { message: GENERIC_MESSAGE } };
   }
@@ -175,7 +191,10 @@ export async function requestPasswordResetCode(
       tenantType,
       to: user.email,
       name: user.name,
-      identity: user.phone,
+      identity:
+        tenantType === "police"
+          ? resolvePreferredPoliceUsername(matchingPoliceUsers[0])
+          : user.phone,
       code,
       expireMinutes: PASSWORD_RESET_CODE_EXPIRE_MINUTES,
     });
@@ -244,34 +263,53 @@ export async function confirmPasswordReset(
   });
   if (!accountRateLimit.allowed) return buildRateLimitError(accountRateLimit.retryAfterSec);
 
-  const user = await prisma.user.findFirst({
-    where: { phone: identity, ...(isAdminCode ? {} : { email }) },
-    select: { email: true, id: true, name: true, phone: true },
-  });
-  if (!user) {
+  const candidateUsers =
+    tenantType === "police"
+      ? (await findPoliceUsersByUsername(identity)).filter(
+          (candidate) => isAdminCode || candidate.email?.toLowerCase() === email
+        )
+      : await prisma.user.findMany({
+          where: {
+            phone: identity,
+            ...(isAdminCode
+              ? {}
+              : { email: { equals: email, mode: "insensitive" as const } }),
+          },
+          select: { email: true, id: true, name: true, phone: true },
+          take: 2,
+        });
+  if (candidateUsers.length === 0) {
     return { ok: false, status: 400, body: { error: "로그인 정보 또는 인증코드를 확인해 주세요." } };
   }
 
   const tokenHash = hashSecret(resetCode);
   const now = new Date();
   const channel = isAdminCode ? "ADMIN_MANUAL_SMS" : "EMAIL";
-  const token = await prisma.passwordResetToken.findFirst({
+  const tokens = await prisma.passwordResetToken.findMany({
     where: {
-      userId: user.id,
+      userId: { in: candidateUsers.map((candidate) => candidate.id) },
       tokenHash,
       purpose: "PASSWORD_RESET",
       channel,
-      ...(isAdminCode ? {} : { targetEmail: email }),
+      ...(isAdminCode
+        ? {}
+        : { targetEmail: { equals: email, mode: "insensitive" } }),
       usedAt: null,
       expiresAt: { gt: now },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      user: { select: { email: true, id: true, name: true, phone: true } },
+    },
+    take: 2,
   });
-  if (!token) {
+  if (tokens.length !== 1) {
     return { ok: false, status: 400, body: { error: "유효하지 않거나 만료된 인증코드입니다." } };
   }
+  const token = tokens[0];
+  const user = token.user;
 
-  const hashedPassword = await bcrypt.hash(passwordResult.data, 12);
+  const hashedPassword = await hashPassword(passwordResult.data);
   const changed = await prisma.$transaction(async (tx) => {
     const consumed = await tx.passwordResetToken.updateMany({
       where: { id: token.id, usedAt: null, expiresAt: { gt: now } },
@@ -303,12 +341,16 @@ export async function confirmPasswordReset(
   });
 
   if (user.email && isMailerConfigured(tenantType)) {
+    const preferredIdentity =
+      tenantType === "police"
+        ? await getPreferredPoliceUsername(user.id, user.phone)
+        : user.phone;
     void sendAccountCodeEmail({
       tenantType,
       purpose: "PASSWORD_CHANGED",
       to: user.email,
       name: user.name,
-      identity: user.phone,
+      identity: preferredIdentity,
     }).catch((error) => console.error("[password-reset] confirmation email failed.", error));
   }
 

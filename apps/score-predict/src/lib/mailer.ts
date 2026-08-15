@@ -122,8 +122,10 @@ function buildMessage(params: AccountCodeEmailParams): MailMessage {
     return { subject, text, html };
   }
 
-  const isVerification = params.purpose === "EMAIL_VERIFICATION";
-  const actionText = isVerification ? "이메일 확인" : "비밀번호 재설정";
+  const actionText =
+    params.purpose === "EMAIL_VERIFICATION"
+      ? "이메일 확인"
+      : "비밀번호 재설정";
   const subject = `[${serviceName}] ${actionText} 인증코드 안내`;
   const text = [
     `${greetingName}님, ${actionText} 인증코드를 안내드립니다.`,

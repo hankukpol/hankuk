@@ -1,10 +1,14 @@
-import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { validateRegisterInput as validatePoliceRegisterInput } from "@/lib/police/validations";
 import { prisma } from "@/lib/prisma";
+import { hashPassword } from "@/lib/password-auth.server";
 import { getServerTenantType } from "@/lib/tenant.server";
 import { validateRegisterInput as validateFireRegisterInput } from "@/lib/validations";
+import {
+  findPoliceUsersByContactPhone,
+  findPoliceUsersByUsername,
+} from "@/lib/police/account-identity";
 
 export const runtime = "nodejs";
 
@@ -91,21 +95,32 @@ async function handleFireRegister(body: FireRegisterRequestBody) {
 
   const existingUser = await prisma.user.findFirst({
     where: {
-      OR: [{ phone }, ...(email ? [{ email }] : [])],
+      OR: [
+        { phone },
+        ...(email
+          ? [{ email: { equals: email, mode: "insensitive" as const } }]
+          : []),
+      ],
     },
     select: { phone: true, email: true },
   });
   if (existingUser) {
     if (existingUser.phone === phone) {
-      return NextResponse.json({ error: "이미 등록된 연락처입니다." }, { status: 409 });
+      return NextResponse.json(
+        { code: "ACCOUNT_EXISTS", field: "phone", error: "이미 가입된 연락처입니다. 로그인하거나 비밀번호 찾기를 이용해 주세요." },
+        { status: 409 }
+      );
     }
 
-    if (email && existingUser.email === email) {
-      return NextResponse.json({ error: "이미 등록된 이메일입니다." }, { status: 409 });
+    if (email && existingUser.email?.toLowerCase() === email) {
+      return NextResponse.json(
+        { code: "ACCOUNT_EXISTS", field: "email", error: "이미 가입에 사용된 이메일입니다. 로그인하거나 비밀번호 찾기를 이용해 주세요." },
+        { status: 409 }
+      );
     }
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12);
+  const hashedPassword = await hashPassword(password);
   const now = new Date();
 
   const supportsContactPhoneColumn = await hasUserContactPhoneColumn();
@@ -173,27 +188,39 @@ async function handlePoliceRegister(body: PoliceRegisterRequestBody) {
 
   const { name, username, contactPhone, email, password } = validationResult.data;
 
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { phone: username },
-        ...(email ? [{ email }] : []),
-      ],
-    },
-    select: { phone: true, email: true },
-  });
+  const [usernameOwners, contactOwners, emailOwner] = await Promise.all([
+    findPoliceUsersByUsername(username),
+    findPoliceUsersByContactPhone(contactPhone),
+    email
+      ? prisma.user.findFirst({
+          where: { email: { equals: email, mode: "insensitive" } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+  ]);
 
-  if (existingUser) {
-    if (existingUser.phone === username) {
-      return NextResponse.json({ error: "이미 사용 중인 아이디입니다." }, { status: 409 });
-    }
-
-    if (email && existingUser.email === email) {
-      return NextResponse.json({ error: "이미 등록된 이메일입니다." }, { status: 409 });
-    }
+  if (usernameOwners.length > 0) {
+    return NextResponse.json(
+      { code: "USERNAME_EXISTS", field: "username", error: "이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요." },
+      { status: 409 }
+    );
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12);
+  if (contactOwners.length > 0) {
+    return NextResponse.json(
+      { code: "ACCOUNT_EXISTS", field: "contactPhone", error: "이미 가입된 연락처입니다. 아이디 찾기를 이용해 주세요." },
+      { status: 409 }
+    );
+  }
+
+  if (emailOwner) {
+    return NextResponse.json(
+      { code: "ACCOUNT_EXISTS", field: "email", error: "이미 가입에 사용된 이메일입니다. 아이디 찾기를 이용해 주세요." },
+      { status: 409 }
+    );
+  }
+
+  const hashedPassword = await hashPassword(password);
   const now = new Date();
   const supportsContactPhoneColumn = await hasUserContactPhoneColumn();
 
@@ -249,7 +276,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json(
-        { error: "이미 등록된 연락처 또는 이메일입니다." },
+        { code: "ACCOUNT_EXISTS", error: "이미 가입된 아이디, 연락처 또는 이메일입니다. 계정 찾기를 이용해 주세요." },
         { status: 409 }
       );
     }

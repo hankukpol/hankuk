@@ -155,6 +155,10 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
         promotion_revision_table: string | null;
         operation_table: string | null;
         operation_audit_table: string | null;
+        legacy_identity_table: string | null;
+        username_case_index: string | null;
+        contact_phone_index: string | null;
+        email_case_index: string | null;
       }>
     >`
       SELECT
@@ -163,7 +167,11 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
         to_regclass('"PromotionCampaign"')::text AS promotion_table,
         to_regclass('"PromotionCampaignRevision"')::text AS promotion_revision_table,
         to_regclass('"ExamOperationState"')::text AS operation_table,
-        to_regclass('"ExamOperationAuditLog"')::text AS operation_audit_table
+        to_regclass('"ExamOperationAuditLog"')::text AS operation_audit_table,
+        to_regclass('"LegacyAccountIdentity"')::text AS legacy_identity_table,
+        to_regclass('"User_phone_lower_key"')::text AS username_case_index,
+        to_regclass('"User_contactPhone_nonempty_key"')::text AS contact_phone_index,
+        to_regclass('"User_email_lower_key"')::text AS email_case_index
     `;
     assert(objects[0]?.calibration_table, `${schema}: calibration snapshot table is missing.`);
     assert(objects[0]?.active_index, `${schema}: single-active-exam index is missing.`);
@@ -171,6 +179,10 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
     assert(objects[0]?.promotion_revision_table, `${schema}: promotion revision table is missing.`);
     assert(objects[0]?.operation_table, `${schema}: exam operation state table is missing.`);
     assert(objects[0]?.operation_audit_table, `${schema}: exam operation audit table is missing.`);
+    assert(objects[0]?.legacy_identity_table, `${schema}: legacy account identity table is missing.`);
+    assert(objects[0]?.username_case_index, `${schema}: case-insensitive username index is missing.`);
+    assert(objects[0]?.contact_phone_index, `${schema}: contact-phone uniqueness index is missing.`);
+    assert(objects[0]?.email_case_index, `${schema}: case-insensitive email index is missing.`);
 
     const appliedRows = await prisma.$queryRaw<Array<{ migration_name: string }>>`
       SELECT migration_name
@@ -187,6 +199,9 @@ async function verifySchema(rawDirectUrl: string, schema: TenantSchema) {
       "20260811_add_submission_suspicion_review",
       "20260813_add_promotion_campaign_operations",
       "20260814_retire_structured_promotion_templates",
+      "20260815_account_identity_aliases",
+      "20260815_case_insensitive_credentials_and_account_lookup",
+      "20260815_normalize_email_identity",
     ]) {
       assert(applied.has(migration), `${schema}: migration ledger is missing ${migration}.`);
     }

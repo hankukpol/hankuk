@@ -104,9 +104,11 @@ function LoginContent() {
             {errorMessage ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p> : null}
             <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
           </form>
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:underline">{TEXT.forgotPassword}</Link>
-            <Link href={withTenantPrefix("/register", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:underline">{TEXT.register}</Link>
+          <p className="mt-3 text-xs text-slate-500">아이디와 비밀번호는 영문 대소문자를 구분하지 않습니다.</p>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
+            <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">아이디 찾기</Link>
+            <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">{TEXT.forgotPassword}</Link>
+            <Link href={withTenantPrefix("/register", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">{TEXT.register}</Link>
           </div>
           <p className="mt-4 text-center text-xs text-slate-500">
             {TEXT.adminPrefix}{" "}

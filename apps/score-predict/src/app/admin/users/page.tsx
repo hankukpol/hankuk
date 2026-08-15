@@ -8,6 +8,7 @@ import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { normalizePoliceContactPhone } from "@/lib/police/contact-phone";
+import { useTenantConfig } from "@/components/providers/TenantProvider";
 
 type UserRole = "USER" | "ADMIN";
 
@@ -17,6 +18,8 @@ interface UserRow {
   phone: string;
   contactPhone: string;
   deliveryPhone: string;
+  usernameConflict: boolean;
+  contactConflict: boolean;
   role: UserRole;
   createdAt: string;
   submissionCount: number;
@@ -30,6 +33,12 @@ interface UsersResponse {
     totalCount: number;
     totalPages: number;
   };
+  contactSummary: {
+    missingCount: number;
+    registeredCount: number;
+    usernameConflictCount: number;
+    contactConflictCount: number;
+  } | null;
   users: UserRow[];
 }
 
@@ -54,11 +63,20 @@ function formatDateText(dateText: string): string {
 }
 
 export default function AdminUsersPage() {
+  const tenant = useTenantConfig();
+  const isPolice = tenant.type === "police";
   const { enabled: usersEnabled, isLoading: isFeatureLoading } =
     useAdminSiteFeature("users");
   const [searchInput, setSearchInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [roleFilter, setRoleFilter] = useState<"" | UserRole>("");
+  const [contactFilter, setContactFilter] = useState<"" | "missing" | "registered">("");
+  const [contactSummary, setContactSummary] = useState({
+    missingCount: 0,
+    registeredCount: 0,
+    usernameConflictCount: 0,
+    contactConflictCount: 0,
+  });
   const [users, setUsers] = useState<UserRow[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -83,8 +101,9 @@ export default function AdminUsersPage() {
     params.set("limit", String(PAGE_LIMIT));
     if (searchKeyword) params.set("search", searchKeyword);
     if (roleFilter) params.set("role", roleFilter);
+    if (isPolice && contactFilter) params.set("contactStatus", contactFilter);
     return params.toString();
-  }, [page, roleFilter, searchKeyword]);
+  }, [contactFilter, isPolice, page, roleFilter, searchKeyword]);
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -103,12 +122,20 @@ export default function AdminUsersPage() {
       setPage(data.pagination?.page ?? 1);
       setTotalPages(data.pagination?.totalPages ?? 1);
       setTotalCount(data.pagination?.totalCount ?? 0);
+      setContactSummary(
+        data.contactSummary ?? {
+          missingCount: 0,
+          registeredCount: 0,
+          usernameConflictCount: 0,
+          contactConflictCount: 0,
+        }
+      );
       setDraftRoles(
         Object.fromEntries((data.users ?? []).map((item) => [item.id, item.role] as const))
       );
       setDraftContactPhones(
         Object.fromEntries(
-          (data.users ?? []).map((item) => [item.id, item.deliveryPhone] as const)
+          (data.users ?? []).map((item) => [item.id, item.contactPhone] as const)
         )
       );
     } catch (error) {
@@ -343,7 +370,7 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">사용자 관리</h1>
           <p className="mt-1 text-sm text-slate-600">
-            사용자 검색, 권한 변경, 일회용 재설정 코드 발급, 계정 삭제를 관리합니다.
+            사용자 검색, 연락처 보완, 권한 변경, 일회용 재설정 코드 발급, 계정 삭제를 관리합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -363,8 +390,18 @@ export default function AdminUsersPage() {
         사전등록자 CSV와 함께 사용할 때에는 중복 발송에 주의해 주세요.
       </section>
 
+      {isPolice ? (
+        <section className="border-l-2 border-service-500 bg-service-50 px-4 py-3 text-sm leading-6 text-slate-700">
+          연락처 미등록 회원 <strong className="text-slate-950">{contactSummary.missingCount}명</strong>, 등록 회원{" "}
+          <strong className="text-slate-950">{contactSummary.registeredCount}명</strong>입니다. 미등록 회원은 아래 필터로 모아
+          신원 확인 후 연락처를 입력할 수 있습니다. 기존 아이디 충돌 보존 회원은{" "}
+          <strong className="text-slate-950">{contactSummary.usernameConflictCount}명</strong>, 연락처 충돌 보존 회원은{" "}
+          <strong className="text-slate-950">{contactSummary.contactConflictCount}명</strong>입니다.
+        </section>
+      ) : null}
+
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+        <div className={`grid gap-3 ${isPolice ? "lg:grid-cols-[1fr_180px_200px_auto]" : "md:grid-cols-[1fr_180px_auto]"}`}>
           <Input
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
@@ -382,6 +419,21 @@ export default function AdminUsersPage() {
             <option value="USER">일반 사용자</option>
             <option value="ADMIN">관리자</option>
           </select>
+          {isPolice ? (
+            <select
+              className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              value={contactFilter}
+              onChange={(event) => {
+                setContactFilter(event.target.value as "" | "missing" | "registered");
+                setPage(1);
+              }}
+              aria-label="연락처 등록 상태"
+            >
+              <option value="">연락처 전체</option>
+              <option value="missing">연락처 미등록</option>
+              <option value="registered">연락처 등록 완료</option>
+            </select>
+          ) : null}
           <Button
             type="button"
             onClick={() => {
@@ -439,22 +491,40 @@ export default function AdminUsersPage() {
                     <tr key={user.id} className="bg-white">
                       <td className="px-4 py-3 text-slate-700">{user.id}</td>
                       <td className="px-4 py-3 font-medium text-slate-900">{user.name}</td>
-                      <td className="px-4 py-3 text-slate-700">{user.phone}</td>
                       <td className="px-4 py-3 text-slate-700">
-                        <Input
-                          value={draftContactPhones[user.id] ?? ""}
-                          onChange={(event) =>
-                            setDraftContactPhones((previous) => ({
-                              ...previous,
-                              [user.id]: normalizePoliceContactPhone(event.target.value).slice(0, 11),
-                            }))
-                          }
-                          placeholder="01012345678"
-                          inputMode="numeric"
-                          className="h-9 min-w-32 font-mono text-xs"
-                          disabled={rowBusy}
-                          aria-label={`${user.name} 연락처`}
-                        />
+                        <span className="break-all">{user.phone}</span>
+                        {user.usernameConflict ? (
+                          <span className="mt-1 block text-xs font-medium text-amber-700">
+                            기존 아이디 보존
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {isPolice ? (
+                          <Input
+                            value={draftContactPhones[user.id] ?? ""}
+                            onChange={(event) =>
+                              setDraftContactPhones((previous) => ({
+                                ...previous,
+                                [user.id]: normalizePoliceContactPhone(event.target.value).slice(0, 11),
+                              }))
+                            }
+                            placeholder="01012345678"
+                            inputMode="numeric"
+                            className="h-9 min-w-32 font-mono text-xs"
+                            disabled={rowBusy}
+                            aria-label={`${user.name} 연락처`}
+                          />
+                        ) : (
+                          user.deliveryPhone
+                        )}
+                        {isPolice && user.contactConflict ? (
+                          <span className="mt-1 block text-xs font-medium text-amber-700">
+                            {user.contactPhone
+                              ? "중복 이력 보존, 신원 확인 필요"
+                              : "중복 이력 보존, 새 번호 확인 필요"}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {formatDateText(user.createdAt)}
@@ -479,19 +549,21 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={
-                              rowBusy ||
-                              normalizePoliceContactPhone(draftContactPhones[user.id] ?? "") ===
-                                normalizePoliceContactPhone(user.deliveryPhone)
-                            }
-                            onClick={() => void handleUpdateContactPhone(user)}
-                          >
-                            연락처 저장
-                          </Button>
+                          {isPolice ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                rowBusy ||
+                                 normalizePoliceContactPhone(draftContactPhones[user.id] ?? "") ===
+                                  normalizePoliceContactPhone(user.contactPhone)
+                              }
+                              onClick={() => void handleUpdateContactPhone(user)}
+                            >
+                              연락처 저장
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             size="sm"

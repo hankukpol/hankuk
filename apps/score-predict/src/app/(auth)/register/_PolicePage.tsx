@@ -15,12 +15,17 @@ import {
   normalizeUsername,
   validateRegisterInput,
 } from "@/lib/police/validations";
+import { formatPoliceContactPhone } from "@/lib/police/contact-phone";
 import { withBrowserTenantPath, withTenantPrefix } from "@/lib/tenant";
+import { passwordsMatchIgnoringCase } from "@/lib/credential-policy";
 
 interface RegisterResponse {
   message?: string;
   error?: string;
+  code?: "USERNAME_EXISTS" | "ACCOUNT_EXISTS";
 }
+
+type UsernameAvailability = "idle" | "checking" | "available" | "unavailable";
 
 interface SiteSettingsResponse {
   settings?: Record<string, string | boolean | number | null>;
@@ -41,7 +46,7 @@ const TEXT = {
   email: "\uC774\uBA54\uC77C",
   emailPlaceholder: "\uBE44\uBC00\uBC88\uD638 \uCC3E\uAE30\uC5D0 \uC0AC\uC6A9\uD560 \uC774\uBA54\uC77C",
   password: "\uBE44\uBC00\uBC88\uD638",
-  passwordPlaceholder: "\uC18C\uBB38\uC790, \uC22B\uC790, \uD2B9\uC218\uBB38\uC790 \uD3EC\uD568 8\uC790 \uC774\uC0C1",
+  passwordPlaceholder: "8자 이상, 영문·숫자·특수문자 포함 (대소문자 구분 없음)",
   passwordConfirm: "\uBE44\uBC00\uBC88\uD638 \uD655\uC778",
   passwordConfirmPlaceholder: "\uBE44\uBC00\uBC88\uD638\uB97C \uB2E4\uC2DC \uC785\uB825\uD574 \uC8FC\uC138\uC694.",
   passwordMismatch: "\uBE44\uBC00\uBC88\uD638 \uD655\uC778\uC774 \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
@@ -54,7 +59,7 @@ const TEXT = {
     "\uD68C\uC6D0 \uC2DD\uBCC4, \uB85C\uADF8\uC778 \uC11C\uBE44\uC2A4 \uC81C\uACF5, \uC2DC\uD5D8 \uB370\uC774\uD130 \uC800\uC7A5 \uBC0F \uC870\uD68C\uB97C \uC704\uD574 \uACC4\uC815\uC744 \uC6B4\uC601\uD569\uB2C8\uB2E4.",
   privacyTitle: "\uAC1C\uC778\uC815\uBCF4 \uC218\uC9D1 \uBC0F \uC774\uC6A9 \uB3D9\uC758(\uD544\uC218)",
   privacyBody:
-    "\uC218\uC9D1 \uD56D\uBAA9\uC740 \uC774\uB984, \uC544\uC774\uB514, \uC774\uBA54\uC77C\uC774\uBA70 \uD68C\uC6D0\uAC00\uC785\uACFC \uBE44\uBC00\uBC88\uD638 \uC7AC\uC124\uC815, \uC11C\uBE44\uC2A4 \uC81C\uACF5 \uBAA9\uC801\uC73C\uB85C \uC0AC\uC6A9\uD569\uB2C8\uB2E4.",
+    "수집 항목은 이름, 아이디, 연락처, 이메일이며 회원가입과 계정 찾기, 비밀번호 재설정, 서비스 제공 목적으로 사용합니다.",
   loginPrompt: "\uC774\uBBF8 \uACC4\uC815\uC774 \uC788\uB098\uC694?",
   loginLink: "\uB85C\uADF8\uC778",
 };
@@ -73,6 +78,9 @@ export default function RegisterPage() {
   const [agreeToPrivacy, setAgreeToPrivacy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [usernameAvailability, setUsernameAvailability] = useState<UsernameAvailability>("idle");
+  const [usernameAvailabilityMessage, setUsernameAvailabilityMessage] = useState("");
+  const [existingAccount, setExistingAccount] = useState(false);
   const [termsBody, setTermsBody] = useState(TEXT.termsBody);
   const [privacyBody, setPrivacyBody] = useState(TEXT.privacyBody);
 
@@ -111,11 +119,56 @@ export default function RegisterPage() {
     };
   }, []);
 
+  const handleUsernameChange = (value: string) => {
+    setUsername(normalizeUsername(value));
+    setUsernameAvailability("idle");
+    setUsernameAvailabilityMessage("");
+    setExistingAccount(false);
+  };
+
+  const checkUsernameAvailability = async () => {
+    const normalized = normalizeUsername(username);
+    if (!/^[a-z0-9][a-z0-9_-]{3,19}$/.test(normalized)) {
+      const message = "아이디는 영문, 숫자, 밑줄(_), 하이픈(-)을 사용해 4~20자로 입력해 주세요.";
+      setUsernameAvailability("unavailable");
+      setUsernameAvailabilityMessage(message);
+      showErrorToast(message);
+      return;
+    }
+
+    setUsernameAvailability("checking");
+    setUsernameAvailabilityMessage("");
+    try {
+      const response = await fetch(`/api/auth/username-availability?username=${encodeURIComponent(normalized)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data = (await response.json()) as { available?: boolean; message?: string; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "아이디 중복을 확인하지 못했습니다.");
+      const available = data.available === true;
+      setUsernameAvailability(available ? "available" : "unavailable");
+      setUsernameAvailabilityMessage(data.message ?? (available ? "사용할 수 있는 아이디입니다." : "이미 사용 중인 아이디입니다."));
+    } catch (checkError) {
+      const message = checkError instanceof Error ? checkError.message : "아이디 중복을 확인하지 못했습니다.";
+      setUsernameAvailability("unavailable");
+      setUsernameAvailabilityMessage(message);
+      showErrorToast(message);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
+    setExistingAccount(false);
 
-    if (password !== passwordConfirm) {
+    if (usernameAvailability !== "available") {
+      const message = "아이디 중복 확인을 먼저 진행해 주세요.";
+      setErrorMessage(message);
+      showErrorToast(message);
+      return;
+    }
+
+    if (!passwordsMatchIgnoringCase(password, passwordConfirm)) {
       setErrorMessage(TEXT.passwordMismatch);
       showErrorToast(TEXT.passwordMismatch);
       return;
@@ -152,6 +205,11 @@ export default function RegisterPage() {
 
     if (!response.ok) {
       const message = data.error ?? TEXT.submitError;
+      if (data.code === "USERNAME_EXISTS") {
+        setUsernameAvailability("unavailable");
+        setUsernameAvailabilityMessage("이미 사용 중인 아이디입니다.");
+      }
+      if (data.code === "ACCOUNT_EXISTS") setExistingAccount(true);
       setErrorMessage(message);
       showErrorToast(message);
       setIsSubmitting(false);
@@ -175,6 +233,16 @@ export default function RegisterPage() {
           <p className="text-sm text-slate-500">{TEXT.description}</p>
         </CardHeader>
         <CardContent>
+          <div className="mb-5 border-l-2 border-service-500 bg-service-50 px-4 py-3 text-sm leading-6 text-slate-700">
+            예전에 가입했는지 확실하지 않다면 새로 가입하기 전에{" "}
+            <Link
+              href={withTenantPrefix("/find-account", TENANT_TYPE)}
+              className="font-semibold text-service-800 underline underline-offset-4"
+            >
+              아이디 찾기
+            </Link>
+            를 먼저 이용해 주세요. 연락처를 입력하지 않았던 기존 회원도 확인할 수 있습니다.
+          </div>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <Label htmlFor="name">{TEXT.name}</Label>
@@ -182,15 +250,51 @@ export default function RegisterPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="username">{TEXT.username}</Label>
-              <Input id="username" type="text" value={username} onChange={(event) => setUsername(normalizeUsername(event.target.value))} placeholder={TEXT.usernamePlaceholder} autoCapitalize="none" autoCorrect="off" required />
+              <div className="flex gap-2">
+                <Input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(event) => handleUsernameChange(event.target.value)}
+                  placeholder={TEXT.usernamePlaceholder}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  aria-describedby="username-availability-message"
+                  aria-invalid={usernameAvailability === "unavailable"}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => void checkUsernameAvailability()}
+                  disabled={usernameAvailability === "checking"}
+                  aria-controls="username-availability-message"
+                >
+                  {usernameAvailability === "checking" ? "확인 중" : "중복 확인"}
+                </Button>
+              </div>
+              <p
+                id="username-availability-message"
+                className={`text-xs ${
+                  usernameAvailability === "available"
+                    ? "text-emerald-700"
+                    : usernameAvailability === "unavailable"
+                      ? "text-rose-600"
+                      : "text-slate-500"
+                }`}
+                aria-live="polite"
+              >
+                {usernameAvailabilityMessage || "중복 확인을 완료해야 가입할 수 있습니다. 영문 대소문자는 같은 아이디로 처리됩니다."}
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="contactPhone">{TEXT.contactPhone}</Label>
-              <Input id="contactPhone" type="tel" value={contactPhone} onChange={(event) => setContactPhone(normalizeContactPhone(event.target.value))} placeholder={TEXT.contactPhonePlaceholder} required />
+              <Input id="contactPhone" type="tel" value={contactPhone} onChange={(event) => { setContactPhone(formatPoliceContactPhone(normalizeContactPhone(event.target.value))); setExistingAccount(false); }} placeholder={TEXT.contactPhonePlaceholder} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">{TEXT.email}</Label>
-              <Input id="email" type="email" value={email} onChange={(event) => setEmail(normalizeEmail(event.target.value))} placeholder={TEXT.emailPlaceholder} autoCapitalize="none" autoCorrect="off" required />
+              <Input id="email" type="email" value={email} onChange={(event) => { setEmail(normalizeEmail(event.target.value)); setExistingAccount(false); }} placeholder={TEXT.emailPlaceholder} autoCapitalize="none" autoCorrect="off" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">{TEXT.password}</Label>
@@ -220,8 +324,18 @@ export default function RegisterPage() {
                 </div>
               </div>
             </div>
-            {errorMessage ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p> : null}
-            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
+            {errorMessage ? <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p> : null}
+            {existingAccount ? (
+              <div className="space-y-2 border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p>기존 계정을 확인한 뒤 로그인해 주세요.</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 font-medium">
+                  <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="underline underline-offset-4">아이디 찾기</Link>
+                  <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="underline underline-offset-4">비밀번호 찾기</Link>
+                  <Link href={withTenantPrefix("/login", TENANT_TYPE)} className="underline underline-offset-4">로그인</Link>
+                </div>
+              </div>
+            ) : null}
+            <Button type="submit" className="w-full" disabled={isSubmitting || usernameAvailability !== "available"}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
           </form>
           <p className="mt-4 text-center text-sm text-slate-600">
             {TEXT.loginPrompt}{" "}

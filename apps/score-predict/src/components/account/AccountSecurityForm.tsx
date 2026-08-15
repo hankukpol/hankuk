@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import { normalizeEmail, normalizeResetCode, validatePasswordStrength } from "@/lib/validations";
+import { passwordsMatchIgnoringCase } from "@/lib/credential-policy";
 import { withTenantPrefix } from "@/lib/tenant";
 
 type SecurityResponse = {
@@ -107,7 +108,7 @@ export default function AccountSecurityForm() {
   async function changePassword() {
     setError("");
     setMessage("");
-    if (newPassword !== newPasswordConfirm) {
+    if (!passwordsMatchIgnoringCase(newPassword, newPasswordConfirm)) {
       setError("새 비밀번호 확인이 일치하지 않습니다.");
       return;
     }
@@ -190,7 +191,7 @@ export default function AccountSecurityForm() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
         <h2 className="text-base font-semibold text-slate-900">비밀번호 변경</h2>
-        <p className="mt-1 text-sm text-slate-600">변경 후 다른 기기를 포함한 기존 로그인은 만료됩니다.</p>
+        <p className="mt-1 text-sm text-slate-600">변경 후 다른 기기를 포함한 기존 로그인은 만료됩니다. 영문 대소문자는 구분하지 않습니다.</p>
         <div className="mt-5 space-y-4">
           <div className="space-y-2">
             <Label htmlFor="currentPassword">현재 비밀번호</Label>
@@ -198,7 +199,7 @@ export default function AccountSecurityForm() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="accountNewPassword">새 비밀번호</Label>
-            <Input id="accountNewPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="8자 이상, 영문 소문자·숫자·특수문자 포함" />
+            <Input id="accountNewPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="8자 이상, 영문·숫자·특수문자 포함" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="accountNewPasswordConfirm">새 비밀번호 확인</Label>

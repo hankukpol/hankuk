@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import UserFormPageShell from "@/components/layout/UserFormPageShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -226,132 +226,124 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl">{TEXT.title}</CardTitle>
-          <p className="text-sm text-slate-500">{TEXT.description}</p>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-5 border-l-2 border-service-500 bg-service-50 px-4 py-3 text-sm leading-6 text-slate-700">
-            예전에 가입했는지 확실하지 않다면 새로 가입하기 전에{" "}
-            <Link
-              href={withTenantPrefix("/find-account", TENANT_TYPE)}
-              className="font-semibold text-service-800 underline underline-offset-4"
+    <UserFormPageShell title={TEXT.title} description={TEXT.description} width="wide">
+      <div className="mb-5 border-l-2 border-service-500 bg-service-50 px-4 py-3 text-sm leading-6 text-slate-700">
+        예전에 가입했는지 확실하지 않다면 새로 가입하기 전에{" "}
+        <Link
+          href={withTenantPrefix("/find-account", TENANT_TYPE)}
+          className="font-semibold text-service-800 underline underline-offset-4"
+        >
+          아이디 찾기
+        </Link>
+        를 먼저 이용해 주세요. 연락처를 입력하지 않았던 기존 회원도 확인할 수 있습니다.
+      </div>
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <div className="space-y-2">
+          <Label htmlFor="name" className="user-data-label">{TEXT.name}</Label>
+          <Input id="name" type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder={TEXT.namePlaceholder} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="username" className="user-data-label">{TEXT.username}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(event) => handleUsernameChange(event.target.value)}
+              placeholder={TEXT.usernamePlaceholder}
+              autoCapitalize="none"
+              autoCorrect="off"
+              aria-describedby="username-availability-message"
+              aria-invalid={usernameAvailability === "unavailable"}
+              required
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              onClick={() => void checkUsernameAvailability()}
+              disabled={usernameAvailability === "checking"}
+              aria-controls="username-availability-message"
             >
-              아이디 찾기
-            </Link>
-            를 먼저 이용해 주세요. 연락처를 입력하지 않았던 기존 회원도 확인할 수 있습니다.
+              {usernameAvailability === "checking" ? "확인 중" : "중복 확인"}
+            </Button>
           </div>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="name">{TEXT.name}</Label>
-              <Input id="name" type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder={TEXT.namePlaceholder} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">{TEXT.username}</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(event) => handleUsernameChange(event.target.value)}
-                  placeholder={TEXT.usernamePlaceholder}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  aria-describedby="username-availability-message"
-                  aria-invalid={usernameAvailability === "unavailable"}
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0"
-                  onClick={() => void checkUsernameAvailability()}
-                  disabled={usernameAvailability === "checking"}
-                  aria-controls="username-availability-message"
-                >
-                  {usernameAvailability === "checking" ? "확인 중" : "중복 확인"}
-                </Button>
-              </div>
-              <p
-                id="username-availability-message"
-                className={`text-xs ${
-                  usernameAvailability === "available"
-                    ? "text-emerald-700"
-                    : usernameAvailability === "unavailable"
-                      ? "text-rose-600"
-                      : "text-slate-500"
-                }`}
-                aria-live="polite"
-              >
-                {usernameAvailabilityMessage || "중복 확인을 완료해야 가입할 수 있습니다. 영문 대소문자는 같은 아이디로 처리됩니다."}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="contactPhone">{TEXT.contactPhone}</Label>
-              <Input id="contactPhone" type="tel" value={contactPhone} onChange={(event) => { setContactPhone(formatPoliceContactPhone(normalizeContactPhone(event.target.value))); setExistingAccount(false); }} placeholder={TEXT.contactPhonePlaceholder} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">{TEXT.email}</Label>
-              <Input id="email" type="email" value={email} onChange={(event) => { setEmail(normalizeEmail(event.target.value)); setExistingAccount(false); }} placeholder={TEXT.emailPlaceholder} autoCapitalize="none" autoCorrect="off" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">{TEXT.password}</Label>
-              <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={TEXT.passwordPlaceholder} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="passwordConfirm">{TEXT.passwordConfirm}</Label>
-              <Input id="passwordConfirm" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder={TEXT.passwordConfirmPlaceholder} required />
-            </div>
-            <div className="space-y-4 rounded-lg border bg-slate-50 p-4 text-sm text-slate-700">
-              <div className="space-y-2">
-                <label className="flex items-start gap-3">
-                  <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreeToTerms} onChange={(event) => setAgreeToTerms(event.target.checked)} />
-                  <span className="font-medium">{TEXT.termsTitle}</span>
-                </label>
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
-                  <span className="whitespace-pre-wrap">{termsBody}</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="flex items-start gap-3">
-                  <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreeToPrivacy} onChange={(event) => setAgreeToPrivacy(event.target.checked)} />
-                  <span className="font-medium">{TEXT.privacyTitle}</span>
-                </label>
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
-                  <span className="whitespace-pre-wrap">{privacyBody}</span>
-                </div>
-              </div>
-            </div>
-            {errorMessage ? <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p> : null}
-            {existingAccount ? (
-              <div className="space-y-2 border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <p>기존 계정을 확인한 뒤 로그인해 주세요.</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 font-medium">
-                  <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="underline underline-offset-4">아이디 찾기</Link>
-                  <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="underline underline-offset-4">비밀번호 찾기</Link>
-                  <Link href={withTenantPrefix("/login", TENANT_TYPE)} className="underline underline-offset-4">로그인</Link>
-                </div>
-              </div>
-            ) : null}
-            <Button type="submit" className="w-full" disabled={isSubmitting || usernameAvailability !== "available"}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-slate-600">
-            {TEXT.loginPrompt}{" "}
-            <Link
-              href={
-                searchParams.get("callbackUrl")
-                  ? `${withTenantPrefix("/login", TENANT_TYPE)}?callbackUrl=${encodeURIComponent(searchParams.get("callbackUrl") as string)}`
-                  : withTenantPrefix("/login", TENANT_TYPE)
-              }
-              className="underline-offset-4 hover:underline"
-            >
-              {TEXT.loginLink}
-            </Link>
+          <p
+            id="username-availability-message"
+            className={`text-xs ${
+              usernameAvailability === "available"
+                ? "text-emerald-700"
+                : usernameAvailability === "unavailable"
+                  ? "text-rose-600"
+                  : "text-slate-500"
+            }`}
+            aria-live="polite"
+          >
+            {usernameAvailabilityMessage || "중복 확인을 완료해야 가입할 수 있습니다. 영문 대소문자는 같은 아이디로 처리됩니다."}
           </p>
-        </CardContent>
-      </Card>
-    </main>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="contactPhone" className="user-data-label">{TEXT.contactPhone}</Label>
+          <Input id="contactPhone" type="tel" value={contactPhone} onChange={(event) => { setContactPhone(formatPoliceContactPhone(normalizeContactPhone(event.target.value))); setExistingAccount(false); }} placeholder={TEXT.contactPhonePlaceholder} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email" className="user-data-label">{TEXT.email}</Label>
+          <Input id="email" type="email" value={email} onChange={(event) => { setEmail(normalizeEmail(event.target.value)); setExistingAccount(false); }} placeholder={TEXT.emailPlaceholder} autoCapitalize="none" autoCorrect="off" required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password" className="user-data-label">{TEXT.password}</Label>
+          <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={TEXT.passwordPlaceholder} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="passwordConfirm" className="user-data-label">{TEXT.passwordConfirm}</Label>
+          <Input id="passwordConfirm" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder={TEXT.passwordConfirmPlaceholder} required />
+        </div>
+        <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <div className="space-y-2">
+            <label className="flex items-start gap-3">
+              <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreeToTerms} onChange={(event) => setAgreeToTerms(event.target.checked)} />
+              <span className="font-medium">{TEXT.termsTitle}</span>
+            </label>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
+              <span className="whitespace-pre-wrap">{termsBody}</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="flex items-start gap-3">
+              <input type="checkbox" className="mt-0.5 h-4 w-4" checked={agreeToPrivacy} onChange={(event) => setAgreeToPrivacy(event.target.checked)} />
+              <span className="font-medium">{TEXT.privacyTitle}</span>
+            </label>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-600">
+              <span className="whitespace-pre-wrap">{privacyBody}</span>
+            </div>
+          </div>
+        </div>
+        {errorMessage ? <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p> : null}
+        {existingAccount ? (
+          <div className="space-y-2 border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p>기존 계정을 확인한 뒤 로그인해 주세요.</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 font-medium">
+              <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="underline underline-offset-4">아이디 찾기</Link>
+              <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="underline underline-offset-4">비밀번호 찾기</Link>
+              <Link href={withTenantPrefix("/login", TENANT_TYPE)} className="underline underline-offset-4">로그인</Link>
+            </div>
+          </div>
+        ) : null}
+        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || usernameAvailability !== "available"}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
+      </form>
+      <p className="mt-6 border-t border-slate-200 pt-4 text-center text-sm text-slate-600">
+        {TEXT.loginPrompt}{" "}
+        <Link
+          href={
+            searchParams.get("callbackUrl")
+              ? `${withTenantPrefix("/login", TENANT_TYPE)}?callbackUrl=${encodeURIComponent(searchParams.get("callbackUrl") as string)}`
+              : withTenantPrefix("/login", TENANT_TYPE)
+          }
+          className="font-semibold text-service-700 underline underline-offset-4"
+        >
+          {TEXT.loginLink}
+        </Link>
+      </p>
+    </UserFormPageShell>
   );
 }

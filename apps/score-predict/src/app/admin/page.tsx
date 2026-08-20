@@ -721,36 +721,36 @@ export default async function AdminDashboardPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+              <tr className="border-b border-slate-200 text-xs font-medium text-slate-500">
                   <th className="whitespace-nowrap pb-2 pr-4">지역</th>
-                  <th className="whitespace-nowrap pb-2 pr-4 text-right">공채</th>
+                  <th className="num-right whitespace-nowrap pb-2 pr-4">공채</th>
                   {tenantType === "police" ? (
-                    <th className="whitespace-nowrap pb-2 pr-4 text-right">경행경채</th>
+                    <th className="num-right whitespace-nowrap pb-2 pr-4">경행경채</th>
                   ) : (
                     <>
-                      <th className="whitespace-nowrap pb-2 pr-4 text-right">구조</th>
-                      <th className="whitespace-nowrap pb-2 pr-4 text-right">학과</th>
-                      <th className="whitespace-nowrap pb-2 pr-4 text-right">구급</th>
+                      <th className="num-right whitespace-nowrap pb-2 pr-4">구조</th>
+                      <th className="num-right whitespace-nowrap pb-2 pr-4">학과</th>
+                      <th className="num-right whitespace-nowrap pb-2 pr-4">구급</th>
                     </>
                   )}
-                  <th className="whitespace-nowrap pb-2 text-right">합계</th>
+                  <th className="num-right whitespace-nowrap pb-2">합계</th>
                 </tr>
               </thead>
               <tbody>
                 {regionBreakdown.map((row) => (
                   <tr key={row.name} className="border-b border-slate-100 last:border-0">
                     <td className="py-2 pr-4 font-medium text-slate-700">{row.name}</td>
-                    <td className="py-2 pr-4 text-right text-slate-600">{row.publicCount}</td>
+                    <td className="num-right py-2 pr-4 text-slate-600">{row.publicCount}</td>
                     {tenantType === "police" ? (
-                      <td className="py-2 pr-4 text-right text-slate-600">{row.careerCount}</td>
+                      <td className="num-right py-2 pr-4 text-slate-600">{row.careerCount}</td>
                     ) : (
                       <>
-                        <td className="py-2 pr-4 text-right text-slate-600">{row.careerRescueCount}</td>
-                        <td className="py-2 pr-4 text-right text-slate-600">{row.careerAcademicCount}</td>
-                        <td className="py-2 pr-4 text-right text-slate-600">{row.careerEmtCount}</td>
+                        <td className="num-right py-2 pr-4 text-slate-600">{row.careerRescueCount}</td>
+                        <td className="num-right py-2 pr-4 text-slate-600">{row.careerAcademicCount}</td>
+                        <td className="num-right py-2 pr-4 text-slate-600">{row.careerEmtCount}</td>
                       </>
                     )}
-                    <td className="py-2 text-right font-semibold text-slate-900">{row.total}</td>
+                    <td className="num-right py-2 font-semibold text-slate-900">{row.total}</td>
                   </tr>
                 ))}
               </tbody>

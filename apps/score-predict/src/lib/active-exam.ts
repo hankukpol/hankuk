@@ -12,6 +12,7 @@ export type ActiveExamSummary = {
   round: number;
   examDate: Date;
   isActive: boolean;
+  policeWrittenPassMultiple: number | null;
 };
 
 export type ActiveExamHealth = {
@@ -66,6 +67,7 @@ const activeExamSelect = {
   round: true,
   examDate: true,
   isActive: true,
+  policeWrittenPassMultiple: true,
 } as const;
 
 export async function getActiveExamHealth(db: ActiveExamDb): Promise<ActiveExamHealth> {

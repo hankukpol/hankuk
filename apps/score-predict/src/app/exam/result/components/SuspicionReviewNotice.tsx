@@ -25,7 +25,7 @@ export default function SuspicionReviewNotice({ status }: SuspicionReviewNoticeP
       <div className="flex items-start gap-3">
         <Icon className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <div>
-          <h2 className="text-sm font-semibold">
+          <h2 className="user-notice-title">
             {excluded ? "통계 제외 성적입니다" : "성적을 검토하고 있습니다"}
           </h2>
           <p className="mt-1 text-sm leading-6">

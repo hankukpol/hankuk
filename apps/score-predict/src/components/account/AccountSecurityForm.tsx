@@ -141,35 +141,35 @@ export default function AccountSecurityForm() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-bold text-slate-900">계정 보안</h1>
+        <h1 className="user-page-title">계정 보안</h1>
         <p className="mt-2 text-sm text-slate-600">경찰과 소방 계정은 분리되어 있습니다. 현재 사이트의 계정만 변경됩니다.</p>
       </header>
 
-      {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
-      {previewFile ? <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">로컬 메일 미리보기: {previewFile}</p> : null}
+      {error ? <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p> : null}
+      {previewFile ? <p className="border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-xs text-amber-900">로컬 메일 미리보기: {previewFile}</p> : null}
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-        <h2 className="text-base font-semibold text-slate-900">복구 이메일</h2>
+        <h2 className="user-card-title">복구 이메일</h2>
         <p className="mt-1 text-sm text-slate-600">
           {emailVerifiedAt
             ? "인증된 이메일입니다."
             : "아직 인증되지 않은 이메일입니다. 인증해 두면 비밀번호 찾기 메일을 확실히 받을 수 있습니다."}
         </p>
         {!mailerConfigured ? (
-          <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="mt-3 border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             현재 운영 메일 발송 설정이 필요합니다. 설정 전에는 관리자 일회용 코드를 이용해 주세요.
           </p>
         ) : null}
         <div className="mt-5 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="securityEmail">이메일</Label>
+            <Label htmlFor="securityEmail" className="user-data-label">이메일</Label>
             <Input id="securityEmail" type="email" value={email} onChange={(event) => setEmail(normalizeEmail(event.target.value))} autoCapitalize="none" autoCorrect="off" />
           </div>
           {!emailCodeRequested ? (
             <>
               <div className="space-y-2">
-                <Label htmlFor="securityEmailPassword">현재 비밀번호</Label>
+                <Label htmlFor="securityEmailPassword" className="user-data-label">현재 비밀번호</Label>
                 <Input id="securityEmailPassword" type="password" value={emailPassword} onChange={(event) => setEmailPassword(event.target.value)} />
               </div>
               <Button type="button" onClick={() => void requestEmailCode()} disabled={isSavingEmail}>{isSavingEmail ? "발송 중..." : "인증코드 받기"}</Button>
@@ -177,12 +177,12 @@ export default function AccountSecurityForm() {
           ) : (
             <div className="space-y-3">
               <div className="space-y-2">
-                <Label htmlFor="securityEmailCode">이메일 인증코드</Label>
+                <Label htmlFor="securityEmailCode" className="user-data-label">이메일 인증코드</Label>
                 <Input id="securityEmailCode" value={emailCode} onChange={(event) => setEmailCode(normalizeResetCode(event.target.value))} placeholder="ABCD-1234" />
               </div>
               <div className="flex gap-2">
                 <Button type="button" onClick={() => void confirmEmail()} disabled={isSavingEmail}>{isSavingEmail ? "확인 중..." : "이메일 인증"}</Button>
-                <Button type="button" variant="outline" onClick={() => setEmailCodeRequested(false)} disabled={isSavingEmail}>다시 입력</Button>
+                <Button type="button" variant="outline" className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900" onClick={() => setEmailCodeRequested(false)} disabled={isSavingEmail}>다시 입력</Button>
               </div>
             </div>
           )}
@@ -190,19 +190,19 @@ export default function AccountSecurityForm() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-        <h2 className="text-base font-semibold text-slate-900">비밀번호 변경</h2>
+        <h2 className="user-card-title">비밀번호 변경</h2>
         <p className="mt-1 text-sm text-slate-600">변경 후 다른 기기를 포함한 기존 로그인은 만료됩니다. 영문 대소문자는 구분하지 않습니다.</p>
         <div className="mt-5 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="currentPassword">현재 비밀번호</Label>
+            <Label htmlFor="currentPassword" className="user-data-label">현재 비밀번호</Label>
             <Input id="currentPassword" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="accountNewPassword">새 비밀번호</Label>
+            <Label htmlFor="accountNewPassword" className="user-data-label">새 비밀번호</Label>
             <Input id="accountNewPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="8자 이상, 영문·숫자·특수문자 포함" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="accountNewPasswordConfirm">새 비밀번호 확인</Label>
+            <Label htmlFor="accountNewPasswordConfirm" className="user-data-label">새 비밀번호 확인</Label>
             <Input id="accountNewPasswordConfirm" type="password" value={newPasswordConfirm} onChange={(event) => setNewPasswordConfirm(event.target.value)} />
           </div>
           <Button type="button" onClick={() => void changePassword()} disabled={isSavingPassword}>{isSavingPassword ? "변경 중..." : "비밀번호 변경"}</Button>

@@ -193,30 +193,30 @@ export default function AdminVisitorsPage() {
                   }}
                   formatter={(value, name) => {
                     const seriesName = typeof name === "string" ? name : "";
-                    const label =
-                      seriesName === "visitors"
-                        ? "방문자"
-                        : seriesName === "newUsers"
-                          ? "신규 가입"
-                          : "제출";
-                    const unit = seriesName === "submissions" ? "건" : "명";
+                      const label =
+                        seriesName === "visitors" || seriesName === "방문자"
+                          ? "방문자"
+                          : seriesName === "newUsers" || seriesName === "신규 가입"
+                            ? "신규 가입"
+                            : "성적 제출";
+                      const unit = seriesName === "submissions" || seriesName === "성적 제출" ? "건" : "명";
                     return [`${Number(value ?? 0).toLocaleString("ko-KR")}${unit}`, label];
                   }}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
                   formatter={(value) =>
-                    value === "visitors"
-                      ? "방문자"
-                      : value === "newUsers"
-                        ? "신규 가입"
-                        : "제출"
+                      value === "visitors" || value === "방문자"
+                        ? "방문자"
+                        : value === "newUsers" || value === "신규 가입"
+                          ? "신규 가입"
+                          : "성적 제출"
                   }
                 />
                 {/* 주지표만 서비스색, 나머지는 중립 계조로 둔다(테넌트별 색 유출 방지) */}
-                <Bar dataKey="visitors" fill="var(--service-600)" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="newUsers" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="submissions" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="visitors" name="방문자" fill="var(--service-600)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="newUsers" name="신규 가입" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="submissions" name="성적 제출" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -229,12 +229,12 @@ export default function AdminVisitorsPage() {
         <section className="rounded-xl border border-slate-200 bg-white">
           <div className="overflow-x-auto">
             <table className="w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3">날짜</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">방문자</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">신규 가입</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">답안 제출</th>
+                  <th className="num-right whitespace-nowrap px-4 py-3">방문자</th>
+                  <th className="num-right whitespace-nowrap px-4 py-3">신규 가입</th>
+                  <th className="num-right whitespace-nowrap px-4 py-3">답안 제출</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -252,13 +252,13 @@ export default function AdminVisitorsPage() {
                         >
                           {row.date} {isToday ? "(오늘)" : ""}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900 tabular-nums">
+                        <td className="num-right whitespace-nowrap px-4 py-3 font-semibold text-slate-900 tabular-nums">
                           {row.visitors.toLocaleString("ko-KR")}명
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700 tabular-nums">
+                        <td className="num-right whitespace-nowrap px-4 py-3 text-slate-700 tabular-nums">
                           {row.newUsers.toLocaleString("ko-KR")}명
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700 tabular-nums">
+                        <td className="num-right whitespace-nowrap px-4 py-3 text-slate-700 tabular-nums">
                           {row.submissions.toLocaleString("ko-KR")}건
                         </td>
                       </tr>

@@ -15,6 +15,7 @@ import {
   getPoliceRecruitCount,
 } from "@/lib/police/prediction-policy";
 import { POLICE_PREDICTION_MODEL_VERSION } from "@/lib/police/prediction-model";
+import { hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
 
 interface DistributionBand {
   score: number;
@@ -139,8 +140,14 @@ export async function capturePoliceCalibrationSnapshots(params: {
 
       const suspiciousCount = submissions.filter((row) => row.isSuspicious).length;
       const nonSuspicious = submissions.filter((row) => !row.isSuspicious);
-      const cutoffCount = nonSuspicious.filter((row) => row.subjectScores.some((score) => score.isFailed)).length;
-      const valid = nonSuspicious.filter((row) => row.subjectScores.every((score) => !score.isFailed));
+      const isCutoff = (row: (typeof nonSuspicious)[number]) =>
+        hasPoliceWrittenCutoff({
+          examType,
+          totalScore: Number(row.totalScore),
+          subjectScores: row.subjectScores,
+        });
+      const cutoffCount = nonSuspicious.filter(isCutoff).length;
+      const valid = nonSuspicious.filter((row) => !isCutoff(row));
       const rawValues = valid.map((row) => Number(row.totalScore));
       const finalValues = valid.map((row) => Number(row.finalScore));
       const rawDistribution = buildDistribution(rawValues);
@@ -176,9 +183,7 @@ export async function capturePoliceCalibrationSnapshots(params: {
             officialValues.filter((score) => score >= params.official!.cutScore).length / recruitCount
           )
         : null;
-      const passMultiple = exam.policeWrittenPassMultiple
-        ?? getPolicePassMultiple(recruitCount)
-        ?? 2;
+      const passMultiple = getPolicePassMultiple(recruitCount, examType) ?? 2;
       const modelVersion = exam.policePredictionModelVersion
         ?? POLICE_PREDICTION_MODEL_VERSION;
 

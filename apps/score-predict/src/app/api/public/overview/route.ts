@@ -8,7 +8,12 @@ import {
   canShowSampleOneMultiplePoint,
   getOneMultipleDisclosureTarget,
 } from "@/lib/public-sample-policy";
-import { getEffectiveOperationContext, getEffectiveSiteSettings, OPERATION_PHASE_LABELS } from "@/lib/exam-operation";
+import {
+  getEffectiveOperationContext,
+  getEffectiveSiteSettings,
+  OPERATION_PHASE_DESCRIPTIONS,
+  OPERATION_PHASE_LABELS,
+} from "@/lib/exam-operation";
 import {
   getTenantApplicantCount,
   getTenantRecruitmentCohorts,
@@ -129,7 +134,11 @@ export async function GET() {
 
     const latestReleaseNumber = latestRelease?.releaseNumber ?? null;
     const operationStage = operation.source === "EXAM_STATE"
-      ? { key: operation.phase, label: OPERATION_PHASE_LABELS[operation.phase] }
+      ? {
+          key: operation.phase,
+          label: OPERATION_PHASE_LABELS[operation.phase],
+          description: OPERATION_PHASE_DESCRIPTIONS[operation.phase],
+        }
       : resolveExamOperationStage({
           preRegistrationEnabled: tenantType === "police" && Boolean(settings["site.preRegistrationEnabled"] ?? true),
           answerInputEnabled: Boolean(settings["site.answerInputEnabled"] ?? false),

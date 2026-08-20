@@ -880,7 +880,7 @@ export default function AdminAnswersPage() {
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="min-w-[520px] w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="whitespace-nowrap px-3 py-2">과목</th>
                     <th className="whitespace-nowrap px-3 py-2">문항</th>
@@ -911,7 +911,7 @@ export default function AdminAnswersPage() {
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="min-w-[720px] w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="whitespace-nowrap px-3 py-2">일시</th>
                     <th className="whitespace-nowrap px-3 py-2">과목</th>

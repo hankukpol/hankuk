@@ -467,13 +467,13 @@ export default function AdminEventsPage() {
 
       <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="whitespace-nowrap px-4 py-3">순서</th>
               <th className="whitespace-nowrap px-4 py-3">제목</th>
               <th className="whitespace-nowrap px-4 py-3">상태</th>
               <th className="whitespace-nowrap px-4 py-3">표시 기간</th>
-              <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
+              <th className="whitespace-nowrap px-4 py-3">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -487,7 +487,7 @@ export default function AdminEventsPage() {
               sortedEvents.map((item, index) => (
                 <tr key={item.id} className="bg-white">
                   <td className="px-4 py-3 text-slate-700">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center gap-2">
                       <span className="w-6 text-center text-xs font-semibold text-slate-500">
                         {item.sortOrder}
                       </span>
@@ -533,8 +533,8 @@ export default function AdminEventsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{toDateRangeText(item.startAt, item.endAt)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
+                  <td className="px-4 py-3">
+                    <div className="flex justify-center gap-2">
                       <Button type="button" size="sm" variant="outline" onClick={() => startEdit(item)}>
                         수정
                       </Button>

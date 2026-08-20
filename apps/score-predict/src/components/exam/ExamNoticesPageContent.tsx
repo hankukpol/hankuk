@@ -176,7 +176,7 @@ export default function ExamNoticesPageContent({ embedded = false }: ExamNotices
     <section className="space-y-4">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          {!embedded ? <h1 className="text-xl font-semibold text-slate-900">공지사항</h1> : null}
+          {!embedded ? <h1 className="user-page-title">공지사항</h1> : null}
           <p className={`${embedded ? "" : "mt-1 "}text-sm text-slate-600`}>서비스 이용에 필요한 안내를 확인해 주세요.</p>
         </div>
 
@@ -223,7 +223,7 @@ export default function ExamNoticesPageContent({ embedded = false }: ExamNotices
         </div>
 
         <div className="hidden md:block">
-          <table className="data-table w-full table-fixed text-sm">
+          <table className="data-table w-full table-fixed">
             <caption className="sr-only">공지사항 목록</caption>
             <colgroup>
               <col className="w-24" />
@@ -231,7 +231,7 @@ export default function ExamNoticesPageContent({ embedded = false }: ExamNotices
               <col className="w-28" />
               <col className="w-36" />
             </colgroup>
-            <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
+            <thead>
               <tr>
                 <th scope="col" className="px-4 py-3 text-center font-semibold">번호</th>
                 <th scope="col" className="px-4 py-3 text-left font-semibold">제목</th>
@@ -244,22 +244,25 @@ export default function ExamNoticesPageContent({ embedded = false }: ExamNotices
                 const number = filteredNotices.length - ((currentPage - 1) * PAGE_SIZE + index);
                 return (
                   <tr key={notice.id} className="transition-colors hover:bg-service-50">
-                    <td className="px-4 py-4 text-center text-slate-500 tabular-nums">
+                    <td className="text-slate-500 tabular-nums">
                       {notice.priority > 0 ? (
                         <span className="inline-flex rounded-md bg-service-600 px-2 py-1 text-xs font-semibold text-white">공지</span>
                       ) : number}
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="">
                       <button
                         type="button"
                         onClick={() => openNotice(notice)}
-                        className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-service-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-600"
+                        // 글자만 있는 링크형 버튼이라 줄높이(17px)가 그대로 터치 영역이 된다.
+                        // 셀 padding(14px)만큼 음수 마진 + 패딩을 주어 행 높이는 그대로 두고
+                        // 히트 영역만 45px로 넓힌다. 표는 md 이상에서만 보이므로 태블릿 기준이다.
+                        className="-my-[14px] block max-w-full truncate py-[14px] text-left font-medium text-slate-900 hover:text-service-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-600"
                       >
                         {notice.title}
                       </button>
                     </td>
-                    <td className="px-4 py-4 text-center text-slate-600">관리자</td>
-                    <td className="px-4 py-4 text-center text-slate-500 tabular-nums">{formatBoardDate(notice.createdAt)}</td>
+                    <td className="text-slate-600">관리자</td>
+                    <td className="text-slate-500 tabular-nums">{formatBoardDate(notice.createdAt)}</td>
                   </tr>
                 );
               })}

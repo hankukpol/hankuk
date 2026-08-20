@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { isPoliceExamType, POLICE_EXAM_TYPES } from "@/lib/tenant-exam";
 import { getPoliceApplicantCount, getPoliceRecruitCount } from "@/lib/police/prediction-policy";
 import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
+import { POLICE_CAREER_CUTOFF_RATE } from "@/lib/police/written-policy";
 
 const RESCORE_BATCH_SIZE = 100;
 
@@ -86,6 +87,7 @@ export interface ScoreResult {
   bonusScore: number;
   finalScore: number;
   hasCutoff: boolean;
+  hasBonusSubjectCutoff: boolean;
   scores: SubjectScoreResult[];
   userAnswers: UserAnswerResult[];
 }
@@ -273,7 +275,7 @@ function scoreByAnswerMap(params: {
   const rawScores: Array<Omit<SubjectScoreResult, "bonusScore" | "finalScore">> = [];
   const userAnswers: UserAnswerResult[] = [];
   let totalScore = 0;
-  let hasCutoff = false;
+  let hasSubjectCutoff = false;
 
   for (const subject of subjects) {
     let correctCount = 0;
@@ -306,9 +308,9 @@ function scoreByAnswerMap(params: {
 
     const rawScore = roundScore(correctCount * subject.pointPerQuestion);
     const cutoffScore = roundScore(subject.maxScore * SUBJECT_CUTOFF_RATE);
-    const isCutoff = rawScore < cutoffScore;
-    if (isCutoff) {
-      hasCutoff = true;
+    const isBelowSubjectThreshold = rawScore < cutoffScore;
+    if (isBelowSubjectThreshold) {
+      hasSubjectCutoff = true;
     }
 
     totalScore = roundScore(totalScore + rawScore);
@@ -319,12 +321,18 @@ function scoreByAnswerMap(params: {
       correctCount,
       rawScore,
       maxScore: subject.maxScore,
-      isCutoff,
+      // 경행경채의 필기 과락은 과목별이 아니라 총점 60% 기준이다.
+      // 과목별 40%는 법정 가산점 적용 자격을 판단할 때만 사용한다.
+      isCutoff: examType === ExamType.PUBLIC && isBelowSubjectThreshold,
     });
   }
 
-  // 경찰 공고 기준: 한 과목이라도 과락이면 모든 필기 법정 가산점을 적용하지 않는다.
-  const effectiveBonusRate = hasCutoff ? 0 : bonusRate;
+  const maxTotalScore = rawScores.reduce((sum, score) => sum + score.maxScore, 0);
+  const hasCutoff = examType === ExamType.CAREER
+    ? totalScore < roundScore(maxTotalScore * POLICE_CAREER_CUTOFF_RATE)
+    : hasSubjectCutoff;
+  // 법정 필기 가산점은 채용유형과 관계없이 어느 한 과목이라도 40% 미만이면 적용하지 않는다.
+  const effectiveBonusRate = hasSubjectCutoff ? 0 : bonusRate;
   let totalBonusScore = 0;
   const scores: SubjectScoreResult[] = rawScores.map((score) => {
     const bonusScore = roundScore(score.maxScore * effectiveBonusRate);
@@ -342,6 +350,7 @@ function scoreByAnswerMap(params: {
     bonusScore: totalBonusScore,
     finalScore: roundScore(totalScore + totalBonusScore),
     hasCutoff,
+    hasBonusSubjectCutoff: hasSubjectCutoff,
     scores,
     userAnswers,
   };
@@ -638,7 +647,7 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
             declaredRate: normalizedBonusRate,
             recruitCount: getPoliceRecruitCount(quota, submission.examType),
             applicantCount: getPoliceApplicantCount(quota, submission.examType),
-            hasCutoff: rawResult.hasCutoff,
+            hasSubjectCutoff: rawResult.hasBonusSubjectCutoff,
           });
           const result = bonusDecision.effectiveRate > 0
             ? scoreByAnswerMap({
@@ -669,6 +678,9 @@ export async function rescoreExam(examId: number, options?: RescoreOptions): Pro
               scoringStatus: SubmissionScoringStatus.SCORED,
               ...(submission.suspicionManualDecision ? {} : automaticSuspicionData),
             },
+          });
+          await tx.finalPrediction.deleteMany({
+            where: { submissionId: submission.id },
           });
 
           const scoreDelta = roundScore(result.finalScore - oldFinalScore);

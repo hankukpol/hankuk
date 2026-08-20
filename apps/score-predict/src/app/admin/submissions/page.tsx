@@ -589,7 +589,7 @@ export default function AdminSubmissionsPage() {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-[1200px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">ID</th>
                 <th className="whitespace-nowrap px-4 py-3">이름</th>
@@ -602,7 +602,7 @@ export default function AdminSubmissionsPage() {
                 <th className="whitespace-nowrap px-4 py-3">과락</th>
                 <th className="whitespace-nowrap px-4 py-3">상태</th>
                 <th className="whitespace-nowrap px-4 py-3">제출일</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
+                <th className="whitespace-nowrap px-4 py-3">작업</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -659,8 +659,8 @@ export default function AdminSubmissionsPage() {
                     <td className="px-4 py-3 text-slate-700">
                       {formatDateTimeText(submission.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center gap-2">
                         <Button
                           type="button"
                           size="sm"
@@ -850,7 +850,7 @@ export default function AdminSubmissionsPage() {
               <h4 className="text-sm font-semibold text-slate-900">과목별 점수</h4>
               <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="whitespace-nowrap px-3 py-2">과목</th>
                       <th className="whitespace-nowrap px-3 py-2">획득점수</th>
@@ -888,7 +888,7 @@ export default function AdminSubmissionsPage() {
               <h4 className="text-sm font-semibold text-slate-900">답안 상세</h4>
               <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="whitespace-nowrap px-3 py-2">과목</th>
                       <th className="whitespace-nowrap px-3 py-2">문항</th>
@@ -929,7 +929,7 @@ export default function AdminSubmissionsPage() {
                 <h4 className="text-sm font-semibold text-slate-900">수정 이력</h4>
                 <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-slate-200">
                   <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <tr>
                         <th className="whitespace-nowrap px-3 py-2">일시</th>
                         <th className="whitespace-nowrap px-3 py-2">작업</th>

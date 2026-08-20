@@ -11,6 +11,7 @@ import {
   isExamTypeForTenant,
   TENANT_EXAM_TYPES,
 } from "@/lib/tenant-exam";
+import { hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
 
 export const runtime = "nodejs";
 
@@ -150,12 +151,8 @@ export async function GET(request: NextRequest) {
           },
         },
         subjectScores: {
-          where: {
-            isFailed: true,
-          },
-          take: 1,
           select: {
-            id: true,
+            isFailed: true,
           },
         },
       },
@@ -205,7 +202,15 @@ export async function GET(request: NextRequest) {
         finalScore: Number(row.finalScore),
         bonusType: formatBonusType(row.bonusType),
         bonusRate: Number(row.bonusRate),
-        hasCutoff: row.subjectScores.length > 0 ? "과락" : "정상",
+        hasCutoff: (
+          guard.tenantType === "police"
+            ? hasPoliceWrittenCutoff({
+                examType: row.examType,
+                totalScore: Number(row.totalScore),
+                subjectScores: row.subjectScores,
+              })
+            : row.subjectScores.some((score) => score.isFailed)
+        ) ? "과락" : "정상",
         suspicionStatus:
           row.suspicionStatus === SubmissionSuspicionStatus.EXCLUDED
             ? "통계 제외"

@@ -64,6 +64,13 @@ function impactClass(impact: "GAINED" | "LOST" | "NO_CHANGE"): string {
   return "text-slate-600";
 }
 
+/* 모바일 지표 묶음은 색을 클래스가 아니라 data-tone 으로 받는다. */
+function impactTone(impact: "GAINED" | "LOST" | "NO_CHANGE"): string | undefined {
+  if (impact === "GAINED") return "positive";
+  if (impact === "LOST") return "negative";
+  return undefined;
+}
+
 function formatSignedDelta(value: number): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
 }
@@ -124,7 +131,7 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
 
   if (isLoading) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+      <section className="border-t border-slate-200 pt-6 text-sm text-slate-600">
         정답 변경 영향 분석을 불러오는 중입니다...
       </section>
     );
@@ -140,8 +147,8 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
 
   if (!data || !data.hasChanges) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-slate-900">정답 변경 영향 분석</h2>
+      <section className="border-t border-slate-200 pt-6">
+        <h2 className="user-section-title">정답 변경 영향 분석</h2>
         <p className="mt-3 text-sm text-slate-600">아직 정답 변경이 없습니다. 확정답안이 발표되면 자동으로 분석 결과가 표시됩니다.</p>
       </section>
     );
@@ -154,9 +161,9 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
     : data.changedQuestions;
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+    <section className="space-y-4 border-t border-slate-200 pt-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">정답 변경 영향 분석</h2>
+        <h2 className="user-section-title">정답 변경 영향 분석</h2>
         <p className="text-xs text-slate-500">변경 일시: {formatDateTime(data.rescoreDate)}</p>
       </div>
 
@@ -168,10 +175,8 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
             <button
               key={subject}
               onClick={() => setSelectedSubject(subject)}
-              className={`-mb-px inline-flex h-10 items-center border-b-2 px-4 text-sm font-semibold transition-colors ${activeSubject === subject
- ? "border-service-600 text-service-700"
- : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
- }`}
+              className="user-filter-tab -mb-px"
+              data-active={activeSubject === subject}
             >
               {subject}
             </button>
@@ -180,35 +185,35 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
       )}
 
       <div className="space-y-2">
-        <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
-          <table className="data-table min-w-[720px] w-full text-sm">
+        <div className="hidden overflow-x-auto overflow-hidden rounded-lg border border-slate-200 bg-white md:block">
+          <table className="data-table min-w-[720px] w-full">
             <thead>
-              <tr className="bg-slate-100 text-slate-700">
-                <th className="border border-slate-200 px-3 py-2 text-left w-[120px]">과목</th>
-                <th className="border border-slate-200 px-3 py-2 text-center">문항</th>
-                <th className="border border-slate-200 px-3 py-2 text-center">변경 전</th>
-                <th className="border border-slate-200 px-3 py-2 text-center">변경 후</th>
-                <th className="border border-slate-200 px-3 py-2 text-center">내 답안</th>
-                <th className="border border-slate-200 px-3 py-2 text-center">영향</th>
+              <tr>
+                <th className="w-[120px]">과목</th>
+                <th className="">문항</th>
+                <th className="">변경 전</th>
+                <th className="">변경 후</th>
+                <th className="">내 답안</th>
+                <th className="">영향</th>
               </tr>
             </thead>
             <tbody>
               {filteredQuestions.length > 0 ? (
                 filteredQuestions.map((item) => (
                   <tr key={`${item.subjectName}-${item.questionNumber}`}>
-                    <td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{item.subjectName}</td>
-                    <td className="border border-slate-200 px-3 py-2 text-center">{item.questionNumber}</td>
-                    <td className="border border-slate-200 px-3 py-2 text-center">{item.oldAnswer ?? "-"}</td>
-                    <td className="border border-slate-200 px-3 py-2 text-center font-semibold text-blue-600">{item.newAnswer}</td>
-                    <td className="border border-slate-200 px-3 py-2 text-center">{item.myAnswer ?? "-"}</td>
-                    <td className={`border border-slate-200 px-3 py-2 text-center font-semibold ${impactClass(item.impact)}`}>
+                    <td className="font-medium text-slate-700">{item.subjectName}</td>
+                    <td className="tabular-nums">{item.questionNumber}</td>
+                    <td className="tabular-nums">{item.oldAnswer ?? "-"}</td>
+                    <td className="font-semibold tabular-nums text-service-700">{item.newAnswer}</td>
+                    <td className="tabular-nums">{item.myAnswer ?? "-"}</td>
+                    <td className={`font-semibold ${impactClass(item.impact)}`}>
                       {impactText(item.impact)}
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="border border-slate-200 px-3 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                     해당 과목의 정답 변경 내역이 없습니다.
                   </td>
                 </tr>
@@ -217,7 +222,7 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
           </table>
         </div>
 
-        <div className="data-list-flat border-y border-slate-200 md:hidden">
+        <div className="data-list-flat overflow-hidden rounded-lg border border-slate-200 bg-white md:hidden">
           {filteredQuestions.length > 0 ? (
             filteredQuestions.map((item) => (
               <div key={`${item.subjectName}-${item.questionNumber}`} className="bg-white px-3 py-3">
@@ -225,24 +230,24 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
                   <p className="text-sm font-semibold text-slate-800">{item.subjectName}</p>
                   <p className="text-sm font-semibold text-slate-700">{item.questionNumber}번</p>
                 </div>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변경 전</span>
-                    <span className="font-medium text-slate-800">{item.oldAnswer ?? "-"}</span>
+                <dl className="user-metric-pairs mt-3" data-cols="4">
+                  <div>
+                    <dt>변경 전</dt>
+                    <dd>{item.oldAnswer ?? "-"}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변경 후</span>
-                    <span className="font-semibold text-blue-600">{item.newAnswer}</span>
+                  <div>
+                    <dt>변경 후</dt>
+                    <dd data-tone="accent">{item.newAnswer}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">내 답안</span>
-                    <span className="font-medium text-slate-800">{item.myAnswer ?? "-"}</span>
+                  <div>
+                    <dt>내 답안</dt>
+                    <dd>{item.myAnswer ?? "-"}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">영향</span>
-                    <span className={`font-semibold ${impactClass(item.impact)}`}>{impactText(item.impact)}</span>
+                  <div>
+                    <dt>영향</dt>
+                    <dd data-tone={impactTone(item.impact)}>{impactText(item.impact)}</dd>
                   </div>
-                </div>
+                </dl>
               </div>
             ))
           ) : (
@@ -255,37 +260,37 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
 
       {data.scoreChange ? (
         <div className="space-y-3">
-          <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
-            <table className="data-table w-full text-sm">
+          <div className="hidden overflow-x-auto overflow-hidden rounded-lg border border-slate-200 bg-white md:block">
+            <table className="data-table w-full">
               <thead>
-                <tr className="bg-slate-100 text-slate-700">
-                  <th className="border border-slate-200 px-3 py-2 text-left">구분</th>
-                  <th className="border border-slate-200 px-3 py-2 text-right">변경 전</th>
-                  <th className="border border-slate-200 px-3 py-2 text-right">변경 후</th>
-                  <th className="border border-slate-200 px-3 py-2 text-right">변동</th>
+                <tr>
+                  <th className="">구분</th>
+                  <th className="">변경 전</th>
+                  <th className="">변경 후</th>
+                  <th className="">변동</th>
                 </tr>
               </thead>
               <tbody>
                 {data.scoreChange.subjects.map((subject) => (
                   <tr key={subject.subjectName}>
-                    <td className="border border-slate-200 px-3 py-2">{subject.subjectName}</td>
-                    <td className="border border-slate-200 px-3 py-2 text-right">{subject.oldScore.toFixed(1)}점</td>
-                    <td className="border border-slate-200 px-3 py-2 text-right">{subject.newScore.toFixed(1)}점</td>
-                    <td className="border border-slate-200 px-3 py-2 text-right">{formatSignedDelta(subject.delta)}점</td>
+                    <td className="">{subject.subjectName}</td>
+                    <td className="tabular-nums">{subject.oldScore.toFixed(1)}점</td>
+                    <td className="tabular-nums">{subject.newScore.toFixed(1)}점</td>
+                    <td className="tabular-nums">{formatSignedDelta(subject.delta)}점</td>
                   </tr>
                 ))}
-                <tr className="bg-slate-50 font-semibold text-slate-900">
-                  <td className="border border-slate-200 px-3 py-2">총점</td>
-                  <td className="border border-slate-200 px-3 py-2 text-right">{data.scoreChange.oldTotalScore.toFixed(1)}점</td>
-                  <td className="border border-slate-200 px-3 py-2 text-right">{data.scoreChange.newTotalScore.toFixed(1)}점</td>
-                  <td className="border border-slate-200 px-3 py-2 text-right">{formatSignedDelta(data.scoreChange.totalDelta)}점</td>
+                <tr className="data-table-total">
+                  <td className="">총점</td>
+                  <td className="tabular-nums">{data.scoreChange.oldTotalScore.toFixed(1)}점</td>
+                  <td className="tabular-nums">{data.scoreChange.newTotalScore.toFixed(1)}점</td>
+                  <td className="tabular-nums">{formatSignedDelta(data.scoreChange.totalDelta)}점</td>
                 </tr>
                 {data.scoreChange.oldRank !== null && data.scoreChange.newRank !== null ? (
                   <tr>
-                    <td className="border border-slate-200 px-3 py-2">석차</td>
-                    <td className="border border-slate-200 px-3 py-2 text-right">{data.scoreChange.oldRank}등</td>
-                    <td className="border border-slate-200 px-3 py-2 text-right">{data.scoreChange.newRank}등</td>
-                    <td className="border border-slate-200 px-3 py-2 text-right">
+                    <td className="">석차</td>
+                    <td className="tabular-nums">{data.scoreChange.oldRank}등</td>
+                    <td className="tabular-nums">{data.scoreChange.newRank}등</td>
+                    <td className="tabular-nums">
                       {data.scoreChange.rankDelta === null ? "-" : `${data.scoreChange.rankDelta > 0 ? "+" : ""}${data.scoreChange.rankDelta}`}
                     </td>
                   </tr>
@@ -294,64 +299,68 @@ export default function AnswerChangeImpact({ submissionId }: AnswerChangeImpactP
             </table>
           </div>
 
-          <div className="data-list-flat border-y border-slate-200 md:hidden">
+          <div className="data-list-flat overflow-hidden rounded-lg border border-slate-200 bg-white md:hidden">
             {data.scoreChange.subjects.map((subject) => (
               <div key={subject.subjectName} className="bg-white px-3 py-3">
-                <p className="text-sm font-semibold text-slate-800">{subject.subjectName}</p>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변경 전</span>
-                    <span className="font-medium text-slate-800">{subject.oldScore.toFixed(1)}점</span>
+                <p className="user-metric-heading">{subject.subjectName}</p>
+                <dl className="user-metric-pairs mt-3" data-cols="3">
+                  <div>
+                    <dt>변경 전</dt>
+                    <dd>{subject.oldScore.toFixed(1)}점</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변경 후</span>
-                    <span className="font-medium text-slate-800">{subject.newScore.toFixed(1)}점</span>
+                  <div>
+                    <dt>변경 후</dt>
+                    <dd>{subject.newScore.toFixed(1)}점</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변동</span>
-                    <span className="font-semibold text-slate-900">{formatSignedDelta(subject.delta)}점</span>
+                  <div>
+                    <dt>변동</dt>
+                    <dd data-tone={subject.delta > 0 ? "positive" : subject.delta < 0 ? "negative" : undefined}>
+                      {formatSignedDelta(subject.delta)}점
+                    </dd>
                   </div>
-                </div>
+                </dl>
               </div>
             ))}
 
             <div className="bg-slate-50 px-3 py-3">
-              <p className="text-sm font-semibold text-slate-900">총점</p>
-              <div className="mt-2 space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">변경 전</span>
-                  <span className="font-medium text-slate-900">{data.scoreChange.oldTotalScore.toFixed(1)}점</span>
+              <p className="user-metric-heading">총점</p>
+              <dl className="user-metric-pairs mt-3" data-cols="3">
+                <div>
+                  <dt>변경 전</dt>
+                  <dd>{data.scoreChange.oldTotalScore.toFixed(1)}점</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">변경 후</span>
-                  <span className="font-medium text-slate-900">{data.scoreChange.newTotalScore.toFixed(1)}점</span>
+                <div>
+                  <dt>변경 후</dt>
+                  <dd>{data.scoreChange.newTotalScore.toFixed(1)}점</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">변동</span>
-                  <span className="font-semibold text-slate-900">{formatSignedDelta(data.scoreChange.totalDelta)}점</span>
+                <div>
+                  <dt>변동</dt>
+                  <dd data-tone={data.scoreChange.totalDelta > 0 ? "positive" : data.scoreChange.totalDelta < 0 ? "negative" : undefined}>
+                    {formatSignedDelta(data.scoreChange.totalDelta)}점
+                  </dd>
                 </div>
-              </div>
+              </dl>
             </div>
 
             {data.scoreChange.oldRank !== null && data.scoreChange.newRank !== null ? (
               <div className="bg-white px-3 py-3">
-                <p className="text-sm font-semibold text-slate-800">석차</p>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변경 전</span>
-                    <span className="font-medium text-slate-800">{data.scoreChange.oldRank}등</span>
+                <p className="user-metric-heading">석차</p>
+                <dl className="user-metric-pairs mt-3" data-cols="3">
+                  <div>
+                    <dt>변경 전</dt>
+                    <dd>{data.scoreChange.oldRank}등</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변경 후</span>
-                    <span className="font-medium text-slate-800">{data.scoreChange.newRank}등</span>
+                  <div>
+                    <dt>변경 후</dt>
+                    <dd>{data.scoreChange.newRank}등</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">변동</span>
-                    <span className="font-semibold text-slate-900">
+                  <div>
+                    <dt>변동</dt>
+                    <dd>
                       {data.scoreChange.rankDelta === null ? "-" : `${data.scoreChange.rankDelta > 0 ? "+" : ""}${data.scoreChange.rankDelta}`}
-                    </span>
+                    </dd>
                   </div>
-                </div>
+                </dl>
               </div>
             ) : null}
           </div>

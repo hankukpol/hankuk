@@ -9,6 +9,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import type { TenantType } from "@/lib/tenant";
 import { isOperationFeatureEnabled } from "@/lib/exam-operation";
+import { buildPoliceScoredNonCutoffWhere } from "@/lib/police/written-policy";
 
 export const runtime = "nodejs";
 
@@ -35,12 +36,14 @@ function buildPopulationWhere(params: {
     regionId: params.regionId,
     examType: params.examType,
     isSuspicious: false,
-    subjectScores: {
-      some: {},
-      none: {
-        isFailed: true,
-      },
-    },
+    ...(params.tenantType === "police"
+      ? buildPoliceScoredNonCutoffWhere(params.examType)
+      : {
+          subjectScores: {
+            some: {},
+            none: { isFailed: true },
+          },
+        }),
   };
 
   if (params.tenantType === "police") {
@@ -204,7 +207,10 @@ export async function GET(request: NextRequest) {
           rawScore: toSafeNumber(rawScore),
           maxScore: toSafeNumber(maxScore),
           percentage: Number(percentage.toFixed(1)),
-          isFailed: subjectScore.isFailed,
+          isFailed:
+            tenantType === "police" && baseSubmission.examType === ExamType.CAREER
+              ? false
+              : subjectScore.isFailed,
         };
       }),
     });

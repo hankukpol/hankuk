@@ -440,14 +440,14 @@ export default function AdminExamsPage() {
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3">시험</th>
                   <th className="whitespace-nowrap px-4 py-3">시험일</th>
                   <th className="whitespace-nowrap px-4 py-3">정답 문항</th>
                   <th className="whitespace-nowrap px-4 py-3">제출 수</th>
                   <th className="whitespace-nowrap px-4 py-3">상태</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
+                  <th className="whitespace-nowrap px-4 py-3">작업</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -473,8 +473,8 @@ export default function AdminExamsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center gap-2">
                         <Button size="sm" variant="outline" onClick={() => startEdit(exam)}>
                           수정
                         </Button>

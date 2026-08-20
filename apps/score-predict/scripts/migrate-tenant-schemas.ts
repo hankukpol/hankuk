@@ -90,20 +90,59 @@ async function preflightSchema(rawDirectUrl: string, schema: TenantSchema) {
       migrationLedgerRowCount = Number(counts[0]?.total_count ?? 0);
     }
 
-    return { schema, activeCount, migrationCount, migrationLedgerRowCount };
+    const currentShapeRows = await prisma.$queryRaw<Array<{ is_current: boolean }>>`
+      SELECT (
+        to_regclass('"PromotionCampaign"') IS NOT NULL
+        AND to_regclass('"ExamOperationState"') IS NOT NULL
+        AND to_regclass('"LegacyAccountIdentity"') IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'Submission'
+            AND column_name = 'suspicionStatus'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'User'
+            AND column_name = 'credentialVersion'
+        )
+      ) AS is_current
+    `;
+
+    return {
+      schema,
+      activeCount,
+      migrationCount,
+      migrationLedgerRowCount,
+      schemaMatchesCurrentPrisma: currentShapeRows[0]?.is_current === true,
+    };
   } finally {
     await prisma.$disconnect();
   }
 }
 
-function bootstrapPatchHistory(databaseUrl: string, directUrl: string) {
+function bootstrapPatchHistory(
+  databaseUrl: string,
+  directUrl: string,
+  schemaMatchesCurrentPrisma: boolean
+) {
+  const manualSchemaArtifacts = new Set([
+    "20260808_enforce_single_active_exam",
+    "20260815_case_insensitive_credentials_and_account_lookup",
+    "20260815_normalize_email_identity",
+  ]);
   for (const migrationName of migrationNames()) {
     const migrationFile = `prisma/migrations/${migrationName}/migration.sql`;
-    runPrisma(
-      ["db", "execute", "--file", migrationFile, "--schema", "prisma/schema.prisma"],
-      databaseUrl,
-      directUrl
-    );
+    if (!schemaMatchesCurrentPrisma || manualSchemaArtifacts.has(migrationName)) {
+      runPrisma(
+        ["db", "execute", "--file", migrationFile, "--schema", "prisma/schema.prisma"],
+        databaseUrl,
+        directUrl
+      );
+    }
     runPrisma(
       ["migrate", "resolve", "--applied", migrationName],
       databaseUrl,
@@ -248,7 +287,7 @@ async function main() {
     const current = preflight[index];
     if (command === "deploy" && current.migrationLedgerRowCount === 0) {
       console.warn(`${schema}: bootstrapping the patch-only Prisma migration history.`);
-      bootstrapPatchHistory(databaseUrl, directUrl);
+      bootstrapPatchHistory(databaseUrl, directUrl, current.schemaMatchesCurrentPrisma);
     } else {
       runPrisma(["migrate", command], databaseUrl, directUrl);
     }

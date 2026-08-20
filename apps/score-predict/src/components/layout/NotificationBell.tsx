@@ -78,10 +78,11 @@ export default function NotificationBell() {
 
   return (
     <>
+      {/* 모바일 터치 타깃 44px. 마우스를 쓰는 PC에서만 조밀한 36px로 줄인다. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="relative rounded-md p-2 text-white/85 transition hover:bg-white/10 hover:text-white"
+        className="relative inline-flex size-11 items-center justify-center rounded-md text-white/85 transition hover:bg-white/10 hover:text-white lg:size-9"
         title="정답키 변경 알림"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

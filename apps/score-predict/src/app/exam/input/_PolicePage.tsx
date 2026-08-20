@@ -14,7 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { withBrowserTenantPath } from "@/lib/tenant";
 import { isPoliceExamType, type PoliceExamType } from "@/lib/tenant-exam";
-import { normalizePoliceContactPhone } from "@/lib/police/contact-phone";
+import {
+  isValidPoliceContactPhone,
+  normalizePoliceContactPhone,
+} from "@/lib/police/contact-phone";
 
 type BonusVeteran = 0 | 5 | 10;
 type BonusHero = 0 | 3 | 5;
@@ -186,6 +189,36 @@ function summarizeSubjectProgress(progressBySubject: SubjectProgress[]): { total
   return { total, filled };
 }
 
+type UnansweredQuestion = {
+  subjectIndex: number;
+  subjectName: string;
+  questionNo: number;
+};
+
+const UNANSWERED_PREVIEW_LIMIT = 10;
+
+/* /exam 임베드에서 스크롤 시 화면 상단에 고정되는 시험 탭 바 높이(ExamFunctionArea 의 h-16). */
+const EMBEDDED_NAV_HEIGHT = 64;
+
+/* 개수만 알려 주면 사용자가 100문항을 눈으로 훑어야 한다. 과목별로 번호를 묶어 보여 준다. */
+function formatUnansweredQuestions(items: UnansweredQuestion[]): string {
+  const preview = items.slice(0, UNANSWERED_PREVIEW_LIMIT);
+  const bySubject = new Map<string, number[]>();
+
+  for (const item of preview) {
+    const numbers = bySubject.get(item.subjectName) ?? [];
+    numbers.push(item.questionNo);
+    bySubject.set(item.subjectName, numbers);
+  }
+
+  const grouped = Array.from(bySubject.entries())
+    .map(([subjectName, numbers]) => `${subjectName} ${numbers.join(", ")}번`)
+    .join(" · ");
+
+  const rest = items.length - preview.length;
+  return rest > 0 ? `${grouped} 외 ${rest}개` : grouped;
+}
+
 function collectSelectedAnswers(
   subjects: SubjectInfo[],
   answersBySubject: AnswersBySubject
@@ -246,6 +279,9 @@ export default function ExamInputPage({
   const [activeSubjectIndex, setActiveSubjectIndex] = useState(0);
   const [inputMode, setInputMode] = useState<OmrInputMode>("radio");
   const [quickFocusToken, setQuickFocusToken] = useState(0);
+  const [pendingScrollQuestion, setPendingScrollQuestion] = useState<number | null>(null);
+  const lastJumpedQuestionRef = useRef<string | null>(null);
+  const subjectTabsRef = useRef<HTMLDivElement | null>(null);
 
   const [answerStore, setAnswerStore] = useState<Record<PoliceExamType, AnswersBySubject>>({
     [ExamType.PUBLIC]: {},
@@ -258,6 +294,7 @@ export default function ExamInputPage({
 
   const effectiveEditId = editId ? Number(editId) : autoEditId;
   const isPreRegistrationModal = presentation === "pre-registration-modal";
+  const [activeInputTab, setActiveInputTab] = useState<"info" | "omr">("info");
   const isEditLimitReached = editCountInfo !== null && editCountInfo.maxEditLimit > 0 && editCountInfo.editCount >= editCountInfo.maxEditLimit;
 
   useEffect(() => {
@@ -284,7 +321,7 @@ export default function ExamInputPage({
           fetch(
             editId
               ? `/api/result?submissionId=${editId}`
-              : `/api/result?optional=1&examId=${data.activeExam.id}`,
+              : `/api/result?optional=1&examId=${data.activeExam.id}&consumer=input`,
             { method: "GET", cache: "no-store" }
           ),
           fetch(`/api/pre-registration?examId=${data.activeExam.id}`, {
@@ -446,6 +483,11 @@ export default function ExamInputPage({
   const canManagePreRegistration = preRegistrationEnabled && !effectiveEditId;
   const canSubmitAnswers = answerInputEnabled;
   const showAnswerInput = canSubmitAnswers && !isPreRegistrationModal;
+  // 답안 입력이 열려 있을 때만 탭으로 나눈다.
+  // 사전등록 단계나 모달에서는 나눌 내용이 하나뿐이라 탭을 두지 않는다.
+  const showInputTabs = showAnswerInput;
+  const showExamInfoPanel = !showInputTabs || activeInputTab === "info";
+  const showOmrPanel = showInputTabs && activeInputTab === "omr";
   const isPreRegistrationOnlyMode =
     canManagePreRegistration && (!canSubmitAnswers || isPreRegistrationModal);
   const isInputFullyClosed = !preRegistrationEnabled && !answerInputEnabled;
@@ -542,6 +584,8 @@ export default function ExamInputPage({
   }, [inputMode]);
 
   const currentSubject = subjects[activeSubjectIndex] ?? null;
+  /* 과목명에는 공백이 섞일 수 있어 DOM id는 탭 인덱스로 만든다. */
+  const questionIdPrefix = `omr-question-${activeSubjectIndex}`;
   const currentAnswers = useMemo(() => answerStore[examType] ?? {}, [answerStore, examType]);
   const currentDifficulty = useMemo(
     () => difficultyStore[examType] ?? {},
@@ -555,6 +599,62 @@ export default function ExamInputPage({
   const totalProgress = useMemo(() => {
     return summarizeSubjectProgress(progressBySubject);
   }, [progressBySubject]);
+
+  /* 하단 고정 바의 이동 버튼과 제출 확인 문구가 같은 목록을 본다. */
+  const unansweredQuestions = useMemo(() => {
+    const result: UnansweredQuestion[] = [];
+    subjects.forEach((subject, subjectIndex) => {
+      const subjectAnswers = currentAnswers[subject.name] ?? {};
+      for (let questionNo = 1; questionNo <= subject.questionCount; questionNo += 1) {
+        if (subjectAnswers[questionNo] === null || subjectAnswers[questionNo] === undefined) {
+          result.push({ subjectIndex, subjectName: subject.name, questionNo });
+        }
+      }
+    });
+    return result;
+  }, [subjects, currentAnswers]);
+
+  /* 과목 탭을 옮긴 직후에는 대상 문항이 아직 렌더되지 않는다.
+     스크롤 요청을 상태로 넘겨 렌더가 끝난 뒤 이동한다. */
+  useEffect(() => {
+    if (pendingScrollQuestion === null) return;
+    setPendingScrollQuestion(null);
+
+    const element = document.getElementById(`${questionIdPrefix}-${pendingScrollQuestion}`);
+    if (!element) return;
+
+    /* 고정된 상단 시험 탭 바와 과목 탭에 가리지 않도록 그 아래로 보낸다.
+       과목 탭 높이는 글자 크기에 따라 달라지므로 실측한다. */
+    const stickyOffset =
+      (embedded ? EMBEDDED_NAV_HEIGHT : 0) + (subjectTabsRef.current?.offsetHeight ?? 0) + 8;
+    const top = window.scrollY + element.getBoundingClientRect().top - stickyOffset;
+    window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+
+    /* 빠른입력 모드는 셀에 포커스가 있어야 바로 숫자를 받을 수 있다. */
+    element.querySelector("input")?.focus({ preventScroll: true });
+  }, [pendingScrollQuestion, questionIdPrefix, embedded]);
+
+  const handleJumpToUnanswered = useCallback(() => {
+    if (unansweredQuestions.length === 0) return;
+
+    /* 보고 있는 과목을 먼저 채우게 하고, 다 채웠으면 남은 과목으로 넘어간다. */
+    const inCurrentSubject = unansweredQuestions.filter(
+      (item) => item.subjectIndex === activeSubjectIndex
+    );
+    const pool = inCurrentSubject.length > 0 ? inCurrentSubject : unansweredQuestions;
+
+    /* 반복해서 누르면 다음 미입력으로 순회한다. 직전 대상이 이미 채워졌으면 처음부터 본다. */
+    const previousIndex = pool.findIndex(
+      (item) => `${item.subjectIndex}-${item.questionNo}` === lastJumpedQuestionRef.current
+    );
+    const target = pool[(previousIndex + 1) % pool.length];
+
+    lastJumpedQuestionRef.current = `${target.subjectIndex}-${target.questionNo}`;
+    if (target.subjectIndex !== activeSubjectIndex) {
+      setActiveSubjectIndex(target.subjectIndex);
+    }
+    setPendingScrollQuestion(target.questionNo);
+  }, [unansweredQuestions, activeSubjectIndex]);
 
   const selectedRegion = useMemo(() => {
     if (!meta || !regionId) return null;
@@ -653,6 +753,8 @@ export default function ExamInputPage({
       setErrorMessage("수험번호를 입력해 주세요.");
       return;
     }
+
+
     if (!/^\d{5}$/.test(normalizedExamNumber)) {
       setErrorMessage("응시번호는 5자리 숫자로 입력해 주세요.");
       return;
@@ -757,6 +859,12 @@ export default function ExamInputPage({
       return;
     }
 
+    const normalizedContactPhone = normalizePoliceContactPhone(contactPhone);
+    if (!isValidPoliceContactPhone(normalizedContactPhone)) {
+      setErrorMessage("연락처는 올바른 휴대전화 번호로 입력해 주세요.");
+      return;
+    }
+
     const normalizedExamNumber = examNumber.trim();
     if (!normalizedExamNumber) {
       setErrorMessage("응시번호는 필수 입력 항목입니다.");
@@ -777,10 +885,9 @@ export default function ExamInputPage({
       return;
     }
 
-    const unansweredCount = totalProgress.total - totalProgress.filled;
-    if (unansweredCount > 0) {
+    if (unansweredQuestions.length > 0) {
       const confirmed = window.confirm(
-        `미입력 문항이 ${unansweredCount}개 있습니다.\n미입력 문항은 오답 처리됩니다.\n그래도 제출하시겠습니까?`
+        `미입력 문항이 ${unansweredQuestions.length}개 있습니다.\n${formatUnansweredQuestions(unansweredQuestions)}\n미입력 문항은 오답 처리됩니다.\n그래도 제출하시겠습니까?`
       );
       if (!confirmed) {
         return;
@@ -809,6 +916,7 @@ export default function ExamInputPage({
         gender,
         regionId,
         examNumber: normalizedExamNumber,
+        contactPhone: normalizedContactPhone,
         veteranPercent,
         heroPercent,
         submitDurationMs: Date.now() - pageLoadedAtRef.current,
@@ -875,7 +983,7 @@ export default function ExamInputPage({
   if (isPreRegistrationModal && !preRegistrationEnabled) {
     return (
       <section className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-        <h1 className="text-base font-semibold">사전등록이 마감되었습니다</h1>
+        <h1 className="user-notice-title">사전등록이 마감되었습니다</h1>
         <p className="mt-2">{preRegistrationClosedMessage}</p>
       </section>
     );
@@ -884,7 +992,7 @@ export default function ExamInputPage({
   if (isPreRegistrationModal && effectiveEditId) {
     return (
       <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-800">
-        <h1 className="text-base font-semibold">답안 제출이 완료된 계정입니다</h1>
+        <h1 className="user-notice-title">답안 제출이 완료된 계정입니다</h1>
         <p className="mt-2">현재 시험의 성적이 이미 제출되어 사전등록이 필요하지 않습니다.</p>
       </section>
     );
@@ -900,14 +1008,38 @@ export default function ExamInputPage({
 
   return (
     <div className="space-y-6">
+      {showInputTabs ? (
+        <div className="user-content-tabs" role="tablist" aria-label="응시정보 입력 메뉴">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeInputTab === "info"}
+            className="user-content-tab"
+            onClick={() => setActiveInputTab("info")}
+          >
+            응시정보
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeInputTab === "omr"}
+            className="user-content-tab"
+            onClick={() => setActiveInputTab("omr")}
+          >
+            OMR 답안 입력
+          </button>
+        </div>
+      ) : null}
+
+      {showExamInfoPanel ? (
       <section
         className={
           isPreRegistrationModal
             ? "bg-white"
-            : "rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+            : "border-t border-slate-200 pt-6"
         }
       >
-        <h1 className="text-lg font-semibold text-slate-900">
+        <h1 className="user-page-title">
           {isPreRegistrationOnlyMode ? "수험번호 사전등록" : "응시정보 입력"}
         </h1>
         <p className="mt-1 text-sm text-slate-600">
@@ -921,12 +1053,12 @@ export default function ExamInputPage({
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="name">성명</Label>
+            <Label htmlFor="name" className="user-data-label">성명</Label>
             <Input id="name" value={session.user.name ?? ""} readOnly />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="gender">성별</Label>
+            <Label htmlFor="gender" className="user-data-label">성별</Label>
             <select
               id="gender"
               className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -940,7 +1072,7 @@ export default function ExamInputPage({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contactPhone">연락처 (필수)</Label>
+            <Label htmlFor="contactPhone" className="user-data-label">연락처 (필수)</Label>
             <Input
               id="contactPhone"
               type="tel"
@@ -958,7 +1090,7 @@ export default function ExamInputPage({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="examType">채용유형</Label>
+            <Label htmlFor="examType" className="user-data-label">채용유형</Label>
             <select
               id="examType"
               className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -971,7 +1103,7 @@ export default function ExamInputPage({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="region">지역</Label>
+            <Label htmlFor="region" className="user-data-label">지역</Label>
             <select
               id="region"
               className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -995,7 +1127,7 @@ export default function ExamInputPage({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="examCategory">시험구분</Label>
+            <Label htmlFor="examCategory" className="user-data-label">시험구분</Label>
             <Input
               id="examCategory"
               value={`${meta.activeExam.year}년 ${meta.activeExam.round}차 경찰`}
@@ -1004,7 +1136,7 @@ export default function ExamInputPage({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="examNumber">응시번호 (필수)</Label>
+            <Label htmlFor="examNumber" className="user-data-label">응시번호 (필수)</Label>
             <Input
               id="examNumber"
               value={examNumber}
@@ -1034,7 +1166,7 @@ export default function ExamInputPage({
           <div className="mt-6 border-y border-sky-200 bg-sky-50/70 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">사전등록</h2>
+                <h2 className="user-card-title">사전등록</h2>
                 <p className="mt-1 text-xs text-slate-600">
                   시험 전에는 응시정보와 수험번호만 먼저 저장하고, 시험 종료 후 로그인해서 OMR만 바로 입력할 수 있습니다.
                 </p>
@@ -1080,7 +1212,7 @@ export default function ExamInputPage({
           </div>
         ) : !effectiveEditId && preRegistration ? (
           <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4">
-            <h2 className="text-sm font-semibold text-emerald-900">사전등록 정보를 불러왔습니다</h2>
+            <h2 className="user-notice-title text-emerald-900">사전등록 정보를 불러왔습니다</h2>
             <p className="mt-1 text-xs text-emerald-800">
               저장된 응시정보가 자동으로 채워졌습니다. 답안만 입력하고 바로 채점을 진행할 수 있습니다.
             </p>
@@ -1092,12 +1224,12 @@ export default function ExamInputPage({
 
         {showAnswerInput ? (
           <div className="mt-6 border-y border-slate-200 py-4">
-          <h2 className="text-sm font-semibold text-slate-900">가산점</h2>
+          <h2 className="user-card-title">가산점</h2>
           <p className="mt-1 text-xs text-slate-500">취업지원과 의사상자 가산점은 동시에 적용할 수 없습니다.</p>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-slate-700">취업지원대상자</legend>
+              <legend className="user-data-label">취업지원대상자</legend>
               <div className="flex flex-wrap gap-4 text-sm text-slate-700">
                 {[0, 5, 10].map((value) => (
                   <label key={value} className="flex items-center gap-2">
@@ -1114,7 +1246,7 @@ export default function ExamInputPage({
             </fieldset>
 
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-slate-700">의사상자</legend>
+              <legend className="user-data-label">의사상자</legend>
               <div className="flex flex-wrap gap-4 text-sm text-slate-700">
                 {[0, 3, 5].map((value) => (
                   <label key={value} className="flex items-center gap-2">
@@ -1139,17 +1271,18 @@ export default function ExamInputPage({
           </p>
         ) : null}
       </section>
+      ) : null}
 
-      {/* 수정 모드 안내 배너 */}
-      {showAnswerInput && effectiveEditId && editCountInfo && (
+      {/* 수정 모드 안내 배너 — 답안 수정에 대한 안내이므로 OMR 탭에 속한다 */}
+      {showOmrPanel && effectiveEditId && editCountInfo && (
         isEditLimitReached ? (
           <section className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
             <p className="font-semibold">답안 수정 횟수({editCountInfo.maxEditLimit}회)를 모두 사용했습니다.</p>
             <p className="mt-1">더 이상 수정할 수 없습니다. 내 성적 분석에서 제출 결과를 확인하세요.</p>
           </section>
         ) : (
-          <section className="rounded-xl border border-police-200 bg-police-50 p-4 text-sm text-slate-700">
-            <p className="font-semibold text-police-700">기존에 제출한 답안이 불러와졌습니다.</p>
+          <section className="rounded-xl border border-service-200 bg-service-50 p-4 text-sm text-slate-700">
+            <p className="font-semibold text-service-700">기존에 제출한 답안이 불러와졌습니다.</p>
             <p className="mt-1">
               수정할 문항만 변경 후 제출하세요.
               <span className="ml-2 font-medium text-slate-900">
@@ -1162,13 +1295,14 @@ export default function ExamInputPage({
       )}
 
       {isPreRegistrationModal ? null : showAnswerInput ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-        <h2 className="text-lg font-semibold text-slate-900">OMR 답안 입력</h2>
+        !showOmrPanel ? null : (
+        <section className="border-t border-slate-200 pt-6">
+        <h2 className="user-section-title">OMR 답안 입력</h2>
         <p className="mt-1 text-sm text-slate-600">
           {examType === ExamType.PUBLIC ? "공채" : "경행경채"} ·
           {inputMode === "quick"
             ? " 키보드 숫자 입력(1~4)으로 빠르게 답안을 입력하세요."
-            : " 문항별 ①②③④ 버튼을 눌러 답안을 입력하세요."}
+            : " 문항별 ①②③④ 버튼을 눌러 답안을 입력하세요. 이미 고른 답을 다시 누르면 선택이 취소됩니다."}
         </p>
         <div className="mt-4">
           <OmrInputModeToggle
@@ -1182,7 +1316,13 @@ export default function ExamInputPage({
           />
         </div>
 
-        <div className="mt-5 grid grid-cols-3 border-b border-slate-200">
+        {/* 형사법 30번쯤 내려가면 과목을 바꾸려고 3,000px를 되돌아가야 했다.
+            /exam 임베드에서는 시험 탭 바가 fixed 64px(z-40)로 떠 있어 그 아래에 붙이고,
+            고정 바가 없는 /exam/input 단독 경로에서는 화면 최상단에 붙인다. */}
+        <div
+          ref={subjectTabsRef}
+          className={`sticky z-30 mt-5 grid grid-cols-3 border-b border-slate-200 bg-white ${embedded ? "top-16" : "top-0"}`}
+        >
           {subjects.map((subject, index) => {
             const progress = progressBySubject.find((item) => item.subjectName === subject.name);
             const filled = progress?.filled ?? 0;
@@ -1192,9 +1332,9 @@ export default function ExamInputPage({
               <button
                 key={subject.name}
                 type="button"
-                className={`min-w-0 border-b-2 px-2 py-3 text-center text-sm font-bold sm:px-4 ${index === activeSubjectIndex
- ? "border-police-700 text-police-700"
- : "border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                className={`min-w-0 border-b-2 px-2 py-3 text-center text-sm font-bold tracking-[-0.05em] sm:px-4 ${index === activeSubjectIndex
+ ? "border-service-600 text-service-700"
+ : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900"
  }`}
                 onClick={() => setActiveSubjectIndex(index)}
               >
@@ -1211,16 +1351,9 @@ export default function ExamInputPage({
 
         {currentSubject ? (
           <div className="mt-4 border-b border-slate-200 pb-5">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="font-semibold text-slate-900">
-                {currentSubject.name} ({currentSubject.questionCount}문항)
-              </h3>
-              <DifficultySelector
-                subjectName={currentSubject.name}
-                value={currentDifficulty[currentSubject.name] ?? null}
-                onChange={(next) => setDifficulty(currentSubject.name, next)}
-              />
-            </div>
+            <h3 className="user-card-title mb-3">
+              {currentSubject.name} ({currentSubject.questionCount}문항)
+            </h3>
 
             {inputMode === "radio" ? (
               <RadioOmrInput
@@ -1228,6 +1361,7 @@ export default function ExamInputPage({
                 questionCount={currentSubject.questionCount}
                 answers={currentAnswers[currentSubject.name] ?? {}}
                 onAnswerChange={(questionNo, answer) => setAnswer(currentSubject.name, questionNo, answer)}
+                questionIdPrefix={questionIdPrefix}
               />
             ) : (
               <QuickOmrInput
@@ -1237,13 +1371,58 @@ export default function ExamInputPage({
                 onAnswerChange={(questionNo, answer) => setAnswer(currentSubject.name, questionNo, answer)}
                 focusToken={quickFocusToken}
                 onRequestNextSubject={handleRequestNextSubjectInQuickMode}
+                questionIdPrefix={questionIdPrefix}
               />
             )}
+
+            {/* 답안을 다 입력한 지점에서 묻는다. 문항 위에 두면 맥락이 없어
+                무엇을 평가하라는 것인지 알기 어렵다. */}
+            <div className="mt-6 border-t border-slate-200 pt-5">
+              <DifficultySelector
+                subjectName={currentSubject.name}
+                value={currentDifficulty[currentSubject.name] ?? null}
+                onChange={(next) => setDifficulty(currentSubject.name, next)}
+              />
+            </div>
           </div>
         ) : null}
 
+        {/* 100문항을 입력하는 동안에도 진행률이 계속 보여야 한다.
+            상세 과목별 현황은 아래에 그대로 두고, 총 진행률만 하단에 고정한다. */}
+        <div className="sticky bottom-0 z-20 mt-5 border-t border-slate-200 bg-white/95 py-3 backdrop-blur">
+          <div className="flex items-center justify-between gap-4">
+            {unansweredQuestions.length > 0 ? (
+              <button
+                type="button"
+                onClick={handleJumpToUnanswered}
+                className="inline-flex h-10 shrink-0 items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-3 text-[13px] font-bold text-rose-700 transition hover:bg-rose-100"
+              >
+                미입력 {unansweredQuestions.length}개
+                <span aria-hidden="true">›</span>
+              </button>
+            ) : (
+              <span className="inline-flex h-10 shrink-0 items-center text-[13px] font-bold text-emerald-700">
+                입력 완료
+              </span>
+            )}
+            <span className="text-sm font-bold tabular-nums text-slate-900">
+              {totalProgress.filled}
+              <span className="font-semibold text-slate-400">/{totalProgress.total}</span>
+              문항
+            </span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-service-600 transition-[width] duration-200"
+              style={{
+                width: `${totalProgress.total > 0 ? (totalProgress.filled / totalProgress.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+        </div>
+
         <div className="mt-5 space-y-3 border-t border-slate-200 pt-5">
-          <h3 className="text-sm font-semibold text-slate-900">입력 현황</h3>
+          <h3 className="user-card-title">입력 현황</h3>
           {progressBySubject.map((item) => {
             const percentage = item.total > 0 ? (item.filled / item.total) * 100 : 0;
             return (
@@ -1281,9 +1460,10 @@ export default function ExamInputPage({
           </Button>
         </div>
         </section>
+        )
       ) : (
         <section className="rounded-xl border border-sky-200 bg-sky-50 p-6 text-sm text-sky-900">
-          <h2 className="text-base font-semibold">사전등록 진행 중</h2>
+          <h2 className="user-notice-title">사전등록 진행 중</h2>
           <p className="mt-2">
             현재는 수험번호 사전등록만 받고 있습니다. 응시정보를 저장해 두면 시험 종료 후 답안 입력이 열렸을 때
             다시 입력할 필요 없이 바로 채점을 진행할 수 있습니다.

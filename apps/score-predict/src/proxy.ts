@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isCurrentTenantToken } from "@/lib/auth-session";
-import { getPreferredExamRoute, isPublicExamPagePath } from "@/lib/exam-surface";
+import { getPreferredExamRoute } from "@/lib/exam-surface";
 import { getTenantSiteSettingDefaults } from "@/lib/site-settings.defaults";
 import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
 import {
@@ -318,8 +318,7 @@ export async function proxy(request: NextRequest) {
   if (
     !isProtectedPath(pathname) ||
     publicAuthPaths.has(pathname) ||
-    isAuthApiPath(pathname) ||
-    isPublicExamPagePath(pathname)
+    isAuthApiPath(pathname)
   ) {
     if (tenantFromPath) return rewriteWithTenant(request, requestHeaders, tenantType, pathname);
     return continueWithTenant(requestHeaders, tenantType);

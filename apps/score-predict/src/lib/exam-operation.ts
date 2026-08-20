@@ -25,10 +25,18 @@ export type OperationFeatures = Record<OperationFeatureKey, boolean>;
 
 export const OPERATION_PHASE_LABELS: Record<ExamOperationPhase, string> = {
   PRE_REGISTRATION: "사전등록",
-  SCORING_OPEN: "가채점 오픈",
-  ANALYSIS_OPEN: "표본 분석 오픈",
-  FINAL_OPEN: "최종예측 오픈",
+  SCORING_OPEN: "가채점만 오픈",
+  ANALYSIS_OPEN: "가채점 + 표본분석 오픈",
+  FINAL_OPEN: "답안 마감 + 최종예측 오픈",
   CLOSED: "종료·보관",
+};
+
+export const OPERATION_PHASE_DESCRIPTIONS: Record<ExamOperationPhase, string> = {
+  PRE_REGISTRATION: "시험 전 응시지역과 수험번호를 등록합니다. 답안 입력과 성적 화면은 닫힙니다.",
+  SCORING_OPEN: "답안 입력과 개인 성적 결과만 먼저 엽니다. 별도 합격예측·표본분포 화면은 닫힌 선택적 안전 단계입니다.",
+  ANALYSIS_OPEN: "답안 입력, 개인 성적 결과, 지역별 표본분석과 합격예측을 함께 엽니다. 시험 직후 권장 단계입니다.",
+  FINAL_OPEN: "새 답안 입력을 마감하고 기존 성적·표본분석과 필기·체력 최종 환산 예측을 엽니다.",
+  CLOSED: "회차 사용자 기능을 닫고 공지사항과 FAQ만 유지합니다.",
 };
 
 export const OPERATION_PRESETS: Record<ExamOperationPhase, OperationFeatures> = {
@@ -128,7 +136,7 @@ export interface EffectiveOperationContext {
   } | null;
   phase: ExamOperationPhase;
   features: OperationFeatures;
-  source: "EXAM_STATE" | "LEGACY_SETTINGS";
+  source: "EXAM_STATE" | "LEGACY_SETTINGS" | "INVARIANT_CLOSED";
 }
 
 export async function getEffectiveOperationContext(settings?: SiteSettingsMap): Promise<EffectiveOperationContext> {
@@ -144,12 +152,40 @@ export async function getEffectiveOperationContext(settings?: SiteSettingsMap): 
       operationState: { select: { id: true, phase: true, activeCampaignId: true, featureOverrides: true, version: true } },
     },
   });
-  if (activeExams.length !== 1 || !activeExams[0].operationState) {
+  if (activeExams.length !== 1) {
+    console.error("[operation-read-invariant]", {
+      tenantType,
+      activeExamCount: activeExams.length,
+      activeExamIds: activeExams.map((exam) => exam.id),
+    });
+    return {
+      tenantType,
+      exam: null,
+      state: null,
+      phase: ExamOperationPhase.CLOSED,
+      features: {
+        preRegistration: false,
+        answerInput: false,
+        result: false,
+        analysis: false,
+        finalPrediction: false,
+        comments: false,
+        notices: false,
+        faq: false,
+      },
+      source: "INVARIANT_CLOSED",
+    };
+  }
+  if (!activeExams[0].operationState) {
     const phase = inferLegacyOperationPhase(baseSettings);
-    if (activeExams.length !== 1) {
-      console.error("[operation-read-invariant]", { tenantType, activeExamIds: activeExams.map((exam) => exam.id) });
-    }
-    return { tenantType, exam: activeExams[0] ?? null, state: null, phase, features: resolveOperationFeatures(phase, {}), source: "LEGACY_SETTINGS" };
+    return {
+      tenantType,
+      exam: activeExams[0],
+      state: null,
+      phase,
+      features: resolveOperationFeatures(phase, {}),
+      source: "LEGACY_SETTINGS",
+    };
   }
   const { operationState, ...exam } = activeExams[0];
   return { tenantType, exam, state: operationState, phase: operationState.phase, features: resolveOperationFeatures(operationState.phase, operationState.featureOverrides), source: "EXAM_STATE" };

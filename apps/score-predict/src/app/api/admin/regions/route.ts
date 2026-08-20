@@ -284,16 +284,12 @@ function parseStringOrNull(value: unknown): string | null {
 
 function formatPublicPassMultiple(recruitCount: number): string {
   if (recruitCount <= 0) return "-";
-  if (recruitCount >= 51) return "1.5배";
-  if (recruitCount >= 21) return "2배";
-  if (recruitCount >= 11) return "2.5배";
-  return "3배";
+  return "2배";
 }
 
 function formatCareerPassMultiple(recruitCount: number): string {
   if (recruitCount <= 0) return "-";
-  if (recruitCount >= 51) return "1.5배";
-  if (recruitCount >= 6) return "1.8배";
+  if (recruitCount >= 6) return "2배";
 
   const smallTable: Record<number, number> = { 5: 10, 4: 9, 3: 8, 2: 6, 1: 3 };
   const passCount = smallTable[recruitCount];
@@ -601,6 +597,10 @@ async function putPoliceRegions(request: NextRequest) {
         },
       });
     }
+
+    await tx.finalPrediction.deleteMany({
+      where: { submission: { examId } },
+    });
   });
 
   // 출원인원 확정 또는 모집인원 변경 시 경찰 법정 가산점 예외를 즉시 다시 판정한다.

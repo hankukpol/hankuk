@@ -7,6 +7,7 @@ import {
 } from "@/lib/police/pass-cut-release.service";
 import { prisma } from "@/lib/prisma";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
+import { buildPoliceScoredNonCutoffWhere } from "@/lib/police/written-policy";
 
 export type AutoPassCutMode = "HYBRID" | "TRAFFIC_ONLY" | "CRON_ONLY";
 export type AutoPassCutProfile = "BALANCED" | "CONSERVATIVE" | "AGGRESSIVE";
@@ -402,6 +403,10 @@ async function evaluateRows(params: {
 
   if (baseRows.length < 1) return [];
 
+  const examTypes = params.includeCareerExamType
+    ? [ExamType.PUBLIC, ExamType.CAREER]
+    : [ExamType.PUBLIC];
+
   const index = Math.max(0, Math.min(3, params.releaseNumberForThreshold - 1));
   const coverageThreshold = params.thresholdBundle.coverageByRelease[index];
   const stabilityThreshold = params.thresholdBundle.stabilityByRelease[index];
@@ -412,10 +417,10 @@ async function evaluateRows(params: {
     region: {
       isActive: true,
     },
-    subjectScores: {
-      some: {},
-      none: { isFailed: true },
-    },
+    OR: examTypes.map((examType) => ({
+      examType,
+      ...buildPoliceScoredNonCutoffWhere(examType),
+    })),
   };
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);

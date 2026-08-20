@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomInt } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ExamOperationPhase, Prisma, PrismaClient } from "@prisma/client";
 import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
@@ -105,6 +105,7 @@ function record(name: string, detail: string) {
 }
 
 function attachDiagnostics(page: Page, scope: string) {
+  let expectedOperationGateErrors = 0;
   page.on("pageerror", (error) => runtimeErrors.push(`${scope} pageerror: ${error.message}`));
   page.on("console", (message) => {
     if (message.type() !== "error") return;
@@ -113,16 +114,27 @@ function attachDiagnostics(page: Page, scope: string) {
       (messageText.includes("[next-auth][error][CLIENT_FETCH_ERROR]") &&
         messageText.includes("Failed to fetch")) ||
       (messageText.includes("Failed to load resource") && messageText.includes("401 (Unauthorized)")) ||
+      (messageText.includes("Failed to load resource") &&
+        messageText.includes("403 (Forbidden)") &&
+        expectedOperationGateErrors > 0) ||
       // Playwright temporarily hides the text caret while taking screenshots.
       // React reports that test-only style mutation as a hydration mismatch.
       (messageText.includes("hydrated") && messageText.includes('caret-color:"transparent"'))
     ) {
+      if (messageText.includes("403 (Forbidden)")) expectedOperationGateErrors -= 1;
       expectedAuthEvents.push(`${scope}: ${messageText}`);
       return;
     }
     runtimeErrors.push(`${scope} console.error: ${messageText}`);
   });
   page.on("response", (response) => {
+    if (response.status() === 403 && response.url().includes("/api/main-stats")) {
+      expectedOperationGateErrors += 1;
+      expectedAuthEvents.push(
+        `${scope}: operation gate 403 at ${page.url()} -> ${response.url()}`,
+      );
+      return;
+    }
     if (response.status() >= 500) {
       runtimeErrors.push(`${scope} response ${response.status()}: ${response.url()}`);
     }
@@ -187,22 +199,37 @@ async function gotoWithAbortRetry(page: Page, url: string) {
   }
 }
 
-async function openPreRegistrationDialog(page: Page) {
+async function openPreRegistrationForm(page: Page): Promise<Locator> {
   const dialog = page.getByRole("dialog");
   const formHeading = dialog.locator("h1").filter({ hasText: "수험번호 사전등록" });
 
-  const promotionFrame = page.locator('iframe[title="프로모션 랜딩"]').first();
-  const hasPromotionFrame = await promotionFrame
+  const triggerSelector =
+    'a[href="#pre-registration"], a[href="/#pre-registration"], [data-pre-registration-modal="true"]';
+  let trigger = page.locator(triggerSelector).first();
+  const iframeCount = await page.locator("iframe").count();
+  for (let index = 0; index < iframeCount; index += 1) {
+    const iframeTrigger = page
+      .locator("iframe")
+      .nth(index)
+      .contentFrame()
+      .locator(triggerSelector)
+      .first();
+    if (await iframeTrigger.isVisible().catch(() => false)) {
+      trigger = iframeTrigger;
+      break;
+    }
+  }
+
+  const customTriggerVisible = await trigger
     .waitFor({ state: "visible", timeout: 5_000 })
     .then(() => true)
     .catch(() => false);
-  const trigger = hasPromotionFrame
-    ? page
-        .frameLocator('iframe[title="프로모션 랜딩"]')
-        .locator('a[href="#pre-registration"], a[href="/#pre-registration"]')
-        .first()
-    : page.locator('[data-pre-registration-modal="true"]').first();
-
+  if (!customTriggerVisible) {
+    trigger = page
+      .getByRole("link", { name: /응시정보 (?:입력|사전등록)/ })
+      .or(page.getByRole("button", { name: /응시정보 (?:입력|사전등록)/ }))
+      .first();
+  }
   await trigger.waitFor({ state: "visible", timeout: 30_000 });
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await trigger.click({ force: true });
@@ -210,10 +237,17 @@ async function openPreRegistrationDialog(page: Page) {
       .waitFor({ state: "visible", timeout: 5_000 })
       .then(() => true)
       .catch(() => false);
-    if (opened) return;
+    if (opened) return dialog;
+    const pageForm = page.locator("main").filter({ has: page.locator("#examNumber") }).first();
+    const pageFormOpened = await pageForm
+      .getByRole("heading", { name: "수험번호 사전등록", exact: true })
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (pageFormOpened) return pageForm;
     await page.waitForTimeout(500);
   }
-  throw new Error("Pre-registration dialog did not open after three trigger attempts.");
+  throw new Error("Pre-registration form did not open after three trigger attempts.");
 }
 
 async function updateOperationSettings(
@@ -252,19 +286,28 @@ async function updateOperationSettings(
       create: { key: SETTING_KEYS.comments, value: "true" },
     }),
     ...[
-      SETTING_KEYS.tabInput,
-      SETTING_KEYS.tabResult,
-      SETTING_KEYS.tabPrediction,
-      SETTING_KEYS.tabNotices,
-      SETTING_KEYS.tabFaq,
-    ].map((key) =>
+      [SETTING_KEYS.tabInput, true],
+      [SETTING_KEYS.tabResult, settings.answerInput],
+      [SETTING_KEYS.tabPrediction, settings.answerInput],
+      [SETTING_KEYS.tabNotices, true],
+      [SETTING_KEYS.tabFaq, true],
+    ].map(([key, enabled]) =>
       prisma.siteSetting.upsert({
-        where: { key },
-        update: { value: "true" },
-        create: { key, value: "true" },
+        where: { key: String(key) },
+        update: { value: String(enabled) },
+        create: { key: String(key), value: String(enabled) },
       }),
     ),
   ]);
+}
+
+async function waitForPublicOperationStage(page: Page, expected: "PRE_REGISTRATION" | "ANALYSIS_OPEN" | "CLOSED") {
+  await page.waitForFunction(async (phase) => {
+    const response = await fetch(`/api/public/overview?phase-check=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    return payload?.operationStage?.key === phase;
+  }, expected, { timeout: 45_000, polling: 1_000 });
 }
 
 function readPreviewCode(previewFile: string) {
@@ -290,6 +333,20 @@ function readPreviewCode(previewFile: string) {
 }
 
 function readLatestPasswordResetPreviewCode() {
+  const localPreviewDir = path.join(APP_DIR, ".mail-preview");
+  if (existsSync(localPreviewDir)) {
+    const latestLocalFile = readdirSync(localPreviewDir)
+      .filter((name) => /^password-reset-code-[A-Za-z0-9._-]+\.txt$/.test(name))
+      .map((name) => ({
+        name,
+        modifiedAt: statSync(path.join(localPreviewDir, name)).mtimeMs,
+      }))
+      .sort((left, right) => right.modifiedAt - left.modifiedAt)[0];
+    if (latestLocalFile) {
+      return readPreviewCode(`.mail-preview/${latestLocalFile.name}`);
+    }
+  }
+
   const previewFile = execFileSync(
     "docker",
     ["exec", DOCKER_CONTAINER, "sh", "-lc", "ls -t .mail-preview/password-reset-code-*.txt | head -n 1"],
@@ -342,7 +399,7 @@ async function assertPoliceUserSession(page: Page, label: string) {
 
 async function chooseAvailableExamNumber(scope: Page | Locator) {
   for (let attempt = 0; attempt < 15; attempt += 1) {
-    const candidate = String(2_026_003_000 + randomInt(0, 1_000));
+    const candidate = String(3_000 + randomInt(0, 1_000)).padStart(5, "0");
     await scope.locator("#examNumber").fill(candidate);
     const available = scope.getByText("사용 가능한 응시번호입니다.", { exact: true });
     const confirmed = await available
@@ -355,24 +412,85 @@ async function chooseAvailableExamNumber(scope: Page | Locator) {
 }
 
 async function fillPoliceOmr(page: Page) {
-  await page.getByRole("button", { name: "빠른입력 (키보드)", exact: true }).click();
-  const subjectNames = ["헌법", "형사법", "경찰학"];
-  let answerState = 0x2468ace1;
+  const omrTab = page.getByRole("tab", { name: "OMR 답안 입력", exact: true });
+  if (await omrTab.isVisible().catch(() => false)) {
+    await omrTab.click();
+  }
+  const quickModeButton = page.getByRole("button", { name: "빠른입력 (키보드)", exact: true });
+  const radioModeButton = page.getByRole("button", { name: "OMR 마킹 (터치)", exact: true });
+  const subjectConfigs = [
+    { name: "헌법", count: 20 },
+    { name: "형사법", count: 40 },
+    { name: "경찰학", count: 40 },
+  ];
+  const answerFor = (questionNumber: number) => {
+    const correctAnswer = ((questionNumber - 1) % 4) + 1;
+    return questionNumber % 3 === 0 ? (correctAnswer % 4) + 1 : correctAnswer;
+  };
+  const touchChoice = (subjectName: string, questionNumber: number, answer: number) =>
+    page
+      .getByRole("radiogroup", { name: `${subjectName} ${questionNumber}번`, exact: true })
+      .getByRole("radio", { name: `${answer}번`, exact: true });
 
-  for (const subjectName of subjectNames) {
-    await page.getByRole("button", { name: new RegExp(`^${subjectName}`) }).click();
+  // 터치 방식으로 헌법 20문항을 모두 입력한다.
+  await radioModeButton.click();
+  await page.getByRole("button", { name: /^헌법 \d+\/\d+$/ }).click();
+  await page.getByRole("button", { name: "보통", exact: true }).click();
+  for (let questionNumber = 1; questionNumber <= 20; questionNumber += 1) {
+    const answer = answerFor(questionNumber);
+    await touchChoice("헌법", questionNumber, answer).click();
+  }
+
+  // 같은 답안 상태가 키보드 방식에 그대로 이어지는지 전 문항을 확인한다.
+  await quickModeButton.click();
+  const constitutionInputs = page.locator("input[id^='헌법-quick-']");
+  assert((await constitutionInputs.count()) === 20, "헌법 빠른입력 20문항이 표시되지 않았습니다.");
+  for (let index = 0; index < 20; index += 1) {
+    assert(
+      (await constitutionInputs.nth(index).inputValue()) === String(answerFor(index + 1)),
+      `헌법 ${index + 1}번 터치 답안이 빠른입력에 이어지지 않았습니다.`,
+    );
+  }
+
+  // 키보드에서 답안을 지우면 터치 방식에서도 즉시 해제되고, 다시 선택하면 복원되어야 한다.
+  await constitutionInputs.first().press("Backspace");
+  assert((await constitutionInputs.first().inputValue()) === "", "빠른입력 Backspace가 답안을 지우지 못했습니다.");
+  await radioModeButton.click();
+  const constitutionFirstChoice = touchChoice("헌법", 1, 1);
+  assert(
+    (await constitutionFirstChoice.getAttribute("aria-checked")) !== "true",
+    "빠른입력에서 지운 답안이 터치 방식에 남아 있습니다.",
+  );
+  await constitutionFirstChoice.click();
+  await quickModeButton.click();
+  assert((await constitutionInputs.first().inputValue()) === "1", "터치 방식에서 복원한 답안이 빠른입력에 반영되지 않았습니다.");
+
+  // 나머지 80문항은 실제 숫자 키 입력으로 작성한다.
+  for (const subject of subjectConfigs.slice(1)) {
+    await page
+      .getByRole("button", { name: new RegExp(`^${subject.name} \\d+/\\d+$`) })
+      .click();
     await page.getByRole("button", { name: "보통", exact: true }).click();
-    const inputs = page.locator(`input[id^='${subjectName}-quick-']`);
-    const count = await inputs.count();
-    assert(count > 0, `${subjectName} quick inputs are missing.`);
+    const inputs = page.locator(`input[id^='${subject.name}-quick-']`);
+    assert((await inputs.count()) === subject.count, `${subject.name} 빠른입력 문항 수가 올바르지 않습니다.`);
+    for (let index = 0; index < subject.count; index += 1) {
+      await inputs.nth(index).press(String(answerFor(index + 1)));
+    }
+  }
 
-    for (let index = 0; index < count; index += 1) {
-      const questionNumber = index + 1;
-      answerState = (Math.imul(answerState, 1_664_525) + 1_013_904_223) >>> 0;
-      const correctAnswer = ((questionNumber - 1) % 4) + 1;
-      const answer =
-        questionNumber % 3 === 0 ? ((answerState >>> 16) % 4) + 1 : correctAnswer;
-      await inputs.nth(index).fill(String(answer));
+  // 키보드로 넣은 답안도 터치 방식에서 첫·마지막 문항까지 유지되는지 확인한다.
+  await radioModeButton.click();
+  for (const subject of subjectConfigs) {
+    await page
+      .getByRole("button", { name: new RegExp(`^${subject.name} \\d+/\\d+$`) })
+      .click();
+    for (const questionNumber of [1, subject.count]) {
+      const answer = answerFor(questionNumber);
+      const selectedChoice = touchChoice(subject.name, questionNumber, answer);
+      assert(
+        (await selectedChoice.getAttribute("aria-checked")) === "true",
+        `${subject.name} ${questionNumber}번 빠른입력 답안이 터치 방식에 이어지지 않았습니다.`,
+      );
     }
   }
 
@@ -479,8 +597,13 @@ async function main() {
     assert(landingResponse?.status() === 200, `Landing returned ${landingResponse?.status()}.`);
     await page.getByText("한국경찰학원 합격예측", { exact: true }).first().waitFor();
     await page.getByRole("link", { name: "회원가입", exact: true }).first().waitFor();
+    await page.getByText("활성 지역 시험 현황", { exact: true }).waitFor({ timeout: 30_000 });
+    await page.getByRole("button", { name: "내 성적 분석", exact: true }).click();
+    await page.getByRole("heading", { name: "로그인이 필요합니다", exact: true }).waitFor();
+    await page.getByRole("link", { name: "로그인", exact: true }).last().waitFor();
+    await page.getByRole("link", { name: "회원가입", exact: true }).last().waitFor();
     await capture(page, "01-first-access-390");
-    record("처음 사이트 접속", "경찰 도메인, 2026년 2차 회차, 회원가입 진입 확인");
+    record("처음 사이트 접속", "풀서비스 메인과 제한 메뉴 로그인·회원가입 모달 확인");
 
     const registrationLink = page.getByRole("link", { name: "회원가입", exact: true }).first();
     assert((await registrationLink.getAttribute("href")) !== null, "Registration link has no href.");
@@ -492,6 +615,18 @@ async function main() {
     await page.locator("#email").fill(user.email);
     await page.locator("#password").fill(user.oldPassword);
     await page.locator("#passwordConfirm").fill(user.oldPassword);
+    const usernameAvailabilityPromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/auth/username-availability") &&
+        response.request().method() === "GET"
+    );
+    await page.getByRole("button", { name: "중복 확인", exact: true }).click();
+    const usernameAvailabilityResponse = await usernameAvailabilityPromise;
+    assert(
+      usernameAvailabilityResponse.ok(),
+      `Username availability returned ${usernameAvailabilityResponse.status()}.`
+    );
+    await page.getByText("사용할 수 있는 아이디입니다.", { exact: true }).waitFor();
     const requiredAgreements = page.locator("input[type='checkbox']");
     assert((await requiredAgreements.count()) === 2, "Registration should show two required agreements.");
     await requiredAgreements.nth(0).check();
@@ -561,6 +696,7 @@ async function main() {
     record("재로그인", "기존 비밀번호 거부, 새 비밀번호 로그인 성공");
 
     await updateOperationSettings(prisma, { preRegistration: true, answerInput: false });
+    await waitForPublicOperationStage(page, "PRE_REGISTRATION");
     await assertPoliceUserSession(page, "after admin operation transition");
     // Re-enter the canonical tenant root explicitly. The login page uses a
     // prefixed preview callback URL, so reloading whichever URL happened to be
@@ -568,9 +704,9 @@ async function main() {
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await assertPoliceUserSession(page, "after user page reload");
     await page.getByText(user.name, { exact: true }).first().waitFor({ timeout: 30_000 });
-    await openPreRegistrationDialog(page);
-    const preRegistrationDialog = page.getByRole("dialog");
-    const preRegistrationHeading = preRegistrationDialog.getByRole("heading", {
+    await capture(page, "04b-pre-registration-stage-1280");
+    const preRegistrationForm = await openPreRegistrationForm(page);
+    const preRegistrationHeading = preRegistrationForm.getByRole("heading", {
       name: "수험번호 사전등록",
       exact: true,
     });
@@ -583,19 +719,19 @@ async function main() {
       const bodyText = (await page.locator("body").innerText()).slice(0, 2_000);
       throw new Error(`Pre-registration tab did not render. url=${page.url()} body=${bodyText}`);
     }
-    await preRegistrationDialog.locator("#examNumber").waitFor({ state: "visible", timeout: 60_000 });
-    await preRegistrationDialog.locator("#gender").selectOption("MALE");
-    await preRegistrationDialog.locator("#examType").selectOption("PUBLIC");
-    await preRegistrationDialog.locator("#region").selectOption({ label: "경북" });
-    await preRegistrationDialog.locator("#examNumber").waitFor({ state: "visible", timeout: 30_000 });
-    const examNumber = await chooseAvailableExamNumber(preRegistrationDialog);
+    await preRegistrationForm.locator("#examNumber").waitFor({ state: "visible", timeout: 60_000 });
+    await preRegistrationForm.locator("#gender").selectOption("MALE");
+    await preRegistrationForm.locator("#examType").selectOption("PUBLIC");
+    await preRegistrationForm.locator("#region").selectOption({ label: "경북" });
+    await preRegistrationForm.locator("#examNumber").waitFor({ state: "visible", timeout: 30_000 });
+    const examNumber = await chooseAvailableExamNumber(preRegistrationForm);
     const preRegistrationPromise = page.waitForResponse(
       (response) => response.url().includes("/api/pre-registration") && response.request().method() === "POST"
     );
-    await preRegistrationDialog.getByRole("button", { name: "사전등록 저장", exact: true }).click();
+    await preRegistrationForm.getByRole("button", { name: "사전등록 저장", exact: true }).click();
     const preRegistrationResponse = await preRegistrationPromise;
     assert(preRegistrationResponse.ok(), `Pre-registration returned ${preRegistrationResponse.status()}.`);
-    await preRegistrationDialog.getByText(/사전등록 완료 · 마지막 저장/).waitFor();
+    await preRegistrationForm.getByText(/사전등록 완료 · 마지막 저장/).waitFor();
     await capture(page, "05-gyeongbuk-pre-registration-1280");
 
     const registeredUser = await prisma.user.findUnique({
@@ -618,6 +754,7 @@ async function main() {
     record("경북 사전등록", `${examNumber}, 공채`);
 
     await updateOperationSettings(prisma, { preRegistration: false, answerInput: true });
+    await waitForPublicOperationStage(page, "ANALYSIS_OPEN");
     await gotoWithAbortRetry(page, `${BASE_URL}/exam/input`);
     const answerInputHeading = page.getByRole("heading", { name: "응시정보 입력", exact: true });
     const answerInputRendered = await answerInputHeading
@@ -633,9 +770,18 @@ async function main() {
     assert((await page.locator("#region option:checked").textContent())?.trim() === "경북", "경북 was not restored.");
     assert((await page.locator("#examNumber").inputValue()) === examNumber, "Exam number was not restored.");
     await fillPoliceOmr(page);
+    record(
+      "OMR 2개 입력 방식",
+      "터치 20문항 입력, 키보드 동기화·삭제, 키보드 80문항 입력, 터치 재확인, 총 100문항",
+    );
     await capture(page, "06-omr-complete-1280");
     await page.setViewportSize({ width: 390, height: 844 });
     await capture(page, "06b-omr-complete-390");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole("button", { name: "빠른입력 (키보드)", exact: true }).click();
+    await capture(page, "06c-omr-quick-complete-1280");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await capture(page, "06d-omr-quick-complete-390");
     await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.route("**/api/submission", async (route) => {
@@ -725,11 +871,12 @@ async function main() {
     }
     await examAnalysisTab.click();
     await page.getByRole("heading", { name: "과목별 비교 차트", exact: true }).waitFor();
-    await page.getByRole("tab", { name: "정오표", exact: true }).click();
+    await page.getByRole("tab", { name: "문항 분석", exact: true }).click();
     await page
-      .getByRole("heading", { name: "정오표 - 문항별 정답률 분석", exact: true })
+      .getByRole("heading", { name: "내 답안·정답 비교", exact: true })
+      .first()
       .waitFor();
-    record("성적 상세 분석", "내 성적, 시험 분석, 정오표 탭 모두 표시");
+    record("성적 상세 분석", "내 성적, 시험 분석, 문항 분석 탭 모두 표시");
 
     await page.getByRole("button", { name: "합격예측 분석 보기", exact: true }).click();
     await page.waitForURL("**/exam/prediction");

@@ -35,7 +35,7 @@ export default function ShareCard({
           "linear-gradient(145deg, #0b1f62 0%, #112b8a 35%, #1f4fa8 100%)",
         color: "#ffffff",
         padding: "56px",
-        fontFamily: "Noto Sans KR, sans-serif",
+        fontFamily: "Pretendard, Noto Sans KR, sans-serif",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

@@ -106,8 +106,8 @@ export default function PassCutTrendChart({
 
   if (releasedScorePointCount < 2) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+      <section className="border-t border-slate-200 pt-6">
+        <h3 className="user-card-title">{title}</h3>
         <div className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-4 py-3">
           <p className="text-sm font-semibold text-amber-900">변동 추이 축적 중</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
@@ -123,18 +123,18 @@ export default function PassCutTrendChart({
   const showMyScore = typeof myScore === "number" && Number.isFinite(myScore) && hasScoreData;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+    <section className="border-t border-slate-200 pt-6">
+      <h3 className="user-card-title">{title}</h3>
       <div className="mt-4 h-[370px]">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="name" tick={{ fontSize: "var(--user-chart-label-size)", fill: "#64748b" }} axisLine={false} tickLine={false} />
             {hasScoreData ? (
               <YAxis
                 yAxisId="score"
                 domain={[minScore, maxScore]}
-                tick={{ fontSize: 12, fill: "#64748b" }}
+                tick={{ fontSize: "var(--user-chart-label-size)", fill: "#64748b" }}
                 axisLine={false}
                 tickLine={false}
               />
@@ -142,12 +142,12 @@ export default function PassCutTrendChart({
             <YAxis
               yAxisId="count"
               orientation="right"
-              tick={{ fontSize: 12, fill: "#94a3b8" }}
+              tick={{ fontSize: "var(--user-chart-label-size)", fill: "#94a3b8" }}
               axisLine={false}
               tickLine={false}
             />
             <Tooltip
-              contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+              contentStyle={{ borderRadius: "0", border: "1px solid #e8e8ec", fontSize: "var(--user-chart-label-size)" }}
               formatter={(value: unknown, name: string | number | undefined) => {
                 const num = typeof value === "number" ? value : Number(value ?? 0);
                 const safeName = typeof name === "string" ? name : String(name ?? "");
@@ -225,7 +225,7 @@ export default function PassCutTrendChart({
                   value: `내 점수 ${myScore.toFixed(1)}점`,
                   position: "insideTopRight",
                   fill: "var(--service-900)",
-                  fontSize: 12,
+                  fontSize: "var(--user-chart-label-size)",
                   fontWeight: 600,
                 }}
               />

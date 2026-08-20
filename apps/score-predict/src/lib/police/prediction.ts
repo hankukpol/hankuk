@@ -1,11 +1,17 @@
 import { ExamType, Prisma, Role, SubmissionScoringStatus, SubmissionSuspicionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { calculateSampleTopPercent } from "@/lib/public-sample-policy";
+import {
+  calculateSampleTopPercent,
+  canShowSampleOneMultiplePoint,
+  getOneMultipleDisclosureTarget,
+} from "@/lib/public-sample-policy";
 import {
   getPoliceApplicantCount,
   getPolicePassMultiple,
   getPoliceRecruitCount,
+  getPoliceWrittenPassCount,
 } from "@/lib/police/prediction-policy";
+import { buildPoliceScoredNonCutoffWhere, hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
 import {
   buildPolicePredictionBands,
   classifyPolicePredictionGrade,
@@ -70,7 +76,9 @@ export interface PredictionSummary {
   oneMultipleCutScore: number | null;
   oneMultipleTieCount: number | null;
   isOneMultipleCutConfirmed: boolean;
+  oneMultipleDisclosureTarget: number;
   passMultiple: number;
+  writtenPassCount: number;
   sureMultiple: number | null;
   likelyMultiple: number | null;
   sureMaxRank: number | null;
@@ -187,11 +195,14 @@ export function getCompetitorDisplayName(identity: CompetitorIdentitySource): st
   return maskKoreanName(identity.name);
 }
 
-export function getPassMultiple(recruitCount: number, configuredMultiple?: number | null): number {
-  const multiple = typeof configuredMultiple === "number" && Number.isFinite(configuredMultiple)
-    && configuredMultiple > 0
-    ? configuredMultiple
-    : getPolicePassMultiple(recruitCount);
+export function getPassMultiple(
+  recruitCount: number,
+  _configuredMultiple?: number | null,
+  examType: ExamType = ExamType.PUBLIC
+): number {
+  // 2026년 2차 공식 공고 기준: 공채는 2배수, 경행경채는 소수 모집표를 적용한다.
+  // 과거 설정 필드는 기록용으로 보존하지만 현재 계산을 덮어쓸 수 없다.
+  const multiple = getPolicePassMultiple(recruitCount, examType);
   if (multiple === null) {
     throw new PredictionError("유효하지 않은 선발인원입니다.", 500);
   }
@@ -341,12 +352,7 @@ function buildPopulationWhere(submission: {
     regionId: submission.regionId,
     examType: submission.examType,
     isSuspicious: false,
-    subjectScores: {
-      some: {},
-      none: {
-        isFailed: true,
-      },
-    },
+    ...buildPoliceScoredNonCutoffWhere(submission.examType),
   };
 }
 
@@ -365,6 +371,7 @@ export async function calculatePrediction(
     regionId: true,
     examType: true,
     finalScore: true,
+    totalScore: true,
     isSuspicious: true,
     suspicionStatus: true,
     scoringStatus: true,
@@ -374,6 +381,7 @@ export async function calculatePrediction(
         name: true,
         year: true,
         round: true,
+        isActive: true,
         policeWrittenPassMultiple: true,
         policePredictionModelVersion: true,
       },
@@ -427,10 +435,10 @@ export async function calculatePrediction(
       where: {
         examId: activeExam!.id,
         suspicionStatus: SubmissionSuspicionStatus.CLEAR,
-        subjectScores: {
-          some: {},
-          none: { isFailed: true },
-        },
+        OR: [ExamType.PUBLIC, ExamType.CAREER].map((examType) => ({
+          examType,
+          ...buildPoliceScoredNonCutoffWhere(examType),
+        })),
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: submissionSelect,
@@ -445,6 +453,10 @@ export async function calculatePrediction(
     throw new PredictionError("경찰 서비스의 시험유형이 아닌 제출 데이터입니다.", 409);
   }
 
+  if (!isAdmin && !submission.exam.isActive) {
+    throw new PredictionError("현재 활성 시험의 합격예측만 조회할 수 있습니다.", 409);
+  }
+
   if (!submission.region.isActive) {
     throw new PredictionError("비활성 지역은 합격예측을 이용할 수 없습니다.", 400);
   }
@@ -453,7 +465,11 @@ export async function calculatePrediction(
     throw new PredictionError("채점 대기 중입니다. 가답안 발표 후 자동 채점 결과를 확인해 주세요.", 409);
   }
 
-  if (submission.subjectScores.some((subjectScore) => subjectScore.isFailed)) {
+  if (hasPoliceWrittenCutoff({
+    examType: submission.examType,
+    totalScore: Number(submission.totalScore),
+    subjectScores: submission.subjectScores,
+  })) {
     throw new PredictionError("과락으로 인해 합격예측을 제공할 수 없습니다.", 400);
   }
 
@@ -496,8 +512,13 @@ export async function calculatePrediction(
 
   const passMultiple = getPassMultiple(
     recruitCount,
-    submission.exam.policeWrittenPassMultiple
+    submission.exam.policeWrittenPassMultiple,
+    submission.examType
   );
+  const writtenPassCount = getPoliceWrittenPassCount(recruitCount, submission.examType);
+  if (writtenPassCount === null) {
+    throw new PredictionError("필기 합격 예정 인원을 계산할 수 없습니다.", 500);
+  }
   const applicantCountInfo = getRegionApplicantCount(quota, submission.examType);
   const estimatedApplicants = estimateApplicants({
     applicantCount: applicantCountInfo.applicantCount,
@@ -566,7 +587,7 @@ export async function calculatePrediction(
   const predictionGrade = gradesAvailable ? classifyPolicePredictionGrade(myRank, bands) : null;
   const passLineScore: number | null = null;
   const oneMultipleBand = getScoreBandAtRank(scoreBands, recruitCount) ?? getLastScoreBand(scoreBands);
-  const isOneMultipleCutConfirmed = totalParticipants >= recruitCount;
+  const isOneMultipleCutConfirmed = canShowSampleOneMultiplePoint(totalParticipants, recruitCount);
   const oneMultipleActualRank = oneMultipleBand?.endRank ?? null;
   const oneMultipleCutScore = isOneMultipleCutConfirmed ? oneMultipleBand?.score ?? null : null;
   const oneMultipleTieCount = isOneMultipleCutConfirmed ? oneMultipleBand?.count ?? null : null;
@@ -705,7 +726,9 @@ export async function calculatePrediction(
       oneMultipleCutScore: oneMultipleCutScore === null ? null : toSafeNumber(oneMultipleCutScore),
       oneMultipleTieCount,
       isOneMultipleCutConfirmed,
+      oneMultipleDisclosureTarget: getOneMultipleDisclosureTarget(recruitCount),
       passMultiple: toSafeNumber(passMultiple),
+      writtenPassCount,
       sureMultiple: gradesAvailable ? bands.sureMultiple : null,
       likelyMultiple: gradesAvailable ? bands.likelyMultiple : null,
       sureMaxRank,

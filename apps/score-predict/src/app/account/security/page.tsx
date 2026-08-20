@@ -7,8 +7,13 @@ export default async function AccountSecurityPage() {
   if (!current) redirect("/login");
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:py-14">
-      <AccountSecurityForm />
+    <main className="pb-16">
+      {/* 시험 화면과 같은 `user-content-frame` 기준선 위에서 설정 화면 폭만 좁게 잡는다. */}
+      <div className="user-content-frame pt-[100px]">
+        <div className="mx-auto w-full max-w-[640px]">
+          <AccountSecurityForm />
+        </div>
+      </div>
     </main>
   );
 }

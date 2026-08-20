@@ -35,6 +35,11 @@ import {
 import type { TenantType } from "@/lib/tenant";
 import { resolveFireWrittenBonus } from "@/lib/fire/written-bonus";
 import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
+import { hasPoliceWrittenBonusSubjectCutoff } from "@/lib/police/written-policy";
+import {
+  isValidPoliceContactPhone,
+  normalizePoliceContactPhone,
+} from "@/lib/police/contact-phone";
 import {
   isActiveExamRouteError,
   lockActiveExamStateForWrite,
@@ -74,6 +79,7 @@ interface SubmissionRequestBody {
   gender?: unknown;
   regionId?: unknown;
   examNumber?: unknown;
+  contactPhone?: unknown;
   difficulty?: unknown;
   bonusType?: unknown;
   veteranPercent?: unknown;
@@ -81,6 +87,12 @@ interface SubmissionRequestBody {
   certificateBonus?: unknown;
   submitDurationMs?: unknown;
   answers?: unknown;
+}
+
+function parsePoliceContactPhone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = normalizePoliceContactPhone(value);
+  return isValidPoliceContactPhone(normalized) ? normalized : null;
 }
 
 class SubmissionRouteError extends Error {
@@ -650,6 +662,14 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const contactPhone = tenantType === "police" ? parsePoliceContactPhone(body.contactPhone) : null;
+    if (tenantType === "police" && !contactPhone) {
+      return NextResponse.json(
+        { error: "연락처는 올바른 휴대전화 번호로 입력해 주세요." },
+        { status: 400 }
+      );
+    }
     const examNumber =
       tenantType === "police"
         ? parsePoliceExamNumberInput(body.examNumber)
@@ -772,7 +792,7 @@ export async function POST(request: Request) {
           declaredRate: bonusRate,
           recruitCount,
           applicantCount: applicantCountInfo.applicantCount,
-          hasCutoff: rawScoreResult.hasCutoff,
+          hasSubjectCutoff: hasPoliceWrittenBonusSubjectCutoff(rawScoreResult.scores),
         });
         scoreResult = bonusDecision.effectiveRate > 0
           ? await calculateTenantScore(tenantType, {
@@ -823,6 +843,10 @@ export async function POST(request: Request) {
       });
 
       if (tenantType === "police") {
+        await tx.user.update({
+          where: { id: userId },
+          data: { contactPhone: contactPhone! },
+        });
         const ownPreRegistration = await tx.preRegistration.findUnique({
           where: { userId_examId: { userId, examId: exam.id } },
           select: { id: true },
@@ -948,6 +972,13 @@ export async function POST(request: Request) {
       if (target.some((item) => item.includes("examNumber"))) {
         return NextResponse.json(
           { error: "해당 지역에 동일한 응시번호가 이미 존재합니다. 응시번호를 확인해 주세요." },
+          { status: 409 }
+        );
+      }
+
+      if (target.some((item) => item.includes("contactPhone"))) {
+        return NextResponse.json(
+          { error: "이미 다른 계정에 등록된 연락처입니다. 관리자에게 문의해 주세요." },
           { status: 409 }
         );
       }
@@ -1092,6 +1123,15 @@ export async function PUT(request: Request) {
         { status: 400 }
       );
     }
+
+
+    const contactPhone = tenantType === "police" ? parsePoliceContactPhone(body.contactPhone) : null;
+    if (tenantType === "police" && !contactPhone) {
+      return NextResponse.json(
+        { error: "연락처는 올바른 휴대전화 번호로 입력해 주세요." },
+        { status: 400 }
+      );
+    }
     const examNumber =
       tenantType === "police"
         ? parsePoliceExamNumberInput(body.examNumber)
@@ -1216,7 +1256,7 @@ export async function PUT(request: Request) {
           declaredRate: bonusRate,
           recruitCount,
           applicantCount: applicantCountInfo.applicantCount,
-          hasCutoff: rawScoreResult.hasCutoff,
+          hasSubjectCutoff: hasPoliceWrittenBonusSubjectCutoff(rawScoreResult.scores),
         });
         scoreResult = bonusDecision.effectiveRate > 0
           ? await calculateTenantScore(tenantType, {
@@ -1279,6 +1319,10 @@ export async function PUT(request: Request) {
       });
 
       if (tenantType === "police") {
+        await tx.user.update({
+          where: { id: userId },
+          data: { contactPhone: contactPhone! },
+        });
         const ownPreRegistration = await tx.preRegistration.findUnique({
           where: { userId_examId: { userId, examId: exam.id } },
           select: { id: true },
@@ -1380,6 +1424,11 @@ export async function PUT(request: Request) {
         });
       }
 
+
+      await tx.finalPrediction.deleteMany({
+        where: { submissionId },
+      });
+
       return { id: submissionId };
     });
 
@@ -1419,6 +1468,13 @@ export async function PUT(request: Request) {
       if (target.some((item) => item.includes("examNumber"))) {
         return NextResponse.json(
           { error: "해당 지역에 동일한 응시번호가 이미 존재합니다. 응시번호를 확인해 주세요." },
+          { status: 409 }
+        );
+      }
+
+      if (target.some((item) => item.includes("contactPhone"))) {
+        return NextResponse.json(
+          { error: "이미 다른 계정에 등록된 연락처입니다. 관리자에게 문의해 주세요." },
           { status: 409 }
         );
       }

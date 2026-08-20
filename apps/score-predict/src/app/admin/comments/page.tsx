@@ -327,7 +327,7 @@ export default function AdminCommentsPage() {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">
                   <input type="checkbox" checked={isAllChecked} onChange={toggleSelectAll} />
@@ -337,7 +337,7 @@ export default function AdminCommentsPage() {
                 <th className="whitespace-nowrap px-4 py-3">시험</th>
                 <th className="whitespace-nowrap px-4 py-3">내용</th>
                 <th className="whitespace-nowrap px-4 py-3">작성일</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">삭제</th>
+                <th className="whitespace-nowrap px-4 py-3">삭제</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -368,7 +368,7 @@ export default function AdminCommentsPage() {
                     <td className="px-4 py-3 text-slate-700">
                       {formatDateTimeText(comment.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3">
                       <Button
                         type="button"
                         size="sm"

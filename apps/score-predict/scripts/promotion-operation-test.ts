@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ExamOperationPhase, Prisma, PrismaClient, PromotionCampaignStatus, Role } from "@prisma/client";
-import { buildLegacyOperationMigration, normalizeOperationOverrides, OPERATION_PRESETS, overlayOperationSettings, resolveOperationFeatures } from "../src/lib/exam-operation";
+import {
+  buildLegacyOperationMigration,
+  normalizeOperationOverrides,
+  OPERATION_PHASE_DESCRIPTIONS,
+  OPERATION_PHASE_LABELS,
+  OPERATION_PRESETS,
+  overlayOperationSettings,
+  resolveOperationFeatures,
+} from "../src/lib/exam-operation";
 import { isPublicExamPagePath } from "../src/lib/exam-surface";
 import { sanitizeCustomHtmlDocument } from "../src/lib/promotions/custom-html";
 import {
@@ -79,6 +87,33 @@ async function main() {
   assert.deepEqual(OPERATION_PRESETS.ANALYSIS_OPEN, { preRegistration: false, answerInput: true, result: true, analysis: true, finalPrediction: false, comments: false, notices: true, faq: true });
   assert.deepEqual(OPERATION_PRESETS.FINAL_OPEN, { preRegistration: false, answerInput: false, result: true, analysis: true, finalPrediction: true, comments: false, notices: true, faq: true });
   assert.deepEqual(OPERATION_PRESETS.CLOSED, { preRegistration: false, answerInput: false, result: false, analysis: false, finalPrediction: false, comments: false, notices: true, faq: true });
+  assert.equal(OPERATION_PHASE_LABELS.SCORING_OPEN, "가채점만 오픈");
+  assert.equal(OPERATION_PHASE_LABELS.ANALYSIS_OPEN, "가채점 + 표본분석 오픈");
+  assert.equal(OPERATION_PHASE_LABELS.FINAL_OPEN, "답안 마감 + 최종예측 오픈");
+  assert.match(OPERATION_PHASE_DESCRIPTIONS.ANALYSIS_OPEN, /시험 직후 권장 단계/);
+
+  const recommendedWorkflow = [
+    resolveOperationFeatures(ExamOperationPhase.PRE_REGISTRATION, {}),
+    resolveOperationFeatures(ExamOperationPhase.ANALYSIS_OPEN, {}),
+    resolveOperationFeatures(ExamOperationPhase.FINAL_OPEN, {}),
+    resolveOperationFeatures(ExamOperationPhase.CLOSED, {}),
+  ];
+  assert.deepEqual(
+    recommendedWorkflow.map(({ preRegistration, answerInput, result, analysis, finalPrediction }) => ({
+      preRegistration,
+      answerInput,
+      result,
+      analysis,
+      finalPrediction,
+    })),
+    [
+      { preRegistration: true, answerInput: false, result: false, analysis: false, finalPrediction: false },
+      { preRegistration: false, answerInput: true, result: true, analysis: true, finalPrediction: false },
+      { preRegistration: false, answerInput: false, result: true, analysis: true, finalPrediction: true },
+      { preRegistration: false, answerInput: false, result: false, analysis: false, finalPrediction: false },
+    ],
+    "권장 운영 순서의 누적 공개 기능이 바뀌면 안 됩니다.",
+  );
   assert.equal(isPublicExamPagePath("/exam/notices"), true);
   assert.equal(isPublicExamPagePath("/exam/faq/"), true);
   assert.equal(isPublicExamPagePath("/police/exam/notices"), true);
@@ -131,6 +166,16 @@ async function main() {
   assert.match(sanitizedCustomHtml, /https:\/\/daegu\.koreapolice\.co\.kr\/images\/background\.webp/);
   assert.match(sanitizedCustomHtml, /href="#pre-registration"/);
   assert.doesNotMatch(sanitizedCustomHtml, /<script|<iframe|<form|onclick|onerror/i);
+
+  const sanitizedSameOriginAssets = sanitizeCustomHtmlDocument(`
+    <style>.hero{background-image:url('/promotions/police/hero.webp')}</style>
+    <img src="/promotions/police/hero.webp" alt="히어로">
+    <a href="/exam/input">답안 입력</a>
+  `);
+  assert.match(sanitizedSameOriginAssets, /src="\/promotions\/police\/hero\.webp"/);
+  assert.match(sanitizedSameOriginAssets, /href="\/exam\/input"/);
+  assert.match(sanitizedSameOriginAssets, /url\('\/promotions\/police\/hero\.webp'\)/);
+  assert.doesNotMatch(sanitizeCustomHtmlDocument('<img src="//unsafe.example.com/hero.webp">'), /src=/);
   assert.deepEqual(getPromotionTemplatesForTenant("police").map((item) => item.key), [CUSTOM_HTML_PROMOTION_TEMPLATE_KEY]);
   assert.deepEqual(getPromotionTemplatesForTenant("fire").map((item) => item.key), [CUSTOM_HTML_PROMOTION_TEMPLATE_KEY]);
 

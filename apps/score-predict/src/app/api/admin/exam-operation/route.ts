@@ -1,11 +1,16 @@
 import { ExamOperationPhase, Prisma, PromotionCampaignStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
-import { lockActiveExamStateForTransition, requireSoleActiveExam } from "@/lib/active-exam";
+import {
+  isActiveExamRouteError,
+  lockActiveExamStateForTransition,
+  requireSoleActiveExam,
+} from "@/lib/active-exam";
 import {
   getEffectiveOperationContext,
   inferLegacyOperationPhase,
   normalizeOperationOverrides,
+  OPERATION_PHASE_DESCRIPTIONS,
   OPERATION_PHASE_LABELS,
   revalidatePromotionPublic,
   resolveOperationFeatures,
@@ -54,13 +59,19 @@ export async function GET() {
         ...publicOperation,
         phaseLabel: OPERATION_PHASE_LABELS[operation.phase],
         warnings: [
+          ...(operation.source === "INVARIANT_CLOSED" ? ["활성 시험은 정확히 1개여야 합니다. 현재 학생 기능은 안전을 위해 모두 차단되었습니다."] : []),
           ...(operation.source === "LEGACY_SETTINGS" ? ["회차 운영 상태가 아직 백필되지 않아 기존 설정 호환 모드입니다."] : []),
           ...(operation.exam && !operation.state?.activeCampaignId ? ["대표 캠페인이 없어 기본 서비스 홈이 표시됩니다."] : []),
           ...(!activeCampaignSupported ? ["기존 구조화 프로모션은 지원이 종료되어 기본 서비스 홈이 표시됩니다. HTML/CSS 캠페인을 게시한 뒤 대표로 선택해 주세요."] : []),
         ],
       },
       campaigns,
-      presets: Object.values(ExamOperationPhase).map((phase) => ({ phase, label: OPERATION_PHASE_LABELS[phase], features: resolveOperationFeatures(phase, {}) })),
+      presets: Object.values(ExamOperationPhase).map((phase) => ({
+        phase,
+        label: OPERATION_PHASE_LABELS[phase],
+        description: OPERATION_PHASE_DESCRIPTIONS[phase],
+        features: resolveOperationFeatures(phase, {}),
+      })),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("회차 운영 상태 조회 실패", error);
@@ -113,6 +124,9 @@ export async function POST(request: NextRequest) {
     revalidateSiteSettingsCache();
     return NextResponse.json({ success: true, ...updated, features: resolveOperationFeatures(updated.state.phase, updated.state.featureOverrides) });
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (error instanceof Error && error.message === "VERSION_CONFLICT") return NextResponse.json({ error: "다른 관리자가 운영 상태를 변경했습니다. 다시 확인해 주세요." }, { status: 409 });
     if (error instanceof Error && error.message === "INVALID_CAMPAIGN") return NextResponse.json({ error: "같은 회차에 게시된 캠페인만 대표로 선택할 수 있습니다." }, { status: 400 });
     console.error("회차 운영 상태 변경 실패", error);

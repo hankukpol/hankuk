@@ -602,7 +602,7 @@ function FireAdminRegionsPage() {
       ) : (
         <>
           {/* 공채(남)/공채(여)/구조/소방학과남/소방학과여/소방학과양성/구급남/구급여 탭 */}
-          <div className="flex flex-wrap border-b border-slate-200">
+          <div className="admin-content-tabs" role="tablist" aria-label="모집 직렬 선택">
             {([
               { key: "PUBLIC_MALE" as RegionTabKey, label: "공채(남)" },
               { key: "PUBLIC_FEMALE" as RegionTabKey, label: "공채(여)" },
@@ -618,21 +618,17 @@ function FireAdminRegionsPage() {
                 <button
                   key={tab.key}
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.key}
+                  data-active={activeTab === tab.key ? "true" : "false"}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`relative px-5 py-2.5 text-sm font-semibold transition-colors ${
- activeTab === tab.key
- ? "text-service-700"
- : "text-slate-500 hover:text-slate-700"
- }`}
+                  className="admin-content-tab"
                 >
                   {tab.label}
                   {tabChanged > 0 && (
                     <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-100 px-1.5 text-xs font-bold text-amber-700">
                       {tabChanged}
                     </span>
-                  )}
-                  {activeTab === tab.key && (
-                    <span className="absolute inset-x-0 bottom-0 h-0.5 bg-service-600" />
                   )}
                 </button>
               );
@@ -641,7 +637,7 @@ function FireAdminRegionsPage() {
 
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-[800px] w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3">지역</th>
                   <th className="whitespace-nowrap px-4 py-3">상태</th>
@@ -772,7 +768,7 @@ function FireAdminRegionsPage() {
                           step={1}
                           value={recruit}
                           onChange={(e) => updateRegionValue(row.id, recruitField, e.target.value)}
-                          className={`h-9 w-24 rounded-md border px-2 text-right text-sm ${
+                          className={`num-right h-9 w-24 rounded-md border px-2 text-sm ${
  isFieldChanged(row, recruitField)
  ? "border-amber-300 bg-amber-50"
  : "border-slate-300 bg-white"
@@ -784,7 +780,7 @@ function FireAdminRegionsPage() {
                             합격배수 {getPassMultipleText(recruit, activeTab)} ({getPassCount(recruit, activeTab)}명 선발)
                           </p>
                         ) : null}
-                        <div className="mt-2 flex items-center gap-1">
+                        <div className="mt-2 flex items-center justify-center gap-1">
                           <span className="text-xs text-slate-500">접수:</span>
                           <input
                             type="number"
@@ -793,7 +789,7 @@ function FireAdminRegionsPage() {
                             value={applicant ?? ""}
                             onChange={(e) => updateRegionNullableValue(row.id, applicantField, e.target.value)}
                             placeholder="미입력"
-                            className={`h-8 w-24 rounded-md border px-2 text-right text-sm ${
+                            className={`num-right h-8 w-24 rounded-md border px-2 text-sm ${
  isFieldChanged(row, applicantField)
  ? "border-amber-300 bg-amber-50"
  : "border-slate-300 bg-white"
@@ -810,7 +806,7 @@ function FireAdminRegionsPage() {
 
                       {/* 응시번호 범위 */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-center gap-1">
                           <input
                             type="text"
                             value={numStart ?? ""}

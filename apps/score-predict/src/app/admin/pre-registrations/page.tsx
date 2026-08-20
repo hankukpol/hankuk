@@ -485,7 +485,7 @@ export default function AdminPreRegistrationsPage() {
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-slate-900">사전등록 관리</h1>
+        <h1 className="admin-page-title text-slate-900">사전등록 관리</h1>
         <p className="text-sm text-slate-600">
           사전등록 목록 조회, CSV 다운로드, 이벤트 추첨, 관리자 직접 수정/삭제를 할 수 있습니다.
         </p>
@@ -653,13 +653,13 @@ export default function AdminPreRegistrationsPage() {
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
-                    <th className="whitespace-nowrap px-3 py-2 text-left">순번</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left">이름</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left">아이디</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left">연락처</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left">지역</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left">유형</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-left">응시번호</th>
+                    <th className="whitespace-nowrap px-3 py-2">순번</th>
+                    <th className="whitespace-nowrap px-3 py-2">이름</th>
+                    <th className="whitespace-nowrap px-3 py-2">아이디</th>
+                    <th className="whitespace-nowrap px-3 py-2">연락처</th>
+                    <th className="whitespace-nowrap px-3 py-2">지역</th>
+                    <th className="whitespace-nowrap px-3 py-2">유형</th>
+                    <th className="whitespace-nowrap px-3 py-2">응시번호</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -698,17 +698,17 @@ export default function AdminPreRegistrationsPage() {
           <table className="w-full min-w-[1400px] border-collapse text-sm">
             <thead>
               <tr className="bg-slate-100 text-slate-700">
-                <th className="whitespace-nowrap px-3 py-2 text-left">이름</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">아이디</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">연락처</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">시험</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">지역</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">채용</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">성별</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">응시번호</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">최초 등록</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">최종 수정</th>
-                <th className="whitespace-nowrap px-3 py-2 text-left">관리</th>
+                <th className="whitespace-nowrap px-3 py-2">이름</th>
+                <th className="whitespace-nowrap px-3 py-2">아이디</th>
+                <th className="whitespace-nowrap px-3 py-2">연락처</th>
+                <th className="whitespace-nowrap px-3 py-2">시험</th>
+                <th className="whitespace-nowrap px-3 py-2">지역</th>
+                <th className="whitespace-nowrap px-3 py-2">채용</th>
+                <th className="whitespace-nowrap px-3 py-2">성별</th>
+                <th className="whitespace-nowrap px-3 py-2">응시번호</th>
+                <th className="whitespace-nowrap px-3 py-2">최초 등록</th>
+                <th className="whitespace-nowrap px-3 py-2">최종 수정</th>
+                <th className="whitespace-nowrap px-3 py-2">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -866,7 +866,7 @@ export default function AdminPreRegistrationsPage() {
                       <td className="px-3 py-2">{formatDateTimeText(row.createdAt)}</td>
                       <td className="px-3 py-2">{formatDateTimeText(row.updatedAt)}</td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap justify-center gap-2">
                           {isEditing ? (
                             <>
                               <Button type="button" size="sm" onClick={() => void handleSaveEdit(row)} disabled={isSaving}>

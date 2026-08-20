@@ -11,6 +11,27 @@ export type ExamSurfaceKey =
   | "notices"
   | "faq";
 
+export const EXAM_TAB_QUERY_PARAM = "examTab";
+
+const EXAM_SURFACE_KEYS = new Set<ExamSurfaceKey>([
+  "main",
+  "input",
+  "result",
+  "final",
+  "prediction",
+  "comments",
+  "notices",
+  "faq",
+]);
+
+export function isExamSurfaceKey(value: string | null | undefined): value is ExamSurfaceKey {
+  return typeof value === "string" && EXAM_SURFACE_KEYS.has(value as ExamSurfaceKey);
+}
+
+export function getEmbeddedExamTabCallbackHref(key: ExamSurfaceKey): string {
+  return `?${EXAM_TAB_QUERY_PARAM}=${encodeURIComponent(key)}`;
+}
+
 export interface ExamSurfaceItem {
   key: ExamSurfaceKey;
   href: string;
@@ -48,7 +69,7 @@ const EXAM_SURFACES: Record<ExamSurfaceKey, Omit<ExamSurfaceItem, "enabled">> = 
   result: { key: "result", href: "/exam/result", requiresSubmission: true },
   final: { key: "final", href: "/exam/final", requiresSubmission: true },
   prediction: { key: "prediction", href: "/exam/prediction", requiresSubmission: true },
-  comments: { key: "comments", href: "/exam/comments", requiresSubmission: true },
+  comments: { key: "comments", href: "/exam/comments", requiresSubmission: false },
   notices: { key: "notices", href: "/exam/notices", requiresSubmission: false },
   faq: { key: "faq", href: "/exam/faq", requiresSubmission: false },
 };

@@ -4,6 +4,8 @@ import { buildPolicePredictionBands } from "@/lib/police/prediction-model";
 import { estimateApplicants } from "@/lib/police/policy";
 import { getPassMultiple } from "@/lib/police/prediction";
 import { prisma } from "@/lib/prisma";
+import { buildPoliceScoredNonCutoffWhere } from "@/lib/police/written-policy";
+import { canShowSampleOneMultiplePoint } from "@/lib/public-sample-policy";
 
 interface QuotaRow {
   regionId: number;
@@ -120,12 +122,10 @@ export async function buildPassCutPredictionRows(params: {
       where: {
         examId: params.examId,
         isSuspicious: false,
-        subjectScores: {
-          some: {},
-          none: {
-            isFailed: true,
-          },
-        },
+        OR: examTypes.map((examType) => ({
+          examType,
+          ...buildPoliceScoredNonCutoffWhere(examType),
+        })),
       },
       _count: {
         _all: true,
@@ -139,12 +139,10 @@ export async function buildPassCutPredictionRows(params: {
       where: {
         examId: params.examId,
         isSuspicious: false,
-        subjectScores: {
-          some: {},
-          none: {
-            isFailed: true,
-          },
-        },
+        OR: examTypes.map((examType) => ({
+          examType,
+          ...buildPoliceScoredNonCutoffWhere(examType),
+        })),
       },
       _count: {
         _all: true,
@@ -197,9 +195,15 @@ export async function buildPassCutPredictionRows(params: {
           : null;
 
       const scoreBands = buildScoreBands(scoreBandMap.get(`${quota.regionId}-${examType}`) ?? []);
-      const oneMultipleCutScore = getScoreAtRank(scoreBands, recruitCount);
+      const oneMultipleCutScore = canShowSampleOneMultiplePoint(participantCount, recruitCount)
+        ? getScoreAtRank(scoreBands, recruitCount)
+        : null;
 
-      const passMultiple = getPassMultiple(recruitCount, exam?.policeWrittenPassMultiple);
+      const passMultiple = getPassMultiple(
+        recruitCount,
+        exam?.policeWrittenPassMultiple,
+        examType
+      );
       const estimatedApplicants = estimateApplicants({
         applicantCount: applicantCountInfo.applicantCount,
         recruitCount,

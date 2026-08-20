@@ -32,7 +32,7 @@ export default function EventCard({ event, fullWidth = false }: EventCardProps) 
           ) : null}
 
           <div className="space-y-3">
-            <h3 className="text-xl font-black leading-tight text-slate-900">{event.title}</h3>
+            <h3 className="user-section-title">{event.title}</h3>
             {event.description ? (
               <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{event.description}</p>
             ) : null}

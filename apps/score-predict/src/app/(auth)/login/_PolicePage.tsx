@@ -6,11 +6,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useToast } from "@/components/providers/ToastProvider";
+import UserFormPageShell from "@/components/layout/UserFormPageShell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { normalizeUsername, validateLoginInput } from "@/lib/police/validations";
+import { resolveSafeAuthCallback } from "@/lib/auth-callback";
 import { parseTenantTypeFromHostname, withTenantPrefix } from "@/lib/tenant";
 
 const TENANT_TYPE = "police";
@@ -68,11 +69,15 @@ function LoginContent() {
     });
 
     if (result?.ok) {
-      const callbackUrl =
-        requestedCallbackUrl ??
-        (parseTenantTypeFromHostname(window.location.hostname) === TENANT_TYPE
+      const fallbackCallback =
+        parseTenantTypeFromHostname(window.location.hostname) === TENANT_TYPE
           ? "/"
-          : POST_LOGIN_REDIRECT_PATH);
+          : POST_LOGIN_REDIRECT_PATH;
+      const callbackUrl = resolveSafeAuthCallback(
+        requestedCallbackUrl,
+        fallbackCallback,
+        TENANT_TYPE
+      );
       router.replace(callbackUrl);
       router.refresh();
       return;
@@ -84,40 +89,32 @@ function LoginContent() {
   };
 
   return (
-    <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">{TEXT.title}</CardTitle>
-          <p className="text-sm text-slate-500">{TEXT.description}</p>
-        </CardHeader>
-        <CardContent>
-          {isRegistered ? <p className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{TEXT.registered}</p> : null}
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="username">{TEXT.username}</Label>
-              <Input id="username" type="text" value={username} onChange={(event) => setUsername(normalizeUsername(event.target.value))} placeholder={TEXT.usernamePlaceholder} autoCapitalize="none" autoCorrect="off" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">{TEXT.password}</Label>
-              <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={TEXT.passwordPlaceholder} required />
-            </div>
-            {errorMessage ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p> : null}
-            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
-          </form>
-          <p className="mt-3 text-xs text-slate-500">아이디와 비밀번호는 영문 대소문자를 구분하지 않습니다.</p>
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-            <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">아이디 찾기</Link>
-            <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">{TEXT.forgotPassword}</Link>
-            <Link href={withTenantPrefix("/register", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">{TEXT.register}</Link>
-          </div>
-          <p className="mt-4 text-center text-xs text-slate-500">
-            {TEXT.adminPrefix}{" "}
-            <Link href={withTenantPrefix("/admin-login", TENANT_TYPE)} className="underline-offset-4 hover:underline">{TEXT.adminLink}</Link>
-            {" "}{TEXT.adminSuffix}
-          </p>
-        </CardContent>
-      </Card>
-    </main>
+    <UserFormPageShell title={TEXT.title} description={TEXT.description}>
+      {isRegistered ? <p className="mb-4 border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{TEXT.registered}</p> : null}
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <div className="space-y-2">
+          <Label htmlFor="username" className="user-data-label">{TEXT.username}</Label>
+          <Input id="username" type="text" value={username} onChange={(event) => setUsername(normalizeUsername(event.target.value))} placeholder={TEXT.usernamePlaceholder} autoCapitalize="none" autoCorrect="off" required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password" className="user-data-label">{TEXT.password}</Label>
+          <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={TEXT.passwordPlaceholder} required />
+        </div>
+        {errorMessage ? <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p> : null}
+        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>{isSubmitting ? TEXT.submitBusy : TEXT.submitIdle}</Button>
+      </form>
+      <p className="mt-3 text-xs text-slate-500">아이디와 비밀번호는 영문 대소문자를 구분하지 않습니다.</p>
+      <div className="mt-6 grid grid-cols-3 gap-2 border-t border-slate-200 pt-4 text-center text-sm">
+        <Link href={withTenantPrefix("/find-account", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">아이디 찾기</Link>
+        <Link href={withTenantPrefix("/forgot-password", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">{TEXT.forgotPassword}</Link>
+        <Link href={withTenantPrefix("/register", TENANT_TYPE)} className="text-slate-600 underline-offset-4 hover:text-service-700 hover:underline">{TEXT.register}</Link>
+      </div>
+      <p className="mt-4 text-center text-xs text-slate-500">
+        {TEXT.adminPrefix}{" "}
+        <Link href={withTenantPrefix("/admin-login", TENANT_TYPE)} className="underline-offset-4 hover:underline">{TEXT.adminLink}</Link>
+        {" "}{TEXT.adminSuffix}
+      </p>
+    </UserFormPageShell>
   );
 }
 

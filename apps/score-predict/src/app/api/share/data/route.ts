@@ -1,4 +1,11 @@
-import { ExamType, Gender, Prisma, Role, SubmissionSuspicionStatus } from "@prisma/client";
+import {
+  ExamType,
+  Gender,
+  Prisma,
+  Role,
+  SubmissionScoringStatus,
+  SubmissionSuspicionStatus,
+} from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { isOperationFeatureEnabled } from "@/lib/exam-operation";
@@ -6,6 +13,14 @@ import { calculateTenantPrediction } from "@/lib/tenant-calculations.server";
 import { prisma } from "@/lib/prisma";
 import { getTenantConfigByType, type TenantType } from "@/lib/tenant";
 import { isExamTypeForTenant, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
+import {
+  getPoliceScoredNonCutoffSql,
+  hasPoliceWrittenCutoff,
+} from "@/lib/police/written-policy";
+import {
+  isActiveExamRouteError,
+  requireSoleActiveExam,
+} from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -28,9 +43,24 @@ function toCount(value: bigint | number | null | undefined): number {
   return 0;
 }
 
-function getPopulationConditionSql(submissionHasCutoff: boolean): Prisma.Sql {
+function getPopulationConditionSql(params: {
+  tenantType: TenantType;
+  examType: ExamType;
+  submissionHasCutoff: boolean;
+}): Prisma.Sql {
+  const { tenantType, examType, submissionHasCutoff } = params;
   if (submissionHasCutoff) {
-    return Prisma.sql`AND s."isSuspicious" = false`;
+    return Prisma.sql`
+      AND s."isSuspicious" = false
+      AND s."scoringStatus"::text = 'SCORED'
+    `;
+  }
+
+  if (tenantType === "police") {
+    return Prisma.sql`
+      AND s."isSuspicious" = false
+      ${getPoliceScoredNonCutoffSql(examType)}
+    `;
   }
 
   return Prisma.sql`
@@ -68,8 +98,8 @@ function getGenderConditionSql(params: {
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await isOperationFeatureEnabled("result"))) {
-    return NextResponse.json({ error: "성적 결과가 아직 공개되지 않았습니다." }, { status: 403 });
+  if (!(await isOperationFeatureEnabled("analysis"))) {
+    return NextResponse.json({ error: "표본 분석은 아직 공개되지 않았습니다." }, { status: 403 });
   }
   const tenantSession = await getCurrentTenantSessionContext();
   if (!tenantSession) {
@@ -86,14 +116,30 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const submissionId = parsePositiveInt(searchParams.get("submissionId"));
 
+  let activeExam;
+  try {
+    activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType,
+      context: `${tenantType}/share-data`,
+    });
+  } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    throw error;
+  }
+
   const submission = await prisma.submission.findFirst({
     where: submissionId
       ? {
           id: submissionId,
+          examId: activeExam.id,
           examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
           ...(isAdmin ? {} : { userId }),
         }
-      : {
+        : {
+          examId: activeExam.id,
           examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
           ...(isAdmin ? {} : { userId }),
         },
@@ -104,6 +150,7 @@ export async function GET(request: NextRequest) {
       gender: true,
       totalScore: true,
       finalScore: true,
+      scoringStatus: true,
       suspicionStatus: true,
       subjectScores: {
         select: {
@@ -140,6 +187,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
   }
 
+  if (submission.scoringStatus !== SubmissionScoringStatus.SCORED) {
+    return NextResponse.json(
+      { error: "채점이 완료된 성적만 공유할 수 있습니다." },
+      { status: 409 }
+    );
+  }
+
   if (submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR) {
     return NextResponse.json(
       { error: "성적 검토가 완료되기 전에는 순위가 포함된 결과를 공유할 수 없습니다." },
@@ -147,11 +201,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const submissionHasCutoff = submission.subjectScores.some((score) => score.isFailed);
+  const submissionHasCutoff = tenantType === "police"
+    ? hasPoliceWrittenCutoff({
+        examType: submission.examType,
+        totalScore: Number(submission.totalScore),
+        subjectScores: submission.subjectScores,
+      })
+    : submission.subjectScores.some((score) => score.isFailed);
   const rankingBasis: RankingBasis = submissionHasCutoff
     ? "ALL_PARTICIPANTS"
     : "NON_CUTOFF_PARTICIPANTS";
-  const populationConditionSql = getPopulationConditionSql(submissionHasCutoff);
+  const populationConditionSql = getPopulationConditionSql({
+    tenantType,
+    examType: submission.examType,
+    submissionHasCutoff,
+  });
   const quota = await prisma.examRegionQuota.findUnique({
     where: {
       examId_regionId: {

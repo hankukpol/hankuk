@@ -3,6 +3,7 @@ import { ExamType } from "@prisma/client";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { prisma } from "@/lib/prisma";
+import { hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
 
 export const runtime = "nodejs";
 
@@ -89,7 +90,14 @@ export async function GET(request: NextRequest) {
     examLabel: `${submission.exam.year} / Round ${submission.exam.round}`,
     totalScore: Number(submission.totalScore),
     finalScore: Number(submission.finalScore),
-    hasCutoff: submission.subjectScores.some((subjectScore) => subjectScore.isFailed),
+    hasCutoff:
+      guard.tenantType === "police"
+        ? hasPoliceWrittenCutoff({
+            examType: submission.examType,
+            totalScore: Number(submission.totalScore),
+            subjectScores: submission.subjectScores,
+          })
+        : submission.subjectScores.some((subjectScore) => subjectScore.isFailed),
     isSuspicious: submission.isSuspicious,
   }));
 

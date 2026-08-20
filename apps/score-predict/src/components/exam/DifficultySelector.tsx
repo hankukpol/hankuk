@@ -36,9 +36,12 @@ const options: Array<{
 
 export default function DifficultySelector({ subjectName, value, onChange }: DifficultySelectorProps) {
   return (
-    <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:items-center">
-      <p className="shrink-0 text-xs text-slate-500">{subjectName} 체감 난이도</p>
-      <div className="grid w-full grid-cols-5 overflow-hidden rounded-md border border-slate-300 sm:w-auto">
+    <div className="w-full">
+      <p className="user-card-title">{subjectName} 체감 난이도</p>
+      <p className="mt-1 text-[13px] leading-5 text-slate-500">
+        선택하시면 다른 응시자들이 느낀 난이도와 비교해 볼 수 있습니다.
+      </p>
+      <div className="mt-3 grid w-full grid-cols-5 border border-slate-300">
         {options.map((option) => {
           const active = value === option.value;
           return (
@@ -46,8 +49,8 @@ export default function DifficultySelector({ subjectName, value, onChange }: Dif
               key={`${subjectName}-${option.value}`}
               type="button"
               onClick={() => onChange(option.value)}
-              className={`min-h-9 border-r border-slate-300 px-1 py-1.5 text-[11px] font-bold transition last:border-r-0 sm:px-3 sm:text-xs ${active
- ? "bg-service-700 text-white"
+              className={`min-h-11 border-r border-slate-300 px-2 py-2 text-[13px] font-bold tracking-[-0.05em] transition last:border-r-0 ${active
+ ? "bg-service-600 text-white"
  : "bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
  }`}
             >

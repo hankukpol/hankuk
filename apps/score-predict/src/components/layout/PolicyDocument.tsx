@@ -12,17 +12,21 @@ export default function PolicyDocument({
   const body = content.trim();
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-10">
-      <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">{title}</h1>
-      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-        {body ? (
-          <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{body}</p>
-        ) : (
-          <p className="text-sm text-slate-500">
-            아직 등록된 내용이 없습니다. 관리자 사이트 설정에서 본문을 등록해 주세요.
-          </p>
-        )}
-      </section>
+    <main className="pb-16">
+      <div className="user-content-frame pt-[100px]">
+        <div className="mx-auto w-full max-w-[768px]">
+          <h1 className="user-page-title">{title}</h1>
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+            {body ? (
+              <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{body}</p>
+            ) : (
+              <p className="text-sm text-slate-500">
+                아직 등록된 내용이 없습니다. 관리자 사이트 설정에서 본문을 등록해 주세요.
+              </p>
+            )}
+          </section>
+        </div>
+      </div>
     </main>
   );
 }

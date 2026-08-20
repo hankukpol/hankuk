@@ -9,6 +9,8 @@ interface QuickOmrInputProps {
   onAnswerChange: (questionNo: number, answer: number | null) => void;
   focusToken?: number;
   onRequestNextSubject?: () => void;
+  /** 미입력 문항으로 스크롤할 때 쓰는 DOM id 접두사. 과목명 대신 받아서 공백·특수문자를 피한다. */
+  questionIdPrefix?: string;
 }
 
 const cellStyles = {
@@ -28,6 +30,7 @@ export default function QuickOmrInput({
   onAnswerChange,
   focusToken = 0,
   onRequestNextSubject,
+  questionIdPrefix,
 }: QuickOmrInputProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [focusedQuestion, setFocusedQuestion] = useState<number | null>(null);
@@ -124,7 +127,11 @@ export default function QuickOmrInput({
             : cellStyles.filled;
 
         return (
-          <div key={`${subjectName}-${questionNo}`} className="flex flex-col items-center gap-1.5">
+          <div
+            key={`${subjectName}-${questionNo}`}
+            id={questionIdPrefix ? `${questionIdPrefix}-${questionNo}` : undefined}
+            className="flex scroll-mt-[140px] flex-col items-center gap-1.5"
+          >
             <label
               htmlFor={`${subjectName}-quick-${questionNo}`}
               className="text-xs font-semibold text-slate-500"
@@ -144,7 +151,8 @@ export default function QuickOmrInput({
               onKeyDown={(event) => handleKeyDown(questionNo, event)}
               onFocus={() => setFocusedQuestion(questionNo)}
               onBlur={() => setFocusedQuestion((prev) => (prev === questionNo ? null : prev))}
-              className={`h-9 w-9 rounded-none text-center text-sm outline-none transition ${styleClass}`}
+              /* 모바일 터치 최소 크기는 44px이다. PC는 한 화면에 100칸을 담아야 하므로 36px로 되돌린다. */
+              className={`h-11 w-11 rounded-none text-center text-sm outline-none transition sm:h-9 sm:w-9 ${styleClass}`}
               aria-label={`${subjectName} ${questionNo}번 답안`}
             />
           </div>

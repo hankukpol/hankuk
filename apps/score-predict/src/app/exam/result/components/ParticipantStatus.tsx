@@ -32,24 +32,24 @@ export default function ParticipantStatus({ participantStatus }: ParticipantStat
         }`;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
-      <h2 className="text-base font-semibold text-slate-900">참여 현황</h2>
-      <dl className="mt-4 divide-y divide-slate-200 border-y border-slate-200 text-sm">
-        <div className="grid gap-1 px-3 py-3 sm:grid-cols-[8rem_1fr] sm:items-center">
-          <dt className="text-slate-500">현재 참여자</dt>
-          <dd className="font-semibold tabular-nums text-slate-900">
+    <section className="border-t border-slate-200 pt-6">
+      <h2 className="user-section-title">참여 현황</h2>
+      <dl className="user-data-rows mt-4">
+        <div>
+          <dt>현재 참여자</dt>
+          <dd className="tabular-nums">
             {participantStatus.totalParticipants.toLocaleString("ko-KR")}명
           </dd>
         </div>
-        <div className="grid gap-1 px-3 py-3 sm:grid-cols-[8rem_1fr] sm:items-center">
-          <dt className="text-slate-500">내 현재 석차</dt>
+        <div>
+          <dt>내 현재 석차</dt>
           <dd className={participantStatus.currentRank === null ? "font-medium text-amber-700" : "text-slate-900"}>
             {rankValue}
           </dd>
         </div>
-        <div className="grid gap-1 px-3 py-3 sm:grid-cols-[8rem_1fr] sm:items-center">
-          <dt className="text-slate-500">마지막 업데이트</dt>
-          <dd className="tabular-nums text-slate-700">{formatDateTime(participantStatus.lastUpdated)}</dd>
+        <div>
+          <dt>마지막 업데이트</dt>
+          <dd className="tabular-nums">{formatDateTime(participantStatus.lastUpdated)}</dd>
         </div>
       </dl>
       <p className="mt-3 text-xs text-slate-500">

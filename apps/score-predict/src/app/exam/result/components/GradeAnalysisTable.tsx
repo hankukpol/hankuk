@@ -48,28 +48,37 @@ function formatStat(value: number): string {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2);
 }
 
-const TH = "border-b border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-500";
-const TD = "border-b border-slate-100 px-3 py-2.5 text-right text-sm tabular-nums";
-const TD_LEFT = "border-b border-slate-100 px-3 py-2.5 text-left text-sm font-medium text-slate-700";
+/* 표의 크기·여백·색·정렬은 globals.css 의 .data-table 이 단독으로 결정한다.
+   여기서 인라인으로 덮으면 이 표만 다른 페이지와 어긋난다. */
+/* 컬럼머리는 DESIGN.md 표 규격상 가운데다. num-right 는 자릿수를 세로로 맞춰야 하는
+   데이터 셀에만 붙인다 — th 에 붙이면 머리글만 오른쪽으로 밀려 열 이름이 값에 붙어 보인다. */
+const TH = "";
+const TD = "tabular-nums num-right";
+const TD_LEFT = "font-medium";
 
 export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) {
   const summary = result.analysisSummary;
+  const analysisEnabled = result.features.analysisEnabled;
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+    <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">전체 성적 요약</h2>
-        <p className="text-xs text-slate-500">순위 기준: {formatRankingBasis(result.statistics.rankingBasis)}</p>
+        <h2 className="user-section-title">전체 성적 요약</h2>
+        {analysisEnabled ? (
+          <p className="text-xs text-slate-500">순위 기준: {formatRankingBasis(result.statistics.rankingBasis)}</p>
+        ) : (
+          <p className="text-xs text-slate-500">현재 단계에서는 개인 채점 결과만 제공합니다.</p>
+        )}
       </div>
 
       {result.bonusApplication?.message ? (
         <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
+          className={`border-l-2 px-4 py-3 text-sm ${
  result.bonusApplication.status === "APPLIED"
- ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+ ? "border-emerald-400 bg-emerald-50 text-emerald-800"
  : result.bonusApplication.status === "PENDING"
- ? "border-amber-200 bg-amber-50 text-amber-800"
- : "border-slate-200 bg-slate-50 text-slate-700"
+ ? "border-amber-400 bg-amber-50 text-amber-800"
+ : "border-slate-400 bg-slate-50 text-slate-700"
  }`}
         >
           {result.bonusApplication.message}
@@ -80,9 +89,11 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
         <div className="border-l-2 border-rose-400 bg-rose-50 px-4 py-3">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-rose-700">
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-200 text-xs text-rose-800">!</span>
-            과락 과목이 있습니다
+            {result.submission.examType === "CAREER"
+              ? "총점 60% 미만으로 과락입니다"
+              : "과락 과목이 있습니다"}
           </h3>
-          <ul className="flex flex-wrap gap-2">
+          {result.statistics.cutoffSubjects.length > 0 ? <ul className="flex flex-wrap gap-2">
             {result.statistics.cutoffSubjects.map((subject) => (
               <li
                 key={subject.subjectName}
@@ -93,14 +104,64 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                 <span className="text-xs text-rose-400">(기준 {formatScore(subject.cutoffScore)}점 미만)</span>
               </li>
             ))}
-          </ul>
+          </ul> : null}
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="flex flex-col overflow-hidden border-y border-slate-200">
+      {/* 수험생이 가장 먼저 알아야 할 숫자는 스크롤 없이 보여야 한다.
+          과락일 때는 점수를 강조색으로 자랑하지 않고 중립으로 둔다. */}
+      <div className="rounded-lg border border-service-200 bg-service-50 px-5 py-5 sm:px-6 sm:py-6">
+        <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+          <div>
+            <p className="user-data-label">최종점수</p>
+            <p className="mt-1 flex items-baseline gap-1">
+              <span className={`user-metric-hero ${result.statistics.hasCutoff ? "text-slate-400" : "text-service-700"}`}>
+                {formatScore(result.submission.finalScore)}
+              </span>
+              <span className="text-base font-bold text-slate-500">점</span>
+            </p>
+            <p className="mt-1.5 text-xs text-slate-500">
+              원점수 {formatScore(result.submission.totalScore)}점
+              {result.statistics.bonusScore > 0 ? ` · 가산점 +${formatScore(result.statistics.bonusScore)}점` : ""}
+            </p>
+          </div>
+
+          {analysisEnabled ? (
+            <div className="flex gap-8 sm:gap-10">
+              <div>
+                <p className="user-data-label">표본 내 순위</p>
+                <p className="mt-1 flex items-baseline gap-1">
+                  <span className="text-2xl font-bold tracking-tight tabular-nums text-slate-900">
+                    {summary.total.myRank !== null ? summary.total.myRank : "-"}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-500">
+                    / {summary.total.totalParticipants.toLocaleString("ko-KR")}명
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="user-data-label">상위</p>
+                <p
+                  className={`mt-1 text-2xl font-bold tracking-tight tabular-nums ${
+                    summary.total.percentileAvailable && summary.total.topPercent !== null
+                      ? "text-slate-900"
+                      : "text-slate-400"
+                  }`}
+                >
+                  {summary.total.percentileAvailable && summary.total.topPercent !== null
+                    ? formatPercent(summary.total.topPercent)
+                    : "집계 중"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className={`grid gap-4 ${analysisEnabled ? "lg:grid-cols-2" : ""}`}>
+        <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="bg-slate-100 px-4 py-2.5">
-            <h3 className="text-sm font-semibold text-slate-700">내 점수</h3>
+            <h3 className="user-card-title">내 점수</h3>
           </div>
 
           <div className="hidden overflow-x-auto md:block">
@@ -110,8 +171,8 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                   <th className={TH}>과목</th>
                   <th className={TH}>정답수</th>
                   <th className={TH}>점수</th>
-                  <th className={TH}>상위%</th>
-                  <th className={TH}>백분위</th>
+                  {analysisEnabled ? <th className={TH}>상위%</th> : null}
+                  {analysisEnabled ? <th className={TH}>백분위</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -125,29 +186,28 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                       {formatScore(subject.myScore)}
                       <span className="text-xs text-slate-400">/{formatInt(subject.maxScore)}</span>
                     </td>
-                    <td className={`${TD} ${subject.percentileAvailable ? "" : "text-slate-400"}`}>
+                    {analysisEnabled ? <td className={`${TD} ${subject.percentileAvailable ? "" : "text-slate-400"}`}>
                       {formatSamplePercent(subject.topPercent, subject.percentileAvailable)}
-                    </td>
-                    <td className={`${TD} ${subject.percentileAvailable ? "" : "text-slate-400"}`}>
+                    </td> : null}
+                    {analysisEnabled ? <td className={`${TD} ${subject.percentileAvailable ? "" : "text-slate-400"}`}>
                       {formatSamplePercent(subject.percentile, subject.percentileAvailable)}
-                    </td>
+                    </td> : null}
                   </tr>
                 ))}
-                <tr className="bg-slate-50 font-semibold text-slate-900">
-                  <td className="px-3 py-2.5 text-left text-sm font-bold">총점</td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">
+                <tr className="data-table-total">
+                  <td>가점 반영 총점</td>
+                  <td className={TD}>
                     {summary.total.correctCount}/{summary.total.questionCount}
                   </td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">
+                  <td className={TD}>
                     {formatScore(summary.total.myScore)}
-                    <span className="text-xs font-normal text-slate-400">/{formatInt(summary.total.maxScore)}</span>
                   </td>
-                  <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${summary.total.percentileAvailable ? "" : "text-slate-400"}`}>
+                  {analysisEnabled ? <td className={`${TD} ${summary.total.percentileAvailable ? "" : "text-slate-400"}`}>
                     {formatSamplePercent(summary.total.topPercent, summary.total.percentileAvailable)}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${summary.total.percentileAvailable ? "" : "text-slate-400"}`}>
+                  </td> : null}
+                  {analysisEnabled ? <td className={`${TD} ${summary.total.percentileAvailable ? "" : "text-slate-400"}`}>
                     {formatSamplePercent(summary.total.percentile, summary.total.percentileAvailable)}
-                  </td>
+                  </td> : null}
                 </tr>
               </tbody>
             </table>
@@ -156,64 +216,56 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
           <div className="data-list-flat md:hidden">
             {summary.subjects.map((subject) => (
               <div key={subject.subjectId} className="px-4 py-3">
-                <p className="text-sm font-semibold text-slate-800">{subject.subjectName}</p>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">정답수</span>
-                    <span className="font-medium text-slate-800">
-                      {subject.correctCount}/{subject.questionCount}
-                    </span>
+                <p className="user-metric-heading">{subject.subjectName}</p>
+                <dl className="user-metric-pairs mt-3" data-cols={analysisEnabled ? "4" : "2"}>
+                  <div>
+                    <dt>정답수</dt>
+                    <dd>{subject.correctCount}/{subject.questionCount}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">점수</span>
-                    <span className="font-medium text-slate-800">
-                      {formatScore(subject.myScore)}/{formatInt(subject.maxScore)}
-                    </span>
+                  <div>
+                    <dt>점수</dt>
+                    <dd>{formatScore(subject.myScore)}/{formatInt(subject.maxScore)}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">상위%</span>
-                    <span className={`font-semibold ${subject.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                  {analysisEnabled ? <div>
+                    <dt>상위%</dt>
+                    <dd data-tone={subject.percentileAvailable ? undefined : "muted"}>
                       {formatSamplePercent(subject.topPercent, subject.percentileAvailable)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">백분위</span>
-                    <span className={`font-semibold ${subject.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                    </dd>
+                  </div> : null}
+                  {analysisEnabled ? <div>
+                    <dt>백분위</dt>
+                    <dd data-tone={subject.percentileAvailable ? undefined : "muted"}>
                       {formatSamplePercent(subject.percentile, subject.percentileAvailable)}
-                    </span>
-                  </div>
-                </div>
+                    </dd>
+                  </div> : null}
+                </dl>
               </div>
             ))}
 
             <div className="bg-slate-50 px-4 py-3">
-              <p className="text-sm font-semibold text-slate-900">총점</p>
-              <div className="mt-2 space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">정답수</span>
-                  <span className="font-medium text-slate-900">
-                    {summary.total.correctCount}/{summary.total.questionCount}
-                  </span>
+              <p className="user-metric-heading">가점 반영 총점</p>
+              <dl className="user-metric-pairs mt-3" data-cols={analysisEnabled ? "4" : "2"}>
+                <div>
+                  <dt>정답수</dt>
+                  <dd>{summary.total.correctCount}/{summary.total.questionCount}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">점수</span>
-                  <span className="font-medium text-slate-900">
-                    {formatScore(summary.total.myScore)}/{formatInt(summary.total.maxScore)}
-                  </span>
+                <div>
+                  <dt>점수</dt>
+                  <dd>{formatScore(summary.total.myScore)}점</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">상위%</span>
-                  <span className={`font-semibold ${summary.total.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                {analysisEnabled ? <div>
+                  <dt>상위%</dt>
+                  <dd data-tone={summary.total.percentileAvailable ? undefined : "muted"}>
                     {formatSamplePercent(summary.total.topPercent, summary.total.percentileAvailable)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">백분위</span>
-                  <span className={`font-semibold ${summary.total.percentileAvailable ? "text-slate-900" : "text-slate-400"}`}>
+                  </dd>
+                </div> : null}
+                {analysisEnabled ? <div>
+                  <dt>백분위</dt>
+                  <dd data-tone={summary.total.percentileAvailable ? undefined : "muted"}>
                     {formatSamplePercent(summary.total.percentile, summary.total.percentileAvailable)}
-                  </span>
-                </div>
-              </div>
+                  </dd>
+                </div> : null}
+              </dl>
             </div>
           </div>
 
@@ -233,14 +285,14 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
             </div>
             <div className="flex items-center justify-between border-t border-slate-200 pt-2.5">
               <span className="text-base font-bold text-slate-900">최종점수</span>
-              <span className="text-2xl font-bold tracking-tight text-blue-600">{formatScore(result.submission.finalScore)}점</span>
+              <span className="text-base font-bold tabular-nums text-slate-900">{formatScore(result.submission.finalScore)}점</span>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col overflow-hidden border-y border-slate-200">
+        {analysisEnabled ? <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="bg-slate-100 px-4 py-2.5">
-            <h3 className="text-sm font-semibold text-slate-700">전체 입력자 비교</h3>
+            <h3 className="user-card-title">전체 입력자 비교</h3>
           </div>
 
           <div className="hidden overflow-x-auto md:block">
@@ -266,13 +318,13 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
                     <td className={TD}>{formatInt(subject.lowestScore)}</td>
                   </tr>
                 ))}
-                <tr className="bg-slate-50 font-semibold text-slate-900">
-                  <td className="px-3 py-2.5 text-left text-sm font-bold">총점</td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatStat(summary.total.top10Average)}</td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatStat(summary.total.top30Average)}</td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatStat(summary.total.averageScore)}</td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatInt(summary.total.highestScore)}</td>
-                  <td className="px-3 py-2.5 text-right text-sm tabular-nums">{formatInt(summary.total.lowestScore)}</td>
+                <tr className="data-table-total">
+                  <td className="font-bold">총점</td>
+                  <td className={TD}>{formatStat(summary.total.top10Average)}</td>
+                  <td className={TD}>{formatStat(summary.total.top30Average)}</td>
+                  <td className={TD}>{formatStat(summary.total.averageScore)}</td>
+                  <td className={TD}>{formatInt(summary.total.highestScore)}</td>
+                  <td className={TD}>{formatInt(summary.total.lowestScore)}</td>
                 </tr>
               </tbody>
             </table>
@@ -281,59 +333,59 @@ export default function GradeAnalysisTable({ result }: GradeAnalysisTableProps) 
           <div className="data-list-flat md:hidden">
             {summary.subjects.map((subject) => (
               <div key={subject.subjectId} className="px-4 py-3">
-                <p className="text-sm font-semibold text-slate-800">{subject.subjectName}</p>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">상위 10%</span>
-                    <span className="font-medium text-slate-800">{formatStat(subject.top10Average)}</span>
+                <p className="user-metric-heading">{subject.subjectName}</p>
+                <dl className="user-metric-pairs mt-3" data-cols="3">
+                  <div>
+                    <dt>상위 10%</dt>
+                    <dd>{formatStat(subject.top10Average)}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">상위 30%</span>
-                    <span className="font-medium text-slate-800">{formatStat(subject.top30Average)}</span>
+                  <div>
+                    <dt>상위 30%</dt>
+                    <dd>{formatStat(subject.top30Average)}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">전체 평균</span>
-                    <span className="font-medium text-slate-800">{formatStat(subject.averageScore)}</span>
+                  <div>
+                    <dt>전체 평균</dt>
+                    <dd>{formatStat(subject.averageScore)}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">최고점</span>
-                    <span className="font-medium text-slate-800">{formatInt(subject.highestScore)}</span>
+                  <div>
+                    <dt>최고점</dt>
+                    <dd>{formatInt(subject.highestScore)}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">최저점</span>
-                    <span className="font-medium text-slate-800">{formatInt(subject.lowestScore)}</span>
+                  <div>
+                    <dt>최저점</dt>
+                    <dd>{formatInt(subject.lowestScore)}</dd>
                   </div>
-                </div>
+                </dl>
               </div>
             ))}
 
             <div className="bg-slate-50 px-4 py-3">
-              <p className="text-sm font-semibold text-slate-900">총점</p>
-              <div className="mt-2 space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">상위 10%</span>
-                  <span className="font-medium text-slate-900">{formatStat(summary.total.top10Average)}</span>
+              <p className="user-metric-heading">총점</p>
+              <dl className="user-metric-pairs mt-3" data-cols="3">
+                <div>
+                  <dt>상위 10%</dt>
+                  <dd>{formatStat(summary.total.top10Average)}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">상위 30%</span>
-                  <span className="font-medium text-slate-900">{formatStat(summary.total.top30Average)}</span>
+                <div>
+                  <dt>상위 30%</dt>
+                  <dd>{formatStat(summary.total.top30Average)}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">전체 평균</span>
-                  <span className="font-medium text-slate-900">{formatStat(summary.total.averageScore)}</span>
+                <div>
+                  <dt>전체 평균</dt>
+                  <dd>{formatStat(summary.total.averageScore)}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">최고점</span>
-                  <span className="font-medium text-slate-900">{formatInt(summary.total.highestScore)}</span>
+                <div>
+                  <dt>최고점</dt>
+                  <dd>{formatInt(summary.total.highestScore)}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-slate-500">최저점</span>
-                  <span className="font-medium text-slate-900">{formatInt(summary.total.lowestScore)}</span>
+                <div>
+                  <dt>최저점</dt>
+                  <dd>{formatInt(summary.total.lowestScore)}</dd>
                 </div>
-              </div>
+              </dl>
             </div>
           </div>
-        </div>
+        </div> : null}
       </div>
     </section>
   );

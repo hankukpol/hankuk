@@ -15,20 +15,21 @@ interface AnalysisSubTabsProps {
 const TAB_ITEMS: Array<{ key: ResultSubTab; label: string }> = [
   { key: "score", label: "내 성적" },
   { key: "exam", label: "시험 분석" },
-  { key: "answer", label: "정오표" },
+  { key: "answer", label: "문항 분석" },
 ];
 
 export default function AnalysisSubTabs({ result }: AnalysisSubTabsProps) {
   const [activeTab, setActiveTab] = useState<ResultSubTab>("score");
+  const visibleTabs = result.features.analysisEnabled ? TAB_ITEMS : TAB_ITEMS.slice(0, 1);
 
   return (
     <section className="space-y-4">
       <div
-        className="flex items-center overflow-x-auto border-b border-slate-200 bg-white px-1 sm:px-3"
+        className="user-content-tabs"
         role="tablist"
         aria-label="성적 분석 메뉴"
       >
-        {TAB_ITEMS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
             <button
@@ -37,11 +38,7 @@ export default function AnalysisSubTabs({ result }: AnalysisSubTabsProps) {
               onClick={() => setActiveTab(tab.key)}
               role="tab"
               aria-selected={isActive}
-              className={`-mb-px h-12 shrink-0 border-b-2 px-4 text-sm font-semibold transition-colors ${
- isActive
- ? "border-service-600 text-service-700"
- : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
- }`}
+              className="user-content-tab"
             >
               {tab.label}
             </button>
@@ -50,8 +47,8 @@ export default function AnalysisSubTabs({ result }: AnalysisSubTabsProps) {
       </div>
 
       {activeTab === "score" ? <MyScoreTab result={result} /> : null}
-      {activeTab === "exam" ? <ExamAnalysisTab result={result} /> : null}
-      {activeTab === "answer" ? <AnswerReviewTab result={result} /> : null}
+      {result.features.analysisEnabled && activeTab === "exam" ? <ExamAnalysisTab result={result} /> : null}
+      {result.features.analysisEnabled && activeTab === "answer" ? <AnswerReviewTab result={result} /> : null}
     </section>
   );
 }

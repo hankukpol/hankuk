@@ -197,7 +197,7 @@ export default function PromotionsAdminPage() {
           <p className="text-sm font-semibold text-service-700">
             {data.activeExam.year}년 {data.activeExam.round}차 · {data.activeExam.name}
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-950">프로모션 관리</h1>
+          <h1 className="admin-page-title mt-1 text-slate-950">프로모션 관리</h1>
           <p className="mt-1 text-sm text-slate-600">
             HTML과 CSS 코드를 임시저장하고 미리보기한 뒤 게시합니다.
           </p>

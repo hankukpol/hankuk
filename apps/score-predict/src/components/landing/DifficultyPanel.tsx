@@ -10,9 +10,9 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
 
   if (difficulty.totalResponses < 10) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+      <section className="border-t border-slate-200 pt-6">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold text-slate-900">시험 체감 난이도</h2>
+          <h2 className="user-section-title">시험 체감 난이도</h2>
           <p className="text-xs text-slate-500">
             응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · {difficulty.overall.dominantLabel}
           </p>
@@ -25,9 +25,9 @@ export default function DifficultyPanel({ difficulty }: DifficultyPanelProps) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+    <section className="border-t border-slate-200 pt-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">시험 체감 난이도</h2>
+        <h2 className="user-section-title">시험 체감 난이도</h2>
         <p className="text-xs text-slate-500">
           응답 {difficulty.totalResponses.toLocaleString("ko-KR")}건 · 전체 체감 {difficulty.overall.dominantLabel}
         </p>

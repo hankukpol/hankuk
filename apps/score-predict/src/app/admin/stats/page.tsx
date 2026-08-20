@@ -623,10 +623,17 @@ export default function AdminStatsPage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <Tooltip />
+                      <Tooltip
+                        formatter={(value: unknown) => [
+                          `${Number(value ?? 0).toLocaleString("ko-KR")}건`,
+                          "성적 제출 수",
+                        ]}
+                        labelFormatter={(label: unknown) => `제출일 ${String(label)}`}
+                      />
                       <Line
                         type="monotone"
                         dataKey="count"
+                        name="성적 제출 수"
                         stroke="var(--service-600)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
@@ -649,31 +656,28 @@ export default function AdminStatsPage() {
               </div>
 
               <div className="rounded-xl border border-slate-200 p-5">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    점수 분포 히스토그램(총점 기준)
-                  </h2>
-                  <div className="inline-flex flex-wrap rounded-md border border-slate-200 bg-slate-100 p-1">
-                    {availableScoreExamTypes.map((examType) => {
-                      const active = selectedScoreExamType === examType;
-                      return (
-                        <button
-                          key={examType}
-                          type="button"
-                          onClick={() => setSelectedScoreExamType(examType)}
-                          className={`rounded px-3 py-1 text-xs font-semibold transition ${
- active
- ? "bg-white text-slate-900 "
- : "text-slate-500 hover:text-slate-700"
- }`}
-                        >
-                          {formatPredictionExamType(examType)}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  점수 분포 히스토그램(총점 기준)
+                </h2>
+                <div className="admin-content-tabs mt-3" role="tablist" aria-label="점수 분포 채용유형 선택">
+                  {availableScoreExamTypes.map((examType) => {
+                    const active = selectedScoreExamType === examType;
+                    return (
+                      <button
+                        key={examType}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        data-active={active ? "true" : "false"}
+                        onClick={() => setSelectedScoreExamType(examType)}
+                        className="admin-content-tab"
+                      >
+                        {formatPredictionExamType(examType)}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="mt-3 h-64 w-full">
+                <div className="h-64 w-full">
                   {selectedScoreDistribution ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={selectedScoreDistribution.items}>
@@ -685,8 +689,14 @@ export default function AdminStatsPage() {
                           interval={0}
                         />
                         <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                        <Tooltip />
-                        <Bar dataKey="count">
+                        <Tooltip
+                          formatter={(value: unknown) => [
+                            `${Number(value ?? 0).toLocaleString("ko-KR")}명`,
+                            "채점자 수",
+                          ]}
+                          labelFormatter={(label: unknown) => `점수 구간 ${String(label)}`}
+                        />
+                        <Bar dataKey="count" name="채점자 수">
                           {selectedScoreDistribution.items.map((item) => (
                             <Cell
                               key={`score-bin-${selectedScoreDistribution.examType}-${item.bucket}`}
@@ -741,7 +751,7 @@ export default function AdminStatsPage() {
  tenant.type === "police" ? "min-w-[720px]" : "min-w-[960px]"
  }`}
                 >
-                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="whitespace-nowrap px-4 py-3">지역</th>
                       <th className="whitespace-nowrap px-4 py-3">공채</th>
@@ -800,34 +810,31 @@ export default function AdminStatsPage() {
               </div>
             </section>
 
-            <section className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-base font-semibold text-slate-900">
-                  지역별 1배수 도달 지표
-                </h2>
-                <div className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-1">
-                  {availablePredictionExamTypes.map((examType) => {
-                    const active = selectedPredictionExamType === examType;
-                    return (
-                      <button
-                        key={examType}
-                        type="button"
-                        onClick={() => setSelectedPredictionExamType(examType)}
-                        className={`rounded px-3 py-1 text-xs font-semibold transition ${
- active
- ? "bg-white text-slate-900 "
- : "text-slate-500 hover:text-slate-700"
- }`}
-                      >
-                        {formatPredictionExamType(examType)}
-                      </button>
-                    );
-                  })}
-                </div>
+            <section>
+              <h2 className="text-base font-semibold text-slate-900">
+                지역별 1배수 도달 지표
+              </h2>
+              <div className="admin-content-tabs mt-3" role="tablist" aria-label="1배수 지표 채용유형 선택">
+                {availablePredictionExamTypes.map((examType) => {
+                  const active = selectedPredictionExamType === examType;
+                  return (
+                    <button
+                      key={examType}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      data-active={active ? "true" : "false"}
+                      onClick={() => setSelectedPredictionExamType(examType)}
+                      className="admin-content-tab"
+                    >
+                      {formatPredictionExamType(examType)}
+                    </button>
+                  );
+                })}
               </div>
               <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="whitespace-nowrap px-4 py-3">지역</th>
                       <th className="whitespace-nowrap px-4 py-3">참여인원</th>
@@ -909,7 +916,7 @@ export default function AdminStatsPage() {
                   </p>
                   <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
-                      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
                           <th className="whitespace-nowrap px-4 py-3">과목</th>
                           <th className="whitespace-nowrap px-4 py-3">응답 수</th>

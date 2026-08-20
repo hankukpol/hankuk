@@ -81,7 +81,7 @@ export default function SubjectComparisonChart({ submissionId }: SubjectComparis
 
   if (isLoading) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+      <section className="border-t border-slate-200 pt-6 text-sm text-slate-600">
         과목별 비교 차트를 불러오는 중입니다...
       </section>
     );
@@ -97,32 +97,32 @@ export default function SubjectComparisonChart({ submissionId }: SubjectComparis
 
   if (subjects.length < 1) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+      <section className="border-t border-slate-200 pt-6 text-sm text-slate-500">
         표시할 과목별 비교 데이터가 없습니다.
       </section>
     );
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
+    <section className="border-t border-slate-200 pt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">과목별 비교 차트</h2>
+        <h2 className="user-card-title">과목별 비교 차트</h2>
         <p className="text-xs text-slate-500">기준: 동일 시험·직렬 전체 입력자</p>
       </div>
       <div className="mt-4 h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={subjects} margin={{ top: 16, right: 12, left: -12, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-            <XAxis dataKey="subjectName" tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="subjectName" tick={{ fontSize: "var(--user-chart-label-size)", fill: "#64748b" }} axisLine={false} tickLine={false} />
             <YAxis
               domain={[0, maxValue]}
-              tick={{ fontSize: 12, fill: "#64748b" }}
+              tick={{ fontSize: "var(--user-chart-label-size)", fill: "#64748b" }}
               axisLine={false}
               tickLine={false}
             />
             <Tooltip
               formatter={(value: unknown) => `${Number(value ?? 0).toFixed(1)}점`}
-              contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+              contentStyle={{ borderRadius: "0", border: "1px solid #e8e8ec", fontSize: "var(--user-chart-label-size)" }}
             />
             <Bar dataKey="myScore" name="내 점수" fill="var(--service-600)" radius={[4, 4, 0, 0]} />
             <Bar dataKey="averageScore" name="전체 평균" fill="#94a3b8" radius={[4, 4, 0, 0]} />

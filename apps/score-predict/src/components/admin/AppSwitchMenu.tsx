@@ -6,6 +6,7 @@ import {
   getHankukPortalQuickSwitchTargets,
   type HankukPortalTargetRole,
 } from "@hankuk/config";
+import { ChevronDown, ExternalLink } from "lucide-react";
 
 import { getPortalUrl } from "@/lib/portal";
 
@@ -37,16 +38,14 @@ export default function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMe
 
   return (
     <details className="relative">
-      <summary className="flex list-none cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 [&::-webkit-details-marker]:hidden">
+      <summary className="admin-app-switch-trigger [&::-webkit-details-marker]:hidden">
         앱 전환
-        <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
-        </svg>
+        <ChevronDown aria-hidden="true" />
       </summary>
 
-      <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+      <div className="admin-app-switch-panel">
         <div className="px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Quick Switch</p>
+          <p className="text-xs font-semibold text-slate-500">앱 바로가기</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
             포털 로그인 상태를 유지한 채 다른 관리자 앱으로 바로 이동합니다.
           </p>
@@ -63,17 +62,17 @@ export default function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMe
                   role: target.role,
                   divisionSlug: target.divisionSlug,
                 })}
-                className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+                className="admin-app-switch-item"
               >
                 <span className="font-medium">{target.displayName}</span>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-xs text-slate-400">
                   {getRoleBadge(target.role)}
                   {target.divisionSlug ? ` · ${target.divisionSlug}` : ""}
                 </span>
               </a>
             ))
           ) : (
-            <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-500">
+            <div className="bg-slate-50 px-3 py-3 text-sm text-slate-500">
               같은 권한으로 바로 이동할 수 있는 앱이 없습니다.
             </div>
           )}
@@ -82,10 +81,10 @@ export default function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMe
         <div className="mt-2 border-t border-slate-100 pt-2">
           <a
             href={portalUrl}
-            className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+            className="admin-app-switch-item font-semibold"
           >
             <span>포털 홈에서 전체 앱 보기</span>
-            <span aria-hidden="true">↗</span>
+            <ExternalLink aria-hidden="true" />
           </a>
         </div>
       </div>

@@ -1,19 +1,23 @@
 import { BonusType, ExamType, Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCompetitorDisplayName, getPassMultiple, getRecruitCount } from "@/lib/police/prediction";
+import { getPoliceScoredNonCutoffSql } from "@/lib/police/written-policy";
+import {
+  roundPoliceFinalScore,
+} from "@/lib/police/final-score-policy";
+import {
+  canShowSampleOneMultiplePoint,
+  getOneMultipleDisclosureTarget,
+} from "@/lib/public-sample-policy";
+
+export {
+  calculateKnownFinalScore,
+  getAppliedPoliceWrittenBonusRate,
+  getMartialBonusPoint,
+  type KnownFinalScoreResult,
+} from "@/lib/police/final-score-policy";
 
 type FinalPredictionDb = PrismaClient | Prisma.TransactionClient;
-
-export interface KnownFinalScoreResult {
-  writtenScore: number;
-  written50: number;
-  fitnessBase: number;
-  martialBonusPoint: number;
-  fitnessTotal: number;
-  fitnessBonus25: number;
-  fitness25: number;
-  score75: number | null;
-}
 
 export interface FinalRankingCompetitor {
   rank: number;
@@ -28,6 +32,8 @@ export interface FinalRankingDetails {
   recruitCount: number;
   passMultiple: number;
   oneMultipleCutScore: number | null;
+  oneMultipleAvailable: boolean;
+  oneMultipleDisclosureTarget: number;
   isWithinOneMultiple: boolean;
   examTypeLabel: string;
   regionName: string;
@@ -47,7 +53,7 @@ interface FinalRankingQueryRow {
 }
 
 export function roundScore(value: number): number {
-  return Number(value.toFixed(2));
+  return roundPoliceFinalScore(value);
 }
 
 const finalPredictionQuotaSelect = {
@@ -66,52 +72,6 @@ const finalPredictionQuotaSelect = {
   },
 } satisfies Prisma.ExamRegionQuotaSelect;
 
-export function getMartialBonusPoint(danLevel: number): number {
-  if (!Number.isFinite(danLevel)) return 0;
-  if (danLevel >= 4) return 2;
-  if (danLevel >= 2) return 1;
-  return 0;
-}
-
-export function calculateKnownFinalScore(params: {
-  writtenScore: number;
-  fitnessPassed: boolean;
-  martialDanLevel: number;
-  bonusRate: number;
-}): KnownFinalScoreResult {
-  const writtenScore = Math.max(0, params.writtenScore);
-  const written50 = roundScore((writtenScore / 250) * 100 * 0.5);
-  const martialBonusPoint = getMartialBonusPoint(params.martialDanLevel);
-  const fitnessBase = 48;
-  const fitnessTotal = fitnessBase + martialBonusPoint;
-  const fitnessBonus25 = roundScore(25 * (params.bonusRate || 0));
-  const fitness25 = roundScore(fitnessTotal * 0.5 + fitnessBonus25);
-
-  if (!params.fitnessPassed) {
-    return {
-      writtenScore,
-      written50,
-      fitnessBase,
-      martialBonusPoint,
-      fitnessTotal,
-      fitnessBonus25,
-      fitness25,
-      score75: null,
-    };
-  }
-
-  return {
-    writtenScore,
-    written50,
-    fitnessBase,
-    martialBonusPoint,
-    fitnessTotal,
-    fitnessBonus25,
-    fitness25,
-    score75: roundScore(written50 + fitness25),
-  };
-}
-
 function toFinalExamTypeLabel(examType: ExamType): string {
   return examType === ExamType.CAREER ? "경행경채" : "공채";
 }
@@ -121,44 +81,71 @@ function buildFinalRankingCte(params: {
   regionId: number;
   examType: ExamType;
 }) {
+  const nonCutoffCondition = getPoliceScoredNonCutoffSql(params.examType);
   return Prisma.sql`
-    WITH ranked AS (
+    WITH final_inputs AS (
       SELECT
         fp."submissionId"::integer AS "submissionId",
-        fp."finalScore"::double precision AS "score75",
+        ROUND((
+          ROUND(((s."finalScore"::numeric / 250) * 50), 2)
+          + ROUND((
+            (
+              48
+              + CASE
+                  WHEN COALESCE(fp."fitnessScore", 0) >= 4 THEN 2
+                  WHEN COALESCE(fp."fitnessScore", 0) >= 2 THEN 1
+                  ELSE 0
+                END
+            ) * 0.5
+            + 25 * LEAST(
+                0.10::numeric,
+                GREATEST(0::numeric, (s."finalScore"::numeric - s."totalScore"::numeric) / 250)
+              )
+          ), 2)
+        ), 2)::double precision AS "score75",
         u."name" AS "userName",
         u."phone" AS "username",
         u."contactPhone" AS "contactPhone",
-        RANK() OVER (ORDER BY fp."finalScore" DESC)::integer AS "finalRank",
-        ROW_NUMBER() OVER (
-          ORDER BY
-            fp."finalScore" DESC,
-            CASE
-              WHEN s."bonusType" IN (
-                CAST(${BonusType.VETERAN_5} AS "BonusType"),
-                CAST(${BonusType.VETERAN_10} AS "BonusType")
-              ) THEN 1
-              ELSE 0
-            END DESC,
-            s."finalScore" DESC,
-            COALESCE(fp."fitnessScore", 0) DESC,
-            fp."submissionId" ASC
-        )::integer AS "sortOrder"
+        s."bonusType" AS "bonusType",
+        s."finalScore"::double precision AS "writtenScore",
+        COALESCE(fp."fitnessScore", 0)::double precision AS "martialDanLevel"
       FROM "FinalPrediction" fp
       JOIN "Submission" s ON s.id = fp."submissionId"
       JOIN "User" u ON u.id = s."userId"
       WHERE fp."finalScore" IS NOT NULL
         AND fp."interviewGrade" = 'PASS'
         AND s."isSuspicious" = false
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "SubjectScore" failed_subject
-          WHERE failed_subject."submissionId" = s.id
-            AND failed_subject."isFailed" = true
-        )
+        ${nonCutoffCondition}
         AND s."examId" = ${params.examId}
         AND s."regionId" = ${params.regionId}
         AND s."examType" = CAST(${params.examType} AS "ExamType")
+    ),
+    ranked AS (
+      SELECT
+        "submissionId",
+        "score75",
+        "userName",
+        "username",
+        "contactPhone",
+        "bonusType",
+        "writtenScore",
+        "martialDanLevel",
+        RANK() OVER (ORDER BY "score75" DESC)::integer AS "finalRank",
+        ROW_NUMBER() OVER (
+          ORDER BY
+            "score75" DESC,
+            CASE
+              WHEN "bonusType" IN (
+                CAST(${BonusType.VETERAN_5} AS "BonusType"),
+                CAST(${BonusType.VETERAN_10} AS "BonusType")
+              ) THEN 1
+              ELSE 0
+            END DESC,
+            "writtenScore" DESC,
+            "martialDanLevel" DESC,
+            "submissionId" ASC
+        )::integer AS "sortOrder"
+      FROM final_inputs
     )
   `;
 }
@@ -186,7 +173,8 @@ export async function calculateFinalRankingDetails(params: {
 
   const passMultiple = getPassMultiple(
     recruitCount,
-    quota.exam.policeWrittenPassMultiple
+    quota.exam.policeWrittenPassMultiple,
+    params.examType
   );
   const rankingCte = buildFinalRankingCte(params);
 
@@ -202,6 +190,7 @@ export async function calculateFinalRankingDetails(params: {
 
   const totalParticipants = Number(summaryRow?.totalParticipants ?? 0);
   if (totalParticipants < 1) return null;
+  const oneMultipleAvailable = canShowSampleOneMultiplePoint(totalParticipants, recruitCount);
 
   const [myRow] = await db.$queryRaw<FinalRankingQueryRow[]>(Prisma.sql`
     ${rankingCte}
@@ -253,10 +242,14 @@ export async function calculateFinalRankingDetails(params: {
     recruitCount,
     passMultiple: roundScore(passMultiple),
     oneMultipleCutScore:
-      summaryRow?.oneMultipleCutScore === null || summaryRow?.oneMultipleCutScore === undefined
+      !oneMultipleAvailable ||
+      summaryRow?.oneMultipleCutScore === null ||
+      summaryRow?.oneMultipleCutScore === undefined
         ? null
         : roundScore(Number(summaryRow.oneMultipleCutScore)),
-    isWithinOneMultiple: myRank !== null && myRank <= recruitCount,
+    oneMultipleAvailable,
+    oneMultipleDisclosureTarget: getOneMultipleDisclosureTarget(recruitCount),
+    isWithinOneMultiple: oneMultipleAvailable && myRank !== null && myRank <= recruitCount,
     examTypeLabel: toFinalExamTypeLabel(params.examType),
     regionName: quota.region.name,
     userName: myRow ? myRow.userName : "",

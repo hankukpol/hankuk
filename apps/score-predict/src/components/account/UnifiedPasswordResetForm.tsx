@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import UserFormPageShell from "@/components/layout/UserFormPageShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TenantType } from "@/lib/tenant";
@@ -206,152 +206,153 @@ export default function UnifiedPasswordResetForm({ tenantType }: { tenantType: T
   const showResetForm = mode === "ADMIN_MANUAL_SMS" || (mode === "EMAIL" && codeRequested);
 
   return (
-    <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">비밀번호 찾기</CardTitle>
-          <p className="text-sm text-slate-500">
-            가입한 이메일로 인증코드를 받아 새 비밀번호를 설정합니다.
+    <UserFormPageShell
+      title="비밀번호 찾기"
+      description={
+        <>
+          가입한 이메일로 인증코드를 받아 새 비밀번호를 설정합니다.
+          <span className="mt-1 block text-xs text-slate-500">
+            새 비밀번호는 영문 대소문자를 구분하지 않습니다.
+          </span>
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {mode === "EMAIL" ? (
+          <form className="space-y-4" onSubmit={requestEmailCode}>
+            <div className="space-y-2">
+              <Label htmlFor="recoveryIdentity" className="user-data-label">{identityLabel}</Label>
+              <Input
+                id="recoveryIdentity"
+                value={identity}
+                onChange={(event) => setIdentity(normalizeIdentity(tenantType, event.target.value))}
+                placeholder={identityPlaceholder}
+                autoCapitalize="none"
+                autoCorrect="off"
+                required
+                disabled={codeRequested}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recoveryEmail" className="user-data-label">가입 이메일</Label>
+              <Input
+                id="recoveryEmail"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(normalizeEmail(event.target.value))}
+                placeholder="name@example.com"
+                autoCapitalize="none"
+                autoCorrect="off"
+                required
+                disabled={codeRequested}
+              />
+            </div>
+            {!codeRequested ? (
+              <Button type="submit" size="lg" className="w-full" disabled={isBusy}>
+                {isBusy ? "발송 중..." : "이메일 인증코드 받기"}
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" className="w-full border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900" onClick={() => setCodeRequested(false)}>
+                로그인 정보 다시 입력
+              </Button>
+            )}
+          </form>
+        ) : null}
+
+        {mode === "ADMIN_MANUAL_SMS" ? (
+          <p className="border-l-2 border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            학원 관리자에게 받은 10분짜리 일회용 코드를 입력해 주세요. 이 코드는 로그인 비밀번호가 아닙니다.
           </p>
-          <p className="text-xs text-slate-500">새 비밀번호는 영문 대소문자를 구분하지 않습니다.</p>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {mode === "EMAIL" ? (
-            <form className="space-y-4" onSubmit={requestEmailCode}>
+        ) : null}
+
+        {showResetForm ? (
+          <form className="space-y-4" onSubmit={confirmReset}>
+            {mode === "ADMIN_MANUAL_SMS" ? (
               <div className="space-y-2">
-                <Label htmlFor="recoveryIdentity">{identityLabel}</Label>
+                <Label htmlFor="adminRecoveryIdentity" className="user-data-label">{identityLabel}</Label>
                 <Input
-                  id="recoveryIdentity"
+                  id="adminRecoveryIdentity"
                   value={identity}
                   onChange={(event) => setIdentity(normalizeIdentity(tenantType, event.target.value))}
                   placeholder={identityPlaceholder}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  required
-                  disabled={codeRequested}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="recoveryEmail">가입 이메일</Label>
-                <Input
-                  id="recoveryEmail"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(normalizeEmail(event.target.value))}
-                  placeholder="name@example.com"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  required
-                  disabled={codeRequested}
-                />
-              </div>
-              {!codeRequested ? (
-                <Button type="submit" className="w-full" disabled={isBusy}>
-                  {isBusy ? "발송 중..." : "이메일 인증코드 받기"}
-                </Button>
-              ) : (
-                <Button type="button" variant="outline" className="w-full" onClick={() => setCodeRequested(false)}>
-                  로그인 정보 다시 입력
-                </Button>
-              )}
-            </form>
-          ) : null}
-
-          {mode === "ADMIN_MANUAL_SMS" ? (
-            <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
-              학원 관리자에게 받은 10분짜리 일회용 코드를 입력해 주세요. 이 코드는 로그인 비밀번호가 아닙니다.
-            </p>
-          ) : null}
-
-          {showResetForm ? (
-            <form className="space-y-4" onSubmit={confirmReset}>
-              {mode === "ADMIN_MANUAL_SMS" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="adminRecoveryIdentity">{identityLabel}</Label>
-                  <Input
-                    id="adminRecoveryIdentity"
-                    value={identity}
-                    onChange={(event) => setIdentity(normalizeIdentity(tenantType, event.target.value))}
-                    placeholder={identityPlaceholder}
-                    required
-                  />
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="resetCode">인증코드</Label>
-                <Input
-                  id="resetCode"
-                  value={resetCode}
-                  onChange={(event) => setResetCode(normalizeResetCode(event.target.value))}
-                  placeholder="ABCD-1234"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">새 비밀번호</Label>
-                <Input id="newPassword" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8자 이상, 영문·숫자·특수문자 포함 (대소문자 구분 없음)" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPasswordConfirm">새 비밀번호 확인</Label>
-                <Input id="newPasswordConfirm" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder="새 비밀번호를 다시 입력" required />
-              </div>
-              <Button type="submit" className="w-full" disabled={isBusy}>
-                {isBusy ? "변경 중..." : "새 비밀번호 설정"}
-              </Button>
-            </form>
-          ) : null}
-
-          {mode === "LEGACY_FIRE" ? (
-            <form className="space-y-4" onSubmit={confirmLegacyRecovery}>
-              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                기존 소방 회원에게만 제공하는 전환용 기능입니다. 변경 후 계정 설정에서 이메일을 등록해 주세요.
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor="legacyPhone">휴대전화</Label>
-                <Input id="legacyPhone" value={identity} onChange={(event) => setIdentity(normalizePhone(event.target.value))} placeholder="010-1234-5678" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="legacyCode">기존 복구코드</Label>
-                <Input id="legacyCode" value={resetCode} onChange={(event) => setResetCode(normalizeLegacyRecoveryCode(event.target.value))} placeholder="ABCDE-12345" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="legacyPassword">새 비밀번호</Label>
-                <Input id="legacyPassword" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="legacyPasswordConfirm">새 비밀번호 확인</Label>
-                <Input id="legacyPasswordConfirm" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required />
-              </div>
-              <Button type="submit" className="w-full" disabled={isBusy}>{isBusy ? "변경 중..." : "기존 복구코드로 변경"}</Button>
-            </form>
-          ) : null}
-
-          {previewFile ? <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">로컬 메일 미리보기: {previewFile}</p> : null}
-          {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p> : null}
-          {message ? <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
-
-          {newRecoveryCodes.length > 0 ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">새 복구코드, 1회 표시</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {newRecoveryCodes.map((code) => <code key={code} className="rounded border border-amber-300 bg-white px-2 py-1 text-center text-xs font-semibold text-amber-900">{code}</code>)}
-              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="resetCode" className="user-data-label">인증코드</Label>
+              <Input
+                id="resetCode"
+                value={resetCode}
+                onChange={(event) => setResetCode(normalizeResetCode(event.target.value))}
+                placeholder="ABCD-1234"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                required
+              />
             </div>
-          ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="newPassword" className="user-data-label">새 비밀번호</Label>
+              <Input id="newPassword" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8자 이상, 영문·숫자·특수문자 포함 (대소문자 구분 없음)" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newPasswordConfirm" className="user-data-label">새 비밀번호 확인</Label>
+              <Input id="newPasswordConfirm" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder="새 비밀번호를 다시 입력" required />
+            </div>
+            <Button type="submit" size="lg" className="w-full" disabled={isBusy}>
+              {isBusy ? "변경 중..." : "새 비밀번호 설정"}
+            </Button>
+          </form>
+        ) : null}
 
-          <div className="space-y-2 border-t border-slate-200 pt-4 text-sm">
-            {mode !== "EMAIL" ? <button type="button" className="block text-slate-700 underline underline-offset-4" onClick={() => resetState("EMAIL")}>이메일 인증으로 재설정</button> : null}
-            {mode !== "ADMIN_MANUAL_SMS" ? <button type="button" className="block text-slate-700 underline underline-offset-4" onClick={() => resetState("ADMIN_MANUAL_SMS")}>학원 관리자에게 일회용 코드를 받은 경우</button> : null}
-            {tenantType === "fire" && mode !== "LEGACY_FIRE" ? <button type="button" className="block text-slate-700 underline underline-offset-4" onClick={() => resetState("LEGACY_FIRE")}>기존 소방 복구코드 사용</button> : null}
+        {mode === "LEGACY_FIRE" ? (
+          <form className="space-y-4" onSubmit={confirmLegacyRecovery}>
+            <p className="border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              기존 소방 회원에게만 제공하는 전환용 기능입니다. 변경 후 계정 설정에서 이메일을 등록해 주세요.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="legacyPhone" className="user-data-label">휴대전화</Label>
+              <Input id="legacyPhone" value={identity} onChange={(event) => setIdentity(normalizePhone(event.target.value))} placeholder="010-1234-5678" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="legacyCode" className="user-data-label">기존 복구코드</Label>
+              <Input id="legacyCode" value={resetCode} onChange={(event) => setResetCode(normalizeLegacyRecoveryCode(event.target.value))} placeholder="ABCDE-12345" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="legacyPassword" className="user-data-label">새 비밀번호</Label>
+              <Input id="legacyPassword" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="legacyPasswordConfirm" className="user-data-label">새 비밀번호 확인</Label>
+              <Input id="legacyPasswordConfirm" type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required />
+            </div>
+            <Button type="submit" size="lg" className="w-full" disabled={isBusy}>{isBusy ? "변경 중..." : "기존 복구코드로 변경"}</Button>
+          </form>
+        ) : null}
+
+        {previewFile ? <p className="border-l-2 border-amber-400 bg-amber-50 px-4 py-3 text-xs text-amber-900">로컬 메일 미리보기: {previewFile}</p> : null}
+        {error ? <p className="border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+        {message ? <p className="border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p> : null}
+
+        {newRecoveryCodes.length > 0 ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-900">새 복구코드, 1회 표시</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {newRecoveryCodes.map((code) => <code key={code} className="rounded border border-amber-300 bg-white px-2 py-1 text-center text-xs font-semibold text-amber-900">{code}</code>)}
+            </div>
           </div>
+        ) : null}
 
-          <p className="text-center text-sm text-slate-600">
-            <Link href={withTenantPrefix("/login", tenantType)} className="underline-offset-4 hover:underline">로그인으로 돌아가기</Link>
-          </p>
-        </CardContent>
-      </Card>
-    </main>
+        <div className="space-y-2 border-t border-slate-200 pt-4 text-sm">
+          {mode !== "EMAIL" ? <button type="button" className="flex min-h-11 items-center text-left text-slate-700 underline underline-offset-4 lg:min-h-0" onClick={() => resetState("EMAIL")}>이메일 인증으로 재설정</button> : null}
+          {mode !== "ADMIN_MANUAL_SMS" ? <button type="button" className="flex min-h-11 items-center text-left text-slate-700 underline underline-offset-4 lg:min-h-0" onClick={() => resetState("ADMIN_MANUAL_SMS")}>학원 관리자에게 일회용 코드를 받은 경우</button> : null}
+          {tenantType === "fire" && mode !== "LEGACY_FIRE" ? <button type="button" className="flex min-h-11 items-center text-left text-slate-700 underline underline-offset-4 lg:min-h-0" onClick={() => resetState("LEGACY_FIRE")}>기존 소방 복구코드 사용</button> : null}
+        </div>
+
+        <p className="text-center text-sm text-slate-600">
+          <Link href={withTenantPrefix("/login", tenantType)} className="font-semibold text-service-700 underline underline-offset-4">로그인으로 돌아가기</Link>
+        </p>
+      </div>
+    </UserFormPageShell>
   );
 }

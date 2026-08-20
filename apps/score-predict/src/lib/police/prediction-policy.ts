@@ -7,9 +7,33 @@ export interface PoliceRecruitmentCohort {
   recruitCount: number;
 }
 
-export function getPolicePassMultiple(recruitCount: number): number | null {
+const POLICE_CAREER_SMALL_COHORT_PASS_COUNTS: Readonly<Record<number, number>> = {
+  1: 3,
+  2: 6,
+  3: 8,
+  4: 9,
+  5: 10,
+};
+
+export function getPoliceWrittenPassCount(
+  recruitCount: number,
+  examType: ExamType
+): number | null {
   if (!Number.isInteger(recruitCount) || recruitCount < 1) return null;
-  return 2;
+  if (!isPoliceExamType(examType)) return null;
+  if (examType === ExamType.CAREER && recruitCount <= 5) {
+    return POLICE_CAREER_SMALL_COHORT_PASS_COUNTS[recruitCount] ?? null;
+  }
+  return Math.ceil(recruitCount * 2);
+}
+
+export function getPolicePassMultiple(
+  recruitCount: number,
+  examType: ExamType = ExamType.PUBLIC
+): number | null {
+  const passCount = getPoliceWrittenPassCount(recruitCount, examType);
+  if (passCount === null) return null;
+  return passCount / recruitCount;
 }
 
 export function getPoliceRecruitCount(

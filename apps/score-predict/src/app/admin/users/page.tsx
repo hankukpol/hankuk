@@ -463,7 +463,7 @@ export default function AdminUsersPage() {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">ID</th>
                 <th className="whitespace-nowrap px-4 py-3">이름</th>
@@ -473,7 +473,7 @@ export default function AdminUsersPage() {
                 <th className="whitespace-nowrap px-4 py-3">제출</th>
                 <th className="whitespace-nowrap px-4 py-3">댓글</th>
                 <th className="whitespace-nowrap px-4 py-3">권한</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
+                <th className="whitespace-nowrap px-4 py-3">작업</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -547,8 +547,8 @@ export default function AdminUsersPage() {
                           <option value="ADMIN">관리자</option>
                         </select>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
+                      <td className="px-4 py-3">
+                        <div className="flex justify-center gap-2">
                           {isPolice ? (
                             <Button
                               type="button"

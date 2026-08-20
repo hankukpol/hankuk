@@ -34,32 +34,34 @@ interface AnswerSheetProps {
   summaries: SubjectSummary[];
 }
 
-function difficultyBadge(level: SubjectAnswerRow["difficultyLevel"]): { label: string; className: string } {
+/* 색과 모양은 globals.css 의 .user-level-badge 가 결정한다.
+   여기서는 라벨과 단계만 정한다. */
+function difficultyBadge(level: SubjectAnswerRow["difficultyLevel"]): { label: string; level: string } {
   if (level === "VERY_HARD") {
-    return { label: "고난도", className: "bg-rose-100 text-rose-700" };
+    return { label: "고난도", level: "veryhard" };
   }
   if (level === "HARD") {
-    return { label: "어려움", className: "bg-amber-100 text-amber-700" };
+    return { label: "어려움", level: "hard" };
   }
   if (level === "EASY") {
-    return { label: "쉬움", className: "bg-emerald-100 text-emerald-700" };
+    return { label: "쉬움", level: "easy" };
   }
-  return { label: "보통", className: "bg-slate-100 text-slate-700" };
+  return { label: "보통", level: "normal" };
 }
 
 function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
   return (
     <div className="space-y-2">
       <div className="hidden overflow-x-auto border-y border-slate-200 md:block">
-        <table className="data-table min-w-[420px] w-full text-sm">
+        <table className="data-table min-w-[420px] w-full">
           <thead>
-            <tr className="bg-slate-100 text-slate-700">
-              <th className="border border-slate-200 px-3 py-2 text-left">번호</th>
-              <th className="border border-slate-200 px-3 py-2 text-center">내 답</th>
-              <th className="border border-slate-200 px-3 py-2 text-center">정답</th>
-              <th className="border border-slate-200 px-3 py-2 text-center">결과</th>
-              <th className="border border-slate-200 px-3 py-2 text-center">정답률</th>
-              <th className="border border-slate-200 px-3 py-2 text-center">난이도</th>
+            <tr>
+              <th className="">번호</th>
+              <th className="">내 답</th>
+              <th className="">정답</th>
+              <th className="">결과</th>
+              <th className="">정답률</th>
+              <th className="">난이도</th>
             </tr>
           </thead>
           <tbody>
@@ -67,26 +69,26 @@ function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
               const badge = difficultyBadge(answer.difficultyLevel);
               return (
                 <tr key={answer.questionNumber} className="bg-white">
-                  <td className="border border-slate-200 px-3 py-2 text-left">{answer.questionNumber}</td>
-                  <td className="border border-slate-200 px-3 py-2 text-center">{answer.selectedAnswer}</td>
-                  <td className="border border-slate-200 px-3 py-2 text-center">{answer.correctAnswer ?? "-"}</td>
+                  <td className="tabular-nums">{answer.questionNumber}</td>
+                  <td className="tabular-nums">{answer.selectedAnswer}</td>
+                  <td className="tabular-nums">{answer.correctAnswer ?? "-"}</td>
                   <td
-                    className={`border border-slate-200 px-3 py-2 text-center font-semibold ${
+                    className={`border-b border-slate-200 px-4 py-3 text-center font-semibold ${
  answer.isCorrect ? "text-emerald-700" : "text-rose-700"
  }`}
                   >
                     {answer.isCorrect ? "정답" : "오답"}
                   </td>
-                  <td className="border border-slate-200 px-3 py-2 text-center">{answer.correctRate.toFixed(1)}%</td>
-                  <td className="border border-slate-200 px-3 py-2 text-center">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${badge.className}`}>{badge.label}</span>
+                  <td className="tabular-nums">{answer.correctRate.toFixed(1)}%</td>
+                  <td className="">
+                    <span className="user-level-badge" data-level={badge.level}>{badge.label}</span>
                   </td>
                 </tr>
               );
             })}
             {rows.length < 1 ? (
               <tr>
-                <td colSpan={6} className="border border-slate-200 px-3 py-4 text-center text-slate-500">
+                <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
                   표시할 문항이 없습니다.
                 </td>
               </tr>
@@ -103,28 +105,28 @@ function AnswerRowsTable({ rows }: { rows: SubjectAnswerRow[] }) {
               <div key={answer.questionNumber} className="bg-white px-3 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">{answer.questionNumber}번</p>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${badge.className}`}>{badge.label}</span>
+                  <span className="user-level-badge" data-level={badge.level}>{badge.label}</span>
                 </div>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">내 답</span>
-                    <span className="font-medium text-slate-800">{answer.selectedAnswer}</span>
+                <dl className="user-metric-pairs mt-3" data-cols="4">
+                  <div>
+                    <dt>내 답</dt>
+                    <dd>{answer.selectedAnswer}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">정답</span>
-                    <span className="font-medium text-slate-800">{answer.correctAnswer ?? "-"}</span>
+                  <div>
+                    <dt>정답</dt>
+                    <dd>{answer.correctAnswer ?? "-"}</dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">결과</span>
-                    <span className={`font-semibold ${answer.isCorrect ? "text-emerald-700" : "text-rose-700"}`}>
+                  <div>
+                    <dt>결과</dt>
+                    <dd data-tone={answer.isCorrect ? "positive" : "negative"}>
                       {answer.isCorrect ? "정답" : "오답"}
-                    </span>
+                    </dd>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-slate-500">정답률</span>
-                    <span className="font-semibold text-slate-900">{answer.correctRate.toFixed(1)}%</span>
+                  <div>
+                    <dt>정답률</dt>
+                    <dd>{answer.correctRate.toFixed(1)}%</dd>
                   </div>
-                </div>
+                </dl>
               </div>
             );
           })
@@ -156,8 +158,8 @@ export default function AnswerSheet({ subjects, summaries }: AnswerSheetProps) {
 
   if (!selectedSubject) {
     return (
-      <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-slate-900">정오표 - 문항별 정답률 분석</h2>
+      <section className="space-y-5 border-t border-slate-200 pt-6">
+        <h2 className="user-card-title">내 답안·정답 비교</h2>
         <p className="text-sm text-slate-500">표시할 데이터가 없습니다.</p>
       </section>
     );
@@ -169,10 +171,10 @@ export default function AnswerSheet({ subjects, summaries }: AnswerSheetProps) {
   const rightRows = selectedSubject.answers.slice(splitIndex);
 
   return (
-    <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-6">
+    <section className="space-y-5 border-t border-slate-200 pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">정오표 - 문항별 정답률 분석</h2>
+          <h2 className="user-card-title">내 답안·정답 비교</h2>
           <p className="mt-1 text-xs text-slate-500">
             본 서비스의 동일 시험·채용유형 답안 제출자 기준이며, 지역을 구분하지 않은 표본입니다.
           </p>

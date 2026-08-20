@@ -13,7 +13,7 @@ function verifyPolicy() {
     declaredRate: 0.1,
     recruitCount: 4,
     applicantCount: 100,
-    hasCutoff: false,
+    hasSubjectCutoff: false,
   });
   assert(standard.status === "APPLIED" && standard.effectiveRate === 0.1, "취업지원 표준 적용 오류");
 
@@ -22,7 +22,7 @@ function verifyPolicy() {
     declaredRate: 0.05,
     recruitCount: 3,
     applicantCount: null,
-    hasCutoff: false,
+    hasSubjectCutoff: false,
   });
   assert(pending.status === "PENDING" && pending.effectiveRate === 0, "출원인원 미확정 잠정 미적용 오류");
 
@@ -31,7 +31,7 @@ function verifyPolicy() {
     declaredRate: 0.05,
     recruitCount: 9,
     applicantCount: 9,
-    hasCutoff: false,
+    hasSubjectCutoff: false,
   });
   assert(exception.reason === "APPLIED_APPLICANT_EXCEPTION", "응시인원 이하 예외 적용 오류");
 
@@ -40,7 +40,7 @@ function verifyPolicy() {
     declaredRate: 0.03,
     recruitCount: 9,
     applicantCount: 10,
-    hasCutoff: false,
+    hasSubjectCutoff: false,
   });
   assert(belowMinimum.status === "NOT_APPLIED" && belowMinimum.effectiveRate === 0, "의사상자 최소 모집인원 오류");
 
@@ -49,7 +49,7 @@ function verifyPolicy() {
     declaredRate: 0.1,
     recruitCount: 100,
     applicantCount: 1000,
-    hasCutoff: true,
+    hasSubjectCutoff: true,
   });
   assert(cutoff.reason === "CUTOFF" && cutoff.effectiveRate === 0, "과락 시 전체 가산점 제외 오류");
 }
@@ -68,7 +68,7 @@ async function verifySubmissionSafety() {
     "경찰 제출이 원점수 우선 정책 판정을 사용하지 않습니다."
   );
   assert(
-    scoring.includes("const effectiveBonusRate = hasCutoff ? 0 : bonusRate"),
+    scoring.includes("const effectiveBonusRate = hasSubjectCutoff ? 0 : bonusRate"),
     "한 과목 과락 시 경찰 가산점 전체 제외가 구현되지 않았습니다."
   );
 }

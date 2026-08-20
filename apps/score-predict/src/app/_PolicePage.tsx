@@ -126,13 +126,30 @@ export default async function HomePage() {
 
   const activePromotion = await getPublishedActiveCampaign();
   if (activePromotion.campaign) {
+    const hasSubmission = isLoggedIn ? await getHasSubmission(userId) : false;
+    const { features } = activePromotion.operation;
+
     return (
       <main>
         <PromotionCampaignBridge
           isAuthenticated={isLoggedIn}
-          preRegistrationEnabled={activePromotion.operation.features.preRegistration}
-          noticesEnabled={activePromotion.operation.features.notices}
-          faqEnabled={activePromotion.operation.features.faq}
+          hasSubmission={hasSubmission}
+          isAdmin={isAdmin}
+          preRegistrationEnabled={features.preRegistration}
+          noticesEnabled={features.notices}
+          faqEnabled={features.faq}
+          finalPredictionEnabled={features.finalPrediction}
+          commentsEnabled={features.comments}
+          tabEnabled={{
+            main: true,
+            input: features.preRegistration || features.answerInput,
+            result: features.result,
+            final: features.finalPrediction,
+            prediction: features.analysis,
+            comments: features.comments,
+            notices: features.notices,
+            faq: features.faq,
+          }}
           templateKey={activePromotion.campaign.templateKey}
           templateVersion={activePromotion.campaign.templateVersion}
           content={activePromotion.campaign.publishedContent}
@@ -218,7 +235,7 @@ export default async function HomePage() {
             <BannerImage banner={heroBanner} fullWidth={true} />
           </div>
         ) : (
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-5 px-4 pt-8 sm:pt-10">
+          <div className="user-content-frame flex flex-col gap-5 pt-8 sm:pt-10">
             <HeroFallback
               badge={heroBadge}
               title={heroCopy.title}
@@ -242,7 +259,7 @@ export default async function HomePage() {
           </div>
         )}
 
-        <div className="mx-auto mt-8 flex w-full max-w-[1200px] flex-col gap-5 px-4 sm:mt-10">
+        <div className="user-content-frame mt-8 flex flex-col gap-5 sm:mt-10">
           {heroSubBanners.length > 0 ? (
             <div className="grid gap-3 md:grid-cols-2">
               {heroSubBanners.map((banner) => (
@@ -265,6 +282,7 @@ export default async function HomePage() {
             isAdmin={isAdmin}
             finalPredictionEnabled={finalPredictionEnabled}
             commentsEnabled={commentsEnabled}
+            showEnabledTabsForGuests
             tabEnabled={tabEnabled}
           />
         </div>

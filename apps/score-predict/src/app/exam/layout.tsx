@@ -35,7 +35,7 @@ export default async function ExamLayout({
     hasSubmission: false,
   });
 
-  if (!isPublicExamPage && !current?.session.user?.id) {
+  if (!current?.session.user?.id) {
     redirect(
       `${withTenantPrefix("/login", tenantType)}?callbackUrl=${encodeURIComponent(
         withTenantPrefix(preferredExamRoute.href, tenantType)
@@ -44,7 +44,7 @@ export default async function ExamLayout({
   }
 
   const userId = Number(current?.session.user?.id ?? 0);
-  if (!isPublicExamPage && (!Number.isInteger(userId) || userId <= 0)) {
+  if (!Number.isInteger(userId) || userId <= 0) {
     redirect(
       `${withTenantPrefix("/login", tenantType)}?callbackUrl=${encodeURIComponent(
         withTenantPrefix(preferredExamRoute.href, tenantType)
@@ -61,10 +61,12 @@ export default async function ExamLayout({
           preRegistrationEnabled={Boolean(settings["site.preRegistrationEnabled"] ?? false)}
           noticesEnabled={examSurfaceState.noticesEnabled}
           faqEnabled={examSurfaceState.tabEnabled.faq}
+          isAuthenticated
         />
       ) : null}
       <main className="pb-10">
-        <div className="mx-auto w-full max-w-7xl px-4 py-6">{children}</div>
+        {/* 메뉴바와 페이지 제목 사이 여백. 전 페이지 동일하게 100px 로 맞춘다. */}
+        <div className="user-content-frame pb-6 pt-[100px]">{children}</div>
       </main>
     </>
   );

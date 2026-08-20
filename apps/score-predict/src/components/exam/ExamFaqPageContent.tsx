@@ -95,11 +95,11 @@ export default function ExamFaqPageContent({ embedded = false }: ExamFaqPageCont
 
   return (
     <section className="space-y-4">
-      {!embedded ? <h1 className="text-lg font-semibold text-slate-900">자주 묻는 질문 (FAQ)</h1> : null}
+      {!embedded ? <h1 className="user-page-title">자주 묻는 질문 (FAQ)</h1> : null}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {faqs.map((faq) => (
           <details key={faq.id} className="group border-b border-slate-200 last:border-b-0">
-            <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-slate-900">
+            <summary className="user-data-label cursor-pointer list-none px-5 py-4">
               <span className="mr-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1 text-xs text-white">
                 Q
               </span>

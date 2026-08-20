@@ -270,9 +270,9 @@ export default function ExamCommentsPageContent({ embedded = false }: ExamCommen
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="border-t border-slate-200 pt-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-lg font-semibold text-slate-900">댓글</h1>
+          <h1 className="user-page-title">댓글</h1>
           <p className="text-sm text-slate-500">
             총 댓글 수: <span className="font-semibold text-slate-700">{totalCount.toLocaleString()}개</span>
             {isPolling ? " · 새 댓글 확인 중..." : ""}
@@ -280,7 +280,7 @@ export default function ExamCommentsPageContent({ embedded = false }: ExamCommen
         </div>
 
         <div className="mt-4 space-y-2 border-t border-slate-200 pt-4">
-          <label htmlFor="exam-comment-content" className="text-sm font-semibold text-slate-800">
+          <label htmlFor="exam-comment-content" className="user-data-label">
             댓글 내용
           </label>
           <textarea
@@ -308,8 +308,8 @@ export default function ExamCommentsPageContent({ embedded = false }: ExamCommen
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-slate-900">댓글 목록 (최신순)</h2>
+      <section className="border-t border-slate-200 pt-6">
+        <h2 className="user-card-title">댓글 목록 (최신순)</h2>
 
         {comments.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">등록된 댓글이 없습니다.</p>

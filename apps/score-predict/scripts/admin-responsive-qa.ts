@@ -5,9 +5,10 @@ import { chromium, type Page } from "playwright";
 type TenantType = "police" | "fire";
 
 const APP_DIR = process.cwd();
-const EVIDENCE_ROOT = path.join(
+const EVIDENCE_ROOT = path.resolve(
   APP_DIR,
-  ".superloopy/evidence/frontend/20260809-admin-workflow/responsive"
+  process.env.SUPERLOOPY_EVIDENCE ??
+    ".superloopy/evidence/frontend/20260809-admin-workflow/responsive"
 );
 const SCREENSHOT_DIR = path.join(EVIDENCE_ROOT, "screenshots");
 const VIEWPORTS = [390, 768, 1280] as const;
@@ -27,14 +28,29 @@ const TENANTS = [
     password: "FireAdmin!123",
   },
 ] as const;
+const selectedTenant = process.env.SCORE_ADMIN_QA_TENANT;
+const ACTIVE_TENANTS = selectedTenant
+  ? TENANTS.filter((tenant) => tenant.type === selectedTenant)
+  : TENANTS;
+const selectedViewport = Number(process.env.SCORE_ADMIN_QA_VIEWPORT ?? 0);
+const ACTIVE_VIEWPORTS = selectedViewport
+  ? VIEWPORTS.filter((viewport) => viewport === selectedViewport)
+  : VIEWPORTS;
 const ROUTES = [
   ["/admin", "관리자 대시보드", "dashboard"],
   ["/admin/exams", "시험 관리", "exams"],
   ["/admin/answers", "정답 관리", "answers"],
+  ["/admin/regions", /(?:경찰 지역 및 모집인원 관리|지역\/모집인원 관리)/, "regions"],
+  ["/admin/pre-registrations", "사전등록 관리", "pre-registrations"],
+  ["/admin/stats", "참여 통계", "stats"],
   ["/admin/users", "사용자 관리", "users"],
   ["/admin/banners", "배너 관리", "banners"],
   ["/admin/site/operations", "운영 설정", "operations"],
 ] as const;
+const selectedPath = process.env.SCORE_ADMIN_QA_PATH;
+const ACTIVE_ROUTES = selectedPath
+  ? ROUTES.filter(([pathname]) => pathname === selectedPath)
+  : ROUTES;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -84,6 +100,14 @@ async function login(page: Page, tenant: (typeof TENANTS)[number]) {
   await page.getByRole("heading", { name: "관리자 대시보드", exact: true }).waitFor();
 }
 
+async function openAdminRoute(page: Page, tenant: (typeof TENANTS)[number], pathname: string) {
+  await page.goto(`${tenant.baseUrl}${pathname}`, { waitUntil: "domcontentloaded" });
+  if (page.url().includes("/admin-login")) {
+    await login(page, tenant);
+    await page.goto(`${tenant.baseUrl}${pathname}`, { waitUntil: "domcontentloaded" });
+  }
+}
+
 async function assertDocumentFits(page: Page, label: string) {
   const size = await page.evaluate(() => ({
     viewport: window.innerWidth,
@@ -108,7 +132,7 @@ async function main() {
   const runtimeErrors: string[] = [];
 
   try {
-    for (const tenant of TENANTS) {
+    for (const tenant of ACTIVE_TENANTS) {
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       const page = await context.newPage();
       page.setDefaultTimeout(30_000);
@@ -117,13 +141,119 @@ async function main() {
       page.on("console", (message) => {
         if (message.type() === "error") runtimeErrors.push(`${tenant.type}: ${message.text()}`);
       });
+      page.on("response", (response) => {
+        if (response.status() >= 500) {
+          runtimeErrors.push(`${tenant.type}: ${response.status()} ${response.url()}`);
+        }
+      });
       await login(page, tenant);
 
-      for (const viewport of VIEWPORTS) {
+      for (const viewport of ACTIVE_VIEWPORTS) {
         await page.setViewportSize({ width: viewport, height: 900 });
-        for (const [pathname, heading, slug] of ROUTES) {
-          await page.goto(`${tenant.baseUrl}${pathname}`, { waitUntil: "domcontentloaded" });
+        for (const [pathname, heading, slug] of ACTIVE_ROUTES) {
+          await openAdminRoute(page, tenant, pathname);
           await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+          if (pathname !== "/admin") {
+            const pageTabs = page.locator(".admin-content-tabs").first();
+            await pageTabs.waitFor();
+            const activePageTabs = pageTabs.locator(
+              '.admin-content-tab[aria-current="page"], .admin-content-tab[aria-selected="true"], .admin-content-tab[data-active="true"]'
+            );
+            assert(
+              (await activePageTabs.count()) === 1,
+              `${tenant.type}-${slug}-${viewport}: expected exactly one active page tab.`
+            );
+            await page.waitForTimeout(150);
+            const [tabListBox, activeTabBox] = await Promise.all([
+              pageTabs.boundingBox(),
+              activePageTabs.first().boundingBox(),
+            ]);
+            assert(
+              tabListBox &&
+                activeTabBox &&
+                activeTabBox.x >= tabListBox.x - 1 &&
+                activeTabBox.x + activeTabBox.width <= tabListBox.x + tabListBox.width + 1,
+              `${tenant.type}-${slug}-${viewport}: active page tab is clipped outside the tab list.`
+            );
+
+            if (
+              pathname === "/admin/site/operations" &&
+              process.env.SCORE_ADMIN_QA_CLICK_SITE_TABS === "1"
+            ) {
+              const siteTabLabels = (await pageTabs.locator(".admin-content-tab").allTextContents()).map(
+                (label) => label.trim()
+              );
+              for (const label of siteTabLabels) {
+                await pageTabs.getByRole("link", { name: label, exact: true }).click();
+                await page.waitForFunction(
+                  (expectedLabel) => {
+                    const activeTabs = [
+                      ...document.querySelectorAll(
+                        '.admin-content-tabs .admin-content-tab[aria-current="page"]'
+                      ),
+                    ];
+                    return (
+                      activeTabs.length === 1 &&
+                      activeTabs[0].textContent?.trim() === expectedLabel
+                    );
+                  },
+                  label
+                );
+              }
+              await pageTabs.getByRole("link", { name: "운영", exact: true }).click();
+              await page.getByRole("heading", { name: "운영 설정", exact: true }).waitFor();
+            }
+          }
+
+          const stateTabLists = page.locator('.admin-content-tabs[role="tablist"]');
+          for (let tabListIndex = 0; tabListIndex < (await stateTabLists.count()); tabListIndex += 1) {
+            const stateTabList = stateTabLists.nth(tabListIndex);
+            const stateTabs = stateTabList.getByRole("tab");
+            if ((await stateTabs.count()) < 2) continue;
+            await stateTabs.nth(1).click();
+            await page.waitForFunction(
+              ({ listIndex }) => {
+                const lists = document.querySelectorAll('.admin-content-tabs[role="tablist"]');
+                const tabs = lists[listIndex]?.querySelectorAll(".admin-content-tab");
+                return (
+                  tabs?.length &&
+                  tabs[1]?.getAttribute("aria-selected") === "true" &&
+                  lists[listIndex]?.querySelectorAll(
+                    '.admin-content-tab[aria-selected="true"]'
+                  ).length === 1
+                );
+              },
+              { listIndex: tabListIndex }
+            );
+          }
+          if (pathname === "/admin/pre-registrations") {
+            const listTable = page
+              .getByRole("heading", { name: "사전등록 목록", exact: true })
+              .locator("xpath=following::table[1]");
+            await listTable.waitFor();
+            await page.waitForTimeout(1_200);
+            await listTable.scrollIntoViewIfNeeded();
+            await listTable.locator("xpath=..").evaluate((scroller) => {
+              scroller.scrollLeft = scroller.scrollWidth;
+            });
+            const editButton = listTable.getByRole("button", { name: "수정", exact: true }).first();
+            if (await editButton.count()) {
+              const alignment = await editButton.locator("xpath=ancestor::td[1]").evaluate((cell) => {
+                const buttons = [...cell.querySelectorAll("button")];
+                const cellRect = cell.getBoundingClientRect();
+                const left = Math.min(...buttons.map((button) => button.getBoundingClientRect().left));
+                const right = Math.max(...buttons.map((button) => button.getBoundingClientRect().right));
+                return {
+                  cellCenter: cellRect.left + cellRect.width / 2,
+                  controlsCenter: (left + right) / 2,
+                };
+              });
+              assert(
+                Math.abs(alignment.cellCenter - alignment.controlsCenter) <= 2,
+                `${tenant.type}-${slug}-${viewport}: management buttons are not centered in their cell.`
+              );
+            }
+          }
           await assertDocumentFits(page, `${tenant.type}-${slug}-${viewport}`);
           const filename = `${tenant.type}-${slug}-${viewport}.png`;
           await page.screenshot({ path: path.join(SCREENSHOT_DIR, filename), fullPage: true });
@@ -131,7 +261,7 @@ async function main() {
         }
 
         if (viewport === 390) {
-          await page.goto(`${tenant.baseUrl}/admin`, { waitUntil: "domcontentloaded" });
+          await openAdminRoute(page, tenant, "/admin");
           await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
           const closeMenuButton = page.getByRole("button", { name: "메뉴 닫기", exact: true });
           await closeMenuButton.waitFor();
@@ -155,10 +285,12 @@ async function main() {
     const report = {
       result: "passed",
       generatedAt: new Date().toISOString(),
-      viewports: VIEWPORTS,
+      viewports: ACTIVE_VIEWPORTS,
       checks,
       runtimeErrors,
-      screenshotCount: checks.length + TENANTS.length,
+      screenshotCount:
+        checks.length +
+        (ACTIVE_VIEWPORTS.includes(390) ? ACTIVE_TENANTS.length : 0),
     };
     writeFileSync(path.join(EVIDENCE_ROOT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
     writeFileSync(
@@ -168,8 +300,10 @@ async function main() {
         "",
         `- 실행 시각: ${report.generatedAt}`,
         "- 결과: PASS",
-        `- 화면폭: ${VIEWPORTS.join("px, ")}px`,
-        `- 화면 확인: ${checks.length}건 + 모바일 메뉴 ${TENANTS.length}건`,
+        `- 화면폭: ${ACTIVE_VIEWPORTS.join("px, ")}px`,
+        `- 화면 확인: ${checks.length}건 + 모바일 메뉴 ${
+          ACTIVE_VIEWPORTS.includes(390) ? ACTIVE_TENANTS.length : 0
+        }건`,
         "- 문서 가로 스크롤: 없음 (넓은 표는 내부 스크롤 영역 사용)",
         "- 브라우저 런타임 오류: 없음",
         "",

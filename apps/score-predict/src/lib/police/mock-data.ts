@@ -8,6 +8,10 @@ import {
   SubmissionSuspicionStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  calculateKnownFinalScore,
+  getAppliedPoliceWrittenBonusRate,
+} from "@/lib/police/final-score-policy";
 
 const MOCK_USER_PREFIX = "[MOCK]";
 const MOCK_PHONE_PREFIX = "090999";
@@ -243,7 +247,8 @@ function pickDifficultyByPercent(percent: number): DifficultyRatingLevel {
 function createScoreDraft(
   subjects: SubjectInfo[],
   scorePercent: number,
-  allowFailNoise: boolean
+  allowFailNoise: boolean,
+  examType: ExamType
 ): SubmissionDraft["subjectScores"] {
   return subjects.map((subject) => {
     const localNoise = (Math.random() - 0.5) * 0.12;
@@ -259,7 +264,7 @@ function createScoreDraft(
       Math.min(subject.questionCount, Math.round(subject.questionCount * percent))
     );
     const rawScore = roundOne(correctCount * subject.pointPerQuestion);
-    const isFailed = rawScore < subject.maxScore * 0.4;
+    const isFailed = examType === ExamType.PUBLIC && rawScore < subject.maxScore * 0.4;
     const rating = pickDifficultyByPercent((rawScore / subject.maxScore) * 100);
 
     return {
@@ -277,7 +282,9 @@ function buildFinalPredictionSeedRow(params: {
   userId: number;
   draft: SubmissionDraft;
 }): FinalPredictionSeedRow {
-  const hasCutoff = params.draft.subjectScores.some((score) => score.isFailed);
+  const hasCutoff = params.draft.examType === ExamType.CAREER
+    ? params.draft.totalScore < 150
+    : params.draft.subjectScores.some((score) => score.isFailed);
   const passChance = hasCutoff
     ? 0.08
     : clamp(0.58 + (params.draft.finalScore / 250) * 0.35, 0.58, 0.95);
@@ -300,10 +307,15 @@ function buildFinalPredictionSeedRow(params: {
 
   const martialDanLevel = pickMartialDanLevel();
   const martialBonusPoint = martialBonusPointByDanLevel(martialDanLevel);
-  const written50 = roundTwo((params.draft.finalScore / 250) * 100 * 0.5);
-  const fitnessTotal = 48 + martialBonusPoint;
-  const fitness25 = roundTwo(fitnessTotal * 0.5);
-  const score75 = roundTwo(written50 + fitness25);
+  const calculated = calculateKnownFinalScore({
+    writtenScore: params.draft.finalScore,
+    fitnessPassed: true,
+    martialDanLevel,
+    appliedWrittenBonusRate: getAppliedPoliceWrittenBonusRate({
+      rawWrittenScore: params.draft.totalScore,
+      finalWrittenScore: params.draft.finalScore,
+    }),
+  });
 
   return {
     submissionId: params.submissionId,
@@ -315,7 +327,7 @@ function buildFinalPredictionSeedRow(params: {
     fitnessPassed: true,
     martialDanLevel,
     martialBonusPoint,
-    score75,
+    score75: calculated.score75,
   };
 }
 
@@ -561,23 +573,39 @@ export async function generateMockData(
         let subjectScores = createScoreDraft(
           subjectsOfType,
           scorePercent,
-          rankRatio > 0.82 && !isCutoffScenario && !isSuspiciousScenario
+          rankRatio > 0.82 && !isCutoffScenario && !isSuspiciousScenario,
+          examType
         );
 
         if (isCutoffScenario && subjectScores.length > 0) {
-          const cutoffSubject = subjectsOfType[0];
-          const correctCount = Math.floor(cutoffSubject.questionCount * 0.3);
-          const rawScore = roundOne(correctCount * cutoffSubject.pointPerQuestion);
-          subjectScores = [
-            {
-              ...subjectScores[0],
-              correctCount,
-              rawScore,
-              isFailed: true,
-              rating: pickDifficultyByPercent(30),
-            },
-            ...subjectScores.slice(1),
-          ];
+          if (examType === ExamType.CAREER) {
+            subjectScores = subjectScores.map((score) => {
+              const subject = subjectsOfType.find((candidate) => candidate.id === score.subjectId)!;
+              const correctCount = Math.floor(subject.questionCount * 0.5);
+              const rawScore = roundOne(correctCount * subject.pointPerQuestion);
+              return {
+                ...score,
+                correctCount,
+                rawScore,
+                isFailed: false,
+                rating: pickDifficultyByPercent(50),
+              };
+            });
+          } else {
+            const cutoffSubject = subjectsOfType[0];
+            const correctCount = Math.floor(cutoffSubject.questionCount * 0.3);
+            const rawScore = roundOne(correctCount * cutoffSubject.pointPerQuestion);
+            subjectScores = [
+              {
+                ...subjectScores[0],
+                correctCount,
+                rawScore,
+                isFailed: true,
+                rating: pickDifficultyByPercent(30),
+              },
+              ...subjectScores.slice(1),
+            ];
+          }
         } else if (isSuspiciousScenario) {
           subjectScores = subjectScores.map((score) => {
             const subject = subjectsOfType.find((candidate) => candidate.id === score.subjectId);
@@ -600,7 +628,10 @@ export async function generateMockData(
         let totalScore = roundOne(subjectScores.reduce((sum, item) => sum + item.rawScore, 0));
         let bonusType = chooseBonusType(recruitCount, localIndex);
         let bonusRate = bonusRateOf(bonusType);
-        const hasSubjectCutoff = subjectScores.some((item) => item.isFailed);
+        const hasSubjectCutoff = subjectScores.some((item) => {
+          const subject = subjectsOfType.find((candidate) => candidate.id === item.subjectId);
+          return subject ? item.rawScore < subject.maxScore * 0.4 : false;
+        });
         const bonusScore = hasSubjectCutoff
           ? 0
           : roundTwo(
@@ -829,8 +860,8 @@ export async function generateMockData(
       const finalPredictionRows: Prisma.FinalPredictionCreateManyInput[] = finalPredictionSeeds.map((row) => ({
         submissionId: row.submissionId,
         userId: row.userId,
-        fitnessScore: row.martialBonusPoint,
-        interviewScore: row.martialDanLevel, // 무도 단수 저장 (용도 변경)
+        fitnessScore: row.martialDanLevel,
+        interviewScore: null,
         interviewGrade: row.fitnessPassed ? "PASS" : "FAIL",
         finalScore: row.score75,
         finalRank:

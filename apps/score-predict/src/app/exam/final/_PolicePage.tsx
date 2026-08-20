@@ -37,6 +37,8 @@ interface FinalRankingDetailsClient {
   recruitCount: number;
   passMultiple: number;
   oneMultipleCutScore: number | null;
+  oneMultipleAvailable: boolean;
+  oneMultipleDisclosureTarget: number;
   isWithinOneMultiple: boolean;
   examTypeLabel: string;
   regionName: string;
@@ -257,7 +259,7 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
     <div className="space-y-6">
       {data.isAdminPreview ? (
         <section className="rounded-xl border border-slate-700 bg-slate-900 p-5">
-          <h2 className="text-sm font-semibold text-white">관리자 미리보기</h2>
+          <h2 className="user-notice-title text-white">관리자 미리보기</h2>
           <p className="mt-1 text-xs text-slate-300">
             MOCK 제출 데이터를 선택해 최종 환산 예측 계산을 검증할 수 있습니다.
           </p>
@@ -287,8 +289,8 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
         </section>
       ) : (
         <>
-          <section className="rounded-xl border border-slate-200 bg-white p-6">
-            <h1 className="text-lg font-semibold text-slate-900">최종 환산 예측 (면접 제외)</h1>
+          <section className="border-t border-slate-200 pt-6">
+            <h1 className="user-page-title">최종 환산 예측 (면접 제외)</h1>
             <p className="mt-1 text-sm text-slate-600">
               2026년 경찰 최종합격은 필기 50% + 체력 25% + 면접 25%로 결정됩니다.
               면접 점수는 비공개이므로, 필기 + 체력 기준 환산 순위(75점 만점)를 계산합니다.
@@ -346,72 +348,72 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
           </section>
 
           {calc ? (
-            <section className="rounded-xl border border-blue-200 bg-blue-50 p-6">
-              <h2 className="text-base font-semibold text-slate-900">환산 결과</h2>
+            <section className="rounded-xl border border-service-200 bg-service-50 p-6">
+              <h2 className="user-card-title">환산 결과</h2>
 
               <div className="mt-4 space-y-4">
                 {/* 1단계: 필기 환산 (50점 만점) */}
                 <div className="rounded-lg bg-white p-4">
-                  <h3 className="text-sm font-semibold text-slate-800">1. 필기 환산 (50점 만점)</h3>
-                  <table className="data-table mt-2 w-full text-sm">
+                  <h3 className="user-card-title">1. 필기 환산 (50점 만점)</h3>
+                  <table className="data-table mt-2 w-full">
                     <tbody>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">필기 점수 (원점수 + 취업지원/의사상자 가산점)</td>
-                        <td className="py-1.5 text-right font-medium">{fmt(calc.writtenScore)} / 250</td>
+                        <td className="text-slate-600">필기 점수 (원점수 + 취업지원/의사상자 가산점)</td>
+                        <td className="font-medium">{fmt(calc.writtenScore)} / 250</td>
                       </tr>
                       <tr>
-                        <td className="py-1.5 text-slate-600">필기 환산 = ({fmt(calc.writtenScore)} / 250) × 100 × 0.5</td>
-                        <td className="py-1.5 text-right font-semibold text-blue-700">{fmt(calc.written50)}</td>
+                        <td className="text-slate-600">필기 환산 = ({fmt(calc.writtenScore)} / 250) × 100 × 0.5</td>
+                        <td className="font-semibold text-service-700">{fmt(calc.written50)}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
 
-                {/* 2단계: 체력 환산 (25점 만점) */}
+                {/* 2단계: 체력 환산 (25점 반영 + 법정 가점) */}
                 <div className="rounded-lg bg-white p-4">
-                  <h3 className="text-sm font-semibold text-slate-800">2. 체력 환산 (25점 만점)</h3>
-                  <table className="data-table mt-2 w-full text-sm">
+                  <h3 className="user-card-title">2. 체력 환산 (25점 반영 + 법정 가점)</h3>
+                  <table className="data-table mt-2 w-full">
                     <tbody>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">기본 체력 점수</td>
-                        <td className="py-1.5 text-right font-medium">{calc.fitnessBase}</td>
+                        <td className="text-slate-600">기본 체력 점수</td>
+                        <td className="font-medium">{calc.fitnessBase}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">무도 가산점</td>
-                        <td className="py-1.5 text-right font-medium">+{calc.martialBonusPoint}</td>
+                        <td className="text-slate-600">무도 가산점</td>
+                        <td className="font-medium">+{calc.martialBonusPoint}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">체력 평가 합계</td>
-                        <td className="py-1.5 text-right font-medium">{calc.fitnessTotal} / 50</td>
+                        <td className="text-slate-600">체력 평가 합계</td>
+                        <td className="font-medium">{calc.fitnessTotal} / 50</td>
                       </tr>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">취업지원/의사상자 가점 (체력 단계)</td>
-                        <td className="py-1.5 text-right font-medium">+{fmt(calc.fitnessBonus25)}</td>
+                        <td className="text-slate-600">취업지원·의사상자 법정 가점 (실제 적용률 기준)</td>
+                        <td className="font-medium">+{fmt(calc.fitnessBonus25)}</td>
                       </tr>
                       <tr>
-                        <td className="py-1.5 text-slate-600">체력 환산 = {calc.fitnessTotal} × 0.5 + {fmt(calc.fitnessBonus25)}</td>
-                        <td className="py-1.5 text-right font-semibold text-blue-700">{fmt(calc.fitness25)}</td>
+                        <td className="text-slate-600">체력 환산 = {calc.fitnessTotal} × 0.5 + 법정 가점</td>
+                        <td className="font-semibold text-service-700">{fmt(calc.fitness25)}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
 
                 {/* 3단계: 면접 제외 환산 총점 (75점 만점) */}
-                <div className="rounded-lg border-2 border-blue-300 bg-white p-4">
-                  <h3 className="text-sm font-semibold text-slate-800">3. 면접 제외 환산 총점 (75점 만점)</h3>
-                  <table className="data-table mt-2 w-full text-sm">
+                <div className="rounded-lg border border-service-300 bg-white p-4">
+                  <h3 className="user-card-title">3. 면접 제외 환산 총점 (75점 만점)</h3>
+                  <table className="data-table mt-2 w-full">
                     <tbody>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">필기 환산</td>
-                        <td className="py-1.5 text-right font-medium">{fmt(calc.written50)}</td>
+                        <td className="text-slate-600">필기 환산</td>
+                        <td className="font-medium">{fmt(calc.written50)}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-slate-600">체력 환산</td>
-                        <td className="py-1.5 text-right font-medium">{fmt(calc.fitness25)}</td>
+                        <td className="text-slate-600">체력 환산</td>
+                        <td className="font-medium">{fmt(calc.fitness25)}</td>
                       </tr>
                       <tr>
-                        <td className="py-2 text-base font-semibold text-slate-900">면접 제외 환산 총점</td>
-                        <td className="py-2 text-right text-lg font-bold text-blue-700">
+                        <td className="font-semibold text-slate-900">면접 제외 환산 총점</td>
+                        <td className="font-bold text-service-700">
                           {calc.score75 === null ? "미통과" : fmt(calc.score75)}
                         </td>
                       </tr>
@@ -434,17 +436,19 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
             if (!ranking || ranking.finalRank === null) return null;
 
             return (
-              <section className="rounded-xl border border-slate-200 bg-white p-6 space-y-5">
-                <h2 className="text-base font-semibold text-slate-900">
-                  최종 환산 순위 · 1배수 합격 예측
+              <section className="border-t border-slate-200 pt-6 space-y-5">
+                <h2 className="user-card-title">
+                  최종 환산 표본 순위
                 </h2>
 
                 {/* 순위 헤더 */}
                 <div
                   className={`rounded-lg p-4 ${
- ranking.isWithinOneMultiple
- ? "border border-emerald-200 bg-emerald-50"
- : "border border-rose-200 bg-rose-50"
+ ranking.oneMultipleAvailable
+   ? ranking.isWithinOneMultiple
+     ? "border border-emerald-200 bg-emerald-50"
+     : "border border-rose-200 bg-rose-50"
+   : "border border-slate-200 bg-slate-50"
  }`}
                 >
                   <p className="text-sm font-medium text-slate-800">
@@ -454,43 +458,42 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                     <span className="font-bold">{ranking.totalParticipants}명</span> 중{" "}
                     <span className="text-lg font-black">{ranking.finalRank}등</span>입니다.
                   </p>
-                  <span
-                    className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${
+                  {ranking.oneMultipleAvailable ? <span
+                    className={`mt-2 inline-block px-3 py-1 text-xs font-bold ${
  ranking.isWithinOneMultiple
  ? "bg-emerald-600 text-white"
  : "bg-rose-600 text-white"
  }`}
                   >
                     {ranking.isWithinOneMultiple ? "1배수 합격권" : "1배수 초과"}
-                  </span>
+                  </span> : <p className="mt-2 text-xs text-slate-500">
+                    1배수 표시는 유효 표본 {ranking.oneMultipleDisclosureTarget.toLocaleString("ko-KR")}명부터 제공합니다.
+                  </p>}
                 </div>
 
-                {/* 요약 카드 */}
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
-                    <p className="text-xs text-slate-500">내 환산 점수</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">
-                      {ranking.myScore !== null ? `${ranking.myScore.toFixed(2)}점` : "-"}
-                    </p>
+                {/* 요약 지표. 세 값 모두 짧아 모바일에서도 3열로 나란히 비교한다.
+                    합격배수는 값에 이미 들어 있으므로 라벨에서 뺀다. */}
+                <dl className="user-metric-pairs border-y border-slate-200 py-3" data-cols="3">
+                  <div>
+                    <dt>내 환산 점수</dt>
+                    <dd>{ranking.myScore !== null ? `${ranking.myScore.toFixed(2)}점` : "-"}</dd>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
-                    <p className="text-xs text-slate-500">1배수 커트라인</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">
+                  <div>
+                    <dt>1배수 커트라인</dt>
+                    <dd data-tone={ranking.oneMultipleCutScore !== null ? undefined : "muted"}>
                       {ranking.oneMultipleCutScore !== null
                         ? `${ranking.oneMultipleCutScore.toFixed(2)}점`
                         : "미확정"}
-                    </p>
+                    </dd>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
-                    <p className="text-xs text-slate-500">선발인원 (합격배수)</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">
-                      {ranking.recruitCount}명 ({ranking.passMultiple}배)
-                    </p>
+                  <div>
+                    <dt>선발인원</dt>
+                    <dd>{ranking.recruitCount}명 ({ranking.passMultiple}배)</dd>
                   </div>
-                </div>
+                </dl>
 
                 {/* 순위 위치 시각화 바 */}
-                <div className="space-y-2">
+                {ranking.oneMultipleAvailable ? <div className="space-y-2">
                   <p className="text-xs font-semibold text-slate-500">내 순위 위치</p>
                   <div className="relative h-8 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                     {/* 1배수 영역 */}
@@ -522,7 +525,7 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                     <span>{ranking.recruitCount}등 (1배수)</span>
                     <span>{ranking.totalParticipants}등</span>
                   </div>
-                </div>
+                </div> : null}
 
                 {/* 경쟁자 순위 테이블 */}
                 <div className="space-y-2">
@@ -530,13 +533,13 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                     경쟁자 순위 (환산점수 기준, 상위 {Math.min(50, ranking.totalParticipants)}명)
                   </p>
                   <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
-                    <table className="data-table w-full text-sm">
-                      <thead className="sticky top-0 bg-slate-50">
-                        <tr className="text-left text-xs text-slate-500">
-                          <th className="px-3 py-2 font-semibold">순위</th>
-                          <th className="px-3 py-2 font-semibold">아이디</th>
-                          <th className="px-3 py-2 text-right font-semibold">환산점수</th>
-                          <th className="px-3 py-2 font-semibold">비고</th>
+                    <table className="data-table w-full">
+                      <thead className="sticky top-0">
+                        <tr>
+                          <th className="font-semibold">순위</th>
+                          <th className="font-semibold">아이디</th>
+                          <th className="font-semibold">환산점수</th>
+                          <th className="font-semibold">비고</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -563,16 +566,16 @@ export default function ExamFinalPage({ embedded = false }: ExamFinalPageProps) 
                                 </tr>
                               ) : null}
                               <tr
-                                className={`${c.isMine ? "bg-blue-50 font-bold" : ""} ${
+                                className={`${c.isMine ? "bg-service-50 font-bold" : ""} ${
  c.rank > ranking.recruitCount ? "text-slate-400" : ""
  }`}
                               >
-                                <td className="px-3 py-2">{c.rank}</td>
-                                <td className="px-3 py-2">{c.maskedName}</td>
-                                <td className="px-3 py-2 text-right">{c.score.toFixed(2)}</td>
-                                <td className="px-3 py-2">
+                                <td className="">{c.rank}</td>
+                                <td className="">{c.maskedName}</td>
+                                <td className="">{c.score.toFixed(2)}</td>
+                                <td className="">
                                   {c.isMine ? (
-                                    <span className="rounded bg-blue-600 px-1.5 py-0.5 text-xs text-white">
+                                    <span className="rounded bg-service-600 px-1.5 py-0.5 text-xs text-white">
                                       나
                                     </span>
                                   ) : c.rank === ranking.recruitCount ? (

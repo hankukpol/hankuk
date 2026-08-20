@@ -14,6 +14,7 @@ import { getSiteSettingsUncached } from "@/lib/site-settings";
 import { getTenantExamTypeErrorMessage, isExamTypeForTenant } from "@/lib/tenant-exam";
 import type { TenantType } from "@/lib/tenant";
 import { isOperationFeatureEnabled } from "@/lib/exam-operation";
+import { canShowSampleOneMultiplePoint } from "@/lib/public-sample-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -321,7 +322,11 @@ export async function GET(request: NextRequest) {
               status: snapshot.status,
               statusReason: snapshot.statusReason,
               averageScore: snapshot.averageScore,
-              oneMultipleCutScore: snapshot.oneMultipleCutScore,
+              oneMultipleCutScore:
+                tenantType === "police" &&
+                !canShowSampleOneMultiplePoint(snapshot.participantCount, snapshot.recruitCount)
+                  ? null
+                  : snapshot.oneMultipleCutScore,
               sureMinScore: tenantType === "police" ? null : snapshot.sureMinScore,
               likelyMinScore: tenantType === "police" ? null : snapshot.likelyMinScore,
               possibleMinScore: tenantType === "police" ? null : snapshot.possibleMinScore,
@@ -332,6 +337,12 @@ export async function GET(request: NextRequest) {
     current: tenantType === "police"
       ? {
           ...current,
+          oneMultipleCutScore: canShowSampleOneMultiplePoint(
+            current.participantCount,
+            current.recruitCount
+          )
+            ? current.oneMultipleCutScore
+            : null,
           sureMinScore: null,
           likelyMinScore: null,
           possibleMinScore: null,

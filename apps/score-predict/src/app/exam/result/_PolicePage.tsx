@@ -33,9 +33,7 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
 
       try {
         const fromQuery = searchParams.get("submissionId");
-        const fromStorage =
-          typeof window !== "undefined" ? sessionStorage.getItem("latestSubmissionId") : null;
-        const submissionId = fromQuery ?? fromStorage ?? "";
+        const submissionId = fromQuery ?? "";
         const query = submissionId ? `?submissionId=${encodeURIComponent(submissionId)}` : "";
 
         const response = await fetch(`/api/result${query}`, {
@@ -61,9 +59,6 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
 
         if (!mounted) return;
         setResult(data);
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("latestSubmissionId", String(data.submission.id));
-        }
       } catch (error) {
         if (!mounted) return;
         const message = error instanceof Error ? error.message : "성적 정보를 불러오지 못했습니다.";
@@ -108,10 +103,10 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="border-b border-slate-200 pb-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-lg font-semibold text-slate-900">내 성적 분석</h1>
-          {!result.submission.rankingWithheld ? (
+          <h1 className="user-page-title">내 성적 분석</h1>
+          {result.features.analysisEnabled && !result.submission.rankingWithheld ? (
             <ShareButton submissionId={result.submission.id} sharePath="/exam/result" />
           ) : null}
         </div>
@@ -124,11 +119,22 @@ export default function ExamResultPage({ embedded = false }: ExamResultPageProps
 
       <SuspicionReviewNotice status={result.submission.suspicionStatus} />
 
-      <AnalysisSubTabs result={result} />
+      {result.pending?.isPending ? (
+        <section className="border-l-4 border-amber-400 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <h2 className="font-semibold">채점 대기 중입니다</h2>
+          <p className="mt-1 text-amber-800">{result.pending.message}</p>
+          <p className="mt-2 text-xs text-amber-700">
+            현재 표시되는 0점은 성적이 아닙니다. 가답안이 등록되면 자동 채점 후 결과가 표시됩니다.
+          </p>
+        </section>
+      ) : (
+        <AnalysisSubTabs result={result} />
+      )}
 
-      {!embedded ? (
+      {!embedded && !result.pending?.isPending ? (
         <div className="mt-8 flex flex-wrap justify-end gap-3">
           {result.submission.isOwner &&
+          result.submission.examIsActive &&
           result.submission.editCount < result.submission.maxEditLimit &&
           result.submission.maxEditLimit > 0 ? (
             <Button

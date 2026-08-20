@@ -14,7 +14,18 @@ import {
   POLICE_SAMPLE_RANK_GRADE_OUTPUT_ENABLED,
   resolvePoliceGradeAvailability,
 } from "../src/lib/police/prediction-model";
-import { getPolicePassMultiple } from "../src/lib/police/prediction-policy";
+import {
+  getPolicePassMultiple,
+  getPoliceWrittenPassCount,
+} from "../src/lib/police/prediction-policy";
+import {
+  getPoliceCareerCutoffScore,
+  hasPoliceWrittenCutoff,
+} from "../src/lib/police/written-policy";
+import {
+  calculateKnownFinalScore,
+  getAppliedPoliceWrittenBonusRate,
+} from "../src/lib/police/final-score-policy";
 import {
   calculateSampleTopPercent,
   canShowSampleAverage,
@@ -32,6 +43,34 @@ function verifyPoliceModel() {
   );
   const passMultiple = getPolicePassMultiple(100);
   assert(passMultiple === 2, "경찰 필기 합격배수는 2배수여야 합니다.");
+  assert(getPoliceWrittenPassCount(3, ExamType.CAREER) === 8, "경행경채 3명 모집은 8명을 선발해야 합니다.");
+  assert(getPoliceWrittenPassCount(5, ExamType.CAREER) === 10, "경행경채 5명 모집은 10명을 선발해야 합니다.");
+  assert(getPoliceWrittenPassCount(6, ExamType.CAREER) === 12, "경행경채 6명 이상은 2배수여야 합니다.");
+  assert(getPoliceWrittenPassCount(3, ExamType.PUBLIC) === 6, "공채는 소수 모집도 2배수여야 합니다.");
+  assert(getPoliceCareerCutoffScore() === 150, "경행경채 총점 60% 과락선은 150점이어야 합니다.");
+  assert(
+    hasPoliceWrittenCutoff({ examType: ExamType.CAREER, totalScore: 149.5, subjectScores: [] }),
+    "경행경채 150점 미만을 과락 처리하지 않습니다."
+  );
+  assert(
+    !hasPoliceWrittenCutoff({ examType: ExamType.CAREER, totalScore: 150, subjectScores: [{ isFailed: true }] }),
+    "경행경채 총점 60% 통과자를 과목별 40%로 오과락 처리합니다."
+  );
+  const finalScore = calculateKnownFinalScore({
+    writtenScore: 262.5,
+    fitnessPassed: true,
+    martialDanLevel: 2,
+    appliedWrittenBonusRate: getAppliedPoliceWrittenBonusRate({
+      rawWrittenScore: 237.5,
+      finalWrittenScore: 262.5,
+    }),
+  });
+  assert(finalScore.written50 === 52.5, "실제 적용된 필기 가점이 50점 환산에 반영되지 않습니다.");
+  assert(finalScore.fitnessBonus25 === 2.5, "실제 적용된 법정 가점이 체력 단계에 반영되지 않습니다.");
+  assert(
+    getAppliedPoliceWrittenBonusRate({ rawWrittenScore: 237.5, finalWrittenScore: 237.5 }) === 0,
+    "필기에 적용되지 않은 선언 가점이 최종예측에 재사용됩니다."
+  );
 
   const reliable = buildPolicePredictionBands({
     recruitCount: 100,

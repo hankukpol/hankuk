@@ -11,6 +11,9 @@ const TENANTS = [
   { name: "police", base: "http://police.localhost:3200", admin: { id: "admin", pw: "1234!!" } },
   { name: "fire", base: "http://fire.localhost:3200", admin: { id: "010-0000-0000", pw: "FireAdmin!123" } },
 ];
+const SELECTED_TENANTS = process.env.SCORE_DESIGN_TENANT
+  ? TENANTS.filter((tenant) => tenant.name === process.env.SCORE_DESIGN_TENANT)
+  : TENANTS;
 const ADMIN_PATHS = [
   "/admin", "/admin/exams", "/admin/answers", "/admin/regions", "/admin/pass-cut",
   "/admin/pre-registrations", "/admin/submissions", "/admin/stats", "/admin/visitors",
@@ -46,9 +49,10 @@ const AUDIT = `(() => {
     return r.width > 8 && r.height > 8;
   };
   // 표면은 사방이 닫힌 경계선을 가진다. border-t 하나만 있는 건 구분선이지 표면이 아니다.
-  const hasBorder = (cs) =>
+  const hasBorderBox = (cs) =>
     ["borderTopWidth","borderRightWidth","borderBottomWidth","borderLeftWidth"]
-      .every((k) => (parseFloat(cs[k]) || 0) > 0)
+      .every((k) => (Number.parseFloat(cs[k]) || 0) > 0);
+  const hasBorder = (cs) => hasBorderBox(cs)
     && cs.borderTopColor !== "rgba(0, 0, 0, 0)";
   // 카드 = 표면. 폼 컨트롤·버튼·링크는 경계와 radius가 있어도 카드가 아니다.
   const NOT_SURFACE = new Set(["INPUT","SELECT","TEXTAREA","BUTTON","A","LABEL","OPTION",
@@ -59,9 +63,10 @@ const AUDIT = `(() => {
   const isCard = (el) => {
     if (NOT_SURFACE.has(el.tagName)) return false;
     if (el.closest("nav, [role=navigation]")) return false;
+    if (el.classList.contains("user-navigation-surface")) return false;
     if (isPromotion(el)) return false;
     const cs = getComputedStyle(el);
-    if (!(vis(el) && hasBorder(cs) && (parseFloat(cs.borderTopLeftRadius)||0) >= 6)) return false;
+    if (!(vis(el) && hasBorder(cs) && (Number.parseFloat(cs.borderTopLeftRadius)||0) >= 6)) return false;
     // 한 줄짜리 컨트롤 묶음(라디오 한 줄, 세그먼트 탭)은 표면이 아니라 컨트롤이다. 폼 radius(6px)를 쓴다.
     const h = el.getBoundingClientRect().height;
     if (h <= 56 && el.querySelector("input, select, textarea, button")) return false;
@@ -88,25 +93,30 @@ const AUDIT = `(() => {
   const isVisualSurface = (el) => {
     if (NOT_SURFACE.has(el.tagName)) return false;
     const cs = getComputedStyle(el);
-    return vis(el) && hasBorder(cs) && (parseFloat(cs.borderTopLeftRadius)||0) >= 6;
+    // 사용자 메인 카드는 외곽선 색만 투명화하므로, 중첩 판정에서는
+    // 투명한 1px border box도 여전히 부모 표면으로 취급한다.
+    return vis(el) && hasBorderBox(cs) && (Number.parseFloat(cs.borderTopLeftRadius)||0) >= 6;
   };
 
   const out = { btnHeights: {}, btnBg: {}, cardPad: {}, nested: [], tableIssues: [],
+                tableAlignmentIssues: [],
+                adminTabIssues: [],
                 uniformGrid: [], accentColors: {}, radiusBad: [], radiusTop: {}, radiusNested: {},
                 squareSurfaces: [] };
+  const isAdminPage = /^\\/(police\\/|fire\\/)?admin(?:\\/|$)/.test(location.pathname);
 
-  // I. 경계선은 있는데 radius가 0인 표면.
-  //    isCard가 'radius >= 6'을 요구하므로 각진 카드는 다른 검사에서 아예 보이지 않는다.
-  //    새 화면에서 rounded-* 를 빠뜨리는 일이 잦아 별도로 잡는다.
+  // I. 문서형 디자인에 남은 둥근 표면.
+  //    원형 컨트롤·배지와 프로모션은 제외하고, 제품 UI의 표면은 radius 0이어야 한다.
   const CELL = new Set(["TABLE","THEAD","TBODY","TFOOT","TR","TH","TD","HR"]);
   document.querySelectorAll("*").forEach((el) => {
     if (NOT_SURFACE.has(el.tagName) || CELL.has(el.tagName)) return;
-    if (el.closest("nav, [role=navigation]") || isPromotion(el)) return;
+    if (el.closest("nav, [role=navigation]") || el.classList.contains("user-navigation-surface") || isPromotion(el)) return;
     // 차트 툴팁 등 부유 요소는 문서 흐름 밖이라 카드 규칙을 적용하지 않는다.
     if (el.closest(".recharts-tooltip-wrapper, [role=dialog], [role=tooltip]")) return;
     const cs = getComputedStyle(el);
     if (!vis(el) || !hasBorder(cs)) return;
-    if ((parseFloat(cs.borderTopLeftRadius) || 0) !== 0) return;
+    if ((Number.parseFloat(cs.borderTopLeftRadius) || 0) === 0) return;
+    if (/(auto|scroll)/.test(cs.overflowY) && cs.maxHeight !== "none") return;
     if (el.querySelector("input, select, textarea, button, .sun-editor")) return;
     const r = el.getBoundingClientRect();
     if (r.width < 80 || r.height < 40) return;   // 작은 구분자·배지는 제외
@@ -141,7 +151,7 @@ const AUDIT = `(() => {
     const cs = getComputedStyle(el);
     const pad = cs.paddingTop;
     out.cardPad[pad] = (out.cardPad[pad] || 0) + 1;
-    const radius = Math.round(parseFloat(cs.borderTopLeftRadius) || 0);
+    const radius = Math.round(Number.parseFloat(cs.borderTopLeftRadius) || 0);
     // divide-* 또는 gap-px 로 행을 나눈 단일 표면은 DESIGN.md가 권장하는 묶음이지 '카드 안 카드'가 아니다.
     const isGroupedSurface = /\\b(divide-|gap-px)/.test((el.className || "").toString())
       || isControlGroup(el);
@@ -158,11 +168,12 @@ const AUDIT = `(() => {
       }
       p = p.parentElement; hops++;
     }
-    // G. radius 위계: 최상위 카드 10px, 중첩 카드 8px (원형 배지 등 999px는 제외)
+    // G. 제품 UI 표면의 radius는 사용자·관리자 모두 0이다.
+    //    (원형 배지 등 999px는 제외)
     if (radius < 100) {
       const bucket = isNested ? out.radiusNested : out.radiusTop;
       bucket[radius] = (bucket[radius] || 0) + 1;
-      const expected = isNested ? 8 : 10;
+      const expected = 0;
       if (radius !== expected) {
         out.radiusBad.push({ nested: isNested, radius, expected,
                              cls: (el.className||"").toString().slice(0,52),
@@ -171,7 +182,7 @@ const AUDIT = `(() => {
     }
   });
 
-  // D. 표: 외곽 중복 · 셀 좌우 격자
+  // D. 표: 외곽 중복 · 셀 좌우 격자 · 관리자 셀 정렬
   document.querySelectorAll("table").forEach((t) => {
     if (!vis(t)) return;
     let outer = hasBorder(getComputedStyle(t)) ? 1 : 0;
@@ -180,10 +191,103 @@ const AUDIT = `(() => {
     let grid = 0;
     t.querySelectorAll("td,th").forEach((c) => {
       const cs = getComputedStyle(c);
-      if ((parseFloat(cs.borderLeftWidth)||0) > 0 || (parseFloat(cs.borderRightWidth)||0) > 0) grid++;
+      if ((Number.parseFloat(cs.borderLeftWidth)||0) > 0 || (Number.parseFloat(cs.borderRightWidth)||0) > 0) grid++;
     });
-    if (outer >= 2 || grid > 0) out.tableIssues.push({ outer, grid });
+    const requiresGrid = isAdminPage || t.classList.contains("data-table");
+    if (outer >= 2 || (requiresGrid && grid === 0)) out.tableIssues.push({ outer, grid });
+
+    // DESIGN.md: 관리자 표의 기본값은 가운데, 자릿수 비교 열만 num-right다.
+    // 에디터 내부 표는 콘텐츠이므로 제품 데이터 표 검사에서 제외한다.
+    if (isAdminPage && !t.closest(".sun-editor")) {
+      t.querySelectorAll("th,td").forEach((cell) => {
+        if (!vis(cell)) return;
+        const expected = cell.classList.contains("num-right") ? "right" : "center";
+        const actual = getComputedStyle(cell).textAlign;
+        if (actual !== expected) {
+          out.tableAlignmentIssues.push({
+            tag: cell.tagName.toLowerCase(),
+            expected,
+            actual,
+            text: (cell.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 28),
+            cls: (cell.className || "").toString().slice(0, 70),
+          });
+        }
+
+        // 셀의 text-align이 가운데여도 block flex 자식은 기본값 flex-start로
+        // 따로 왼쪽에 붙는다. 관리 버튼 묶음처럼 셀을 직접 채우는 행 방향
+        // flex 컨테이너까지 실제 가로 배치를 검사한다.
+        [...cell.children].forEach((child) => {
+          if (!vis(child)) return;
+          const childStyle = getComputedStyle(child);
+          if (childStyle.display === "flex" && childStyle.flexDirection.startsWith("row")) {
+            const balanced = new Set(["center", "space-between", "space-around", "space-evenly"]);
+            if (!balanced.has(childStyle.justifyContent)) {
+              out.tableAlignmentIssues.push({
+                tag: child.tagName.toLowerCase(),
+                expected: "balanced flex content",
+                actual: childStyle.justifyContent,
+                text: (child.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 28),
+                cls: (child.className || "").toString().slice(0, 70),
+              });
+            }
+          }
+        });
+      });
+
+      t.querySelectorAll(".num-right").forEach((el) => {
+        if (!vis(el) || el.matches("th,td")) return;
+        const actual = getComputedStyle(el).textAlign;
+        if (actual !== "right") {
+          out.tableAlignmentIssues.push({
+            tag: el.tagName.toLowerCase(),
+            expected: "right",
+            actual,
+            text: (el.value || el.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 28),
+            cls: (el.className || "").toString().slice(0, 70),
+          });
+        }
+      });
+    }
   });
+
+  // E. 관리자 탭: 각 탭 목록에는 활성 항목이 정확히 하나 있고,
+  // 사용자 풀서비스의 공채·경채 탭과 같은 폴더형 상태가 계산되어야 한다.
+  if (isAdminPage) {
+    document.querySelectorAll(".admin-content-tabs").forEach((tabList) => {
+      if (!vis(tabList)) return;
+      const tabs = [...tabList.querySelectorAll(".admin-content-tab")].filter(vis);
+      if (tabs.length === 0) return;
+      const activeTabs = tabs.filter((tab) =>
+        tab.matches('[aria-current="page"], [aria-selected="true"], [data-active="true"]')
+      );
+      if (activeTabs.length !== 1) {
+        out.adminTabIssues.push({
+          reason: "active-count-" + activeTabs.length,
+          label: tabList.getAttribute("aria-label") || "관리자 탭",
+        });
+        return;
+      }
+
+      const activeStyle = getComputedStyle(activeTabs[0]);
+      const inactiveTab = tabs.find((tab) => tab !== activeTabs[0]);
+      const inactiveStyle = inactiveTab ? getComputedStyle(inactiveTab) : null;
+      const activeIsDistinct =
+        Number.parseInt(activeStyle.fontWeight, 10) >= 700 &&
+        activeStyle.backgroundColor === "rgb(255, 255, 255)" &&
+        (Number.parseFloat(activeStyle.borderBottomWidth) || 0) === 0 &&
+        (!inactiveStyle || activeStyle.backgroundColor !== inactiveStyle.backgroundColor);
+      if (!activeIsDistinct) {
+        out.adminTabIssues.push({
+          reason: "active-style-not-distinct",
+          label: tabList.getAttribute("aria-label") || "관리자 탭",
+          active: (activeTabs[0].textContent || "").trim().replace(/\\s+/g, " "),
+          background: activeStyle.backgroundColor,
+          weight: activeStyle.fontWeight,
+          bottom: activeStyle.borderBottomWidth,
+        });
+      }
+    });
+  }
 
   // F. 균일 카드 그리드 (같은 크기 카드 4장 이상 나열)
   document.querySelectorAll("*").forEach((el) => {
@@ -229,8 +333,12 @@ const browser = await chromium.launch({
   args: ["--host-resolver-rules=MAP police.localhost 127.0.0.1,MAP fire.localhost 127.0.0.1"],
 });
 
-for (const t of TENANTS) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+let hasTableAlignmentFailure = false;
+let hasAdminTabFailure = false;
+
+for (const t of SELECTED_TENANTS) {
+  const viewportWidth = Number(process.env.SCORE_DESIGN_VIEWPORT || 1280);
+  const ctx = await browser.newContext({ viewport: { width: viewportWidth, height: 1000 } });
   const page = await ctx.newPage();
   // 한 테넌트가 실패해도 나머지는 계속 검사한다.
   const reachable = await gotoWithRetry(page, t.base + "/admin-login")
@@ -253,9 +361,21 @@ for (const t of TENANTS) {
   }
 
   const total = { btnHeights: {}, btnBg: {}, cardPad: {}, accentColors: {}, radiusTop: {}, radiusNested: {} };
-  const nested = [], tables = [], grids = [], radiusBad = [], square = [];
+  const nested = [], tables = [], tableAlignments = [], adminTabs = [], grids = [], radiusBad = [], square = [];
 
-  const targets = reachable ? [...(loggedIn ? [...ADMIN_PATHS, ...APP_PATHS] : []), ...PUBLIC_PATHS] : [];
+  const requestedPath = process.env.SCORE_DESIGN_PATH;
+  const requestedPathPrefix = process.env.SCORE_DESIGN_PATH_PREFIX;
+  const requestedScope = process.env.SCORE_DESIGN_SCOPE;
+  const targetPool = requestedScope === "admin"
+    ? (loggedIn ? ADMIN_PATHS : [])
+    : [...(loggedIn ? [...ADMIN_PATHS, ...APP_PATHS] : []), ...PUBLIC_PATHS];
+  const targets = reachable
+    ? targetPool.filter(
+        (path) =>
+          (!requestedPath || path === requestedPath) &&
+          (!requestedPathPrefix || path.startsWith(requestedPathPrefix))
+      )
+    : [];
   const scanned = [], skipped = [];
   for (const path of targets) {
     try {
@@ -284,8 +404,14 @@ for (const t of TENANTS) {
       r.squareSurfaces.forEach((x) => square.push({ path, ...x }));
       r.nested.forEach((n) => nested.push({ path, ...n }));
       r.tableIssues.forEach((x) => tables.push({ path, ...x }));
+      r.tableAlignmentIssues.forEach((x) => tableAlignments.push({ path, ...x }));
+      r.adminTabIssues.forEach((x) => adminTabs.push({ path, ...x }));
       r.uniformGrid.forEach((g) => grids.push({ path, ...g }));
-    } catch { skipped.push(`${path}(error)`); }
+    } catch (error) {
+      const reason = String(error).split("\n")[0].slice(0, 160);
+      skipped.push(`${path}(error: ${reason})`);
+      console.log(`  [검사 오류] ${t.name}${path}: ${reason}`);
+    }
   }
 
   const sorted = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]);
@@ -296,19 +422,29 @@ for (const t of TENANTS) {
   console.log("버튼 강조 배경:", sorted(total.btnBg).slice(0, 6).map(([k, v]) => `${k}×${v}`).join(" | "));
   console.log("카드 padding:", sorted(total.cardPad).map(([k, v]) => `${k}×${v}`).join(", "));
   console.log("강조 글자색 종류:", sorted(total.accentColors).length, "→", sorted(total.accentColors).slice(0, 8).map(([k, v]) => `${k}×${v}`).join(" | "));
-  console.log("카드 radius 최상위(10px 기대):", sorted(total.radiusTop).map(([k, v]) => `${k}px×${v}`).join(", "));
-  console.log("카드 radius 중첩(8px 기대):", sorted(total.radiusNested).map(([k, v]) => `${k}px×${v}`).join(", "));
+  console.log("제품 표면 radius 최상위(기대 0px):", sorted(total.radiusTop).map(([k, v]) => `${k}px×${v}`).join(", "));
+  console.log("제품 표면 radius 중첩(기대 0px):", sorted(total.radiusNested).map(([k, v]) => `${k}px×${v}`).join(", "));
   console.log(`radius 위계 위반: ${radiusBad.length}건`);
   radiusBad.slice(0, 40).forEach((x) =>
     console.log(`   ${x.path}  ${x.nested ? "중첩" : "최상위"} ${x.radius}px(기대 ${x.expected}px)  "${x.text}"  ${x.cls}`));
-  console.log(`라운드 없는 표면: ${square.length}건`);
+  console.log(`라운드가 남은 표면: ${square.length}건`);
   square.slice(0, 8).forEach((x) => console.log(`   ${x.path}  "${x.text}"  ${x.cls}`));
   console.log(`카드 안 카드: ${nested.length}건`);
   nested.slice(0, 5).forEach((n) => console.log(`   ${n.path}  "${n.text}"  ${n.child}`));
-  console.log(`표 이중외곽·셀격자: ${tables.length}건`);
+  console.log(`표 이중외곽·필수격자 누락: ${tables.length}건`);
   tables.slice(0, 5).forEach((x) => console.log(`   ${x.path}  외곽${x.outer}중 셀격자${x.grid}`));
+  console.log(`관리자 표 정렬 위반: ${tableAlignments.length}건`);
+  tableAlignments.slice(0, 12).forEach((x) =>
+    console.log(`   ${x.path}  ${x.tag} ${x.actual}(기대 ${x.expected})  "${x.text}"  ${x.cls}`));
+  if (tableAlignments.length > 0) hasTableAlignmentFailure = true;
+  console.log(`관리자 탭 활성 상태 위반: ${adminTabs.length}건`);
+  adminTabs.slice(0, 12).forEach((x) =>
+    console.log(`   ${x.path}  ${x.label}  ${x.reason}${x.active ? `  활성 "${x.active}"` : ""}`));
+  if (adminTabs.length > 0) hasAdminTabFailure = true;
   console.log(`균일 카드 그리드: ${grids.length}건`);
   grids.slice(0, 4).forEach((g) => console.log(`   ${g.path}  카드${g.count}장  ${g.cls}`));
   await ctx.close();
 }
 await browser.close();
+if (hasTableAlignmentFailure) process.exitCode = 1;
+if (hasAdminTabFailure) process.exitCode = 1;

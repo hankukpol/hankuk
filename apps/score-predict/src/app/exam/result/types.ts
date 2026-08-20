@@ -43,6 +43,7 @@ export interface ResultSubjectCorrectRateSummary {
 export interface ResultResponse {
   features: {
     finalPredictionEnabled: boolean;
+    analysisEnabled: boolean;
   };
   pending?: {
     isPending: boolean;
@@ -55,6 +56,7 @@ export interface ResultResponse {
     examName: string;
     examYear: number;
     examRound: number;
+    examIsActive: boolean;
     examType: "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
     regionId: number;
     regionName: string;

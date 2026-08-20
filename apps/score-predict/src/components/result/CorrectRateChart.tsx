@@ -50,8 +50,8 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
 
   if (!selectedSubject) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="text-base font-semibold text-slate-900">문항별 정답률 분포</h2>
+      <section className="border-t border-slate-200 pt-6">
+        <h2 className="user-card-title">문항별 정답률 분포</h2>
         <p className="mt-3 text-sm text-slate-500">표시할 데이터가 없습니다.</p>
       </section>
     );
@@ -59,9 +59,9 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
 
   if (!hasChartData) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="border-t border-slate-200 pt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-900">문항별 정답률 분포</h2>
+          <h2 className="user-card-title">문항별 정답률 분포</h2>
           <select
             className="h-11 rounded-md border border-slate-300 px-3 text-sm"
             value={selectedSubject.subjectId}
@@ -80,10 +80,10 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
+    <section className="border-t border-slate-200 pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">문항별 정답률 분포</h2>
+          <h2 className="user-card-title">문항별 정답률 분포</h2>
           <p className="mt-1 text-xs text-slate-500">
             본 서비스의 동일 시험·채용유형 답안 제출자 기준이며, 지역을 구분하지 않은 표본입니다.
           </p>
@@ -119,8 +119,9 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
               tickLine={false}
             />
             <Tooltip
-              contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
-              formatter={(value: unknown) => `${Number(value ?? 0).toFixed(1)}%`}
+              contentStyle={{ borderRadius: "0", border: "1px solid #e8e8ec", fontSize: "12px" }}
+              formatter={(value: unknown) => [`${Number(value ?? 0).toFixed(1)}%`, "정답률"]}
+              labelFormatter={(label: unknown) => `${String(label)}번 문항`}
             />
             <ReferenceLine
               y={40}
@@ -128,7 +129,7 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
               strokeDasharray="4 4"
               label={{ value: "40% 기준선", position: "insideTopRight", fill: "#64748b", fontSize: 11 }}
             />
-            <Bar dataKey="correctRate" radius={[4, 4, 0, 0]} maxBarSize={28}>
+            <Bar dataKey="correctRate" name="정답률" radius={[4, 4, 0, 0]} maxBarSize={28}>
               {chartData.map((item) => (
                 <Cell key={item.key} fill={item.isCorrect ? "#059669" : "#e11d48"} />
               ))}
@@ -157,8 +158,8 @@ export default function CorrectRateChart({ subjects }: CorrectRateChartProps) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-        <span className="rounded-full bg-service-100 px-3 py-1 text-service-700">서비스 강조색: 내가 맞힌 문항</span>
-        <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-700">빨간색: 내가 틀린 문항</span>
+        <span className="bg-service-100 px-3 py-1 text-service-700">서비스 강조색: 내가 맞힌 문항</span>
+        <span className="bg-rose-100 px-3 py-1 text-rose-700">빨간색: 내가 틀린 문항</span>
       </div>
     </section>
   );

@@ -17,6 +17,18 @@ import { getActiveNotices, getSiteSettings } from "@/lib/site-settings";
 import { requireTenantSessionRoute } from "@/lib/tenant-session.server";
 import type { TenantType } from "@/lib/tenant";
 import { isOperationFeatureEnabled } from "@/lib/exam-operation";
+import {
+  canShowSampleAverage,
+  canShowSampleOneMultiplePoint,
+} from "@/lib/public-sample-policy";
+import {
+  buildPoliceScoredNonCutoffWhere,
+  hasPoliceWrittenCutoff,
+} from "@/lib/police/written-policy";
+import {
+  isActiveExamRouteError,
+  requireSoleActiveExam,
+} from "@/lib/active-exam";
 
 export const runtime = "nodejs";
 
@@ -443,16 +455,10 @@ export async function GET() {
   const userId = Number(session.user.id);
 
   try {
-    const activeExam = await prisma.exam.findFirst({
-      where: { isActive: true },
-      orderBy: [{ examDate: "desc" }, { id: "desc" }],
-      select: {
-        id: true,
-        name: true,
-        year: true,
-        round: true,
-        policeWrittenPassMultiple: true,
-      },
+    const activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType,
+      context: `${tenantType}/main-stats`,
     });
 
     const [notices, settings] = await Promise.all([getActiveNotices(), getSiteSettings()]);
@@ -607,6 +613,7 @@ export async function GET() {
 
     const liveStats = {
       examName: activeExam.name,
+      examDate: activeExam.examDate.toISOString(),
       examYear: activeExam.year,
       examRound: activeExam.round,
       totalParticipants,
@@ -624,12 +631,19 @@ export async function GET() {
       examType: { in: enabledExamTypes },
       isSuspicious: false,
       ...validSubmissionScope,
-      subjectScores: {
-        some: {},
-        none: {
-          isFailed: true,
-        },
-      },
+      ...(tenantType === "police"
+        ? {
+            OR: enabledExamTypes.map((examType) => ({
+              examType,
+              ...buildPoliceScoredNonCutoffWhere(examType),
+            })),
+          }
+        : {
+            subjectScores: {
+              some: {},
+              none: { isFailed: true },
+            },
+          }),
     };
 
     // 과락 포함 참여인원 집계용 where (subjectScores 과락 필터 제외)
@@ -638,6 +652,7 @@ export async function GET() {
       examType: { in: enabledExamTypes },
       isSuspicious: false,
       ...validSubmissionScope,
+      scoringStatus: "SCORED",
       subjectScores: { some: {} },
     };
 
@@ -782,7 +797,11 @@ export async function GET() {
       const oneMultipleTieCount = oneMultipleBand?.count ?? null;
 
       const passMultiple = tenantType === "police"
-        ? getPoliceConfiguredPassMultiple(recruitCount, activeExam?.policeWrittenPassMultiple)
+        ? getPoliceConfiguredPassMultiple(
+            recruitCount,
+            activeExam?.policeWrittenPassMultiple,
+            examType
+          )
         : getTenantPassMultiple(tenantType, recruitCount, examType);
       const predictionBands = tenantType === "police"
         ? buildPolicePredictionBands({
@@ -863,7 +882,14 @@ export async function GET() {
 
       myScoresByExamType.set(submission.examType, {
         totalScore: Number(submission.totalScore),
-        hasAnyFail: submission.subjectScores.some((subjectScore) => subjectScore.isFailed),
+        hasAnyFail:
+          tenantType === "police"
+            ? hasPoliceWrittenCutoff({
+                examType: submission.examType,
+                totalScore: Number(submission.totalScore),
+                subjectScores: submission.subjectScores,
+              })
+            : submission.subjectScores.some((subjectScore) => subjectScore.isFailed),
         subjectScoresByName,
       });
     }
@@ -891,18 +917,33 @@ export async function GET() {
     });
 
     const competitiveBase = rows
-      .filter(
-        (row) =>
-          row.averageFinalScore !== null &&
-          row.sureMinScore !== null &&
-          row.participantCount >= 1
-      )
-      .map((row) => ({
-        label: `${row.regionName}-${row.examTypeLabel}`,
-        averageFinalScore: row.averageFinalScore as number,
-        sureMinScore: row.sureMinScore as number,
-        gap: roundNumber((row.sureMinScore as number) - (row.averageFinalScore as number)),
-      }));
+      .flatMap((row) => {
+        if (
+          row.averageFinalScore === null ||
+          !canShowSampleAverage(row.participantCount)
+        ) {
+          return [];
+        }
+
+        const referenceScore = tenantType === "police"
+          ? canShowSampleOneMultiplePoint(row.participantCount, row.recruitCount)
+            ? row.oneMultipleCutScore
+            : null
+          : row.sureMinScore;
+        if (referenceScore === null) return [];
+
+        const referenceLabel = tenantType === "police"
+          ? "표본 1배수 지점"
+          : "합격확실권 점수";
+
+        return [{
+          label: `${row.regionName}-${row.examTypeLabel}`,
+          averageFinalScore: row.averageFinalScore,
+          referenceScore,
+          referenceLabel,
+          gap: roundNumber(referenceScore - row.averageFinalScore),
+        }];
+      });
 
     const topCompetitive = competitiveBase
       .slice()
@@ -942,6 +983,9 @@ export async function GET() {
       }
     );
   } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("풀서비스 메인 통계 조회 중 오류가 발생했습니다.", error);
     return NextResponse.json({ error: "풀서비스 메인 통계 조회에 실패했습니다." }, { status: 500 });
   }

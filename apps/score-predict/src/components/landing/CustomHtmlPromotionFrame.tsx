@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const FRAME_BASE_STYLES = `<style>
 html, body { margin: 0; min-width: 0; padding: 0; }
-body { overflow-x: hidden; }
+/* display:flow-root 로 body 를 BFC 로 만든다.
+   이게 없으면 마지막 자식의 margin-bottom 이 body 밖으로 collapse 되어
+   높이 계산(getBoundingClientRect)에서 빠지고, 프로모션 아래에 빈 띠가 남는다. */
+body { overflow-x: hidden; display: flow-root; }
 </style>`;
 
 const FRAME_MOTION_STYLES = `<style data-promotion-frame-motion>
@@ -132,6 +135,7 @@ export default function CustomHtmlPromotionFrame({
       disconnectCurrent?.();
       const document = iframe.contentDocument;
       if (!document) return;
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       const resize = () => {
         const bodyHeight = document.body
@@ -154,7 +158,32 @@ export default function CustomHtmlPromotionFrame({
           onPreRegistration?.();
           return;
         }
-        if (rawHref.startsWith("#")) return;
+        if (rawHref.startsWith("#")) {
+          const targetId = decodeURIComponent(rawHref.slice(1));
+          const anchorTarget = targetId ? document.getElementById(targetId) : null;
+          const parentAnchorTarget = targetId ? window.document.getElementById(targetId) : null;
+          if (anchorTarget || parentAnchorTarget) {
+            event.preventDefault();
+          }
+          if (anchorTarget) {
+            const nextTop =
+              window.scrollY +
+              iframe.getBoundingClientRect().top +
+              anchorTarget.getBoundingClientRect().top;
+            window.scrollTo({
+              top: nextTop,
+              behavior: reduceMotion ? "auto" : "smooth",
+            });
+            return;
+          }
+          if (parentAnchorTarget) {
+            parentAnchorTarget.scrollIntoView({
+              behavior: reduceMotion ? "auto" : "smooth",
+              block: "start",
+            });
+          }
+          return;
+        }
         event.preventDefault();
         try {
           const resolved = new URL(rawHref, window.location.href);
@@ -206,7 +235,6 @@ export default function CustomHtmlPromotionFrame({
         element.style.setProperty("--promotion-motion-delay", `${delay}ms`);
         element.style.setProperty("--promotion-motion-duration", `${duration}ms`);
       }
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       let revealFrame = 0;
       let prepareFrame = 0;
       const revealVisible = () => {

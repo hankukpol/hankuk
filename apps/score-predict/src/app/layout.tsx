@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import Footer from "@/components/layout/Footer";
-import Header from "@/components/layout/Header";
+import RootChrome from "@/components/layout/RootChrome";
 import AuthSessionProvider from "@/components/providers/AuthSessionProvider";
 import { TenantProvider } from "@/components/providers/TenantProvider";
 import ToastProvider from "@/components/providers/ToastProvider";
@@ -36,17 +35,13 @@ export default async function RootLayout({
     <html lang="ko">
       <body
         data-tenant={tenant.type}
-        className={`${pretendard.variable} bg-slate-100 text-slate-900 antialiased`}
+        className={`${pretendard.variable} bg-white text-slate-900 antialiased`}
       >
         <TenantProvider tenantType={tenant.type}>
           <AuthSessionProvider>
             <ToastProvider>
               {tenant.features.visitorTracker ? <VisitorTracker /> : null}
-              <div className="flex min-h-screen flex-col">
-                <Header />
-                <div className="flex-1 text-slate-900">{children}</div>
-                <Footer />
-              </div>
+              <RootChrome>{children}</RootChrome>
             </ToastProvider>
           </AuthSessionProvider>
         </TenantProvider>

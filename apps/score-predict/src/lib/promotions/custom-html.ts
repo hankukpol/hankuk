@@ -9,11 +9,15 @@ export const CUSTOM_HTML_MAX_LENGTH = 2_000_000;
 function resolveUrl(rawValue: string, baseUrl: string | null) {
   const value = rawValue.trim();
   if (!value || value.startsWith("#") || /^(?:mailto|tel):/i.test(value)) return value;
+  // 자유 랜딩은 운영/로컬의 같은 public 경로를 함께 사용한다. `/...`는
+  // 현재 사이트 안의 안전한 절대 경로이므로 base 태그가 없어도 보존한다.
+  // `//host/...` 형태의 protocol-relative 외부 주소는 계속 허용하지 않는다.
+  if (!baseUrl && value.startsWith("/") && !value.startsWith("//")) return value;
   try {
     const parsed = baseUrl ? new URL(value, baseUrl) : new URL(value);
     return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : "";
   } catch {
-    return value.startsWith("/") || value.startsWith("./") || value.startsWith("../") ? "" : value;
+    return value.startsWith("./") || value.startsWith("../") ? "" : value;
   }
 }
 

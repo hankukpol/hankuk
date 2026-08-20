@@ -21,17 +21,17 @@ interface TabItem {
 
 function tabClassName(active: boolean, disabled: boolean): string {
   const base =
-    "inline-flex h-12 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 text-sm font-semibold transition sm:min-w-[120px]";
+    "user-navigation-tab inline-flex h-16 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-4 text-[15px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-service-400 sm:min-w-[120px]";
 
   if (disabled) {
-    return `${base} cursor-not-allowed border-transparent text-slate-400`;
+    return `${base} cursor-not-allowed border-transparent text-white/35`;
   }
 
   if (active) {
-    return `${base} border-service-700 text-service-700`;
+    return `${base} border-service-400 bg-white/10 text-white`;
   }
 
-  return `${base} border-transparent text-slate-500 hover:border-service-300 hover:text-service-700`;
+  return `${base} border-transparent text-white/70 hover:border-service-400 hover:bg-white/5 hover:text-white`;
 }
 
 export default function ExamTabNavigation({
@@ -69,9 +69,8 @@ export default function ExamTabNavigation({
     {
       key: "comments",
       href: withTenantPrefix("/exam/comments", tenant.type),
-      label: "실시간 의견",
-      disabled: !hasSubmission,
-      tooltip: "답안을 먼저 제출해야 열 수 있습니다.",
+      label: "실시간 댓글",
+      disabled: false,
     },
   ];
 
@@ -82,8 +81,9 @@ export default function ExamTabNavigation({
   });
 
   return (
-    <nav className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex w-full max-w-7xl min-w-max overflow-x-auto px-1 sm:px-4">
+    <div className="user-sticky-navigation">
+    <nav className="user-navigation-surface user-content-frame overflow-hidden">
+      <div className="flex min-h-16 w-full min-w-max items-stretch overflow-x-auto px-1 sm:px-4">
         {visibleTabs.map((tab) => {
           const active = pathname === tab.href;
 
@@ -108,5 +108,6 @@ export default function ExamTabNavigation({
         })}
       </div>
     </nav>
+    </div>
   );
 }

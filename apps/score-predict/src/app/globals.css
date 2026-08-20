@@ -8,7 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-sans: var(--font-pretendard), "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-mono: "Consolas", "Monaco", "Courier New", monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -83,6 +83,617 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --service-50: #fafafa;
+  --service-100: #f4f4f5;
+  --service-200: #e4e4e7;
+  --service-300: #d4d4d8;
+  --service-400: #a1a1aa;
+  --service-500: #71717a;
+  --service-600: #52525b;
+  --service-700: #3f3f46;
+  --service-800: #27272a;
+  --service-900: #18181b;
+  --service-950: #09090b;
+}
+
+body[data-tenant="police"] {
+  --primary: #002ef6;
+  --primary-foreground: #ffffff;
+  --ring: #002ef6;
+  --service-50: #f2f5ff;
+  --service-100: #e3e9ff;
+  --service-200: #c7d3ff;
+  --service-300: #9db3ff;
+  --service-400: #6b8cff;
+  --service-500: #3260ff;
+  --service-600: #002ef6;
+  --service-700: #0024c8;
+  --service-800: #001b96;
+  --service-900: #001878;
+  --service-950: #000f4d;
+}
+
+/* 운영 프로모션의 시각 언어를 사용자 제품 화면에 이어 준다.
+   관리자 화면은 정보 밀도와 운영 안전을 위해 기존 토큰을 그대로 유지한다. */
+.public-product-shell {
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f3f3f5;
+  --color-slate-200: #e8e8ec;
+  --color-slate-300: #d6d6dc;
+  --color-slate-500: #9c9c9c;
+  --color-slate-600: #6b6b6b;
+  --color-slate-700: #4b4b4b;
+  --color-slate-800: #222222;
+  --color-slate-900: #0a0a0a;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --user-chart-label-size: 12px;
+  background: #ffffff;
+  color: #0a0a0a;
+  overflow-x: clip;
+  font-family: var(--font-pretendard), "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-synthesis: none;
+}
+
+/* ── 표 ──────────────────────────────────────────────────────────
+   참고 사이트(lab.megagong.net 가이드) 실측값에 맞춘다.
+   13px / line-height 1.3 / letter-spacing -0.05em / padding 14px 10px
+   → 행 높이 약 46px. 전체 격자선 #dddddd.
+   컬럼 머리는 흰 글자 대신 검정 글자 + 브랜드 옅은 틴트를 쓴다.
+   정보 밀도가 높은 표에서는 반전 색보다 읽기 부담이 적다. */
+
+.public-product-shell .data-table {
+  border-collapse: collapse;
+  border-top: 1px solid #dddddd;
+  font-size: 13px;
+  letter-spacing: -0.05em;
+}
+
+.public-product-shell .data-table th,
+.public-product-shell .data-table td {
+  padding: 14px 10px;
+  line-height: 1.3;
+  border-bottom: 1px solid #dddddd;
+  border-right: 1px solid #dddddd;
+  vertical-align: middle;
+  text-align: center;
+}
+
+.public-product-shell .data-table th:last-child,
+.public-product-shell .data-table td:last-child {
+  border-right: 0;
+}
+
+.public-product-shell .data-table thead th {
+  background: var(--service-100);
+  color: #000000;
+  font-weight: 600;
+  text-align: center;
+  text-transform: none;
+}
+
+/* 행 머리는 컬럼 머리보다 한 단계 옅게 두어 표의 좌상단 위계를 만든다. */
+.public-product-shell .data-table tbody th {
+  background: var(--service-50);
+  color: #000000;
+  font-weight: 600;
+  text-align: center;
+}
+
+.public-product-shell .data-table tbody td {
+  background: #ffffff;
+  color: #000000;
+  font-weight: 400;
+}
+
+/* 합계 행. tbody td 가 흰 배경과 400 굵기를 못 박기 때문에 tr 에 Tailwind 배경을 줘도
+   셀 배경에 가려 보이지 않는다. 표를 닫는 행이므로 여기서 규격으로 정의한다.
+   행머리와 같은 service-50 을 써서 컬럼머리(service-100) 다음 단계로 읽히게 한다. */
+.public-product-shell .data-table tbody tr.data-table-total td {
+  background: var(--service-50);
+  font-weight: 700;
+}
+
+/* 표의 기본 정렬은 가운데다. 자릿수를 세로로 맞춰야 읽히는 열만 num-right 를 붙여
+   오른쪽 정렬한다. tabular-nums 는 글꼴 폭 고정 용도이지 정렬 마커가 아니다 —
+   이미 여러 표에 붙어 있어서 정렬 기준으로 쓰면 의도치 않은 곳까지 밀린다. */
+.public-product-shell .data-table th.num-right,
+.public-product-shell .data-table td.num-right {
+  text-align: right;
+}
+
+/* 난이도 배지. 체감난이도 차트와 같은 순서형 색을 써서 같은 개념이 같은 색으로 읽히게 한다.
+   모서리는 각지게 — 페이지 전체가 라운드 0 이므로 배지만 알약 모양이면 튄다. */
+.public-product-shell .user-level-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+
+.public-product-shell .user-level-badge[data-level="easy"] {
+  background: #e7f2f0;
+  color: #0f766e;
+}
+
+.public-product-shell .user-level-badge[data-level="normal"] {
+  background: #f3f3f5;
+  color: #6b6b6b;
+}
+
+.public-product-shell .user-level-badge[data-level="hard"] {
+  background: #fdf1e2;
+  color: #b45309;
+}
+
+.public-product-shell .user-level-badge[data-level="veryhard"] {
+  background: #fdeceb;
+  color: #c02626;
+}
+
+/* 사용자 화면의 표면은 전부 각지다(radius 0). Tailwind radius 유틸리티를 스케일별로
+   빠짐없이 덮는다 — 일부만 덮으면 `rounded`(4px)나 `rounded-l-md` 같은 클래스가 새어
+   그 화면만 모서리가 둥글어진다.
+   `rounded-full`은 반지름 스케일이 아니라 형태 선택(원형 점·진행바·카운트 배지)이므로 제외한다.
+   관리자 화면(`.admin-shell`)에도 같은 규칙이 따로 걸려 있다. */
+.public-product-shell :is(
+    .rounded,
+    .rounded-sm,
+    .rounded-md,
+    .rounded-lg,
+    .rounded-xl,
+    .rounded-2xl,
+    .rounded-3xl,
+    .rounded-t,
+    .rounded-r,
+    .rounded-b,
+    .rounded-l,
+    .rounded-t-sm, .rounded-t-md, .rounded-t-lg, .rounded-t-xl, .rounded-t-2xl,
+    .rounded-r-sm, .rounded-r-md, .rounded-r-lg, .rounded-r-xl, .rounded-r-2xl,
+    .rounded-b-sm, .rounded-b-md, .rounded-b-lg, .rounded-b-xl, .rounded-b-2xl,
+    .rounded-l-sm, .rounded-l-md, .rounded-l-lg, .rounded-l-xl, .rounded-l-2xl
+  ) {
+  border-radius: 0;
+}
+
+/* 페이지가 흰 배경이므로 카드는 명도차가 아니라 외곽선으로 구분한다. */
+.public-product-shell .user-content-frame .rounded-xl.border-slate-200,
+.public-product-shell .user-content-frame .rounded-xl.border-slate-300,
+.public-product-shell .user-content-frame .user-overview-card.border-slate-200,
+.public-product-shell .user-content-frame .user-overview-card.border-slate-300 {
+  border-color: #e8e8ec;
+}
+
+.public-product-shell .user-navigation-surface,
+.public-product-shell .user-segmented-control {
+  border-radius: 0;
+}
+
+.public-product-shell .user-sticky-navigation {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  background: #0a0a0a;
+  border-bottom: 1px solid #222222;
+}
+
+.public-product-shell .user-sticky-navigation--fixed {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 40;
+  margin-left: 0;
+}
+
+.public-product-shell .user-sticky-navigation .user-navigation-surface--adaptive {
+  width: calc(100% - 2rem);
+  max-width: clamp(66.25rem, calc(56.25vw - 1.25rem), 90rem);
+  margin-inline: auto;
+}
+
+.public-product-shell .user-sticky-navigation .user-navigation-surface--promotion {
+  max-width: 90rem;
+}
+
+.public-product-shell .user-navigation-surface {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+
+.public-product-shell .user-navigation-surface::-webkit-scrollbar {
+  display: none;
+}
+
+.public-product-shell .user-subnavigation-surface {
+  border-radius: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.public-product-shell .user-subnavigation-surface::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── 타이포 위계 ─────────────────────────────────────────────
+   페이지 제목 20px/700 · 섹션 제목 16px/700(+좌측 바) · 카드 제목 15px/700
+   · 라벨 13px/600.  참고 사이트와 동일한 압축 스케일이다.
+   크기 차이가 작은 대신 좌측 바와 여백이 위계를 담당한다.
+   숫자는 tabular-nums 로 자릿수가 흔들리지 않게 한다. */
+
+.public-product-shell .user-page-title {
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: #222222;
+}
+
+.public-product-shell .user-section-title,
+.public-product-shell .user-overview-section-title {
+  position: relative;
+  display: block;
+  padding-left: 7px;
+  margin-bottom: 25px;
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: #333333;
+}
+
+.public-product-shell .user-section-title::before,
+.public-product-shell .user-overview-section-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.2em;
+  bottom: 0.2em;
+  width: 3px;
+  background: var(--service-600);
+}
+
+/* 색상 패널(경고·안내) 안의 상태 제목.
+   패널 배경과 대비를 맞춰야 하므로 color 를 지정하지 않고 물려받는다. */
+.public-product-shell .user-notice-title {
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+
+.public-product-shell .user-card-title {
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: #333333;
+}
+
+.public-product-shell .user-data-label {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  font-weight: 600;
+  color: #6b6b6b;
+  letter-spacing: 0;
+}
+
+/* 핵심 지표 한 개를 크게 보여주는 자리 */
+.public-product-shell .user-metric-hero {
+  font-size: clamp(2rem, calc(1.5rem + 1.5vw), 2.75rem);
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 표와 지표의 숫자는 폭이 고정되어야 비교가 쉽다. */
+.public-product-shell .user-data-value,
+.public-product-shell .user-overview-metric-value,
+.public-product-shell .data-table td,
+.public-product-shell .user-metric-hero {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 메뉴 위계 ───────────────────────────────────────────────
+   메인 탭(16px/700)이 서브 탭(14px/600)보다 항상 무겁다. */
+
+.public-product-shell .user-navigation-tab {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.public-product-shell .user-subnavigation-surface button {
+  font-size: 16px;
+  letter-spacing: -0.05em;
+}
+
+/* ── 지표 목록(의사 테이블) ──────────────────────────────────
+   풀서비스 메인의 지표 목록은 실제 <table> 이 아니지만 표와 나란히 놓이므로
+   .data-table 과 같은 규격(13px / 14px 10px / 격자선 / 중앙정렬)을 따른다.
+   행에 걸려 있던 padding·gap 을 셀로 옮겨야 칸 배경이 셀을 꽉 채운다. */
+
+.public-product-shell .user-overview-table-heading {
+  justify-content: center;
+  min-height: 46px;
+  padding: 14px 10px;
+  border: 1px solid #dddddd;
+  background: var(--service-100);
+  color: #000000;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.05em;
+}
+
+.public-product-shell .user-overview-metric-row {
+  min-height: 46px;
+  padding: 0;
+  gap: 0;
+  border-right: 1px solid #dddddd;
+  border-bottom: 1px solid #dddddd;
+  border-left: 1px solid #dddddd;
+}
+
+.public-product-shell .user-overview-metric-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  padding: 14px 10px;
+  border-right: 1px solid #dddddd;
+  background: var(--service-50);
+  color: #000000;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.05em;
+  text-align: center;
+}
+
+.public-product-shell .user-overview-metric-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  padding: 14px 10px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: -0.05em;
+  text-align: center;
+}
+
+/* ── 탭 위계 ──────────────────────────────────────────────────
+   2단계: 화면 내 큰 구획을 나누는 폴더형 탭.
+          비활성 탭 아래로 브랜드 라인이 이어지고 활성 탭에서만 끊긴다.
+   3단계: 섹션 안에서 대상을 고르는 밑줄형 탭. 2단계보다 가볍게 둔다. */
+
+/* 2단계: 콘텐츠 탭(폴더형).
+   컨테이너에 선을 긋지 않고 탭이 각자 하단선을 갖는다. 그래야 overflow 클리핑이
+   있어도 활성 탭 자리가 확실히 비워진다. 비활성 탭의 하단선이 이어져 한 줄처럼 보인다. */
+.public-product-shell .user-content-tabs {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.public-product-shell .user-content-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.public-product-shell .user-content-tab {
+  position: relative;
+  z-index: 0;
+  flex: 1 1 0%;
+  margin-left: -1px;
+  white-space: nowrap;
+  border: 1px solid #d6d6dc;
+  border-bottom-color: var(--service-600);
+  background: #f3f3f5;
+  padding: 19px 16px 22px;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: #777777;
+  text-align: center;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.public-product-shell .user-content-tab:first-child {
+  margin-left: 0;
+}
+
+.public-product-shell .user-content-tab:hover {
+  background: #fafafa;
+  color: #0a0a0a;
+}
+
+.public-product-shell .user-content-tab[aria-selected="true"],
+.public-product-shell .user-content-tab[data-active="true"] {
+  z-index: 10;
+  border-color: var(--service-600);
+  border-bottom: 0;
+  background: #ffffff;
+  padding-bottom: 23px;
+  font-weight: 700;
+  color: #0a0a0a;
+}
+
+.public-product-shell .user-filter-tab {
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  padding: 0 16px;
+  min-height: 40px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  color: #6b6b6b;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.public-product-shell .user-filter-tab:hover {
+  border-bottom-color: #d6d6dc;
+  color: #222222;
+}
+
+.public-product-shell .user-filter-tab[aria-selected="true"],
+.public-product-shell .user-filter-tab[data-active="true"] {
+  border-bottom-color: var(--service-600);
+  color: var(--service-700);
+  font-weight: 700;
+}
+
+.public-product-shell .user-segmented-control-item,
+.public-product-shell .user-filter-button {
+  border-radius: 0;
+  min-height: 2.75rem;
+}
+
+/* 사용자 모달의 닫기 버튼은 기본 32px이라 터치 타깃 최소 44px에 못 미친다.
+   대부분의 이용이 모바일이므로 PC 분기점(1024px) 아래에서는 44px로 키우고
+   마우스를 쓰는 데스크톱만 기존 32px을 유지한다.
+   `.public-product-shell`을 붙인 사용자 모달에만 적용되고 관리자 모달은 영향받지 않는다. */
+/* ── 모바일·태블릿 터치 타깃 ─────────────────────────────────────
+   이용의 대부분이 모바일이다. PC 분기점(1024px) 아래에서는 손가락으로 누르는
+   요소를 최소 44px로 올린다. 마우스를 쓰는 데스크톱은 기존 조밀한 크기를 유지해
+   정보 밀도를 잃지 않는다. */
+@media (max-width: 1023px) {
+  .public-product-shell [data-slot="dialog-close"] {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  /* 과목 필터 탭(기본 40px) */
+  .public-product-shell .user-filter-tab {
+    min-height: 2.75rem;
+  }
+}
+
+/* 조밀 버튼(헤더의 로그인·회원가입·로그아웃 등)의 기본값은 모바일 터치 타깃 44px이다.
+   아래 `min-width: 1024px` 블록이 PC에서만 40px로 되돌린다 — 마우스는 좁아도 정확히 눌린다.
+   기본값을 40px로 두고 미디어쿼리로 키우려 하면 이 규칙이 뒤에 있어 되레 덮어쓴다. */
+.public-product-shell [data-slot="button"][data-size="sm"] {
+  min-height: 2.75rem;
+}
+
+.public-product-shell .user-content-frame {
+  width: calc(100% - 2rem);
+  max-width: clamp(66.25rem, calc(56.25vw - 1.25rem), 90rem);
+  margin-inline: auto;
+}
+
+.public-product-shell .user-content-frame--promotion {
+  max-width: 90rem;
+}
+
+.public-product-shell table thead tr {
+  height: 3rem;
+}
+
+.public-product-shell table tbody tr {
+  height: 3.25rem;
+}
+
+@media (min-width: 1024px) {
+  .public-product-shell {
+    --user-chart-label-size: 14px;
+  }
+
+  /* 표와 제목 크기는 화면 폭과 무관하게 고정한다.
+     참고 사이트(lab.megagong.net)가 1200px 폭에서도 13px 표를 쓰는 방식이며,
+     여기서 다시 키우면 위에서 정한 기본 규칙이 데스크톱에서만 어긋난다.
+     예전에는 이 블록이 표를 16px, 헤더를 18px 로 키우고 있었다. */
+
+  .public-product-shell .user-content-frame :where(input, select, textarea) {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+
+  .public-product-shell [data-slot="button"][data-size="default"] {
+    min-height: 2.75rem;
+    padding-inline: 1.25rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+
+  .public-product-shell [data-slot="button"][data-size="lg"] {
+    min-height: 3rem;
+    padding-inline: 1.5rem;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .public-product-shell [data-slot="button"][data-size="sm"] {
+    min-height: 2.5rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+  }
+
+  /* 행 높이는 .data-table 의 padding(14px 10px)이 결정한다.
+     여기서 height 를 못 박으면 셀 여백 규칙이 무력해진다. */
+}
+
+@media (min-width: 768px) {
+  .public-product-shell .user-content-frame {
+    width: calc(100% - 3rem);
+  }
+}
+
+@media (min-width: 1440px) {
+  .public-product-shell [data-promotion-exam-functions-frame] .user-navigation-tab {
+    font-size: clamp(1rem, calc(0.8125rem + 0.15625vw), 1.0625rem);
+  }
+
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-card {
+    padding-block: clamp(2rem, calc(0.5rem + 1.25vw), 2.5rem);
+    padding-inline: 0;
+  }
+
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-title {
+    font-size: clamp(2rem, calc(1.25rem + 0.625vw), 2.25rem);
+  }
+
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-table-heading,
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-metric-row {
+    min-height: 46px;
+  }
+
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-metric-label,
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-metric-value {
+    font-size: 13px;
+  }
+
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-section-title {
+    font-size: 16px;
+    line-height: 1.3;
+  }
+
+  .public-product-shell [data-promotion-exam-functions-frame] .user-overview-caption {
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+
+  /* 표 크기와 행 높이는 .data-table 기본 규칙을 그대로 따른다.
+     예전에는 여기서 16px/18px, 64px/72px 로 다시 키우고 있었다. */
+}
+
+body[data-tenant="fire"] {
+  --primary: #dc2626;
+  --primary-foreground: #ffffff;
+  --ring: #dc2626;
   --service-50: #fef2f2;
   --service-100: #fee2e2;
   --service-200: #fecaca;
@@ -94,29 +705,6 @@
   --service-800: #991b1b;
   --service-900: #7f1d1d;
   --service-950: #450a0a;
-}
-
-body[data-tenant="police"] {
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --ring: #2563eb;
-  --service-50: #eff6ff;
-  --service-100: #dbeafe;
-  --service-200: #bfdbfe;
-  --service-300: #93c5fd;
-  --service-400: #60a5fa;
-  --service-500: #3b82f6;
-  --service-600: #2563eb;
-  --service-700: #1d4ed8;
-  --service-800: #1e40af;
-  --service-900: #1e3a8a;
-  --service-950: #172554;
-}
-
-body[data-tenant="fire"] {
-  --primary: #dc2626;
-  --primary-foreground: #ffffff;
-  --ring: #dc2626;
 }
 
 .dark {
@@ -167,24 +755,701 @@ body[data-tenant="fire"] {
   }
 }
 
-/* 사용자 데이터 표는 외곽선 한 번과 가로 구분선만 사용한다.
-   기존 셀 유틸리티의 사방 테두리를 이 클래스가 덮어 이중 격자를 방지한다. */
-.data-table {
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.data-table th,
-.data-table td {
-  border-top-width: 0 !important;
-  border-right-width: 0 !important;
-  border-left-width: 0 !important;
-}
-
-.data-table tbody tr:last-child > td {
-  border-bottom-width: 0 !important;
-}
+/* 표의 테두리는 .public-product-shell .data-table 규칙이 단독으로 결정한다.
+   예전에는 여기서 border-right/left 를 !important 로 0 으로 만들어
+   세로 격자선을 지우고 있었다. !important 라 위 규칙이 이길 수 없었다. */
 
 .data-list-flat > * + * {
   border-top-width: 1px;
+}
+
+/* 표의 모바일 대응 목록. 레이아웃은 카드지만 글자 규격과 선 색은 표와 맞춘다. */
+.public-product-shell .data-list-flat {
+  border-color: #dddddd;
+  font-size: 13px;
+  line-height: 1.3;
+  letter-spacing: -0.05em;
+}
+
+.public-product-shell .data-list-flat > * + * {
+  border-top-color: #dddddd;
+}
+
+/* 라벨/값 한 쌍이 한 행을 이루는 목록도 표와 같은 규격을 따른다. */
+.public-product-shell .user-data-rows {
+  border-top: 1px solid #dddddd;
+  border-left: 1px solid #dddddd;
+  border-right: 1px solid #dddddd;
+  font-size: 13px;
+  letter-spacing: -0.05em;
+}
+
+.public-product-shell .user-data-rows > * {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 30%) 1fr;
+  align-items: stretch;
+  min-height: 46px;
+  border-bottom: 1px solid #dddddd;
+}
+
+.public-product-shell .user-data-rows dt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 10px;
+  border-right: 1px solid #dddddd;
+  background: var(--service-50);
+  color: #000000;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.public-product-shell .user-data-rows dd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 10px;
+  color: #000000;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: center;
+}
+
+/* ── 모바일에서 표를 펼친 지표 묶음 ─────────────────────────────
+   표 한 행을 세로로 늘어놓으면 라벨 하나가 화면 한 줄을 통째로 쓴다.
+   라벨을 값 위에 올려 데스크톱 표의 머리글–본문 구조를 유지한 채
+   한 화면에 2·3·4개를 나란히 놓는다. 열 수는 data-cols 로 정하고
+   지정하지 않으면 2열이다. 라벨은 6자 이내로 쓴다. */
+/* grid 가 아니라 flex-wrap 이다. 항목 수가 열 수로 나누어떨어지지 않을 때
+   (5개를 3열에 넣는 경우) grid 는 마지막 줄을 왼쪽에 붙이고 오른쪽을 비워
+   덩어리가 아래로 처져 보인다. flex 는 남은 줄을 가운데로 모은다.
+   줄이 꽉 찰 때의 칸 너비는 grid 와 같다. */
+.public-product-shell .user-metric-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 8px;
+  row-gap: 12px;
+}
+
+.public-product-shell .user-metric-pairs > * {
+  flex: 0 0 calc((100% - 8px) / 2);
+}
+
+.public-product-shell .user-metric-pairs[data-cols="3"] > * {
+  flex-basis: calc((100% - 16px) / 3);
+}
+
+.public-product-shell .user-metric-pairs[data-cols="4"] > * {
+  flex-basis: calc((100% - 24px) / 4);
+}
+
+/* 한 줄 안의 칸은 가장 높은 칸에 맞춰 늘어난다.
+   그때 라벨과 값이 위로 붙지 않도록 세로 가운데에 둔다. */
+.public-product-shell .user-metric-pairs > * {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.public-product-shell .user-metric-pairs dt {
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: #777777;
+}
+
+.public-product-shell .user-metric-pairs dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #222222;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 값의 상태색. 컴포넌트에서 색 클래스를 덧붙이지 않고 여기서 정한다. */
+.public-product-shell .user-metric-pairs dd[data-tone="positive"] {
+  color: #047857;
+}
+
+.public-product-shell .user-metric-pairs dd[data-tone="negative"] {
+  color: #be123c;
+}
+
+.public-product-shell .user-metric-pairs dd[data-tone="accent"] {
+  color: var(--service-700);
+}
+
+.public-product-shell .user-metric-pairs dd[data-tone="muted"] {
+  color: #9c9c9c;
+}
+
+/* 모바일 카드의 행머리. 데스크톱 표에서 행의 첫 칸(과목명·총점)이 하던 역할이라
+   표의 행머리와 같이 가운데로 맞춘다. 값(14px/600)보다 무겁게 두어 위계를 준다. */
+.public-product-shell .user-metric-heading {
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: #222222;
+  text-align: center;
+}
+
+/* ── 관리자 제품 화면 ──────────────────────────────────────────
+   관리자도 사용자 합격예측 화면과 같은 색·타입·표 규격을 쓴다.
+   차이는 정보량뿐이며, 본문은 카드가 아니라 페이지 섹션으로 이어진다. */
+.admin-shell {
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f3f3f5;
+  --color-slate-200: #e8e8ec;
+  --color-slate-300: #d6d6dc;
+  --color-slate-500: #9c9c9c;
+  --color-slate-600: #6b6b6b;
+  --color-slate-700: #4b4b4b;
+  --color-slate-800: #222222;
+  --color-slate-900: #0a0a0a;
+  min-height: 100dvh;
+  background: #ffffff;
+  color: #0a0a0a;
+  font-family: var(--font-pretendard), "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.05em;
+  font-synthesis: none;
+}
+
+.admin-main {
+  background: #ffffff;
+  padding: 24px 16px 48px;
+}
+
+.admin-content-frame {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+}
+
+.admin-utility-row {
+  display: flex;
+  min-height: 44px;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+  padding-left: 48px;
+}
+
+.admin-shell h1,
+.admin-shell .admin-page-title {
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  text-transform: none;
+}
+
+.admin-shell h2,
+.admin-shell .admin-section-title {
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  text-transform: none;
+}
+
+.admin-shell h3,
+.admin-shell .admin-card-title {
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  text-transform: none;
+}
+
+.admin-shell .text-sm,
+.admin-shell .text-base {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.admin-shell .text-xs {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.admin-shell .tracking-wide,
+.admin-shell .tracking-wider,
+.admin-shell .tracking-widest {
+  letter-spacing: -0.05em;
+}
+
+/* 사용자 화면과 같은 이유로 radius 유틸리티를 스케일별로 빠짐없이 덮는다.
+   원형이어야 하는 `rounded-full`(체크박스·상태 점·진행바)만 제외한다. */
+.admin-shell :where(
+    .rounded,
+    .rounded-sm,
+    .rounded-md,
+    .rounded-lg,
+    .rounded-xl,
+    .rounded-2xl,
+    .rounded-3xl,
+    .rounded-t, .rounded-r, .rounded-b, .rounded-l,
+    .rounded-t-sm, .rounded-t-md, .rounded-t-lg, .rounded-t-xl, .rounded-t-2xl,
+    .rounded-r-sm, .rounded-r-md, .rounded-r-lg, .rounded-r-xl, .rounded-r-2xl,
+    .rounded-b-sm, .rounded-b-md, .rounded-b-lg, .rounded-b-xl, .rounded-b-2xl,
+    .rounded-l-sm, .rounded-l-md, .rounded-l-lg, .rounded-l-xl, .rounded-l-2xl
+  ) {
+  border-radius: 0;
+}
+
+/* 문서 흐름 안의 흰 카드는 상단 구분선만 남긴 페이지 섹션으로 바꾼다. */
+.admin-main :where(section, article, div, form, a).border.bg-white:is(.rounded-xl, .rounded-lg) {
+  border-right-width: 0;
+  border-bottom-width: 0;
+  border-left-width: 0;
+  border-top-color: #e8e8ec;
+  background: transparent;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.admin-main :where(section, article, form).rounded-xl.border:not(.admin-status-strip) {
+  border-right-width: 0;
+  border-bottom-width: 0;
+  border-left-width: 0;
+  border-top-color: #e8e8ec;
+  background: transparent;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.admin-main :where(.shadow-xs, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl):not(.absolute):not(.fixed) {
+  box-shadow: none;
+}
+
+.admin-page-section {
+  border-top: 1px solid #e8e8ec;
+  padding-top: 24px;
+}
+
+/* 사용자 콘텐츠 탭과 같은 폴더형 업무 탭. */
+.admin-content-tabs {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-bottom: 32px;
+  scroll-padding-inline: 16px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-content-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-content-tabs li {
+  display: contents;
+}
+
+.admin-content-tab {
+  position: relative;
+  z-index: 0;
+  display: inline-flex;
+  flex: 1 1 0%;
+  align-items: center;
+  justify-content: center;
+  margin-left: -1px;
+  border: 1px solid #d6d6dc;
+  border-bottom-color: var(--service-600);
+  background: #f3f3f5;
+  padding: 19px 16px 22px;
+  color: #777777;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.admin-content-tab:first-child {
+  margin-left: 0;
+}
+
+.admin-content-tab:hover {
+  background: #fafafa;
+  color: #0a0a0a;
+}
+
+.admin-content-tab[aria-current="page"],
+.admin-content-tab[aria-selected="true"],
+.admin-content-tab[data-active="true"] {
+  z-index: 10;
+  border-color: var(--service-600);
+  border-bottom: 0;
+  background: #ffffff;
+  padding-bottom: 23px;
+  color: #0a0a0a;
+  font-weight: 700;
+}
+
+.admin-content-tab:focus-visible,
+.admin-shell :where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--service-600);
+  outline-offset: 2px;
+}
+
+/* 모든 관리자 데이터 표는 사용자 data-table과 같은 규격이다. */
+.admin-main table:not(.sun-editor *) {
+  width: 100%;
+  border: 1px solid #dddddd;
+  border-collapse: collapse;
+  background: #ffffff;
+  color: #000000;
+  font-size: 13px;
+  line-height: 1.3;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-main table:not(.sun-editor *) th,
+.admin-main table:not(.sun-editor *) td {
+  height: auto;
+  padding: 14px 10px;
+  border-right: 1px solid #dddddd;
+  border-bottom: 1px solid #dddddd;
+  background: #ffffff;
+  color: #000000;
+  font-size: 13px;
+  line-height: 1.3;
+  letter-spacing: -0.05em;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.admin-main table:not(.sun-editor *) th:last-child,
+.admin-main table:not(.sun-editor *) td:last-child {
+  border-right-width: 0;
+}
+
+.admin-main table:not(.sun-editor *) thead th {
+  background: var(--service-100);
+  color: #000000;
+  font-weight: 600;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.admin-main table:not(.sun-editor *) tbody th {
+  background: var(--service-50);
+  font-weight: 600;
+}
+
+.admin-main table:not(.sun-editor *) tbody tr:hover > td {
+  background: var(--service-50);
+}
+
+.admin-main table:not(.sun-editor *) tbody tr[class*="bg-"] > td {
+  background: inherit;
+}
+
+.admin-main table:not(.sun-editor *) .num-right {
+  text-align: right;
+}
+
+.admin-main :where(.overflow-x-auto, .overflow-auto):has(> table) {
+  border-width: 0;
+  padding: 0;
+}
+
+/* 폼은 44px 높이와 각진 경계를 공유한다. */
+.admin-main :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+  select
+) {
+  min-height: 44px;
+  border: 1px solid #d6d6dc;
+  border-radius: 0;
+  background: #ffffff;
+  color: #0a0a0a;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.admin-main textarea {
+  min-height: 112px;
+  border: 1px solid #d6d6dc;
+  border-radius: 0;
+  background: #ffffff;
+  color: #0a0a0a;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.admin-main :where(input, select, textarea)::placeholder {
+  color: #9c9c9c;
+}
+
+.admin-main :where(input, select, textarea):disabled {
+  background: #f3f3f5;
+  color: #9c9c9c;
+}
+
+.admin-main :where(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--service-600);
+}
+
+.admin-main table:not(.sun-editor *) button {
+  min-height: 36px;
+}
+
+.admin-status-strip {
+  border-top-width: 0;
+  border-right-width: 0;
+  border-bottom-width: 0;
+  border-left-width: 2px;
+  border-radius: 0;
+}
+
+/* 사용자 메인 네비게이션과 같은 다크 관리자 사이드바. */
+.admin-sidebar {
+  width: 16rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid #222222;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+.admin-sidebar-mobile {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  display: flex;
+  transition: transform 200ms ease-out;
+}
+
+.admin-sidebar-header {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid #222222;
+}
+
+.admin-sidebar-brand {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.admin-sidebar-caption {
+  margin-top: 4px;
+  color: #9c9c9c;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.admin-sidebar-nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding: 16px 12px;
+}
+
+.admin-sidebar-divider {
+  height: 1px;
+  margin-block: 8px;
+  background: #222222;
+}
+
+.admin-sidebar-link {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 12px;
+  border-left: 3px solid transparent;
+  padding: 10px 12px;
+  color: #9c9c9c;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  transition: background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.admin-sidebar-link svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.admin-sidebar-link:hover {
+  background: #222222;
+  color: #ffffff;
+}
+
+.admin-sidebar-link[data-active="true"] {
+  border-left-color: var(--service-600);
+  background: #222222;
+  color: #ffffff;
+}
+
+.admin-sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid #222222;
+  padding: 16px 20px;
+}
+
+.admin-sidebar-exit {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  color: #9c9c9c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-sidebar-exit:hover {
+  color: #ffffff;
+}
+
+.admin-sidebar-exit svg,
+.admin-mobile-menu-button svg,
+.admin-sidebar-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+.admin-mobile-menu-button {
+  position: absolute;
+  top: 24px;
+  left: 16px;
+  z-index: 40;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+.admin-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 0.5);
+}
+
+.admin-sidebar-close {
+  position: absolute;
+  top: 16px;
+  right: 12px;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  color: #9c9c9c;
+}
+
+.admin-sidebar-close:hover {
+  color: #ffffff;
+}
+
+.admin-app-switch-trigger {
+  display: inline-flex;
+  min-height: 44px;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d6d6dc;
+  background: #ffffff;
+  padding-inline: 16px;
+  color: #4b4b4b;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.admin-app-switch-trigger:hover {
+  border-color: var(--service-600);
+  color: #0a0a0a;
+}
+
+.admin-app-switch-trigger svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-app-switch-panel {
+  position: absolute;
+  right: 0;
+  z-index: 50;
+  width: 18rem;
+  margin-top: 8px;
+  border: 1px solid #d6d6dc;
+  background: #ffffff;
+  padding: 8px;
+  box-shadow: 0 12px 32px rgb(10 10 10 / 0.14);
+}
+
+.admin-app-switch-item {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  color: #4b4b4b;
+  font-size: 15px;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.admin-app-switch-item:hover {
+  background: #f3f3f5;
+  color: #0a0a0a;
+}
+
+.admin-app-switch-item svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (min-width: 768px) {
+  .admin-mobile-menu-button,
+  .admin-sidebar-mobile,
+  .admin-sidebar-overlay {
+    display: none;
+  }
+
+  .admin-main {
+    padding-inline: 24px;
+  }
+
+  .admin-utility-row {
+    padding-left: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-main {
+    padding-inline: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell *,
+  .admin-shell *::before,
+  .admin-shell *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

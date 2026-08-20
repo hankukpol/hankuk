@@ -179,7 +179,7 @@ export function getTenantPassMultiple(
 ): number {
   assertExamTypeForTenant(tenantType, examType);
   return tenantType === "police"
-    ? policePrediction.getPassMultiple(recruitCount)
+    ? policePrediction.getPassMultiple(recruitCount, undefined, examType)
     : firePrediction.getPassMultiple(recruitCount, examType);
 }
 

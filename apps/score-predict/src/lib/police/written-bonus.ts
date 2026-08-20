@@ -49,7 +49,7 @@ export function resolvePoliceWrittenBonus(params: {
   declaredRate: number;
   recruitCount: number;
   applicantCount: number | null;
-  hasCutoff: boolean;
+  hasSubjectCutoff: boolean;
 }): PoliceWrittenBonusDecision {
   const declaredRate = Number.isFinite(params.declaredRate)
     ? Math.min(0.1, Math.max(0, roundRate(params.declaredRate)))
@@ -68,7 +68,7 @@ export function resolvePoliceWrittenBonus(params: {
   }
 
   // 경찰 공고: 어느 한 과목이라도 40% 미만이면 필기 가산점 전체를 적용하지 않는다.
-  if (params.hasCutoff) {
+  if (params.hasSubjectCutoff) {
     return {
       status: "NOT_APPLIED",
       reason: "CUTOFF",

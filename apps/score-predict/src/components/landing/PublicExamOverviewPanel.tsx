@@ -101,10 +101,10 @@ export default function PublicExamOverviewPanel() {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+    <section className="border-t border-slate-200 pt-6">
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">활성 지역 시험 현황</h2>
+          <h2 className="user-section-title">활성 지역 시험 현황</h2>
           <p className="mt-1 text-sm text-slate-600">
             {data.exam.year}년 {data.exam.round}차 {data.exam.name}
           </p>
@@ -137,36 +137,36 @@ export default function PublicExamOverviewPanel() {
       {visibleRows.length > 0 ? (
         <>
           <div className="mt-5 hidden overflow-x-auto md:block">
-            <table className="data-table w-full min-w-[880px] text-sm">
+            <table className="data-table w-full min-w-[880px]">
               <thead>
-                <tr className="border-y border-slate-200 bg-slate-50 text-slate-600">
-                  <th className="px-3 py-3 text-left">지역·채용</th>
-                  <th className="px-3 py-3 text-right">모집</th>
-                  <th className="px-3 py-3 text-right">출원</th>
-                  <th className="px-3 py-3 text-right">경쟁률</th>
-                  <th className="px-3 py-3 text-right">발표 표본</th>
-                  <th className="px-3 py-3 text-right">입력자 평균</th>
-                  <th className="px-3 py-3 text-right">표본 1배수 지점</th>
+                <tr>
+                  <th className="">지역·채용</th>
+                  <th className="">모집</th>
+                  <th className="">출원</th>
+                  <th className="">경쟁률</th>
+                  <th className="">발표 표본</th>
+                  <th className="">입력자 평균</th>
+                  <th className="">표본 1배수 지점</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleRows.map((row) => (
                   <tr key={`${row.regionId}-${row.examTypeLabel}`}>
-                    <td className="px-3 py-3 font-semibold text-slate-900">
+                    <td className="font-semibold text-slate-900">
                       {row.regionName} {row.examTypeLabel}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums">{formatCount(row.recruitCount)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{formatCount(row.applicantCount)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">
+                    <td className="tabular-nums">{formatCount(row.recruitCount)}</td>
+                    <td className="tabular-nums">{formatCount(row.applicantCount)}</td>
+                    <td className="tabular-nums">
                       {row.competitionRate === null ? "미입력" : `${row.competitionRate.toFixed(2)} : 1`}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums">
+                    <td className="tabular-nums">
                       {row.snapshotPublished ? formatCount(row.participantCount) : "미발표"}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-700">
+                    <td className="tabular-nums text-slate-700">
                       {formatPublishedScore(row.averageScore, row.snapshotPublished)}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums font-semibold text-service-700">
+                    <td className="tabular-nums font-semibold text-service-700">
                       {formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}
                     </td>
                   </tr>
@@ -179,11 +179,11 @@ export default function PublicExamOverviewPanel() {
             {visibleRows.map((row) => (
               <article key={`${row.regionId}-${row.examTypeLabel}`} className="px-4 py-4">
                 <h3 className="font-semibold text-slate-900">{row.regionName} {row.examTypeLabel}</h3>
-                <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div><dt className="text-xs text-slate-500">모집·출원</dt><dd className="mt-1 font-medium">{formatCount(row.recruitCount)} · {formatCount(row.applicantCount)}</dd></div>
-                  <div><dt className="text-xs text-slate-500">발표 표본</dt><dd className="mt-1 font-medium">{row.snapshotPublished ? formatCount(row.participantCount) : "미발표"}</dd></div>
-                  <div><dt className="text-xs text-slate-500">입력자 평균</dt><dd className="mt-1 font-medium">{formatPublishedScore(row.averageScore, row.snapshotPublished)}</dd></div>
-                  <div><dt className="text-xs text-slate-500">표본 1배수 지점</dt><dd className="mt-1 font-semibold text-service-700">{formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}</dd></div>
+                <dl className="user-metric-pairs mt-3" data-cols="2">
+                  <div><dt>모집·출원</dt><dd>{formatCount(row.recruitCount)} · {formatCount(row.applicantCount)}</dd></div>
+                  <div><dt>발표 표본</dt><dd>{row.snapshotPublished ? formatCount(row.participantCount) : "미발표"}</dd></div>
+                  <div><dt>입력자 평균</dt><dd>{formatPublishedScore(row.averageScore, row.snapshotPublished)}</dd></div>
+                  <div><dt>표본 1배수 지점</dt><dd data-tone="accent">{formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}</dd></div>
                 </dl>
                 {row.snapshotPublished && !row.oneMultipleVisible ? (
                   <p className="mt-3 text-xs text-slate-500">

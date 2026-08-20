@@ -5,6 +5,7 @@ import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { parsePositiveInt } from "@/lib/exam-utils";
 import * as fireFinalPrediction from "@/lib/fire/final-prediction";
 import * as policeFinalPrediction from "@/lib/police/final-prediction";
+import { hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveSiteSettings } from "@/lib/exam-operation";
 import { isExamTypeForTenant, TENANT_EXAM_TYPES } from "@/lib/tenant-exam";
@@ -104,12 +105,14 @@ async function findTargetSubmission(params: {
       where: params.isAdmin
         ? {
             id: params.submissionId,
+            examId: params.activeExamId ?? undefined,
             examType: { in: [...allowedExamTypes] },
             examNumber: { startsWith: MOCK_EXAM_NUMBER_PREFIX },
           }
         : {
             id: params.submissionId,
             userId: params.userId,
+            examId: params.activeExamId ?? undefined,
             examType: { in: [...allowedExamTypes] },
           },
       select: submissionSelect,
@@ -163,13 +166,11 @@ export async function GET(request: NextRequest) {
   let activeExamId: number | null = null;
   let adminPreviewCandidates: AdminPreviewCandidate[] = [];
   try {
-    if (!submissionIdQuery) {
-      activeExamId = (await requireSoleActiveExam({
-        db: prisma,
-        tenantType,
-        context: "api/final-prediction GET",
-      })).id;
-    }
+    activeExamId = (await requireSoleActiveExam({
+      db: prisma,
+      tenantType,
+      context: "api/final-prediction GET",
+    })).id;
     adminPreviewCandidates = isAdmin ? await buildAdminPreviewCandidates(tenantType) : [];
   } catch (error) {
     if (isActiveExamRouteError(error)) {
@@ -228,7 +229,11 @@ export async function GET(request: NextRequest) {
       { status: 409 }
     );
   }
-  if (submission.subjectScores.some((score) => score.isFailed)) {
+  if (tenantType === "police" ? hasPoliceWrittenCutoff({
+    examType: submission.examType,
+    totalScore: Number(submission.totalScore),
+    subjectScores: submission.subjectScores,
+  }) : submission.subjectScores.some((score) => score.isFailed)) {
     return NextResponse.json(
       { error: "과락 성적은 최종 환산 예측을 제공하지 않습니다." },
       { status: 400 }
@@ -290,10 +295,13 @@ export async function GET(request: NextRequest) {
       : Number(saved.fitnessScore);
     const calculated = saved
       ? policeFinalPrediction.calculateKnownFinalScore({
-          writtenScore: Number(submission.totalScore),
+          writtenScore: Number(submission.finalScore),
           fitnessPassed,
           martialDanLevel,
-          bonusRate: Number(submission.bonusRate),
+          appliedWrittenBonusRate: policeFinalPrediction.getAppliedPoliceWrittenBonusRate({
+            rawWrittenScore: Number(submission.totalScore),
+            finalWrittenScore: Number(submission.finalScore),
+          }),
         })
       : null;
 
@@ -301,7 +309,7 @@ export async function GET(request: NextRequest) {
       isAdminPreview: isAdmin,
       ...(isAdmin ? { adminPreviewCandidates } : {}),
       submissionId: submission.id,
-      writtenScore: Number(submission.totalScore),
+      writtenScore: Number(submission.finalScore),
       finalPrediction: saved && calculated
         ? {
             ...calculated,
@@ -442,7 +450,11 @@ export async function POST(request: NextRequest) {
           409
         );
       }
-      if (currentSubmission.subjectScores.some((score) => score.isFailed)) {
+      if (tenantType === "police" ? hasPoliceWrittenCutoff({
+        examType: currentSubmission.examType,
+        totalScore: Number(currentSubmission.totalScore),
+        subjectScores: currentSubmission.subjectScores,
+      }) : currentSubmission.subjectScores.some((score) => score.isFailed)) {
         throw new FinalPredictionWriteError("과락 성적은 최종 환산 예측을 저장할 수 없습니다.", 400);
       }
       if (!isExamTypeForTenant(tenantType, currentSubmission.examType)) {
@@ -450,12 +462,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (tenantType === "police") {
-        const writtenScore = Number(currentSubmission.totalScore);
+        const writtenScore = Number(currentSubmission.finalScore);
         const calculated = policeFinalPrediction.calculateKnownFinalScore({
           writtenScore,
           fitnessPassed: fitnessPassed as boolean,
           martialDanLevel: martialDanLevel as number,
-          bonusRate: Number(currentSubmission.bonusRate),
+          appliedWrittenBonusRate: policeFinalPrediction.getAppliedPoliceWrittenBonusRate({
+            rawWrittenScore: Number(currentSubmission.totalScore),
+            finalWrittenScore: writtenScore,
+          }),
         });
 
         await tx.finalPrediction.upsert({

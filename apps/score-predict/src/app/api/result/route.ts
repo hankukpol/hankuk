@@ -16,6 +16,11 @@ import {
   getPoliceRecruitCount,
 } from "@/lib/police/prediction-policy";
 import { resolvePoliceWrittenBonus } from "@/lib/police/written-bonus";
+import {
+  getPoliceScoredNonCutoffSql,
+  hasPoliceWrittenBonusSubjectCutoff,
+  hasPoliceWrittenCutoff,
+} from "@/lib/police/written-policy";
 import { prisma } from "@/lib/prisma";
 import { canShowSamplePercentile } from "@/lib/public-sample-policy";
 import { getEffectiveSiteSettings, isOperationFeatureEnabled } from "@/lib/exam-operation";
@@ -109,13 +114,29 @@ function calculatePercentileByLower(lowerCount: number, totalCount: number): num
   return roundNumber((lowerCount / totalCount) * 100);
 }
 
-function getPopulationConditionSql(submissionHasCutoff: boolean): Prisma.Sql {
+function getPopulationConditionSql(params: {
+  tenantType: TenantType;
+  examType: ExamType;
+  submissionHasCutoff: boolean;
+}): Prisma.Sql {
+  const { tenantType, examType, submissionHasCutoff } = params;
   if (submissionHasCutoff) {
-    return Prisma.sql`AND s."isSuspicious" = false`;
+    return Prisma.sql`
+      AND s."isSuspicious" = false
+      AND s."scoringStatus" = CAST(${SubmissionScoringStatus.SCORED} AS "SubmissionScoringStatus")
+    `;
+  }
+
+  if (tenantType === "police") {
+    return Prisma.sql`
+      AND s."isSuspicious" = false
+      ${getPoliceScoredNonCutoffSql(examType)}
+    `;
   }
 
   return Prisma.sql`
     AND s."isSuspicious" = false
+    AND s."scoringStatus" = CAST(${SubmissionScoringStatus.SCORED} AS "SubmissionScoringStatus")
     AND NOT EXISTS (
       SELECT 1
       FROM "SubjectScore" sf
@@ -170,6 +191,7 @@ export async function GET(request: NextRequest) {
   const submissionId = parsePositiveInt(searchParams.get("submissionId"));
   const requestedExamId = parsePositiveInt(searchParams.get("examId"));
   const allowMissing = searchParams.get("optional") === "1";
+  const isInputConsumer = searchParams.get("consumer") === "input";
   if (!(await isOperationFeatureEnabled("result"))) {
     if (allowMissing) return NextResponse.json({ submission: null, scores: [] });
     return NextResponse.json({ error: "성적 결과는 아직 공개되지 않았습니다." }, { status: 403 });
@@ -181,42 +203,41 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "examId가 올바르지 않습니다." }, { status: 400 });
   }
 
-  let activeExamId: number | null = null;
-  if (!submissionId) {
-    try {
-      const activeExam = await requireSoleActiveExam({
-        db: prisma,
-        tenantType,
-        context: "api/result/default-read",
-      });
-      activeExamId = activeExam.id;
-      if (requestedExamId && requestedExamId !== activeExam.id) {
-        return NextResponse.json(
-          { error: "현재 회차 결과는 활성 시험에서만 조회할 수 있습니다." },
-          { status: 409 }
-        );
-      }
-    } catch (error) {
-      if (isActiveExamRouteError(error)) {
-        return NextResponse.json(
-          { error: error.message, code: error.code },
-          { status: error.status }
-        );
-      }
-      throw error;
+  let activeExamId: number;
+  try {
+    const activeExam = await requireSoleActiveExam({
+      db: prisma,
+      tenantType,
+      context: submissionId ? "api/result/explicit-read" : "api/result/default-read",
+    });
+    activeExamId = activeExam.id;
+    if (requestedExamId && requestedExamId !== activeExam.id) {
+      return NextResponse.json(
+        { error: "현재 회차 결과는 활성 시험에서만 조회할 수 있습니다." },
+        { status: 409 }
+      );
     }
+  } catch (error) {
+    if (isActiveExamRouteError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
+    throw error;
   }
 
   // 1차: submissionId 지정 시 해당 제출, 아니면 본인 제출 조회
   const submissionWhere: Prisma.SubmissionWhereInput = submissionId
     ? {
         id: submissionId,
+        examId: activeExamId,
         examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
         ...(isAdmin ? {} : { userId }),
       }
     : {
         userId,
-        examId: activeExamId ?? undefined,
+        examId: activeExamId,
         examType: { in: [...TENANT_EXAM_TYPES[tenantType]] },
       };
 
@@ -244,6 +265,7 @@ export async function GET(request: NextRequest) {
         name: true,
         year: true,
         round: true,
+        isActive: true,
       },
     },
     region: {
@@ -290,7 +312,7 @@ export async function GET(request: NextRequest) {
   });
 
   // 2차: 관리자이고 본인 제출이 없으면, 활성 시험의 아무 제출로 대시보드 미리보기
-  if (!submission && !submissionId && isAdmin) {
+  if (!submission && !submissionId && isAdmin && !isInputConsumer) {
     const activeExam = activeExamId ? { id: activeExamId } : null;
 
     const findMockPreviewSubmission = async (params: {
@@ -333,10 +355,6 @@ export async function GET(request: NextRequest) {
             { examId: activeExam.id, preferPrimaryProfile: false, requireNonCutoff: false },
           ]
         : []),
-      { preferPrimaryProfile: true, requireNonCutoff: true },
-      { preferPrimaryProfile: false, requireNonCutoff: true },
-      { preferPrimaryProfile: true, requireNonCutoff: false },
-      { preferPrimaryProfile: false, requireNonCutoff: false },
     ];
 
     for (const condition of previewSearchOrder) {
@@ -370,15 +388,23 @@ export async function GET(request: NextRequest) {
   if (!isExamTypeForTenant(tenantType, submission.examType)) {
     return NextResponse.json({ error: "현재 서비스의 시험유형이 아닙니다." }, { status: 409 });
   }
+  if (!isAdmin && !submission.exam.isActive) {
+    return NextResponse.json(
+      { error: "현재 활성 시험의 성적만 조회할 수 있습니다." },
+      { status: 409 }
+    );
+  }
 
   const settings = await getEffectiveSiteSettings();
   const maxEditLimit = (settings["site.submissionEditLimit"] as number) ?? 3;
   const finalPredictionEnabled = Boolean(settings["site.finalPredictionEnabled"] ?? false);
+  const analysisEnabled = Boolean(settings["site.tabPredictionEnabled"] ?? false);
 
   if (submission.scoringStatus === SubmissionScoringStatus.PENDING) {
     return NextResponse.json({
       features: {
         finalPredictionEnabled,
+        analysisEnabled,
       },
       pending: {
         isPending: true,
@@ -391,6 +417,7 @@ export async function GET(request: NextRequest) {
         examName: submission.exam.name,
         examYear: submission.exam.year,
         examRound: submission.exam.round,
+        examIsActive: submission.exam.isActive,
         examType: submission.examType,
         regionId: submission.region.id,
         regionName: submission.region.name,
@@ -454,9 +481,11 @@ export async function GET(request: NextRequest) {
     where: { examId: submission.examId },
     select: { subjectId: true, questionNumber: true, correctAnswer: true },
   });
-  const correctRateRows = await (tenantType === "police"
-    ? policeCorrectRate.getCorrectRateRows
-    : fireCorrectRate.getCorrectRateRows)(submission.examId, submission.examType);
+  const correctRateRows = analysisEnabled
+    ? await (tenantType === "police"
+        ? policeCorrectRate.getCorrectRateRows
+        : fireCorrectRate.getCorrectRateRows)(submission.examId, submission.examType)
+    : [];
   const correctRateByKey = new Map(
     correctRateRows.map((row) => [
       toAnswerKey(row.subjectId, row.questionNumber),
@@ -467,10 +496,25 @@ export async function GET(request: NextRequest) {
     ] as const)
   );
 
-  const submissionHasCutoff = submission.subjectScores.some((score) => score.isFailed);
+  const totalRawMaxScore = submission.subjectScores.reduce(
+    (sum, score) => sum + Number(score.subject.maxScore),
+    0
+  );
+  const submissionHasCutoff = tenantType === "police"
+    ? hasPoliceWrittenCutoff({
+        examType: submission.examType,
+        totalScore: Number(submission.totalScore),
+        subjectScores: submission.subjectScores,
+        maxScore: totalRawMaxScore,
+      })
+    : submission.subjectScores.some((score) => score.isFailed);
   const rankingWithheld = submission.suspicionStatus !== SubmissionSuspicionStatus.CLEAR;
   const rankingBasis = submissionHasCutoff ? "ALL_PARTICIPANTS" : "NON_CUTOFF_PARTICIPANTS";
-  const populationConditionSql = getPopulationConditionSql(submissionHasCutoff);
+  const populationConditionSql = getPopulationConditionSql({
+    tenantType,
+    examType: submission.examType,
+    submissionHasCutoff,
+  });
   const myFinalScore = Number(submission.finalScore);
   const quota = await prisma.examRegionQuota.findUnique({
     where: {
@@ -500,7 +544,12 @@ export async function GET(request: NextRequest) {
         declaredRate: Number(submission.bonusRate),
         recruitCount: getPoliceRecruitCount(quota, submission.examType),
         applicantCount: getPoliceApplicantCount(quota, submission.examType),
-        hasCutoff: submissionHasCutoff,
+        hasSubjectCutoff: hasPoliceWrittenBonusSubjectCutoff(
+          submission.subjectScores.map((score) => ({
+            rawScore: Number(score.rawScore),
+            maxScore: Number(score.subject.maxScore),
+          }))
+        ),
       })
     : null;
   const fireBonusEligibility = tenantType === "fire" && quota
@@ -520,31 +569,33 @@ export async function GET(request: NextRequest) {
     recruitAcademicCombined: quota?.recruitAcademicCombined ?? 0,
   });
 
-  const [overallRow] = await prisma.$queryRaw<CountRow[]>(Prisma.sql`
-    SELECT
-      COUNT(*) AS "totalCount",
-      SUM(CASE WHEN s."finalScore" > ${myFinalScore} THEN 1 ELSE 0 END) AS "higherCount",
-      SUM(CASE WHEN s."finalScore" < ${myFinalScore} THEN 1 ELSE 0 END) AS "lowerCount"
-    FROM "Submission" s
-    WHERE s."examId" = ${submission.examId}
-      AND s."regionId" = ${submission.regionId}
-      AND s."examType"::text = ${submission.examType}
-      ${genderConditionSql}
-      ${populationConditionSql}
-  `);
+  const [overallRow] = analysisEnabled
+    ? await prisma.$queryRaw<CountRow[]>(Prisma.sql`
+        SELECT
+          COUNT(*) AS "totalCount",
+          SUM(CASE WHEN s."finalScore" > ${myFinalScore} THEN 1 ELSE 0 END) AS "higherCount",
+          SUM(CASE WHEN s."finalScore" < ${myFinalScore} THEN 1 ELSE 0 END) AS "lowerCount"
+        FROM "Submission" s
+        WHERE s."examId" = ${submission.examId}
+          AND s."regionId" = ${submission.regionId}
+          AND s."examType"::text = ${submission.examType}
+          ${genderConditionSql}
+          ${populationConditionSql}
+      `)
+    : [{ totalCount: 0, higherCount: 0, lowerCount: 0 }];
 
   const totalParticipants = toCount(overallRow?.totalCount);
-  if (totalParticipants < 1 && !rankingWithheld) {
+  if (analysisEnabled && totalParticipants < 1 && !rankingWithheld) {
     return NextResponse.json({ error: "성적 비교 대상이 없습니다." }, { status: 404 });
   }
 
   const totalHigherCount = toCount(overallRow?.higherCount);
   const totalLowerCount = toCount(overallRow?.lowerCount);
-  const totalRank = rankingWithheld ? null : calculateRankByHigher(totalHigherCount);
-  const totalTopPercent = rankingWithheld
+  const totalRank = rankingWithheld || !analysisEnabled ? null : calculateRankByHigher(totalHigherCount);
+  const totalTopPercent = rankingWithheld || !analysisEnabled
     ? null
     : calculateTopPercentByHigher(totalHigherCount, totalParticipants);
-  const totalPercentile = rankingWithheld
+  const totalPercentile = rankingWithheld || !analysisEnabled
     ? null
     : calculatePercentileByLower(totalLowerCount, totalParticipants);
 
@@ -574,7 +625,7 @@ export async function GET(request: NextRequest) {
   const myScoreSql = Prisma.sql`CASE ${Prisma.join(scoreConditions, " ")} ELSE 0 END`;
 
   const subjectRows =
-    subjectIds.length > 0
+    analysisEnabled && subjectIds.length > 0
       ? await prisma.$queryRaw<SubjectCountRow[]>(Prisma.sql`
           SELECT
             ss."subjectId",
@@ -606,7 +657,7 @@ export async function GET(request: NextRequest) {
   );
 
   const subjectAggregateRows =
-    subjectIds.length > 0
+    analysisEnabled && subjectIds.length > 0
       ? await prisma.$queryRaw<SubjectAggregateRow[]>(Prisma.sql`
           WITH ranked_subject AS (
             SELECT
@@ -649,37 +700,41 @@ export async function GET(request: NextRequest) {
     ])
   );
 
-  const [totalAggregateRow] = await prisma.$queryRaw<TotalAggregateRow[]>(Prisma.sql`
-    WITH ranked_total AS (
-      SELECT
-        s."finalScore" AS "finalScore",
-        ROW_NUMBER() OVER (ORDER BY s."finalScore" DESC, s.id ASC) AS "rn",
-        COUNT(*) OVER () AS "cnt"
-      FROM "Submission" s
-      WHERE s."examId" = ${submission.examId}
-        AND s."regionId" = ${submission.regionId}
-        AND s."examType"::text = ${submission.examType}
-        ${genderConditionSql}
-        ${populationConditionSql}
-    )
-    SELECT
-      ROUND(AVG("finalScore")::numeric, 2) AS "averageScore",
-      MAX("finalScore") AS "highestScore",
-      MIN("finalScore") AS "lowestScore",
-      ROUND(AVG(CASE WHEN "rn" <= GREATEST(1, FLOOR("cnt" * 0.1)) THEN "finalScore" END)::numeric, 2) AS "top10Average",
-      ROUND(AVG(CASE WHEN "rn" <= GREATEST(1, FLOOR("cnt" * 0.3)) THEN "finalScore" END)::numeric, 2) AS "top30Average"
-    FROM ranked_total
-  `);
+  const [totalAggregateRow] = analysisEnabled
+    ? await prisma.$queryRaw<TotalAggregateRow[]>(Prisma.sql`
+        WITH ranked_total AS (
+          SELECT
+            s."finalScore" AS "finalScore",
+            ROW_NUMBER() OVER (ORDER BY s."finalScore" DESC, s.id ASC) AS "rn",
+            COUNT(*) OVER () AS "cnt"
+          FROM "Submission" s
+          WHERE s."examId" = ${submission.examId}
+            AND s."regionId" = ${submission.regionId}
+            AND s."examType"::text = ${submission.examType}
+            ${genderConditionSql}
+            ${populationConditionSql}
+        )
+        SELECT
+          ROUND(AVG("finalScore")::numeric, 2) AS "averageScore",
+          MAX("finalScore") AS "highestScore",
+          MIN("finalScore") AS "lowestScore",
+          ROUND(AVG(CASE WHEN "rn" <= GREATEST(1, FLOOR("cnt" * 0.1)) THEN "finalScore" END)::numeric, 2) AS "top10Average",
+          ROUND(AVG(CASE WHEN "rn" <= GREATEST(1, FLOOR("cnt" * 0.3)) THEN "finalScore" END)::numeric, 2) AS "top30Average"
+        FROM ranked_total
+      `)
+    : [];
 
-  const [latestUpdatedRow] = await prisma.$queryRaw<LatestUpdatedRow[]>(Prisma.sql`
-    SELECT MAX(s."updatedAt") AS "latestAt"
-    FROM "Submission" s
-    WHERE s."examId" = ${submission.examId}
-      AND s."regionId" = ${submission.regionId}
-      AND s."examType"::text = ${submission.examType}
-      ${genderConditionSql}
-      ${populationConditionSql}
-  `);
+  const [latestUpdatedRow] = analysisEnabled
+    ? await prisma.$queryRaw<LatestUpdatedRow[]>(Prisma.sql`
+        SELECT MAX(s."updatedAt") AS "latestAt"
+        FROM "Submission" s
+        WHERE s."examId" = ${submission.examId}
+          AND s."regionId" = ${submission.regionId}
+          AND s."examType"::text = ${submission.examType}
+          ${genderConditionSql}
+          ${populationConditionSql}
+      `)
+    : [];
 
   const answerKeyMap = new Map<string, number>();
   for (const k of answerKeys) {
@@ -732,18 +787,21 @@ export async function GET(request: NextRequest) {
       maxScore,
       bonusScore,
       finalScore,
-      isCutoff: mySubjectScore.isFailed,
+      isCutoff:
+        tenantType === "police" && submission.examType === ExamType.CAREER
+          ? false
+          : mySubjectScore.isFailed,
       cutoffScore: roundNumber(
         maxScore *
           (tenantType === "police"
             ? policePolicy.SUBJECT_CUTOFF_RATE
             : firePolicy.SUBJECT_CUTOFF_RATE)
       ),
-      rank: rankingWithheld ? null : calculateRankByHigher(subjectHigher),
-      topPercent: rankingWithheld
+      rank: rankingWithheld || !analysisEnabled ? null : calculateRankByHigher(subjectHigher),
+      topPercent: rankingWithheld || !analysisEnabled
         ? null
         : calculateTopPercentByHigher(subjectHigher, subjectParticipants),
-      percentile: rankingWithheld
+      percentile: rankingWithheld || !analysisEnabled
         ? null
         : calculatePercentileByLower(subjectLower, subjectParticipants),
       totalParticipants: subjectParticipants,
@@ -759,7 +817,7 @@ export async function GET(request: NextRequest) {
     ? finalizeFireWrittenBonus(fireBonusEligibility, calculatedBonusScore)
     : policeBonusApplication;
 
-  const subjectCorrectRateSummaries = scores.map((score) => {
+  const subjectCorrectRateSummaries = analysisEnabled ? scores.map((score) => {
     const rows = correctRateRows.filter((row) => row.subjectId === score.subjectId);
     const averageCorrectRate =
       rows.length > 0
@@ -801,7 +859,7 @@ export async function GET(request: NextRequest) {
         (answer) => answer.difficultyLevel === "EASY" && !answer.isCorrect
       ).length,
     };
-  });
+  }) : [];
 
   const hasCutoff = submissionHasCutoff;
   const cutoffSubjects = scores
@@ -846,7 +904,7 @@ export async function GET(request: NextRequest) {
         topPercent: score.topPercent,
         percentile: score.percentile,
         percentileAvailable:
-          !rankingWithheld && canShowSamplePercentile(score.totalParticipants),
+          analysisEnabled && !rankingWithheld && canShowSamplePercentile(score.totalParticipants),
         averageScore: aggregate?.averageScore ?? 0,
         highestScore: aggregate?.highestScore ?? 0,
         lowestScore: aggregate?.lowestScore ?? 0,
@@ -855,7 +913,7 @@ export async function GET(request: NextRequest) {
       };
     }),
     total: {
-      myScore: roundNumber(Number(submission.totalScore)),
+      myScore: roundNumber(myFinalScore),
       maxScore: totalMaxScore,
       myRank: totalRank,
       totalParticipants,
@@ -863,7 +921,8 @@ export async function GET(request: NextRequest) {
       questionCount: scores.reduce((sum, s) => sum + s.questionCount, 0),
       topPercent: totalTopPercent,
       percentile: totalPercentile,
-      percentileAvailable: !rankingWithheld && canShowSamplePercentile(totalParticipants),
+      percentileAvailable:
+        analysisEnabled && !rankingWithheld && canShowSamplePercentile(totalParticipants),
       averageScore: totalAggregate.averageScore,
       highestScore: totalAggregate.highestScore,
       lowestScore: totalAggregate.lowestScore,
@@ -877,13 +936,15 @@ export async function GET(request: NextRequest) {
     totalParticipants,
     topPercent: totalTopPercent,
     percentile: totalPercentile,
-    percentileAvailable: !rankingWithheld && canShowSamplePercentile(totalParticipants),
+    percentileAvailable:
+      analysisEnabled && !rankingWithheld && canShowSamplePercentile(totalParticipants),
     lastUpdated,
   };
 
   return NextResponse.json({
     features: {
       finalPredictionEnabled,
+      analysisEnabled,
     },
     submission: {
       id: submission.id,
@@ -892,6 +953,7 @@ export async function GET(request: NextRequest) {
       examName: submission.exam.name,
       examYear: submission.exam.year,
       examRound: submission.exam.round,
+      examIsActive: submission.exam.isActive,
       examType: submission.examType,
       regionId: submission.region.id,
       regionName: submission.region.name,
@@ -920,7 +982,8 @@ export async function GET(request: NextRequest) {
       totalRank,
       topPercent: totalTopPercent,
       totalPercentile,
-      percentileAvailable: !rankingWithheld && canShowSamplePercentile(totalParticipants),
+      percentileAvailable:
+        analysisEnabled && !rankingWithheld && canShowSamplePercentile(totalParticipants),
       hasCutoff,
       rankingBasis,
       cutoffSubjects,

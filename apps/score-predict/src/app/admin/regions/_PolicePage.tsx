@@ -170,7 +170,7 @@ export default function PoliceAdminRegionsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">경찰 지역 및 모집인원 관리</h1>
+          <h1 className="admin-page-title text-slate-900">경찰 지역 및 모집인원 관리</h1>
           <p className="mt-1 text-sm text-slate-600">
             전국 지역의 활성 상태와 공채·경행경채 모집인원, 출원인원, 응시번호 범위를 관리합니다.
           </p>
@@ -191,7 +191,7 @@ export default function PoliceAdminRegionsPage() {
         </label>
         <select
           id="police-region-exam"
-          className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-police-600 sm:max-w-md"
+          className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-600 sm:max-w-md"
           value={selectedExamId ?? ""}
           onChange={(event) => void load(Number(event.target.value))}
           disabled={isLoading}
@@ -220,7 +220,7 @@ export default function PoliceAdminRegionsPage() {
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-[1280px] w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="w-28 whitespace-nowrap px-4 py-3">지역</th>
                   <th className="w-28 whitespace-nowrap px-4 py-3">운영 상태</th>
@@ -229,7 +229,7 @@ export default function PoliceAdminRegionsPage() {
                   <th className="whitespace-nowrap px-4 py-3">출원인원</th>
                   <th className="whitespace-nowrap px-4 py-3">응시번호 시작</th>
                   <th className="whitespace-nowrap px-4 py-3">응시번호 끝</th>
-                  <th className="w-24 whitespace-nowrap px-4 py-3 text-right">참여</th>
+                  <th className="num-right w-24 whitespace-nowrap px-4 py-3">참여</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -271,7 +271,7 @@ export default function PoliceAdminRegionsPage() {
                                   )
                                 )
                               }
-                              className="h-4 w-4 rounded border-slate-300 text-police-600 focus:ring-police-500"
+                              className="h-4 w-4 rounded border-slate-300 text-service-600 focus:ring-service-500"
                               aria-label={`${row.name} 지역 활성화`}
                             />
                             {row.isActive ? "활성" : "비활성"}
@@ -316,7 +316,7 @@ export default function PoliceAdminRegionsPage() {
                           aria-label={`${row.name} ${cohort.label} 응시번호 끝`}
                         />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700">
+                      <td className="num-right whitespace-nowrap px-4 py-3 tabular-nums text-slate-700">
                         {cohort.participants}명
                       </td>
                     </tr>

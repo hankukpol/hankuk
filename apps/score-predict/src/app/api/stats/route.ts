@@ -10,6 +10,7 @@ import {
   type TenantRecruitmentCohort,
 } from "@/lib/tenant-calculations.server";
 import type { TenantType } from "@/lib/tenant";
+import { buildPoliceScoredNonCutoffWhere } from "@/lib/police/written-policy";
 
 export const runtime = "nodejs";
 
@@ -237,6 +238,20 @@ export async function GET(request: NextRequest) {
       examType: { in: tenantExamTypes },
       ...policeRegionScope,
     };
+    const predictionPopulationWhere: Prisma.SubmissionWhereInput =
+      auth.tenantType === "police"
+        ? {
+            OR: tenantExamTypes.map((examType) => ({
+              examType,
+              ...buildPoliceScoredNonCutoffWhere(examType),
+            })),
+          }
+        : {
+            subjectScores: {
+              some: {},
+              none: { isFailed: true },
+            },
+          };
     const policeRegionDateSql =
       auth.tenantType === "police"
         ? Prisma.sql`AND EXISTS (
@@ -345,10 +360,7 @@ export async function GET(request: NextRequest) {
           examType: { in: tenantExamTypes },
           ...policeRegionScope,
           isSuspicious: false,
-          subjectScores: {
-            some: {},
-            none: { isFailed: true },
-          },
+          ...predictionPopulationWhere,
         },
         _count: {
           _all: true,
@@ -361,10 +373,7 @@ export async function GET(request: NextRequest) {
           examType: { in: tenantExamTypes },
           ...policeRegionScope,
           isSuspicious: false,
-          subjectScores: {
-            some: {},
-            none: { isFailed: true },
-          },
+          ...predictionPopulationWhere,
         },
         _count: {
           _all: true,

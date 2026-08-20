@@ -90,7 +90,7 @@ export default function ScoreDistributionChart({ submissionId }: ScoreDistributi
 
   if (isLoading) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+      <section className="border-t border-slate-200 pt-6 text-sm text-slate-600">
         점수대 분포를 불러오는 중입니다...
       </section>
     );
@@ -105,9 +105,9 @@ export default function ScoreDistributionChart({ submissionId }: ScoreDistributi
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
+    <section className="border-t border-slate-200 pt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-900">점수대별 인원 분포</h2>
+        <h2 className="user-card-title">점수대별 인원 분포</h2>
         <p className="text-xs text-slate-500">기준: 동일 시험·직렬 전체 입력자 · 원점수 기준</p>
       </div>
       {isCollecting ? <p className="mt-3 text-sm text-slate-600">참여 인원이 10명 미만이라 데이터 수집 중입니다.</p> : null}
@@ -121,17 +121,17 @@ export default function ScoreDistributionChart({ submissionId }: ScoreDistributi
                 <XAxis
                   dataKey="label"
                   interval={2}
-                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  tick={{ fontSize: "var(--user-chart-label-size)", fill: "#64748b" }}
                   axisLine={false}
                   tickLine={false}
                 />
-                <YAxis tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: "var(--user-chart-label-size)", fill: "#64748b" }} axisLine={false} tickLine={false} />
                 <Tooltip
-                  formatter={(value: unknown) => `${Number(value ?? 0)}명`}
+                  formatter={(value: unknown) => [`${Number(value ?? 0)}명`, "채점자 수"]}
                   labelFormatter={(label: unknown) => `${String(label)}점`}
-                  contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+                  contentStyle={{ borderRadius: "0", border: "1px solid #e8e8ec", fontSize: "var(--user-chart-label-size)" }}
                 />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="count" name="채점자 수" radius={[4, 4, 0, 0]}>
                   {buckets.map((bucket) => (
                     <Cell key={bucket.bucket} fill={bucket.isMyBucket ? highlightColor : "#94a3b8"} />
                   ))}

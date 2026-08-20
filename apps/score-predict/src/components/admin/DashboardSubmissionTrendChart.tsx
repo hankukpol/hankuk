@@ -46,6 +46,11 @@ export default function DashboardSubmissionTrendChart({
             tickLine={false}
           />
           <Tooltip
+            formatter={(value: unknown) => [
+              `${Number(value ?? 0).toLocaleString("ko-KR")}건`,
+              "성적 제출 수",
+            ]}
+            labelFormatter={(label: unknown) => `제출일 ${String(label)}`}
             contentStyle={{
               borderRadius: "12px",
               border: "1px solid #e2e8f0",
@@ -56,6 +61,7 @@ export default function DashboardSubmissionTrendChart({
           <Area
             type="monotone"
             dataKey="count"
+            name="성적 제출 수"
             stroke="var(--service-600)"
             strokeWidth={2.5}
             fill="url(#colorCount)"

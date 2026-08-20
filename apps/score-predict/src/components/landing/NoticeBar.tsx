@@ -13,7 +13,7 @@ export default function NoticeBar({ notices }: NoticeBarProps) {
     <section className="rounded-xl border border-service-200 bg-service-50 p-5 sm:p-6">
       <div className="flex items-center gap-2">
         <Megaphone className="h-5 w-5 text-service-600" />
-        <h2 className="text-base font-bold text-slate-900">공지사항 / 이용안내</h2>
+        <h2 className="user-card-title">공지사항 / 이용안내</h2>
       </div>
       <ul className="mt-4 border-y border-service-200 bg-white">
         {notices.map((notice) => (

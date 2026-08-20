@@ -238,12 +238,12 @@ export default function AdminFaqsPage() {
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="whitespace-nowrap px-4 py-3">ID</th>
               <th className="whitespace-nowrap px-4 py-3">질문</th>
               <th className="whitespace-nowrap px-4 py-3">상태</th>
-              <th className="whitespace-nowrap px-4 py-3 text-right">작업</th>
+              <th className="whitespace-nowrap px-4 py-3">작업</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -272,7 +272,7 @@ export default function AdminFaqsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3">
                     <div className="inline-flex gap-2">
                       <Button type="button" variant="outline" onClick={() => startEdit(item)}>
                         수정

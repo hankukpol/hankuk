@@ -22,6 +22,7 @@ import {
 } from "@/lib/police/pre-registration";
 import { parsePoliceExamNumberInput } from "@/lib/police/exam-number";
 import { parseExamNumberInput as parseFireExamNumberInput } from "@/lib/fire/exam-number";
+import { hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
 
 export const runtime = "nodejs";
 
@@ -148,12 +149,8 @@ export async function GET(request: NextRequest) {
               },
             },
             subjectScores: {
-              where: {
-                isFailed: true,
-              },
-              take: 1,
               select: {
-                id: true,
+                isFailed: true,
               },
             },
           },
@@ -193,7 +190,14 @@ export async function GET(request: NextRequest) {
         suspicionManualDecision: submission.suspicionManualDecision,
         suspicionReviewNote: submission.suspicionReviewNote,
         suspicionReviewedAt: submission.suspicionReviewedAt,
-        hasCutoff: submission.subjectScores.length > 0,
+        hasCutoff:
+          guard.tenantType === "police"
+            ? hasPoliceWrittenCutoff({
+                examType: submission.examType,
+                totalScore: Number(submission.totalScore),
+                subjectScores: submission.subjectScores,
+              })
+            : submission.subjectScores.some((score) => score.isFailed),
         createdAt: submission.createdAt,
       })),
     });

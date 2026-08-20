@@ -5,6 +5,7 @@ import { getCurrentTenantSessionContext } from "@/lib/tenant-session.server";
 import { withTenantPrefix } from "@/lib/tenant";
 import { getServerTenantType } from "@/lib/tenant.server";
 import ActiveExamHealthBanner from "@/components/admin/ActiveExamHealthBanner";
+import AdminSectionTabs from "@/components/admin/AdminSectionTabs";
 
 export default async function AdminLayout({
   children,
@@ -18,14 +19,15 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-service-950">
+    <div className="admin-shell relative flex h-screen w-full overflow-hidden">
       <AdminSidebar />
-      <main className="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-4 flex justify-end">
+      <main className="admin-main flex-1 overflow-y-auto">
+        <div className="admin-content-frame">
+          <div className="admin-utility-row">
             <AppSwitchMenu role="admin" divisionSlug={tenantType} />
           </div>
           <ActiveExamHealthBanner />
+          <AdminSectionTabs />
           {children}
         </div>
       </main>

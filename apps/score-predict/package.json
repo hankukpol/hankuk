@@ -42,6 +42,7 @@
     "db:promotions:prepare-local-police-scoring": "tsx scripts/prepare-local-police-scoring-promotion.ts",
     "test:admin-workflow": "tsx scripts/admin-workflow-e2e.ts police && tsx scripts/admin-workflow-e2e.ts fire && tsx scripts/tenant-module-isolation-test.ts",
     "test:admin-responsive": "tsx scripts/admin-responsive-qa.ts",
+    "test:admin-submissions": "tsx scripts/admin-submissions-sort-export-e2e.ts",
     "test:mailer-safety": "tsx --conditions=react-server scripts/mailer-safety-test.ts",
     "test:smtp-smoke": "tsx --conditions=react-server scripts/smtp-smoke-test.ts",
     "test:notice-board-visual": "tsx scripts/notice-board-visual-qa.ts",

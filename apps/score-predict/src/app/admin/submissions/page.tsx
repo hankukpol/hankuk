@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
 import { getResponseErrorMessage, readResponseJson } from "@/lib/read-response-json";
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpDown } from "lucide-react";
 
 type ExamTypeValue = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
 type SuspicionStatusValue = "CLEAR" | "REVIEW" | "EXCLUDED";
+type SubmissionSortValue = "createdAt-desc" | "finalScore-desc" | "finalScore-asc";
 
 interface ExamOption {
   id: number;
@@ -185,6 +187,7 @@ export default function AdminSubmissionsPage() {
   const [selectedSuspicious, setSelectedSuspicious] = useState<"" | SuspicionStatusValue>("");
   const [searchInput, setSearchInput] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [sortValue, setSortValue] = useState<SubmissionSortValue>("createdAt-desc");
 
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const [page, setPage] = useState(1);
@@ -192,6 +195,7 @@ export default function AdminSubmissionsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [detail, setDetail] = useState<SubmissionDetailResponse | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -211,8 +215,26 @@ export default function AdminSubmissionsPage() {
     if (selectedExamType) params.set("examType", selectedExamType);
     if (selectedSuspicious) params.set("suspicionStatus", selectedSuspicious);
     if (searchKeyword) params.set("search", searchKeyword);
+    const [sortBy, sortOrder] = sortValue.split("-");
+    params.set("sortBy", sortBy);
+    params.set("sortOrder", sortOrder);
     return params.toString();
-  }, [page, searchKeyword, selectedExamId, selectedExamType, selectedRegionId, selectedSuspicious]);
+  }, [
+    page,
+    searchKeyword,
+    selectedExamId,
+    selectedExamType,
+    selectedRegionId,
+    selectedSuspicious,
+    sortValue,
+  ]);
+
+  const exportQueryString = useMemo(() => {
+    const params = new URLSearchParams(queryString);
+    params.delete("page");
+    params.delete("limit");
+    return params.toString();
+  }, [queryString]);
 
   const loadFilters = useCallback(async () => {
     const [examResponse, examsMetaResponse] = await Promise.all([
@@ -495,6 +517,44 @@ export default function AdminSubmissionsPage() {
     }
   }
 
+  async function handleExportExcel() {
+    setIsExporting(true);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/submissions/export?${exportQueryString}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const data = await readResponseJson<{ error?: string }>(response);
+        throw new Error(
+          getResponseErrorMessage(response, "성적 엑셀 다운로드에 실패했습니다.", data)
+        );
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `제출현황_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setNotice({
+        type: "success",
+        message: `현재 조회 조건의 성적 ${totalCount.toLocaleString("ko-KR")}건을 엑셀로 내려받았습니다.`,
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "성적 엑셀 다운로드에 실패했습니다.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -504,7 +564,7 @@ export default function AdminSubmissionsPage() {
         </p>
       </header>
 
-      <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-6">
+      <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 xl:grid-cols-6">
         <select
           className="h-11 rounded-md border border-slate-300 bg-white px-3 text-sm"
           value={selectedExamId}
@@ -588,6 +648,36 @@ export default function AdminSubmissionsPage() {
         >
           검색
         </Button>
+
+        <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 xl:col-span-6 xl:flex-row xl:items-center xl:justify-between">
+          <p className="text-sm text-slate-600">
+            정렬과 엑셀 다운로드에는 현재 선택한 시험·지역·유형·검토 상태·검색어가 동일하게 적용됩니다.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row xl:shrink-0">
+            <select
+              aria-label="제출 현황 정렬"
+              className="h-11 min-w-48 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              value={sortValue}
+              onChange={(event) => {
+                setSortValue(event.target.value as SubmissionSortValue);
+                setPage(1);
+              }}
+            >
+              <option value="createdAt-desc">제출일 최신순</option>
+              <option value="finalScore-desc">최종점수 높은순</option>
+              <option value="finalScore-asc">최종점수 낮은순</option>
+            </select>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isExporting}
+              onClick={() => void handleExportExcel()}
+            >
+              <ArrowDownToLine aria-hidden="true" />
+              {isExporting ? "엑셀 생성 중..." : "성적 엑셀 다운로드"}
+            </Button>
+          </div>
+        </div>
       </section>
 
       {notice ? (
@@ -616,7 +706,37 @@ export default function AdminSubmissionsPage() {
                 <th className="whitespace-nowrap px-4 py-3">지역</th>
                 <th className="whitespace-nowrap px-4 py-3">응시번호</th>
                 <th className="whitespace-nowrap px-4 py-3">총점</th>
-                <th className="whitespace-nowrap px-4 py-3">최종점수</th>
+                <th
+                  aria-sort={
+                    sortValue === "finalScore-desc"
+                      ? "descending"
+                      : sortValue === "finalScore-asc"
+                        ? "ascending"
+                        : "none"
+                  }
+                  className="whitespace-nowrap px-4 py-3"
+                >
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 font-semibold hover:text-service-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-service-500"
+                    title="최종점수 정렬 전환"
+                    onClick={() => {
+                      setSortValue((current) =>
+                        current === "finalScore-desc" ? "finalScore-asc" : "finalScore-desc"
+                      );
+                      setPage(1);
+                    }}
+                  >
+                    최종점수
+                    {sortValue === "finalScore-asc" ? (
+                      <ArrowUp aria-hidden="true" className="size-4" />
+                    ) : sortValue === "finalScore-desc" ? (
+                      <ArrowDown aria-hidden="true" className="size-4" />
+                    ) : (
+                      <ArrowUpDown aria-hidden="true" className="size-4" />
+                    )}
+                  </button>
+                </th>
                 <th className="whitespace-nowrap px-4 py-3">과락</th>
                 <th className="whitespace-nowrap px-4 py-3">상태</th>
                 <th className="whitespace-nowrap px-4 py-3">제출일</th>

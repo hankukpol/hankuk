@@ -23,6 +23,11 @@ import {
 import { parsePoliceExamNumberInput } from "@/lib/police/exam-number";
 import { parseExamNumberInput as parseFireExamNumberInput } from "@/lib/fire/exam-number";
 import { hasPoliceWrittenCutoff } from "@/lib/police/written-policy";
+import {
+  buildAdminSubmissionOrderBy,
+  buildAdminSubmissionWhere,
+  parseAdminSubmissionSort,
+} from "@/lib/admin-submissions";
 
 export const runtime = "nodejs";
 
@@ -77,32 +82,27 @@ export async function GET(request: NextRequest) {
     )
       ? (suspicionStatusValue as SubmissionSuspicionStatus)
       : null;
+    const submissionSort = parseAdminSubmissionSort(
+      searchParams.get("sortBy"),
+      searchParams.get("sortOrder")
+    );
 
     if (searchParams.get("examType") && !examType) {
       return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
     }
 
-    const where = {
-      examType: examType ?? { in: [...TENANT_EXAM_TYPES[guard.tenantType]] },
-      ...(examId ? { examId } : {}),
-      ...(regionId ? { regionId } : {}),
-      ...(userId ? { userId } : {}),
-      ...(suspicionStatus ? { suspicionStatus } : {}),
-      ...(suspicious === "true"
-        ? { isSuspicious: true }
-        : suspicious === "false"
-          ? { isSuspicious: false }
-          : {}),
-      ...(search
-        ? {
-            OR: [
-              { user: { name: { contains: search } } },
-              { user: { phone: { contains: search } } },
-              { examNumber: { contains: search } },
-            ],
-          }
-        : {}),
-    };
+    const where = buildAdminSubmissionWhere(
+      {
+        examId,
+        regionId,
+        userId,
+        examType,
+        search,
+        suspicious,
+        suspicionStatus,
+      },
+      { allowedExamTypes: TENANT_EXAM_TYPES[guard.tenantType] }
+    );
 
     const skip = (page - 1) * limit;
     const [totalCount, submissions] = await prisma.$transaction(async (tx) =>
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
         tx.submission.count({ where }),
         tx.submission.findMany({
           where,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          orderBy: buildAdminSubmissionOrderBy(submissionSort),
           skip,
           take: limit,
           select: {

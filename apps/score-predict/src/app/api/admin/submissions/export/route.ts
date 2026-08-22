@@ -3,7 +3,11 @@ import { ExamType, SubmissionSuspicionStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
-import { buildAdminSubmissionWhere } from "@/lib/admin-submissions";
+import {
+  buildAdminSubmissionOrderBy,
+  buildAdminSubmissionWhere,
+  parseAdminSubmissionSort,
+} from "@/lib/admin-submissions";
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/request-ip";
 import {
@@ -97,6 +101,10 @@ export async function GET(request: NextRequest) {
     )
       ? (suspicionStatusValue as SubmissionSuspicionStatus)
       : null;
+    const submissionSort = parseAdminSubmissionSort(
+      searchParams.get("sortBy"),
+      searchParams.get("sortOrder")
+    );
 
     if (searchParams.get("examType") && !examType) {
       return NextResponse.json({ error: getTenantExamTypeErrorMessage(guard.tenantType) }, { status: 400 });
@@ -114,7 +122,7 @@ export async function GET(request: NextRequest) {
       }, {
         allowedExamTypes: TENANT_EXAM_TYPES[guard.tenantType],
       }),
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      orderBy: buildAdminSubmissionOrderBy(submissionSort),
       select: {
         id: true,
         userId: true,
@@ -244,7 +252,7 @@ export async function GET(request: NextRequest) {
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
     worksheet.autoFilter = {
       from: "A1",
-      to: "R1",
+      to: "T1",
     };
 
     for (let rowIndex = 2; rowIndex <= worksheet.rowCount; rowIndex += 1) {

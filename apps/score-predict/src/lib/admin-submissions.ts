@@ -16,6 +16,14 @@ type BuildAdminSubmissionWhereOptions = {
   allowedExamTypes?: readonly ExamType[];
 };
 
+export type AdminSubmissionSortBy = "createdAt" | "finalScore";
+export type AdminSubmissionSortOrder = "asc" | "desc";
+
+export type AdminSubmissionSort = {
+  sortBy: AdminSubmissionSortBy;
+  sortOrder: AdminSubmissionSortOrder;
+};
+
 export function buildAdminSubmissionWhere(
   filters: AdminSubmissionFilters,
   options: BuildAdminSubmissionWhereOptions = {}
@@ -57,4 +65,32 @@ export function buildAdminSubmissionWhere(
         }
       : {}),
   };
+}
+
+export function parseAdminSubmissionSort(
+  sortByValue: string | null,
+  sortOrderValue: string | null
+): AdminSubmissionSort {
+  return {
+    sortBy: sortByValue === "finalScore" ? "finalScore" : "createdAt",
+    sortOrder: sortOrderValue === "asc" ? "asc" : "desc",
+  };
+}
+
+export function buildAdminSubmissionOrderBy({
+  sortBy,
+  sortOrder,
+}: AdminSubmissionSort): Prisma.SubmissionOrderByWithRelationInput[] {
+  if (sortBy === "finalScore") {
+    return [
+      { finalScore: sortOrder },
+      { createdAt: "desc" },
+      { id: "desc" },
+    ];
+  }
+
+  return [
+    { createdAt: sortOrder },
+    { id: sortOrder },
+  ];
 }

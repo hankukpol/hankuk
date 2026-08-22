@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import AdminStudentSearchBar from "@/components/admin/AdminStudentSearchBar";
 import PassCutHistoryTable from "@/components/prediction/PassCutHistoryTable";
 import PassCutTrendChart from "@/components/prediction/PassCutTrendChart";
 import PredictionLiveDashboard from "@/components/prediction/PredictionLiveDashboard";
@@ -146,6 +148,32 @@ interface ExamPredictionPageProps {
   embedded?: boolean;
 }
 
+interface AdminPredictionSearchProps {
+  currentSubmissionId?: number;
+  onSelect: (submissionId: number, label: string) => void;
+}
+
+function AdminPredictionSearch({
+  currentSubmissionId,
+  onSelect,
+}: AdminPredictionSearchProps) {
+  return (
+    <section className="border-t border-slate-200 pt-6" aria-labelledby="admin-student-search-title">
+      <h2 id="admin-student-search-title" className="user-section-title">
+        관리자 학생 조회
+      </h2>
+      <AdminStudentSearchBar
+        currentSubmissionId={currentSubmissionId}
+        onSelect={onSelect}
+        placeholder="학생 이름 또는 수험번호로 검색하세요."
+      />
+      <p className="mt-2 text-xs text-slate-500">
+        학생을 선택하면 해당 학생의 합격예측과 동일 모집단의 경쟁자 순위를 조회합니다.
+      </p>
+    </section>
+  );
+}
+
 function formatScore(value: number | null): string {
   if (value === null) return "-";
   return value.toFixed(2);
@@ -255,11 +283,14 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   const tenantType = "police";
   const router = useRouter();
   const { showErrorToast } = useToast();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "ADMIN";
 
   const [page, setPage] = useState(1);
   const [prediction, setPrediction] = useState<PredictionPageResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [selectedAdminSubmissionId, setSelectedAdminSubmissionId] = useState("");
 
   const [passCutHistory, setPassCutHistory] = useState<PassCutHistoryResponse | null>(null);
   const [isPassCutLoading, setIsPassCutLoading] = useState(false);
@@ -271,9 +302,10 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   const [competitorDetail, setCompetitorDetail] = useState<CompetitorDetailResponse | null>(null);
 
   const pageRef = useRef(page);
+  const selectedAdminSubmissionIdRef = useRef("");
 
   const fetchPrediction = useCallback(
-    async (targetPage: number, silent = false) => {
+    async (targetPage: number, silent = false, submissionIdOverride?: string) => {
       if (!silent) {
         setIsLoading(true);
       }
@@ -281,7 +313,16 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
       setErrorMessage("");
 
       try {
-        const response = await fetch(`/api/prediction?page=${targetPage}&limit=20`, {
+        const query = new URLSearchParams({
+          page: String(targetPage),
+          limit: "20",
+        });
+        const submissionId = submissionIdOverride ?? selectedAdminSubmissionIdRef.current;
+        if (submissionId) {
+          query.set("submissionId", submissionId);
+        }
+
+        const response = await fetch(`/api/prediction?${query.toString()}`, {
           method: "GET",
           cache: "no-store",
         });
@@ -341,6 +382,10 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
+
+  useEffect(() => {
+    selectedAdminSubmissionIdRef.current = selectedAdminSubmissionId;
+  }, [selectedAdminSubmissionId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -450,27 +495,72 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
     return buildPageNumbers(prediction.competitors.page, prediction.competitors.totalPages);
   }, [prediction]);
 
+  const handleAdminStudentSelect = useCallback(
+    (submissionId: number) => {
+      const nextSubmissionId = submissionId > 0 ? String(submissionId) : "";
+      selectedAdminSubmissionIdRef.current = nextSubmissionId;
+      setSelectedAdminSubmissionId(nextSubmissionId);
+
+      if (page !== 1) {
+        setPage(1);
+        return;
+      }
+
+      void fetchPrediction(1, false, nextSubmissionId);
+    },
+    [fetchPrediction, page]
+  );
+
+  const adminSearch = isAdmin ? (
+    <AdminPredictionSearch
+      currentSubmissionId={
+        selectedAdminSubmissionId ? Number(selectedAdminSubmissionId) : undefined
+      }
+      onSelect={handleAdminStudentSelect}
+    />
+  ) : null;
+
   if (isLoading) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-600">
-        합격예측 데이터를 불러오는 중입니다...
-      </section>
+      <div className="space-y-6">
+        {adminSearch}
+        <section className="border-l-2 border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          합격예측 데이터를 불러오는 중입니다...
+        </section>
+      </div>
     );
   }
 
   if (errorMessage) {
+    const isAdminSearchRequired =
+      isAdmin && errorMessage.includes("검색창에서 학생 이름 또는 수험번호");
+
     return (
-      <section className="rounded-xl border border-rose-200 bg-rose-50 p-8 text-sm text-rose-700">
-        {errorMessage}
-      </section>
+      <div className="space-y-6">
+        {adminSearch}
+        <section
+          className={
+            isAdminSearchRequired
+              ? "border-l-2 border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600"
+              : "border-l-2 border-rose-400 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+          }
+        >
+          {isAdminSearchRequired
+            ? "학생 이름 또는 수험번호를 검색한 뒤 조회할 학생을 선택하세요."
+            : errorMessage}
+        </section>
+      </div>
     );
   }
 
   if (!prediction) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-600">
-        합격예측 데이터가 없습니다.
-      </section>
+      <div className="space-y-6">
+        {adminSearch}
+        <section className="border-l-2 border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          합격예측 데이터가 없습니다.
+        </section>
+      </div>
     );
   }
 
@@ -504,6 +594,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
 
   return (
     <div className="space-y-6">
+      {adminSearch}
       <div className="user-content-tabs" role="tablist" aria-label="합격 예측 메뉴">
         <button
           type="button"

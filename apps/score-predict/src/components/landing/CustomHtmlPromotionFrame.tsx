@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { rewritePromotionFrameNavigation } from "@/lib/promotions/frame-navigation";
 
 const FRAME_BASE_STYLES = `<style>
 html, body { margin: 0; min-width: 0; padding: 0; }
@@ -81,8 +82,9 @@ const FRAME_MOTION_STYLES = `<style data-promotion-frame-motion>
 }
 </style>`;
 
-function buildFrameDocument(htmlDocument: string) {
-  const withoutScripts = htmlDocument
+function buildFrameDocument(htmlDocument: string, examFunctionsHref: string) {
+  const withSafeNavigation = rewritePromotionFrameNavigation(htmlDocument, { examFunctionsHref });
+  const withoutScripts = withSafeNavigation
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
     .replace(/<(iframe|object)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
     .replace(/<embed\b[^>]*\/?\s*>/gi, "")
@@ -114,16 +116,21 @@ function readMotionDelay(element: HTMLElement) {
 
 export default function CustomHtmlPromotionFrame({
   htmlDocument,
+  examFunctionsHref = "/exam/input",
   onPreRegistration,
   title = "프로모션 랜딩",
 }: {
   htmlDocument: string;
+  examFunctionsHref?: string;
   onPreRegistration?: () => void;
   title?: string;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(720);
-  const srcDoc = useMemo(() => buildFrameDocument(htmlDocument), [htmlDocument]);
+  const srcDoc = useMemo(
+    () => buildFrameDocument(htmlDocument, examFunctionsHref),
+    [examFunctionsHref, htmlDocument],
+  );
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -291,7 +298,10 @@ export default function CustomHtmlPromotionFrame({
     <iframe
       ref={iframeRef}
       title={title}
-      sandbox="allow-same-origin allow-top-navigation-by-user-activation"
+      // HTML/CSS는 위에서 script·form·meta refresh·event handler를 제거한다.
+      // Safari는 allow-top-navigation-by-user-activation만으로 srcDoc CTA를
+      // 부모 화면으로 보내지 못하는 경우가 있어 안전한 top navigation을 명시한다.
+      sandbox="allow-same-origin allow-top-navigation"
       srcDoc={srcDoc}
       className="block w-full border-0 bg-white"
       style={{ height }}

@@ -21,6 +21,7 @@ import {
   isCustomHtmlPromotionContent,
 } from "@/lib/promotions/template-registry";
 import { splitPromotionAtExamFunctionsSlot } from "@/lib/promotions/exam-functions-slot";
+import { withTenantPrefix } from "@/lib/tenant";
 
 interface PromotionTabEnabled {
   main?: boolean;
@@ -35,6 +36,7 @@ interface PromotionTabEnabled {
 
 export function PromotionHtmlWithExamFunctions({
   htmlDocument,
+  examFunctionsHref = "/exam/input",
   title = "프로모션 미리보기",
   onPreRegistration,
   isAuthenticated,
@@ -45,6 +47,7 @@ export function PromotionHtmlWithExamFunctions({
   tabEnabled = {},
 }: {
   htmlDocument: string;
+  examFunctionsHref?: string;
   title?: string;
   onPreRegistration?: () => void;
   isAuthenticated: boolean;
@@ -60,6 +63,7 @@ export function PromotionHtmlWithExamFunctions({
     return (
       <CustomHtmlPromotionFrame
         htmlDocument={htmlDocument}
+        examFunctionsHref={examFunctionsHref}
         title={title}
         onPreRegistration={onPreRegistration}
       />
@@ -70,6 +74,7 @@ export function PromotionHtmlWithExamFunctions({
     <>
       <CustomHtmlPromotionFrame
         htmlDocument={splitDocument.beforeHtmlDocument}
+        examFunctionsHref={examFunctionsHref}
         title={title}
         onPreRegistration={onPreRegistration}
       />
@@ -91,6 +96,7 @@ export function PromotionHtmlWithExamFunctions({
       </section>
       <CustomHtmlPromotionFrame
         htmlDocument={splitDocument.afterHtmlDocument}
+        examFunctionsHref={examFunctionsHref}
         title={`${title} 이벤트`}
         onPreRegistration={onPreRegistration}
       />
@@ -217,6 +223,7 @@ export default function PromotionCampaignBridge({
         {customHtmlDocument ? (
           <PromotionHtmlWithExamFunctions
             htmlDocument={customHtmlDocument}
+            examFunctionsHref={withTenantPrefix("/exam/input", tenant.type)}
             onPreRegistration={openPreRegistration}
             isAuthenticated={effectiveAuthenticated}
             hasSubmission={hasSubmission}

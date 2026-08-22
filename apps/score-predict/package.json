@@ -18,6 +18,7 @@
     "test:tenant-isolation": "tsx scripts/tenant-module-isolation-test.ts",
     "test:exam-lifecycle": "tsx scripts/exam-lifecycle-test.ts",
     "test:promotions": "tsx --conditions=react-server scripts/promotion-operation-test.ts",
+    "test:promotion-frame-navigation": "tsx scripts/promotion-frame-navigation-test.ts",
     "test:prediction-model": "tsx scripts/prediction-model-test.ts",
     "test:police-written-bonus": "tsx scripts/police-written-bonus-test.ts",
     "test:police-exam-number": "tsx scripts/police-exam-number-test.ts",

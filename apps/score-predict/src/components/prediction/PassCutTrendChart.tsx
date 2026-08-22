@@ -46,6 +46,7 @@ interface PassCutTrendChartProps {
   current: PassCutSnapshot;
   myScore?: number | null;
   showGradeThresholds?: boolean;
+  showOneMultiplePoint?: boolean;
   oneMultipleLabel?: string;
   title?: string;
   oneMultipleColor?: string;
@@ -60,6 +61,7 @@ export default function PassCutTrendChart({
   current,
   myScore,
   showGradeThresholds = true,
+  showOneMultiplePoint = true,
   oneMultipleLabel = "1배수컷",
   title = "합격컷 변동 추이",
   oneMultipleColor = "#dc2626",
@@ -75,6 +77,7 @@ export default function PassCutTrendChart({
         likely: ready ? snapshot?.likelyMinScore ?? null : null,
         possible: ready ? snapshot?.possibleMinScore ?? null : null,
         oneMultipleCut: ready ? snapshot?.oneMultipleCutScore ?? null : null,
+        averageScore: snapshot?.averageScore ?? null,
       };
     }),
     {
@@ -84,13 +87,15 @@ export default function PassCutTrendChart({
       likely: current.status === "READY" ? current.likelyMinScore : null,
       possible: current.status === "READY" ? current.possibleMinScore : null,
       oneMultipleCut: current.status === "READY" ? current.oneMultipleCutScore : null,
+      averageScore: current.averageScore,
     },
   ];
 
   const allScores = chartData
-    .flatMap((row) => showGradeThresholds
-      ? [row.sure, row.likely, row.possible, row.oneMultipleCut]
-      : [row.oneMultipleCut])
+    .flatMap((row) => [
+      ...(showGradeThresholds ? [row.sure, row.likely, row.possible] : []),
+      ...(showOneMultiplePoint ? [row.oneMultipleCut] : [row.averageScore]),
+    ])
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
   if (typeof myScore === "number" && Number.isFinite(myScore)) {
@@ -101,7 +106,9 @@ export default function PassCutTrendChart({
   const releasedScorePointCount = releases.filter(
     (release) =>
       release.snapshot?.status === "READY" &&
-      typeof release.snapshot.oneMultipleCutScore === "number"
+      typeof (showOneMultiplePoint
+        ? release.snapshot.oneMultipleCutScore
+        : release.snapshot.averageScore) === "number"
   ).length;
 
   if (releasedScorePointCount < 2) {
@@ -166,7 +173,7 @@ export default function PassCutTrendChart({
               fillOpacity={0.35}
               maxBarSize={56}
             />
-            {hasScoreData ? (
+            {hasScoreData && showOneMultiplePoint ? (
               <Line
                 yAxisId="score"
                 type="monotone"
@@ -175,6 +182,18 @@ export default function PassCutTrendChart({
                 stroke={oneMultipleColor}
                 strokeWidth={2.5}
                 dot={{ r: 4, fill: oneMultipleColor }}
+                connectNulls
+              />
+            ) : null}
+            {hasScoreData && !showOneMultiplePoint ? (
+              <Line
+                yAxisId="score"
+                type="monotone"
+                dataKey="averageScore"
+                name="입력자 평균"
+                stroke="var(--service-600)"
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: "var(--service-600)" }}
                 connectNulls
               />
             ) : null}

@@ -110,6 +110,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
   const { tenantType } = tenantSession;
+  const settings = await getSiteSettingsUncached();
+  const sampleOneMultiplePointVisible =
+    tenantType !== "police" ||
+    Boolean(settings["site.policeSampleOneMultiplePointEnabled"] ?? false);
 
   const { searchParams } = new URL(request.url);
   const examIdQuery = parsePositiveInt(searchParams.get("examId"));
@@ -146,6 +150,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       releases: [],
       current: fallbackCurrentSnapshot(),
+      metricVisibility: {
+        sampleOneMultiplePoint: sampleOneMultiplePointVisible,
+      },
     });
   }
 
@@ -263,7 +270,6 @@ export async function GET(request: NextRequest) {
 
   if (autoRows.length < 1) {
     try {
-      const settings = await getSiteSettingsUncached();
       const rows = await buildTenantPassCutPredictionRows(tenantType, {
         examId,
         includeCareerExamType: Boolean(settings["site.careerExamEnabled"] ?? true),
@@ -324,7 +330,8 @@ export async function GET(request: NextRequest) {
               averageScore: snapshot.averageScore,
               oneMultipleCutScore:
                 tenantType === "police" &&
-                !canShowSampleOneMultiplePoint(snapshot.participantCount, snapshot.recruitCount)
+                (!sampleOneMultiplePointVisible ||
+                  !canShowSampleOneMultiplePoint(snapshot.participantCount, snapshot.recruitCount))
                   ? null
                   : snapshot.oneMultipleCutScore,
               sureMinScore: tenantType === "police" ? null : snapshot.sureMinScore,
@@ -337,10 +344,9 @@ export async function GET(request: NextRequest) {
     current: tenantType === "police"
       ? {
           ...current,
-          oneMultipleCutScore: canShowSampleOneMultiplePoint(
-            current.participantCount,
-            current.recruitCount
-          )
+          oneMultipleCutScore:
+            sampleOneMultiplePointVisible &&
+            canShowSampleOneMultiplePoint(current.participantCount, current.recruitCount)
             ? current.oneMultipleCutScore
             : null,
           sureMinScore: null,
@@ -348,5 +354,8 @@ export async function GET(request: NextRequest) {
           possibleMinScore: null,
         }
       : current,
+    metricVisibility: {
+      sampleOneMultiplePoint: sampleOneMultiplePointVisible,
+    },
   });
 }

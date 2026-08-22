@@ -71,6 +71,7 @@ export interface PredictionSummary {
   myRank: number;
   myMultiple: number | null;
   sampleTopPercent: number | null;
+  sampleOneMultiplePointVisible: boolean;
   oneMultipleBaseRank: number;
   oneMultipleActualRank: number | null;
   oneMultipleCutScore: number | null;
@@ -569,6 +570,8 @@ export async function calculatePrediction(
     applicantCount: applicantCountInfo.applicantCount,
   });
   const gradesAvailable = gradeState.gradeAvailability === "AVAILABLE";
+  const sampleOneMultiplePointVisible =
+    isAdmin || Boolean(settings["site.policeSampleOneMultiplePointEnabled"] ?? false);
   // 경찰의 모집인원 x 2배수는 실제 응시자 모집단에 적용되는 제도값이다.
   // 이를 입력자 표본 순위에 직접 적용한 경계는 척도가 다르므로 공개하지 않는다.
   // 향후 실측 캘리브레이션 모델을 새 버전으로 구현하기 전까지 항상 null을 유지한다.
@@ -587,8 +590,10 @@ export async function calculatePrediction(
   const predictionGrade = gradesAvailable ? classifyPolicePredictionGrade(myRank, bands) : null;
   const passLineScore: number | null = null;
   const oneMultipleBand = getScoreBandAtRank(scoreBands, recruitCount) ?? getLastScoreBand(scoreBands);
-  const isOneMultipleCutConfirmed = canShowSampleOneMultiplePoint(totalParticipants, recruitCount);
-  const oneMultipleActualRank = oneMultipleBand?.endRank ?? null;
+  const isOneMultipleCutConfirmed =
+    sampleOneMultiplePointVisible &&
+    canShowSampleOneMultiplePoint(totalParticipants, recruitCount);
+  const oneMultipleActualRank = isOneMultipleCutConfirmed ? oneMultipleBand?.endRank ?? null : null;
   const oneMultipleCutScore = isOneMultipleCutConfirmed ? oneMultipleBand?.score ?? null : null;
   const oneMultipleTieCount = isOneMultipleCutConfirmed ? oneMultipleBand?.count ?? null : null;
 
@@ -721,6 +726,7 @@ export async function calculatePrediction(
       myRank,
       myMultiple: gradesAvailable ? toSafeNumber(myMultiple) : null,
       sampleTopPercent,
+      sampleOneMultiplePointVisible,
       oneMultipleBaseRank: recruitCount,
       oneMultipleActualRank,
       oneMultipleCutScore: oneMultipleCutScore === null ? null : toSafeNumber(oneMultipleCutScore),

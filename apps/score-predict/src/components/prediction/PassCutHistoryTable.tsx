@@ -33,6 +33,7 @@ interface PassCutHistoryTableProps {
   current: PassCutSnapshot;
   myScore?: number | null;
   showGradeThresholds?: boolean;
+  showOneMultiplePoint?: boolean;
   oneMultipleLabel?: string;
   title?: string;
 }
@@ -105,6 +106,7 @@ export default function PassCutHistoryTable({
   current,
   myScore,
   showGradeThresholds = true,
+  showOneMultiplePoint = true,
   oneMultipleLabel = "1배수컷",
   title = "합격컷 발표 현황",
 }: PassCutHistoryTableProps) {
@@ -124,7 +126,9 @@ export default function PassCutHistoryTable({
   ];
 
   const scoreRows: ScoreRowDef[] = [
-    { label: oneMultipleLabel, getValue: (s) => s?.oneMultipleCutScore ?? null, useThresholdFormat: true },
+    ...(showOneMultiplePoint
+      ? [{ label: oneMultipleLabel, getValue: (s: PassCutSnapshot | null) => s?.oneMultipleCutScore ?? null, useThresholdFormat: true }]
+      : []),
     ...(showGradeThresholds
       ? [
           { label: "확실권", getValue: (s: PassCutSnapshot | null) => s?.sureMinScore ?? null, useThresholdFormat: true },

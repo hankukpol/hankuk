@@ -40,6 +40,7 @@ const ACTIVATED_EXAM_SAFE_SETTINGS: Record<TenantType, Partial<Record<SiteSettin
     "site.finalPredictionEnabled": "false",
     "site.autoPassCutEnabled": "false",
     "site.policePredictionGradesEnabled": "false",
+    "site.policeSampleOneMultiplePointEnabled": "false",
   },
   fire: {
     "site.preRegistrationEnabled": "false",

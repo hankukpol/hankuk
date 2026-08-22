@@ -69,6 +69,9 @@ export async function GET() {
     ]);
 
     const careerExamEnabled = Boolean(settings["site.careerExamEnabled"] ?? true);
+    const sampleOneMultiplePointEnabled =
+      tenantType !== "police" ||
+      Boolean(settings["site.policeSampleOneMultiplePointEnabled"] ?? false);
     const examTypes = TENANT_EXAM_TYPES[tenantType].filter(
       (examType) => examType === ExamType.PUBLIC || careerExamEnabled
     );
@@ -102,6 +105,7 @@ export async function GET() {
               canShowSampleAverage(participantCount) &&
               typeof snapshot?.averageScore === "number";
             const oneMultipleVisible =
+              sampleOneMultiplePointEnabled &&
               canShowSampleOneMultiplePoint(participantCount, cohort.recruitCount) &&
               typeof snapshot?.oneMultipleCutScore === "number";
 
@@ -156,6 +160,9 @@ export async function GET() {
           examDate: activeExam.examDate,
         },
         operationStage,
+        metricVisibility: {
+          sampleOneMultiplePoint: sampleOneMultiplePointEnabled,
+        },
         latestRelease: latestRelease
           ? {
               releaseNumber: latestRelease.releaseNumber,

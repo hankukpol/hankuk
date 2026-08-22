@@ -29,6 +29,9 @@ type PublicOverviewPayload = {
     label: string;
     description: string;
   };
+  metricVisibility: {
+    sampleOneMultiplePoint: boolean;
+  };
   latestRelease: {
     releaseNumber: number;
     releasedAt: string;
@@ -83,6 +86,7 @@ export default function PublicExamOverviewPanel() {
       ? selectedExamType
       : examTypeOptions[0]?.[0] ?? "";
   const visibleRows = activeRegionRows.filter((row) => row.examType === effectiveExamType);
+  const showSampleOneMultiplePoint = data?.metricVisibility?.sampleOneMultiplePoint ?? false;
 
   if (errorMessage) {
     return (
@@ -146,7 +150,7 @@ export default function PublicExamOverviewPanel() {
                   <th className="">경쟁률</th>
                   <th className="">발표 표본</th>
                   <th className="">입력자 평균</th>
-                  <th className="">표본 1배수 지점</th>
+                  {showSampleOneMultiplePoint ? <th className="">표본 1배수 지점</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -166,9 +170,11 @@ export default function PublicExamOverviewPanel() {
                     <td className="tabular-nums text-slate-700">
                       {formatPublishedScore(row.averageScore, row.snapshotPublished)}
                     </td>
-                    <td className="tabular-nums font-semibold text-service-700">
-                      {formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}
-                    </td>
+                    {showSampleOneMultiplePoint ? (
+                      <td className="tabular-nums font-semibold text-service-700">
+                        {formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -183,9 +189,11 @@ export default function PublicExamOverviewPanel() {
                   <div><dt>모집·출원</dt><dd>{formatCount(row.recruitCount)} · {formatCount(row.applicantCount)}</dd></div>
                   <div><dt>발표 표본</dt><dd>{row.snapshotPublished ? formatCount(row.participantCount) : "미발표"}</dd></div>
                   <div><dt>입력자 평균</dt><dd>{formatPublishedScore(row.averageScore, row.snapshotPublished)}</dd></div>
-                  <div><dt>표본 1배수 지점</dt><dd data-tone="accent">{formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}</dd></div>
+                  {showSampleOneMultiplePoint ? (
+                    <div><dt>표본 1배수 지점</dt><dd data-tone="accent">{formatPublishedScore(row.oneMultipleCutScore, row.snapshotPublished)}</dd></div>
+                  ) : null}
                 </dl>
-                {row.snapshotPublished && !row.oneMultipleVisible ? (
+                {showSampleOneMultiplePoint && row.snapshotPublished && !row.oneMultipleVisible ? (
                   <p className="mt-3 text-xs text-slate-500">
                     표본 1배수 지점 표시 기준 {row.participantCount.toLocaleString("ko-KR")}/{row.oneMultipleDisclosureTarget.toLocaleString("ko-KR")}명
                   </p>
@@ -202,7 +210,11 @@ export default function PublicExamOverviewPanel() {
 
       <div className="mt-5 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
         <p>점수 통계는 본 서비스 참여자 기준이며 실제 응시자 전체의 합격선이 아닙니다.</p>
-        <p>입력자 평균은 유효 표본 15명부터, 표본 1배수 지점은 유효 표본 30명 이상이면서 모집인원 이상일 때 공개합니다.</p>
+        <p>
+          {showSampleOneMultiplePoint
+            ? "입력자 평균은 유효 표본 15명부터, 표본 1배수 지점은 유효 표본 30명 이상이면서 모집인원 이상일 때 공개합니다."
+            : "입력자 평균은 유효 표본 15명부터 공개합니다."}
+        </p>
         {data.latestRelease ? (
           <p className="mt-1">최신 발표: {data.latestRelease.releaseNumber}차 표본 집계 · {new Date(data.latestRelease.releasedAt).toLocaleString("ko-KR")}</p>
         ) : (

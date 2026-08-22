@@ -59,6 +59,12 @@ const FLOW_TOGGLES: ToggleField[] = [
     defaultValue: false,
   },
   {
+    key: "site.policeSampleOneMultiplePointEnabled",
+    label: "표본 1배수 지점 공개",
+    description: "학생 화면과 공개 API에 표본 모집인원 번째 점수를 공개합니다. 관리자 통계에는 설정과 관계없이 계속 표시됩니다.",
+    defaultValue: false,
+  },
+  {
     key: "site.commentsEnabled",
     label: "실시간 댓글",
     description: "댓글 영역과 댓글 API를 공개합니다.",
@@ -248,7 +254,11 @@ export default function AdminSiteFeaturesPage() {
   const tenant = useTenantConfig();
   const flowToggles = tenant.type === "police"
     ? FLOW_TOGGLES
-    : FLOW_TOGGLES.filter((field) => field.key !== "site.policePredictionGradesEnabled");
+    : FLOW_TOGGLES.filter(
+        (field) =>
+          field.key !== "site.policePredictionGradesEnabled" &&
+          field.key !== "site.policeSampleOneMultiplePointEnabled"
+      );
   const { settings, updateSetting, isLoading, isSaving, notice, handleSave, modalProps } =
     useSiteSettingsManager({
       section: "features",
@@ -296,6 +306,10 @@ export default function AdminSiteFeaturesPage() {
             ? {
                 "site.policePredictionGradesEnabled": asBoolean(
                   currentSettings["site.policePredictionGradesEnabled"],
+                  false
+                ),
+                "site.policeSampleOneMultiplePointEnabled": asBoolean(
+                  currentSettings["site.policeSampleOneMultiplePointEnabled"],
                   false
                 ),
               }
@@ -356,9 +370,13 @@ export default function AdminSiteFeaturesPage() {
       >
         <div className="rounded-lg bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">운영 단계와 분리된 기능</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">경력채용 사용 여부와 경찰 합격등급 정책은 회차 프리셋으로 바꾸지 않습니다.</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">경력채용 사용 여부와 경찰 합격등급·표본 지점 공개 정책은 회차 프리셋으로 바꾸지 않습니다.</p>
           <div className="mt-4 space-y-3">
-            {flowToggles.filter((field) => field.key === "site.careerExamEnabled" || field.key === "site.policePredictionGradesEnabled").map((field) => (
+            {flowToggles.filter((field) =>
+              field.key === "site.careerExamEnabled" ||
+              field.key === "site.policePredictionGradesEnabled" ||
+              field.key === "site.policeSampleOneMultiplePointEnabled"
+            ).map((field) => (
               <FeatureToggleItem key={field.key} field={field} checked={asBoolean(settings[field.key], field.defaultValue)} onChange={(nextValue) => updateSetting(field.key, nextValue)} />
             ))}
           </div>

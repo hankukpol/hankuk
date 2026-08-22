@@ -104,6 +104,10 @@ interface MainStatsResponse {
   examTypes: ExamTypeOption[];
   updatedAt: string;
   careerExamEnabled: boolean;
+  metricVisibility: {
+    sampleOneMultiplePoint: boolean;
+    predictionGrades: boolean;
+  };
   sectionVisibility: {
     overview: boolean;
     difficulty: boolean;
@@ -403,9 +407,18 @@ export default function ExamMainOverviewPanel() {
     return candidates.find((row) => row.gender === selectedGender) ?? null;
   }, [rowsByExamType, selectedRegionId, selectedExamTypeOption?.requiresGender, selectedGender]);
 
+  const sampleOneMultiplePointVisible =
+    data?.tenantType !== "police" ||
+    Boolean(data?.metricVisibility?.sampleOneMultiplePoint);
+  const predictionGradesVisible =
+    data?.tenantType !== "police" ||
+    Boolean(data?.metricVisibility?.predictionGrades);
+  const showPredictionMetrics = sampleOneMultiplePointVisible || predictionGradesVisible;
+
   const isCollecting =
     selectedRow !== null && !canShowSampleAverage(selectedRow.participantCount);
   const isLowSample =
+    showPredictionMetrics &&
     selectedRow !== null &&
     !isCollecting &&
     !canShowSampleOneMultiplePoint(
@@ -689,8 +702,7 @@ export default function ExamMainOverviewPanel() {
           <p className="user-overview-caption text-xs text-slate-500 lg:text-[13px]">본 서비스 참여자 기준으로 집계합니다.</p>
         </div>
 
-        {/* 두 표는 서로 다른 정보다. 공용 테두리로 붙이지 않고 간격으로 분리한다. */}
-        <div className="mt-4 lg:grid lg:grid-cols-2 lg:gap-6">
+        <div className={`mt-4 ${showPredictionMetrics ? "lg:grid lg:grid-cols-2 lg:gap-6" : ""}`}>
           <section aria-labelledby="exam-overview-heading">
             <h4
               id="exam-overview-heading"
@@ -731,9 +743,28 @@ export default function ExamMainOverviewPanel() {
                     : "-"
                 }
               />
+              {!showPredictionMetrics ? (
+                <OverviewMetricRow
+                  label={
+                    <>
+                      실시간 평균점수
+                      <span className="user-overview-caption ml-1 whitespace-nowrap text-xs font-normal text-slate-400">(과락 제외)</span>
+                    </>
+                  }
+                  value={
+                    selectedRow
+                      ? selectedRow.participantCount === 0
+                        ? <span className="font-medium text-slate-500">데이터 수집 중</span>
+                        : formatScore(selectedRow.averageFinalScore)
+                      : "-"
+                  }
+                  emphasis
+                />
+              ) : null}
             </dl>
           </section>
 
+          {showPredictionMetrics ? (
           <section className="mt-6 lg:mt-0" aria-labelledby="sample-metrics-heading">
             <h4
               id="sample-metrics-heading"
@@ -758,8 +789,8 @@ export default function ExamMainOverviewPanel() {
                 }
                 emphasis
               />
-              <OverviewMetricRow
-                label="1배수 컷 점수"
+              {sampleOneMultiplePointVisible ? <OverviewMetricRow
+                label="표본 1배수 지점"
                 value={
                   selectedRow
                     ? isCollecting || isLowSample || selectedRow.oneMultipleCutScore === null
@@ -768,8 +799,8 @@ export default function ExamMainOverviewPanel() {
                     : "-"
                 }
                 emphasis
-              />
-              <OverviewMetricRow
+              /> : null}
+              {predictionGradesVisible ? <OverviewMetricRow
                 label="합격가능권"
                 value={
                   selectedRow
@@ -778,8 +809,8 @@ export default function ExamMainOverviewPanel() {
                       : formatRange(selectedRow.possibleRange)
                     : "-"
                 }
-              />
-              <OverviewMetricRow
+              /> : null}
+              {predictionGradesVisible ? <OverviewMetricRow
                 label="합격유력권"
                 value={
                   selectedRow
@@ -788,8 +819,8 @@ export default function ExamMainOverviewPanel() {
                       : formatRange(selectedRow.likelyRange)
                     : "-"
                 }
-              />
-              <OverviewMetricRow
+              /> : null}
+              {predictionGradesVisible ? <OverviewMetricRow
                 label="합격확실권"
                 value={
                   selectedRow
@@ -799,9 +830,10 @@ export default function ExamMainOverviewPanel() {
                     : "-"
                 }
                 emphasis
-              />
+              /> : null}
             </dl>
           </section>
+          ) : null}
         </div>
 
         {isLowSample && selectedRow ? (
@@ -810,8 +842,9 @@ export default function ExamMainOverviewPanel() {
           </p>
         ) : null}
         <p className="user-overview-caption mt-2 text-xs text-slate-500 lg:text-[13px]">
-          * 2026 기준: 필기 합격예측 점수는 취업지원대상자/의사상자 가산점이 반영된 최종점수 기준이며, 자격증 가산점은
-          별도 반영됩니다.
+          {data.tenantType === "police" && !showPredictionMetrics
+            ? "* 실시간 평균점수는 취업지원대상자/의사상자 가산점이 반영된 최종점수 기준이며 과락 제출은 제외합니다."
+            : "* 2026 기준: 필기 합격예측 점수는 취업지원대상자/의사상자 가산점이 반영된 최종점수 기준이며, 자격증 가산점은 별도 반영됩니다."}
         </p>
       </section>
       ) : null}

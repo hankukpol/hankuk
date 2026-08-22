@@ -37,6 +37,7 @@ interface PredictionPageResponse {
     oneMultipleCutScore: number | null;
     oneMultipleTieCount: number | null;
     isOneMultipleCutConfirmed: boolean;
+    sampleOneMultiplePointVisible: boolean;
     oneMultipleDisclosureTarget: number;
     passMultiple: number;
     writtenPassCount: number;
@@ -142,6 +143,9 @@ interface PassCutHistoryResponse {
     snapshot: PassCutSnapshot | null;
   }>;
   current: PassCutSnapshot;
+  metricVisibility: {
+    sampleOneMultiplePoint: boolean;
+  };
 }
 
 interface ExamPredictionPageProps {
@@ -567,6 +571,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
   const { summary, competitors } = prediction;
   const participationRate = summary.sampleCoverageRate;
   const confidence = getConfidenceLevel(summary.sampleStage);
+  const showSampleOneMultiplePoint = summary.sampleOneMultiplePointVisible;
   const sureCutScore = prediction.pyramid.levels.find((level) => level.key === "sure")?.minScore ?? null;
   const currentStageMeta = passCutHistory ? getSnapshotStageMeta(passCutHistory.current) : null;
   const stageCards = passCutHistory
@@ -584,9 +589,13 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
           title: `${release.releaseNumber}차 표본 집계`,
           subtitle: release.snapshot ? formatStageDate(release.releasedAt) : "데이터 없음",
           detail: release.snapshot
-            ? `참여 ${release.snapshot.participantCount.toLocaleString("ko-KR")}명 기준 · 표본 1배수 지점 ${formatScore(
-                release.snapshot.oneMultipleCutScore
-              )}`
+            ? showSampleOneMultiplePoint
+              ? `참여 ${release.snapshot.participantCount.toLocaleString("ko-KR")}명 기준 · 표본 1배수 지점 ${formatScore(
+                  release.snapshot.oneMultipleCutScore
+                )}`
+              : `참여 ${release.snapshot.participantCount.toLocaleString("ko-KR")}명 기준 · 입력자 평균 ${formatScore(
+                  release.snapshot.averageScore
+                )}`
             : "발표 데이터가 없습니다.",
         })),
       ]
@@ -634,13 +643,15 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
                 {participationRate.toFixed(1)}%
               </p>
               <p className="mt-1">
-                표본 1배수 지점 {formatScore(summary.oneMultipleCutScore)}, 확실권 컷 {formatScore(sureCutScore)},
-                필기 예상컷 {formatScore(summary.passLineScore)}
+                {showSampleOneMultiplePoint
+                  ? `표본 1배수 지점 ${formatScore(summary.oneMultipleCutScore)}, `
+                  : ""}
+                확실권 컷 {formatScore(sureCutScore)}, 필기 예상컷 {formatScore(summary.passLineScore)}
               </p>
             </div>
           </div>
         </section>
-      ) : (
+      ) : showSampleOneMultiplePoint ? (
         <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
           <p className="font-semibold text-slate-900">표본 1배수 지점</p>
           <p className="mt-2">
@@ -652,7 +663,7 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
             입력자 표본 안의 위치이며 실제 필기 합격선이나 2배수 합격 경계가 아닙니다.
           </p>
         </section>
-      )}
+      ) : null}
 
       {stageCards.length > 0 ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -693,16 +704,18 @@ export default function ExamPredictionPage({ embedded = false }: ExamPredictionP
             current={passCutHistory.current}
             myScore={summary.myScore}
             showGradeThresholds={false}
+            showOneMultiplePoint={showSampleOneMultiplePoint}
             oneMultipleLabel="표본 1배수 지점"
-            title="표본 지점 발표 현황"
+            title={showSampleOneMultiplePoint ? "표본 지점 발표 현황" : "표본 평균 발표 현황"}
           />
           <PassCutTrendChart
             releases={passCutHistory.releases}
             current={passCutHistory.current}
             myScore={summary.myScore}
             showGradeThresholds={false}
+            showOneMultiplePoint={showSampleOneMultiplePoint}
             oneMultipleLabel="표본 1배수 지점"
-            title="표본 지점 변동 추이"
+            title={showSampleOneMultiplePoint ? "표본 지점 변동 추이" : "표본 평균 변동 추이"}
             oneMultipleColor="#2563eb"
           />
         </>

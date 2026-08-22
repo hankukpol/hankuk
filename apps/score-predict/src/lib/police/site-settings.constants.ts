@@ -21,6 +21,7 @@ export type SiteSettingKey =
   | "site.submissionEditLimit"
   | "site.finalPredictionEnabled"
   | "site.policePredictionGradesEnabled"
+  | "site.policeSampleOneMultiplePointEnabled"
   | "site.autoPassCutEnabled"
   | "site.autoPassCutMode"
   | "site.autoPassCutCheckIntervalSec"
@@ -66,6 +67,7 @@ export const SITE_SETTING_TYPES: Record<SiteSettingKey, SiteSettingValueType> = 
   "site.commentsEnabled": "boolean",
   "site.finalPredictionEnabled": "boolean",
   "site.policePredictionGradesEnabled": "boolean",
+  "site.policeSampleOneMultiplePointEnabled": "boolean",
   "site.autoPassCutEnabled": "boolean",
   "site.autoPassCutMode": "string",
   "site.autoPassCutCheckIntervalSec": "number",
@@ -142,6 +144,7 @@ export const SITE_SETTING_DEFAULTS: SiteSettingsMap = {
   "site.commentsEnabled": true,
   "site.finalPredictionEnabled": false,
   "site.policePredictionGradesEnabled": false,
+  "site.policeSampleOneMultiplePointEnabled": false,
   "site.autoPassCutEnabled": false,
   "site.autoPassCutMode": "HYBRID",
   "site.autoPassCutCheckIntervalSec": 300,

@@ -463,10 +463,18 @@ export async function GET() {
 
     const [notices, settings] = await Promise.all([getActiveNotices(), getSiteSettings()]);
     const careerExamEnabled = Boolean(settings["site.careerExamEnabled"] ?? true);
+    const sampleOneMultiplePointEnabled =
+      tenantType !== "police" ||
+      Boolean(settings["site.policeSampleOneMultiplePointEnabled"] ?? false);
+    const predictionGradesEnabled =
+      tenantType !== "police" ||
+      Boolean(settings["site.policePredictionGradesEnabled"] ?? false);
     const sectionVisibility: MainSectionVisibility = {
       overview: Boolean(settings["site.mainCardOverviewEnabled"] ?? true),
       difficulty: Boolean(settings["site.mainCardDifficultyEnabled"] ?? true),
-      competitive: Boolean(settings["site.mainCardCompetitiveEnabled"] ?? true),
+      competitive:
+        Boolean(settings["site.mainCardCompetitiveEnabled"] ?? true) &&
+        sampleOneMultiplePointEnabled,
       scoreDistribution: Boolean(settings["site.mainCardScoreDistributionEnabled"] ?? true),
     };
     const enabledExamTypes: ExamType[] =
@@ -491,6 +499,10 @@ export async function GET() {
         examTypes,
         updatedAt: new Date().toISOString(),
         careerExamEnabled,
+        metricVisibility: {
+          sampleOneMultiplePoint: sampleOneMultiplePointEnabled,
+          predictionGrades: predictionGradesEnabled,
+        },
         liveStats: null,
         sectionVisibility,
         notices,
@@ -926,7 +938,8 @@ export async function GET() {
         }
 
         const referenceScore = tenantType === "police"
-          ? canShowSampleOneMultiplePoint(row.participantCount, row.recruitCount)
+          ? sampleOneMultiplePointEnabled &&
+            canShowSampleOneMultiplePoint(row.participantCount, row.recruitCount)
             ? row.oneMultipleCutScore
             : null
           : row.sureMinScore;
@@ -957,17 +970,33 @@ export async function GET() {
       .slice(0, 5)
       .map((item, index) => ({ rank: index + 1, ...item }));
 
+    const studentRows = tenantType === "police"
+      ? rows.map((row) => ({
+          ...row,
+          oneMultipleCutScore: sampleOneMultiplePointEnabled ? row.oneMultipleCutScore : null,
+          oneMultipleActualRank: sampleOneMultiplePointEnabled ? row.oneMultipleActualRank : null,
+          oneMultipleTieCount: sampleOneMultiplePointEnabled ? row.oneMultipleTieCount : null,
+          possibleRange: predictionGradesEnabled ? row.possibleRange : { min: null, max: null },
+          likelyRange: predictionGradesEnabled ? row.likelyRange : { min: null, max: null },
+          sureMinScore: predictionGradesEnabled ? row.sureMinScore : null,
+        }))
+      : rows;
+
     return NextResponse.json(
       {
         tenantType,
         examTypes,
         updatedAt: new Date().toISOString(),
         careerExamEnabled,
+        metricVisibility: {
+          sampleOneMultiplePoint: sampleOneMultiplePointEnabled,
+          predictionGrades: predictionGradesEnabled,
+        },
         liveStats,
         sectionVisibility,
         notices,
         difficulty,
-        rows,
+        rows: studentRows,
         topCompetitive,
         leastCompetitive,
         scoreDistributions,

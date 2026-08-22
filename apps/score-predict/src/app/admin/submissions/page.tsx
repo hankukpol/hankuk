@@ -8,6 +8,7 @@ import { useAdminSiteFeature } from "@/hooks/use-admin-site-features";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTenantConfig } from "@/components/providers/TenantProvider";
+import { getResponseErrorMessage, readResponseJson } from "@/lib/read-response-json";
 
 type ExamTypeValue = "PUBLIC" | "CAREER" | "CAREER_RESCUE" | "CAREER_ACADEMIC" | "CAREER_EMT";
 type SuspicionStatusValue = "CLEAR" | "REVIEW" | "EXCLUDED";
@@ -222,23 +223,27 @@ export default function AdminSubmissionsPage() {
       fetch("/api/exams", { method: "GET", cache: "no-store" }),
     ]);
 
-    const examData = (await examResponse.json()) as { exams?: ExamOption[]; error?: string };
+    const examData = await readResponseJson<{ exams?: ExamOption[]; error?: string }>(examResponse);
     if (!examResponse.ok) {
-      throw new Error(examData.error ?? "시험 목록 조회에 실패했습니다.");
+      throw new Error(
+        getResponseErrorMessage(examResponse, "시험 목록 조회에 실패했습니다.", examData)
+      );
     }
 
-    const metaData = (await examsMetaResponse.json()) as {
+    const metaData = await readResponseJson<{
       regions?: RegionOption[];
       careerExamEnabled?: boolean;
       error?: string;
-    };
+    }>(examsMetaResponse);
     if (!examsMetaResponse.ok) {
-      throw new Error(metaData.error ?? "지역 목록 조회에 실패했습니다.");
+      throw new Error(
+        getResponseErrorMessage(examsMetaResponse, "지역 목록 조회에 실패했습니다.", metaData)
+      );
     }
 
-    setExamOptions(examData.exams ?? []);
-    setRegionOptions(metaData.regions ?? []);
-    setCareerExamEnabled(metaData.careerExamEnabled ?? true);
+    setExamOptions(examData?.exams ?? []);
+    setRegionOptions(metaData?.regions ?? []);
+    setCareerExamEnabled(metaData?.careerExamEnabled ?? true);
   }, []);
 
   useEffect(() => {
@@ -252,15 +257,17 @@ export default function AdminSubmissionsPage() {
       method: "GET",
       cache: "no-store",
     });
-    const data = (await response.json()) as SubmissionsResponse & { error?: string };
+    const data = await readResponseJson<SubmissionsResponse & { error?: string }>(response);
     if (!response.ok) {
-      throw new Error(data.error ?? "제출 목록을 불러오지 못했습니다.");
+      throw new Error(
+        getResponseErrorMessage(response, "제출 목록을 불러오지 못했습니다.", data)
+      );
     }
 
-    setSubmissions(data.submissions ?? []);
-    setPage(data.pagination?.page ?? 1);
-    setTotalPages(data.pagination?.totalPages ?? 1);
-    setTotalCount(data.pagination?.totalCount ?? 0);
+    setSubmissions(data?.submissions ?? []);
+    setPage(data?.pagination?.page ?? 1);
+    setTotalPages(data?.pagination?.totalPages ?? 1);
+    setTotalCount(data?.pagination?.totalCount ?? 0);
   }, [queryString]);
 
   useEffect(() => {
@@ -331,9 +338,14 @@ export default function AdminSubmissionsPage() {
         method: "GET",
         cache: "no-store",
       });
-      const data = (await response.json()) as SubmissionDetailResponse & { error?: string };
+      const data = await readResponseJson<SubmissionDetailResponse & { error?: string }>(response);
       if (!response.ok) {
-        throw new Error(data.error ?? "제출 상세 조회에 실패했습니다.");
+        throw new Error(
+          getResponseErrorMessage(response, "제출 상세 조회에 실패했습니다.", data)
+        );
+      }
+      if (!data) {
+        throw new Error("제출 상세 응답이 비어 있습니다. 잠시 후 다시 시도해 주세요.");
       }
 
       setDetail(data);
@@ -372,9 +384,11 @@ export default function AdminSubmissionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, note: suspicionNote }),
       });
-      const data = (await response.json()) as { success?: boolean; error?: string };
-      if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "성적 판정을 저장하지 못했습니다.");
+      const data = await readResponseJson<{ success?: boolean; error?: string }>(response);
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          getResponseErrorMessage(response, "성적 판정을 저장하지 못했습니다.", data)
+        );
       }
 
       await Promise.all([loadSubmissions(), handleOpenDetail(submissionId)]);
@@ -403,13 +417,15 @@ export default function AdminSubmissionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ examNumber: examNumberDraft }),
       });
-      const data = (await response.json()) as {
+      const data = await readResponseJson<{
         success?: boolean;
         examNumber?: string;
         error?: string;
-      };
-      if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "응시번호 수정에 실패했습니다.");
+      }>(response);
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          getResponseErrorMessage(response, "응시번호 수정에 실패했습니다.", data)
+        );
       }
 
       setDetail((prev) =>
@@ -451,9 +467,11 @@ export default function AdminSubmissionsPage() {
       const response = await fetch(`/api/admin/submissions?id=${submissionId}&confirm=true`, {
         method: "DELETE",
       });
-      const data = (await response.json()) as { success?: boolean; error?: string };
-      if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "제출 데이터 삭제에 실패했습니다.");
+      const data = await readResponseJson<{ success?: boolean; error?: string }>(response);
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          getResponseErrorMessage(response, "제출 데이터 삭제에 실패했습니다.", data)
+        );
       }
 
       setNotice({

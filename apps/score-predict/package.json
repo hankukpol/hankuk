@@ -20,6 +20,8 @@
     "test:promotions": "tsx --conditions=react-server scripts/promotion-operation-test.ts",
     "test:promotion-frame-navigation": "tsx scripts/promotion-frame-navigation-test.ts",
     "test:prediction-model": "tsx scripts/prediction-model-test.ts",
+    "test:police-shadow-prediction": "tsx scripts/police-shadow-prediction-model-test.ts",
+    "test:police-shadow-prediction:visual": "tsx scripts/police-shadow-prediction-visual-qa.ts",
     "test:police-written-bonus": "tsx scripts/police-written-bonus-test.ts",
     "test:police-exam-number": "tsx scripts/police-exam-number-test.ts",
     "test:fire-written-bonus": "tsx scripts/fire-written-bonus-test.ts",

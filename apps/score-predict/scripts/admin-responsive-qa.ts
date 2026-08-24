@@ -42,6 +42,7 @@ const ROUTES = [
   ["/admin/answers", "정답 관리", "answers"],
   ["/admin/regions", /(?:경찰 지역 및 모집인원 관리|지역\/모집인원 관리)/, "regions"],
   ["/admin/pre-registrations", "사전등록 관리", "pre-registrations"],
+  ["/admin/pass-cut", "합격컷 발표 관리", "pass-cut"],
   ["/admin/stats", "참여 통계", "stats"],
   ["/admin/users", "사용자 관리", "users"],
   ["/admin/banners", "배너 관리", "banners"],

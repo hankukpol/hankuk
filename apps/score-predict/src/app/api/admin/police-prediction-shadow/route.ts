@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminRoute } from "@/lib/admin-auth";
 import { requireAdminSiteFeature } from "@/lib/admin-site-features";
 import { buildPoliceShadowPredictionRows } from "@/lib/police/shadow-prediction";
-import { POLICE_SHADOW_MODEL_VERSION } from "@/lib/police/shadow-prediction-model";
+import {
+  POLICE_SHADOW_MODEL_CALIBRATED,
+  POLICE_SHADOW_MODEL_VERSION,
+} from "@/lib/police/shadow-prediction-model";
 import { getSiteSettingsUncached } from "@/lib/site-settings";
 
 export const runtime = "nodejs";
@@ -37,7 +40,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         modelVersion: POLICE_SHADOW_MODEL_VERSION,
-        calibrated: false,
+        calibrated: POLICE_SHADOW_MODEL_CALIBRATED,
         publicExposure: false,
         generatedAt: new Date().toISOString(),
         releaseNumber: result.releaseNumber,

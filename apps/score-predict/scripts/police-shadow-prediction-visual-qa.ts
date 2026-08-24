@@ -72,6 +72,7 @@ async function main() {
   const checks: Array<{
     viewport: number;
     rowCount: number;
+    lockedRowCount: number;
     tableScrollable: boolean;
     publicExposure: boolean;
     calibrated: boolean;
@@ -112,15 +113,49 @@ async function main() {
       const payload = await apiResponse.json() as {
         publicExposure?: boolean;
         calibrated?: boolean;
-        rows?: unknown[];
+        rows?: Array<{
+          status?: string;
+          correctedWrittenPassCutScore?: number | null;
+          sensitivityLowScore?: number | null;
+          sensitivityHighScore?: number | null;
+          possibleMinScore?: number | null;
+          likelyMinScore?: number | null;
+          sureMinScore?: number | null;
+        }>;
       };
       assert(payload.publicExposure === false, "그림자 모델이 사용자 공개 상태입니다.");
       assert(payload.calibrated === false, "미보정 그림자 모델이 보정 완료로 표시됩니다.");
+      const lockedRows = (payload.rows ?? []).filter((row) =>
+        row.correctedWrittenPassCutScore === null &&
+        row.sensitivityLowScore === null &&
+        row.sensitivityHighScore === null &&
+        row.possibleMinScore === null &&
+        row.likelyMinScore === null &&
+        row.sureMinScore === null
+      );
+      assert(
+        lockedRows.length === (payload.rows?.length ?? 0),
+        "관리자 API가 미교정 보정 수치를 반환합니다."
+      );
 
       const section = page.getByRole("heading", { name: "합격예측 그림자 모델", exact: true })
         .locator("xpath=ancestor::section[1]");
       await section.waitFor();
-      await section.getByText("실험용·사용자 미노출", { exact: true }).waitFor();
+      await section.locator(".admin-status-strip")
+        .getByText("보정모델 검증 대기", { exact: true })
+        .waitFor();
+      const table = section.locator("table");
+      await table.getByRole("columnheader", { name: "원표본 1배수", exact: true }).waitFor();
+      assert(
+        await table.getByRole("columnheader", { name: "보정 선발배수", exact: true }).count() === 0,
+        "관리자 표에 보정 선발배수 열이 남아 있습니다."
+      );
+      assert(
+        await table.getByRole("columnheader", { name: "가능권", exact: true }).count() === 0 &&
+          await table.getByRole("columnheader", { name: "유력권", exact: true }).count() === 0 &&
+          await table.getByRole("columnheader", { name: "확실권", exact: true }).count() === 0,
+        "관리자 표에 미교정 합격권 열이 남아 있습니다."
+      );
       await section.scrollIntoViewIfNeeded();
       await page.waitForTimeout(250);
 
@@ -149,6 +184,7 @@ async function main() {
       checks.push({
         viewport,
         rowCount: payload.rows?.length ?? 0,
+        lockedRowCount: lockedRows.length,
         tableScrollable: overflow.scrollWidth > overflow.clientWidth,
         publicExposure: payload.publicExposure,
         calibrated: payload.calibrated,
@@ -190,6 +226,8 @@ async function main() {
         "- 소방 관리자 API: 404",
         "- 사용자 공개 상태: false",
         "- 캘리브레이션 상태: false",
+        "- 관리자 API 보정 수치: 전 행 null",
+        "- 관리자 표 보정 선발배수·가능권·유력권·확실권 열: 비노출",
         "- 문서 가로 넘침: 없음",
         "- 넓은 비교표: 내부 가로 스크롤",
         "- 브라우저 런타임 오류: 없음",

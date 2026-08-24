@@ -32,6 +32,7 @@ interface ReleaseItem {
 
 type ShadowPredictionStatus =
   | "READY"
+  | "CALIBRATION_REQUIRED"
   | "MISSING_APPLICANTS"
   | "INSUFFICIENT_SAMPLE"
   | "INCONSISTENT_INPUT";
@@ -94,10 +95,11 @@ function formatScore(value: number | null): string {
 }
 
 function formatShadowStatus(status: ShadowPredictionStatus): string {
+  if (status === "CALIBRATION_REQUIRED") return "보정모델 검증 대기";
   if (status === "MISSING_APPLICANTS") return "출원인원 필요";
   if (status === "INSUFFICIENT_SAMPLE") return "표본 수집 중";
   if (status === "INCONSISTENT_INPUT") return "입력값 확인 필요";
-  return "계산됨";
+  return "관리자 수치 비노출";
 }
 
 export default function AdminPassCutPage() {
@@ -383,7 +385,7 @@ export default function AdminPassCutPage() {
             <div>
               <h2 id="shadow-prediction-title">합격예측 그림자 모델</h2>
               <p className="mt-1 text-sm text-slate-600">
-                현재 입력 표본을 응시율·고득점 우선 입력 가정 20개로 보정해 민감도를 비교합니다.
+                검증 가능한 원표본 관측값만 표시하며, 보정 결과는 공식 결과 교정 전까지 잠급니다.
               </p>
             </div>
             <Button
@@ -392,15 +394,15 @@ export default function AdminPassCutPage() {
               disabled={isShadowLoading || !selectedExamId}
               onClick={() => selectedExamId && void loadShadowPrediction(selectedExamId)}
             >
-              {isShadowLoading ? "계산 중..." : "현재 표본 다시 계산"}
+              {isShadowLoading ? "확인 중..." : "현재 표본 다시 확인"}
             </Button>
           </div>
 
           <div className="admin-status-strip border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-semibold">실험용·사용자 미노출</p>
+            <p className="font-semibold">보정모델 검증 대기</p>
             <p className="mt-1">
-              공식 결과로 보정 전인 관리자 검토값입니다. 시나리오 합의율은 실제 합격확률이 아니며,
-              학생 화면과 공개 API에는 연결되지 않습니다.
+              공식 결과로 보정되기 전까지 보정 선발배수와 가능권, 유력권, 확실권 수치를 표시하지
+              않습니다. 학생 화면과 공개 API도 계속 잠겨 있습니다.
             </p>
           </div>
 
@@ -409,7 +411,7 @@ export default function AdminPassCutPage() {
               {shadowError}
             </p>
           ) : isShadowLoading && !shadowPrediction ? (
-            <p className="text-sm text-slate-600">현재 표본으로 그림자 모델을 계산하는 중입니다...</p>
+            <p className="text-sm text-slate-600">현재 원표본 관측값을 확인하는 중입니다...</p>
           ) : shadowPrediction ? (
             <>
               <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600">
@@ -418,7 +420,7 @@ export default function AdminPassCutPage() {
                 <span>계산 시각: {formatDateTime(shadowPrediction.generatedAt)}</span>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-[1120px]">
+                <table className="min-w-[760px]">
                   <thead>
                     <tr>
                       <th>지역</th>
@@ -427,17 +429,13 @@ export default function AdminPassCutPage() {
                       <th>표본 / 참여율</th>
                       <th>원표본 1배수</th>
                       <th>원표본 선발배수</th>
-                      <th>보정 선발배수</th>
-                      <th>가능권</th>
-                      <th>유력권</th>
-                      <th>확실권</th>
-                      <th>민감도 범위</th>
+                      <th>보정 상태</th>
                     </tr>
                   </thead>
                   <tbody>
                     {shadowPrediction.rows.length < 1 ? (
                       <tr>
-                        <td colSpan={11}>계산할 지역별 모집 데이터가 없습니다.</td>
+                        <td colSpan={7}>확인할 지역별 모집 데이터가 없습니다.</td>
                       </tr>
                     ) : (
                       shadowPrediction.rows.map((row) => (
@@ -454,32 +452,16 @@ export default function AdminPassCutPage() {
                           </td>
                           <td>{formatScore(row.rawOneMultipleCutScore)}</td>
                           <td>{formatScore(row.rawWrittenPassCutScore)}</td>
-                          {row.status === "READY" ? (
-                            <>
-                              <td className="font-semibold">{formatScore(row.correctedWrittenPassCutScore)}</td>
-                              <td>{formatScore(row.possibleMinScore)}</td>
-                              <td>{formatScore(row.likelyMinScore)}</td>
-                              <td>{formatScore(row.sureMinScore)}</td>
-                              <td>
-                                {formatScore(row.sensitivityLowScore)} ~{" "}
-                                {formatScore(row.sensitivityHighScore)}
-                              </td>
-                            </>
-                          ) : (
-                            <td colSpan={5} className="text-slate-600">
-                              {formatShadowStatus(row.status)}
-                            </td>
-                          )}
+                          <td>{formatShadowStatus(row.status)}</td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
-              <div className="space-y-1 text-xs text-slate-600">
-                <p>보정 선발배수는 20개 가정의 중앙값, 민감도 범위는 하위 10%~상위 90%입니다.</p>
-                <p>가능·유력·확실은 시나리오 35%·70%·90% 합의 경계이며 실제 합격확률이 아닙니다.</p>
-              </div>
+              <p className="text-xs text-slate-600">
+                원표본 컷은 현재 입력자 순위에서 직접 관측되는 값이며 실제 전체 응시자 합격컷은 아닙니다.
+              </p>
             </>
           ) : null}
         </section>

@@ -34,26 +34,21 @@ function verifyShadowCalculation() {
     POLICE_SHADOW_MODEL_VERSION === "police-shadow-propensity-sensitivity-v1",
     "관리자 그림자 모델 버전이 고정되지 않았습니다."
   );
-  assert(result.status === "READY", "충분한 표본이 그림자 모델 계산 준비 상태가 아닙니다.");
+  assert(
+    result.status === "CALIBRATION_REQUIRED",
+    "공식 결과로 교정되지 않은 그림자 모델이 검증 대기 상태가 아닙니다."
+  );
   assert(result.participantCount === 210, "점수대별 인원 합계가 참여인원과 다릅니다.");
   assert(result.rawOneMultipleCutScore === 200, "원표본 1배수 컷 계산이 틀렸습니다.");
   assert(result.rawWrittenPassCutScore === 190, "원표본 필기 선발배수 컷 계산이 틀렸습니다.");
-  assert(result.scenarioCount === 20, "민감도 시나리오는 20개여야 합니다.");
-  assert(result.correctedWrittenPassCutScore !== null, "보정 2배수 중앙 추정치가 없습니다.");
-  assert(result.possibleMinScore !== null, "가능권 경계가 없습니다.");
-  assert(result.likelyMinScore !== null, "유력권 경계가 없습니다.");
-  assert(result.sureMinScore !== null, "확실권 경계가 없습니다.");
+  assert(result.scenarioCount === 0, "미교정 모델이 민감도 시나리오 결과를 노출합니다.");
+  assert(result.correctedWrittenPassCutScore === null, "미교정 모델이 보정 선발배수를 노출합니다.");
+  assert(result.possibleMinScore === null, "미교정 모델이 가능권 경계를 노출합니다.");
+  assert(result.likelyMinScore === null, "미교정 모델이 유력권 경계를 노출합니다.");
+  assert(result.sureMinScore === null, "미교정 모델이 확실권 경계를 노출합니다.");
   assert(
-    result.possibleMinScore <= result.likelyMinScore &&
-      result.likelyMinScore <= result.sureMinScore,
-    "가능권·유력권·확실권 경계가 단조 증가하지 않습니다."
-  );
-  assert(
-    result.sensitivityLowScore !== null &&
-      result.sensitivityHighScore !== null &&
-      result.sensitivityLowScore <= result.correctedWrittenPassCutScore &&
-      result.correctedWrittenPassCutScore <= result.sensitivityHighScore,
-    "보정 중앙 추정치가 민감도 범위를 벗어났습니다."
+    result.sensitivityLowScore === null && result.sensitivityHighScore === null,
+    "미교정 모델이 민감도 범위를 노출합니다."
   );
   assert(
     result.assumptions.gradeAgreementThresholds.possible === 0.35 &&
@@ -93,6 +88,31 @@ function verifyShadowCalculation() {
   assert(sparse.correctedWrittenPassCutScore === null, "소표본에 보정 컷이 생성됩니다.");
   assert(sparse.sureMinScore === null, "소표본에 확실권이 생성됩니다.");
 
+  const belowWrittenPassRank = buildPoliceShadowPrediction({
+    scoreBands: [
+      { score: 200, count: 12 },
+      { score: 190, count: 17 },
+      { score: 180, count: 15 },
+      { score: 170, count: 15 },
+    ],
+    recruitCount: 46,
+    writtenPassCount: 92,
+    applicantCount: 1_035,
+    releaseNumber: 4,
+  });
+  assert(
+    belowWrittenPassRank.status === "INSUFFICIENT_SAMPLE",
+    "표본이 필기 선발인원보다 적은데 보정 계산 가능으로 오판됩니다."
+  );
+  assert(
+    belowWrittenPassRank.rawWrittenPassCutScore === null,
+    "표본에 존재하지 않는 필기 선발배수 컷을 원표본 값으로 만듭니다."
+  );
+  assert(
+    belowWrittenPassRank.correctedWrittenPassCutScore === null,
+    "필기 선발인원보다 적은 표본에 보정 컷이 생성됩니다."
+  );
+
   const missingApplicants = buildPoliceShadowPrediction({
     scoreBands: [
       { score: 200, count: 20 },
@@ -131,7 +151,11 @@ async function verifyAdminOnlyBoundary() {
     files.page.includes("/api/admin/police-prediction-shadow"),
     "관리자 합격컷 화면이 그림자 모델 API를 사용하지 않습니다."
   );
-  assert(files.page.includes("실험용·사용자 미노출"), "관리자 화면에 미노출 경고가 없습니다.");
+  assert(files.page.includes("보정모델 검증 대기"), "관리자 화면에 보정 수치 잠금 상태가 없습니다.");
+  assert(
+    !files.page.includes('row.status === "READY"'),
+    "관리자 화면에 미교정 보정 수치 출력 분기가 남아 있습니다."
+  );
   assert(
     !files.publicPrediction.includes("shadow-prediction"),
     "학생용 경찰 예측 경로가 그림자 모델을 참조합니다."

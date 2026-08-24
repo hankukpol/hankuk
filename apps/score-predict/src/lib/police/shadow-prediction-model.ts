@@ -1,8 +1,10 @@
 export const POLICE_SHADOW_MODEL_VERSION =
   "police-shadow-propensity-sensitivity-v1" as const;
+export const POLICE_SHADOW_MODEL_CALIBRATED: boolean = false;
 
 export type PoliceShadowPredictionStatus =
   | "READY"
+  | "CALIBRATION_REQUIRED"
   | "MISSING_APPLICANTS"
   | "INSUFFICIENT_SAMPLE"
   | "INCONSISTENT_INPUT";
@@ -257,6 +259,7 @@ export function buildPoliceShadowPrediction(params: {
     });
   }
   if (
+    participantCount < params.writtenPassCount ||
     participantCount < 30 ||
     scoreBands.length < 3 ||
     coverageRate === null ||
@@ -277,6 +280,18 @@ export function buildPoliceShadowPrediction(params: {
   if (!Number.isFinite(moments.standardDeviation) || moments.standardDeviation <= 0) {
     return emptyResult({
       status: "INSUFFICIENT_SAMPLE",
+      participantCount,
+      coverageRate,
+      rawOneMultipleCutScore,
+      rawWrittenPassCutScore,
+      releaseNumber,
+      scoreBiasLogOddsSlopes,
+    });
+  }
+
+  if (!POLICE_SHADOW_MODEL_CALIBRATED) {
+    return emptyResult({
+      status: "CALIBRATION_REQUIRED",
       participantCount,
       coverageRate,
       rawOneMultipleCutScore,

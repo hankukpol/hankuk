@@ -1,4 +1,5 @@
 import { AdminPagination as MatrixPaginationControls } from "@/components/admin/AdminPagination"
+import { useDragPan } from '@/components/admin/useDragPan'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDateTime, formatKoreanMonthDay } from '@/lib/utils'
 import type { Material } from '@/types/database'
@@ -423,6 +424,7 @@ export function StudentsMatrixPanel({
   onRunBulkAction,
 }: StudentsMatrixPanelProps) {
   const controlsDisabled = bulkProcessing || matrixLoading || matrixUnavailable
+  const matrixPanRef = useDragPan<HTMLDivElement>()
   const [currentPage, setCurrentPage] = useState(1)
   // 검색으로 한 명까지 좁혀지면 표 대신 그 학생만 세로로 편다. 표에서 이름을 눌러도 같은 화면이 열린다.
   const [manualFocusId, setManualFocusId] = useState<number | null>(null)
@@ -601,7 +603,9 @@ export function StudentsMatrixPanel({
       ) : (
         <>
         {/* 자료가 많으면 가로·세로를 함께 스크롤한다. 한 프레임 안에서 스크롤해야 머리글과 이름 열이 같이 고정된다. */}
-        <div className="admin-table-frame admin-matrix-scroll">
+        {/* Ctrl 끌기는 화면에 드러나지 않는 조작이라 한 줄로 알린다. */}
+        <p className="admin-material-help mb-2">Ctrl을 누른 채 표를 끌면 상하좌우로 옮길 수 있습니다.</p>
+        <div ref={matrixPanRef} className="admin-table-frame admin-matrix-scroll">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">

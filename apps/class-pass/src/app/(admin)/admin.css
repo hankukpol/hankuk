@@ -180,6 +180,20 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 .admin-shell :is(th, td) { padding: 12px; border-right: 1px solid var(--admin-grid); border-bottom: 1px solid var(--admin-grid); text-align: center; vertical-align: middle; white-space: nowrap; }
 .admin-shell thead, .admin-shell thead th { background: var(--admin-accent-tint); color: var(--admin-text); font-weight: 600; text-transform: none; }
 .admin-shell thead th { text-align: center; }
+/* 표가 길어져도 어느 열인지 잃지 않도록 머리글을 고정한다.
+   스크롤을 맡은 조상(페이지·drawer 본문·프레임) 기준으로 붙는다. */
+.admin-shell thead th { position: sticky; top: 0; z-index: 2; }
+/* 표 카드의 clip은 둥근 모서리를 자르려던 것인데 관리자 표는 직각이라 하는 일이 없다.
+   이게 스크롤 컨테이너를 만들어 머리글이 페이지 기준으로 붙지 못하게 막고 있었다. */
+.admin-shell .admin-table-frame.overflow-hidden { overflow: visible; }
+/* 가로 스크롤이 필요한 표는 프레임이 세로도 맡아야 머리글을 고정할 수 있다.
+   (한 요소가 가로 스크롤을 가지면 세로 스크롤 컨테이너도 함께 만들어지는 브라우저 제약)
+   뷰포트에 가깝게 잡아 페이지처럼 느껴지게 하고, 끝에 닿으면 페이지가 이어서 움직인다.
+   drawer·모달 안의 표는 본문이 이미 스크롤을 맡으므로 건드리지 않는다. */
+.admin-shell .admin-table-frame.overflow-x-auto:not(:where([role='dialog'] *)),
+.admin-shell .admin-table-frame:not(:where([role='dialog'] *)) > .overflow-x-auto {
+  overflow: auto; max-height: calc(100dvh - 220px);
+}
 .admin-shell thead th :is(button, .flex, .inline-flex) { justify-content: center; text-align: center; }
 /* Center cell content, not nested forms, note editors, popovers or menus. */
 .admin-shell td > :is(.flex, .inline-flex, .admin-course-name-cell):not(:has(input, select, textarea)) { justify-content: center; }
@@ -304,7 +318,14 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 .admin-shell .admin-students-toolbar .admin-students-status-filter { margin-left: auto; justify-content: flex-end; }
 .admin-shell .admin-students-status-select { display: none; }
 .admin-roster-view-options { align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; color: var(--admin-text-muted); font-size: 13px; }
-.admin-shell .admin-roster-scroll { overflow: auto; max-height: min(640px, 70dvh); }
+/* 표 안에 세로 스크롤을 가두지 않는다. 마우스 휠은 페이지를 움직이고, 프레임은 가로만 맡는다.
+   overflow-y: clip은 스크롤 컨테이너를 만들지 않아 머리글 고정이 페이지 기준으로 살아남는다. */
+/* 머리글이 페이지를 기준으로 붙으려면 표와 페이지 사이에 스크롤 컨테이너가 없어야 한다.
+   명단 카드의 clip은 둥근 모서리를 자르려던 것인데 관리자 표는 직각이라 하는 일이 없다. */
+.admin-shell .admin-table-frame:has(> .admin-roster-scroll) { overflow: visible; }
+.admin-shell .admin-roster-scroll { overflow: visible; }
+/* 좁은 화면에서는 표가 가로로 넘치므로 그때만 프레임이 가로 스크롤을 맡는다. */
+@media (max-width: 1279px) { .admin-shell .admin-roster-scroll { overflow-x: auto; overflow-y: clip; } }
 .admin-shell .admin-roster-table[data-detailed='false'] .admin-roster-extra { display: none; }
 .admin-shell .admin-roster-table thead th { position: sticky; top: 0; z-index: 2; background: var(--admin-accent-tint); }
 .admin-shell .admin-roster-table .admin-roster-identity { position: sticky; left: 0; z-index: 1; background: var(--admin-surface); min-width: 128px; }
@@ -386,6 +407,8 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 .admin-shell .admin-choice-button { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; flex: 0 0 var(--admin-choice-width); width: var(--admin-choice-width); min-height: var(--admin-control-height); min-width: 0; max-width: 100%; padding: 8px 12px; border: 1px solid var(--admin-line); border-radius: 0; background: var(--admin-surface); color: var(--admin-text-secondary); font-size: 15px; font-weight: 600; line-height: 1.3; text-align: center; white-space: normal; overflow-wrap: anywhere; box-shadow: none; }
 .admin-shell .admin-choice-button:hover:not(:disabled) { background: var(--admin-surface-soft); }
 .admin-shell .admin-choice-button[aria-pressed='true'] { border-color: var(--admin-accent); background: var(--admin-accent-soft); color: var(--admin-accent); }
+/* 필터로 쓰는 일반 버튼도 같은 표기로 선택 상태를 알린다. */
+.admin-shell .admin-button[aria-pressed='true']:not(:disabled) { border-color: var(--admin-accent); background: var(--admin-accent-soft); color: var(--admin-accent); }
 .admin-shell .admin-choice-button:focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 2px; }
 .admin-shell .admin-choice-button:disabled { color: var(--admin-text-disabled); cursor: not-allowed; }
 .admin-shell .admin-series-option { flex: 1 1 160px; min-width: min(160px, 100%); }
@@ -517,7 +540,12 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 .admin-shell .admin-material-matrix .admin-material-status { color: var(--admin-text-muted); font-size: var(--admin-type-caption); font-weight: 400; }
 /* 수령현황은 자료가 늘수록 가로로 길어진다. 한 프레임에서 두 축을 스크롤하고 머리글·이름 열을 십자로 고정해
    아래로 내려가도 어느 자료의 열인지 잃지 않게 한다. 명단 표와 같은 규칙(min(640px, 70dvh))을 쓴다. */
-.admin-shell .admin-matrix-scroll { max-height: min(640px, 70dvh); overflow: auto; }
+/* 가로 스크롤이 있는 요소는 세로 스크롤 컨테이너도 함께 만들어진다. 그래서 머리글을 고정하려면
+   프레임이 세로 스크롤을 맡아야 한다. 뷰포트에 가깝게 잡아 페이지처럼 느껴지게 하고,
+   끝에 닿으면 브라우저 기본 스크롤 연결로 페이지가 이어서 움직인다. */
+.admin-shell .admin-matrix-scroll { overflow: auto; max-height: calc(100dvh - 220px); }
+/* Ctrl을 누른 채 끌면 화면을 옮긴다. 끄는 동안에는 글자가 선택되지 않게 한다. */
+.admin-shell [data-panning='true'] { cursor: grabbing; user-select: none; }
 .admin-shell .admin-matrix-scroll thead th { position: sticky; top: 0; z-index: 2; background: var(--admin-accent-tint); }
 .admin-shell .admin-matrix-scroll thead th.sticky { left: 0; z-index: 3; }
 .admin-shell .admin-matrix-scroll tbody td.sticky { z-index: 1; }

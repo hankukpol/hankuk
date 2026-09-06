@@ -39,6 +39,17 @@ type CreateCourseForm = {
 }
 
 type CourseFilter = 'active' | 'archived'
+type CourseTypeFilter = CourseType | 'all'
+
+const COURSE_TYPE_FILTERS: CourseTypeFilter[] = ['all', 'general', 'lecture', 'mock_exam', 'interview']
+
+/** 강좌명·원본 강좌명·보고 코드에서 찾는다. 목록에 보이는 값만 대상으로 한다. */
+function matchesCourseQuery(course: Course, query: string) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  return [course.name, course.copied_from_course_name, course.settlement_report_code]
+    .some((value) => (value ?? '').toLowerCase().includes(needle))
+}
 type ConfirmationRequest = {
   title: string
   description?: string
@@ -123,6 +134,8 @@ export default function CoursesPageClient({
   const [form, setForm] = useState<CreateCourseForm>(DEFAULT_FORM)
   const [showForm, setShowForm] = useState(false)
   const [filter, setFilter] = useState<CourseFilter>('active')
+  const [search, setSearch] = useState('')
+  const [courseTypeFilter, setCourseTypeFilter] = useState<CourseTypeFilter>('all')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
@@ -135,8 +148,11 @@ export default function CoursesPageClient({
   const ordering = useCourseOrdering({ courses, filter, onChange: setCourses,
     onFeedback: (text, failed) => { setError(failed ? text : ''); setMessage(failed ? '' : text) },
   })
+  // 검색·유형으로 목록을 좁히면 보이는 행이 그 상태의 전부가 아니게 된다.
+  // 순서 저장 API는 전체 목록을 요구하므로, 좁혀진 동안에는 드래그 정렬을 잠근다.
+  const narrowed = search.trim() !== '' || courseTypeFilter !== 'all'
   const orderLocked = ordering.pending || ordering.draggingId !== null
-  const orderUnavailable = saving || copyingTemplateCourseId !== null || restoringCourseId !== null || confirmSubmitting || showForm
+  const orderUnavailable = narrowed || saving || copyingTemplateCourseId !== null || restoringCourseId !== null || confirmSubmitting || showForm
 
   async function loadCourses() {
     const response = await fetch('/api/courses', { cache: 'no-store' })
@@ -158,7 +174,9 @@ export default function CoursesPageClient({
 
   const activeCoursesCount = courses.filter((course) => course.status === 'active').length
   const archivedCoursesCount = courses.filter((course) => course.status === 'archived').length
-  const filtered = courses.filter((course) => course.status === filter)
+  const statusMatched = courses.filter((course) => course.status === filter)
+  const filtered = statusMatched.filter((course) =>
+    (courseTypeFilter === 'all' || course.course_type === courseTypeFilter) && matchesCourseQuery(course, search))
 
   function handleOpenCourseDetail(courseId: number) {
     router.push(withTenantPrefix(`/dashboard/courses/${courseId}/students`, tenant.type))
@@ -480,8 +498,43 @@ export default function CoursesPageClient({
         ))}
       </div>
 
+      <div className="admin-table-toolbar flex flex-wrap items-center justify-end gap-3">
+        <label className="admin-students-search relative">
+          <span className="sr-only">강좌 검색</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            disabled={orderLocked}
+            placeholder="강좌명, 원본 강좌, 보고 코드 검색"
+            className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="강좌 유형 필터">
+          {COURSE_TYPE_FILTERS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setCourseTypeFilter(value)}
+              disabled={orderLocked}
+              aria-pressed={courseTypeFilter === value}
+              className="admin-button"
+            >
+              {value === 'all' ? '전체 유형' : courseTypeLabel(value)}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs font-semibold text-slate-500">
+          {filtered.length.toLocaleString('ko-KR')}개 표시
+          {narrowed ? ` / 전체 ${statusMatched.length.toLocaleString('ko-KR')}개` : ''}
+        </span>
+      </div>
+
       <p id="course-order-help" role="status" className="text-xs text-slate-500">
-        {ordering.pending ? '순서를 저장하고 있습니다…' : ordering.draggingId !== null ? '원하는 위치에 놓으면 저장됩니다. Esc 키로 취소할 수 있습니다.' : '강좌명 옆 손잡이를 드래그해 순서를 변경하세요. 손잡이에 초점을 두고 위·아래 방향키로도 이동할 수 있습니다.'}
+        {ordering.pending ? '순서를 저장하고 있습니다…'
+          : ordering.draggingId !== null ? '원하는 위치에 놓으면 저장됩니다. Esc 키로 취소할 수 있습니다.'
+          : narrowed ? '검색·유형을 적용하는 동안에는 순서를 바꿀 수 없습니다. 전체 목록에서만 순서가 안전하게 저장됩니다.'
+          : '강좌명 옆 손잡이를 드래그해 순서를 변경하세요. 손잡이에 초점을 두고 위·아래 방향키로도 이동할 수 있습니다.'}
       </p>
 
       {/* ── Course table ── */}
@@ -504,7 +557,7 @@ export default function CoursesPageClient({
             transition={motionConfig.modal}
             className="rounded-[8px] bg-white px-5 py-12 text-center text-sm text-[#86868b] shadow-sm"
           >
-            {filter === 'active' ? '운영 중인 강좌가 없습니다.' : '보관된 강좌가 없습니다.'}
+            {narrowed ? '검색 결과가 없습니다.' : filter === 'active' ? '운영 중인 강좌가 없습니다.' : '보관된 강좌가 없습니다.'}
           </motion.p>
         ) : (
           <motion.div

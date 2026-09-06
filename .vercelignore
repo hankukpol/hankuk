@@ -23,18 +23,22 @@
 test-results
 tmp-startup-backup-20260406
 
-# The score-predict Vercel project only needs its app and packages/config.
-# Keep the other workspace applications out of the deployment archive.
+# Keep workspace applications that deploy from elsewhere out of the archive.
+# class-pass is NOT listed: this file applies to every Vercel project in the
+# repo, so excluding an app here makes that app's own deployment fail with
+# ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND. Its tracked source is 7.6MB; the 460MB
+# seen in a working copy is .next-local-preview, which git never carried.
 apps/.claude
 apps/academy-ops
-apps/class-pass
 apps/interview-mate
 apps/interview-pass
 apps/police-exam-bank
 apps/portal
 apps/study-hall
 
-# Root-only development and infrastructure material
+# Root-only development and infrastructure material.
+# scripts/ stays in: every project's ignoreCommand runs scripts/vercel-ignore.mjs,
+# and a missing module exits non-zero, which Vercel reads as "build" — so
+# excluding it silently disabled the [deploy <app>] tag for the whole repo.
 docs
-scripts
 supabase

@@ -20,8 +20,8 @@
 **/*.log
 **/*비밀번호*.txt
 **/*수파베이스*.txt
-test-results
-tmp-startup-backup-20260406
+/test-results
+/tmp-startup-backup-20260406
 
 # Keep workspace applications that deploy from elsewhere out of the archive.
 # class-pass is NOT listed: this file applies to every Vercel project in the
@@ -37,8 +37,11 @@ apps/portal
 apps/study-hall
 
 # Root-only development and infrastructure material.
+# Leading slash is required: a bare name matches at every depth, so plain
+# `supabase` also deleted apps/class-pass/src/lib/supabase and the build failed
+# with "Can't resolve '@/lib/supabase/server'".
 # scripts/ stays in: every project's ignoreCommand runs scripts/vercel-ignore.mjs,
 # and a missing module exits non-zero, which Vercel reads as "build" — so
 # excluding it silently disabled the [deploy <app>] tag for the whole repo.
-docs
-supabase
+/docs
+/supabase

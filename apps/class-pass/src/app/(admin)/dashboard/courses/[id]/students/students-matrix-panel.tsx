@@ -1,6 +1,7 @@
 import { AdminPagination as MatrixPaginationControls } from "@/components/admin/AdminPagination"
 import { useDragPan } from '@/components/admin/useDragPan'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSyncedTableHeader } from '@/components/admin/useSyncedTableHeader'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatDateTime, formatKoreanMonthDay } from '@/lib/utils'
 import type { Material } from '@/types/database'
 import {
@@ -370,7 +371,9 @@ function StudentFocusTable({
         </div>
       </div>
 
-      <div className="admin-table-frame admin-matrix-scroll">
+      {/* 한 명만 볼 때는 세 열뿐이라 가로로 넘치지 않는다.
+          가로 스크롤 프레임을 만들지 않아야 머리글이 페이지를 기준으로 붙는다. */}
+      <div className="admin-table-frame">
         <table className="w-full">
           <thead>
             <tr>
@@ -425,6 +428,15 @@ export function StudentsMatrixPanel({
 }: StudentsMatrixPanelProps) {
   const controlsDisabled = bulkProcessing || matrixLoading || matrixUnavailable
   const matrixPanRef = useDragPan<HTMLDivElement>()
+  const { frameRef: syncedFrameRef, barRef: syncedHeaderRef } = useSyncedTableHeader()
+  // 프레임 하나에 끌기와 머리글 동기화를 함께 건다.
+  const matrixFrameRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      matrixPanRef(node)
+      syncedFrameRef(node)
+    },
+    [matrixPanRef, syncedFrameRef],
+  )
   const [currentPage, setCurrentPage] = useState(1)
   // 검색으로 한 명까지 좁혀지면 표 대신 그 학생만 세로로 편다. 표에서 이름을 눌러도 같은 화면이 열린다.
   const [manualFocusId, setManualFocusId] = useState<number | null>(null)
@@ -523,6 +535,62 @@ export function StudentsMatrixPanel({
     setManualFocusId(null)
     setAutoFocusDismissed(true)
   }
+
+  // 머리글은 본체와 위에 띄우는 쪽, 두 군데에 그린다.
+  // 같은 JSX를 두 번 렌더하므로 띄운 쪽의 자료명 필터·전체 선택도 그대로 동작한다.
+  // 다만 띄운 쪽은 화면에 보이는 사본일 뿐이라 읽기 순서와 탭 순서에서는 뺀다.
+  function renderMatrixHeaderRow(floating: boolean) {
+    const copyTabIndex = floating ? -1 : undefined
+
+    return (
+    <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">
+      {bulkActionEnabled ? (
+        <th className="px-3 py-3 text-center">
+          <input
+            type="checkbox"
+            aria-label="현재 페이지 전체 선택"
+            tabIndex={copyTabIndex}
+            checked={allVisibleSelected}
+            disabled={controlsDisabled}
+            onChange={(event) => {
+              if (event.target.checked) {
+                onReplaceSelectedIds(new Set(visiblePageIds))
+                return
+              }
+
+              onReplaceSelectedIds(new Set())
+            }}
+            className="h-3.5 w-3.5 rounded"
+          />
+        </th>
+      ) : null}
+      <th className="sticky left-0 bg-white px-5 py-3">수강생</th>
+      {showAllDistributeColumn ? (
+        <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
+      ) : null}
+      {showAllAssignColumn ? (
+        <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
+      ) : null}
+      {columnMaterials.map((material) => (
+        <th
+          key={material.id}
+          className={`px-3 py-3 text-center ${
+            filterMatId === material.id ? 'bg-blue-50 text-blue-700' : ''
+          }`}
+        >
+          <button type="button" className="admin-material-filter" disabled={controlsDisabled}
+            tabIndex={copyTabIndex}
+            aria-pressed={filterMatId === material.id}
+            title={`${material.name}: ${tab === 'textbook-assign' ? '미구매' : '미수령'} 수강생 필터`}
+            onClick={() => onToggleFilterMaterial(material.id)}>
+            {material.name} {filterMatId === material.id ? '↓' : ''}
+          </button>
+        </th>
+      ))}
+    </tr>
+    )
+  }
+
   return (
     <section className="admin-material-matrix">
       <div className="admin-table-toolbar flex flex-col gap-3 border-b border-slate-100 py-3">
@@ -605,53 +673,17 @@ export function StudentsMatrixPanel({
         {/* 자료가 많으면 가로·세로를 함께 스크롤한다. 한 프레임 안에서 스크롤해야 머리글과 이름 열이 같이 고정된다. */}
         {/* Ctrl 끌기는 화면에 드러나지 않는 조작이라 한 줄로 알린다. */}
         <p className="admin-material-help mb-2">Ctrl을 누른 채 표를 끌면 상하좌우로 옮길 수 있습니다.</p>
-        <div ref={matrixPanRef} className="admin-table-frame admin-matrix-scroll">
+        <div className="admin-matrix-viewport">
+          {/* 프레임이 가로 스크롤을 맡으면 그 안의 머리글은 페이지가 아니라 프레임에 붙는다.
+              그래서 머리글만 프레임 밖에 한 벌 더 띄우고 가로 위치를 본체와 맞춘다. */}
+          <div ref={syncedHeaderRef} aria-hidden="true" className="admin-matrix-headbar">
+            <table className="w-full text-sm">
+              <thead>{renderMatrixHeaderRow(true)}</thead>
+            </table>
+          </div>
+          <div ref={matrixFrameRef} className="admin-table-frame admin-matrix-scroll">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">
-                {bulkActionEnabled ? (
-                  <th className="px-3 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      aria-label="현재 페이지 전체 선택"
-                      checked={allVisibleSelected}
-                      disabled={controlsDisabled}
-                      onChange={(event) => {
-                        if (event.target.checked) {
-                          onReplaceSelectedIds(new Set(visiblePageIds))
-                          return
-                        }
-
-                        onReplaceSelectedIds(new Set())
-                      }}
-                      className="h-3.5 w-3.5 rounded"
-                    />
-                  </th>
-                ) : null}
-                <th className="sticky left-0 bg-white px-5 py-3">수강생</th>
-                {showAllDistributeColumn ? (
-                  <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
-                ) : null}
-                {showAllAssignColumn ? (
-                  <th className="px-3 py-3 text-center whitespace-nowrap">전체</th>
-                ) : null}
-                {columnMaterials.map((material) => (
-                  <th
-                    key={material.id}
-                    className={`px-3 py-3 text-center ${
-                      filterMatId === material.id ? 'bg-blue-50 text-blue-700' : ''
-                    }`}
-                  >
-                    <button type="button" className="admin-material-filter" disabled={controlsDisabled}
-                      aria-pressed={filterMatId === material.id}
-                      title={`${material.name}: ${tab === 'textbook-assign' ? '미구매' : '미수령'} 수강생 필터`}
-                      onClick={() => onToggleFilterMaterial(material.id)}>
-                      {material.name} {filterMatId === material.id ? '↓' : ''}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
+            <thead>{renderMatrixHeaderRow(false)}</thead>
             <tbody className="divide-y divide-slate-50">
               {filteredMatrixRows.length === 0 ? (
                 <tr>
@@ -752,6 +784,7 @@ export function StudentsMatrixPanel({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
         <MatrixPaginationControls
           pageSize={MATRIX_PAGE_SIZE}

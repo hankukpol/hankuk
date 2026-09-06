@@ -186,13 +186,12 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 /* 표 카드의 clip은 둥근 모서리를 자르려던 것인데 관리자 표는 직각이라 하는 일이 없다.
    이게 스크롤 컨테이너를 만들어 머리글이 페이지 기준으로 붙지 못하게 막고 있었다. */
 .admin-shell .admin-table-frame.overflow-hidden { overflow: visible; }
-/* 가로 스크롤이 필요한 표는 프레임이 세로도 맡아야 머리글을 고정할 수 있다.
-   (한 요소가 가로 스크롤을 가지면 세로 스크롤 컨테이너도 함께 만들어지는 브라우저 제약)
-   뷰포트에 가깝게 잡아 페이지처럼 느껴지게 하고, 끝에 닿으면 페이지가 이어서 움직인다.
-   drawer·모달 안의 표는 본문이 이미 스크롤을 맡으므로 건드리지 않는다. */
-.admin-shell .admin-table-frame.overflow-x-auto:not(:where([role='dialog'] *)),
-.admin-shell .admin-table-frame:not(:where([role='dialog'] *)) > .overflow-x-auto {
-  overflow: auto; max-height: calc(100dvh - 220px);
+/* 세로 스크롤은 페이지 하나만 맡는다. 표에 높이를 주면 페이지와 표가 이중으로 스크롤된다.
+   1440px 이상에서는 모든 표가 가로로 들어가므로 스크롤 컨테이너를 만들지 않는다.
+   그래야 머리글이 페이지를 기준으로 고정된다. 그보다 좁으면 프레임이 가로만 맡는다. */
+@media (min-width: 1440px) {
+  .admin-shell .admin-table-frame.overflow-x-auto:not(:where([role='dialog'] *)),
+  .admin-shell .admin-table-frame:not(:where([role='dialog'] *)) > .overflow-x-auto { overflow: visible; }
 }
 .admin-shell thead th :is(button, .flex, .inline-flex) { justify-content: center; text-align: center; }
 /* Center cell content, not nested forms, note editors, popovers or menus. */
@@ -325,7 +324,7 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 .admin-shell .admin-table-frame:has(> .admin-roster-scroll) { overflow: visible; }
 .admin-shell .admin-roster-scroll { overflow: visible; }
 /* 좁은 화면에서는 표가 가로로 넘치므로 그때만 프레임이 가로 스크롤을 맡는다. */
-@media (max-width: 1279px) { .admin-shell .admin-roster-scroll { overflow-x: auto; overflow-y: clip; } }
+@media (max-width: 1439px) { .admin-shell .admin-roster-scroll { overflow-x: auto; } }
 .admin-shell .admin-roster-table[data-detailed='false'] .admin-roster-extra { display: none; }
 .admin-shell .admin-roster-table thead th { position: sticky; top: 0; z-index: 2; background: var(--admin-accent-tint); }
 .admin-shell .admin-roster-table .admin-roster-identity { position: sticky; left: 0; z-index: 1; background: var(--admin-surface); min-width: 128px; }
@@ -538,16 +537,22 @@ body:has(> .admin-shell) { overflow-x: clip; overflow-y: visible; }
 .admin-shell .admin-material-preview li { overflow-wrap: anywhere; }
 .admin-shell .admin-material-notice { margin: 0; font-size: var(--admin-type-caption); line-height: 1.5; overflow-wrap: anywhere; }
 .admin-shell .admin-material-matrix .admin-material-status { color: var(--admin-text-muted); font-size: var(--admin-type-caption); font-weight: 400; }
-/* 수령현황은 자료가 늘수록 가로로 길어진다. 한 프레임에서 두 축을 스크롤하고 머리글·이름 열을 십자로 고정해
-   아래로 내려가도 어느 자료의 열인지 잃지 않게 한다. 명단 표와 같은 규칙(min(640px, 70dvh))을 쓴다. */
-/* 가로 스크롤이 있는 요소는 세로 스크롤 컨테이너도 함께 만들어진다. 그래서 머리글을 고정하려면
-   프레임이 세로 스크롤을 맡아야 한다. 뷰포트에 가깝게 잡아 페이지처럼 느껴지게 하고,
-   끝에 닿으면 브라우저 기본 스크롤 연결로 페이지가 이어서 움직인다. */
-.admin-shell .admin-matrix-scroll { overflow: auto; max-height: calc(100dvh - 220px); }
+/* 수령현황은 자료가 늘수록 가로로 길어진다. 세로는 페이지가 맡고 가로만 이 프레임이 맡는다. */
+.admin-shell .admin-matrix-scroll { overflow-x: auto; }
 /* Ctrl을 누른 채 끌면 화면을 옮긴다. 끄는 동안에는 글자가 선택되지 않게 한다. */
 .admin-shell [data-panning='true'] { cursor: grabbing; user-select: none; }
-.admin-shell .admin-matrix-scroll thead th { position: sticky; top: 0; z-index: 2; background: var(--admin-accent-tint); }
-.admin-shell .admin-matrix-scroll thead th.sticky { left: 0; z-index: 3; }
+/* 가로 스크롤을 맡은 요소는 세로 스크롤 컨테이너도 함께 만들어진다. 그래서 이 안의 머리글은
+   페이지가 아니라 프레임을 기준으로 붙어, 페이지를 내리면 같이 밀려 올라간다.
+   해결은 머리글을 프레임 밖에 한 벌 더 띄우는 것이다(useSyncedTableHeader).
+   본체 머리글은 자리를 잡아주는 역할만 하므로 sticky를 걸지 않는다. */
+.admin-shell .admin-matrix-viewport { position: relative; }
+/* 띄운 머리글. 높이와 본체를 끌어올릴 양은 실측값이라 JS가 넣는다.
+   overflow는 가로 위치를 본체와 맞추기 위한 창이다. 자기 자신의 overflow는 sticky를 깨지 않는다. */
+.admin-shell .admin-matrix-headbar { position: sticky; top: 0; z-index: 4; overflow: hidden; background: var(--admin-surface); }
+.admin-shell .admin-matrix-headbar thead th,
+.admin-shell .admin-matrix-scroll thead th { background: var(--admin-accent-tint); }
+.admin-shell .admin-matrix-headbar thead th.sticky,
+.admin-shell .admin-matrix-scroll thead th.sticky { position: sticky; left: 0; z-index: 3; }
 .admin-shell .admin-matrix-scroll tbody td.sticky { z-index: 1; }
 /* 수령현황의 수강생 열도 같은 이유로 배경을 직접 칠한다. 행 hover 색을 그대로 따르게 한다. */
 .admin-shell .admin-matrix-scroll tbody tr:hover td.sticky { background: var(--admin-accent-soft); }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { invalidateMaterialCache } from '@/lib/distribution/material-cache'
 import { verifyMaterialOwnership } from '@/lib/class-pass-data'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
@@ -99,8 +99,8 @@ export async function PATCH(
     return NextResponse.json({ error: '자료를 찾을 수 없습니다.' }, { status: 404 })
   }
 
-  await invalidateCache('materials')
-  return NextResponse.json({ material: data })
+  const refresh = await invalidateMaterialCache()
+  return NextResponse.json({ material: data, ...refresh })
 }
 
 export async function DELETE(
@@ -129,48 +129,35 @@ export async function DELETE(
   }
 
   const db = createServerClient()
-  const [distributionLogResult, textbookAssignmentResult] = await Promise.all([
-    db
-      .from('distribution_logs')
-      .select('id')
-      .eq('material_id', materialId)
-      .limit(1)
-      .maybeSingle(),
-    db
-      .from('textbook_assignments')
-      .select('id')
-      .eq('material_id', materialId)
-      .limit(1)
-      .maybeSingle(),
-  ])
-
-  if (distributionLogResult.error || textbookAssignmentResult.error) {
-    return NextResponse.json({ error: '자료 삭제 전 이력을 확인하지 못했습니다.' }, { status: 500 })
+  const { data, error } = await db.rpc('delete_material_atomic', {
+    p_division: division,
+    p_material_id: materialId,
+  })
+  if (error) {
+    return NextResponse.json({ error: '자료를 삭제하지 못했습니다.' }, { status: 500 })
   }
-
-  if (distributionLogResult.data) {
+  const result = data as { success: boolean; reason?: string } | null
+  if (result?.reason === 'MATERIAL_NOT_FOUND') {
+    return NextResponse.json({ error: '자료를 찾을 수 없습니다.' }, { status: 404 })
+  }
+  if (result?.reason === 'HAS_RECEIPTS') {
     return NextResponse.json(
       { error: '이미 배부 이력이 있는 자료는 삭제할 수 없습니다. 비활성 상태로 변경해 주세요.' },
       { status: 400 },
     )
   }
 
-  if (textbookAssignmentResult.data) {
+  if (result?.reason === 'HAS_ASSIGNMENTS') {
     return NextResponse.json(
       { error: '이미 학생 배정 이력이 있는 교재는 삭제할 수 없습니다. 배정을 해제하거나 비활성 상태로 변경해 주세요.' },
       { status: 400 },
     )
   }
 
-  const { error } = await db
-    .from('materials')
-    .delete()
-    .eq('id', materialId)
-
-  if (error) {
+  if (!result?.success) {
     return NextResponse.json({ error: '자료를 삭제하지 못했습니다.' }, { status: 500 })
   }
 
-  await invalidateCache('materials')
-  return NextResponse.json({ success: true })
+  const refresh = await invalidateMaterialCache()
+  return NextResponse.json({ success: true, ...refresh })
 }

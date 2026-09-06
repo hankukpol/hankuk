@@ -178,7 +178,7 @@ export function SeatGrid({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="admin-seat-grid space-y-3">
       {mode === 'admin' ? (
         <div className="rounded-xl border border-slate-200 bg-white py-2 text-center text-sm font-medium text-slate-500">
           칠판

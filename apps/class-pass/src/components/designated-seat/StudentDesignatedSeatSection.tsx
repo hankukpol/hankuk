@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
@@ -500,7 +501,7 @@ export function StudentDesignatedSeatSection({
 
           {(error || message) ? (
             <div className="mt-4 flex flex-col gap-2">
-              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              {error ? <p className="text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
               {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
             </div>
           ) : null}

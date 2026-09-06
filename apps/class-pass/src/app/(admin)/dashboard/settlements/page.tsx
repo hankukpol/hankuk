@@ -35,12 +35,10 @@ export default function SettlementsHubPage() {
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Settlement</p>
         <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">수납·정산</h1>
-        <p className="mt-2 text-sm text-slate-500">데스크 결제 기록을 일일 정산과 월별 정산으로 나누어 확인합니다.</p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         {SETTLEMENT_LINKS.map((item) => {
           const Icon = item.icon
 

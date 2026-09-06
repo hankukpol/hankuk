@@ -55,9 +55,9 @@ export function SeriesSelector({
 
   if (activeOptions.length === 0) {
     return (
-      <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+      <p className="admin-notice admin-notice-warning">
         활성화된 직렬 옵션이 없습니다. 지점 설정에서 먼저 직렬을 추가해 주세요.
-      </div>
+      </p>
     )
   }
 
@@ -65,7 +65,7 @@ export function SeriesSelector({
 
   return (
     <div className="flex min-w-0 flex-wrap items-stretch gap-2">
-      <div className="inline-flex shrink-0 gap-0.5 rounded-[10px] border border-slate-200 bg-slate-100 p-0.5">
+      <div role="group" aria-label="직렬" className="admin-choice-group inline-flex shrink-0 gap-0.5 rounded-[10px] border border-slate-200 bg-slate-100 p-0.5">
         {([
           ['public', '공채', publicOptions.length === 0],
           ['career', '경채', careerOptions.length === 0],
@@ -75,7 +75,8 @@ export function SeriesSelector({
             type="button"
             disabled={disabled || groupDisabled}
             onClick={() => selectGroup(group)}
-            className={`rounded-[7px] px-4 py-1.5 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
+            aria-pressed={selectedGroup === group}
+            className={`admin-choice-button rounded-[7px] px-4 py-1.5 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
               selectedGroup === group
                 ? 'bg-white text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
                 : 'text-slate-500 hover:text-[#1d1d1f]'
@@ -88,10 +89,11 @@ export function SeriesSelector({
 
       {showDropdown ? (
         <select
+          aria-label="세부 직렬"
           value={selectedOption?.id ?? ''}
           disabled={disabled || selectableOptions.length === 0}
           onChange={(event) => onChange(Number(event.target.value) || null)}
-          className="min-w-[160px] flex-1 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-slate-400 disabled:bg-slate-50"
+          className="admin-series-option min-w-[160px] flex-1 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-slate-400 disabled:bg-slate-50"
         >
           {selectableOptions.map((option) => (
             <option key={option.id} value={option.id}>

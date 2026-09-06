@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStudentSession } from '@/lib/auth/student-session'
 import { z } from 'zod'
 import { getAppConfig } from '@/lib/app-config'
 import { handleRouteError } from '@/lib/api/error-response'
@@ -15,6 +16,9 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const studentSession = await requireStudentSession(req)
+    if (studentSession instanceof NextResponse) return studentSession
+
     const config = await getAppConfig()
     if (!config.student_pass_enabled) {
       return NextResponse.json({ error: '수강증 화면이 현재 비활성화되어 있습니다.' }, { status: 403 })
@@ -31,6 +35,7 @@ export async function POST(req: NextRequest) {
     const result = await buildPassPayload({
       division,
       enrollmentId: parsed.data.enrollmentId,
+      studentId: studentSession.studentId,
       courseSlug: parsed.data.courseSlug,
       name: parsed.data.name,
       phone: parsed.data.phone,
@@ -63,7 +68,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    return NextResponse.json(result.payload)
+    return NextResponse.json(result.payload, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     return handleRouteError('enrollments.pass.POST', '수강증 정보를 불러오지 못했습니다.', error)
   }

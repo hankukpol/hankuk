@@ -9,6 +9,8 @@ import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import { parsePositiveInt } from '@/lib/utils'
+import { readAllPages } from '@/lib/distribution/read-all-pages'
+import type { SeatAssignment } from '@/types/database'
 
 const patchSchema = z.object({
   courseId: z.number().int().positive(),
@@ -34,9 +36,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '강좌를 찾을 수 없습니다.' }, { status: 404 })
     }
 
+    const fresh = req.nextUrl.searchParams.get('fresh') === '1'
     const [subjects, seatAssignments] = await Promise.all([
       listCourseSubjects(courseId),
-      listSeatAssignmentsForCourse(courseId),
+      fresh
+        ? readAllPages<SeatAssignment>(async (offset, size) => {
+          const rows = unwrapSupabaseResult('seats.reconcile', await createServerClient()
+            .from('seat_assignments')
+            .select('*,course_subjects!inner(id,course_id,name,sort_order)')
+            .eq('course_subjects.course_id', courseId)
+            .order('id')
+            .range(offset, offset + size - 1))
+          return (rows ?? []) as SeatAssignment[]
+        })
+        : listSeatAssignmentsForCourse(courseId),
     ])
 
     return NextResponse.json(

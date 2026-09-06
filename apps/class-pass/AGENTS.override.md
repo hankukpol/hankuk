@@ -5,7 +5,9 @@ These instructions apply when working inside `apps/class-pass`.
 ## Design Defaults
 
 - For UI, layout, styling, component polish, or prototype work in this app, read `DESIGN.md` before making visual changes.
-- Preserve the current Apple-inspired visual direction unless the user explicitly asks for a new direction.
+- Preserve the current administrator design documented in `DESIGN.md`: locally loaded Pretendard, tenant accent colors, white flat tab pages, dark sidebar, square folder/underline tabs and tables, 8px controls and central dialogs, and square slide-in drawers.
+- Student/staff/public QR surfaces retain their existing scoped styling. Do not apply administrator CSS or old Apple marketing-page examples globally.
+- `DESIGN.md` is the current visual source of truth. `docs/DESIGN_IMPLEMENTATION.md` maps it to implementation and verification tools; historical plans/reviews do not override current visual rules.
 - Prefer adapting existing components, spacing, and interaction patterns over introducing a disconnected visual language.
 - Ground design changes in real context first: inspect the current route, relevant components, existing screenshots, and Figma references before redesigning.
 - When context is missing, ask for the smallest missing artifact that will unblock good design work, usually a screenshot, route, or Figma node.

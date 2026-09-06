@@ -18,11 +18,8 @@ export default async function SuperAdminLoginPage({ searchParams }: SuperAdminLo
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-73px)] w-full max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
-      <div className="w-full max-w-lg rounded-3xl bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-          Super Admin Portal
-        </p>
-        <h1 className="mt-3 text-3xl font-extrabold text-slate-900">
+      <div className="admin-auth-card">
+        <h1 className="admin-page-title mt-3">
           슈퍼 관리자 로그인
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -40,13 +37,13 @@ export default async function SuperAdminLoginPage({ searchParams }: SuperAdminLo
         <div className="mt-6 flex flex-col gap-3">
           <a
             href={`${portalUrl}/login`}
-            className="rounded-2xl bg-slate-900 px-5 py-4 text-center text-lg font-bold text-white transition hover:bg-slate-800"
+            className="admin-button admin-button-primary"
           >
             포털로 이동
           </a>
           <a
             href="/super-admin/setup"
-            className="rounded-2xl border border-slate-200 px-5 py-4 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="admin-button"
           >
             최초 설정이 필요하면 초기 설정으로 이동
           </a>

@@ -1,7 +1,9 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
+  distDir: process.env.NODE_ENV === 'development'
+    ? (process.env.CLASS_PASS_LOCAL_PREVIEW === '1' ? '.next-local-preview' : '.next-dev')
+    : '.next',
   experimental: {
     webpackBuildWorker: false,
     serverActions: {

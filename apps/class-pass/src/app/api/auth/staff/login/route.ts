@@ -14,6 +14,7 @@ import { getAdminId, getPinHash, verifyPin } from '@/lib/auth/pin'
 import { validateSameOriginRequest } from '@/lib/auth/request-origin'
 import { checkRateLimit, getClientIp, resetRateLimit } from '@/lib/auth/rateLimiter'
 import { getSessionVersion } from '@/lib/auth/session-version'
+import { createStoredStaffSessionClaims } from '@/lib/auth/stored-staff-session'
 import {
   getOperatorAccountWithMembershipsByLoginId,
   verifyOperatorPin,
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   if (!rateLimit.allowed) {
     const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
     return NextResponse.json(
-      { error: `Too many login attempts. Try again in ${retryAfterSec}s.` },
+      { error: `로그인 시도가 너무 많습니다. ${retryAfterSec}초 후 다시 시도해 주세요.` },
       { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
     )
   }
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Staff PIN is required.' }, { status: 400 })
+    return NextResponse.json({ error: '직원 PIN을 입력해 주세요.' }, { status: 400 })
   }
 
   const division = await getServerTenantType()
@@ -70,11 +71,11 @@ export async function POST(req: NextRequest) {
 
     if (operatorAccount && operatorAdminMembership) {
       if (!operatorAccount.is_active || operatorAdminMembership.branch?.is_active === false) {
-        return NextResponse.json({ error: 'This branch is not active.' }, { status: 403 })
+        return NextResponse.json({ error: '사용이 중지된 지점입니다. 관리자에게 문의해 주세요.' }, { status: 403 })
       }
 
       if (!(await verifyOperatorPin(parsed.data.pin, operatorAccount.pin_hash))) {
-        return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 401 })
+        return NextResponse.json({ error: '관리자 로그인 정보가 올바르지 않습니다. 다시 확인해 주세요.' }, { status: 401 })
       }
 
       await resetRateLimit(`staff:${ip}`)
@@ -111,11 +112,11 @@ export async function POST(req: NextRequest) {
 
     if (operatorAccount && operatorMembership) {
       if (!operatorAccount.is_active || operatorMembership.branch?.is_active === false) {
-        return NextResponse.json({ error: 'This branch is not active.' }, { status: 403 })
+        return NextResponse.json({ error: '사용이 중지된 지점입니다. 관리자에게 문의해 주세요.' }, { status: 403 })
       }
 
       if (!(await verifyOperatorPin(parsed.data.pin, operatorAccount.pin_hash))) {
-        return NextResponse.json({ error: 'Invalid staff credentials.' }, { status: 401 })
+        return NextResponse.json({ error: '직원 로그인 정보가 올바르지 않습니다. 다시 확인해 주세요.' }, { status: 401 })
       }
 
       await resetRateLimit(`staff:${ip}`)
@@ -153,11 +154,11 @@ export async function POST(req: NextRequest) {
     if (legacyAdminId && loginId === legacyAdminId) {
       const adminHash = await getPinHash('admin_pin_hash')
       if (!adminHash) {
-        return NextResponse.json({ error: 'Admin PIN is not configured yet.' }, { status: 503 })
+        return NextResponse.json({ error: '관리자 PIN이 아직 설정되지 않았습니다. 관리자에게 문의해 주세요.' }, { status: 503 })
       }
 
       if (!(await verifyPin(parsed.data.pin, adminHash))) {
-        return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 401 })
+        return NextResponse.json({ error: '관리자 로그인 정보가 올바르지 않습니다. 다시 확인해 주세요.' }, { status: 401 })
       }
 
       await resetRateLimit(`staff:${ip}`)
@@ -184,18 +185,17 @@ export async function POST(req: NextRequest) {
     const storedAccount = await findStoredStaffAccount(loginId)
     if (storedAccount) {
       if (!(await verifyPin(parsed.data.pin, storedAccount.pin_hash))) {
-        return NextResponse.json({ error: 'Invalid staff credentials.' }, { status: 401 })
+        return NextResponse.json({ error: '직원 로그인 정보가 올바르지 않습니다. 다시 확인해 주세요.' }, { status: 401 })
       }
 
       await resetRateLimit(`staff:${ip}`)
       const sessionId = randomUUID()
       const sessionVersion = await getSessionVersion('staff')
-      const token = await signJwt('staff', sessionId, {
-        division,
-        authMethod: 'staff_pin',
-        staffName: storedAccount.name,
-        sessionVersion,
-      })
+      const token = await signJwt(
+        'staff',
+        sessionId,
+        createStoredStaffSessionClaims(storedAccount, division, sessionId, sessionVersion),
+      )
 
       const response = NextResponse.json({
         success: true,
@@ -208,19 +208,19 @@ export async function POST(req: NextRequest) {
       return response
     }
 
-    return NextResponse.json({ error: 'Invalid staff credentials.' }, { status: 401 })
+    return NextResponse.json({ error: '직원 로그인 정보가 올바르지 않습니다. 다시 확인해 주세요.' }, { status: 401 })
   }
 
   const hash = await getPinHash('staff_pin_hash')
   if (!hash) {
     return NextResponse.json(
-      { error: loginId ? 'Invalid staff credentials.' : 'Staff PIN is not configured yet.' },
+      { error: loginId ? '직원 로그인 정보가 올바르지 않습니다. 다시 확인해 주세요.' : 'Staff PIN is not configured yet.' },
       { status: loginId ? 401 : 503 },
     )
   }
 
   if (!(await verifyPin(parsed.data.pin, hash))) {
-    return NextResponse.json({ error: 'Invalid staff PIN.' }, { status: 401 })
+    return NextResponse.json({ error: '직원 PIN이 올바르지 않습니다. 다시 확인해 주세요.' }, { status: 401 })
   }
 
   await resetRateLimit(`staff:${ip}`)

@@ -30,6 +30,8 @@ const refundSchema = z.object({
 })
 
 const createRefundBundleSchema = z.object({
+  requestId: z.string().uuid(),
+  endEnrollment: z.boolean().optional(),
   refunds: z.array(refundSchema).min(1).max(20),
 })
 

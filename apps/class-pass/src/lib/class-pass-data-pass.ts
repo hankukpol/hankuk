@@ -1,4 +1,5 @@
 import { getAppConfig } from '@/lib/app-config'
+import { isStudentEnrollmentEligible } from '@/lib/student-eligibility'
 import { hasCourseAttendanceStarted } from '@/lib/attendance/service'
 import { toReceiptMap } from '@/lib/bulk'
 import { generateQrToken } from '@/lib/qr/token'
@@ -281,8 +282,7 @@ export async function buildPassPayloadResult(params: {
       filterReceiptRowsByMaterialIds(receiptRows, params.textbooks.map((material) => material.id)),
     ),
     qrToken: params.course.feature_qr_pass
-      && params.enrollment.status === 'active'
-      && !params.enrollment.suspended_at
+      && isStudentEnrollmentEligible(params.enrollment)
       ? await generateQrToken(params.enrollment.id, params.course.id)
       : '',
   }

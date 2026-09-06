@@ -1,5 +1,8 @@
 'use client'
 
+import { fetchStudentApi } from '@/lib/student-session'
+import { createSecureUuid } from '@/lib/browser/secure-uuid'
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
@@ -26,7 +29,7 @@ function ensureLocalDeviceKey() {
     return existing
   }
 
-  const generated = `${crypto.randomUUID().replace(/-/g, '')}_${Date.now().toString(36)}`
+  const generated = `${createSecureUuid().replace(/-/g, '')}_${Date.now().toString(36)}`
   window.localStorage.setItem(DEVICE_KEY_STORAGE, generated)
   return generated
 }
@@ -86,63 +89,116 @@ export default function StudentAttendancePage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [deviceKey, setDeviceKey] = useState('')
+  const [deviceError, setDeviceError] = useState('')
   const [presenceFailure, setPresenceFailure] = useState<ClientPresenceError | null>(null)
   const [digits, setDigits] = useState<string[]>(getInitialDigits)
   const inputRefs = useRef<Array<HTMLInputElement | null>>([])
+  const queryKey = `${tenant.type}:${params.courseSlug}:${enrollmentId}`
+  const currentQueryRef = useRef(queryKey)
+  currentQueryRef.current = queryKey
+  const requestRef = useRef({ generation: 0, controller: null as AbortController | null, flight: null as Promise<PassPayload | null> | null })
+  const submittingRef = useRef(false)
+  const [loadedKey, setLoadedKey] = useState('')
+  const dataFresh = loadedKey === `${queryKey}:${getKstDateKey()}`
 
   useEffect(() => {
-    setDeviceKey(ensureLocalDeviceKey())
+    try {
+      setDeviceKey(ensureLocalDeviceKey())
+    } catch {
+      setDeviceError('기기 정보를 안전하게 준비하거나 저장할 수 없습니다. 브라우저의 사이트 저장 권한을 확인하거나 HTTPS 주소로 다시 접속해 주세요.')
+    }
   }, [])
 
   const goBack = useCallback(() => {
     router.push(withTenantPrefix(`/courses/${params.courseSlug}?enrollmentId=${enrollmentId}`, tenant.type))
   }, [enrollmentId, params.courseSlug, router, tenant.type])
 
-  const loadData = useCallback(async () => {
-    const name = sessionStorage.getItem(LS_NAME) ?? ''
-    const phone = sessionStorage.getItem(LS_PHONE) ?? ''
+  const loadData = useCallback((force = false): Promise<PassPayload | null> => {
+    if (currentQueryRef.current !== queryKey) return Promise.resolve(null)
+    if (!force && requestRef.current.flight) return requestRef.current.flight
+    if (!force && submittingRef.current) return Promise.resolve(null)
+    const generation = ++requestRef.current.generation
+    requestRef.current.controller?.abort()
+    const controller = new AbortController()
+    requestRef.current.controller = controller
+    const requestDate = getKstDateKey()
+    const isCurrent = () => !controller.signal.aborted && generation === requestRef.current.generation
+      && currentQueryRef.current === queryKey
+    const flight = (async () => {
+      try {
+        const name = sessionStorage.getItem(LS_NAME) ?? ''
+        const phone = sessionStorage.getItem(LS_PHONE) ?? ''
 
-    if (!name || !phone || !Number.isInteger(enrollmentId) || enrollmentId <= 0) {
-      router.replace(withTenantPrefix('/', tenant.type))
-      return
-    }
+        if (!name || !phone || !Number.isInteger(enrollmentId) || enrollmentId <= 0) {
+          router.replace(withTenantPrefix('/', tenant.type))
+          return null
+        }
 
-    const response = await fetch(withTenantPrefix('/api/enrollments/pass', tenant.type), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        enrollmentId,
-        courseSlug: params.courseSlug,
-        name,
-        phone,
-      }),
-    })
-    const payload = await response.json().catch(() => null)
+        const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/enrollments/pass', tenant.type), {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            enrollmentId,
+            courseSlug: params.courseSlug,
+            name,
+            phone,
+          }),
+        })
+        const payload = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      throw new Error(payload?.error ?? '출결 정보를 불러오지 못했습니다.')
-    }
+        if (!response.ok || !payload?.course || !payload?.enrollment || !payload?.attendance) {
+          throw new Error(payload?.error ?? '출결 정보를 불러오지 못했습니다.')
+        }
 
-    setData(payload as PassPayload)
-  }, [enrollmentId, params.courseSlug, router, tenant.type])
+        if (!isCurrent() || requestDate !== getKstDateKey()) return null
+        setData(payload as PassPayload)
+        setLoadedKey(`${queryKey}:${requestDate}`)
+        setError('')
+        return payload as PassPayload
+      } catch (reason) {
+        if (!isCurrent()) return null
+        setLoadedKey('')
+        throw reason
+      } finally {
+        if (isCurrent()) {
+          requestRef.current.flight = null
+          setLoading(false)
+        }
+      }
+    })()
+    requestRef.current.flight = flight
+    return flight
+  }, [enrollmentId, params.courseSlug, router, tenant.type, queryKey])
 
   useEffect(() => {
     let cancelled = false
-
-    loadData()
-      .catch((reason: unknown) => {
+    currentQueryRef.current = queryKey
+    setData(null)
+    setLoadedKey('')
+    setLoading(true)
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadData().catch((reason: unknown) => {
         if (!cancelled) {
           setError(reason instanceof Error ? reason.message : '출결 정보를 불러오지 못했습니다.')
         }
       })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
+    }
+    refresh()
+    const timer = setInterval(refresh, 10_000)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
 
     return () => {
       cancelled = true
+      currentQueryRef.current = ''
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+      requestRef.current.generation++
+      requestRef.current.controller?.abort()
+      requestRef.current.flight = null
     }
   }, [loadData])
 
@@ -191,7 +247,7 @@ export default function StudentAttendancePage() {
   }
 
   async function handleSubmit() {
-    if (!data) {
+    if (!data || !dataFresh || submittingRef.current || !data.attendance.open || data.attendance.attended_today) {
       return
     }
 
@@ -205,64 +261,107 @@ export default function StudentAttendancePage() {
       return
     }
 
+    submittingRef.current = true
+    requestRef.current.generation++
+    requestRef.current.controller?.abort()
+    requestRef.current.flight = null
     setSubmitting(true)
     setError('')
     setMessage('')
     setPresenceFailure(null)
 
-    const shouldCheckPresence = isPresenceLocationFeatureActive(data.course, 'attendance')
-    const presenceEnforced = isPresenceLocationEnforced(data.course, 'attendance')
-    const presenceResult = shouldCheckPresence ? await getPresenceLocation() : null
+    let requestSent = false
+    try {
+      const shouldCheckPresence = isPresenceLocationFeatureActive(data.course, 'attendance')
+      const presenceEnforced = isPresenceLocationEnforced(data.course, 'attendance')
+      const presenceResult = shouldCheckPresence ? await getPresenceLocation() : null
+      if (currentQueryRef.current !== queryKey) return
 
-    if (presenceResult && !presenceResult.ok) {
-      if (presenceEnforced) {
-        setPresenceFailure(presenceResult.error)
-        setSubmitting(false)
-        setError(presenceResult.error.message)
+      if (presenceResult && !presenceResult.ok) {
+        if (presenceEnforced) {
+          setPresenceFailure(presenceResult.error)
+          setError(presenceResult.error.message)
+          return
+        }
+      }
+
+      requestSent = true
+      const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/attendance/submit', tenant.type), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: data.course.id,
+          enrollmentId: data.enrollment.id,
+          name: data.enrollment.name,
+          phone: data.enrollment.phone,
+          code: codeValue,
+          localDeviceKey: deviceKey,
+          presenceLocation: presenceResult?.ok ? presenceResult.location : undefined,
+          presenceError: presenceResult && !presenceResult.ok ? presenceResult.error : undefined,
+        }),
+      })
+      const result = await response.json().catch(() => null)
+      if (currentQueryRef.current !== queryKey) return
+      if (!result || (response.ok && result.ok !== true) || response.status >= 500 || result.code === 'ALREADY_ATTENDED') {
+        throw new Error('출석 처리 결과를 다시 확인해야 합니다.')
+      }
+
+      if (!response.ok) {
+        const failure = result as {
+          error?: string
+          code?: string
+          presence?: { code?: string; message?: string }
+        } | null
+        setError(failure?.error ?? '출석 처리에 실패했습니다.')
+        if (failure?.code?.startsWith('PRESENCE_')) {
+          setPresenceFailure({
+            errorCode: (failure.presence?.code ?? 'position_unavailable') as ClientPresenceError['errorCode'],
+            message: failure.presence?.message ?? failure.error ?? '위치 확인이 필요합니다.',
+            browserContext: presenceResult?.ok === false ? presenceResult.error.browserContext : 'other',
+          })
+        } else {
+          setPresenceFailure(null)
+        }
         return
       }
-    }
 
-    const response = await fetch(withTenantPrefix('/api/attendance/submit', tenant.type), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId: data.course.id,
-        enrollmentId: data.enrollment.id,
-        name: data.enrollment.name,
-        phone: data.enrollment.phone,
-        code: codeValue,
-        localDeviceKey: deviceKey,
-        presenceLocation: presenceResult?.ok ? presenceResult.location : undefined,
-        presenceError: presenceResult && !presenceResult.ok ? presenceResult.error : undefined,
-      }),
-    })
-    const result = await response.json().catch(() => null)
-    setSubmitting(false)
-
-    if (!response.ok) {
-      const failure = result as {
-        error?: string
-        code?: string
-        presence?: { code?: string; message?: string }
-      } | null
-      setError(failure?.error ?? '출석 처리에 실패했습니다.')
-      if (failure?.code?.startsWith('PRESENCE_')) {
-        setPresenceFailure({
-          errorCode: (failure.presence?.code ?? 'position_unavailable') as ClientPresenceError['errorCode'],
-          message: failure.presence?.message ?? failure.error ?? '위치 확인이 필요합니다.',
-          browserContext: presenceResult?.ok === false ? presenceResult.error.browserContext : 'other',
-        })
+      setDigits(getInitialDigits())
+      setPresenceFailure(null)
+      setMessage('오늘 출석이 완료되었습니다.')
+      await loadData(true)
+    } catch {
+      if (currentQueryRef.current !== queryKey) return
+      if (requestSent) {
+        // The server may have committed even when fetch/json failed. Never retry blindly.
+        setLoadedKey('')
+        setMessage('출석 처리 결과를 확인하는 중입니다.')
+        const latest = await loadData(true).catch(() => null)
+        if (latest) {
+          if (latest.attendance.attended_today) setDigits(getInitialDigits())
+          setMessage('현재 출석 현황을 다시 확인했습니다.')
+          if (!latest.attendance.attended_today) setError('출석 완료가 확인되지 않았습니다. 현황을 확인한 뒤 다시 시도해 주세요.')
+        } else {
+          setMessage('')
+          setError('출석 처리 결과를 확인하지 못했습니다. 연결이 복구되면 현황을 다시 확인합니다.')
+        }
       } else {
-        setPresenceFailure(null)
+        setError('위치 정보를 확인하지 못했습니다. 다시 시도해 주세요.')
       }
-      return
+    } finally {
+      submittingRef.current = false
+      if (currentQueryRef.current === queryKey) setSubmitting(false)
     }
+  }
 
-    setDigits(getInitialDigits())
-    setPresenceFailure(null)
-    setMessage('오늘 출석이 완료되었습니다.')
-    await loadData().catch(() => null)
+  if (deviceError) {
+    return (
+      <div className="student-page flex min-h-dvh items-center justify-center px-6">
+        <div className="student-card max-w-md px-6 py-7 text-center">
+          <p role="alert" className="text-[15px] font-medium text-[#c2410c]">{deviceError}</p>
+          <button type="button" onClick={goBack} className="student-pill-button student-pill-primary mt-5 w-full">강의 페이지로</button>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
@@ -277,7 +376,7 @@ export default function StudentAttendancePage() {
     return (
       <div className="student-page flex min-h-dvh items-center justify-center px-6">
         <div className="student-card max-w-md px-6 py-7 text-center">
-          <p className="text-[15px] font-medium text-[#c2410c]">{error}</p>
+          <p className="text-[15px] font-medium text-[#c2410c]">{getUserErrorMessage(error)}</p>
           <button
             type="button"
             onClick={goBack}
@@ -382,7 +481,7 @@ export default function StudentAttendancePage() {
 
           {(error || message) ? (
             <div className="student-card-muted mt-3 px-4 py-3">
-              {error ? <p className="text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
+              {error ? <p className="text-[14px] font-medium text-[#c2410c]">{getUserErrorMessage(error)}</p> : null}
               {message ? <p className="text-[14px] font-medium text-[#19703a]">{message}</p> : null}
             </div>
           ) : null}
@@ -414,7 +513,7 @@ export default function StudentAttendancePage() {
                   pattern="[0-9]*"
                   maxLength={1}
                   value={digit}
-                  disabled={submitting || !data.attendance.open || data.attendance.attended_today}
+                  disabled={submitting || !dataFresh || !data.attendance.open || data.attendance.attended_today}
                   onChange={(event) => updateDigit(index, event.target.value)}
                   onKeyDown={(event) => handleKeyDown(index, event)}
                   onPaste={(event) => {
@@ -430,7 +529,7 @@ export default function StudentAttendancePage() {
           <button
             type="button"
             onClick={() => void handleSubmit()}
-            disabled={submitting || !data.attendance.open || data.attendance.attended_today}
+            disabled={submitting || !dataFresh || !data.attendance.open || data.attendance.attended_today}
             className="student-pill-button student-pill-primary mt-6 w-full disabled:translate-y-0 disabled:opacity-50"
           >
             {data.attendance.attended_today ? (

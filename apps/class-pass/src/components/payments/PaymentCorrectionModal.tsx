@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useId, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { AdminDrawerSurface } from '@/components/admin/AdminDrawer'
+import { AdminPortal } from '@/components/admin/AdminPortal'
+import { AdminDialogClose } from '@/components/admin/AdminDialogClose'
 import {
   PAYMENT_CATEGORIES,
   PAYMENT_CATEGORY_LABEL,
@@ -15,7 +18,6 @@ import {
 } from '@/lib/payments/types'
 import { formatPaymentDate, formatWon } from '@/lib/payments/format'
 import { getRefundTotal } from '@/lib/payments/summary'
-import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import { CARD_COMPANIES, normalizeCardCompanyName } from '@/lib/payments/card-companies'
 
 type CorrectionPaymentMethod = Exclude<PaymentMethod, 'mixed' | 'free'>
@@ -54,6 +56,7 @@ type PaymentCorrectionModalProps = {
   currentTuitionNetAmount: number
   billingPayableAmount: number
   submitting?: boolean
+  retryOnly?: boolean
   onClose: () => void
   onConfirm: (input: PaymentCorrectionConfirmInput) => void
 }
@@ -121,11 +124,11 @@ export function PaymentCorrectionModal({
   currentTuitionNetAmount,
   billingPayableAmount,
   submitting = false,
+  retryOnly = false,
   onClose,
   onConfirm,
 }: PaymentCorrectionModalProps) {
-  const motionConfig = useMotionConfig()
-  const backdropDuration = useReducedMotionDuration(0.2)
+  const titleId = useId()
   const refundableAmount = Math.max((payment?.amount ?? 0) - getRefundTotal(payment ?? { enrollment_refunds: [] }), 0)
   const [refundAmount, setRefundAmount] = useState('')
   const [newAmount, setNewAmount] = useState('')
@@ -185,19 +188,6 @@ export function PaymentCorrectionModal({
     setTuitionBillingMode(parsedRefundAmount === parsedNewAmount ? 'keep' : 'match_net')
   }, [billingModeTouched, category, open, parsedNewAmount, parsedRefundAmount])
 
-  useEffect(() => {
-    if (!open) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting) {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, open, submitting])
-
   const invalidRefundAmount = !Number.isInteger(parsedRefundAmount)
     || parsedRefundAmount <= 0
     || parsedRefundAmount > refundableAmount
@@ -220,7 +210,7 @@ export function PaymentCorrectionModal({
   const netChangeAmount = parsedNewAmount - parsedRefundAmount
 
   function submit() {
-    if (!payment || invalid) {
+    if (!payment || invalid || submitting) {
       return
     }
 
@@ -254,48 +244,19 @@ export function PaymentCorrectionModal({
   }
 
   return (
-    <AnimatePresence>
+    <AdminPortal><AnimatePresence>
       {open && payment ? (
-        <motion.div
-          role="presentation"
-          className="fixed inset-0 z-[145] flex items-center justify-center bg-black/40 px-5 sm:backdrop-blur-sm"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: backdropDuration }}
-          onClick={() => {
-            if (!submitting) {
-              onClose()
-            }
-          }}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[12px] bg-white p-6 shadow-[3px_5px_30px_0px_rgba(0,0,0,0.22)]"
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={motionConfig.modal}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Correction</p>
-                <h3 className="mt-1 text-[21px] font-semibold tracking-[-0.231px] text-[#1d1d1f]">결제 정정</h3>
+        <AdminDrawerSurface labelledBy={titleId} priority={145} onClose={onClose} closeDisabled={submitting || retryOnly}>
+        <div className="admin-dialog-header flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h3 id={titleId} className="admin-dialog-title mt-1 break-words text-[21px] font-semibold tracking-[-0.231px] text-[#1d1d1f]">결제 정정</h3>
                 <p className="mt-2 text-sm text-slate-700">{payment.enrollments?.name ?? '수강생'} / {courseName}</p>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={submitting}
-                className="rounded-full px-2 py-1 text-xs font-semibold text-slate-400 transition-all duration-200 ease-ios hover:bg-slate-100 hover:text-slate-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-              >
-                닫기
-              </button>
+              <AdminDialogClose onClick={onClose} disabled={submitting || retryOnly} />
             </div>
 
-            <div className="mt-5 rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700">
+            <fieldset className="admin-dialog-body pt-5" disabled={submitting || retryOnly}>
+            <div className="rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700">
               <p className="font-semibold text-[#1d1d1f]">
                 기준 수납: {formatPaymentDate(payment.paid_at)} {PAYMENT_METHOD_LABEL[payment.method]} {PAYMENT_CATEGORY_LABEL[payment.category]} {formatWon(payment.amount)}
               </p>
@@ -518,11 +479,13 @@ export function PaymentCorrectionModal({
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
+            </fieldset>
+
+            <div className="admin-dialog-footer">
               <button
                 type="button"
                 onClick={onClose}
-                disabled={submitting}
+                disabled={submitting || retryOnly}
                 className="rounded-[8px] bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
               >
                 취소
@@ -536,9 +499,8 @@ export function PaymentCorrectionModal({
                 {submitting ? '저장 중...' : '정정 저장'}
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+        </AdminDrawerSurface>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence></AdminPortal>
   )
 }

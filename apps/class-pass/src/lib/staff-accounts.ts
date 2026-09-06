@@ -178,8 +178,34 @@ export async function findStoredStaffAccount(loginId: string): Promise<StoredSta
     return null
   }
 
-  const accounts = await loadStoredStaffAccounts()
+  // Credential checks must not use the 15-second display/list cache.
+  const division = await getServerTenantType()
+  const accounts = await loadStoredStaffAccountsUncached(division)
   return accounts.find((account) => account.id === normalized || account.name === normalized) ?? null
+}
+
+export async function findStoredStaffAccountByIdUncached(
+  id: string,
+  division: string,
+): Promise<StoredStaffAccount | null> {
+  const db = createServerClient()
+  const { data, error } = await db
+    .from('staff_accounts')
+    .select('id,name,pin_hash,created_at')
+    .eq('division', division)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    if (isMissingStaffAccountsTableError(error)) {
+      const snapshot = await loadStoredStaffAccountsSnapshotUncached(division)
+      return snapshot.accounts.find((account) => account.id === id) ?? null
+    }
+    throw error
+  }
+
+  // An absent row is revoked, not a reason to revive an old app_config account.
+  return data as StoredStaffAccount | null
 }
 
 export async function saveStoredStaffAccounts(

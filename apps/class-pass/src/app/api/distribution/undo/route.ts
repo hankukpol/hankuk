@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { invalidateDistributionCache } from '@/lib/distribution/cache'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid distribution log id.' }, { status: 400 })
+    return NextResponse.json({ error: '배부 기록을 찾을 수 없는 요청입니다. 화면을 새로고침한 뒤 다시 시도해 주세요.' }, { status: 400 })
   }
 
   const division = await getServerTenantType()
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (logError) {
-    return NextResponse.json({ error: 'Failed to load the distribution log.' }, { status: 500 })
+    return NextResponse.json({ error: '배부 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' }, { status: 500 })
   }
 
   if (!log) {
-    return NextResponse.json({ error: 'The distribution log was not found.' }, { status: 404 })
+    return NextResponse.json({ error: '이미 취소되었거나 없는 배부 기록입니다. 수령 현황을 새로고침해 주세요.' }, { status: 404 })
   }
 
   const { data: enrollment, error: enrollmentError } = await db
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (enrollmentError || !enrollment) {
-    return NextResponse.json({ error: 'The linked enrollment was not found.' }, { status: 404 })
+    return NextResponse.json({ error: '배부 기록에 연결된 수강생을 찾을 수 없습니다. 명단에서 삭제되었는지 확인해 주세요.' }, { status: 404 })
   }
 
   const { data: course, error: courseError } = await db
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (courseError || !course) {
-    return NextResponse.json({ error: 'The log does not belong to this division.' }, { status: 404 })
+    return NextResponse.json({ error: '다른 지점의 배부 기록이라 취소할 수 없습니다.' }, { status: 404 })
   }
 
   const { data: material } = await db
@@ -77,12 +77,13 @@ export async function POST(req: NextRequest) {
     .eq('id', log.id)
 
   if (deleteError) {
-    return NextResponse.json({ error: 'Failed to undo the distribution log.' }, { status: 500 })
+    return NextResponse.json({ error: '배부 취소를 저장하지 못했습니다. 수령 현황을 확인한 뒤 다시 시도해 주세요.' }, { status: 500 })
   }
 
-  await invalidateCache('distribution-logs')
+  const notice = await invalidateDistributionCache()
 
   return NextResponse.json({
+    ...notice,
     success: true,
     logId: log.id,
     enrollmentName: enrollment.name,

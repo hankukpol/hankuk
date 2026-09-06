@@ -15,6 +15,7 @@ import { normalizeName, normalizePhone } from '@/lib/utils'
 import type { Enrollment, Student } from '@/types/database'
 import { getTuitionExemptBillingRuleError } from './billing-rules'
 import { normalizeCardCompanyName } from './card-companies'
+import { readPaymentPages } from './read-pages'
 import {
   PAYMENT_CATEGORY_LABEL,
   type BillingStatus,
@@ -88,6 +89,7 @@ export type CreateEnrollmentForPaymentInput = {
 export type UpdatePaymentInput = Partial<Omit<CreatePaymentInput, 'enrollmentId' | 'courseId'>>
 
 export type CreateRefundInput = {
+  requestId?: string
   amount: number
   method: RefundMethod
   reasonCategory?: RefundReasonCategory | null
@@ -99,10 +101,13 @@ export type CreateRefundInput = {
 }
 
 export type CreateRefundBundleInput = {
+  requestId: string
+  endEnrollment?: boolean
   refunds: Array<CreateRefundInput & { paymentId: number }>
 }
 
 export type CreatePaymentCorrectionInput = {
+  requestId: string
   enrollmentId: number
   courseId?: number
   refund: CreateRefundInput & { paymentId: number }
@@ -153,7 +158,7 @@ const PAYMENT_SELECT_LEGACY_WITHOUT_COURSE_REPORT_CODE = `
 `
 
 export const PAYMENT_SCHEMA_MISSING_MESSAGE =
-  '수납·정산 테이블이 아직 DB에 적용되지 않았습니다. 로컬 Supabase에서 supabase db reset을 실행해 Phase 1 migration을 반영해 주세요.'
+  '수납·정산 DB 구성이 최신 버전이 아닙니다. 관리자에게 마이그레이션 적용 상태 확인을 요청해 주세요.'
 
 const PAYMENT_SCHEMA_OBJECTS = [
   'enrollment_billing',
@@ -164,7 +169,11 @@ const PAYMENT_SCHEMA_OBJECTS = [
   'get_payment_settlement',
   'create_payment_bundle_atomic',
   'create_payment_correction_atomic',
+  'create_payment_correction_idempotent',
   'create_refund_bundle_atomic',
+  'create_refund_bundle_idempotent',
+  'update_payment_atomic',
+  'payment_operation_requests',
   'refund_date',
   'reason_category',
   'cancel_receipt_no',
@@ -268,6 +277,38 @@ export function createPaymentSchemaMissingError() {
 
 function createPaymentRpcError(error: unknown) {
   const text = getPaymentErrorText(error).toLowerCase()
+  const code = getPaymentErrorField(error, 'code')
+  const policyMessages: Record<string, string> = {
+    CP001: '현재 전액 수납 정책에 맞지 않는 변경입니다. 청구 금액과 무료 수강 여부를 확인해 주세요.',
+    CP002: '요청 내용이나 결제 내역이 변경되었습니다. 기존 처리 결과를 먼저 확인해 주세요.',
+    CP003: '종료된 수강에는 새 결제나 자동 재활성화를 할 수 없습니다.',
+    CP004: '환불 기록이 있는 결제의 금액·분류·무료 여부는 변경할 수 없습니다. 정정 내역을 확인해 주세요.',
+  }
+  if (policyMessages[code]) return createPaymentError(policyMessages[code], 409)
+  if (['55P03', '57014', '40P01', '40001'].includes(code)) {
+    return createPaymentError('다른 결제 처리가 진행 중이거나 내역이 변경되었습니다. 내역을 확인한 후 같은 요청으로 다시 시도해 주세요.', 409)
+  }
+  // Expose only known business messages, never arbitrary database errors.
+  const businessMessages: Array<[string, number]> = [
+    ['같은 환불 요청번호의 내용이 변경되었습니다. 기존 처리 결과를 먼저 확인해 주세요.', 409],
+    ['다른 작업에서 결제가 변경되었습니다. 새로고침 후 다시 확인해 주세요.', 409],
+    ['종료된 수강에는 새 결제를 등록할 수 없습니다.', 409],
+    ['종료된 수강은 자동으로 재활성화할 수 없습니다.', 409],
+    ['종료된 수강은 새 결제나 일괄 등록으로 재활성화할 수 없습니다.', 409],
+    ['취소된 결제는 수정할 수 없습니다.', 409],
+    ['결제를 찾을 수 없습니다.', 404],
+    ['환불 요청번호가 필요합니다.', 400],
+    ['환불 요청 형식이 올바르지 않습니다.', 400],
+    ['같은 수강생의 결제 건만 한 번에 환불할 수 있습니다.', 400],
+    ['결제 수정 항목이 올바르지 않습니다.', 400],
+    ['결제 금액·수단·분류가 올바르지 않습니다.', 400],
+    ['결제 금액은 이미 환불된 금액보다 작을 수 없습니다.', 400],
+    ['결제 항목이 필요합니다.', 400],
+    ['결제 항목 합계가 결제 금액과 일치하지 않습니다.', 400],
+    ['금액 수정 시 결제 항목이 필요합니다.', 400],
+  ]
+  const businessError = businessMessages.find(([message]) => text.includes(message))
+  if (businessError) return createPaymentError(...businessError)
   if (!text) {
     return null
   }
@@ -578,7 +619,7 @@ async function recalculateEnrollmentBillingStatus(
   }
 
   const billing = data as EnrollmentBilling | null
-  if (!billing) {
+  if (!billing || billing.status === 'closed') {
     return null
   }
 
@@ -591,14 +632,15 @@ async function recalculateEnrollmentBillingStatus(
     .from('enrollment_billing')
     .update({ status: nextStatus })
     .eq('id', billing.id)
+    .neq('status', 'closed')
     .select('*')
-    .single()
+    .maybeSingle()
 
   if (updateError) {
     throw updateError
   }
 
-  return updated as EnrollmentBilling
+  return updated as EnrollmentBilling | null
 }
 
 async function loadEnrollmentBilling(db: ServerClient, enrollmentId: number) {
@@ -816,6 +858,10 @@ async function getEnrollmentForPayment(
     throw createPaymentError('수강생을 찾을 수 없습니다.', 404)
   }
 
+  if (data.status === 'cancelled') {
+    throw createPaymentError('종료된 수강에는 새 결제나 청구 변경을 등록할 수 없습니다.', 409)
+  }
+
   const { courses, ...enrollment } = data as Enrollment & { courses?: unknown }
   void courses
   return enrollment as Enrollment
@@ -932,7 +978,7 @@ async function restoreBillableTuitionAfterFreePaymentVoid(
   }
 
   const billing = await loadEnrollmentBilling(db, enrollmentId)
-  if (!billing?.tuition_exempt) {
+  if (!billing?.tuition_exempt || billing.status === 'closed') {
     return
   }
 
@@ -946,6 +992,7 @@ async function restoreBillableTuitionAfterFreePaymentVoid(
       status: payableAmount <= 0 ? 'paid' : 'unpaid',
     })
     .eq('id', billing.id)
+    .neq('status', 'closed')
 
   if (error) {
     throw error
@@ -1064,6 +1111,17 @@ export async function createEnrollmentForPayment(
     birth_date: input.birthDate,
   })
 
+  // Reject before profile/auth writes; ended registrations require an explicit
+  // re-registration workflow, not implicit reactivation through collection.
+  if (matchedStudent) {
+    const priorRegistrations = await listExistingPaymentRegistrations(
+      db, input.courseId, matchedStudent.id, matchedStudent.name, matchedStudent.phone,
+    )
+    if (priorRegistrations.some((entry) => entry.status === 'cancelled')) {
+      throw createPaymentError('종료된 수강은 새 결제로 재등록할 수 없습니다. 수강 이력을 먼저 확인해 주세요.', 409)
+    }
+  }
+
   const studentResult = await ensureStudentProfile(db, {
     division: tenantDivision,
     currentStudentId: matchedStudent?.id ?? null,
@@ -1091,6 +1149,9 @@ export async function createEnrollmentForPayment(
     student.name,
     student.phone,
   )
+  if (existingRegistrations.some((entry) => entry.status === 'cancelled')) {
+    throw createPaymentError('종료된 수강은 새 결제로 재등록할 수 없습니다. 수강 이력을 먼저 확인해 주세요.', 409)
+  }
   const activeRegistration = existingRegistrations.find((entry) => entry.status === 'active')
   if (activeRegistration) {
     throw createPaymentError('같은 강좌에 동일한 학생이 이미 등록되어 있습니다.', 409)
@@ -1592,23 +1653,16 @@ export async function listPaymentsByIds(paymentIds: number[], division: string) 
   for (let index = 0; index < normalizedIds.length; index += chunkSize) {
     const chunk = normalizedIds.slice(index, index + chunkSize)
 
-    async function queryPayments(select: string) {
-      return db
+    const data = await readPaymentPages<EnrollmentPayment>((from, to) => queryPaymentsWithCompatibleSelect((select) => db
         .from('enrollment_payments')
         .select(select)
         .eq('courses.division', division)
         .in('id', chunk)
         .order('paid_at', { ascending: false })
         .order('id', { ascending: false })
-    }
+        .range(from, to)) as PromiseLike<{ data: EnrollmentPayment[] | null; error: unknown }>)
 
-    const result = await queryPaymentsWithCompatibleSelect(queryPayments)
-
-    if (result.error) {
-      throw result.error
-    }
-
-    payments.push(...normalizePaymentCardCompanies(((result.data ?? []) as unknown) as EnrollmentPayment[]))
+    payments.push(...normalizePaymentCardCompanies(data))
   }
 
   return payments.sort((left, right) => {
@@ -1634,15 +1688,13 @@ async function attachSettlementEntryConfirmations(payments: EnrollmentPayment[],
 
   for (let index = 0; index < paymentIds.length; index += chunkSize) {
     const chunk = paymentIds.slice(index, index + chunkSize)
-    const { data, error } = await db
+    const data = await readPaymentPages<SettlementEntryConfirmation>((from, to) => db
       .from('settlement_entry_confirmations')
       .select('*')
       .eq('division', division)
       .in('payment_id', chunk)
-
-    if (error) {
-      throw error
-    }
+      .order('id', { ascending: true })
+      .range(from, to))
 
     confirmations.push(...(((data ?? []) as unknown) as SettlementEntryConfirmation[]))
   }
@@ -1680,13 +1732,15 @@ async function attachEnrollmentBillingSnapshots(payments: EnrollmentPayment[]) {
   }
 
   const db = createServerClient()
-  const { data, error } = await db
-    .from('enrollment_billing')
-    .select('enrollment_id,discount_amount,expected_amount,payable_amount,created_by_staff_id')
-    .in('enrollment_id', enrollmentIds)
-
-  if (error) {
-    throw error
+  type BillingSnapshot = Pick<EnrollmentBilling, 'enrollment_id' | 'discount_amount' | 'expected_amount' | 'payable_amount' | 'created_by_staff_id'>
+  const data: BillingSnapshot[] = []
+  for (let offset = 0; offset < enrollmentIds.length; offset += 200) {
+    data.push(...await readPaymentPages<BillingSnapshot>((from, to) => db
+      .from('enrollment_billing')
+      .select('enrollment_id,discount_amount,expected_amount,payable_amount,created_by_staff_id')
+      .in('enrollment_id', enrollmentIds.slice(offset, offset + 200))
+      .order('enrollment_id', { ascending: true })
+      .range(from, to)))
   }
 
   const billingByEnrollmentId = new Map<
@@ -1716,7 +1770,7 @@ async function listSettlementPaidPayments(
   const pageSize = 1000
   const payments: EnrollmentPayment[] = []
 
-  for (let offset = 0; ; offset += pageSize) {
+  for (let offset = 0; ;) {
     function buildQuery(select: string) {
       let query = db
         .from('enrollment_payments')
@@ -1749,9 +1803,10 @@ async function listSettlementPaidPayments(
 
     const page = normalizePaymentCardCompanies(((result.data ?? []) as unknown) as EnrollmentPayment[])
     payments.push(...page)
-    if (page.length < pageSize) {
+    if (page.length === 0) {
       break
     }
+    offset += page.length
   }
 
   return payments
@@ -1762,7 +1817,7 @@ async function listRefundPaymentIdsInDateRange(from: string, to: string) {
   const pageSize = 1000
   const paymentIds: number[] = []
 
-  for (let offset = 0; ; offset += pageSize) {
+  for (let offset = 0; ;) {
     const { data, error } = await db
       .from('enrollment_refunds')
       .select('payment_id')
@@ -1780,9 +1835,10 @@ async function listRefundPaymentIdsInDateRange(from: string, to: string) {
       .map((row) => Number(row.payment_id))
       .filter((paymentId) => Number.isInteger(paymentId) && paymentId > 0))
 
-    if (page.length < pageSize) {
+    if (page.length === 0) {
       break
     }
+    offset += page.length
   }
 
   return Array.from(new Set(paymentIds))
@@ -1880,43 +1936,21 @@ export async function updatePayment(
     updatePayload.cash_receipt_approval_no = normalizeOptionalText(input.cashReceiptApprovalNo)
   }
 
-  if (Object.keys(updatePayload).length > 0) {
-    const { error } = await db
-      .from('enrollment_payments')
-      .update(updatePayload)
-      .eq('id', paymentId)
-
-    if (error) {
-      throw error
-    }
-  }
-
-  if (input.items !== undefined || input.amount !== undefined || input.category !== undefined) {
-    const normalizedItems = normalizePaymentItems(nextAmount, nextCategory, input.items)
-    const deleteResult = await db
-      .from('enrollment_payment_items')
-      .delete()
-      .eq('payment_id', paymentId)
-
-    if (deleteResult.error) {
-      throw deleteResult.error
-    }
-
-    await createPaymentItems(db, paymentId, normalizedItems)
-  }
-
-  const after = await recalculatePaymentStatus(db, paymentId, division)
-  await recordPaymentEvent(db, {
-    paymentId,
-    enrollmentId: before.enrollment_id,
-    eventType: 'payment_updated',
-    actorStaffId,
-    beforeJson: before,
-    afterJson: after,
+  const normalizedItems = input.items !== undefined || input.amount !== undefined || input.category !== undefined
+    ? normalizePaymentItems(nextAmount, nextCategory, input.items)
+    : null
+  const { data, error } = await db.rpc('update_payment_atomic', {
+    p_division: division,
+    p_payment_id: paymentId,
+    p_expected_updated_at: before.updated_at,
+    p_patch: updatePayload,
+    p_items: normalizedItems,
+    p_actor_staff_id: actorStaffId ?? null,
   })
-
-  await invalidateCache('enrollments')
-  return after
+  if (error) throwPaymentRpcError(error)
+  if (!data) throw createPaymentError('결제 수정 결과를 확인하지 못했습니다. 내역을 새로고침해 주세요.', 500)
+  await invalidateCache('enrollments').catch(() => undefined)
+  return data as EnrollmentPayment
 }
 
 export async function voidPayment(
@@ -1975,6 +2009,7 @@ export async function createRefund(
   actorStaffId?: number | null,
 ) {
   const result = await createRefundBundle({
+    requestId: input.requestId ?? '',
     refunds: [{ paymentId, ...input }],
   }, division, actorStaffId)
   const refund = result.refunds[0]
@@ -1995,6 +2030,9 @@ export async function createRefundBundle(
   actorStaffId?: number | null,
 ) {
   const db = createServerClient()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId ?? '')) {
+    throw createPaymentError('환불 요청번호가 필요합니다. 화면을 다시 열어 주세요.')
+  }
   if (input.refunds.length === 0) {
     throw createPaymentError('저장할 환불 내역이 없습니다.')
   }
@@ -2004,32 +2042,9 @@ export async function createRefundBundle(
     throw createPaymentError('환불 대상 결제 ID가 올바르지 않습니다.')
   }
 
-  const paymentMap = new Map<number, EnrollmentPayment>()
-  let enrollmentId: number | null = null
-  for (const paymentId of paymentIds) {
-    const payment = await loadPaymentById(db, paymentId, division)
-    if (!payment) {
-      throw createPaymentError('결제를 찾을 수 없습니다.', 404)
-    }
-
-    if (payment.status === 'voided') {
-      throw createPaymentError('취소된 결제는 환불할 수 없습니다.')
-    }
-
-    if (enrollmentId === null) {
-      enrollmentId = payment.enrollment_id
-    } else if (enrollmentId !== payment.enrollment_id) {
-      throw createPaymentError('같은 수강생의 결제 건만 한 번에 환불할 수 있습니다.')
-    }
-
-    paymentMap.set(paymentId, payment)
-  }
-
-  const requestedByPayment = new Map<number, number>()
   const normalizedRefunds = input.refunds.map((refund, index) => {
     const paymentId = Number(refund.paymentId)
     const amount = toPositiveInteger(Number(refund.amount), `${index + 1}번째 환불 금액`)
-    requestedByPayment.set(paymentId, (requestedByPayment.get(paymentId) ?? 0) + amount)
 
     return {
       paymentId,
@@ -2039,98 +2054,26 @@ export async function createRefundBundle(
       reason: normalizeOptionalText(refund.reason),
       cancelReceiptNo: normalizeOptionalText(refund.cancelReceiptNo),
       refundAccountLast4: normalizeLast4(refund.refundAccountLast4, '환불 계좌 마지막 4자리'),
-      refundedAt: normalizeTimestamp(refund.refundedAt),
+      // Let the transaction choose now() once; retries must have identical payloads.
+      refundedAt: refund.refundedAt ? normalizeTimestamp(refund.refundedAt) : null,
       memo: normalizeOptionalText(refund.memo),
     }
   })
 
-  for (const [paymentId, requestedAmount] of requestedByPayment) {
-    const payment = paymentMap.get(paymentId)
-    if (!payment) {
-      throw createPaymentError('결제를 찾을 수 없습니다.', 404)
-    }
-
-    const remaining = payment.amount - getRefundTotal(payment)
-    if (requestedAmount > remaining) {
-      throw createPaymentError('환불 금액은 남은 결제 금액보다 클 수 없습니다.')
-    }
-  }
-
-  let createdRefunds: EnrollmentRefund[] = []
-  try {
-    const { data: rpcRows, error: rpcError } = await db.rpc('create_refund_bundle_atomic', {
-      p_division: division,
-      p_refunds: normalizedRefunds,
-      p_actor_staff_id: actorStaffId ?? null,
-    })
-
-    if (rpcError) {
-      throwPaymentRpcError(rpcError)
-    }
-
-    const createdRows = ((rpcRows ?? []) as Array<{ refund_id: number | string; payment_id: number | string }>)
-      .map((row) => ({
-        refundId: Number(row.refund_id),
-        paymentId: Number(row.payment_id),
-      }))
-
-    if (
-      createdRows.length !== normalizedRefunds.length
-      || createdRows.some((row) => !Number.isInteger(row.refundId) || row.refundId <= 0)
-    ) {
-      throw createPaymentError('생성된 환불 내역을 확인하지 못했습니다.', 500)
-    }
-
-    const updatedPayments = (await Promise.all(paymentIds.map((paymentId) => (
-      loadPaymentById(db, paymentId, division)
-    )))).filter((payment): payment is EnrollmentPayment => Boolean(payment))
-
-    const refundById = new Map<number, EnrollmentRefund>()
-    for (const payment of updatedPayments) {
-      for (const refund of payment.enrollment_refunds ?? []) {
-        refundById.set(refund.id, refund)
-      }
-    }
-    createdRefunds = createdRows
-      .map((row) => refundById.get(row.refundId))
-      .filter((refund): refund is EnrollmentRefund => Boolean(refund))
-
-    if (createdRefunds.length !== createdRows.length) {
-      throw createPaymentError('생성된 환불 내역을 확인하지 못했습니다.', 500)
-    }
-
-    for (const refund of createdRefunds) {
-      const before = paymentMap.get(refund.payment_id) ?? null
-      const after = updatedPayments.find((payment) => payment.id === refund.payment_id) ?? null
-      await recordPaymentEvent(db, {
-        paymentId: refund.payment_id,
-        enrollmentId: before?.enrollment_id ?? enrollmentId,
-        eventType: 'refund_created',
-        actorStaffId,
-        beforeJson: before,
-        afterJson: { payment: after, refund },
-      })
-    }
-
-    await invalidateCache('enrollments')
-    return {
-      refunds: createdRefunds,
-      payments: updatedPayments,
-    }
-  } catch (error) {
-    for (const refund of createdRefunds) {
-      await db
-        .from('enrollment_refunds')
-        .delete()
-        .eq('id', refund.id)
-    }
-
-    for (const paymentId of paymentIds) {
-      await recalculatePaymentStatus(db, paymentId, division).catch(() => null)
-    }
-
-    throw error
-  }
+  // Ownership, remaining balance, audit events and duplicate detection share one transaction.
+  // In particular, duplicate detection must run BEFORE checking the now-reduced balance.
+  const { data, error } = await db.rpc('create_refund_bundle_idempotent', {
+    p_division: division,
+    p_request_id: input.requestId,
+    p_refunds: normalizedRefunds,
+    p_end_enrollment: input.endEnrollment ?? false,
+    p_actor_staff_id: actorStaffId ?? null,
+  })
+  if (error) throwPaymentRpcError(error)
+  if (!data) throw createPaymentError('환불 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.', 500)
+  const result = data as { refunds: EnrollmentRefund[]; payments: EnrollmentPayment[]; requestId: string; enrollmentEnded?: boolean }
+  const refreshRequired = await invalidateCache('enrollments').then(() => false, () => true)
+  return { ...result, refreshRequired }
 }
 
 export async function createPaymentCorrection(
@@ -2139,43 +2082,24 @@ export async function createPaymentCorrection(
   actorStaffId?: number | null,
 ) {
   const db = createServerClient()
-  const targetPayment = await loadPaymentById(db, Number(input.refund.paymentId), division)
-  if (!targetPayment) {
-    throw createPaymentError('결제를 찾을 수 없습니다.', 404)
-  }
-
-  if (targetPayment.enrollment_id !== input.enrollmentId) {
-    throw createPaymentError('정정 대상 수강생과 결제 정보가 일치하지 않습니다.')
-  }
-
-  const courseId = input.courseId ?? targetPayment.course_id
-  if (courseId !== targetPayment.course_id) {
-    throw createPaymentError('정정 대상 강좌와 결제 정보가 일치하지 않습니다.')
-  }
-
-  if (targetPayment.status === 'voided') {
-    throw createPaymentError('취소된 결제는 정정할 수 없습니다.')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId ?? '')) {
+    throw createPaymentError('정정 요청번호가 필요합니다. 화면을 다시 열어 주세요.')
   }
 
   const refundAmount = toPositiveInteger(Number(input.refund.amount), '환불 금액')
-  const remainingAmount = targetPayment.amount - getRefundTotal(targetPayment)
-  if (refundAmount > remainingAmount) {
-    throw createPaymentError('환불 금액은 남은 결제 금액보다 클 수 없습니다.')
-  }
-
   const normalizedRefund = {
-    paymentId: Number(input.refund.paymentId),
+    paymentId: toPositiveInteger(Number(input.refund.paymentId), '정정 대상 결제 ID'),
     amount: refundAmount,
     method: input.refund.method,
     reasonCategory: normalizeRefundReasonCategory(input.refund.reasonCategory ?? 'payment_correction'),
     reason: normalizeOptionalText(input.refund.reason),
     cancelReceiptNo: normalizeOptionalText(input.refund.cancelReceiptNo),
     refundAccountLast4: normalizeLast4(input.refund.refundAccountLast4, '환불 계좌 마지막 4자리'),
-    refundedAt: normalizeTimestamp(input.refund.refundedAt),
+    refundedAt: input.refund.refundedAt ? normalizeTimestamp(input.refund.refundedAt) : null,
     memo: normalizeOptionalText(input.refund.memo),
   }
 
-  const paymentCategory = input.payment.category ?? targetPayment.category
+  const paymentCategory = input.payment.category ?? 'tuition'
   if (input.payment.method === 'mixed' || input.payment.method === 'free') {
     throw createPaymentError('결제 정정 재수납은 실제 결제 수단으로만 저장할 수 있습니다.')
   }
@@ -2186,7 +2110,7 @@ export async function createPaymentCorrection(
     amount: paymentAmount,
     method: input.payment.method,
     category: paymentCategory,
-    paidAt: normalizeTimestamp(input.payment.paidAt),
+    paidAt: input.payment.paidAt ? normalizeTimestamp(input.payment.paidAt) : null,
     memo: normalizeOptionalText(input.payment.memo),
     cardLast4: normalizeLast4(input.payment.cardLast4, '카드 마지막 번호'),
     cardCompany: paymentInstrument.cardCompany,
@@ -2197,37 +2121,12 @@ export async function createPaymentCorrection(
     items: normalizePaymentItems(paymentAmount, paymentCategory, input.payment.items),
   }
 
-  const beforeBilling = await loadEnrollmentBilling(db, input.enrollmentId)
-  let billing: ReturnType<typeof normalizeBillingInput> | null = null
-
-  if (paymentCategory === 'tuition' && input.tuitionBillingMode === 'match_net') {
-    const existingTuitionNetAmount = await getEnrollmentNetAmount(db, input.enrollmentId, 'tuition')
-    const nextPayableAmount = Math.max(
-      existingTuitionNetAmount
-        - (targetPayment.category === 'tuition' ? refundAmount : 0)
-        + paymentAmount,
-      0,
-    )
-    const expectedAmount = Math.max(beforeBilling?.expected_amount ?? 0, nextPayableAmount)
-    const discountAmount = Math.max(expectedAmount - nextPayableAmount, 0)
-
-    billing = normalizeBillingInput({
-      enrollmentId: input.enrollmentId,
-      courseId,
-      expectedAmount,
-      discountAmount,
-      discountReason: discountAmount > 0
-        ? beforeBilling?.discount_reason ?? '결제 정정'
-        : null,
-      payableAmount: nextPayableAmount,
-      tuitionExempt: false,
-      tuitionExemptReason: null,
-    })
-  }
-
-  const { data: rpcRows, error: rpcError } = await db.rpc('create_payment_correction_atomic', {
-    p_enrollment_id: input.enrollmentId,
-    p_course_id: courseId,
+  // Replay precedes all mutable balance/status checks. Billing is calculated under
+  // the enrollment lock, and the transaction returns its committed snapshots.
+  const { data, error: rpcError } = await db.rpc('create_payment_correction_idempotent', {
+    p_request_id: input.requestId,
+    p_enrollment_id: toPositiveInteger(Number(input.enrollmentId), '수강생 ID'),
+    p_course_id: input.courseId === undefined ? null : toPositiveInteger(Number(input.courseId), '강좌 ID'),
     p_division: division,
     p_refund: normalizedRefund,
     p_payment: {
@@ -2249,45 +2148,24 @@ export async function createPaymentCorrection(
       })),
     },
     p_actor_staff_id: actorStaffId ?? null,
-    p_billing: billing
-      ? {
-        expectedAmount: billing.expectedAmount,
-        discountAmount: billing.discountAmount,
-        discountReason: billing.discountReason,
-        payableAmount: billing.payableAmount,
-        tuitionExempt: billing.tuitionExempt,
-        tuitionExemptReason: billing.tuitionExemptReason,
-      }
-      : null,
+    p_tuition_billing_mode: input.tuitionBillingMode ?? 'keep',
   })
 
   if (rpcError) {
     throwPaymentRpcError(rpcError)
   }
 
-  const result = ((rpcRows ?? []) as Array<{ refund_id: number | string; payment_id: number | string }>)[0]
-  const refundId = Number(result?.refund_id)
-  const paymentId = Number(result?.payment_id)
-  if (!Number.isInteger(refundId) || refundId <= 0 || !Number.isInteger(paymentId) || paymentId <= 0) {
-    throw createPaymentError('생성된 정정 내역을 확인하지 못했습니다.', 500)
+  if (!data) {
+    throw createPaymentError('정정 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인해 주세요.', 500)
   }
-
-  const [refundedPayment, createdPayment] = await Promise.all([
-    loadPaymentById(db, targetPayment.id, division),
-    loadPaymentById(db, paymentId, division),
-  ])
-
-  const refund = refundedPayment?.enrollment_refunds?.find((entry) => entry.id === refundId) ?? null
-  if (!refundedPayment || !createdPayment || !refund) {
-    throw createPaymentError('생성된 정정 내역을 확인하지 못했습니다.', 500)
+  const result = data as {
+    requestId: string
+    refunds: EnrollmentRefund[]
+    refundedPayments: EnrollmentPayment[]
+    payments: EnrollmentPayment[]
   }
-
-  await invalidateCache('enrollments')
-  return {
-    refunds: [refund],
-    refundedPayments: [refundedPayment],
-    payments: [createdPayment],
-  }
+  const refreshRequired = await invalidateCache('enrollments').then(() => false, () => true)
+  return { ...result, refreshRequired }
 }
 
 export async function deleteRefund(

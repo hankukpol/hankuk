@@ -64,18 +64,22 @@ export function SortableHeader<K extends string>({
 }: SortableHeaderProps<K>) {
   const active = sort.key === sortKey
   const Icon = active ? (sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown
+  const nextAction = !active ? '오름차순 정렬' : sort.dir === 'asc' ? '내림차순 정렬' : '정렬 해제'
 
   return (
     <th
       className={`cursor-pointer select-none whitespace-nowrap ${className}`}
-      onClick={() => onSort(sortKey)}
+      aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
-      <span className={`inline-flex items-center gap-0.5 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
-        {label}
-        <Icon
-          className={`h-3.5 w-3.5 shrink-0 transition-colors ${active ? 'text-blue-500' : 'text-slate-300'}`}
-        />
-      </span>
+      <button type="button" className="admin-table-sort" onClick={() => onSort(sortKey)} aria-label={`${label} 정렬`} title={`${label}: ${nextAction}`}>
+        <span className={`admin-table-sort-label inline-flex items-center gap-2 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+          {label}
+          <Icon
+            aria-hidden="true"
+            className="admin-table-sort-icon h-4 w-4 shrink-0"
+          />
+        </span>
+      </button>
     </th>
   )
 }

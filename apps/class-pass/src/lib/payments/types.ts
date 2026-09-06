@@ -3,7 +3,7 @@ import type { BranchSeriesGroup, Course, Enrollment } from '@/types/database'
 export type PaymentMethod = 'card' | 'homepage' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
 export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
 export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
-export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded'
+export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded' | 'closed'
 export type PaymentCategory = 'tuition' | 'textbook' | 'material' | 'exam_fee' | 'extension' | 'etc'
 export type RefundMethod = 'card_cancel' | 'cash' | 'bank_transfer' | 'point' | 'other'
 export type RefundReasonCategory =
@@ -168,6 +168,7 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 }
 
 export const BILLING_STATUS_LABEL: Record<BillingStatus, string> = {
+  closed: '수강종료',
   unpaid: '미납',
   partial: '부분납',
   paid: '완납',

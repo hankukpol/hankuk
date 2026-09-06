@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { AdminDrawerSurface } from '@/components/admin/AdminDrawer'
+import { AdminPortal } from '@/components/admin/AdminPortal'
+import { AdminDialogClose } from '@/components/admin/AdminDialogClose'
 import {
   PAYMENT_METHOD_LABEL,
   REFUND_REASON_CATEGORIES,
@@ -13,7 +16,6 @@ import {
   type RefundReasonCategory,
 } from '@/lib/payments/types'
 import { formatPaymentDate, formatWon } from '@/lib/payments/format'
-import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 
 type RefundModalProps = {
   open: boolean
@@ -23,6 +25,8 @@ type RefundModalProps = {
   submitting?: boolean
   onClose: () => void
   onConfirm: (input: {
+    requestId: string
+    endEnrollment: boolean
     refunds: Array<{
       paymentId: number
       amount: number
@@ -109,8 +113,7 @@ export function RefundModal({
   onClose,
   onConfirm,
 }: RefundModalProps) {
-  const motionConfig = useMotionConfig()
-  const backdropDuration = useReducedMotionDuration(0.2)
+  const titleId = useId()
   const refundablePayments = useMemo(
     () => getRefundablePayments(payment, payments),
     [payment, payments],
@@ -125,16 +128,20 @@ export function RefundModal({
   const [cancelReceiptNo, setCancelReceiptNo] = useState('')
   const [refundAccountLast4, setRefundAccountLast4] = useState('')
   const [memo, setMemo] = useState('')
+  const requestId = useRef('')
+  const [endEnrollment, setEndEnrollment] = useState(false)
 
   useEffect(() => {
     if (!open || !payment) {
+      requestId.current = ''
       return
     }
+    if (!requestId.current) requestId.current = crypto.randomUUID()
 
     const nextPayments = getRefundablePayments(payment, payments)
     setDrafts(nextPayments.map((entry) => ({
       paymentId: entry.id,
-      enabled: true,
+      enabled: entry.id === payment.id,
       amount: String(getRemainingAmount(entry)),
       method: getDefaultRefundMethod(entry),
     })))
@@ -143,20 +150,8 @@ export function RefundModal({
     setCancelReceiptNo('')
     setRefundAccountLast4('')
     setMemo('')
+    setEndEnrollment(false)
   }, [open, payment, payments])
-
-  useEffect(() => {
-    if (!open) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting) {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, open, submitting])
 
   const student = payment?.enrollments
   const selectedDrafts = drafts.filter((draft) => draft.enabled)
@@ -184,6 +179,9 @@ export function RefundModal({
   const hasCardCancel = refundRequests.some((request) => request.method === 'card_cancel')
   const hasBankTransfer = refundRequests.some((request) => request.method === 'bank_transfer')
   const hasMultiplePayments = refundablePayments.length > 1
+  const sameCheckoutIds = payment?.checkout_group_id
+    ? new Set(refundablePayments.filter((entry) => entry.checkout_group_id === payment.checkout_group_id).map((entry) => entry.id))
+    : new Set<number>()
   const refundMetaInvalid = (
     (reasonCategory === 'other' && !reason.trim())
     || (hasCardCancel && !cancelReceiptNo.trim())
@@ -197,50 +195,21 @@ export function RefundModal({
   }
 
   return (
-    <AnimatePresence>
+    <AdminPortal><AnimatePresence>
       {open && payment ? (
-        <motion.div
-          role="presentation"
-          className="fixed inset-0 z-[140] flex items-center justify-center bg-black/40 px-5 sm:backdrop-blur-sm"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: backdropDuration }}
-          onClick={() => {
-            if (!submitting) {
-              onClose()
-            }
-          }}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[12px] bg-white p-6 shadow-[3px_5px_30px_0px_rgba(0,0,0,0.22)]"
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={motionConfig.modal}
-            onClick={(event) => event.stopPropagation()}
-          >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Refund</p>
-            <h3 className="mt-1 text-[21px] font-semibold tracking-[-0.231px] text-[#1d1d1f]">환불 처리</h3>
+        <AdminDrawerSurface labelledBy={titleId} priority={140} onClose={onClose} closeDisabled={submitting}>
+        <div className="admin-dialog-header flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 id={titleId} className="admin-dialog-title mt-1 break-words text-[21px] font-semibold tracking-[-0.231px] text-[#1d1d1f]">환불 처리</h3>
             <p className="mt-2 text-sm text-slate-700">
               {student?.name ?? '수강생'} / {courseName}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-full px-2 py-1 text-xs font-semibold text-slate-400 transition-all duration-200 ease-ios hover:bg-slate-100 hover:text-slate-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-          >
-            닫기
-          </button>
+          <AdminDialogClose onClick={onClose} disabled={submitting} />
         </div>
 
-        <div className="mt-5 rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700">
+        <fieldset disabled={submitting} className="admin-dialog-body min-w-0 pt-5">
+        <div className="rounded-[8px] bg-slate-50 p-4 text-sm text-slate-700">
           <p className="font-semibold text-[#1d1d1f]">
             기준 수납: {formatPaymentDate(payment.paid_at)} {PAYMENT_METHOD_LABEL[payment.method]} {formatWon(payment.amount)}
           </p>
@@ -250,9 +219,15 @@ export function RefundModal({
         </div>
 
         {hasMultiplePayments ? (
-          <p className="mt-3 rounded-[8px] bg-slate-50 px-3 py-2 text-xs text-[#0066cc]">
-            혼합 또는 분할 수납 {refundablePayments.length}건을 결제수단별로 나누어 환불합니다. 필요 없는 건은 체크를 해제해 주세요.
-          </p>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-slate-500">선택한 결제 한 건만 환불합니다. 다른 결제도 환불하려면 직접 선택해 주세요.</p>
+            {/* 토글이 아니라 한 번 실행되는 동작이므로 128px 고정폭 조건 버튼이 아닌 일반 실행 버튼을 쓴다. */}
+            {sameCheckoutIds.size > 1 ? (
+              <button type="button" className="admin-button" onClick={() => setDrafts((current) => current.map((draft) => ({ ...draft, enabled: sameCheckoutIds.has(draft.paymentId) })))}>
+                동일 결제 모두 선택
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="mt-5 space-y-2">
@@ -339,6 +314,17 @@ export function RefundModal({
         </div>
 
         <div className="mt-5 grid gap-4">
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 text-sm">
+              <input type="checkbox" aria-label="환불 후 수강 종료" checked={endEnrollment}
+                disabled={payment.enrollments?.status === 'cancelled'}
+                onChange={(event) => setEndEnrollment(event.target.checked)} />
+              환불 후 수강 종료
+            </label>
+            <p className="text-xs text-slate-500">
+              {endEnrollment ? '이미 이용한 금액은 그대로 보존하며, 수강과 이용 자격을 종료합니다.' : '체크하지 않으면 기존 수강 상태를 유지합니다. 전액 환불도 자동으로 수강을 종료하지 않습니다.'}
+            </p>
+          </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-slate-500">환불 사유</span>
             <select
@@ -411,7 +397,10 @@ export function RefundModal({
           </p>
         ) : null}
 
-        <div className="mt-6 flex items-center justify-end gap-2">
+          <p className="mt-4 text-xs text-slate-500">응답 오류가 나면 내용을 바꾸지 말고 같은 요청으로 다시 확인해 주세요. 실제 환불 여부는 단말기·입금 내역도 확인해야 합니다.</p>
+        </fieldset>
+
+        <div className="admin-dialog-footer">
           <button
             type="button"
             onClick={onClose}
@@ -423,6 +412,8 @@ export function RefundModal({
           <button
             type="button"
             onClick={() => onConfirm({
+              requestId: requestId.current,
+              endEnrollment,
               refunds: refundRequests.map((request) => ({
                 paymentId: request.paymentId,
                 amount: request.amount,
@@ -440,9 +431,8 @@ export function RefundModal({
             {submitting ? '저장 중...' : '환불 저장'}
           </button>
         </div>
-          </motion.div>
-        </motion.div>
+        </AdminDrawerSurface>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence></AdminPortal>
   )
 }

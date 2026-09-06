@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Staff PIN must be 4-20 characters.' }, { status: 400 })
+    return NextResponse.json({ error: '직원 PIN은 4~20자로 입력해 주세요.' }, { status: 400 })
   }
 
   await setPinHash('staff_pin_hash', await hashPin(parsed.data.pin))

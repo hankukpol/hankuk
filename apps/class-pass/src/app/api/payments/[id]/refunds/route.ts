@@ -11,6 +11,7 @@ import {
 } from '@/lib/payments/service'
 
 const createRefundSchema = z.object({
+  requestId: z.string().uuid(),
   amount: z.number().int().positive(),
   method: z.enum(['card_cancel', 'cash', 'bank_transfer', 'point', 'other']),
   reasonCategory: z.enum([

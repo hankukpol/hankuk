@@ -1,0 +1,81 @@
+{
+  "ok": false,
+  "design": "DESIGN.md",
+  "base": 4,
+  "declaredColors": 33,
+  "counts": {
+    "undeclared-color": 10
+  },
+  "violations": [
+    {
+      "file": "src/app/(staff)/scan/page.tsx",
+      "line": 1006,
+      "kind": "undeclared-color",
+      "value": "#b42318",
+      "snippet": "<p className=\"mt-2 text-[14px] font-medium text-[#b42318]\">{getUserErrorMessage(error)}</p>"
+    },
+    {
+      "file": "src/app/(staff)/scan/page.tsx",
+      "line": 1013,
+      "kind": "undeclared-color",
+      "value": "#19703a",
+      "snippet": "<p className=\"mt-2 text-[14px] font-medium text-[#19703a]\">{message}</p>"
+    },
+    {
+      "file": "src/app/(staff)/scan/qr-distribution-panel.tsx",
+      "line": 76,
+      "kind": "undeclared-color",
+      "value": "#020617",
+      "snippet": "className=\"relative mt-4 overflow-hidden rounded-[20px] border border-[var(--student-line)] bg-[#020617] p-2 shadow-[0_2"
+    },
+    {
+      "file": "src/app/(staff)/scan/qr-distribution-panel.tsx",
+      "line": 89,
+      "kind": "undeclared-color",
+      "value": "#19703a",
+      "snippet": "overlay.success ? 'bg-[#19703a]/92' : 'bg-[#b42318]/92'"
+    },
+    {
+      "file": "src/app/(staff)/scan/qr-distribution-panel.tsx",
+      "line": 89,
+      "kind": "undeclared-color",
+      "value": "#b42318",
+      "snippet": "overlay.success ? 'bg-[#19703a]/92' : 'bg-[#b42318]/92'"
+    },
+    {
+      "file": "src/app/(staff)/scan/qr-distribution-panel.tsx",
+      "line": 106,
+      "kind": "undeclared-color",
+      "value": "#eefaf1",
+      "snippet": "<span className=\"student-chip bg-[#eefaf1] text-[#19703a]\">완료</span>"
+    },
+    {
+      "file": "src/app/(staff)/scan/qr-distribution-panel.tsx",
+      "line": 106,
+      "kind": "undeclared-color",
+      "value": "#19703a",
+      "snippet": "<span className=\"student-chip bg-[#eefaf1] text-[#19703a]\">완료</span>"
+    },
+    {
+      "file": "src/app/(staff)/scan/quick-distribution-panel.tsx",
+      "line": 75,
+      "kind": "undeclared-color",
+      "value": "#eefaf1",
+      "snippet": "<span className=\"student-chip bg-[#eefaf1] text-[#19703a]\">조회 완료</span>"
+    },
+    {
+      "file": "src/app/(staff)/scan/quick-distribution-panel.tsx",
+      "line": 75,
+      "kind": "undeclared-color",
+      "value": "#19703a",
+      "snippet": "<span className=\"student-chip bg-[#eefaf1] text-[#19703a]\">조회 완료</span>"
+    },
+    {
+      "file": "src/app/(admin)/dashboard/courses/[id]/students/course-students-page-client.tsx",
+      "line": 500,
+      "kind": "undeclared-color",
+      "value": "#fafafc",
+      "snippet": "const editModalInputClass = 'h-11 rounded-[10px] border border-slate-200 bg-[#fafafc] px-3 text-sm text-[#1d1d1f] outlin"
+    }
+  ]
+}

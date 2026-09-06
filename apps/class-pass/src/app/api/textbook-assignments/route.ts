@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { invalidateMaterialCache } from '@/lib/distribution/material-cache'
 import {
   assignTextbook,
   getTextbookAssignmentsByCourse,
@@ -22,6 +22,9 @@ const assignmentSchema = z.object({
 })
 
 function mapAssignmentError(error: unknown) {
+  if (isTextbookAssignmentError(error, 'STUDENT_INACTIVE') || isTextbookAssignmentError(error, 'COURSE_INACTIVE')) {
+    return NextResponse.json({ error: '수강 중인 학생과 진행 중인 강좌에만 교재를 배정할 수 있습니다.' }, { status: 400 })
+  }
   if (isTextbookAssignmentError(error, 'ENROLLMENT_NOT_FOUND')) {
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
   }
@@ -98,9 +101,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '교재를 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const assignment = await assignTextbook(parsed.data.enrollmentId, parsed.data.materialId, 'admin')
-    await invalidateCache('materials')
-    return NextResponse.json({ assignment })
+    const assignment = await assignTextbook(parsed.data.enrollmentId, parsed.data.materialId, 'admin', division)
+    const refresh = await invalidateMaterialCache()
+    return NextResponse.json({ assignment, ...refresh })
   } catch (error) {
     const mapped = mapAssignmentError(error)
     if (mapped) {
@@ -139,9 +142,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: '교재를 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    await unassignTextbook(parsed.data.enrollmentId, parsed.data.materialId)
-    await invalidateCache('materials')
-    return NextResponse.json({ success: true })
+    await unassignTextbook(parsed.data.enrollmentId, parsed.data.materialId, division)
+    const refresh = await invalidateMaterialCache()
+    return NextResponse.json({ success: true, ...refresh })
   } catch (error) {
     const mapped = mapAssignmentError(error)
     if (mapped) {

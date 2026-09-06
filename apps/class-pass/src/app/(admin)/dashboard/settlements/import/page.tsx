@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { Download, FileSpreadsheet, Upload } from 'lucide-react'
@@ -237,9 +238,7 @@ export default function SettlementImportPage() {
       <section className="rounded-[8px] bg-white px-5 py-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Import</p>
             <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">엑셀 수납 가져오기</h1>
-            <p className="mt-2 text-sm text-slate-500">기존 운영 엑셀 또는 CSV를 읽어 수강생과 결제 기록을 한 번에 반영합니다.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -259,7 +258,7 @@ export default function SettlementImportPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[1fr,260px]">
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
           <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-center hover:bg-slate-100">
             <Upload className="h-7 w-7 text-slate-400" />
             <span className="mt-2 text-sm font-semibold text-slate-700">{loading ? '처리 중...' : 'xlsx, xls, csv 파일 선택'}</span>
@@ -309,7 +308,7 @@ export default function SettlementImportPage() {
       {(message || error) ? (
         <div>
           {message ? <p className="text-xs text-emerald-600">{message}</p> : null}
-          {error ? <p className="text-xs text-red-500">{error}</p> : null}
+          {error ? <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p> : null}
         </div>
       ) : null}
 
@@ -402,7 +401,7 @@ export default function SettlementImportPage() {
                     <td className="px-3 py-3 font-semibold text-[#1d1d1f]">{row.name || '-'}</td>
                     <td className="px-3 py-3 text-slate-500">{row.phone || '-'}</td>
                     <td className="px-3 py-3 text-slate-500">{row.examNumber || '-'}</td>
-                    <td className="px-3 py-3 text-right text-slate-700">{formatWon(row.amount)}</td>
+                    <td className="admin-table-amount px-3 py-3 text-right text-slate-700">{formatWon(row.amount)}</td>
                     <td className="px-3 py-3 text-slate-500">{row.paidAt}</td>
                     <td className="px-3 py-3">
                       <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${getStatusClass(row.status)}`}>

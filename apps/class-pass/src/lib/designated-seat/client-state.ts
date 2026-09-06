@@ -1,4 +1,5 @@
 import { withTenantPrefix } from '@/lib/tenant'
+import { fetchStudentApi } from '@/lib/student-session'
 import type { TenantType } from '@/lib/tenant'
 import type { DesignatedSeatStudentState } from '@/types/database'
 
@@ -10,7 +11,7 @@ export async function fetchDesignatedSeatState(params: {
   name: string
   phone: string
 }) {
-  const response = await fetch(withTenantPrefix('/api/designated-seats/state', params.tenantType), {
+  const response = await fetchStudentApi(params.tenantType, withTenantPrefix('/api/designated-seats/state', params.tenantType), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     cache: 'no-store',

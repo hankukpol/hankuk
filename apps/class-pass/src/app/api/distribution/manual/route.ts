@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { invalidateDistributionCache } from '@/lib/distribution/cache'
+import { getDistributionFailureDetails } from '@/lib/distribution/reason-messages'
 import { verifyEnrollmentOwnership } from '@/lib/class-pass-data'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -20,6 +21,7 @@ type DistributionResult = {
   success: boolean
   reason?: string
   log_id?: number | string | null
+  distributed_at?: string
   material_name?: string
   student_name?: string
 }
@@ -55,22 +57,23 @@ export async function POST(req: NextRequest) {
     let studentName: string | undefined
     const materialNames: string[] = []
     const failures: string[] = []
-    const distributedLogs: Array<{ logId: number; materialId: number }> = []
+    const distributedLogs: Array<{ logId: number; materialId: number; distributedAt?: string }> = []
 
     for (const materialId of materialIds) {
-      const rpcResult = await db.rpc('distribute_material', {
+      const rpcResult = await db.rpc('distribute_material_atomic', {
+        p_division: division,
         p_enrollment_id: parsed.data.enrollmentId,
         p_material_id: materialId,
-      })
+      }).then(result => result, error => ({ data: null, error }))
 
       if (rpcResult.error) {
-        failures.push('자료 배부 처리에 실패했습니다.')
+        failures.push('DISTRIBUTION_FAILED')
         continue
       }
 
       const result = rpcResult.data as DistributionResult | null
       if (!result?.success) {
-        failures.push(result?.reason ?? '자료 배부 처리에 실패했습니다.')
+        failures.push(result?.reason ?? 'DISTRIBUTION_FAILED')
         continue
       }
 
@@ -78,7 +81,7 @@ export async function POST(req: NextRequest) {
       studentName = result.student_name ?? studentName
       const logId = Number(result.log_id)
       if (Number.isInteger(logId) && logId > 0) {
-        distributedLogs.push({ logId, materialId })
+        distributedLogs.push({ logId, materialId, distributedAt: result.distributed_at })
       }
       if (result.material_name) {
         materialNames.push(result.material_name)
@@ -86,34 +89,35 @@ export async function POST(req: NextRequest) {
     }
 
     if (successCount === 0) {
-      if (failures.includes('NOT_ASSIGNED')) {
-        return NextResponse.json(
-          { error: '해당 학생에게 배정되지 않은 교재입니다.' },
-          { status: 400 },
-        )
-      }
-
+      const failureDetails = failures.map(getDistributionFailureDetails)
+      // 자격 거부와 서버 실패가 섞여도 서버 실패를 400으로 숨기지 않는다.
+      const failure = failureDetails.find((item) => item.status === 500)
+        ?? failureDetails[0]
+        ?? getDistributionFailureDetails()
       return NextResponse.json(
-        { error: failures[0] ?? '자료 배부 처리에 실패했습니다.' },
-        { status: failures.includes('자료 배부 처리에 실패했습니다.') ? 500 : 400 },
+        { error: failure.error, reason: failure.reason },
+        { status: failure.status },
       )
     }
 
-    await invalidateCache('distribution-logs')
+    const notice = await invalidateDistributionCache()
 
     const logRows = distributedLogs.length > 0
       ? await db
         .from('distribution_logs')
         .select('id,material_id,distributed_at')
         .in('id', distributedLogs.map((log) => log.logId))
+        .then(result => result, error => ({ data: null, error }))
       : { data: [], error: null }
 
     const logRowMap = new Map(
       (logRows.data ?? []).map((row) => [Number(row.id), row]),
     )
-    const distributedAtFallback = new Date().toISOString()
+    const refreshRequired = notice.refreshRequired || Boolean(logRows.error)
 
     return NextResponse.json({
+      ...notice,
+      ...(refreshRequired ? { refreshRequired: true } : {}),
       success: true,
       student_name: studentName,
       material_name: materialNames.length === 1 ? materialNames[0] : `${successCount}건`,
@@ -123,7 +127,7 @@ export async function POST(req: NextRequest) {
         return {
           log_id: log.logId,
           material_id: Number(row?.material_id ?? log.materialId),
-          distributed_at: typeof row?.distributed_at === 'string' ? row.distributed_at : distributedAtFallback,
+          distributed_at: log.distributedAt ?? (typeof row?.distributed_at === 'string' ? row.distributed_at : null),
         }
       }),
       success_count: successCount,

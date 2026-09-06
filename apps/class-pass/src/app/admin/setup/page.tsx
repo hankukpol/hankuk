@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import type { FormEvent } from 'react'
 import { useState } from 'react'
@@ -53,16 +54,15 @@ export default function AdminSetupPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-[#f8fafc] px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">관리자 설정</p>
-        <h1 className="mt-3 text-3xl font-extrabold text-gray-900">초기 관리자 설정</h1>
+    <div className="admin-auth-card">
+        <p className="text-xs font-semibold text-gray-400">관리자 설정</p>
+        <h1 className="admin-page-title mt-3">초기 관리자 설정</h1>
         <p className="mt-2 text-sm leading-6 text-gray-500">
           최초 한 번만 관리자 ID와 PIN을 등록합니다.
         </p>
 
         {setupComplete ? (
-          <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-6 text-emerald-800">
+          <div className="mt-6 border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-6 text-emerald-800">
             관리자 설정이 이미 완료되어 있습니다.{' '}
             <Link href={withTenantPrefix('/admin/login', tenant.type)} className="font-semibold underline">
               관리자 로그인
@@ -71,7 +71,7 @@ export default function AdminSetupPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-6 text-slate-600">
+            <div className="border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-6 text-slate-600">
               운영 환경에서는 bootstrap이 기본적으로 잠겨 있을 수 있습니다. 비활성 상태라면 운영 환경 변수를 확인해야 합니다.
             </div>
 
@@ -82,7 +82,7 @@ export default function AdminSetupPage() {
                 value={id}
                 onChange={(event) => setId(event.target.value)}
                 placeholder="선택 사항"
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
+                className="min-w-0 border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
               />
             </div>
 
@@ -94,7 +94,7 @@ export default function AdminSetupPage() {
                 onChange={(event) => setPin(event.target.value)}
                 placeholder="4자리 이상"
                 inputMode="numeric"
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
+                className="min-w-0 border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
               />
             </div>
 
@@ -106,23 +106,21 @@ export default function AdminSetupPage() {
                 onChange={(event) => setConfirmPin(event.target.value)}
                 placeholder="한 번 더 입력"
                 inputMode="numeric"
-                className="rounded-2xl border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
+                className="min-w-0 border border-slate-200 px-4 py-3 text-base text-gray-900 outline-none focus:border-slate-400"
               />
             </div>
 
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            {error ? <p className="text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
 
             <button
               type="submit"
               disabled={loading}
-              className="rounded-2xl px-5 py-4 text-lg font-bold text-white disabled:opacity-60"
-              style={{ background: 'var(--theme)' }}
+              className="admin-button admin-button-primary disabled:opacity-60"
             >
               {loading ? '설정 중...' : '관리자 설정 완료'}
             </button>
           </form>
         )}
-      </div>
     </div>
   )
 }

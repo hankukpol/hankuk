@@ -3,7 +3,7 @@ import type { TenantType } from '@/lib/tenant'
 
 export type CourseType = 'interview' | 'mock_exam' | 'lecture' | 'general'
 export type CourseStatus = 'active' | 'archived'
-export type EnrollmentStatus = 'active' | 'refunded'
+export type EnrollmentStatus = 'active' | 'refunded' | 'cancelled'
 export type EnrollmentLifecycleStatus = EnrollmentStatus | 'suspended'
 export type EnrollmentStudentType = 'academy' | 'general'
 export type StudentAuthMethod = 'birth_date' | 'pin'
@@ -11,7 +11,7 @@ export type MaterialType = 'handout' | 'textbook'
 export type PaymentMethod = 'card' | 'homepage' | 'cash' | 'bank_transfer' | 'point' | 'mixed' | 'free' | 'other'
 export type WritablePaymentMethod = Exclude<PaymentMethod, 'mixed'>
 export type PaymentStatus = 'paid' | 'partial_refunded' | 'fully_refunded' | 'voided'
-export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded'
+export type BillingStatus = 'unpaid' | 'partial' | 'paid' | 'exempt' | 'refunded' | 'closed'
 export type PaymentCategory = 'tuition' | 'textbook' | 'material' | 'exam_fee' | 'extension' | 'etc'
 export type BranchSeriesGroup = 'public' | 'career'
 export type RefundMethod = 'card_cancel' | 'cash' | 'bank_transfer' | 'point' | 'other'
@@ -147,6 +147,8 @@ export interface Enrollment {
   photo_url: string | null
   memo: string | null
   refunded_at: string | null
+  ended_at?: string | null
+  ended_reason?: string | null
   suspended_at: string | null
   suspension_reason: string | null
   suspended_by: string | null
@@ -729,8 +731,10 @@ export interface StaffJwtPayload {
   division?: TenantType
   adminId?: string
   staffName?: string
-  authMethod?: 'admin_pin' | 'staff_pin' | 'operator' | 'operator_staff' | 'portal_bridge' | 'super_admin'
+  authMethod?: 'admin_pin' | 'staff_pin' | 'stored_staff' | 'operator' | 'operator_staff' | 'portal_bridge' | 'super_admin'
   sessionVersion?: number
+  storedStaffAccountId?: string
+  storedStaffCredential?: string
   accountId?: number
   membershipId?: number
   branchSlug?: TenantType

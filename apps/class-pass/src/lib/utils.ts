@@ -109,13 +109,18 @@ export function getTodayKey(tz = 'Asia/Seoul'): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: tz })
 }
 
-export function parsePositiveInt(value: string | null | undefined): number | null {
-  if (!value) {
+export function parsePositiveInt(value: string | number | null | undefined): number | null {
+  if (typeof value !== 'string' && typeof value !== 'number') {
     return null
   }
 
   const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return null
+  }
+
+  // String IDs must use their canonical decimal form; numeric callers remain supported.
+  return typeof value === 'number' || String(parsed) === value ? parsed : null
 }
 
 export function maskPhone(phone: string) {

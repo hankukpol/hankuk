@@ -1,5 +1,7 @@
 'use client'
 
+import { fetchStudentApi } from '@/lib/student-session'
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -13,7 +15,7 @@ import { formatCourseTypeLabel, formatKoreanDate } from '@/lib/utils'
 
 const LS_NAME = 'class_pass_student_name'
 const LS_PHONE = 'class_pass_student_phone'
-const QR_TOKEN_REFRESH_MS = 5 * 60 * 1000
+const PASS_SNAPSHOT_REFRESH_MS = 10_000
 
 function replaceStudentLocation(target: string, router: ReturnType<typeof useRouter>) {
   if (typeof window !== 'undefined') {
@@ -152,19 +154,32 @@ export default function StudentCoursePassPage() {
     }
 
     let cancelled = false
-    let pollTimer: ReturnType<typeof setInterval> | null = null
-    let qrRefreshTimer: ReturnType<typeof setInterval> | null = null
-    let removeVisibilityListener: (() => void) | null = null
-    let receiptMaterialCount = 0
+    let inFlight: Promise<void> | null = null
+    let loaded = false
+    setLoading(true)
+    setError('')
+    setData(null)
+    autoOpenedRef.current = false
+    prevReceiptCountRef.current = 0
+    const isCurrentRequest = () => {
+      if (cancelled) return false
+      if (sessionStorage.getItem(LS_NAME) === name && sessionStorage.getItem(LS_PHONE) === phone) return true
+      setData(null)
+      setError('학생 로그인 정보가 변경되었습니다. 강좌 목록에서 다시 열어 주세요.')
+      setLoading(false)
+      return false
+    }
 
-    async function load(): Promise<PassPayload> {
-      const response = await fetch(withTenantPrefix('/api/enrollments/pass', tenant.type), {
+    async function load(): Promise<void> {
+      const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/enrollments/pass', tenant.type), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         body: JSON.stringify({ enrollmentId, courseSlug: params.courseSlug, name, phone }),
       })
       const payload = await response.json().catch(() => null)
-      if (!response.ok && !cancelled && typeof payload?.redirectTo === 'string') {
+      if (!isCurrentRequest()) return
+      if (!response.ok && typeof payload?.redirectTo === 'string') {
         if (isCurrentStudentLocation(payload.redirectTo)) {
           if (process.env.NODE_ENV !== 'production') {
             console.warn('[student-pass] blocked same-location redirect', {
@@ -184,124 +199,41 @@ export default function StudentCoursePassPage() {
       if (!response.ok) {
         throw new Error(payload?.error ?? '수강증 정보를 불러오지 못했습니다.')
       }
-      if (!cancelled) {
-        setData(payload as PassPayload)
+      const passData = payload as PassPayload
+      const nextReceiptCount = Object.keys(passData.receipts).length + Object.keys(passData.textbookReceipts).length
+      if (loaded && nextReceiptCount > prevReceiptCountRef.current) {
+        try { navigator.vibrate?.([100, 50, 100]) } catch { /* optional vibration */ }
       }
-      return payload as PassPayload
+      prevReceiptCountRef.current = nextReceiptCount
+      loaded = true
+      setData(passData)
+      setError('')
+      setLoading(false)
     }
 
-    async function pollReceipts() {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-        return
-      }
-
-      const response = await fetch(
-        withTenantPrefix(
-          `/api/enrollments/${enrollmentId}/receipts?name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`,
-          tenant.type,
-        ),
-        { cache: 'no-store' },
-      )
-      const payload = await response.json().catch(() => null)
-      if (response.ok && !cancelled) {
-        const newReceipts = payload.receipts ?? {}
-        const newTextbookReceipts = payload.textbookReceipts ?? {}
-        const nextReceiptCount =
-          Object.keys(newReceipts).length
-          + Object.keys(newTextbookReceipts).length
-
-        if (nextReceiptCount > prevReceiptCountRef.current && prevReceiptCountRef.current > 0) {
-          try {
-            navigator.vibrate?.([100, 50, 100])
-          } catch {
-            // optional vibration
-          }
-        }
-
-        if (receiptMaterialCount > 0 && nextReceiptCount >= receiptMaterialCount && pollTimer) {
-          clearInterval(pollTimer)
-          pollTimer = null
-        }
-
-        prevReceiptCountRef.current = nextReceiptCount
-        setData((current) => (
-          current
-            ? {
-              ...current,
-              receipts: newReceipts,
-              textbookReceipts: newTextbookReceipts,
-            }
-            : current
-        ))
-      }
-    }
-
-    load()
-      .then((passData) => {
-        if (!cancelled) {
-          setLoading(false)
-          prevReceiptCountRef.current =
-            Object.keys(passData.receipts).length
-            + Object.keys(passData.textbookReceipts).length
-          receiptMaterialCount = passData.materials.length + passData.textbooks.length
-
-          const shouldPollReceipts =
-            passData.course.feature_qr_distribution &&
-            receiptMaterialCount > 0 &&
-            prevReceiptCountRef.current < receiptMaterialCount
-
-          if (shouldPollReceipts) {
-            pollTimer = setInterval(() => {
-              void pollReceipts()
-            }, 10_000)
-          }
-
-          if (passData.course.feature_qr_pass) {
-            qrRefreshTimer = setInterval(() => {
-              if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-                return
-              }
-
-              void load().catch(() => null)
-            }, QR_TOKEN_REFRESH_MS)
-          }
-
-          const handleVisibilityChange = () => {
-            if (document.visibilityState !== 'visible') {
-              return
-            }
-
-            if (passData.course.feature_qr_pass) {
-              void load().catch(() => null)
-            }
-
-            if (shouldPollReceipts) {
-              void pollReceipts()
-            }
-          }
-
-          document.addEventListener('visibilitychange', handleVisibilityChange)
-          removeVisibilityListener = () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange)
-          }
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) {
+    // One authoritative snapshot also rotates QR tokens. Do not gate refresh on the
+    // initial material count, receipt count, or QR feature flags: all can change.
+    function refresh() {
+      if (!isCurrentRequest() || document.visibilityState !== 'visible' || inFlight) return
+      inFlight = load().catch((reason: unknown) => {
+        if (isCurrentRequest() && !loaded) {
           setError(reason instanceof Error ? reason.message : '수강증 정보를 불러오지 못했습니다.')
           setLoading(false)
         }
-      })
+      }).finally(() => { inFlight = null })
+    }
+    refresh()
+    const pollTimer = setInterval(refresh, PASS_SNAPSHOT_REFRESH_MS)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    window.addEventListener('pageshow', refresh)
 
     return () => {
       cancelled = true
-      if (pollTimer) {
-        clearInterval(pollTimer)
-      }
-      if (qrRefreshTimer) {
-        clearInterval(qrRefreshTimer)
-      }
-      removeVisibilityListener?.()
+      clearInterval(pollTimer)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('pageshow', refresh)
     }
   }, [enrollmentId, params.courseSlug, router, tenant.type])
 
@@ -356,7 +288,7 @@ export default function StudentCoursePassPage() {
       <div className="student-page flex min-h-dvh items-center justify-center px-6">
         <div className="student-card max-w-md px-6 py-7 text-center">
           <p className="text-[17px] tracking-[-0.03em] text-[var(--student-text-muted)]">
-            {error || '수강증 정보를 불러오지 못했습니다.'}
+            {getUserErrorMessage(error || '수강증 정보를 불러오지 못했습니다.')}
           </p>
           <button onClick={goBack} className="student-pill-button student-pill-primary mt-5 w-full">
             강좌 목록으로

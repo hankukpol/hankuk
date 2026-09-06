@@ -52,7 +52,7 @@ export async function PATCH(
   const { id } = await context.params
   const accountId = parsePositiveInt(id)
   if (!accountId) {
-    return NextResponse.json({ error: 'Invalid operator account id.' }, { status: 400 })
+    return NextResponse.json({ error: '운영자 계정을 찾을 수 없는 요청입니다.' }, { status: 400 })
   }
 
   const existing = await getOperatorAccountWithMembershipsById(accountId)
@@ -104,11 +104,11 @@ export async function DELETE(
   const { id } = await context.params
   const accountId = parsePositiveInt(id)
   if (!accountId) {
-    return NextResponse.json({ error: 'Invalid operator account id.' }, { status: 400 })
+    return NextResponse.json({ error: '운영자 계정을 찾을 수 없는 요청입니다.' }, { status: 400 })
   }
 
   if (payload?.accountId === accountId) {
-    return NextResponse.json({ error: 'You cannot delete your own operator account.' }, { status: 400 })
+    return NextResponse.json({ error: '현재 로그인한 본인 계정은 삭제할 수 없습니다.' }, { status: 400 })
   }
 
   const existing = await getOperatorAccountWithMembershipsById(accountId)
@@ -128,7 +128,7 @@ export async function DELETE(
     ).length
 
     if (activeSuperAdminCount <= 1) {
-      return NextResponse.json({ error: 'At least one active super admin account is required.' }, { status: 400 })
+      return NextResponse.json({ error: '활성 최고 관리자 계정이 최소 1개는 있어야 합니다.' }, { status: 400 })
     }
   }
 

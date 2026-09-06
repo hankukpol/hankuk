@@ -14,15 +14,15 @@ import {
 
 function staffAccountMutationErrorResponse(error: unknown) {
   if (error instanceof StaffAccountConflictError) {
-    return NextResponse.json({ error: 'A staff account with this name already exists.' }, { status: 409 })
+    return NextResponse.json({ error: '같은 이름의 직원 계정이 이미 있습니다. 다른 이름을 사용해 주세요.' }, { status: 409 })
   }
 
   if (error instanceof StaffAccountNotFoundError) {
-    return NextResponse.json({ error: 'Staff account not found.' }, { status: 404 })
+    return NextResponse.json({ error: '직원 계정을 찾을 수 없습니다. 목록을 새로고침해 주세요.' }, { status: 404 })
   }
 
   if (error instanceof StaffAccountsChangedError) {
-    return NextResponse.json({ error: 'Staff accounts changed. Please reload and try again.' }, { status: 409 })
+    return NextResponse.json({ error: '직원 계정이 다른 곳에서 변경되었습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.' }, { status: 409 })
   }
 
   return null
@@ -50,11 +50,11 @@ export async function POST(req: NextRequest) {
     const pin = (body?.pin ?? '').trim()
 
     if (!name || !pin) {
-      return NextResponse.json({ error: 'Enter name and PIN.' }, { status: 400 })
+      return NextResponse.json({ error: '이름과 PIN을 입력해 주세요.' }, { status: 400 })
     }
 
     if (pin.length < 4) {
-      return NextResponse.json({ error: 'PIN must be at least 4 digits.' }, { status: 400 })
+      return NextResponse.json({ error: 'PIN은 4자리 이상 입력해 주세요.' }, { status: 400 })
     }
 
     const account = await createStaffAccount({
@@ -82,11 +82,11 @@ export async function PATCH(req: NextRequest) {
     const pin = (body?.pin ?? '').trim()
 
     if (!id) {
-      return NextResponse.json({ error: 'Staff account ID is required.' }, { status: 400 })
+      return NextResponse.json({ error: '직원 계정을 선택해 주세요.' }, { status: 400 })
     }
 
     if (pin && pin.length < 4) {
-      return NextResponse.json({ error: 'PIN must be at least 4 digits.' }, { status: 400 })
+      return NextResponse.json({ error: 'PIN은 4자리 이상 입력해 주세요.' }, { status: 400 })
     }
 
     const account = await updateStaffAccount({
@@ -113,7 +113,7 @@ export async function DELETE(req: NextRequest) {
     const id = typeof body?.id === 'string' ? body.id.trim() : ''
 
     if (!id) {
-      return NextResponse.json({ error: 'Staff account ID is required.' }, { status: 400 })
+      return NextResponse.json({ error: '직원 계정을 선택해 주세요.' }, { status: 400 })
     }
 
     await deleteStaffAccount(id)

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { getAppConfig } from '@/lib/app-config'
 import { handleRouteError } from '@/lib/api/error-response'
 import { verifyStudentAuth } from '@/lib/auth/student-auth'
+import { attachStudentSession } from '@/lib/auth/student-session'
+import { validateSameOriginRequest } from '@/lib/auth/request-origin'
 import {
   getClientIp,
   peekRateLimit,
@@ -22,6 +24,8 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const originError = validateSameOriginRequest(req)
+  if (originError) return originError
   try {
     const config = await getAppConfig()
     if (!config.student_login_enabled) {
@@ -88,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
 
     await resetRateLimit(rateLimitKey)
-    return NextResponse.json({ courses })
+    return attachStudentSession(NextResponse.json({ courses }), student)
   } catch (error) {
     if (isStudentIdentityConflictError(error)) {
       await recordRateLimitFailure(`lookup:${getClientIp(req)}`)

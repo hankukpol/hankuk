@@ -1,0 +1,15 @@
+.groups { display: grid; min-width: 0; gap: 24px; margin-top: 24px; }
+.group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.group + .group { border-top: 1px solid var(--admin-line-soft); }
+.legend { margin-bottom: 12px; padding: 0; color: var(--admin-text); font-size: var(--admin-type-body); font-weight: 600; line-height: 1.5; }
+.group + .group .legend { float: left; width: 100%; padding-top: 24px; }
+.options { display: grid; clear: both; min-width: 0; gap: 8px 16px; grid-template-columns: minmax(0, 1fr); }
+.option { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: var(--admin-control-height); padding: 8px 12px; border-radius: var(--admin-radius); color: var(--admin-text); font-size: var(--admin-type-body); line-height: 1.5; cursor: pointer; }
+.option span { min-width: 0; overflow-wrap: anywhere; }
+.option input[type='checkbox'] { width: 20px; height: 20px; flex: 0 0 20px; margin: 0; }
+.option:hover:not(:has(input:disabled)) { background: var(--admin-surface-soft); }
+.option:has(input:checked):not(:has(input:disabled)) { background: var(--admin-accent-soft); }
+.option:has(input:disabled) { color: var(--admin-text-disabled); cursor: not-allowed; }
+.help { margin: 8px 0 0; color: var(--admin-text-muted); font-size: var(--admin-type-caption); line-height: 1.5; }
+@media (min-width: 640px) { .options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

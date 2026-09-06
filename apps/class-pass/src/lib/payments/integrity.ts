@@ -1,4 +1,5 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { readPaymentPages } from '@/lib/payments/read-pages'
 import type { BillingStatus, CourseStatus, EnrollmentStatus, PaymentCategory, PaymentStatus } from '@/types/database'
 
 type ServerClient = ReturnType<typeof createServerClient>
@@ -145,16 +146,14 @@ function chunk<T>(values: T[], size: number) {
 async function fetchBillings(db: ServerClient, enrollmentIds: number[]) {
   const rows: BillingRow[] = []
   for (const ids of chunk(enrollmentIds, QUERY_CHUNK_SIZE)) {
-    const { data, error } = await db
+    const data = await readPaymentPages<BillingRow>((from, to) => db
       .from('enrollment_billing')
       .select('id,enrollment_id,course_id,expected_amount,discount_amount,payable_amount,tuition_exempt,status,created_at,updated_at')
       .in('enrollment_id', ids)
+      .order('id', { ascending: true })
+      .range(from, to))
 
-    if (error) {
-      throw error
-    }
-
-    rows.push(...((data ?? []) as BillingRow[]))
+    rows.push(...data)
   }
 
   return rows
@@ -163,16 +162,14 @@ async function fetchBillings(db: ServerClient, enrollmentIds: number[]) {
 async function fetchPayments(db: ServerClient, enrollmentIds: number[]) {
   const rows: PaymentRow[] = []
   for (const ids of chunk(enrollmentIds, QUERY_CHUNK_SIZE)) {
-    const { data, error } = await db
+    const data = await readPaymentPages<PaymentRow>((from, to) => db
       .from('enrollment_payments')
       .select('id,enrollment_id,course_id,amount,status,category,method,paid_date,created_at')
       .in('enrollment_id', ids)
+      .order('id', { ascending: true })
+      .range(from, to))
 
-    if (error) {
-      throw error
-    }
-
-    rows.push(...((data ?? []) as PaymentRow[]))
+    rows.push(...data)
   }
 
   return rows
@@ -181,16 +178,14 @@ async function fetchPayments(db: ServerClient, enrollmentIds: number[]) {
 async function fetchRefunds(db: ServerClient, paymentIds: number[]) {
   const rows: RefundRow[] = []
   for (const ids of chunk(paymentIds, QUERY_CHUNK_SIZE)) {
-    const { data, error } = await db
+    const data = await readPaymentPages<RefundRow>((from, to) => db
       .from('enrollment_refunds')
       .select('id,payment_id,amount,refunded_at')
       .in('payment_id', ids)
+      .order('id', { ascending: true })
+      .range(from, to))
 
-    if (error) {
-      throw error
-    }
-
-    rows.push(...((data ?? []) as RefundRow[]))
+    rows.push(...data)
   }
 
   return rows
@@ -203,6 +198,10 @@ function expectedBillingStatus(
   paymentCount: number,
   refundAmount: number,
 ): BillingStatus {
+  if (enrollment.status === 'cancelled') {
+    return 'closed'
+  }
+
   if (billing.tuition_exempt) {
     return 'exempt'
   }
@@ -276,21 +275,19 @@ export async function checkPaymentIntegrity(
     MAX_ENROLLMENTS_CAP,
   )
 
-  let courseQuery = db
-    .from('courses')
-    .select('id,name,status,tuition_amount')
-    .eq('division', division)
+  const courses = await readPaymentPages<CourseRow>((from, to) => {
+    let courseQuery = db
+      .from('courses')
+      .select('id,name,status,tuition_amount')
+      .eq('division', division)
 
-  if (options.courseId) {
-    courseQuery = courseQuery.eq('id', options.courseId)
-  }
+    if (options.courseId) {
+      courseQuery = courseQuery.eq('id', options.courseId)
+    }
 
-  const { data: courseData, error: courseError } = await courseQuery
-  if (courseError) {
-    throw courseError
-  }
+    return courseQuery.order('id', { ascending: true }).range(from, to)
+  })
 
-  const courses = (courseData ?? []) as CourseRow[]
   const courseById = new Map(courses.map((course) => [course.id, course]))
   const courseIds = courses.map((course) => course.id)
 
@@ -313,18 +310,26 @@ export async function checkPaymentIntegrity(
     }
   }
 
-  const { data: enrollmentData, error: enrollmentError } = await db
-    .from('enrollments')
-    .select('id,course_id,student_id,name,phone,exam_number,status,created_at')
-    .in('course_id', courseIds)
-    .order('created_at', { ascending: false })
-    .limit(maxEnrollments + 1)
+  let allEnrollments: EnrollmentRow[] = []
+  for (const ids of chunk(courseIds, QUERY_CHUNK_SIZE)) {
+    const rows = await readPaymentPages<EnrollmentRow>((from, to) => db
+      .from('enrollments')
+      .select('id,course_id,student_id,name,phone,exam_number,status,created_at')
+      .in('course_id', ids)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to), maxEnrollments + 1)
 
-  if (enrollmentError) {
-    throw enrollmentError
+    // Each disjoint course chunk contributes its newest candidates. Keep the
+    // global newest max + 1 so the cap and overflow probe retain their meaning.
+    allEnrollments.push(...rows)
+    allEnrollments.sort((left, right) => (
+      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+      || right.id - left.id
+    ))
+    allEnrollments = allEnrollments.slice(0, maxEnrollments + 1)
   }
 
-  const allEnrollments = (enrollmentData ?? []) as EnrollmentRow[]
   const truncated = allEnrollments.length > maxEnrollments
   const enrollments = truncated ? allEnrollments.slice(0, maxEnrollments) : allEnrollments
   const enrollmentIds = enrollments.map((enrollment) => enrollment.id)
@@ -543,7 +548,7 @@ export async function checkPaymentIntegrity(
       }))
     }
 
-    if (billing.tuition_exempt && activeFreeTuitionPaymentCount === 0) {
+    if (billing.tuition_exempt && activeFreeTuitionPaymentCount === 0 && enrollment.status !== 'cancelled') {
       const isRefundedEnrollment = enrollment.status === 'refunded'
       issues.push(createBaseIssue({
         severity: isRefundedEnrollment ? 'error' : 'warning',

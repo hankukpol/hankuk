@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid cache tag.' }, { status: 400 })
+    return NextResponse.json({ error: '캐시 갱신 대상이 올바르지 않습니다.' }, { status: 400 })
   }
 
   await invalidateCache(parsed.data.tag as CacheTag | 'all')

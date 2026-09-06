@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { SortableHeader, sortRows, useSortState } from '@/components/admin/sortable-header'
@@ -16,6 +17,7 @@ import { formatWon } from '@/lib/payments/format'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { EnrollmentPayment, SettlementEntryConfirmation } from '@/lib/payments/types'
 import type { Course } from '@/types/database'
+import { buildDailySettlementManifest, countPendingSettlementEntries } from '@/lib/payments/settlement-manifest'
 
 function getTodayKst() {
   return new Intl.DateTimeFormat('sv-SE', {
@@ -56,9 +58,9 @@ function toSeriesFilterValue(group: string, label: string) {
 function StatCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'blue' | 'rose' }) {
   const toneClass = tone === 'blue' ? 'text-blue-600' : tone === 'rose' ? 'text-rose-600' : 'text-slate-900'
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+    <article className="border border-slate-200 bg-white">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${toneClass}`}>{value}</p>
+      <p className={`mt-1 font-bold ${toneClass}`}>{value}</p>
     </article>
   )
 }
@@ -145,6 +147,7 @@ export default function DailySettlementsPage() {
   const [courses, setCourses] = useState<Course[]>([])
   const [courseId, setCourseId] = useState(getInitialCourseId)
   const [rawPayments, setRawPayments] = useState<EnrollmentPayment[]>([])
+  const [loadedReportScope, setLoadedReportScope] = useState<string | null>(null)
   const [filter, setFilter] = useState<SettlementFilterKind>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const { sort: settlementSort, toggle: toggleSettlementSort } = useSortState<
@@ -182,6 +185,7 @@ export default function DailySettlementsPage() {
 
   const loadReport = useCallback(async () => {
     setLoading(true)
+    setLoadedReportScope(null)
     setError('')
 
     try {
@@ -196,6 +200,7 @@ export default function DailySettlementsPage() {
       }
 
       setRawPayments((result?.payments ?? []) as EnrollmentPayment[])
+      setLoadedReportScope(`${fromDate}|${toDate}|${courseId}`)
     } catch (reason) {
       setRawPayments([])
       setError(reason instanceof Error ? reason.message : '정산 데이터를 불러오지 못했습니다.')
@@ -231,7 +236,7 @@ export default function DailySettlementsPage() {
   }, [fromDate, toDate])
 
   useEffect(() => {
-    fetch('/api/courses?activeOnly=1', { cache: 'no-store' })
+    fetch('/api/courses', { cache: 'no-store' })
       .then(async (response) => {
         const result = await response.json().catch(() => null)
         if (!response.ok) {
@@ -395,13 +400,18 @@ export default function DailySettlementsPage() {
     refundRate: 0,
   }
   const hasActiveLedgerSearch = searchTerm.trim().length > 0
-  const confirmationDisabledReason = !isSingleDay
+  const pendingEntryCount = countPendingSettlementEntries(rawPayments, fromDate)
+  const confirmationDisabledReason = loading || error || loadedReportScope !== `${fromDate}|${toDate}|${courseId}`
+    ? '현재 조건의 정산 내역을 먼저 조회해 주세요.'
+    : !isSingleDay
     ? '정산 확인은 단일 날짜 조회 상태에서만 처리할 수 있습니다.'
     : courseId || seriesFilter !== 'all'
       ? '정산 확인은 전체 강좌·전체 직렬 조회 상태에서만 처리할 수 있습니다.'
       : hasActiveLedgerSearch
         ? '검색어를 지운 뒤 전체 결제 명단 기준으로 정산 확인을 처리할 수 있습니다.'
-        : ''
+        : pendingEntryCount > 0
+          ? `미확인 수납·환불 ${pendingEntryCount}건을 먼저 확인해 주세요.`
+          : ''
   const canConfirmSettlement = !confirmationDisabledReason
   const confirmationStatus = confirmation?.effectiveStatus ?? 'unconfirmed'
   const confirmationLabel = confirmationStatus === 'confirmed'
@@ -425,7 +435,7 @@ export default function DailySettlementsPage() {
       const response = await fetch('/api/settlements/confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: fromDate }),
+        body: JSON.stringify({ date: fromDate, expectedManifest: buildDailySettlementManifest(rawPayments, fromDate) }),
       })
       const result = await response.json().catch(() => null)
 
@@ -576,9 +586,7 @@ export default function DailySettlementsPage() {
       <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Daily Settlement</p>
-            <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">일일 정산</h1>
-            <p className="mt-2 text-sm text-slate-500">기간별 수납, 환불, 영수증 번호 범위와 결제자 명단을 확인합니다.</p>
+            <h1 className="admin-page-title mt-1">일일 정산</h1>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -630,7 +638,7 @@ export default function DailySettlementsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[180px,180px,1fr,180px,auto]">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[160px_160px_minmax(0,1fr)_128px_auto]">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-slate-500">시작일</span>
             <input
@@ -660,7 +668,7 @@ export default function DailySettlementsPage() {
             >
               <option value="">전체 강좌</option>
               {courses.map((course) => (
-                <option key={course.id} value={course.id}>{course.name}</option>
+                <option key={course.id} value={course.id}>{course.name}{course.status === 'archived' ? ' (보관)' : ''}</option>
               ))}
             </select>
           </label>
@@ -743,7 +751,7 @@ export default function DailySettlementsPage() {
                   </p>
                 ) : null}
                 {confirmationError ? (
-                  <p className="mt-1 text-xs font-semibold text-rose-600">{confirmationError}</p>
+                  <p className="mt-1 text-xs font-semibold text-rose-600">{getUserErrorMessage(confirmationError)}</p>
                 ) : null}
               </div>
               {confirmationStatus !== 'confirmed' ? (
@@ -767,9 +775,9 @@ export default function DailySettlementsPage() {
         )}
       </section>
 
-      {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+      {error ? <p className="text-sm font-medium text-rose-600">{getUserErrorMessage(error)}</p> : null}
 
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+      <section className="admin-metric-strip">
         <StatCard label="총매출" value={formatWon(summary.grossAmount)} />
         <StatCard label="환불" value={formatWon(summary.refundAmount)} tone="rose" />
         <StatCard label="순매출" value={formatWon(summary.netAmount)} tone="blue" />
@@ -886,15 +894,13 @@ export default function DailySettlementsPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
+      <section className="admin-table-card rounded-2xl border border-slate-200 bg-white">
+        <div className="admin-table-toolbar flex flex-wrap items-center gap-3 border-b border-slate-100 py-4">
+          <div className="w-full min-w-0">
             <h2 className="text-base font-bold text-[#1d1d1f]">결제 명단</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {isSingleDay ? fromDate : `${fromDate} ~ ${toDate}`} · 시각 역순으로 수납과 환불을 함께 표시합니다.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">{isSingleDay ? fromDate : `${fromDate} ~ ${toDate}`}</p>
           </div>
-          <label className="relative w-full xl:max-w-[460px]">
+          <label className="admin-students-search relative">
             <span className="sr-only">결제 명단 검색</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -905,7 +911,7 @@ export default function DailySettlementsPage() {
               className="h-10 w-full rounded-[8px] border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             />
           </label>
-          <div className="flex shrink-0 rounded-[8px] bg-slate-100 p-1">
+          <div className="admin-choice-group flex shrink-0 flex-wrap gap-1" role="group" aria-label="정산 내역 구분">
             {[
               ['all', '전체'],
               ['payment', '수납만'],
@@ -915,16 +921,15 @@ export default function DailySettlementsPage() {
                 key={value}
                 type="button"
                 onClick={() => setFilter(value as SettlementFilterKind)}
-                className={`rounded-[7px] px-3 py-1.5 text-xs font-bold transition ${
-                  filter === value ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
+                aria-pressed={filter === value}
+                className="admin-choice-button"
               >
                 {label}
               </button>
             ))}
           </div>
           {entryConfirmationError ? (
-            <p className="text-xs font-semibold text-rose-600 xl:basis-full xl:text-right">{entryConfirmationError}</p>
+            <p className="text-xs font-semibold text-rose-600 xl:basis-full xl:text-right">{getUserErrorMessage(entryConfirmationError)}</p>
           ) : null}
         </div>
         <div className="overflow-x-auto">
@@ -955,7 +960,7 @@ export default function DailySettlementsPage() {
                 <React.Fragment key={row.id}>
                   {checkoutGroup ? (
                     <tr className="bg-blue-50/70">
-                      <td colSpan={13} className="px-4 py-3">
+                      <td colSpan={13} className="admin-table-course px-4 py-3">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -964,7 +969,7 @@ export default function DailySettlementsPage() {
                               </span>
                               <span className="text-sm font-bold text-[#1d1d1f]">{checkoutGroup.rows[0]?.studentName}</span>
                               <span className="text-xs font-semibold text-slate-500">
-                                {checkoutGroup.rows.length}개 강좌 · {formatWon(checkoutGroup.totalAmount)}
+                                {checkoutGroup.rows.length}건 · {formatWon(checkoutGroup.totalAmount)}
                               </span>
                               <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
                                 checkoutGroup.status === 'confirmed'
@@ -981,7 +986,7 @@ export default function DailySettlementsPage() {
                               </span>
                             </div>
                             <p className="mt-1 truncate text-xs text-slate-500">
-                              {checkoutGroup.rows.map((groupRow) => groupRow.courseName).join(' / ')}
+                              {Array.from(new Set(checkoutGroup.rows.map((groupRow) => groupRow.courseName))).join(' / ')}
                             </p>
                           </div>
                           <button
@@ -1015,7 +1020,7 @@ export default function DailySettlementsPage() {
                       {row.studentTypeLabel}
                     </span>
                   </td>
-                  <td className="max-w-[160px] px-3 py-2.5 text-sm text-slate-600">{row.courseName}</td>
+                  <td className="admin-table-course max-w-[160px] px-3 py-2.5 text-sm text-slate-600">{row.courseName}</td>
                   <td className="whitespace-nowrap px-3 py-2.5">
                     <span className={`inline-flex rounded-[8px] px-2 py-0.5 text-xs font-bold ${
                       row.seriesGroup === 'career' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
@@ -1025,9 +1030,9 @@ export default function DailySettlementsPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-sm font-semibold text-slate-700">{row.methodLabel}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{row.cardCompany ?? '-'}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-[#1d1d1f]">{formatWon(row.paymentAmount)}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
-                  <td className={`whitespace-nowrap px-3 py-2.5 text-right font-bold ${row.netAmount < 0 ? 'text-rose-600' : 'text-blue-600'}`}>
+                  <td className="admin-table-amount whitespace-nowrap px-3 py-2.5 text-right font-semibold text-[#1d1d1f]">{formatWon(row.paymentAmount)}</td>
+                  <td className="admin-table-amount whitespace-nowrap px-3 py-2.5 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
+                  <td className={`admin-table-amount whitespace-nowrap px-3 py-2.5 text-right font-bold ${row.netAmount < 0 ? 'text-rose-600' : 'text-blue-600'}`}>
                     {formatWon(row.netAmount)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-500">{row.receiptNo}</td>

@@ -1,11 +1,13 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useTenantConfig } from '@/components/TenantProvider'
 import {
   STUDENT_SESSION_NAME_KEY,
   STUDENT_SESSION_PHONE_KEY,
+  fetchStudentApi,
 } from '@/lib/student-session'
 import type { ArchivedPassPayload, Material } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
@@ -62,7 +64,7 @@ export default function ArchivedStudentCoursePage() {
 
     let cancelled = false
 
-    fetch(withTenantPrefix('/api/enrollments/archived-pass', tenant.type), {
+    fetchStudentApi(tenant.type, withTenantPrefix('/api/enrollments/archived-pass', tenant.type), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -142,7 +144,7 @@ export default function ArchivedStudentCoursePage() {
       <div className="student-page flex min-h-dvh items-center justify-center px-6">
         <div className="student-card max-w-md px-6 py-7 text-center">
           <p className="text-[17px] tracking-[-0.03em] text-[var(--student-text-muted)]">
-            {error || '보관 강좌 정보를 불러오지 못했습니다.'}
+            {getUserErrorMessage(error || '보관 강좌 정보를 불러오지 못했습니다.')}
           </p>
           <button onClick={goBack} className="student-pill-button student-pill-primary mt-5 w-full">
             강좌 목록으로

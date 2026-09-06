@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const bootstrapToken = process.env.SUPER_ADMIN_BOOTSTRAP_TOKEN?.trim()
   if (process.env.NODE_ENV === 'production' && !bootstrapToken) {
     return NextResponse.json(
-      { error: 'Super admin bootstrap is not configured.' },
+      { error: '최고 관리자 초기 설정이 준비되지 않았습니다. 서버 설정을 확인해 주세요.' },
       { status: 403 },
     )
   }
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       bootstrapToken,
     )
   ) {
-    return NextResponse.json({ error: 'Invalid bootstrap token.' }, { status: 403 })
+    return NextResponse.json({ error: '초기 설정 토큰이 올바르지 않습니다.' }, { status: 403 })
   }
 
   const existing = (await listOperatorAccounts()).some((account) =>

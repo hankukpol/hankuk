@@ -1,9 +1,11 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useParams } from 'next/navigation'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { AdminSectionTabs, AdminSectionPanel } from '@/components/admin/AdminSectionTabs'
 import type { Course, CourseSubject, Enrollment, SeatAssignment } from '@/types/database'
 
 type SeatResponse = {
@@ -46,6 +48,11 @@ const EMPTY_SUBJECT: SubjectForm = {
   name: '',
   sort_order: 1,
 }
+const SEAT_SECTIONS = [
+  { value: 'assignments', label: '현재 좌석 배정' },
+  { value: 'bulk', label: '좌석 붙여넣기' },
+  { value: 'subjects', label: '과목 관리' },
+] as const
 
 function getSeatKey(enrollmentId: number, subjectId: number) {
   return `${enrollmentId}:${subjectId}`
@@ -58,10 +65,10 @@ function buildSeatDraftMap(seatAssignments: SeatAssignment[]) {
   }, {})
 }
 
-async function fetchSeatsPageData(courseId: number): Promise<SeatsPageData> {
+async function fetchSeatsPageData(courseId: number, fresh = false): Promise<SeatsPageData> {
   const [courseResponse, seatsResponse, enrollmentsResponse] = await Promise.all([
     fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
-    fetch(`/api/seats?courseId=${courseId}`, { cache: 'no-store' }),
+    fetch(`/api/seats?courseId=${courseId}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' }),
     fetch(`/api/enrollments?courseId=${courseId}&noLimit=1`, { cache: 'no-store' }),
   ])
 
@@ -75,6 +82,9 @@ async function fetchSeatsPageData(courseId: number): Promise<SeatsPageData> {
 
   if (!seatsResponse.ok) {
     throw new Error((seatsPayload as { error?: string } | null)?.error ?? '좌석 배정 정보를 불러오지 못했습니다.')
+  }
+  if (!Array.isArray(seatsPayload?.subjects) || !Array.isArray(seatsPayload?.seatAssignments)) {
+    throw new Error('좌석 배정 정보를 확인하지 못했습니다. 다시 새로고침해 주세요.')
   }
 
   if (!enrollmentsResponse.ok) {
@@ -114,13 +124,27 @@ export default function CourseSeatsPage({
   const [error, setError] = useState(initialError)
   const [bulkIssues, setBulkIssues] = useState<string[]>([])
   const [subjectDeleteTarget, setSubjectDeleteTarget] = useState<CourseSubject | null>(null)
+  const savedSeatsRef = useRef(buildSeatDraftMap(initialData?.seatAssignments ?? []))
+  const seatReadGenerationRef = useRef(0)
+  const draftRevisionsRef = useRef<Record<string, number>>({})
+  const skipSeatBlurRef = useRef(new Set<string>())
+  const uncertainSeatKeysRef = useRef(new Set<string>())
+  const seatSaveQueuesRef = useRef(new Map<string, {
+    running: boolean
+    pending?: { value: string; revision: number }
+    inFlight?: { value: string; revision: number }
+  }>())
 
   async function refreshPage() {
-    const data = await fetchSeatsPageData(courseId)
+    // An explicit authoritative read also supersedes the mount-time snapshot.
+    seatReadGenerationRef.current += 1
+    const data = await fetchSeatsPageData(courseId, true)
     setCourse(data.course)
     setSubjects(data.subjects)
     setSeatAssignments(data.seatAssignments)
     setEnrollments(data.enrollments)
+    savedSeatsRef.current = buildSeatDraftMap(data.seatAssignments)
+    uncertainSeatKeysRef.current.clear()
     setSeatDrafts(buildSeatDraftMap(data.seatAssignments))
   }
 
@@ -132,10 +156,11 @@ export default function CourseSeatsPage({
     }
 
     let isActive = true
+    const requestGeneration = seatReadGenerationRef.current
 
     fetchSeatsPageData(courseId)
       .then((data) => {
-        if (!isActive) {
+        if (!isActive || requestGeneration !== seatReadGenerationRef.current) {
           return
         }
 
@@ -143,17 +168,21 @@ export default function CourseSeatsPage({
         setSubjects(data.subjects)
         setSeatAssignments(data.seatAssignments)
         setEnrollments(data.enrollments)
-        setSeatDrafts(buildSeatDraftMap(data.seatAssignments))
+        savedSeatsRef.current = buildSeatDraftMap(data.seatAssignments)
+        setSeatDrafts((current) => ({
+          ...savedSeatsRef.current,
+          ...Object.fromEntries(Object.entries(current).filter(([key]) => draftRevisionsRef.current[key])),
+        }))
       })
       .catch((reason: unknown) => {
-        if (!isActive) {
+        if (!isActive || requestGeneration !== seatReadGenerationRef.current) {
           return
         }
 
         setError(reason instanceof Error ? reason.message : '좌석 관리 페이지를 불러오지 못했습니다.')
       })
       .finally(() => {
-        if (isActive) {
+        if (isActive && requestGeneration === seatReadGenerationRef.current) {
           setLoading(false)
         }
       })
@@ -331,6 +360,9 @@ export default function CourseSeatsPage({
 
   function handleSeatDraftChange(enrollmentId: number, subjectId: number, value: string) {
     const key = getSeatKey(enrollmentId, subjectId)
+    // initialData allows edits before the initial GET finishes; it must not become a newer baseline.
+    seatReadGenerationRef.current += 1
+    draftRevisionsRef.current[key] = (draftRevisionsRef.current[key] ?? 0) + 1
     setSeatDrafts((current) => ({
       ...current,
       [key]: value,
@@ -349,10 +381,14 @@ export default function CourseSeatsPage({
     }
 
     if (event.key === 'Escape') {
+      event.preventDefault()
       const key = getSeatKey(enrollment.id, subject.id)
+      const queue = seatSaveQueuesRef.current.get(key)
+      skipSeatBlurRef.current.add(key)
+      draftRevisionsRef.current[key] = (draftRevisionsRef.current[key] ?? 0) + 1
       setSeatDrafts((current) => ({
         ...current,
-        [key]: originalSeatMap[key] ?? '',
+        [key]: queue?.pending?.value ?? queue?.inFlight?.value ?? savedSeatsRef.current[key] ?? '',
       }))
       event.currentTarget.blur()
     }
@@ -360,77 +396,102 @@ export default function CourseSeatsPage({
 
   async function handleSeatSave(enrollment: Enrollment, subject: CourseSubject) {
     const key = getSeatKey(enrollment.id, subject.id)
-    const nextSeatNumber = (seatDrafts[key] ?? '').trim()
-    const originalSeatNumber = (originalSeatMap[key] ?? '').trim()
-
-    if (nextSeatNumber === originalSeatNumber) {
+    if (skipSeatBlurRef.current.delete(key)) return
+    if (uncertainSeatKeysRef.current.has(key)) {
+      setError('좌석 저장 결과를 확인하지 못했습니다. 새로고침으로 현재 좌석을 확인한 뒤 수정해 주세요.')
       return
     }
-
-    setSavingSeatKeys((current) => [...current, key])
+    const nextSeatNumber = (seatDrafts[key] ?? '').trim()
+    seatReadGenerationRef.current += 1
+    let queue = seatSaveQueuesRef.current.get(key)
+    if (!queue) {
+      queue = { running: false }
+      seatSaveQueuesRef.current.set(key, queue)
+    }
+    queue.pending = { value: nextSeatNumber, revision: draftRevisionsRef.current[key] ?? 0 }
+    if (queue.running) return
+    queue.running = true
+    setSavingSeatKeys((current) => [...new Set([...current, key])])
     setError('')
     setMessage('')
     setBulkIssues([])
 
-    const response = await fetch('/api/seats', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId,
-        enrollmentId: enrollment.id,
-        subjectId: subject.id,
-        seatNumber: nextSeatNumber || null,
-      }),
-    })
-    const payload = (await response.json().catch(() => null)) as SeatPatchResponse | null
-    setSavingSeatKeys((current) => current.filter((value) => value !== key))
+    try {
+      while (queue.pending) {
+        const submitted = queue.pending
+        queue.pending = undefined
+        if (submitted.value === (savedSeatsRef.current[key] ?? '')) continue
+        queue.inFlight = submitted
+        try {
+          const response = await fetch('/api/seats', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              courseId,
+              enrollmentId: enrollment.id,
+              subjectId: subject.id,
+              seatNumber: submitted.value || null,
+            }),
+          })
+          const payload = (await response.json().catch(() => null)) as SeatPatchResponse | null
+          if (!response.ok || !(payload?.action === 'cleared' || payload?.seatAssignment)) {
+            throw new Error(payload?.error ?? '좌석 저장 결과를 확인하지 못했습니다.')
+          }
+          const nextAssignment: SeatAssignment | null = payload.action === 'cleared' ? null : {
+            ...payload.seatAssignment!,
+            course_subjects: {
+              id: subject.id,
+              name: subject.name,
+              sort_order: subject.sort_order,
+            },
+          }
 
-    if (!response.ok) {
-      setError(payload?.error ?? '좌석을 수정하지 못했습니다.')
-      setSeatDrafts((current) => ({
-        ...current,
-        [key]: originalSeatMap[key] ?? '',
-      }))
-      return
-    }
-
-    if (payload?.action === 'cleared') {
-      setSeatAssignments((current) =>
-        current.filter(
-          (entry) => !(entry.enrollment_id === enrollment.id && entry.subject_id === subject.id),
-        ),
-      )
-      setSeatDrafts((current) => ({
-        ...current,
-        [key]: '',
-      }))
-      setMessage(`${enrollment.name} 학생의 ${subject.name} 좌석을 비웠습니다.`)
-      return
-    }
-
-    if (payload?.seatAssignment) {
-      const nextAssignment: SeatAssignment = {
-        ...payload.seatAssignment,
-        course_subjects: {
-          id: subject.id,
-          name: subject.name,
-          sort_order: subject.sort_order,
-        },
+          setSeatAssignments((current) => {
+            const filtered = current.filter(
+              (entry) => !(entry.enrollment_id === enrollment.id && entry.subject_id === subject.id),
+            )
+            return nextAssignment ? [...filtered, nextAssignment] : filtered
+          })
+          const savedValue = nextAssignment?.seat_number ?? ''
+          savedSeatsRef.current[key] = savedValue
+          if ((draftRevisionsRef.current[key] ?? 0) === submitted.revision) {
+            setSeatDrafts((current) => ({
+              ...current,
+              [key]: savedValue,
+            }))
+          }
+          setMessage(`${enrollment.name} 학생의 ${subject.name} 좌석을 ${savedValue ? '저장했습니다.' : '비웠습니다.'}`)
+        } catch {
+          // A lost response may follow a committed write. Read back, never retry the mutation.
+          queue.pending = undefined
+          uncertainSeatKeysRef.current.add(key)
+          setError('좌석 저장 결과를 확인하지 못했습니다. 현재 좌석을 다시 확인합니다.')
+          try {
+            const response = await fetch(`/api/seats?courseId=${courseId}&fresh=1`, { cache: 'no-store' })
+            const payload = await response.json() as SeatResponse
+            if (!response.ok || !Array.isArray(payload.seatAssignments)) throw new Error('invalid seats')
+            const assignment = payload.seatAssignments.find((entry) => entry.enrollment_id === enrollment.id && entry.subject_id === subject.id)
+            savedSeatsRef.current[key] = assignment?.seat_number ?? ''
+            setSeatAssignments((current) => [
+              ...current.filter((entry) => !(entry.enrollment_id === enrollment.id && entry.subject_id === subject.id)),
+              ...(assignment ? [assignment] : []),
+            ])
+            if ((draftRevisionsRef.current[key] ?? 0) === submitted.revision) {
+              setSeatDrafts((current) => ({ ...current, [key]: assignment?.seat_number ?? '' }))
+            }
+            uncertainSeatKeysRef.current.delete(key)
+          } catch {
+            setError('좌석 저장 결과를 확인하지 못했습니다. 새로고침으로 현재 좌석을 확인한 뒤 수정해 주세요.')
+          }
+          break
+        } finally {
+          queue.inFlight = undefined
+        }
       }
-
-      setSeatAssignments((current) => {
-        const filtered = current.filter(
-          (entry) => !(entry.enrollment_id === enrollment.id && entry.subject_id === subject.id),
-        )
-        return [...filtered, nextAssignment]
-      })
+    } finally {
+      queue.running = false
+      setSavingSeatKeys((current) => current.filter((value) => value !== key))
     }
-
-    setSeatDrafts((current) => ({
-      ...current,
-      [key]: nextSeatNumber,
-    }))
-    setMessage(`${enrollment.name} 학생의 ${subject.name} 좌석을 저장했습니다.`)
   }
 
   if (loading) {
@@ -438,7 +499,7 @@ export default function CourseSeatsPage({
   }
 
   if (!course) {
-    return <p className="text-sm text-red-600">{error || '강좌를 찾을 수 없습니다.'}</p>
+    return <p className="text-sm text-red-600">{getUserErrorMessage(error || '강좌를 찾을 수 없습니다.')}</p>
   }
 
   function renderSeatControl(enrollment: Enrollment, subject: CourseSubject) {
@@ -485,15 +546,15 @@ export default function CourseSeatsPage({
     />
     <div className="flex flex-col gap-6">
       <section className="rounded-[8px] bg-white p-4 shadow-sm sm:p-6">
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="admin-metric-strip">
           {[
             { label: '과목 수', value: summary.subjectCount },
             { label: '좌석 배정 수', value: summary.seatRows },
             { label: '배정된 수강생', value: summary.assignedStudents },
           ].map((item) => (
-            <article key={item.label} className="rounded-[8px] bg-slate-50 px-3 py-3 sm:p-5">
+            <article key={item.label} className="bg-slate-50">
               <p className="text-[11px] font-semibold leading-4 text-gray-500 sm:text-sm">{item.label}</p>
-              <p className="mt-1 text-2xl font-extrabold text-gray-900 sm:mt-3 sm:text-3xl">{item.value}</p>
+              <p className="mt-1 font-extrabold text-gray-900">{item.value}</p>
             </article>
           ))}
         </div>
@@ -501,30 +562,26 @@ export default function CourseSeatsPage({
 
       {(error || message) && (
         <div className="flex flex-col gap-2">
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
           {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
         </div>
       )}
 
-      <div className="grid gap-6">
-        <div className="grid gap-6 xl:grid-cols-2 xl:items-stretch">
+      <AdminSectionTabs label="좌석 배정 세부 메뉴" items={SEAT_SECTIONS}>
+        <AdminSectionPanel value="subjects">
           <section className="flex h-full flex-col rounded-[8px] bg-white p-4 shadow-sm sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Subjects</p>
-                <h3 className="mt-3 text-xl font-extrabold text-gray-900">과목 관리</h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  붙여넣기 후 좌석 표시는 강좌별 과목 정렬순서 기준으로 보입니다.
-                </p>
+                <h3 className="admin-section-title mt-3">과목 관리</h3>
               </div>
             </div>
 
-            <form onSubmit={handleCreateSubject} className="mt-6 grid gap-3 md:grid-cols-[1fr,120px,auto]">
+            <form onSubmit={handleCreateSubject} className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
               <input
                 value={newSubject.name}
                 onChange={(event) => setNewSubject((current) => ({ ...current, name: event.target.value }))}
                 placeholder="예: 형사법"
-                className="rounded-xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
+                className="min-w-0 border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
               />
               <input
                 type="number"
@@ -536,11 +593,11 @@ export default function CourseSeatsPage({
                   }))
                 }
                 placeholder="순서"
-                className="rounded-xl border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
+                className="min-w-0 border border-slate-200 px-4 py-3 text-gray-900 outline-none focus:border-slate-400"
               />
               <button
                 type="submit"
-                className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-slate-800 hover:shadow-md active:scale-[0.97] active:duration-100"
+                className="admin-button admin-button-primary"
               >
                 과목 추가
               </button>
@@ -554,7 +611,7 @@ export default function CourseSeatsPage({
               ) : (
                 subjects.map((subject) => (
                   <article key={subject.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="grid gap-3 md:grid-cols-[1fr,120px,auto]">
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
                       <input
                         defaultValue={subject.name}
                         onBlur={(event) => {
@@ -563,7 +620,7 @@ export default function CourseSeatsPage({
                             void handleSubjectPatch(subject, { name: value })
                           }
                         }}
-                        className="rounded-xl border border-slate-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-slate-400"
+                        className="min-w-0 border border-slate-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-slate-400"
                       />
                       <input
                         type="number"
@@ -574,7 +631,7 @@ export default function CourseSeatsPage({
                             void handleSubjectPatch(subject, { sort_order: value })
                           }
                         }}
-                        className="rounded-xl border border-slate-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-slate-400"
+                        className="min-w-0 border border-slate-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-slate-400"
                       />
                       <button
                         type="button"
@@ -590,9 +647,10 @@ export default function CourseSeatsPage({
             </div>
           </section>
 
+        </AdminSectionPanel>
+        <AdminSectionPanel value="bulk">
           <form onSubmit={handleBulkSeats} className="flex h-full flex-col rounded-[8px] bg-white p-4 shadow-sm sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Bulk Paste</p>
-            <h3 className="mt-3 text-xl font-extrabold text-gray-900">좌석 데이터 붙여넣기</h3>
+            <h3 className="admin-section-title mt-3">좌석 데이터 붙여넣기</h3>
             <p className="mt-2 text-sm leading-6 text-gray-500">
               두 가지 형식을 지원합니다. 행 단위 형식은 <span className="font-semibold text-gray-900">수험번호, 수강생 이름, 과목명, 좌석번호</span>
               순서로 붙여넣고, 원본 엑셀처럼 <span className="font-semibold text-gray-900">학번, 이름, 연락처 뒤에 과목 열이 이어지는 표</span>
@@ -619,9 +677,9 @@ export default function CourseSeatsPage({
             />
 
             {bulkIssues.length > 0 ? (
-              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
-                <p className="text-sm font-semibold text-red-700">확인이 필요한 행</p>
-                <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-sm leading-6 text-red-700">
+              <div className="admin-notice admin-notice-danger mt-4">
+                <p className="admin-notice-strong">확인이 필요한 행</p>
+                <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 leading-6">
                   {bulkIssues.map((issue) => (
                     <li key={issue}>{issue}</li>
                   ))}
@@ -632,22 +690,20 @@ export default function CourseSeatsPage({
             <button
               type="submit"
               disabled={submitting}
-              className="mt-5 rounded-xl px-5 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
-              style={{ background: 'var(--theme)' }}
+              className="admin-button admin-button-primary mt-5 disabled:opacity-60 disabled:active:scale-100"
             >
               {submitting ? '반영 중...' : '좌석 일괄 반영'}
             </button>
             </div>
           </form>
-        </div>
+        </AdminSectionPanel>
 
+        <AdminSectionPanel value="assignments">
         <section className="min-w-0 rounded-[8px] bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h3 className="text-xl font-extrabold text-gray-900">현재 좌석 배정</h3>
-              <p className="mt-2 text-sm text-gray-500">
-                한 학생을 한 줄로 보고 모든 과목 좌석을 한 번에 수정할 수 있습니다. Enter 또는 포커스 해제 시 저장되고, 빈 값으로 저장하면 해당 좌석이 비워집니다.
-              </p>
+              <h3 className="admin-section-title">현재 좌석 배정</h3>
+              <p className="mt-2 text-sm text-gray-500">Enter 또는 포커스 해제 시 저장되고, 빈 값으로 저장하면 해당 좌석이 비워집니다.</p>
             </div>
 
             <button
@@ -669,7 +725,7 @@ export default function CourseSeatsPage({
             </button>
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 rounded-[8px] bg-slate-50 p-3 sm:p-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="admin-table-toolbar mt-5 flex flex-col gap-3 py-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0 flex-1">
               <label htmlFor="seat-search" className="text-sm font-semibold text-slate-700">
                 학생 검색
@@ -744,7 +800,7 @@ export default function CourseSeatsPage({
               )}
             </div>
 
-            <div className="mt-6 hidden overflow-x-auto rounded-[8px] border border-slate-200 md:block">
+            <div className="admin-table-frame mt-6 hidden overflow-x-auto border border-slate-200 md:block">
               <table className="w-full min-w-[980px] table-fixed divide-y divide-slate-200 text-sm">
                 <colgroup>
                   <col className="w-[110px]" />
@@ -799,7 +855,8 @@ export default function CourseSeatsPage({
             </>
           )}
         </section>
-      </div>
+        </AdminSectionPanel>
+      </AdminSectionTabs>
     </div>
     </>
   )

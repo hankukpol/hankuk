@@ -13,11 +13,7 @@ import {
 import { validateOperatorSession } from '@/lib/auth/operator-sessions'
 import { validateSameOriginRequest } from '@/lib/auth/request-origin'
 import { DEFAULT_SESSION_VERSION, getSessionVersion } from '@/lib/auth/session-version'
-import {
-  readVerifiedAdminPayload,
-  readVerifiedStaffPayload,
-  readVerifiedSuperAdminPayload,
-} from '@/lib/auth/verified-auth'
+import { hasStoredStaffSessionMarkers, validateStoredStaffSession } from '@/lib/auth/stored-staff-session'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 type AdminAuthResult = {
@@ -35,6 +31,25 @@ function hasCurrentSessionVersion(payload: StaffJwtPayload, currentVersion: numb
   return (payload.sessionVersion ?? DEFAULT_SESSION_VERSION) === currentVersion
 }
 
+function hasOperatorSessionMarkers(payload: StaffJwtPayload) {
+  // Presence matters: incomplete or malformed modern claims must not become legacy credentials.
+  return 'accountId' in payload
+    || 'membershipId' in payload
+    || 'credentialVersion' in payload
+    || 'branchSlug' in payload
+    || 'sharedUserId' in payload
+    || ('sessionScope' in payload && payload.sessionScope !== 'legacy')
+    || payload.authMethod === 'operator'
+    || payload.authMethod === 'operator_staff'
+    || payload.authMethod === 'super_admin'
+}
+
+function matchesBranchIdentity(payload: StaffJwtPayload, role: 'admin' | 'staff', division: string) {
+  return payload.role === role
+    && payload.division === division
+    && (payload.branchSlug === undefined || payload.branchSlug === division)
+}
+
 function getCookieValue(req: NextRequest, candidates: string[]) {
   for (const name of candidates) {
     const value = req.cookies.get(name)?.value
@@ -47,7 +62,8 @@ function getCookieValue(req: NextRequest, candidates: string[]) {
 }
 
 async function validateLegacyAdmin(payload: StaffJwtPayload, division: string) {
-  if (payload.role !== 'admin' || payload.division !== division) {
+  if (hasOperatorSessionMarkers(payload) || hasStoredStaffSessionMarkers(payload)
+    || payload.role !== 'admin' || payload.division !== division) {
     return false
   }
 
@@ -56,7 +72,10 @@ async function validateLegacyAdmin(payload: StaffJwtPayload, division: string) {
 }
 
 async function validateLegacyStaff(payload: StaffJwtPayload, division: string) {
-  if (payload.role !== 'staff' || payload.division !== division) {
+  // Old stored-account cookies carried staffName but no per-account binding.
+  // Require one-time relogin; name-less shared-PIN cookies remain compatible.
+  if (hasOperatorSessionMarkers(payload) || hasStoredStaffSessionMarkers(payload) || 'staffName' in payload
+    || payload.role !== 'staff' || payload.division !== division) {
     return false
   }
 
@@ -72,7 +91,8 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
 
   const division = await getServerTenantType()
   const token = getCookieValue(req, getAdminCookieCandidates(division))
-  const payload = readVerifiedAdminPayload(req) ?? (token ? await verifyJwt(token) : null)
+  // Route authentication must remain independent of middleware and unsigned request metadata.
+  const payload = token ? await verifyJwt(token) : null
 
   if (!payload) {
     return {
@@ -81,7 +101,9 @@ export async function authenticateAdminRequest(req: NextRequest): Promise<AdminA
     }
   }
 
-  if (payload.accountId && payload.membershipId && payload.sessionScope === 'branch_admin') {
+  if (payload.accountId && payload.membershipId && payload.sessionScope === 'branch_admin'
+    && !hasStoredStaffSessionMarkers(payload)
+    && matchesBranchIdentity(payload, 'admin', division)) {
     const session = await validateOperatorSession(payload, { scope: 'branch_admin', division })
     if (session) {
       return { payload, error: null }
@@ -105,7 +127,7 @@ export async function authenticateSuperAdminRequest(req: NextRequest): Promise<A
   }
 
   const token = req.cookies.get(SUPER_ADMIN_COOKIE)?.value
-  const payload = readVerifiedSuperAdminPayload(req) ?? (token ? await verifyJwt(token) : null)
+  const payload = token ? await verifyJwt(token) : null
 
   if (!payload || payload.role !== 'admin' || payload.sessionScope !== 'super_admin') {
     return {
@@ -132,35 +154,35 @@ export async function authenticateStaffRequest(req: NextRequest): Promise<StaffA
   }
 
   const division = await getServerTenantType()
-  const verifiedStaffPayload = readVerifiedStaffPayload(req)
-  const verifiedAdminPayload = readVerifiedAdminPayload(req)
   const staffToken = getCookieValue(req, getStaffCookieCandidates(division))
   const adminToken = getCookieValue(req, getAdminCookieCandidates(division))
   const [staffPayload, adminPayload] = await Promise.all([
-    verifiedStaffPayload
-      ? Promise.resolve(verifiedStaffPayload)
-      : staffToken
-        ? verifyJwt(staffToken)
-        : Promise.resolve(null),
-    verifiedAdminPayload
-      ? Promise.resolve(verifiedAdminPayload)
-      : adminToken
-        ? verifyJwt(adminToken)
-        : Promise.resolve(null),
+    staffToken ? verifyJwt(staffToken) : Promise.resolve(null),
+    adminToken ? verifyJwt(adminToken) : Promise.resolve(null),
   ])
 
-  if (staffPayload?.accountId && staffPayload.membershipId && staffPayload.sessionScope === 'staff') {
+  if (staffPayload?.accountId && staffPayload.membershipId && staffPayload.sessionScope === 'staff'
+    && !hasStoredStaffSessionMarkers(staffPayload)
+    && matchesBranchIdentity(staffPayload, 'staff', division)) {
     const session = await validateOperatorSession(staffPayload, { scope: 'staff', division })
     if (session) {
       return { payload: staffPayload, actingRole: 'staff', error: null }
     }
   }
 
+  if (staffPayload && !hasOperatorSessionMarkers(staffPayload)
+    && (await validateStoredStaffSession(staffPayload, division))
+    && hasCurrentSessionVersion(staffPayload, await getSessionVersion('staff'))) {
+    return { payload: staffPayload, actingRole: 'staff', error: null }
+  }
+
   if (staffPayload && (await validateLegacyStaff(staffPayload, division))) {
     return { payload: staffPayload, actingRole: 'staff', error: null }
   }
 
-  if (adminPayload?.accountId && adminPayload.membershipId && adminPayload.sessionScope === 'branch_admin') {
+  if (adminPayload?.accountId && adminPayload.membershipId && adminPayload.sessionScope === 'branch_admin'
+    && !hasStoredStaffSessionMarkers(adminPayload)
+    && matchesBranchIdentity(adminPayload, 'admin', division)) {
     const session = await validateOperatorSession(adminPayload, { scope: 'branch_admin', division })
     if (session) {
       return { payload: adminPayload, actingRole: 'admin', error: null }

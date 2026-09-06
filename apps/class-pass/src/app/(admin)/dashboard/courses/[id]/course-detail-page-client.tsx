@@ -1,13 +1,18 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { AdminSectionTabs, AdminSectionPanel, AdminSectionActions } from '@/components/admin/AdminSectionTabs'
 import { useTenantConfig } from '@/components/TenantProvider'
 import type { Course, CourseSubject, CourseType, EnrollmentFieldDef } from '@/types/database'
 import { withTenantPrefix } from '@/lib/tenant'
+import { CourseFeatureSettings } from './settings/course-feature-settings'
+import styles from './settings/course-settings.module.css'
 
 export type CourseDetailData = {
   course: Course
@@ -62,6 +67,15 @@ type CoursePatchForm = {
 }
 
 const EMPTY_SUBJECT = { name: '', sort_order: 0 }
+const SETTINGS_SECTIONS = [
+  { value: 'basic', label: '기본정보' },
+  { value: 'features', label: '운영 기능' },
+  { value: 'location', label: '위치 인증' },
+  { value: 'notices', label: '공지·안내' },
+  { value: 'subjects', label: '과목' },
+  { value: 'fields', label: '수강생 정보' },
+  { value: 'danger', label: '위험 작업' },
+] as const
 
 type CourseDetailPageProps = {
   initialData?: CourseDetailData | null
@@ -149,6 +163,7 @@ export default function CourseDetailPage({
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const tenant = useTenantConfig()
+  const fieldId = useId()
   const courseId = Number(params.id)
   const [course, setCourse] = useState<Course | null>(initialData?.course ?? null)
   const [subjects, setSubjects] = useState<CourseSubject[]>(initialData?.subjects ?? [])
@@ -266,7 +281,7 @@ export default function CourseDetailPage({
       partialSave
         ? '강좌 기본 설정은 저장됐지만 일부 기능 설정은 아직 반영되지 않았습니다.'
         : slugChanged
-          ? '강좌 설정을 저장하고 slug를 새 강좌명에 맞춰 변경했습니다.'
+          ? '강좌 설정을 저장하고 강좌 주소를 새 강좌명에 맞춰 변경했습니다.'
           : '강좌 설정을 저장했습니다.',
     )
   }
@@ -405,7 +420,7 @@ export default function CourseDetailPage({
   }
 
   if (loading) return <p className="py-12 text-center text-sm text-gray-400">불러오는 중...</p>
-  if (error && !course) return <p className="py-12 text-center text-sm text-red-500">{error}</p>
+  if (error && !course) return <p className="py-12 text-center text-sm text-red-500">{getUserErrorMessage(error)}</p>
   if (!course || !form) return <p className="py-12 text-center text-sm text-gray-400">강좌 정보를 찾지 못했습니다.</p>
 
   async function handleDestroyCourse() {
@@ -479,6 +494,7 @@ export default function CourseDetailPage({
       }}
     >
       <input
+        aria-label="삭제할 강좌명 확인"
         value={destroyCourseNameInput}
         onChange={(event) => setDestroyCourseNameInput(event.target.value)}
         placeholder={course?.name ?? '강좌명'}
@@ -486,75 +502,61 @@ export default function CourseDetailPage({
         className="w-full rounded-[8px] border border-red-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-red-400 disabled:opacity-60"
       />
     </ConfirmationModal>
-    <div className="flex flex-col gap-6">
+    <div className={`${styles.page} flex flex-col gap-6`}>
       {/* ── KPI strip ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="admin-course-summary">
         <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">과목 수</p>
           <p className="mt-1 text-xl font-extrabold text-blue-600 sm:text-2xl">{stats.subjectCount}</p>
         </div>
         <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">좌석 기능</p>
-          <p className="mt-1 text-xl font-extrabold text-emerald-600 sm:text-2xl">{stats.seatEnabled ? 'ON' : 'OFF'}</p>
+          <p className="admin-feature-value mt-1 text-xl font-extrabold sm:text-2xl" data-enabled={stats.seatEnabled}>{stats.seatEnabled ? 'ON' : 'OFF'}</p>
         </div>
         <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">자료 배부</p>
-          <p className="mt-1 text-xl font-extrabold text-amber-600 sm:text-2xl">{stats.materialEnabled ? 'ON' : 'OFF'}</p>
+          <p className="admin-feature-value mt-1 text-xl font-extrabold sm:text-2xl" data-enabled={stats.materialEnabled}>{stats.materialEnabled ? 'ON' : 'OFF'}</p>
         </div>
         <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">지정좌석</p>
-          <p className="mt-1 text-xl font-extrabold text-violet-600 sm:text-2xl">{stats.designatedSeatEnabled ? 'ON' : 'OFF'}</p>
+          <p className="admin-feature-value mt-1 text-xl font-extrabold sm:text-2xl" data-enabled={stats.designatedSeatEnabled}>{stats.designatedSeatEnabled ? 'ON' : 'OFF'}</p>
         </div>
         <div className="rounded-[8px] bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
           <p className="text-xs font-medium text-gray-400">출결 체크</p>
-          <p className="mt-1 text-xl font-extrabold text-rose-600 sm:text-2xl">{stats.attendanceEnabled ? 'ON' : 'OFF'}</p>
+          <p className="admin-feature-value mt-1 text-xl font-extrabold sm:text-2xl" data-enabled={stats.attendanceEnabled}>{stats.attendanceEnabled ? 'ON' : 'OFF'}</p>
         </div>
       </div>
 
       {(error || warning || message) && (
         <div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p>}
           {warning && <p className="text-xs text-amber-600">{warning}</p>}
           {message && <p className="text-xs text-emerald-600">{message}</p>}
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
+      <AdminSectionTabs label="강좌 설정 세부 메뉴" items={SETTINGS_SECTIONS}>
         {/* ── Course settings form ── */}
-        <form onSubmit={handleSave} className="rounded-2xl bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-bold text-gray-700">강좌 설정</h3>
+        <form onSubmit={handleSave} className="admin-section-form">
+          <AdminSectionPanel value="basic" className="admin-settings-panel">
+          <h3 className="text-sm font-bold text-gray-700">강좌 기본정보</h3>
 
-          <div className="mt-4 grid gap-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">강좌명</label>
-                <input
+          <div className="mt-4 grid gap-4">
+            <div className="grid gap-4">
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-name`} className={styles.label}>강좌명</label>
+                <input id={`${fieldId}-name`}
                   value={form.name}
                   onChange={(e) => setForm((c) => c && { ...c, name: e.target.value })}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">슬러그</label>
-                <input
-                  value={form.slug}
-                  readOnly
-                  className="cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-gray-400 outline-none"
-                />
-                <p className="text-[11px] leading-4 text-gray-400">
-                  {course.status === 'active'
-                    ? '운영 중에는 기존 링크와 QR 주소 보호를 위해 변경되지 않습니다.'
-                    : course.copied_at
-                      ? '강좌명을 변경해 저장하면 자동으로 갱신되며, 중복 시 -2, -3 순으로 구분됩니다.'
-                      : '강좌 주소 식별자로 자동 관리됩니다.'}
-                </p>
-              </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-4">
-              <div className="flex flex-col gap-1.5 md:col-span-2">
-                <label className="text-xs font-semibold text-gray-500">강좌 유형</label>
-                <select
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className={`${styles.field} md:col-span-2`}>
+<label htmlFor={`${fieldId}-course_type`} className={styles.label}>강좌 유형</label>
+                <select id={`${fieldId}-course_type`}
                   value={form.course_type}
                   onChange={(e) => setForm((c) => c ? { ...c, course_type: e.target.value as CourseType } : c)}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
@@ -565,9 +567,9 @@ export default function CourseDetailPage({
                   <option value="interview">면접</option>
                 </select>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">상태</label>
-                <select
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-status`} className={styles.label}>상태</label>
+                <select id={`${fieldId}-status`}
                   value={form.status}
                   onChange={(e) => setForm((c) => c ? { ...c, status: e.target.value as 'active' | 'archived' } : c)}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
@@ -576,9 +578,9 @@ export default function CourseDetailPage({
                   <option value="archived">보관</option>
                 </select>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">정렬순서</label>
-                <input
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-sort_order`} className={styles.label}>정렬순서</label>
+                <input id={`${fieldId}-sort_order`}
                   type="number"
                   value={form.sort_order}
                   onChange={(e) => setForm((c) => c ? { ...c, sort_order: Number(e.target.value || 0) } : c)}
@@ -587,19 +589,19 @@ export default function CourseDetailPage({
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">강좌 금액</label>
-                <input
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-tuition_amount`} className={styles.label}>강좌 금액</label>
+                <input id={`${fieldId}-tuition_amount`}
                   inputMode="numeric"
                   value={form.tuition_amount}
                   onChange={(e) => setForm((c) => c && { ...c, tuition_amount: e.target.value.replace(/[^\d]/g, '') })}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">보고 코드</label>
-                <input
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-settlement_report_code`} className={styles.label}>보고 코드</label>
+                <input id={`${fieldId}-settlement_report_code`}
                   value={form.settlement_report_code}
                   onChange={(e) => setForm((c) => c && { ...c, settlement_report_code: e.target.value })}
                   maxLength={20}
@@ -607,29 +609,29 @@ export default function CourseDetailPage({
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">테마 색상</label>
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-theme_color`} className={styles.label}>테마 색상</label>
                 <div className="flex items-center gap-2">
-                  <input
+                  <input id={`${fieldId}-theme_color`}
                     value={form.theme_color}
                     onChange={(e) => setForm((c) => c && { ...c, theme_color: e.target.value })}
-                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                   />
                   <span className="h-9 w-9 shrink-0 rounded-lg border border-slate-200" style={{ background: form.theme_color }} />
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">입장 시작</label>
-                <input
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-time_window_start`} className={styles.label}>입장 시작</label>
+                <input id={`${fieldId}-time_window_start`}
                   type="time"
                   value={form.time_window_start}
                   onChange={(e) => setForm((c) => c && { ...c, time_window_start: e.target.value })}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">입장 종료</label>
-                <input
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-time_window_end`} className={styles.label}>입장 종료</label>
+                <input id={`${fieldId}-time_window_end`}
                   type="time"
                   value={form.time_window_end}
                   onChange={(e) => setForm((c) => c && { ...c, time_window_end: e.target.value })}
@@ -638,19 +640,19 @@ export default function CourseDetailPage({
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">수강 시작일</label>
-                <input
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-enrolled_from`} className={styles.label}>수강 시작일</label>
+                <input id={`${fieldId}-enrolled_from`}
                   type="date"
                   value={form.enrolled_from}
                   onChange={(e) => setForm((c) => c && { ...c, enrolled_from: e.target.value })}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">수강 종료일</label>
-                <input
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-enrolled_until`} className={styles.label}>수강 종료일</label>
+                <input id={`${fieldId}-enrolled_until`}
                   type="date"
                   value={form.enrolled_until}
                   onChange={(e) => setForm((c) => c && { ...c, enrolled_until: e.target.value })}
@@ -659,19 +661,19 @@ export default function CourseDetailPage({
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">목표일</label>
-                <input
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-target_date`} className={styles.label}>목표일</label>
+                <input id={`${fieldId}-target_date`}
                   type="date"
                   value={form.target_date}
                   onChange={(e) => setForm((c) => c && { ...c, target_date: e.target.value })}
                   className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-500">목표일 라벨</label>
-                <input
+              <div className={styles.field}>
+<label htmlFor={`${fieldId}-target_date_label`} className={styles.label}>목표일 라벨</label>
+                <input id={`${fieldId}-target_date_label`}
                   value={form.target_date_label}
                   onChange={(e) => setForm((c) => c && { ...c, target_date_label: e.target.value })}
                   placeholder="예: 시험일, 면접일"
@@ -680,65 +682,23 @@ export default function CourseDetailPage({
               </div>
             </div>
 
-            {/* Feature toggles */}
-            <div className="mt-1 flex flex-wrap gap-3">
-              {([
-                ['feature_qr_pass', 'QR 수강증'],
-                ['feature_qr_distribution', '자료 배부'],
-                ['feature_seat_assignment', '좌석 배정'],
-                ['feature_designated_seat', '지정좌석'],
-                ['feature_time_window', '시간 제한'],
-                ['feature_photo', '사진 표시'],
-                ['feature_dday', 'D-day'],
-                ['feature_notices', '공지 사용'],
-                ['feature_refund_policy', '환불 규정'],
-                ['feature_exam_delivery_mode', '시험 배부 모드'],
-                ['feature_weekday_color', '요일별 색상'],
-                ['feature_anti_forgery_motion', '위조 방지 효과'],
-                ['notice_visible', '공지 공개'],
-              ] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form[key as keyof CoursePatchForm])}
-                    onChange={(e) => setForm((c) => c ? { ...c, [key]: e.target.checked } : c)}
-                    className="rounded"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-
-            <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-              <input
-                type="checkbox"
-                checked={form.feature_attendance}
-                onChange={(e) => setForm((c) => c ? { ...c, feature_attendance: e.target.checked } : c)}
-                className="rounded"
-              />
-              출결 체크 기능 사용
-            </label>
-
-            <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-              <input
-                type="checkbox"
-                checked={form.designated_seat_open}
-                onChange={(e) => setForm((c) => c ? { ...c, designated_seat_open: e.target.checked } : c)}
-                className="rounded"
-                disabled={!form.feature_designated_seat}
-              />
-              지정좌석 학생 신청 열기
-            </label>
-
-            <section className="rounded-2xl bg-slate-50 px-4 py-4">
+          </div>
+          </AdminSectionPanel>
+          <AdminSectionPanel value="features" className="admin-settings-panel">
+            <h3>운영 기능</h3>
+            <CourseFeatureSettings value={form}
+              onChange={(key, checked) => setForm(current => current ? { ...current, [key]: checked } : current)} />
+          </AdminSectionPanel>
+          <AdminSectionPanel value="location" className="admin-settings-panel">
+            <section>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-bold text-gray-700">현장 위치 인증</h4>
-                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                  <p className={`${styles.intro} text-gray-500`}>
                     출석 체크와 지정좌석 QR 인증 시 학생 스마트폰 위치가 학원 반경 안인지 확인합니다.
                   </p>
                 </div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                <label className={styles.choice}>
                   <input
                     type="checkbox"
                     checked={form.presence_location_enabled}
@@ -749,8 +709,8 @@ export default function CourseDetailPage({
                 </label>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className={styles.choice}>
                   <input
                     type="checkbox"
                     checked={form.presence_required_for_attendance}
@@ -760,7 +720,7 @@ export default function CourseDetailPage({
                   />
                   출석 체크에 적용
                 </label>
-                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                <label className={styles.choice}>
                   <input
                     type="checkbox"
                     checked={form.presence_required_for_designated_seat}
@@ -772,10 +732,10 @@ export default function CourseDetailPage({
                 </label>
               </div>
 
-              <div className="mt-3 grid gap-3 md:grid-cols-[1fr,1fr,140px]">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-500">위도</label>
-                  <input
+              <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px]">
+                <div className={styles.field}>
+<label htmlFor={`${fieldId}-presence_latitude`} className={styles.label}>위도</label>
+                  <input id={`${fieldId}-presence_latitude`}
                     value={form.presence_latitude}
                     onChange={(e) => setForm((c) => c && { ...c, presence_latitude: e.target.value })}
                     inputMode="decimal"
@@ -783,9 +743,9 @@ export default function CourseDetailPage({
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-500">경도</label>
-                  <input
+                <div className={styles.field}>
+<label htmlFor={`${fieldId}-presence_longitude`} className={styles.label}>경도</label>
+                  <input id={`${fieldId}-presence_longitude`}
                     value={form.presence_longitude}
                     onChange={(e) => setForm((c) => c && { ...c, presence_longitude: e.target.value })}
                     inputMode="decimal"
@@ -802,10 +762,10 @@ export default function CourseDetailPage({
                 </button>
               </div>
 
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-500">운영 모드</label>
-                  <select
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                <div className={styles.field}>
+<label htmlFor={`${fieldId}-presence_enforcement_mode`} className={styles.label}>운영 모드</label>
+                  <select id={`${fieldId}-presence_enforcement_mode`}
                     value={form.presence_enforcement_mode}
                     onChange={(e) => setForm((c) => c ? { ...c, presence_enforcement_mode: e.target.value as 'monitor' | 'enforce' } : c)}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
@@ -814,9 +774,9 @@ export default function CourseDetailPage({
                     <option value="enforce">반경 밖 차단</option>
                   </select>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-500">허용 반경(m)</label>
-                  <input
+                <div className={styles.field}>
+                  <label htmlFor={`${fieldId}-presence_radius_m`} className={styles.label}>허용 반경(m)</label>
+                  <input id={`${fieldId}-presence_radius_m`}
                     type="number"
                     min={30}
                     max={2000}
@@ -825,9 +785,9 @@ export default function CourseDetailPage({
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-500">최대 오차(m)</label>
-                  <input
+                <div className={styles.field}>
+                  <label htmlFor={`${fieldId}-presence_accuracy_max_m`} className={styles.label}>최대 오차(m)</label>
+                  <input id={`${fieldId}-presence_accuracy_max_m`}
                     type="number"
                     min={30}
                     max={2000}
@@ -842,18 +802,22 @@ export default function CourseDetailPage({
               </p>
             </section>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">공지 제목</label>
-              <input
+          </AdminSectionPanel>
+          <AdminSectionPanel value="notices" className="admin-settings-panel">
+            <h3>공지·안내</h3>
+            <div className="admin-settings-fields">
+            <div className={styles.field}>
+<label htmlFor={`${fieldId}-notice_title`} className={styles.label}>공지 제목</label>
+              <input id={`${fieldId}-notice_title`}
                 value={form.notice_title}
                 onChange={(e) => setForm((c) => c && { ...c, notice_title: e.target.value })}
                 className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">공지 내용</label>
-              <textarea
+            <div className={styles.field}>
+<label htmlFor={`${fieldId}-notice_content`} className={styles.label}>공지 내용</label>
+              <textarea id={`${fieldId}-notice_content`}
                 value={form.notice_content}
                 onChange={(e) => setForm((c) => c && { ...c, notice_content: e.target.value })}
                 rows={4}
@@ -861,9 +825,9 @@ export default function CourseDetailPage({
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">환불 규정</label>
-              <textarea
+            <div className={styles.field}>
+<label htmlFor={`${fieldId}-refund_policy`} className={styles.label}>환불 규정</label>
+              <textarea id={`${fieldId}-refund_policy`}
                 value={form.refund_policy}
                 onChange={(e) => setForm((c) => c && { ...c, refund_policy: e.target.value })}
                 rows={4}
@@ -871,9 +835,9 @@ export default function CourseDetailPage({
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">카카오톡 단톡방 링크</label>
-              <input
+            <div className={styles.field}>
+<label htmlFor={`${fieldId}-kakao_chat_url`} className={styles.label}>카카오톡 단톡방 링크</label>
+              <input id={`${fieldId}-kakao_chat_url`}
                 value={form.kakao_chat_url}
                 onChange={(e) => setForm((c) => c && { ...c, kakao_chat_url: e.target.value })}
                 placeholder="https://open.kakao.com/o/..."
@@ -883,9 +847,9 @@ export default function CourseDetailPage({
                 <p className="text-xs text-gray-400">학생 수강증 화면에 카카오톡 참여 버튼이 표시됩니다.</p>
               ) : null}
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">추가 사이트 링크</label>
-              <input
+            <div className={styles.field}>
+<label htmlFor={`${fieldId}-extra_site_url`} className={styles.label}>추가 사이트 링크</label>
+              <input id={`${fieldId}-extra_site_url`}
                 value={form.extra_site_url}
                 onChange={(e) => setForm((c) => c && { ...c, extra_site_url: e.target.value })}
                 placeholder="https://example.com"
@@ -895,9 +859,9 @@ export default function CourseDetailPage({
                 <p className="text-xs text-gray-400">학생 강좌 화면에 추가 사이트 이동 버튼이 표시됩니다.</p>
               ) : null}
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">추가 사이트 버튼 문구</label>
-              <input
+            <div className={styles.field}>
+<label htmlFor={`${fieldId}-extra_site_label`} className={styles.label}>추가 사이트 버튼 문구</label>
+              <input id={`${fieldId}-extra_site_label`}
                 value={form.extra_site_label}
                 onChange={(e) => setForm((c) => c && { ...c, extra_site_label: e.target.value })}
                 placeholder="추가 사이트 이동"
@@ -910,35 +874,47 @@ export default function CourseDetailPage({
             </div>
           </div>
 
+          </AdminSectionPanel>
+
+          <AdminSectionActions values={['basic', 'features', 'location', 'notices']}>
           <button
             type="submit"
             disabled={saving}
-            className="mt-4 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
+            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
           >
             {saving ? '저장 중...' : '강좌 저장'}
           </button>
+          </AdminSectionActions>
         </form>
 
         {/* ── Subjects section ── */}
+        <AdminSectionPanel value="subjects">
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h3 className="text-sm font-bold text-gray-700">과목 설정</h3>
-          <p className="mt-1 text-xs text-gray-400">
-            좌석 배정 강좌는 과목을 먼저 만들어 두어야 좌석 일괄 입력이 가능합니다.
-          </p>
 
-          <form onSubmit={handleCreateSubject} className="mt-4 grid gap-2 md:grid-cols-[1fr,80px,auto]">
+          <form onSubmit={handleCreateSubject} className="mt-4 grid items-end gap-4 md:grid-cols-[minmax(0,1fr)_128px_auto]">
+            <div className={styles.field}>
+            <label htmlFor={`${fieldId}-new-subject-name`} className={styles.label}>과목명</label>
             <input
+              id={`${fieldId}-new-subject-name`}
+              aria-label="새 과목명"
               value={newSubject.name}
               onChange={(e) => setNewSubject((c) => ({ ...c, name: e.target.value }))}
               placeholder="예: 형사법"
               className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             />
+            </div>
+            <div className={styles.field}>
+            <label htmlFor={`${fieldId}-new-subject-order`} className={styles.label}>정렬순서</label>
             <input
+              id={`${fieldId}-new-subject-order`}
               type="number"
+              aria-label="새 과목 정렬순서"
               value={newSubject.sort_order}
               onChange={(e) => setNewSubject((c) => ({ ...c, sort_order: Number(e.target.value || 0) }))}
               className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             />
+            </div>
             <button type="submit" className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-slate-800 hover:shadow-md active:scale-[0.97] active:duration-100">
               추가
             </button>
@@ -948,7 +924,7 @@ export default function CourseDetailPage({
             {subjects.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-gray-400">등록된 과목이 없습니다.</p>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="admin-table-frame overflow-x-auto border border-slate-200">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">
@@ -962,6 +938,7 @@ export default function CourseDetailPage({
                       <tr key={subject.id} className="hover:bg-slate-50/60">
                         <td className="px-4 py-3">
                           <input
+                            aria-label={`${subject.name} 과목명`}
                             defaultValue={subject.name}
                             onBlur={(e) => {
                               const v = e.target.value.trim()
@@ -973,6 +950,7 @@ export default function CourseDetailPage({
                         <td className="px-3 py-3">
                           <input
                             type="number"
+                            aria-label={`${subject.name} 정렬순서`}
                             defaultValue={subject.sort_order}
                             onBlur={(e) => {
                               const v = Number(e.target.value || 0)
@@ -1006,44 +984,49 @@ export default function CourseDetailPage({
             )}
           </div>
         </section>
-      </div>
+        </AdminSectionPanel>
 
       {/* ── Enrollment fields ── */}
+      <AdminSectionPanel value="fields">
       <section className="rounded-[8px] bg-white p-4 shadow-sm sm:p-5">
         <h3 className="text-sm font-bold text-gray-700">수강생 정보 필드</h3>
-        <p className="mt-1 text-xs text-gray-400">
-          학번, 이름, 연락처는 기본 필수 항목입니다. 강좌별로 추가 정보 필드를 설정할 수 있습니다.
-        </p>
+        <p className={`${styles.intro} text-gray-500`}>학번, 이름, 연락처는 기본 필수 항목입니다.</p>
 
-        <div className="mt-4 grid gap-3 md:hidden">
+        <div className="mt-4 grid gap-3 xl:hidden">
           {enrollmentFields.map((field, index) => (
             <article key={field.key} className="rounded-[8px] border border-slate-200 bg-slate-50/70 p-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-gray-400">필드 {index + 1}</span>
+                <span className={styles.label}>필드 {index + 1}</span>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => moveField(index, 'up')}
                     disabled={index === 0}
-                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-                  >UP</button>
+                    aria-label={`필드 ${index + 1} 위로 이동`}
+                    title="위로 이동"
+                    className={styles.orderButton}
+                  ><ArrowUp size={20} aria-hidden="true" /></button>
                   <button
                     type="button"
                     onClick={() => moveField(index, 'down')}
                     disabled={index === enrollmentFields.length - 1}
-                    className="rounded-[8px] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-                  >DN</button>
+                    aria-label={`필드 ${index + 1} 아래로 이동`}
+                    title="아래로 이동"
+                    className={styles.orderButton}
+                  ><ArrowDown size={20} aria-hidden="true" /></button>
                 </div>
               </div>
 
               <div className="mt-3 grid gap-2">
                 <input
+                  aria-label={`필드 ${index + 1} 이름 (${field.key})`}
                   value={field.label}
                   onChange={(e) => updateField(index, { label: e.target.value })}
                   placeholder="필드명 (예: 성별, 지역)"
                   className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 />
                 <select
+                  aria-label={`필드 ${index + 1} 유형 (${field.key})`}
                   value={field.type}
                   onChange={(e) => updateField(index, { type: e.target.value as 'text' | 'select' })}
                   className="rounded-[8px] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
@@ -1053,6 +1036,7 @@ export default function CourseDetailPage({
                 </select>
                 {field.type === 'select' ? (
                   <input
+                    aria-label={`필드 ${index + 1} 선택지 (${field.key})`}
                     value={(field.options ?? []).join(',')}
                     onChange={(e) =>
                       updateField(index, {
@@ -1076,8 +1060,8 @@ export default function CourseDetailPage({
           ))}
         </div>
 
-        <div className="mt-4 hidden gap-2 md:grid">
-          <div className="grid grid-cols-[72px,1fr,1fr,100px,auto] gap-2 text-[11px] font-semibold text-gray-400">
+        <div className="mt-4 hidden gap-2 xl:grid">
+          <div className={`${styles.fieldHeadings} grid grid-cols-[96px_minmax(0,1fr)_128px_minmax(0,1fr)_64px] gap-2`}>
             <span>순서</span>
             <span>필드명</span>
             <span>유형</span>
@@ -1086,28 +1070,34 @@ export default function CourseDetailPage({
           </div>
 
           {enrollmentFields.map((field, index) => (
-            <div key={field.key} className="grid grid-cols-[72px,1fr,1fr,100px,auto] gap-2">
+            <div key={field.key} className="grid grid-cols-[96px_minmax(0,1fr)_128px_minmax(0,1fr)_64px] gap-2">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => moveField(index, 'up')}
                   disabled={index === 0}
-                  className="rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-                >UP</button>
+                  aria-label={`필드 ${index + 1} 위로 이동`}
+                  title="위로 이동"
+                  className={styles.orderButton}
+                ><ArrowUp size={20} aria-hidden="true" /></button>
                 <button
                   type="button"
                   onClick={() => moveField(index, 'down')}
                   disabled={index === enrollmentFields.length - 1}
-                  className="rounded-lg bg-slate-100 px-2 py-2 text-[11px] font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-                >DN</button>
+                  aria-label={`필드 ${index + 1} 아래로 이동`}
+                  title="아래로 이동"
+                  className={styles.orderButton}
+                ><ArrowDown size={20} aria-hidden="true" /></button>
               </div>
               <input
+                aria-label={`필드 ${index + 1} 이름 (${field.key})`}
                 value={field.label}
                 onChange={(e) => updateField(index, { label: e.target.value })}
                 placeholder="필드명 (예: 성별, 지역)"
                 className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
               />
               <select
+                aria-label={`필드 ${index + 1} 유형 (${field.key})`}
                 value={field.type}
                 onChange={(e) => updateField(index, { type: e.target.value as 'text' | 'select' })}
                 className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
@@ -1118,6 +1108,7 @@ export default function CourseDetailPage({
               <div>
                 {field.type === 'select' ? (
                   <input
+                    aria-label={`필드 ${index + 1} 선택지 (${field.key})`}
                     value={(field.options ?? []).join(',')}
                     onChange={(e) =>
                       updateField(index, {
@@ -1161,10 +1152,12 @@ export default function CourseDetailPage({
           {fieldsMessage && <span className="text-xs text-emerald-600">{fieldsMessage}</span>}
         </div>
       </section>
+      </AdminSectionPanel>
 
+      <AdminSectionPanel value="danger">
       <section className="rounded-2xl border border-red-200 bg-red-50/60 p-5 shadow-sm">
         <h3 className="text-sm font-bold text-red-700">위험 작업</h3>
-        <p className="mt-1 text-xs text-red-600">
+        <p className={`${styles.intro} text-red-600`}>
           완전 삭제를 실행하면 강좌, 수강생, 좌석, 출석, 교재, 배부 이력이 함께 삭제되며 복구할 수 없습니다.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1182,6 +1175,8 @@ export default function CourseDetailPage({
           <span className="text-xs text-red-500">1차 경고 후 강좌명 재입력 확인까지 거칩니다.</span>
         </div>
       </section>
+      </AdminSectionPanel>
+      </AdminSectionTabs>
     </div>
     </>
   )

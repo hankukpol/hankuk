@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -179,7 +180,7 @@ export default function StaffLoginPage() {
             />
           </div>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
 
           <button
             type="submit"

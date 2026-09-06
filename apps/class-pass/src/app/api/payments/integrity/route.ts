@@ -7,7 +7,7 @@ import { parsePositiveInt } from '@/lib/utils'
 
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+    return NextResponse.json({ error: '요청한 경로를 찾을 수 없습니다.' }, { status: 404 })
   }
 
   try {

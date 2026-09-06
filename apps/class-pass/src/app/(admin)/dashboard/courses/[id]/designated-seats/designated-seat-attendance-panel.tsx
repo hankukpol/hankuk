@@ -1,5 +1,7 @@
 'use client'
 
+import { AdminPagination as PaginationControls } from "@/components/admin/AdminPagination"
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   DesignatedSeatAttendanceDashboard,
@@ -97,9 +99,9 @@ function StatCard(props: {
   valueClassName?: string
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+    <article className="border border-slate-200 bg-white">
       <p className="text-xs font-semibold text-slate-500">{props.label}</p>
-      <p className={`mt-2 text-3xl font-extrabold ${props.valueClassName ?? 'text-slate-900'}`}>
+      <p className={`mt-1 font-extrabold ${props.valueClassName ?? 'text-slate-900'}`}>
         {props.value}
       </p>
       {props.hint ? <p className="mt-1 text-xs text-slate-400">{props.hint}</p> : null}
@@ -117,11 +119,9 @@ function TabButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.97] ${
-        props.active
-          ? 'border-[#1d1d1f] text-[#1d1d1f]'
-          : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-[#1d1d1f]'
-      }`}
+      className="admin-choice-button"
+      data-active={props.active}
+      aria-pressed={props.active}
     >
       <span>{props.label}</span>
       <span
@@ -335,58 +335,6 @@ function ConsecutiveAbsenceCell(props: { record: DesignatedSeatAttendanceRecord 
       {props.record.lastAttendedDate ? (
         <span className="text-[11px] text-slate-400">최근 출석 {props.record.lastAttendedDate}</span>
       ) : null}
-    </div>
-  )
-}
-
-function PaginationControls(props: {
-  currentPage: number
-  pageCount: number
-  pageSize: number
-  totalCount: number
-  onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
-}) {
-  const start = props.totalCount === 0 ? 0 : ((props.currentPage - 1) * props.pageSize) + 1
-  const end = Math.min(props.currentPage * props.pageSize, props.totalCount)
-
-  return (
-    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3 text-sm text-slate-500">
-        <span>
-          {start}-{end} / {props.totalCount}
-        </span>
-        <select
-          value={props.pageSize}
-          onChange={(event) => props.onPageSizeChange(Number(event.target.value))}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none"
-        >
-          <option value={20}>20개</option>
-          <option value={50}>50개</option>
-          <option value={100}>100개</option>
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => props.onPageChange(props.currentPage - 1)}
-          disabled={props.currentPage <= 1}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
-        >
-          이전
-        </button>
-        <span className="text-sm font-medium text-slate-600">
-          {props.currentPage} / {props.pageCount}
-        </span>
-        <button
-          type="button"
-          onClick={() => props.onPageChange(props.currentPage + 1)}
-          disabled={props.currentPage >= props.pageCount}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
-        >
-          다음
-        </button>
-      </div>
     </div>
   )
 }
@@ -672,7 +620,7 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
       <section className="rounded-[8px] bg-white p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-[#1d1d1f]">출석 현황</h3>
+            <h3 className="admin-section-title">출석 현황</h3>
             <p className="mt-1 text-sm text-[#86868b]">
               QR 좌석 배정 기록을 출석으로 집계합니다.
             </p>
@@ -699,10 +647,10 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
         </div>
 
         {error ? (
-          <p className="mt-4 text-sm text-[#ff3b30]">{error}</p>
+          <p className="mt-4 text-sm text-[#ff3b30]">{getUserErrorMessage(error)}</p>
         ) : null}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="admin-metric-strip mt-6">
           <StatCard label="출석 대상" value={stats.targetCount} />
           <StatCard label="출석" value={stats.presentCount} valueClassName="text-emerald-600" />
           <StatCard label="결석" value={stats.absentCount} valueClassName="text-rose-600" />
@@ -711,8 +659,19 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
       </section>
 
       <section className="overflow-hidden rounded-[8px] bg-white">
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex gap-6 border-b border-slate-200">
+        <div className="admin-table-toolbar flex flex-wrap items-end gap-4 border-b border-slate-200 py-4">
+          <label className="admin-students-search block">
+            <span className="mb-1.5 block text-xs font-semibold text-[#86868b]">검색</span>
+            <input
+              type="search"
+              aria-label="지정좌석 출석 명단 검색"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="이름, 수험번호, 연락처, 좌석번호 검색"
+              className="w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm text-[#1d1d1f] outline-none transition focus:border-[#0071e3]"
+            />
+          </label>
+          <div className="admin-choice-group min-w-0">
             <TabButton
               active={activeTab === 'all'}
               label="전체"
@@ -732,15 +691,6 @@ export function DesignatedSeatAttendancePanel(props: { courseId: number }) {
               onClick={() => setActiveTab('absent')}
             />
           </div>
-          <label className="block w-full lg:w-80">
-            <span className="mb-1.5 block text-xs font-semibold text-[#86868b]">검색</span>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="이름, 수험번호, 연락처, 좌석번호 검색"
-              className="w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm text-[#1d1d1f] outline-none transition focus:border-[#0071e3]"
-            />
-          </label>
         </div>
 
         {hasNoStudents ? (

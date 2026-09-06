@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, RefreshCw, ShieldAlert } from 'lucide-react'
@@ -79,9 +80,9 @@ function StatCard({ label, value, tone = 'default' }: { label: string; value: st
         : 'text-slate-900'
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+    <article className="border border-slate-200 bg-white">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${toneClass}`}>{value}</p>
+      <p className={`mt-1 font-bold ${toneClass}`}>{value}</p>
     </article>
   )
 }
@@ -144,8 +145,7 @@ export default function SettlementIntegrityPage() {
             >
               수납·정산으로 돌아가기
             </Link>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Integrity Check</p>
-            <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">수납 정합성 점검</h1>
+            <h1 className="admin-page-title mt-1">수납 정합성 점검</h1>
             <p className="mt-2 text-sm text-slate-500">
               수강 등록, 청구 정보, 수납·환불 합계가 서로 맞지 않는 항목을 읽기 전용으로 확인합니다.
             </p>
@@ -163,12 +163,12 @@ export default function SettlementIntegrityPage() {
       </section>
 
       {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
-          {error}
-        </div>
+        <p className="admin-notice admin-notice-danger">
+          {getUserErrorMessage(error)}
+        </p>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="admin-metric-strip">
         <StatCard label="오류" value={String(report?.totals.errorCount ?? 0)} tone="rose" />
         <StatCard label="확인 필요" value={String(report?.totals.warningCount ?? 0)} tone="amber" />
         <StatCard label="점검 수강" value={String(report?.totals.enrollmentsChecked ?? 0)} tone="blue" />
@@ -177,9 +177,9 @@ export default function SettlementIntegrityPage() {
       </section>
 
       {report?.truncated ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-medium text-amber-800">
+        <p className="admin-notice admin-notice-warning">
           수강 등록 수가 많아 최근 {report.totals.enrollmentsChecked.toLocaleString('ko-KR')}건만 점검했습니다.
-        </div>
+        </p>
       ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -260,16 +260,16 @@ export default function SettlementIntegrityPage() {
                       </p>
                     </td>
                     <td className="px-4 py-4">
-                      <p className="font-semibold text-slate-900">{issue.message}</p>
+                      <p className="font-semibold text-slate-900">{getUserErrorMessage(issue.message)}</p>
                       <p className="mt-1 font-mono text-[11px] text-slate-400">{issue.code}</p>
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="admin-table-amount px-4 py-4">
                       <p className="font-semibold text-slate-900">{formatWon(issue.payableAmount)}</p>
                       <p className="mt-1 text-xs text-slate-500">
                         현재 {formatBillingStatus(issue.billingStatus)} · 계산 {formatBillingStatus(issue.expectedBillingStatus)}
                       </p>
                     </td>
-                    <td className="px-4 py-4">
+                    <td className="admin-table-amount px-4 py-4">
                       <p className="font-semibold text-slate-900">순액 {formatWon(issue.netAmount)}</p>
                       <p className="mt-1 text-xs text-slate-500">
                         수납 {formatWon(issue.paymentGrossAmount)} · 환불 {formatWon(issue.refundAmount)} · {issue.paymentCount}건

@@ -15,6 +15,8 @@ export type MaterialItem = {
 
 export type ScanResponse = {
   success: boolean
+  refreshRequired?: true
+  warning?: string
   reason?: string
   studentName?: string
   courseName?: string
@@ -49,6 +51,8 @@ export type BootstrapResponse = {
 
 export type QuickDistributionResponse = {
   success?: boolean
+  refreshRequired?: true
+  warning?: string
   student_name?: string
   material_name?: string
   material_type?: 'handout' | 'textbook'

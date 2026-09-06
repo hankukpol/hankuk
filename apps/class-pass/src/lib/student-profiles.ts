@@ -1143,7 +1143,7 @@ export async function ensureStudentProfile(
     birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
       ? normalized.birth_date
       : student.birth_date,
-    photo_url: normalized.photo_url !== undefined ? normalized.photo_url : student.photo_url,
+    ...(normalized.photo_url !== undefined ? { photo_url: normalized.photo_url } : {}),
     updated_at: timestamp,
   })
 
@@ -1519,33 +1519,45 @@ export async function ensureStudentProfilesBatch(
   }
 
   if (updateInputByStudentId.size > 0) {
-    const rows = unwrapSupabaseResult(
-      'studentProfiles.ensureBatch.updateStudents',
-      await db
-        .from('students')
-        .upsert(
-          Array.from(updateInputByStudentId.values()).map(({ student, normalized }) => (
-            buildStudentUpsertPayload(student, {
-              name: normalized.name,
-              phone: normalized.phone,
-              exam_number: normalized.exam_number !== undefined ? normalized.exam_number : student.exam_number,
-              cohort_option_id: normalized.cohort_option_id !== undefined
-                ? normalized.cohort_option_id
-                : student.cohort_option_id,
-              birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
-                ? normalized.birth_date
-                : student.birth_date,
-              photo_url: normalized.photo_url !== undefined ? normalized.photo_url : student.photo_url,
-              updated_at: nowIso,
-            })
-          )),
-          { onConflict: 'id' },
-        )
-        .select('*'),
-    ) as Student[] | null
+    const updates = Array.from(updateInputByStudentId.values())
+    // Bulk upserts share one column set. Do not mix an omitted photo column with
+    // explicit photo updates, or PostgREST can fill the omitted value with null.
+    for (const hasPhotoInput of [false, true]) {
+      const group = updates.filter(({ normalized }) => (normalized.photo_url !== undefined) === hasPhotoInput)
+      if (group.length === 0) continue
 
-    for (const row of rows ?? []) {
-      updatedStudentsById.set(row.id, row)
+      const rows = unwrapSupabaseResult(
+        'studentProfiles.ensureBatch.updateStudents',
+        await db
+          .from('students')
+          .upsert(
+            group.map(({ student, normalized }) => {
+              const payload = buildStudentUpsertPayload(student, {
+                name: normalized.name,
+                phone: normalized.phone,
+                exam_number: normalized.exam_number !== undefined ? normalized.exam_number : student.exam_number,
+                cohort_option_id: normalized.cohort_option_id !== undefined
+                  ? normalized.cohort_option_id
+                  : student.cohort_option_id,
+                birth_date: normalized.birth_date !== undefined && normalized.birth_date !== null
+                  ? normalized.birth_date
+                  : student.birth_date,
+                photo_url: normalized.photo_url !== undefined ? normalized.photo_url : student.photo_url,
+                updated_at: nowIso,
+              })
+              if (hasPhotoInput) return payload
+              const { photo_url, ...profileOnlyPayload } = payload
+              void photo_url
+              return profileOnlyPayload
+            }),
+            { onConflict: 'id' },
+          )
+          .select('*'),
+      ) as Student[] | null
+
+      for (const row of rows ?? []) {
+        updatedStudentsById.set(row.id, row)
+      }
     }
   }
 

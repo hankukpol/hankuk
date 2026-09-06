@@ -2,6 +2,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { buildSettlementReport } from './settlement-report'
 import { listSettlementDetailPayments } from './service'
 import type { EnrollmentPayment, PaymentMethod } from './types'
+import { buildDailySettlementManifest, countPendingSettlementEntries, settlementManifestsEqual, type DailySettlementManifest } from './settlement-manifest'
 
 type ServerClient = ReturnType<typeof createServerClient>
 
@@ -26,6 +27,7 @@ export type DailySettlementConfirmationRecord = {
   confirmed_at: string
   confirmed_by_staff_id: number
   snapshot_json: DailySettlementSnapshot | null
+  manifest_json: DailySettlementManifest | null
   memo: string | null
   created_at: string
   updated_at: string
@@ -61,6 +63,7 @@ function toRecord(row: unknown): DailySettlementConfirmationRecord {
     confirmed_at: String(data.confirmed_at),
     confirmed_by_staff_id: Number(data.confirmed_by_staff_id),
     snapshot_json: parseDailySettlementSnapshot(data.snapshot_json),
+    manifest_json: (data.manifest_json ?? null) as DailySettlementManifest | null,
     memo: typeof data.memo === 'string' ? data.memo : null,
     created_at: String(data.created_at),
     updated_at: String(data.updated_at),
@@ -219,6 +222,8 @@ export async function getDailySettlementConfirmation(date: string, division: str
   const db = createServerClient()
   const payments = await listSettlementDetailPayments({ from: date, to: date }, division)
   const currentSnapshot = buildDailySettlementSnapshot(payments, date)
+  const currentManifest = buildDailySettlementManifest(payments, date)
+  const pendingEntryCount = countPendingSettlementEntries(payments, date)
   const { data, error } = await db
     .from('daily_settlement_confirmations')
     .select('*')
@@ -237,6 +242,8 @@ export async function getDailySettlementConfirmation(date: string, division: str
       effectiveStatus: 'unconfirmed' as const,
       confirmation: null,
       currentSnapshot,
+      currentManifest,
+      pendingEntryCount,
       latestChangedAt: null,
       snapshotChanged: false,
     }
@@ -245,8 +252,9 @@ export async function getDailySettlementConfirmation(date: string, division: str
   const record = toRecord(data)
   const latestChangedAt = collectLatestChangedAt(payments, date, record.confirmed_at)
   const snapshotChanged = !snapshotsEqual(record.snapshot_json, currentSnapshot)
-  const confirmedByName = await getOperatorDisplayName(db, record.confirmed_by_staff_id)
-  const effectiveStatus: DailySettlementEffectiveStatus = latestChangedAt || snapshotChanged ? 'needs_review' : record.status
+    || !settlementManifestsEqual(record.manifest_json, currentManifest)
+  const confirmedByName = await getOperatorDisplayName(db, record.confirmed_by_staff_id).catch(() => null)
+  const effectiveStatus: DailySettlementEffectiveStatus = latestChangedAt || snapshotChanged || pendingEntryCount > 0 ? 'needs_review' : record.status
   const confirmation: DailySettlementConfirmationView = {
     id: record.id,
     settlementDate: record.settlement_date,
@@ -269,6 +277,8 @@ export async function getDailySettlementConfirmation(date: string, division: str
     effectiveStatus,
     confirmation,
     currentSnapshot,
+    currentManifest,
+    pendingEntryCount,
     latestChangedAt,
     snapshotChanged,
   }
@@ -278,6 +288,7 @@ export async function confirmDailySettlement(input: {
   date: string
   division: string
   actorStaffId: number
+  expectedManifest: unknown
   memo?: string | null
 }) {
   if (!isDateParam(input.date)) {
@@ -290,28 +301,36 @@ export async function confirmDailySettlement(input: {
 
   const db = createServerClient()
   const payments = await listSettlementDetailPayments({ from: input.date, to: input.date }, input.division)
+  const currentManifest = buildDailySettlementManifest(payments, input.date)
+  const pendingEntryCount = countPendingSettlementEntries(payments, input.date)
+  if (pendingEntryCount > 0) {
+    throw Object.assign(new Error(`미확인 수납·환불 ${pendingEntryCount}건이 있습니다. 각 거래를 확인한 뒤 다시 처리해 주세요.`), { status: 409 })
+  }
+  if (!settlementManifestsEqual(input.expectedManifest, currentManifest)) {
+    throw Object.assign(new Error('조회한 정산 내역이 변경되었습니다. 새로 조회한 뒤 확인해 주세요.'), { status: 409 })
+  }
   const snapshot = buildDailySettlementSnapshot(payments, input.date)
-  const confirmedAt = new Date().toISOString()
-  const { data, error } = await db
-    .from('daily_settlement_confirmations')
-    .upsert({
-      settlement_date: input.date,
-      division: input.division,
-      status: 'confirmed',
-      confirmed_at: confirmedAt,
-      confirmed_by_staff_id: input.actorStaffId,
-      snapshot_json: snapshot,
-      memo: input.memo?.trim() || null,
-    }, { onConflict: 'settlement_date,division' })
-    .select('*')
-    .single()
+  const { data, error } = await db.rpc('confirm_daily_settlement_atomic', {
+    p_settlement_date: input.date,
+    p_division: input.division,
+    p_actor_staff_id: input.actorStaffId,
+    p_expected_manifest: currentManifest,
+    p_snapshot_json: snapshot,
+    p_memo: input.memo?.trim() || null,
+  })
 
   if (error) {
-    throw error
+    const busy = error.code === '55P03' || error.code === '57014'
+    const conflict = error.code === '40001' || error.message?.includes('SETTLEMENT_')
+    throw Object.assign(new Error(busy
+      ? '다른 결제 처리가 진행 중입니다. 잠시 후 새로 조회해 주세요.'
+      : conflict
+        ? '정산 내역 또는 거래별 확인 상태가 변경되었습니다. 새로 조회한 뒤 확인해 주세요.'
+        : '정산 확인을 저장하지 못했습니다.'), { status: busy || conflict ? 409 : 500 })
   }
 
   const record = toRecord(data)
-  const confirmedByName = await getOperatorDisplayName(db, record.confirmed_by_staff_id)
+  const confirmedByName = await getOperatorDisplayName(db, record.confirmed_by_staff_id).catch(() => null)
 
   return {
     division: input.division,
@@ -333,6 +352,8 @@ export async function confirmDailySettlement(input: {
       memo: record.memo,
     },
     currentSnapshot: snapshot,
+    currentManifest,
+    pendingEntryCount: 0,
     latestChangedAt: null,
     snapshotChanged: false,
   }

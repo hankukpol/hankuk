@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStudentSession } from '@/lib/auth/student-session'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import {
@@ -76,6 +77,9 @@ function jsonWithStudentDeviceCookie(
 
 export async function POST(req: NextRequest) {
   try {
+    const studentSession = await requireStudentSession(req)
+    if (studentSession instanceof NextResponse) return studentSession
+
     const featureError = await requireAppFeature('attendance_enabled')
     if (featureError) {
       return featureError
@@ -92,6 +96,7 @@ export async function POST(req: NextRequest) {
     const access = await verifyStudentAttendanceAccess({
       courseId: parsed.data.courseId,
       enrollmentId: parsed.data.enrollmentId,
+      studentId: studentSession.studentId,
       name: parsed.data.name,
       phone: parsed.data.phone,
       division,
@@ -304,19 +309,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const insertResult = await db
-      .from('attendance_records')
-      .insert({
-        course_id: access.course.id,
-        enrollment_id: access.enrollment.id,
-        display_session_id: displaySession.id,
-        subject_id: displaySession.subject_id,
-        device_key_hash: device.deviceHash,
-        attended_date: attendedDate,
-      })
-      .select('id')
-      .maybeSingle()
-
+    const insertResult = await db.rpc('submit_student_attendance', {
+      p_course_id: access.course.id,
+      p_enrollment_id: access.enrollment.id,
+      p_student_id: studentSession.studentId,
+      p_division: division,
+      p_display_session_id: displaySession.id,
+      p_subject_id: displaySession.subject_id,
+      p_device_key_hash: device.deviceHash,
+      p_attended_date: attendedDate,
+    })
     if (insertResult.error) {
       if (insertResult.error.code === '23505') {
         const failure = getAttendanceFailureMessage('ALREADY_ATTENDED')
@@ -332,6 +334,16 @@ export async function POST(req: NextRequest) {
         { status: 500 },
         device.cookieToSet,
       )
+    }
+
+    if (!insertResult.data?.ok) {
+      const code = insertResult.data?.code
+      return jsonWithStudentDeviceCookie({
+        error: code === 'ENROLLMENT_INACTIVE' ? '현재 출석할 수 없는 수강 상태입니다.'
+          : code === 'ALREADY_ATTENDED' ? '이미 출석 처리되었습니다.'
+            : '출석 가능 상태가 변경되었습니다. 현장 코드를 다시 확인해 주세요.',
+        code: ['ENROLLMENT_INACTIVE', 'ALREADY_ATTENDED', 'COURSE_INACTIVE', 'DISPLAY_EXPIRED'].includes(code) ? code : 'ATTENDANCE_FAILED',
+      }, { status: code === 'ALREADY_ATTENDED' ? 409 : 403 }, device.cookieToSet)
     }
 
     await logAttendanceEvent({

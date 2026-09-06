@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { getUserErrorMessage } from '@/lib/user-error-message'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import type { CourseSubject } from '@/types/database'
 
@@ -61,6 +62,7 @@ export function AttendanceExcuseModal({
   onClose,
   onSaved,
 }: AttendanceExcuseModalProps) {
+  const formId = useId()
   const [studentQuery, setStudentQuery] = useState('')
   const [enrollmentId, setEnrollmentId] = useState<number | null>(null)
   const [subjectId, setSubjectId] = useState<number | null>(null)
@@ -176,22 +178,28 @@ export function AttendanceExcuseModal({
     <SeatEditModal
       open={open}
       title={isEditMode ? '사유서 수정' : '사유서 등록'}
-      badge="Attendance"
       description={isEditMode
         ? '학생과 과목은 유지하고 날짜와 사유만 수정합니다.'
         : '학생이 빠질 날짜와 과목을 미리 지정해 연속 결석 계산에서 제외합니다.'}
       widthClassName="max-w-2xl"
+      closeDisabled={working}
+      footer={<>
+        <button type="button" onClick={onClose} disabled={working} className="admin-button">취소</button>
+        <button type="submit" form={formId} disabled={!canSubmit} className="admin-button admin-button-primary">
+          {working ? '저장 중...' : isEditMode ? '사유서 수정' : '사유서 등록'}
+        </button>
+      </>}
       onClose={() => {
         if (!working) {
           onClose()
         }
       }}
     >
-      <form className="flex flex-col gap-5" onSubmit={(event) => void handleSubmit(event)}>
+      <form id={formId} className="flex flex-col gap-5" onSubmit={(event) => void handleSubmit(event)}>
         {subjects.length === 0 ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="admin-notice admin-notice-warning">
             등록 가능한 과목이 없어 사유서를 만들 수 없습니다.
-          </div>
+          </p>
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -278,28 +286,11 @@ export function AttendanceExcuseModal({
         </div>
 
         {error ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </div>
+          <p className="admin-notice admin-notice-danger">
+            {getUserErrorMessage(error)}
+          </p>
         ) : null}
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={working}
-            className="rounded-xl border border-[#d2d2d7] px-4 py-2.5 text-sm font-semibold text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-[#f5f5f7] active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
-          >
-            취소
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="rounded-xl bg-[#0071e3] px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-[#0077ed] hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
-          >
-            {working ? '저장 중...' : isEditMode ? '사유서 수정' : '사유서 등록'}
-          </button>
-        </div>
       </form>
     </SeatEditModal>
   )

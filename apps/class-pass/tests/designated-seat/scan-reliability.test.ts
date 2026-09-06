@@ -117,7 +117,9 @@ test('scan issue telemetry accepts only the three operational failure stages', (
   assert.equal(shouldReportDesignatedSeatNoDecode({ durationMs: 20_000, decoded: false, alreadyReported: true }), false)
 })
 
-test('scan issue queue survives network failure and removes only delivered records', async () => {
+test('scan issue queue survives network failure and removes only delivered records', async (t) => {
+  // Keep the retry scenario inside the queue TTL, independent of the test run date.
+  t.mock.method(Date, 'now', () => Date.parse('2026-08-06T00:01:00.000Z'))
   const storage = new MemoryStorage()
   const tenantType = 'queue-test'
   appendDesignatedSeatScanIssue(storage, tenantType, createQueuedIssue())

@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
@@ -60,6 +61,8 @@ type DashboardStats = {
   courses: DashboardCourseSummary[]
 }
 
+type AttentionFilter = 'needsAttendanceSession' | 'needsDesignatedSeatLayout' | 'needsDesignatedSeatSession'
+
 function formatCourseTypeLabel(value: DashboardCourseSummary['courseType']) {
   switch (value) {
     case 'interview':
@@ -88,7 +91,7 @@ function getStatusBadges(course: DashboardCourseSummary) {
 
   if (course.featureAttendance) {
     if (course.needsAttendanceSession) {
-      badges.push({ label: '출석 OPEN, 세션 없음', tone: 'red' })
+      badges.push({ label: '출석 화면 시작 필요', tone: 'red' })
     } else if (course.attendanceOpen && course.attendanceSessionActive) {
       badges.push({ label: '출석 진행 중', tone: 'green' })
     } else {
@@ -100,7 +103,7 @@ function getStatusBadges(course: DashboardCourseSummary) {
     if (course.needsDesignatedSeatLayout) {
       badges.push({ label: '지정좌석 레이아웃 확인', tone: 'amber' })
     } else if (course.needsDesignatedSeatSession) {
-      badges.push({ label: '지정좌석 OPEN, 세션 없음', tone: 'red' })
+      badges.push({ label: '지정좌석 화면 시작 필요', tone: 'red' })
     } else if (course.designatedSeatOpen && course.designatedSeatSessionActive) {
       badges.push({ label: '지정좌석 진행 중', tone: 'green' })
     } else {
@@ -109,7 +112,7 @@ function getStatusBadges(course: DashboardCourseSummary) {
   }
 
   if (badges.length === 0) {
-    badges.push({ label: '운영 설정 확인 필요 없음', tone: 'gray' })
+    badges.push({ label: '정상', tone: 'gray' })
   }
 
   return badges
@@ -133,6 +136,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [attentionFilter, setAttentionFilter] = useState<{ key: AttentionFilter; label: string } | null>(null)
 
   useEffect(() => {
     fetch(withTenantPrefix('/api/dashboard/stats', tenant.type), { cache: 'no-store' })
@@ -155,46 +159,52 @@ export default function AdminDashboardPage() {
   }
 
   if (error || !stats) {
-    return <p className="py-12 text-center text-sm text-red-600">{error || '대시보드 정보를 확인하지 못했습니다.'}</p>
+    return <p className="py-12 text-center text-sm text-red-600">{getUserErrorMessage(error || '대시보드 정보를 확인하지 못했습니다.')}</p>
   }
 
   const overviewCards = [
-    { label: '운영 중 강좌', value: stats.overview.activeCourses, accent: 'text-slate-900' },
+    { label: '운영 중 강좌', value: stats.overview.activeCourses, unit: '개', tone: 'neutral' },
     {
-      label: '실제 활성 학생',
+      label: '수강 중 학생',
       value: stats.overview.activeUniqueStudents,
-      accent: 'text-blue-600',
-      helper: `활성 수강 ${stats.overview.activeEnrollmentCount}건 · 중복 ${stats.overview.duplicateEnrollmentCount}건`,
+      unit: '명',
+      tone: 'accent',
+      helper: `전체 수강 ${stats.overview.activeEnrollmentCount}건 / 중복 수강 ${stats.overview.duplicateEnrollmentCount}건`,
     },
-    { label: '인증 미설정 학생', value: stats.overview.pendingAuthStudents, accent: 'text-amber-600' },
-    { label: '즉시 확인 필요 강좌', value: stats.overview.actionRequiredCourses, accent: 'text-red-600' },
+    { label: '인증 미설정 학생', value: stats.overview.pendingAuthStudents, unit: '명', tone: stats.overview.pendingAuthStudents > 0 ? 'attention' : 'neutral' },
+    { label: '확인 필요한 강좌', value: stats.overview.actionRequiredCourses, unit: '개', tone: stats.overview.actionRequiredCourses > 0 ? 'attention' : 'neutral' },
   ]
 
-  const actionCards = [
+  const actionCards: Array<{ label: string; value: number; helper: string; href?: string; filter?: AttentionFilter }> = [
     {
       label: '인증 미설정 학생',
       value: stats.actionItems.pendingStudentAuth,
-      helper: `생년월일 준비 ${stats.auth.birthDateReadyCount}명 / PIN 필요 ${stats.auth.pinRequiredCount}명`,
+      href: '/dashboard/students/auth-setup',
+      helper: `생년월일로 설정 가능 ${stats.auth.birthDateReadyCount}명 / 인증번호 필요 ${stats.auth.pinRequiredCount}명`,
     },
     {
       label: '정지 수강 건수',
       value: stats.overview.suspendedEnrollmentCount,
+      href: '/dashboard/courses',
       helper: '정지 처리되어 실제 활성 학생 수에서 제외된 수강',
     },
     {
-      label: '출석 세션 필요',
+      label: '출석 화면 시작 필요',
       value: stats.actionItems.attendanceNeedsSession,
-      helper: '출석 OPEN 상태인데 표시 세션이 없는 강좌',
+      filter: 'needsAttendanceSession',
+      helper: '출석을 열었지만 인증 화면이 시작되지 않은 강좌',
     },
     {
       label: '지정좌석 레이아웃 확인',
       value: stats.actionItems.designatedSeatNeedsLayout,
-      helper: '지정좌석 OPEN 상태인데 레이아웃 또는 좌석이 비어 있는 강좌',
+      filter: 'needsDesignatedSeatLayout',
+      helper: '신청을 열었지만 좌석 배치가 준비되지 않은 강좌',
     },
     {
-      label: '지정좌석 세션 필요',
+      label: '지정좌석 화면 시작 필요',
       value: stats.actionItems.designatedSeatNeedsSession,
-      helper: '지정좌석 OPEN 상태인데 현장 세션이 없는 강좌',
+      filter: 'needsDesignatedSeatSession',
+      helper: '신청을 열었지만 인증 화면이 시작되지 않은 강좌',
     },
   ]
 
@@ -205,112 +215,118 @@ export default function AdminDashboardPage() {
     { label: '배부 사용 강좌', value: stats.featureUsage.distributionCourses },
     { label: 'QR 수강증 강좌', value: stats.featureUsage.qrPassCourses },
   ]
+  const visibleCourses = attentionFilter ? stats.courses.filter(course => course[attentionFilter.key]) : stats.courses
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="rounded-2xl bg-white px-5 py-5 shadow-sm">
+    <div className="admin-dashboard">
+      <header className="admin-dashboard-header">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-xl font-extrabold text-slate-900">운영 대시보드</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              배부 실적 대신 강좌 운영 상태, 학생 인증 준비, 오늘 바로 확인할 예외를 먼저 보여줍니다.
+            <h1>운영 대시보드</h1>
+            <p className="admin-dashboard-description">
+              오늘의 운영 현황과 확인이 필요한 강좌를 한눈에 확인하세요.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
               href={withTenantPrefix('/dashboard/students/auth-setup', tenant.type)}
-              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="admin-dashboard-button admin-dashboard-button-primary"
             >
               학생 인증 일괄 설정
             </Link>
             <Link
               href={withTenantPrefix('/dashboard/courses', tenant.type)}
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="admin-dashboard-button"
             >
               강좌 관리
             </Link>
           </div>
         </div>
-      </section>
+      </header>
 
-      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <section className="admin-dashboard-overview" aria-label="운영 핵심 지표">
         {overviewCards.map((card) => (
-          <article key={card.label} className="rounded-2xl bg-white px-5 py-4 shadow-sm">
-            <p className="text-xs font-medium text-slate-400">{card.label}</p>
-            <p className={`mt-1 text-2xl font-extrabold ${card.accent}`}>{card.value}</p>
+          <article key={card.label} className="admin-dashboard-metric" data-tone={card.tone}>
+            <p className="admin-dashboard-label">{card.label}</p>
+            <p className="admin-dashboard-metric-value">{card.value.toLocaleString('ko-KR')}<span>{card.unit}</span></p>
             {'helper' in card && card.helper ? (
-              <p className="mt-2 text-xs leading-5 text-slate-500">{card.helper}</p>
+              <p className="admin-dashboard-helper">{card.helper}</p>
             ) : null}
           </article>
         ))}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.35fr_1fr]">
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-bold text-slate-800">오늘 확인할 일</h3>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-              {stats.overview.actionRequiredCourses}개 강좌 주의
+      <div className="admin-dashboard-panels">
+        <section className="admin-dashboard-panel" aria-labelledby="dashboard-attention-heading">
+          <div className="admin-dashboard-panel-heading">
+            <h2 id="dashboard-attention-heading">오늘 확인할 일</h2>
+            <span className="admin-dashboard-panel-caption" data-attention={stats.overview.actionRequiredCourses > 0}>
+              {stats.overview.actionRequiredCourses > 0 ? `${stats.overview.actionRequiredCourses}개 강좌 확인 필요` : '강좌 운영 정상'}
             </span>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="admin-dashboard-rows">
             {actionCards.map((card) => (
-              <article key={card.label} className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-4">
-                <p className="text-xs font-semibold text-slate-500">{card.label}</p>
-                <p className="mt-1 text-2xl font-extrabold text-slate-900">{card.value}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-500">{card.helper}</p>
+              <article key={card.label} className="admin-dashboard-row" data-attention={card.value > 0}>
+                <div className="min-w-0">
+                  <p className="admin-dashboard-row-label">{card.label}</p>
+                  <p className="admin-dashboard-helper">{card.helper}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <strong className="admin-dashboard-row-value">{card.value.toLocaleString('ko-KR')}</strong>
+                  {card.value > 0 && card.href ? <Link className="admin-button" href={withTenantPrefix(card.href, tenant.type)} aria-label={`${card.label} 관리 화면 보기`}>확인</Link> : null}
+                  {card.value > 0 && card.filter ? <button type="button" className="admin-button" aria-label={`${card.label} 강좌 보기`} onClick={() => {
+                    setAttentionFilter({ key: card.filter!, label: card.label })
+                    const heading = document.getElementById('dashboard-courses-heading')
+                    heading?.scrollIntoView?.({ block: 'start' })
+                    heading?.focus({ preventScroll: true })
+                  }}>강좌 보기</button> : null}
+                </div>
               </article>
             ))}
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-800">기능 사용 현황</h3>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+        <section className="admin-dashboard-panel" aria-labelledby="dashboard-features-heading">
+          <div className="admin-dashboard-panel-heading">
+            <h2 id="dashboard-features-heading">기능 사용 현황</h2>
+            <span className="admin-dashboard-panel-caption">운영 강좌 기준</span>
+          </div>
+          <div className="admin-dashboard-rows">
             {featureCards.map((card) => (
-              <article key={card.label} className="rounded-2xl border border-slate-100 px-4 py-4">
-                <p className="text-xs font-medium text-slate-400">{card.label}</p>
-                <p className="mt-1 text-xl font-extrabold text-slate-900">{card.value}</p>
+              <article key={card.label} className="admin-dashboard-row admin-dashboard-feature">
+                <p className="admin-dashboard-row-label">{card.label}</p>
+                <p className="admin-dashboard-feature-count"><strong>{card.value.toLocaleString('ko-KR')}</strong>개 강좌</p>
               </article>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <section className="rounded-2xl bg-white shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="admin-dashboard-courses" aria-labelledby="dashboard-courses-heading">
+        <div className="admin-dashboard-panel-heading">
           <div>
-            <h3 className="text-sm font-bold text-slate-800">운영 중 강좌 현황</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              강좌별 활성 수강, 환불 수강, 기능 사용 여부, 출석·지정좌석 상태를 한 번에 확인합니다.
-            </p>
+            <h2 id="dashboard-courses-heading" tabIndex={-1}>운영 중 강좌 현황</h2>
           </div>
-          <span className="text-xs font-semibold text-slate-400">{stats.courses.length}개 강좌</span>
+          <span className="admin-dashboard-panel-caption" role="status">{attentionFilter ? `${attentionFilter.label} · ${visibleCourses.length}개` : `전체 ${stats.courses.length}개`}</span>
+          {attentionFilter && <button type="button" className="admin-button" onClick={() => setAttentionFilter(null)}>전체 강좌 보기</button>}
         </div>
 
-        {stats.courses.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-slate-500">운영 중인 강좌가 없습니다.</p>
+        {visibleCourses.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-slate-500">{attentionFilter ? '해당 조건의 강좌가 없습니다.' : '운영 중인 강좌가 없습니다.'}</p>
         ) : (
           <>
           <div className="grid gap-3 p-3 md:hidden">
-            {stats.courses.map((course) => {
+            {visibleCourses.map((course) => {
               const featureBadges = getFeatureBadges(course)
               const statusBadges = getStatusBadges(course)
 
               return (
                 <article key={course.id} className="min-w-0 overflow-hidden rounded-[8px] bg-slate-50 p-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span
-                      className={`mt-0.5 inline-flex h-8 min-w-8 items-center justify-center rounded-[8px] px-2 text-xs font-bold text-white ${
-                        course.needsAttention ? 'bg-red-500' : 'bg-slate-800'
-                      }`}
-                    >
-                      {course.id}
-                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">{course.name}</p>
+                          <p className="admin-dashboard-course-name">{course.name}</p>
                           <p className="mt-1 text-xs text-slate-500">
                             {formatCourseTypeLabel(course.courseType)} · 활성 수강 {course.activeStudents}명 / 환불 {course.refundedStudents}명
                           </p>
@@ -392,7 +408,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[1080px] text-sm">
+            <table className="admin-dashboard-course-table">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-400">
                   <th className="px-5 py-3">강좌</th>
@@ -404,26 +420,16 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {stats.courses.map((course) => {
+                  {visibleCourses.map((course) => {
                   const featureBadges = getFeatureBadges(course)
                   const statusBadges = getStatusBadges(course)
 
                   return (
                     <tr key={course.id} className="align-top hover:bg-slate-50/70">
-                      <td className="px-5 py-4">
+                      <td className="admin-table-course px-5 py-4">
                         <div className="flex items-start gap-3">
-                          <span
-                            className={`mt-0.5 inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-xs font-bold text-white ${
-                              course.needsAttention ? 'bg-red-500' : 'bg-slate-800'
-                            }`}
-                          >
-                            {course.id}
-                          </span>
                           <div>
-                            <p className="font-semibold text-slate-900">{course.name}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {course.needsAttention ? '즉시 확인 필요' : '운영 상태 정상'}
-                            </p>
+                            <p className="admin-dashboard-course-name">{course.name}</p>
                           </div>
                         </div>
                       </td>

@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -32,17 +33,6 @@ type OperatorAccount = {
   shared_user_id: string | null
   is_active: boolean
   memberships: OperatorMembership[]
-}
-
-function membershipsToText(account: OperatorAccount) {
-  return account.memberships
-    .map((membership) => {
-      if (membership.role === 'SUPER_ADMIN') {
-        return 'SUPER_ADMIN'
-      }
-      return `${membership.role}:${membership.branch?.slug ?? ''}`
-    })
-    .join('\n')
 }
 
 function parseMemberships(text: string) {
@@ -218,7 +208,7 @@ export default function SuperAdminManagePageClient({
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1d1d1f]">지점 / 운영자 관리</h2>
+          <h2 className="admin-page-title">지점 / 운영자 관리</h2>
           <p className="mt-2 text-sm text-[#86868b]">
             기존 지점 구조를 그대로 유지하면서 포털 연동과 운영자 계정 관리를 한 화면에서 정리합니다.
           </p>
@@ -226,7 +216,7 @@ export default function SuperAdminManagePageClient({
         <button
           type="button"
           onClick={() => void handleLogout()}
-          className="rounded-[8px] border border-[#d2d2d7] px-4 py-2 text-sm font-semibold text-[#1d1d1f] hover:bg-[#f5f5f7]"
+          className="admin-button"
         >
           로그아웃
         </button>
@@ -235,13 +225,13 @@ export default function SuperAdminManagePageClient({
       {(message || error) && (
         <div className="rounded-[8px] bg-white px-5 py-4">
           {message ? <p className="text-sm text-[#1b7a1b]">{message}</p> : null}
-          {error ? <p className="text-sm text-[#ff3b30]">{error}</p> : null}
+          {error ? <p className="text-sm text-[#ff3b30]">{getUserErrorMessage(error)}</p> : null}
         </div>
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-[12px] bg-white p-6">
-          <h3 className="text-lg font-bold text-[#1d1d1f]">지점 생성</h3>
+          <h3 className="admin-section-title">지점 생성</h3>
           <form onSubmit={handleBranchCreate} className="mt-4 grid gap-3">
             <input
               value={branchForm.slug}
@@ -249,7 +239,7 @@ export default function SuperAdminManagePageClient({
                 setBranchForm((current) => ({ ...current, slug: event.target.value }))
               }
               placeholder="slug 예: gangnam-police"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <input
               value={branchForm.name}
@@ -257,7 +247,7 @@ export default function SuperAdminManagePageClient({
                 setBranchForm((current) => ({ ...current, name: event.target.value }))
               }
               placeholder="지점명"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <select
@@ -268,7 +258,7 @@ export default function SuperAdminManagePageClient({
                     track_type: event.target.value as 'police' | 'fire',
                   }))
                 }
-                className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+                className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
               >
                 <option value="police">경찰</option>
                 <option value="fire">소방</option>
@@ -279,7 +269,7 @@ export default function SuperAdminManagePageClient({
                   setBranchForm((current) => ({ ...current, theme_color: event.target.value }))
                 }
                 placeholder="#1A237E"
-                className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+                className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
               />
             </div>
             <input
@@ -288,7 +278,7 @@ export default function SuperAdminManagePageClient({
                 setBranchForm((current) => ({ ...current, app_name: event.target.value }))
               }
               placeholder="앱 이름"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <input
               value={branchForm.admin_title}
@@ -296,7 +286,7 @@ export default function SuperAdminManagePageClient({
                 setBranchForm((current) => ({ ...current, admin_title: event.target.value }))
               }
               placeholder="관리자 타이틀"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <textarea
               value={branchForm.description}
@@ -305,11 +295,11 @@ export default function SuperAdminManagePageClient({
               }
               placeholder="지점 설명"
               rows={3}
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <button
               type="submit"
-              className="rounded-[8px] bg-[#1d1d1f] px-5 py-3 text-sm font-bold text-white"
+              className="admin-button admin-button-primary"
             >
               지점 저장
             </button>
@@ -317,7 +307,7 @@ export default function SuperAdminManagePageClient({
         </section>
 
         <section className="rounded-[12px] bg-white p-6">
-          <h3 className="text-lg font-bold text-[#1d1d1f]">운영자 계정 생성</h3>
+          <h3 className="admin-section-title">운영자 계정 생성</h3>
           <p className="mt-2 text-xs leading-5 text-[#86868b]">
             멤버십 입력 형식: <code>SUPER_ADMIN</code> 또는{' '}
             <code>BRANCH_ADMIN:지점-slug</code>, <code>STAFF:지점-slug</code>
@@ -336,7 +326,7 @@ export default function SuperAdminManagePageClient({
                 setAccountForm((current) => ({ ...current, login_id: event.target.value }))
               }
               placeholder="로그인 ID"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <input
               value={accountForm.display_name}
@@ -344,7 +334,7 @@ export default function SuperAdminManagePageClient({
                 setAccountForm((current) => ({ ...current, display_name: event.target.value }))
               }
               placeholder="표시 이름"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <input
               value={accountForm.shared_user_id}
@@ -355,7 +345,7 @@ export default function SuperAdminManagePageClient({
                 }))
               }
               placeholder="포털 사용자 ID (관리자 계정 필수)"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <input
               value={accountForm.pin}
@@ -363,7 +353,7 @@ export default function SuperAdminManagePageClient({
                 setAccountForm((current) => ({ ...current, pin: event.target.value }))
               }
               placeholder="직원 로그인 PIN (선택)"
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <textarea
               value={accountForm.memberships}
@@ -371,11 +361,11 @@ export default function SuperAdminManagePageClient({
                 setAccountForm((current) => ({ ...current, memberships: event.target.value }))
               }
               rows={4}
-              className="rounded-[8px] border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
+              className="min-w-0 border border-[#d2d2d7] px-4 py-3 text-sm outline-none focus:border-[#86868b]"
             />
             <button
               type="submit"
-              className="rounded-[8px] bg-[#1d1d1f] px-5 py-3 text-sm font-bold text-white"
+              className="admin-button admin-button-primary"
             >
               운영자 계정 저장
             </button>
@@ -384,7 +374,7 @@ export default function SuperAdminManagePageClient({
       </div>
 
       <section className="rounded-[12px] bg-white p-6">
-        <h3 className="text-lg font-bold text-[#1d1d1f]">지점 목록</h3>
+        <h3 className="admin-section-title">지점 목록</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {branches.map((branch) => (
             <div key={branch.id} className="rounded-[8px] border border-[#d2d2d7] p-4">
@@ -392,7 +382,7 @@ export default function SuperAdminManagePageClient({
                 <div>
                   <p className="text-sm font-bold text-[#1d1d1f]">{branch.name}</p>
                   <p className="mt-1 text-xs text-[#86868b]">
-                    {branch.slug} / {branch.track_type === 'fire' ? '소방' : '경찰'}
+                    {branch.track_type === 'fire' ? '소방' : '경찰'}
                   </p>
                 </div>
                 <span
@@ -412,7 +402,7 @@ export default function SuperAdminManagePageClient({
       </section>
 
       <section className="rounded-[12px] bg-white p-6">
-        <h3 className="text-lg font-bold text-[#1d1d1f]">운영자 계정 목록</h3>
+        <h3 className="admin-section-title">운영자 계정 목록</h3>
         <div className="mt-4 grid gap-3">
           {accounts.map((account) => (
             <div key={account.id} className="rounded-[8px] border border-[#d2d2d7] p-4">
@@ -437,14 +427,11 @@ export default function SuperAdminManagePageClient({
                     key={membership.id}
                     className="rounded-full bg-[#f5f5f7] px-3 py-1 text-xs font-semibold text-[#1d1d1f]"
                   >
-                    {membership.role}
-                    {membership.branch?.slug ? ` / ${membership.branch.slug}` : ''}
+                    {{ SUPER_ADMIN: '슈퍼 관리자', BRANCH_ADMIN: '지점 관리자', STAFF: '직원' }[membership.role]}
+                    {membership.branch?.name ? ` / ${membership.branch.name}` : ''}
                   </span>
                 ))}
               </div>
-              <p className="mt-3 whitespace-pre-line text-xs text-[#86868b]">
-                {membershipsToText(account)}
-              </p>
             </div>
           ))}
         </div>

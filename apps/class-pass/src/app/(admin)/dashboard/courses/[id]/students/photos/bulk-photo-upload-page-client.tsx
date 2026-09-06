@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
@@ -181,7 +182,7 @@ export default function BulkPhotoUploadPage({
   }
 
   if (!course) {
-    return <p className="py-12 text-center text-sm text-red-500">{error || '강의를 찾을 수 없습니다.'}</p>
+    return <p className="py-12 text-center text-sm text-red-500">{getUserErrorMessage(error || '강의를 찾을 수 없습니다.')}</p>
   }
 
   return (
@@ -194,9 +195,6 @@ export default function BulkPhotoUploadPage({
           수강생 관리
         </Link>
         <h2 className="mt-1 text-xl font-extrabold text-gray-900">사진 일괄 업로드</h2>
-        <p className="mt-1 text-sm text-gray-400">
-          파일명을 수험번호로 맞춰 주세요. 예: <span className="font-semibold text-gray-600">26809.jpg</span>
-        </p>
       </div>
 
       <div
@@ -225,7 +223,7 @@ export default function BulkPhotoUploadPage({
         </label>
       </div>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p>}
       {message && <p className="text-xs text-emerald-600">{message}</p>}
 
       {matches.length > 0 && (

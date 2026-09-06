@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { CourseSubject } from '@/types/database'
@@ -182,7 +183,7 @@ export function AttendanceExcusesPanel({
       }}
     />
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+      <div className="admin-table-toolbar flex flex-col gap-4 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-900">사유서 관리</p>
@@ -203,7 +204,15 @@ export function AttendanceExcusesPanel({
           </button>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[180px_180px_180px_minmax(0,1fr)]">
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            aria-label="사유서 학생 검색"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={`학생 ${studentCount > 0 ? `${studentCount}명` : ''} 검색`}
+            className="admin-students-search rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          />
           <select
             value={subjectFilter}
             onChange={(event) => setSubjectFilter(event.target.value)}
@@ -228,20 +237,13 @@ export function AttendanceExcusesPanel({
             onChange={(event) => setToDate(event.target.value)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           />
-          <input
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={`학생 ${studentCount > 0 ? `${studentCount}명` : ''} 검색`}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          />
         </div>
       </div>
 
       {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
+        <p className="admin-notice admin-notice-danger">
+          {getUserErrorMessage(error)}
+        </p>
       ) : null}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

@@ -1,4 +1,5 @@
 import { unstable_cache } from 'next/cache'
+import { isStudentEnrollmentEligible } from '@/lib/student-eligibility'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import type {
@@ -663,6 +664,7 @@ export async function getDesignatedSeatStudentState(params: {
 
 
 export async function verifyStudentSeatAccess(params: {
+  studentId: number
   courseId: number
   enrollmentId: number
   name: string
@@ -696,6 +698,10 @@ export async function verifyStudentSeatAccess(params: {
   ) as Enrollment | null
 
   if (!enrollment) {
+    return null
+  }
+
+  if (!params.studentId || enrollment.student_id !== params.studentId || !isStudentEnrollmentEligible(enrollment)) {
     return null
   }
 

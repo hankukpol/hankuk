@@ -11,8 +11,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
 import type { DistributionLog } from '@/types/database'
 import { parsePositiveInt } from '@/lib/utils'
-
-const RECEIPT_MATRIX_FETCH_CHUNK_SIZE = 1000
+import { readAllPages } from '@/lib/distribution/read-all-pages'
 
 type ReceiptMatrixLogRow = Pick<DistributionLog, 'id' | 'enrollment_id' | 'material_id' | 'distributed_at'>
 type ReceiptMatrixSeatRow = {
@@ -25,9 +24,7 @@ async function listAllDistributionLogsByMaterialIds(
   db: ReturnType<typeof createServerClient>,
   materialIds: number[],
 ): Promise<ReceiptMatrixLogRow[]> {
-  const rows: ReceiptMatrixLogRow[] = []
-
-  for (let offset = 0; ; offset += RECEIPT_MATRIX_FETCH_CHUNK_SIZE) {
+  return readAllPages<ReceiptMatrixLogRow>(async (offset, size) => {
     const { data, error } = await db
       .from('distribution_logs')
       .select('id,enrollment_id,material_id,distributed_at')
@@ -35,19 +32,14 @@ async function listAllDistributionLogsByMaterialIds(
       .order('material_id')
       .order('enrollment_id')
       .order('id')
-      .range(offset, offset + RECEIPT_MATRIX_FETCH_CHUNK_SIZE - 1)
+      .range(offset, offset + size - 1)
 
     if (error) {
       throw error
     }
 
-    const page = (data ?? []) as ReceiptMatrixLogRow[]
-    rows.push(...page)
-
-    if (page.length < RECEIPT_MATRIX_FETCH_CHUNK_SIZE) {
-      return rows
-    }
-  }
+    return (data ?? []) as ReceiptMatrixLogRow[]
+  })
 }
 
 async function listAllSeatAssignmentsForCourseSubjects(
@@ -59,9 +51,7 @@ async function listAllSeatAssignmentsForCourseSubjects(
     return []
   }
 
-  const rows: ReceiptMatrixSeatRow[] = []
-
-  for (let offset = 0; ; offset += RECEIPT_MATRIX_FETCH_CHUNK_SIZE) {
+  return readAllPages<ReceiptMatrixSeatRow>(async (offset, size) => {
     const { data, error } = await db
       .from('seat_assignments')
       .select('id,enrollment_id,subject_id,enrollments!inner(course_id)')
@@ -70,19 +60,14 @@ async function listAllSeatAssignmentsForCourseSubjects(
       .order('subject_id')
       .order('enrollment_id')
       .order('id')
-      .range(offset, offset + RECEIPT_MATRIX_FETCH_CHUNK_SIZE - 1)
+      .range(offset, offset + size - 1)
 
     if (error) {
       throw error
     }
 
-    const page = (data ?? []) as ReceiptMatrixSeatRow[]
-    rows.push(...page)
-
-    if (page.length < RECEIPT_MATRIX_FETCH_CHUNK_SIZE) {
-      return rows
-    }
-  }
+    return (data ?? []) as ReceiptMatrixSeatRow[]
+  })
 }
 
 export async function GET(req: NextRequest) {

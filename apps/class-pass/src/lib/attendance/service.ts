@@ -1,4 +1,5 @@
 import { normalizeName, normalizePhone } from '@/lib/utils'
+import { isStudentEnrollmentEligible } from '@/lib/student-eligibility'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { createServerClient } from '@/lib/supabase/server'
 import {
@@ -1692,6 +1693,7 @@ async function getAttendanceAbsenceMetrics(
 }
 
 export async function verifyStudentAttendanceAccess(params: {
+  studentId: number
   courseId: number
   enrollmentId: number
   name: string
@@ -1725,6 +1727,10 @@ export async function verifyStudentAttendanceAccess(params: {
   ) as Enrollment | null
 
   if (!enrollment) {
+    return null
+  }
+
+  if (!params.studentId || enrollment.student_id !== params.studentId || !isStudentEnrollmentEligible(enrollment)) {
     return null
   }
 

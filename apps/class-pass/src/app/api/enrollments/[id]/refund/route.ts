@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { invalidateCache } from '@/lib/cache/revalidate'
-import { verifyEnrollmentOwnership } from '@/lib/class-pass-data'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { createServerClient } from '@/lib/supabase/server'
 import { getServerTenantType } from '@/lib/tenant.server'
@@ -28,12 +27,19 @@ export async function POST(
   }
 
   const division = await getServerTenantType()
-  const ownership = await verifyEnrollmentOwnership(enrollmentId, division)
-  if (!ownership.valid) {
+  const db = createServerClient()
+  const current = await db.from('enrollments').select('id,status,courses!inner(id)')
+    .eq('id', enrollmentId).eq('courses.division', division).maybeSingle()
+  if (current.error) {
+    return NextResponse.json({ error: '수강 상태를 확인하지 못했습니다.' }, { status: 500 })
+  }
+  if (!current.data) {
     return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
   }
+  if (current.data.status === 'cancelled') {
+    return NextResponse.json({ error: '수강종료된 등록의 상태는 변경할 수 없습니다. 필요한 환불은 수납·환불에서 처리해 주세요.' }, { status: 409 })
+  }
 
-  const db = createServerClient()
   const { data: paymentRows, error: paymentError } = await db
     .from('enrollment_payments')
     .select('amount,status,enrollment_refunds(amount)')
@@ -73,6 +79,7 @@ export async function POST(
       refunded_at: new Date().toISOString(),
     })
     .eq('id', enrollmentId)
+    .neq('status', 'cancelled')
     .select('*')
     .maybeSingle()
 
@@ -81,7 +88,7 @@ export async function POST(
   }
 
   if (!data) {
-    return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
+    return NextResponse.json({ error: '수강 상태가 변경되었습니다. 새로고침 후 확인해 주세요.' }, { status: 409 })
   }
 
   await invalidateCache('enrollments')

@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { randomUUID } = require('node:crypto')
 const { createClient } = require('@supabase/supabase-js')
 
 const ROOT = process.cwd()
@@ -326,11 +327,22 @@ async function main() {
   }
 
   async function refundPayment(cookie, paymentId, body, expect = [201]) {
+    // 환불 API는 재시도 중복을 막기 위해 요청마다 고유 requestId(UUID)를 요구한다.
     return api(`/api/payments/${paymentId}/refunds`, {
       method: 'POST',
       cookie,
       expect,
-      body,
+      body: { requestId: randomUUID(), ...body },
+    })
+  }
+
+  // 관리자 화면이 실제로 쓰는 경로. 수강 종료 여부를 환불과 함께 명시한다.
+  async function refundBundle(cookie, refunds, { endEnrollment = false } = {}, expect = [201]) {
+    return api('/api/payments/refunds', {
+      method: 'POST',
+      cookie,
+      expect,
+      body: { requestId: randomUUID(), endEnrollment, refunds },
     })
   }
 
@@ -447,6 +459,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: delayed.enrollment.id,
         courseId: course.id,
         ...paymentPayload('card', 100000, { memo: '등록 후 수납', cardLast4: '4444' }),
@@ -516,6 +529,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: correctionCase.enrollment.id,
         courseId: course.id,
         refund: {
@@ -567,13 +581,14 @@ async function main() {
       reasonCategory: 'withdrawal',
       reason: '전액 환불 검증',
     })
+    // 수납 상태와 수강 상태는 분리한다. 환불만으로 수강이 종료되지 않는다.
     await assertEnrollmentState(fullRefund.enrollment.id, {
       paymentCount: 1,
       billingStatus: 'refunded',
-      enrollmentStatus: 'refunded',
+      enrollmentStatus: 'active',
       netTuition: 0,
     })
-    pass('20. 카드 전액 환불')
+    pass('20. 카드 전액 환불 (수강 상태 유지)')
 
     const splitRefund = await createEnrollment(cookie, course, 21, [
       paymentPayload('cash', 40000),
@@ -585,6 +600,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         refunds: state.payments.map((payment) => ({
           paymentId: payment.id,
           amount: payment.amount,
@@ -598,7 +614,7 @@ async function main() {
     await assertEnrollmentState(splitRefund.enrollment.id, {
       paymentCount: 2,
       billingStatus: 'refunded',
-      enrollmentStatus: 'refunded',
+      enrollmentStatus: 'active',
       netTuition: 0,
     })
     pass('21. 이중 결제 묶음 환불')
@@ -611,6 +627,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: voidCase.enrollment.id,
         courseId: course.id,
         ...paymentPayload('cash', 20000, { category: 'textbook', label: '교재비' }),
@@ -702,6 +719,7 @@ async function main() {
       cookie,
       expect: [200],
     })
+    // 수강 환불 API를 명시적으로 호출한 경우에만 수강 상태가 refunded로 바뀐다.
     await assertEnrollmentState(reRegister.enrollment.id, {
       paymentCount: 1,
       billingStatus: 'refunded',
@@ -761,6 +779,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: freeCase.enrollment.id,
         courseId: course.id,
         billing: {
@@ -849,7 +868,7 @@ async function main() {
     await assertEnrollmentState(reCourseAfterRefund.enrollment.id, {
       paymentCount: 1,
       billingStatus: 'refunded',
-      enrollmentStatus: 'refunded',
+      enrollmentStatus: 'active',
       netTuition: 0,
     })
     const sameStudentOtherCourse = await createEnrollment(
@@ -922,6 +941,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: addonRemain.enrollment.id,
         courseId: course.id,
         ...paymentPayload('cash', 30000, { category: 'textbook', label: 'textbook' }),
@@ -938,7 +958,7 @@ async function main() {
     state = await assertEnrollmentState(addonRemain.enrollment.id, {
       paymentCount: 2,
       billingStatus: 'refunded',
-      enrollmentStatus: 'refunded',
+      enrollmentStatus: 'active',
       netTuition: 0,
     })
     assert(netByCategory(state.payments, 'textbook') === 30000, `Expected textbook net 30000, got ${netByCategory(state.payments, 'textbook')}`)
@@ -984,6 +1004,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: confirmedCorrectionCase.enrollment.id,
         courseId: course.id,
         refund: {
@@ -1033,6 +1054,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         refunds: [
           {
             paymentId: mixedCash.id,
@@ -1063,6 +1085,7 @@ async function main() {
       cookie,
       expect: [201],
       body: {
+        requestId: randomUUID(),
         enrollmentId: mixedPartialRepay.enrollment.id,
         courseId: course.id,
         payments: [paymentPayload('bank_transfer', 30000, {

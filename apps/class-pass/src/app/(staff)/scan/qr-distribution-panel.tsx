@@ -59,7 +59,7 @@ export function QrDistributionPanel({
           <button
             type="button"
             onClick={onRestartScanner}
-            disabled={!staffScanEnabled}
+            disabled={!staffScanEnabled || scanState === 'processing'}
             className="student-pill-button student-pill-secondary shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
           >
             다시 시작
@@ -129,7 +129,8 @@ export function QrDistributionPanel({
               <button
                 type="button"
                 onClick={onCancelSelection}
-                className="student-pill-button student-pill-secondary px-4"
+                disabled={scanState === 'processing'}
+                className="student-pill-button student-pill-secondary px-4 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 완료
               </button>

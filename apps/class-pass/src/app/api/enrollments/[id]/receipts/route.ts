@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStudentSession } from '@/lib/auth/student-session'
 import { toReceiptMap } from '@/lib/bulk'
 import { handleRouteError } from '@/lib/api/error-response'
 import {
@@ -20,6 +21,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const studentSession = await requireStudentSession(req)
+    if (studentSession instanceof NextResponse) return studentSession
+
     const ip = getClientIp(req)
     const rateLimit = await checkRateLimit(`receipts:${ip}`)
     if (!rateLimit.allowed) {
@@ -49,6 +53,7 @@ export async function GET(
         .from('enrollments')
         .select('id,course_id')
         .eq('id', enrollmentId)
+        .eq('student_id', studentSession.studentId)
         .eq('name', normalizeName(name))
         .eq('phone', normalizePhone(phone))
         .eq('status', 'active')
@@ -80,7 +85,7 @@ export async function GET(
     return NextResponse.json({
       receipts: toReceiptMap((receiptRows ?? []).filter((row) => handoutIdSet.has(row.material_id))),
       textbookReceipts: toReceiptMap((receiptRows ?? []).filter((row) => textbookIdSet.has(row.material_id))),
-    })
+    }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     return handleRouteError('enrollments.receipts.GET', '수령 정보를 불러오지 못했습니다.', error)
   }

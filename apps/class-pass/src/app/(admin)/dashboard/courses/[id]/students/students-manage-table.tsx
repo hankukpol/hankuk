@@ -1,4 +1,9 @@
-import { useState, type MouseEvent } from 'react'
+import { AdminPagination as PaginationControls } from "@/components/admin/AdminPagination"
+import { useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { StudentRowActions } from './StudentRowActions'
+import { EnrollmentMemoDialog } from './EnrollmentMemoDialog'
+import { StudentMemoCell, useEnrollmentAdminMemos } from './StudentMemoCell'
 import {
   ENROLLMENT_STUDENT_TYPE_LABEL,
   type Enrollment,
@@ -14,6 +19,7 @@ const STATUS_FILTER_OPTIONS: Array<{ value: EnrollmentManageStatusFilter; label:
   { value: 'all', label: '전체' },
   { value: 'active', label: '수강중' },
   { value: 'refunded', label: '환불완료' },
+  { value: 'cancelled', label: '수강종료' },
   { value: 'suspended', label: '정지' },
 ]
 
@@ -135,11 +141,12 @@ function getGenderLabel(enrollment: Enrollment) {
 }
 
 type StudentsManageTableProps = {
+  courseName?: string
   filtered: Enrollment[]
   summary: {
-    total: number
     active: number
     refunded: number
+    cancelled?: number
     suspended: number
   }
   search: string
@@ -154,6 +161,7 @@ type StudentsManageTableProps = {
   onPageSizeChange: (size: number) => void
   onSearchChange: (value: string) => void
   onStatusFilterChange: (value: EnrollmentManageStatusFilter) => void
+  onResetFilters: () => void
   onOpenDetail: (enrollment: Enrollment) => void
   onOpenStudentHistory: (enrollment: Enrollment) => void
   onEdit: (enrollment: Enrollment) => void
@@ -165,55 +173,8 @@ type StudentsManageTableProps = {
   onDelete: (enrollment: Enrollment) => void
 }
 
-function PaginationControls({
-  currentPage, pageCount, pageSize, totalCount, onPageChange, onPageSizeChange,
-}: {
-  currentPage: number; pageCount: number; pageSize: number; totalCount: number
-  onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void
-}) {
-  const start = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
-  const end = Math.min(currentPage * pageSize, totalCount)
-
-  return (
-    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3 text-sm text-slate-500">
-        <span>{start}–{end} / {totalCount}명</span>
-        <select
-          value={pageSize}
-          onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none"
-        >
-          <option value={20}>20명</option>
-          <option value={50}>50명</option>
-          <option value={100}>100명</option>
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage <= 1}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
-        >
-          이전
-        </button>
-        <span className="text-sm font-medium text-slate-600">
-          {currentPage} / {pageCount}
-        </span>
-        <button
-          type="button"
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage >= pageCount}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
-        >
-          다음
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export function StudentsManageTable({
+  courseName = '',
   filtered,
   summary,
   search,
@@ -228,6 +189,7 @@ export function StudentsManageTable({
   onPageSizeChange,
   onSearchChange,
   onStatusFilterChange,
+  onResetFilters,
   onOpenDetail,
   onOpenStudentHistory,
   onEdit,
@@ -239,114 +201,48 @@ export function StudentsManageTable({
   onDelete,
 }: StudentsManageTableProps) {
   const [expandedMobileId, setExpandedMobileId] = useState<number | null>(null)
+  const [showDetailedColumns, setShowDetailedColumns] = useState(false)
+  const [memoTarget, setMemoTarget] = useState<Enrollment | null>(null)
+  const {state:memoState,update:updateMemo}=useEnrollmentAdminMemos(filtered)
   const { sort, toggle } = useSortState<
     'cohort_label' | 'exam_number' | 'name' | 'gender' | 'phone' | 'series' | 'student_type' | 'status' | 'created_at'
   >('created_at', 'desc')
   const sorted = sortRows(filtered as unknown as Record<string, unknown>[], sort.key, sort.dir) as unknown as typeof filtered
+  const allCount = summary.active + summary.refunded + summary.suspended + (summary.cancelled ?? 0)
+  const hasFilters = Boolean(search.trim()) || statusFilter !== 'all'
+  const sortLabels = { cohort_label: '기수', exam_number: '응시번호', name: '이름', gender: '성별', phone: '연락처', series: '직렬', student_type: '학원구분', status: '상태', created_at: '등록일' }
 
-  function handleActionClick(event: MouseEvent<HTMLButtonElement>, action: () => void) {
-    event.stopPropagation()
-    action()
+  function renderActionButtons(enrollment: Enrollment, suspended: boolean) {
+    return <StudentRowActions enrollment={enrollment} suspended={suspended} attendanceEnabled={attendanceEnabled}
+      onOpenDetail={onOpenDetail} onEdit={onEdit} onResetPin={onResetPin}
+      onApproveDeviceReRegistration={onApproveDeviceReRegistration} onResetAttendanceDevice={onResetAttendanceDevice}
+      onSuspend={onSuspend} onUnsuspend={onUnsuspend} onDelete={onDelete} />
   }
 
-  function renderActionButtons(enrollment: Enrollment, suspended: boolean, density: 'mobile' | 'desktop') {
-    const baseClass = density === 'mobile'
-      ? 'rounded-[8px] px-3 py-2 text-center text-xs font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100'
-      : 'rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100'
-    const attendanceDeviceStatus = enrollment.attendance_device?.status ?? 'unregistered'
-    const canResetAttendanceDevice = (enrollment.attendance_device?.registered_count ?? 0) > 0
-
-    return (
-      <>
-        <button
-          type="button"
-          onClick={(event) => handleActionClick(event, () => onOpenDetail(enrollment))}
-          className={`${baseClass} bg-blue-50 text-blue-700 hover:bg-blue-100`}
-        >
-          상세
-        </button>
-        <button
-          type="button"
-          onClick={(event) => handleActionClick(event, () => onEdit(enrollment))}
-          className={`${baseClass} bg-slate-100 text-slate-600 hover:bg-slate-200`}
-        >
-          편집
-        </button>
-        {enrollment.student_profile?.auth_method === 'pin' && enrollment.student_id ? (
-          <button
-            type="button"
-            onClick={(event) => handleActionClick(event, () => onResetPin(enrollment))}
-            className={`${baseClass} bg-violet-50 text-violet-700 hover:bg-violet-100`}
-          >
-            PIN 재설정
-          </button>
-        ) : null}
-        {attendanceEnabled && attendanceDeviceStatus === 'pending_reset' ? (
-          <button
-            type="button"
-            onClick={(event) => handleActionClick(event, () => onApproveDeviceReRegistration(enrollment))}
-            className={`${baseClass} bg-blue-50 text-blue-700 hover:bg-blue-100`}
-          >
-            기기 승인
-          </button>
-        ) : null}
-        {attendanceEnabled && attendanceDeviceStatus !== 'pending_reset' ? (
-          <button
-            type="button"
-            onClick={(event) => handleActionClick(event, () => onResetAttendanceDevice(enrollment))}
-            disabled={!canResetAttendanceDevice}
-            title={canResetAttendanceDevice ? undefined : '아직 등록된 출석 기기가 없습니다.'}
-            className={`${baseClass} border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:hover:bg-white`}
-          >
-            기기 초기화
-          </button>
-        ) : null}
-        {enrollment.status === 'active' && !suspended ? (
-          <button
-            type="button"
-            onClick={(event) => handleActionClick(event, () => onSuspend(enrollment))}
-            className={`${baseClass} border border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50`}
-          >
-            정지
-          </button>
-        ) : null}
-        {enrollment.status === 'active' && suspended ? (
-          <button
-            type="button"
-            onClick={(event) => handleActionClick(event, () => onUnsuspend(enrollment))}
-            className={`${baseClass} border border-emerald-300 bg-white text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50`}
-          >
-            정지 해제
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={(event) => handleActionClick(event, () => onDelete(enrollment))}
-          className={`${baseClass} bg-red-50 text-red-600 hover:bg-red-100`}
-        >
-          삭제
-        </button>
-      </>
-    )
+  function renderMemo(enrollment:Enrollment) {
+    return <StudentMemoCell enrollment={enrollment} memo={memoState.memos[enrollment.id]}
+      status={memoState.status} onOpen={()=>setMemoTarget(enrollment)} />
   }
 
   return (
-    <section className="overflow-hidden rounded-[8px] bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <input
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="이름, 연락처, 응시번호 검색.."
-          className="w-full rounded-[8px] border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-64 sm:py-2"
-        />
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+    <>
+    <section className="admin-table-frame overflow-hidden bg-white">
+      <div className="admin-students-toolbar">
+        <div className="admin-students-query-group">
+          <input
+            aria-label="수강생 검색"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="이름, 연락처, 응시번호 검색.."
+            className="admin-students-search border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+          />
           <div
-            className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#1d1d1f]"
-            title={`전체 등록 ${summary.total.toLocaleString('ko-KR')}명 · 수강중 ${summary.active.toLocaleString('ko-KR')}명 · 정지 ${summary.suspended.toLocaleString('ko-KR')}명 · 환불 ${summary.refunded.toLocaleString('ko-KR')}명`}
+            className="admin-students-summary inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-[8px] bg-[#f5f5f7] px-3 py-2 text-xs font-semibold text-[#1d1d1f]"
+            title={`전체 등록 ${allCount.toLocaleString('ko-KR')}명 · 수강중 ${summary.active.toLocaleString('ko-KR')}명 · 정지 ${summary.suspended.toLocaleString('ko-KR')}명 · 환불 ${summary.refunded.toLocaleString('ko-KR')}명 · 수강종료 ${(summary.cancelled ?? 0).toLocaleString('ko-KR')}명`}
           >
             <span className="whitespace-nowrap">
               <span className="text-slate-500">전체 등록</span>{' '}
-              <span>{summary.total.toLocaleString('ko-KR')}명</span>
+              <span>{allCount.toLocaleString('ko-KR')}명</span>
             </span>
             <span className="text-slate-300">·</span>
             <span className="whitespace-nowrap">
@@ -367,32 +263,54 @@ export function StudentsManageTable({
               <span className="text-slate-500">환불</span>{' '}
               <span>{summary.refunded.toLocaleString('ko-KR')}명</span>
             </span>
+            <span className="text-slate-300">·</span>
+            <span className="whitespace-nowrap">
+              <span className="text-slate-500">수강종료</span>{' '}
+              <span>{(summary.cancelled ?? 0).toLocaleString('ko-KR')}명</span>
+            </span>
           </div>
-          <div
-            aria-label="수강생 상태 필터"
-            className="grid grid-cols-4 gap-0.5 rounded-[10px] bg-[#f5f5f7] p-1 sm:flex sm:shrink-0"
-          >
-            {STATUS_FILTER_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onStatusFilterChange(option.value)}
-                className={`whitespace-nowrap rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] sm:min-w-14 ${
-                  statusFilter === option.value
-                    ? 'bg-white text-[#0071e3] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-                    : 'text-slate-500 hover:text-[#1d1d1f]'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+        </div>
+        <select className="admin-students-status-select" aria-label="수강생 상태 필터" value={statusFilter}
+          onChange={event => onStatusFilterChange(event.target.value as EnrollmentManageStatusFilter)}>
+          {STATUS_FILTER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+        <div
+          aria-label="수강생 상태 필터"
+          role="group"
+          className="admin-students-status-filter admin-choice-group"
+        >
+          {STATUS_FILTER_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onStatusFilterChange(option.value)}
+              aria-pressed={statusFilter === option.value}
+              className="admin-choice-button"
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       </div>
 
+      <div className="admin-roster-view-options hidden md:flex">
+        <span>{showDetailedColumns ? '전체 정보 표시' : '기본 정보와 메모 표시'}{sort.key ? ` · ${sortLabels[sort.key]} ${sort.dir === 'asc' ? '오름차순' : '내림차순'}` : ''}</span>
+        <button type="button" className="admin-button" aria-label="상세 열 표시" aria-pressed={showDetailedColumns}
+          onClick={() => setShowDetailedColumns(value => !value)}>
+          {showDetailedColumns ? '상세 열 접기' : '상세 열 표시'}
+        </button>
+      </div>
+
+      {hasFilters ? (
+        <div className="admin-roster-feedback">
+          <span role="status" aria-live="polite">조회 결과 {totalCount.toLocaleString('ko-KR')}명</span>
+          <button type="button" className="admin-button" onClick={onResetFilters}>조건 초기화</button>
+        </div>
+      ) : null}
+
       {filtered.length === 0 ? (
         <p className="px-5 py-12 text-center text-sm text-gray-400">
-          {search ? '검색 결과 없음' : '등록된 수강생이 없습니다.'}
+          {hasFilters ? '선택한 조건에 맞는 수강생이 없습니다. 조건을 초기화하거나 검색어를 변경해 주세요.' : '등록된 수강생이 없습니다.'}
         </p>
       ) : (
         <>
@@ -456,10 +374,10 @@ export function StudentsManageTable({
                         className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                           enrollment.status === 'active'
                             ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-rose-50 text-rose-700'
+                            : enrollment.status === 'cancelled' ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'
                         }`}
                       >
-                        {enrollment.status === 'active' ? '활성' : '환불'}
+                        {enrollment.status === 'cancelled' ? '수강종료' : enrollment.status === 'active' ? '활성' : '환불'}
                       </span>
                       {suspended ? (
                         <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
@@ -493,6 +411,7 @@ export function StudentsManageTable({
                       ) : null}
                     </div>
 
+                    <div className="admin-mobile-memo"><span>메모</span>{renderMemo(enrollment)}</div>
                     {expanded ? (
                       <div className="mt-3 rounded-[8px] bg-slate-50 p-3">
                         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -527,8 +446,8 @@ export function StudentsManageTable({
                             </div>
                           ))}
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          {renderActionButtons(enrollment, suspended, 'mobile')}
+                        <div className="mt-3">
+                          {renderActionButtons(enrollment, suspended)}
                         </div>
                       </div>
                     ) : null}
@@ -539,25 +458,26 @@ export function StudentsManageTable({
           })}
         </div>
 
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-sm">
+        <div className="admin-roster-scroll hidden md:block" role="region" aria-label="수강생 명단 표" tabIndex={0}>
+          <table className="admin-roster-table w-full text-sm" data-detailed={showDetailedColumns}>
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs font-medium text-gray-400">
                 <SortableHeader label="응시번호" sortKey="exam_number" sort={sort} onSort={toggle} className="px-5 py-3" />
-                <SortableHeader label="기수" sortKey="cohort_label" sort={sort} onSort={toggle} className="px-3 py-3" />
-                <SortableHeader label="이름" sortKey="name" sort={sort} onSort={toggle} className="px-3 py-3" />
-                <SortableHeader label="성별" sortKey="gender" sort={sort} onSort={toggle} className="px-3 py-3" />
+                <SortableHeader label="기수" sortKey="cohort_label" sort={sort} onSort={toggle} className="admin-roster-extra px-3 py-3" />
+                <SortableHeader label="이름" sortKey="name" sort={sort} onSort={toggle} className="admin-roster-identity px-3 py-3" />
+                <SortableHeader label="성별" sortKey="gender" sort={sort} onSort={toggle} className="admin-roster-extra px-3 py-3" />
                 <SortableHeader label="연락처" sortKey="phone" sort={sort} onSort={toggle} className="px-3 py-3" />
-                <SortableHeader label="직렬" sortKey="series" sort={sort} onSort={toggle} className="px-3 py-3" />
-                <SortableHeader label="학원구분" sortKey="student_type" sort={sort} onSort={toggle} className="px-3 py-3" />
+                <SortableHeader label="직렬" sortKey="series" sort={sort} onSort={toggle} className="admin-roster-extra px-3 py-3" />
+                <SortableHeader label="학원구분" sortKey="student_type" sort={sort} onSort={toggle} className="admin-roster-extra px-3 py-3" />
                 {customFields.map((field) => (
-                  <th key={field.key} className="hidden px-3 py-3 lg:table-cell">
+                  <th key={field.key} className="admin-roster-extra px-3 py-3">
                     {field.label}
                   </th>
                 ))}
                 <SortableHeader label="상태" sortKey="status" sort={sort} onSort={toggle} className="px-3 py-3" />
-                {attendanceEnabled ? <th className="hidden px-3 py-3 xl:table-cell">출석 기기</th> : null}
-                <SortableHeader label="등록일" sortKey="created_at" sort={sort} onSort={toggle} className="hidden px-3 py-3 md:table-cell" />
+                {attendanceEnabled ? <th className="admin-roster-extra px-3 py-3">출석 기기</th> : null}
+                <SortableHeader label="등록일" sortKey="created_at" sort={sort} onSort={toggle} className="admin-roster-extra px-3 py-3" />
+                <th className="px-3 py-3">메모</th>
                 <th className="px-5 py-3 text-right">관리</th>
               </tr>
             </thead>
@@ -573,11 +493,13 @@ export function StudentsManageTable({
                   <tr
                     key={enrollment.id}
                     title={getSuspensionTooltip(enrollment)}
+                    // 고정된 이름 열은 자기 배경을 칠하므로 행 색을 덮는다. 정지 여부를 셀에서도 읽을 수 있게 표시한다.
+                    data-suspended={suspended}
                     className={suspended ? 'bg-amber-50/40 transition hover:bg-amber-50/70' : 'transition hover:bg-slate-50/60'}
                   >
                     <td className="px-5 py-3 text-gray-500">{enrollment.exam_number || '-'}</td>
-                    <td className="px-3 py-3 text-gray-500">{getCohortLabel(enrollment)}</td>
-                    <td className="px-3 py-3 font-semibold text-gray-900">
+                    <td className="admin-roster-extra px-3 py-3 text-gray-500">{getCohortLabel(enrollment)}</td>
+                    <td className="admin-roster-identity px-3 py-3 font-semibold text-gray-900">
                       <div className="flex flex-col gap-1">
                         <button
                           type="button"
@@ -585,7 +507,7 @@ export function StudentsManageTable({
                             event.stopPropagation()
                             onOpenStudentHistory(enrollment)
                           }}
-                          className="w-fit text-left transition hover:text-[#0071e3]"
+                          className="admin-table-name w-fit text-left transition hover:text-[#0071e3]"
                         >
                           {enrollment.name}
                         </button>
@@ -604,20 +526,20 @@ export function StudentsManageTable({
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-gray-500">{getGenderLabel(enrollment)}</td>
+                    <td className="admin-roster-extra px-3 py-3 text-gray-500">{getGenderLabel(enrollment)}</td>
                     <td className="px-3 py-3 text-gray-500">{enrollment.phone}</td>
-                    <td className="px-3 py-3">
+                    <td className="admin-roster-extra px-3 py-3">
                       <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${seriesMeta.className}`}>
                         {seriesMeta.label}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="admin-roster-extra px-3 py-3">
                       <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${studentTypeMeta.className}`}>
                         {studentTypeMeta.label}
                       </span>
                     </td>
                     {customFields.map((field) => (
-                      <td key={field.key} className="hidden px-3 py-3 text-gray-500 lg:table-cell">
+                      <td key={field.key} className="admin-roster-extra px-3 py-3 text-gray-500">
                         {(enrollment.custom_data ?? {})[field.key] || '-'}
                       </td>
                     ))}
@@ -627,10 +549,10 @@ export function StudentsManageTable({
                           className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                             enrollment.status === 'active'
                               ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-rose-50 text-rose-700'
+                              : enrollment.status === 'cancelled' ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-700'
                           }`}
                         >
-                          {enrollment.status === 'active' ? '활성' : '환불'}
+                          {enrollment.status === 'cancelled' ? '수강종료' : enrollment.status === 'active' ? '활성' : '환불'}
                         </span>
                         {suspended ? (
                           <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
@@ -640,7 +562,7 @@ export function StudentsManageTable({
                       </div>
                     </td>
                     {attendanceEnabled ? (
-                      <td className="hidden px-3 py-3 xl:table-cell">
+                      <td className="admin-roster-extra px-3 py-3">
                         <span
                           title={attendanceDeviceMeta.title}
                           className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${attendanceDeviceMeta.className}`}
@@ -649,12 +571,13 @@ export function StudentsManageTable({
                         </span>
                       </td>
                     ) : null}
-                    <td className="hidden px-3 py-3 text-xs text-gray-400 md:table-cell">
+                    <td className="admin-roster-extra px-3 py-3 text-xs text-gray-400">
                       {formatShortDate(enrollment.created_at)}
                     </td>
+                    <td className="admin-table-memo px-3 py-3">{renderMemo(enrollment)}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {renderActionButtons(enrollment, suspended, 'desktop')}
+                        {renderActionButtons(enrollment, suspended)}
                       </div>
                     </td>
                   </tr>
@@ -674,5 +597,7 @@ export function StudentsManageTable({
         onPageSizeChange={onPageSizeChange}
       />
     </section>
+    <AnimatePresence>{memoTarget ? <EnrollmentMemoDialog key={memoTarget.id} enrollment={memoTarget} courseName={courseName} onChange={updateMemo} onClose={()=>setMemoTarget(null)} /> : null}</AnimatePresence>
+    </>
   )
 }

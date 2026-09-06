@@ -1,5 +1,8 @@
 'use client'
 
+import { fetchStudentApi } from '@/lib/student-session'
+import { createSecureUuid } from '@/lib/browser/secure-uuid'
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
@@ -113,7 +116,7 @@ function ensureLocalDeviceKey() {
     return existing
   }
 
-  const generated = `${crypto.randomUUID().replace(/-/g, '')}_${Date.now().toString(36)}`
+  const generated = `${createSecureUuid().replace(/-/g, '')}_${Date.now().toString(36)}`
   window.localStorage.setItem(DEVICE_KEY_STORAGE, generated)
   return generated
 }
@@ -157,10 +160,13 @@ export default function DesignatedSeatPage() {
   const [data, setData] = useState<PassPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [deviceKey, setDeviceKey] = useState('')
+  const [deviceError, setDeviceError] = useState('')
   const [codeInput, setCodeInput] = useState('')
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scannerLoading, setScannerLoading] = useState(false)
   const [working, setWorking] = useState(false)
+  const [seatStateUncertain, setSeatStateUncertain] = useState(false)
+  const reservationWorkingRef = useRef(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [presenceFailure, setPresenceFailure] = useState<ClientPresenceError | null>(null)
@@ -173,7 +179,11 @@ export default function DesignatedSeatPage() {
   const roomStateRequestRef = useRef(0)
 
   useEffect(() => {
-    setDeviceKey(ensureLocalDeviceKey())
+    try {
+      setDeviceKey(ensureLocalDeviceKey())
+    } catch {
+      setDeviceError('기기 정보를 안전하게 준비하거나 저장할 수 없습니다. 브라우저의 사이트 저장 권한을 확인하거나 HTTPS 주소로 다시 접속해 주세요.')
+    }
     void flushDesignatedSeatScanIssueQueue(tenant.type)
 
     const handleOnline = () => {
@@ -192,7 +202,7 @@ export default function DesignatedSeatPage() {
       return
     }
 
-    const response = await fetch(withTenantPrefix('/api/enrollments/pass', tenant.type), {
+    const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/enrollments/pass', tenant.type), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enrollmentId, courseSlug: params.courseSlug, name, phone }),
@@ -346,11 +356,16 @@ export default function DesignatedSeatPage() {
       phone: data.enrollment.phone,
     })
 
+    if (!nextState || !Array.isArray(nextState.rooms) || !Array.isArray(nextState.seats)) {
+      throw new Error('지정좌석 상태를 확인하지 못했습니다.')
+    }
+
     if (requestId && requestId !== roomStateRequestRef.current) {
       return null
     }
 
     applyDesignatedSeatState(nextState)
+    setSeatStateUncertain(false)
     return nextState
   }, [activeRoomId, applyDesignatedSeatState, data, tenant.type])
 
@@ -427,7 +442,7 @@ export default function DesignatedSeatPage() {
 
     let response: Response
     try {
-      response = await fetch(withTenantPrefix('/api/designated-seats/auth', tenant.type), {
+      response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/designated-seats/auth', tenant.type), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -648,60 +663,76 @@ export default function DesignatedSeatPage() {
   }, [handleVerify, reportScanIssue, reportUnresolvedScanAttempt, scannerOpen, stopScanner])
 
   async function handleReserve(seatId: number) {
+    if (reservationWorkingRef.current || working || seatStateUncertain) return
     if (!data || !deviceKey) {
       setError('기기 정보를 준비하고 있습니다.')
       return
     }
 
+    reservationWorkingRef.current = true
     setWorking(true)
     setError('')
     setMessage('')
 
-    const response = await fetch(withTenantPrefix('/api/designated-seats/reserve', tenant.type), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId: data.course.id,
-        enrollmentId: data.enrollment.id,
-        roomId: activeRoomId,
-        seatId,
-        name: data.enrollment.name,
-        phone: data.enrollment.phone,
-        localDeviceKey: deviceKey,
-      }),
-    })
-    const result = await response.json().catch(() => null)
-    setWorking(false)
+    try {
+      const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/designated-seats/reserve', tenant.type), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: data.course.id,
+          enrollmentId: data.enrollment.id,
+          roomId: activeRoomId,
+          seatId,
+          name: data.enrollment.name,
+          phone: data.enrollment.phone,
+          localDeviceKey: deviceKey,
+        }),
+      })
+      const result = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      const failureResult = result as {
-        error?: string
-        reason?: string
-        state?: DesignatedSeatStudentState | null
-      } | null
-
-      setError(failureResult?.error ?? '좌석 지정에 실패했습니다.')
-
-      if (failureResult?.reason && STATE_REFRESH_REASONS.has(failureResult.reason)) {
-        if (failureResult.state) {
-          applyDesignatedSeatState(failureResult.state)
-        } else {
-          await refreshDesignatedSeatState(null).catch(() => null)
-        }
+      if (response.status >= 500 || !result) {
+        throw new Error('좌석 지정 결과를 확인하지 못했습니다.')
       }
 
-      return
-    }
+      if (!response.ok) {
+        const failureResult = result as {
+          error?: string
+          reason?: string
+          state?: DesignatedSeatStudentState | null
+        } | null
 
-    const successResult = result as { action?: string; state?: DesignatedSeatStudentState } | null
-    if (successResult?.state) {
-      applyDesignatedSeatState(successResult.state)
-    } else {
+        setError(failureResult?.error ?? '좌석 지정에 실패했습니다.')
+
+        if (failureResult?.reason && STATE_REFRESH_REASONS.has(failureResult.reason)) {
+          if (failureResult.state) {
+            applyDesignatedSeatState(failureResult.state)
+          } else {
+            await refreshDesignatedSeatState(null)
+          }
+        }
+
+        return
+      }
+
+      const successResult = result as { action?: string; state?: DesignatedSeatStudentState } | null
+      if (!successResult) throw new Error('좌석 지정 결과를 확인하지 못했습니다.')
+      if (successResult?.state) {
+        applyDesignatedSeatState(successResult.state)
+      } else {
+        await refreshDesignatedSeatState()
+      }
+
+      const action = successResult?.action ?? 'reserved'
+      setMessage(action === 'changed' ? '좌석이 변경되었습니다.' : '좌석을 확정했습니다.')
+    } catch {
+      // The reservation may already exist. Reconcile before permitting another action.
+      setSeatStateUncertain(true)
+      setError('좌석 지정 결과를 확인하지 못했습니다. 현재 좌석 상태를 다시 확인해 주세요.')
       await refreshDesignatedSeatState().catch(() => null)
+    } finally {
+      reservationWorkingRef.current = false
+      setWorking(false)
     }
-
-    const action = successResult?.action ?? 'reserved'
-    setMessage(action === 'changed' ? '좌석이 변경되었습니다.' : '좌석을 확정했습니다.')
   }
 
   async function handleReserveConfirmed() {
@@ -731,6 +762,17 @@ export default function DesignatedSeatPage() {
     [],
   )
 
+  if (deviceError) {
+    return (
+      <div className="student-page flex min-h-dvh items-center justify-center px-6">
+        <div className="student-card max-w-md px-6 py-7 text-center">
+          <p role="alert" className="text-[15px] font-medium text-[#c2410c]">{deviceError}</p>
+          <button type="button" onClick={goBack} className="student-pill-button student-pill-primary mt-6 w-full">돌아가기</button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="student-page flex min-h-dvh items-center justify-center">
@@ -743,7 +785,7 @@ export default function DesignatedSeatPage() {
     return (
       <div className="student-page flex min-h-dvh items-center justify-center px-6">
         <div className="student-card max-w-md px-6 py-7 text-center">
-          <p className="text-[15px] text-[var(--student-text-muted)]">{error || '지정좌석 기능을 사용할 수 없습니다.'}</p>
+          <p className="text-[15px] text-[var(--student-text-muted)]">{getUserErrorMessage(error || '지정좌석 기능을 사용할 수 없습니다.')}</p>
           <button onClick={goBack} className="student-pill-button student-pill-primary mt-6 w-full">
             돌아가기
           </button>
@@ -822,7 +864,7 @@ export default function DesignatedSeatPage() {
                   key={room.id}
                   type="button"
                   onClick={() => void handleSelectRoom(room.id)}
-                  disabled={working || roomLoading || room.id === activeRoomId || !room.is_open}
+                  disabled={working || seatStateUncertain || roomLoading || room.id === activeRoomId || !room.is_open}
                   className={`shrink-0 rounded-[999px] px-4 py-2 text-[13px] font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:active:scale-100 ${
                     room.id === activeRoomId
                       ? 'bg-[var(--student-text)] text-white disabled:opacity-100'
@@ -843,8 +885,31 @@ export default function DesignatedSeatPage() {
 
         {(error || message) ? (
           <section className="student-card px-4 py-3">
-            {error ? <p className="text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
+            {error ? <p className="text-[14px] font-medium text-[#c2410c]">{getUserErrorMessage(error)}</p> : null}
             {message ? <p className="text-[14px] font-medium text-[#19703a]">{message}</p> : null}
+            {seatStateUncertain ? (
+              <button
+                type="button"
+                disabled={working}
+                className="student-pill-button student-pill-outline mt-3 w-full"
+                onClick={async () => {
+                  if (reservationWorkingRef.current) return
+                  reservationWorkingRef.current = true
+                  setWorking(true)
+                  try {
+                    await refreshDesignatedSeatState()
+                    setError('')
+                  } catch {
+                    setError('좌석 상태를 확인하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.')
+                  } finally {
+                    reservationWorkingRef.current = false
+                    setWorking(false)
+                  }
+                }}
+              >
+                좌석 상태 다시 확인
+              </button>
+            ) : null}
             {presenceFailure ? (
               <PresenceFailureActions
                 courseId={data.course.id}
@@ -871,7 +936,7 @@ export default function DesignatedSeatPage() {
             <button
               type="button"
               onClick={openScanner}
-              disabled={working || needsRoomSelection}
+              disabled={working || seatStateUncertain || needsRoomSelection}
               className="student-pill-button student-pill-primary mt-3 w-full disabled:opacity-40"
               style={{ backgroundColor: courseTheme, borderColor: courseTheme }}
             >
@@ -888,7 +953,7 @@ export default function DesignatedSeatPage() {
               <button
                 type="button"
                 onClick={() => void handleVerify({ verificationMethod: 'code', rotationCode: codeInput })}
-                disabled={working || needsRoomSelection || codeInput.length < 4}
+                disabled={working || seatStateUncertain || needsRoomSelection || codeInput.length < 4}
                 className="student-pill-button student-pill-outline w-full disabled:opacity-40 sm:w-auto"
               >
                 코드 인증
@@ -926,7 +991,7 @@ export default function DesignatedSeatPage() {
                 occupiedSeatIds={state.occupied_seat_ids}
                 currentSeatId={currentSeatId}
                 onSeatClick={(seat) => {
-                  if (!selectedRoomStateReady || !state.writable || working) {
+                  if (!selectedRoomStateReady || !state.writable || working || seatStateUncertain) {
                     return
                   }
 

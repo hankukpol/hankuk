@@ -60,10 +60,8 @@ export default async function AdminLoginPage() {
   const devOptions = devEnabled ? await loadDevLoginOptions() : []
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-[#f8fafc] px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Admin Portal</p>
-        <h1 className="mt-3 text-3xl font-extrabold text-gray-900">관리자 로그인</h1>
+    <div className="admin-auth-card text-center">
+        <h1 className="admin-page-title mt-3">관리자 로그인</h1>
         <p className="mt-2 text-sm leading-6 text-gray-500">
           관리자 계정은 한국공무원학원 포털에서만 로그인할 수 있습니다.
           스태프 로그인과 학생 기능은 기존 경로를 그대로 사용합니다.
@@ -72,14 +70,13 @@ export default async function AdminLoginPage() {
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <a
             href={`${portalUrl}/login`}
-            className="rounded-2xl px-5 py-4 text-center text-lg font-bold text-white"
-            style={{ background: 'var(--theme)' }}
+            className="admin-button admin-button-primary"
           >
             포털로 이동
           </a>
           <a
             href={withTenantPrefix('/staff/login', tenantType)}
-            className="rounded-2xl border border-slate-200 px-5 py-4 text-center text-lg font-bold text-gray-900"
+            className="admin-button"
           >
             스태프 로그인
           </a>
@@ -88,7 +85,7 @@ export default async function AdminLoginPage() {
         {devEnabled ? (
           <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-left">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">
-              DEV ONLY
+              로컬 개발 전용
             </p>
             <p className="mt-2 text-sm font-semibold text-amber-900">
               개발용 바로 로그인
@@ -127,7 +124,7 @@ export default async function AdminLoginPage() {
                     </div>
                     <button
                       type="submit"
-                      className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                      className="admin-button shrink-0"
                     >
                       바로 로그인
                     </button>
@@ -137,7 +134,6 @@ export default async function AdminLoginPage() {
             )}
           </div>
         ) : null}
-      </div>
     </div>
   )
 }

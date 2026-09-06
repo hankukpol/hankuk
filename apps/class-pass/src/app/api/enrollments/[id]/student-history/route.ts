@@ -19,6 +19,8 @@ type EnrollmentHistoryDbRow = Pick<
   | 'status'
   | 'suspended_at'
   | 'refunded_at'
+  | 'ended_at'
+  | 'ended_reason'
   | 'series'
   | 'series_group'
   | 'student_type'
@@ -41,6 +43,7 @@ function getSeriesLabel(row: Pick<Enrollment, 'series' | 'series_group'>) {
 }
 
 function getLifecycleStatus(row: EnrollmentHistoryDbRow, course: Pick<Course, 'status'> | null) {
+  if (row.status === 'cancelled') return 'cancelled'
   if (row.status === 'refunded') {
     return 'refunded'
   }
@@ -74,7 +77,7 @@ export async function GET(
   const db = createServerClient()
   const { data: currentRow, error: currentError } = await db
     .from('enrollments')
-    .select('id,course_id,student_id,name,phone,exam_number,status,suspended_at,refunded_at,series,series_group,student_type,created_at,courses!inner(id,name,slug,status,division),students(id,name,phone,exam_number,cohort_option_id,auth_method)')
+    .select('*,courses!inner(id,name,slug,status,division),students(id,name,phone,exam_number,cohort_option_id,auth_method)')
     .eq('id', enrollmentId)
     .eq('courses.division', division)
     .maybeSingle()
@@ -93,7 +96,7 @@ export async function GET(
 
   let query = db
     .from('enrollments')
-    .select('id,course_id,student_id,name,phone,exam_number,status,suspended_at,refunded_at,series,series_group,student_type,created_at,courses!inner(id,name,slug,status,division),students(id,name,phone,exam_number,cohort_option_id,auth_method)')
+    .select('*,courses!inner(id,name,slug,status,division),students(id,name,phone,exam_number,cohort_option_id,auth_method)')
     .eq('courses.division', division)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
@@ -143,6 +146,8 @@ export async function GET(
       lifecycle_status: getLifecycleStatus(row, course),
       suspended_at: row.suspended_at,
       refunded_at: row.refunded_at,
+      ended_at: row.ended_at ?? null,
+      ended_reason: row.ended_reason ?? null,
       series_label: getSeriesLabel(row),
       student_type: row.student_type,
       exam_number: row.exam_number,

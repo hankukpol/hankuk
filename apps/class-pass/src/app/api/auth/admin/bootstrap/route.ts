@@ -48,14 +48,14 @@ export async function POST(req: NextRequest) {
   if (!rateLimit.allowed) {
     const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
     return NextResponse.json(
-      { error: `Too many bootstrap attempts. Try again in ${retryAfterSec}s.` },
+      { error: `초기 설정 시도가 너무 많습니다. ${retryAfterSec}초 후 다시 시도해 주세요.` },
       { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
     )
   }
 
   const existingHash = await getPinHash('admin_pin_hash')
   if (existingHash) {
-    return NextResponse.json({ error: 'Admin bootstrap is already complete.' }, { status: 409 })
+    return NextResponse.json({ error: '관리자 초기 설정이 이미 완료되었습니다.' }, { status: 409 })
   }
 
   if (!isBootstrapAllowed(req)) {
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Admin PIN must be 4-20 characters.' }, { status: 400 })
+    return NextResponse.json({ error: '관리자 PIN은 4~20자로 입력해 주세요.' }, { status: 400 })
   }
 
   const adminId = parsed.data.id.trim()

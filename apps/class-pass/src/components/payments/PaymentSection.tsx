@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { Banknote, Building2, Coins, CreditCard, Globe2, Plus, ReceiptText, Trash2 } from 'lucide-react'
 import {
   PAYMENT_CATEGORIES,
@@ -70,6 +71,8 @@ type PaymentSectionProps = {
   hideBillingControls?: boolean
   hidePaymentMeta?: boolean
   hideSummaryHeader?: boolean
+  hidePaymentDetails?: boolean
+  preserveEnteredAmounts?: boolean
 }
 
 const PAYMENT_METHOD_META: Array<{
@@ -255,6 +258,8 @@ export function PaymentSection({
   hideBillingControls = false,
   hidePaymentMeta = false,
   hideSummaryHeader = false,
+  hidePaymentDetails = false,
+  preserveEnteredAmounts = false,
 }: PaymentSectionProps) {
   const expectedAmount = toNumber(value.expectedAmount)
   const discountAmount = toNumber(value.discountAmount)
@@ -345,7 +350,7 @@ export function PaymentSection({
     ))
     let overage = paymentTotal(entries) - dueAmount
 
-    if (overage <= 0) {
+    if (preserveEnteredAmounts || overage <= 0) {
       patch({ entries })
       return
     }
@@ -583,7 +588,7 @@ export function PaymentSection({
       </div>
       ) : null}
 
-      {value.tuitionExempt ? (
+      {hidePaymentDetails ? null : value.tuitionExempt ? (
         <label className="mt-3 flex flex-col gap-1.5">
           <span className="text-xs font-semibold text-slate-500">면제 사유</span>
           <textarea
@@ -594,7 +599,7 @@ export function PaymentSection({
             className={`rounded-[8px] border bg-white border border-slate-200 ${controlPaddingClass} text-sm outline-none focus:border-slate-400`}
           />
           {tuitionExemptRuleError ? (
-            <span className="text-xs font-medium text-rose-600">{tuitionExemptRuleError}</span>
+            <span className="text-xs font-medium text-rose-600">{getUserErrorMessage(tuitionExemptRuleError)}</span>
           ) : null}
         </label>
       ) : (

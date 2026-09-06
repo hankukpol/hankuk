@@ -28,6 +28,7 @@ function getRoleBadge(role: HankukPortalTargetRole) {
 
 export function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMenuProps) {
   const portalUrl = getPortalUrl()
+  const showTechnicalLabels = role !== 'admin' && role !== 'super_admin'
   const quickTargets = getHankukPortalQuickSwitchTargets({
     currentAppKey: HANKUK_APP_KEYS.CLASS_PASS,
     role,
@@ -45,7 +46,7 @@ export function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMenuProps)
 
       <div className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/10">
         <div className="px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Quick Switch</p>
+          {showTechnicalLabels ? <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Quick Switch</p> : null}
           <p className="mt-1 text-xs leading-5 text-slate-500">
             포털 로그인 상태를 유지한 채 다른 관리자 앱으로 바로 이동합니다.
           </p>
@@ -67,7 +68,7 @@ export function AppSwitchMenu({ role, divisionSlug = null }: AppSwitchMenuProps)
                 <span className="font-medium">{target.displayName}</span>
                 <span className="text-[11px] text-slate-400">
                   {getRoleBadge(target.role)}
-                  {target.divisionSlug ? ` · ${target.divisionSlug}` : ''}
+                  {showTechnicalLabels && target.divisionSlug ? ` · ${target.divisionSlug}` : ''}
                 </span>
               </a>
             ))

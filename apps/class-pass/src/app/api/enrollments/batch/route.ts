@@ -114,6 +114,7 @@ const createBatchSchema = z.object({
   custom_data: z.record(z.string()).optional(),
   registrations: z.array(registrationSchema).min(2).max(8),
   payments: z.array(paymentSchema).optional(),
+  exemptionPaidAt: z.string().datetime({ offset: true }).optional().nullable(),
 })
 
 type ServerClient = ReturnType<typeof createServerClient>
@@ -132,12 +133,12 @@ type BatchEnrollmentRpcRow = {
 async function listExistingCourseRegistrations(
   db: ServerClient,
   courseId: number,
-  studentId: number,
+  studentId: number | null,
   name: string,
   phone: string,
 ) {
   const [byStudent, byIdentity] = await Promise.all([
-    db
+    studentId === null ? Promise.resolve({ data: [], error: null }) : db
       .from('enrollments')
       .select('*')
       .eq('course_id', courseId)
@@ -505,6 +506,19 @@ export async function POST(req: NextRequest) {
         throw new Error('BATCH_ENROLLMENT_MISMATCH')
       }
 
+      // An exemption still needs its own active free-payment record for settlement integrity.
+      // Generate it even when the caller omitted payments (registration without collection).
+      if (registration.billing.tuitionExempt) {
+        return [{
+          amount: 0,
+          method: 'free' as const,
+          category: 'tuition' as const,
+          paidAt: parsed.data.exemptionPaidAt ?? payments[0]?.paidAt ?? null,
+          memo: registration.billing.tuitionExemptReason?.trim() ?? null,
+          items: [{ label: course.name, amount: 0 }],
+        }]
+      }
+
       return buildPaymentsForRegistration(
         payments,
         registration.billing,
@@ -574,7 +588,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!selectedStudent && !parsed.data.birth_date) {
-      return NextResponse.json({ error: 'birth_date is required to identify a student safely.' }, { status: 400 })
+      return NextResponse.json({ error: '수강생을 정확히 식별하려면 생년월일이 필요합니다. 생년월일 6자리를 입력해 주세요.' }, { status: 400 })
     }
 
     const matchedStudent = selectedStudent ?? await findMatchingStudentProfile(db, {
@@ -586,6 +600,21 @@ export async function POST(req: NextRequest) {
       birth_date: parsed.data.birth_date,
       photo_url: parsed.data.photo_url,
     })
+
+    // Check every selected course before any shared student/profile/auth preparation.
+    // The atomic registration RPC remains the final guard against concurrent termination.
+    for (const registration of registrations) {
+      const priorRegistrations = await listExistingCourseRegistrations(
+        db,
+        registration.courseId,
+        matchedStudent?.id ?? null,
+        matchedStudent?.name ?? parsed.data.name,
+        matchedStudent?.phone ?? parsed.data.phone,
+      )
+      if (priorRegistrations.some((entry) => entry.status === 'cancelled')) {
+        return NextResponse.json({ error: '수강종료된 등록이 있습니다. 별도 복구 절차를 확인한 뒤 다시 등록해 주세요.' }, { status: 409 })
+      }
+    }
 
     const studentResult = selectedStudent && !parsed.data.updateSelectedStudent
       ? { student: selectedStudent, created: false, changed: false }

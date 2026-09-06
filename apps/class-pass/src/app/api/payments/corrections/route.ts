@@ -52,6 +52,7 @@ const correctionPaymentSchema = z.object({
 })
 
 const createCorrectionSchema = z.object({
+  requestId: z.string().uuid(),
   enrollmentId: z.number().int().positive(),
   courseId: z.number().int().positive().optional(),
   refund: refundSchema,

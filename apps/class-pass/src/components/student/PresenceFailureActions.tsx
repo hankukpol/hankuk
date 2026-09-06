@@ -1,5 +1,6 @@
 'use client'
 
+import { fetchStudentApi } from '@/lib/student-session'
 import { useState } from 'react'
 import type { BrowserContext } from '@/lib/client/browser-env'
 import type { ClientPresenceErrorCode } from '@/lib/client/geolocation'
@@ -37,7 +38,7 @@ export function PresenceFailureActions({
     setRequesting(true)
     setRequestMessage('')
 
-    const response = await fetch(withTenantPrefix('/api/presence/exception-request', tenant.type), {
+    const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/presence/exception-request', tenant.type), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

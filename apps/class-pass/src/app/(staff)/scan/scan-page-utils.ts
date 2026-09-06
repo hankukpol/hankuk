@@ -1,3 +1,4 @@
+import { getDistributionReasonMessage } from '@/lib/distribution/reason-messages'
 import type { BootstrapResponse, ScanResponse } from './scan-page-types'
 
 export const OVERLAY_TIMEOUT_MS = 1800
@@ -33,26 +34,8 @@ export function normalizeToken(rawValue: string) {
 }
 
 export function getScanReasonMessage(reason?: string) {
-  switch (reason) {
-    case 'INVALID_TOKEN':
-      return 'QR이 만료되었거나 올바르지 않습니다. 학생 수강증을 새로고침하거나 다시 열어 달라고 안내해 주세요.'
-    case 'ENROLLMENT_NOT_FOUND':
-      return '수강생 정보를 찾을 수 없습니다.'
-    case 'ALL_RECEIVED':
-      return '현재 수령할 자료가 없습니다.'
-    case 'SELECT_MATERIAL':
-      return '배부할 자료를 선택해 주세요.'
-    case 'COURSE_MISMATCH':
-      return '다른 강좌 QR입니다.'
-    case 'NOT_ASSIGNED':
-      return '해당 학생에게 배정되지 않은 교재입니다.'
-    case 'NO_SEAT_FOR_SUBJECT':
-      return '이 학생은 해당 과목의 좌석을 배정받지 않아 자료를 받을 수 없습니다.'
-    case 'DISTRIBUTION_FAILED':
-      return '배부 처리에 실패했습니다. 다시 시도해 주세요.'
-    default:
-      return reason || '요청을 처리하지 못했습니다.'
-  }
+  // 직원 스캔과 관리자 배부가 같은 문구를 보도록 공용 매핑만 사용한다.
+  return getDistributionReasonMessage(reason)
 }
 
 export function getScanFailureDescription(payload?: ScanResponse | null) {
@@ -74,7 +57,8 @@ export function getScanFailureDescription(payload?: ScanResponse | null) {
     }
   }
 
-  return payload?.studentName || getScanReasonMessage(payload?.reason)
+  const reasonMessage = getScanReasonMessage(payload?.reason)
+  return payload?.studentName ? `${payload.studentName} 학생: ${reasonMessage}` : reasonMessage
 }
 
 export function formatMaterialLabel(name: string, materialType?: 'handout' | 'textbook') {

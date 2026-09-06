@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   DESIGNATED_SEAT_SCAN_ISSUE_LABELS,
@@ -259,7 +260,7 @@ export function DesignatedSeatScanIssuesPanel({ courseId }: { courseId: number }
     <section className="rounded-[8px] bg-white p-4 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-[#1d1d1f]">QR 문제 추적</h3>
+          <h3 className="admin-section-title">QR 문제 추적</h3>
           <p className="mt-1 text-sm leading-6 text-[#86868b]">
             학생이 QR을 읽지 못했거나 카메라 시작 또는 인증 단계에서 실패한 내역과 후속 해결 상태입니다.
           </p>
@@ -286,7 +287,7 @@ export function DesignatedSeatScanIssuesPanel({ courseId }: { courseId: number }
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="admin-metric-strip mt-5">
         {[
           { label: '발생 기록', value: summary.totalIssues, valueClassName: 'text-[#1d1d1f]' },
           {
@@ -298,9 +299,9 @@ export function DesignatedSeatScanIssuesPanel({ courseId }: { courseId: number }
           { label: '카메라 실패', value: summary.cameraFailed },
           { label: '인증 거절', value: summary.authRejected },
         ].map((item) => (
-          <div key={item.label} className="rounded-[8px] bg-[#f5f5f7] px-4 py-3">
+          <div key={item.label} className="bg-[#f5f5f7]">
             <p className="text-xs font-semibold text-[#86868b]">{item.label}</p>
-            <p className={`mt-1 text-2xl font-semibold ${item.valueClassName ?? 'text-[#1d1d1f]'}`}>{item.value}</p>
+            <p className={`mt-1 font-semibold ${item.valueClassName ?? 'text-[#1d1d1f]'}`}>{item.value}</p>
           </div>
         ))}
       </div>
@@ -330,7 +331,7 @@ export function DesignatedSeatScanIssuesPanel({ courseId }: { courseId: number }
         </div>
       ) : null}
 
-      {error ? <p className="mt-4 text-sm text-[#ff3b30]">{error}</p> : null}
+      {error ? <p className="mt-4 text-sm text-[#ff3b30]">{getUserErrorMessage(error)}</p> : null}
 
       {!loading && !error && issues.length === 0 ? (
         <div className="mt-5 rounded-[8px] bg-[#f5f5f7] px-4 py-8 text-center">

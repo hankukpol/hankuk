@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
@@ -199,7 +200,7 @@ export default function StudentAuthSetupPage() {
         void runBulkSetup()
       }}
     />
-    <div className="flex flex-col gap-6">
+    <div className="admin-flat-page flex flex-col gap-6">
       <div>
         <Link
           href={withTenantPrefix('/dashboard', tenant.type)}
@@ -207,34 +208,30 @@ export default function StudentAuthSetupPage() {
         >
           대시보드
         </Link>
-        <h2 className="mt-2 text-xl font-extrabold text-gray-900">학생 인증 일괄 설정</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          기존 학생 중 인증 방식이 비어 있는 학생에게 생년월일 인증 또는 PIN 인증을 한 번에 설정합니다.
-        </p>
+        <h2 className="admin-page-title mt-2">학생 인증 일괄 설정</h2>
       </div>
 
       {error || message ? (
         <div className="rounded-2xl bg-white px-5 py-3 shadow-sm">
-          {error ? <p className="text-sm text-red-500">{error}</p> : null}
+          {error ? <p className="text-sm text-red-500">{getUserErrorMessage(error)}</p> : null}
           {message ? <p className="text-sm text-emerald-600">{message}</p> : null}
         </div>
       ) : null}
 
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <section>
+        <div className="admin-metric-strip">
+          <div>
+            <p className="text-sm font-bold text-slate-500">인증 방식 미설정</p>
+            <p className="mt-1 text-3xl font-black text-slate-900">{pendingCount}명</p>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-500">생년월일 미등록</p>
+            <p className="mt-1 text-3xl font-black text-amber-600">{missingBirthDateCount}명</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Pending Students</p>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-              <div>
-                <p className="text-sm font-bold text-slate-500">인증 방식 미설정</p>
-                <p className="mt-1 text-3xl font-black text-slate-900">{pendingCount}명</p>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-500">생년월일 미등록</p>
-                <p className="mt-1 text-3xl font-black text-amber-600">{missingBirthDateCount}명</p>
-              </div>
-            </div>
-            <p className="mt-3 text-sm text-slate-500">
+            <p className="text-sm text-slate-500">
               일괄 설정 대상: 생년월일 등록 {summary?.birth_date_ready_count ?? 0}명, PIN 발급 필요 {summary?.pin_required_count ?? 0}명
             </p>
             {hasOnlyMissingBirthDateStudents ? (
@@ -247,15 +244,15 @@ export default function StudentAuthSetupPage() {
             type="button"
             onClick={requestBulkSetup}
             disabled={running || pendingCount === 0}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="admin-button admin-button-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             {running ? '일괄 설정 실행 중...' : pendingCount === 0 ? '설정 대상 없음' : '일괄 설정 실행'}
           </button>
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-bold text-gray-700">실행 기준</h3>
+      <section className="admin-auth-section">
+        <h3 className="admin-section-title">실행 기준</h3>
         <ul className="mt-3 flex list-disc flex-col gap-2 pl-5 text-sm text-slate-600">
           <li>이미 인증 방식이 설정된 학생은 건너뜁니다.</li>
           <li>생년월일이 있으면 생년월일 인증으로 설정합니다.</li>
@@ -263,10 +260,10 @@ export default function StudentAuthSetupPage() {
         </ul>
       </section>
 
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <section className="admin-auth-section">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="text-sm font-bold text-gray-700">강좌별 생년월일 미등록 학생</h3>
+            <h3 className="admin-section-title">강좌별 생년월일 미등록 학생</h3>
             <p className="mt-1 text-sm text-slate-500">
               활성 수강생 기준이며, 이미 PIN 인증이 설정된 학생도 포함합니다.
             </p>
@@ -335,17 +332,17 @@ export default function StudentAuthSetupPage() {
         )}
       </section>
 
-      <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <section className="admin-auth-section">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-bold text-gray-700">실행 결과</h3>
+            <h3 className="admin-section-title">실행 결과</h3>
             <p className="mt-1 text-sm text-slate-500">PIN은 이 화면에서만 확인 가능하므로 필요 시 바로 CSV로 다운로드하세요.</p>
           </div>
           {result && result.pin_count > 0 ? (
             <button
               type="button"
               onClick={() => downloadPinsCsv(tenant.type, result.generated_pins)}
-              className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
+              className="admin-button"
             >
               PIN 목록 CSV 다운로드
             </button>
@@ -356,7 +353,7 @@ export default function StudentAuthSetupPage() {
           <p className="mt-4 text-sm text-slate-400">아직 실행한 내역이 없습니다.</p>
         ) : (
           <div className="mt-4 flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="admin-metric-strip">
               {resultSummary?.map((item) => (
                 <div key={item.label} className={`rounded-xl border px-4 py-3 ${item.tone}`}>
                   <p className="text-xs font-semibold">{item.label}</p>
@@ -366,7 +363,7 @@ export default function StudentAuthSetupPage() {
             </div>
 
             {result.pin_count > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="admin-table-frame overflow-x-auto border border-slate-200">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
                     <tr>

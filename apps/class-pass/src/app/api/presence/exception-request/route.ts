@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStudentSession } from '@/lib/auth/student-session'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { checkRateLimit, getClientIp } from '@/lib/auth/rateLimiter'
@@ -21,11 +22,14 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const studentSession = await requireStudentSession(req)
+    if (studentSession instanceof NextResponse) return studentSession
+
     const rateLimit = await checkRateLimit(`presence-exception:${getClientIp(req)}`)
     if (!rateLimit.allowed) {
       const retryAfterSec = Math.ceil(rateLimit.retryAfterMs / 1000)
       return NextResponse.json(
-        { error: `Too many requests. Try again in ${retryAfterSec}s.` },
+        { error: `요청이 너무 많습니다. ${retryAfterSec}초 후 다시 시도해 주세요.` },
         { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
       )
     }
@@ -41,6 +45,7 @@ export async function POST(req: NextRequest) {
       ? await verifyStudentAttendanceAccess({
         courseId: parsed.data.courseId,
         enrollmentId: parsed.data.enrollmentId,
+        studentId: studentSession.studentId,
         name: parsed.data.name,
         phone: parsed.data.phone,
         division,
@@ -48,6 +53,7 @@ export async function POST(req: NextRequest) {
       : await verifyStudentSeatAccess({
         courseId: parsed.data.courseId,
         enrollmentId: parsed.data.enrollmentId,
+        studentId: studentSession.studentId,
         name: parsed.data.name,
         phone: parsed.data.phone,
         division,

@@ -1,4 +1,5 @@
 import { unstable_cache } from 'next/cache'
+import { readAllPages } from '@/lib/distribution/read-all-pages'
 import { getAppConfig } from '@/lib/app-config'
 import { getAttendanceStudentState, listAttendanceDeviceStatesForCourse } from '@/lib/attendance/service'
 import { toReceiptMap } from '@/lib/bulk'
@@ -28,6 +29,7 @@ import type {
   TextbookAssignment,
 } from '@/types/database'
 import { withTenantPrefix, type TenantType } from '@/lib/tenant'
+import { getServerTenantType } from '@/lib/tenant.server'
 import { normalizeName, normalizePhone } from '@/lib/utils'
 
 type EnrollmentWithStudentRow = Enrollment & { students?: Student | null }
@@ -199,23 +201,25 @@ const getCachedCourseSubjects = unstable_cache(
 const getCachedMaterialsForCourse = unstable_cache(
   async (courseId: number, activeOnly: boolean, materialType: MaterialType | null) => {
     const db = createServerClient()
-    let query = db
-      .from('materials')
-      .select('*')
-      .eq('course_id', courseId)
-      .order('sort_order')
-      .order('id')
+    return readAllPages<Material>(async (offset, size) => {
+      let query = db
+        .from('materials')
+        .select('*')
+        .eq('course_id', courseId)
+        .order('sort_order')
+        .order('id')
 
-    if (activeOnly) {
-      query = query.eq('is_active', true)
-    }
+      if (activeOnly) {
+        query = query.eq('is_active', true)
+      }
 
-    if (materialType) {
-      query = query.eq('material_type', materialType)
-    }
+      if (materialType) {
+        query = query.eq('material_type', materialType)
+      }
 
-    const data = unwrapSupabaseResult('listMaterialsForCourse', await query)
-    return (data ?? []) as Material[]
+      const data = unwrapSupabaseResult('listMaterialsForCourse', await query.range(offset, offset + size - 1))
+      return (data ?? []) as Material[]
+    })
   },
   ['materials-for-course'],
   {
@@ -227,17 +231,20 @@ const getCachedMaterialsForCourse = unstable_cache(
 const getCachedTextbookAssignments = unstable_cache(
   async (enrollmentId: number) => {
     const db = createServerClient()
-    const data = unwrapSupabaseResult(
-      'getTextbookAssignments',
-      await db
-        .from('textbook_assignments')
-        .select('*')
-        .eq('enrollment_id', enrollmentId)
-        .order('assigned_at')
-        .order('id'),
-    )
+    return readAllPages<TextbookAssignment>(async (offset, size) => {
+      const data = unwrapSupabaseResult(
+        'getTextbookAssignments',
+        await db
+          .from('textbook_assignments')
+          .select('*')
+          .eq('enrollment_id', enrollmentId)
+          .order('assigned_at')
+          .order('id')
+          .range(offset, offset + size - 1),
+      )
 
-    return (data ?? []) as TextbookAssignment[]
+      return (data ?? []) as TextbookAssignment[]
+    })
   },
   ['textbook-assignments-by-enrollment'],
   {
@@ -526,13 +533,13 @@ export async function listCourseEnrollmentsPaged(
     limit?: number
     offset?: number
     search?: string
-    status?: 'all' | 'active' | 'refunded' | 'suspended'
+    status?: 'all' | 'active' | 'refunded' | 'suspended' | 'cancelled'
     noLimit?: boolean
   },
 ): Promise<{
   enrollments: Enrollment[]
   total: number
-  summary: { active: number; refunded: number; suspended: number }
+  summary: { active: number; refunded: number; suspended: number; cancelled: number }
 }> {
   const db = createServerClient()
   const limit = options?.limit ?? 50
@@ -550,8 +557,8 @@ export async function listCourseEnrollmentsPaged(
 
     if (status === 'active') {
       query = query.eq('status', 'active').is('suspended_at', null)
-    } else if (status === 'refunded') {
-      query = query.eq('status', 'refunded')
+    } else if (status === 'refunded' || status === 'cancelled') {
+      query = query.eq('status', status)
     } else if (status === 'suspended') {
       query = query.eq('status', 'active').not('suspended_at', 'is', null)
     }
@@ -610,8 +617,8 @@ export async function listCourseEnrollmentsPaged(
 
   if (status === 'active') {
     countQuery = countQuery.eq('status', 'active').is('suspended_at', null)
-  } else if (status === 'refunded') {
-    countQuery = countQuery.eq('status', 'refunded')
+  } else if (status === 'refunded' || status === 'cancelled') {
+    countQuery = countQuery.eq('status', status)
   } else if (status === 'suspended') {
     countQuery = countQuery.eq('status', 'active').not('suspended_at', 'is', null)
   }
@@ -620,12 +627,13 @@ export async function listCourseEnrollmentsPaged(
     countQuery = countQuery.or(`name.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,exam_number.ilike.%${safeSearch}%`)
   }
 
-  const [joinedRows, countResult, activeResult, refundedResult, suspendedResult] = await Promise.all([
+  const [joinedRows, countResult, activeResult, refundedResult, suspendedResult, cancelledResult] = await Promise.all([
     fetchDataRows(),
     countQuery,
     db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'active').is('suspended_at', null),
     db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'refunded'),
     db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'active').not('suspended_at', 'is', null),
+    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'cancelled'),
   ])
 
   if (countResult.error) {
@@ -639,6 +647,9 @@ export async function listCourseEnrollmentsPaged(
   }
   if (suspendedResult.error) {
     throw suspendedResult.error
+  }
+  if (cancelledResult.error) {
+    throw cancelledResult.error
   }
 
   const merged = await attachCohortLabelsToEnrollments(
@@ -654,6 +665,7 @@ export async function listCourseEnrollmentsPaged(
       active: activeResult.count ?? 0,
       refunded: refundedResult.count ?? 0,
       suspended: suspendedResult.count ?? 0,
+      cancelled: cancelledResult.count ?? 0,
     },
   }
 }
@@ -667,18 +679,6 @@ export async function listMaterialsForCourse(
     Boolean(options?.activeOnly),
     options?.materialType ?? null,
   )
-}
-
-async function getEnrollmentCourseSnapshot(enrollmentId: number) {
-  const db = createServerClient()
-  return unwrapSupabaseResult(
-    'getEnrollmentCourseSnapshot',
-    await db
-      .from('enrollments')
-      .select('id,course_id')
-      .eq('id', enrollmentId)
-      .maybeSingle(),
-  ) as Pick<Enrollment, 'id' | 'course_id'> | null
 }
 
 async function getMaterialSnapshot(materialId: number) {
@@ -697,27 +697,6 @@ export async function getMaterialSnapshotById(materialId: number): Promise<Mater
   return getMaterialSnapshot(materialId)
 }
 
-async function assertTextbookAssignmentTarget(enrollmentId: number, materialId: number) {
-  const [enrollment, material] = await Promise.all([
-    getEnrollmentCourseSnapshot(enrollmentId),
-    getMaterialSnapshot(materialId),
-  ])
-
-  if (!enrollment) {
-    throw createTextbookAssignmentError('ENROLLMENT_NOT_FOUND')
-  }
-
-  if (!material || material.material_type !== 'textbook') {
-    throw createTextbookAssignmentError('TEXTBOOK_NOT_FOUND')
-  }
-
-  if (enrollment.course_id !== material.course_id) {
-    throw createTextbookAssignmentError('COURSE_MISMATCH')
-  }
-
-  return { enrollment, material }
-}
-
 export async function getTextbookAssignments(
   enrollmentId: number,
 ): Promise<TextbookAssignment[]> {
@@ -726,25 +705,20 @@ export async function getTextbookAssignments(
 
 const getCachedTextbookAssignmentsByCourse = unstable_cache(
   async (courseId: number) => {
-    const textbooks = await listMaterialsForCourse(courseId, { materialType: 'textbook' })
-    const materialIds = textbooks.map((material) => material.id)
-
-    if (materialIds.length === 0) {
-      return []
-    }
-
     const db = createServerClient()
-    const data = unwrapSupabaseResult(
-      'getTextbookAssignmentsByCourse',
-      await db
-        .from('textbook_assignments')
-        .select('*')
-        .in('material_id', materialIds)
-        .order('assigned_at')
-        .order('id'),
-    )
-
-    return (data ?? []) as TextbookAssignment[]
+    return readAllPages<TextbookAssignment>(async (offset, size) => {
+      const data = unwrapSupabaseResult(
+        'getTextbookAssignmentsByCourse',
+        await db
+          .from('textbook_assignments')
+          .select('*,materials!inner(course_id,material_type)')
+          .eq('materials.course_id', courseId)
+          .eq('materials.material_type', 'textbook')
+          .order('id')
+          .range(offset, offset + size - 1),
+      )
+      return (data ?? []) as TextbookAssignment[]
+    })
   },
   ['textbook-assignments-by-course'],
   {
@@ -762,14 +736,19 @@ export async function getTextbookAssignmentsByCourse(
 const getCachedAssignedTextbooks = unstable_cache(
   async (enrollmentId: number, activeOnly: boolean) => {
     const db = createServerClient()
-    const assignmentRows = unwrapSupabaseResult(
-      'getAssignedTextbooks.assignments',
-      await db
-        .from('textbook_assignments')
-        .select('material_id,materials!inner(id,course_id,name,description,is_active,sort_order,material_type)')
-        .eq('enrollment_id', enrollmentId)
-        .eq('materials.material_type', 'textbook'),
-    ) as Array<{ material_id: number; materials: Material }> | null
+    const assignmentRows = await readAllPages<{ material_id: number; materials: Material }>(async (offset, size) => {
+      const rows = unwrapSupabaseResult(
+        'getAssignedTextbooks.assignments',
+        await db
+          .from('textbook_assignments')
+          .select('material_id,materials!inner(id,course_id,name,description,is_active,sort_order,material_type)')
+          .eq('enrollment_id', enrollmentId)
+          .eq('materials.material_type', 'textbook')
+          .order('id')
+          .range(offset, offset + size - 1),
+      ) as Array<{ material_id: number; materials: Material }> | null
+      return rows ?? []
+    })
 
     let materials = (assignmentRows ?? []).map((row) => row.materials)
 
@@ -797,13 +776,18 @@ export async function listSeatAssignedSubjectIdsForEnrollment(
   enrollmentId: number,
 ): Promise<Set<number>> {
   const db = createServerClient()
-  const rows = unwrapSupabaseResult(
-    'listSeatAssignedSubjectIdsForEnrollment',
-    await db
-      .from('seat_assignments')
-      .select('subject_id')
-      .eq('enrollment_id', enrollmentId),
-  ) as Array<{ subject_id: number | null }> | null
+  const rows = await readAllPages<{ subject_id: number | null }>(async (offset, size) => {
+    const data = unwrapSupabaseResult(
+      'listSeatAssignedSubjectIdsForEnrollment',
+      await db
+        .from('seat_assignments')
+        .select('subject_id')
+        .eq('enrollment_id', enrollmentId)
+        .order('id')
+        .range(offset, offset + size - 1),
+    ) as Array<{ subject_id: number | null }> | null
+    return data ?? []
+  })
 
   const subjectIds = new Set<number>()
   for (const row of rows ?? []) {
@@ -836,17 +820,19 @@ export async function getUnreceivedMaterialsForEnrollment(
   const [handouts, assignedTextbooks, receiptRows, seatSubjectIds] = await Promise.all([
     listMaterialsForCourse(courseId, { activeOnly: true, materialType: 'handout' }),
     getAssignedTextbooksForEnrollment(enrollmentId, { activeOnly: true }),
-    (async () => {
+    readAllPages<{ material_id: number }>(async (offset, size) => {
       const data = unwrapSupabaseResult(
         'getUnreceivedMaterialsForEnrollment.receipts',
         await db
           .from('distribution_logs')
           .select('material_id')
-          .eq('enrollment_id', enrollmentId),
+          .eq('enrollment_id', enrollmentId)
+          .order('id')
+          .range(offset, offset + size - 1),
       ) as Array<{ material_id: number }> | null
 
       return data ?? []
-    })(),
+    }),
     listSeatAssignedSubjectIdsForEnrollment(enrollmentId),
   ])
 
@@ -860,81 +846,32 @@ export async function assignTextbook(
   enrollmentId: number,
   materialId: number,
   assignedBy?: string,
+  division?: TenantType,
 ): Promise<TextbookAssignment> {
-  await assertTextbookAssignmentTarget(enrollmentId, materialId)
-
-  const db = createServerClient()
-  const { data, error } = await db
-    .from('textbook_assignments')
-    .insert({
-      enrollment_id: enrollmentId,
-      material_id: materialId,
-      assigned_by: assignedBy ?? null,
-    })
-    .select('*')
-    .maybeSingle()
-
-  if (error && error.code !== '23505') {
-    throw error
-  }
-
-  if (data) {
-    return data as TextbookAssignment
-  }
-
-  const existing = unwrapSupabaseResult(
-    'assignTextbook.existing',
-    await db
-      .from('textbook_assignments')
-      .select('*')
-      .eq('enrollment_id', enrollmentId)
-      .eq('material_id', materialId)
-      .maybeSingle(),
-  ) as TextbookAssignment | null
-
-  if (!existing) {
-    throw new Error('Failed to load textbook assignment')
-  }
-
-  return existing
+  const assignments = await bulkAssignTextbooks(enrollmentId, [materialId], assignedBy, division)
+  if (!assignments[0]) throw new Error('Failed to load textbook assignment')
+  return assignments[0]
 }
 
 export async function unassignTextbook(
   enrollmentId: number,
   materialId: number,
+  division?: TenantType,
 ): Promise<void> {
-  await assertTextbookAssignmentTarget(enrollmentId, materialId)
-
   const db = createServerClient()
-  const existingDistributionLog = unwrapSupabaseResult(
-    'unassignTextbook.distributionLog',
-    await db
-      .from('distribution_logs')
-      .select('id')
-      .eq('enrollment_id', enrollmentId)
-      .eq('material_id', materialId)
-      .maybeSingle(),
-  ) as { id: number } | null
-
-  if (existingDistributionLog) {
-    throw createTextbookAssignmentError('ALREADY_DISTRIBUTED')
-  }
-
-  const { error } = await db
-    .from('textbook_assignments')
-    .delete()
-    .eq('enrollment_id', enrollmentId)
-    .eq('material_id', materialId)
-
-  if (error) {
-    throw error
-  }
+  const result = unwrapSupabaseResult('unassignTextbook', await db.rpc('unassign_textbook_atomic', {
+    p_division: division ?? await getServerTenantType(),
+    p_enrollment_id: enrollmentId,
+    p_material_id: materialId,
+  })) as { success: boolean; reason?: string } | null
+  if (!result?.success) throw createTextbookAssignmentError(result?.reason ?? 'UNASSIGN_FAILED')
 }
 
 export async function bulkAssignTextbooks(
   enrollmentId: number,
   materialIds: number[],
   assignedBy?: string,
+  division?: TenantType,
 ): Promise<TextbookAssignment[]> {
   const uniqueMaterialIds = Array.from(new Set(materialIds.filter((materialId) => Number.isInteger(materialId) && materialId > 0)))
 
@@ -942,50 +879,15 @@ export async function bulkAssignTextbooks(
     return []
   }
 
-  const enrollment = await getEnrollmentCourseSnapshot(enrollmentId)
-  if (!enrollment) {
-    throw createTextbookAssignmentError('ENROLLMENT_NOT_FOUND')
-  }
-
   const db = createServerClient()
-  const materials = unwrapSupabaseResult(
-    'bulkAssignTextbooks.materials',
-    await db
-      .from('materials')
-      .select('id,course_id,material_type')
-      .in('id', uniqueMaterialIds),
-  ) as Array<Pick<Material, 'id' | 'course_id' | 'material_type'>> | null
-
-  const materialRows = materials ?? []
-  if (materialRows.length !== uniqueMaterialIds.length) {
-    throw createTextbookAssignmentError('TEXTBOOK_NOT_FOUND')
-  }
-
-  if (materialRows.some((material) => material.material_type !== 'textbook')) {
-    throw createTextbookAssignmentError('TEXTBOOK_NOT_FOUND')
-  }
-
-  if (materialRows.some((material) => material.course_id !== enrollment.course_id)) {
-    throw createTextbookAssignmentError('COURSE_MISMATCH')
-  }
-
-  const { data, error } = await db
-    .from('textbook_assignments')
-    .upsert(
-      uniqueMaterialIds.map((materialId) => ({
-        enrollment_id: enrollmentId,
-        material_id: materialId,
-        assigned_by: assignedBy ?? null,
-      })),
-      { onConflict: 'enrollment_id,material_id' },
-    )
-    .select('*')
-
-  if (error) {
-    throw error
-  }
-
-  const assignmentMap = new Map(((data ?? []) as TextbookAssignment[]).map((assignment) => [
+  const result = unwrapSupabaseResult('bulkAssignTextbooks', await db.rpc('assign_textbooks_atomic', {
+    p_division: division ?? await getServerTenantType(),
+    p_enrollment_id: enrollmentId,
+    p_material_ids: uniqueMaterialIds,
+    p_assigned_by: assignedBy ?? null,
+  })) as { success: boolean; reason?: string; assignments?: TextbookAssignment[] } | null
+  if (!result?.success) throw createTextbookAssignmentError(result?.reason ?? 'ASSIGN_FAILED')
+  const assignmentMap = new Map((result.assignments ?? []).map((assignment) => [
     assignment.material_id,
     assignment,
   ]))
@@ -1002,13 +904,18 @@ export async function listSeatAssignmentsForCourse(courseId: number): Promise<Se
 const getCachedSeatAssignmentsForEnrollment = unstable_cache(
   async (enrollmentId: number, courseId: number | null) => {
     const db = createServerClient()
-    const data = unwrapSupabaseResult(
-      'listSeatAssignmentsForEnrollment',
-      await db
-        .from('seat_assignments')
-        .select('*,course_subjects(id,course_id,name,sort_order)')
-        .eq('enrollment_id', enrollmentId),
-    )
+    const data = await readAllPages<SeatAssignment>(async (offset, size) => {
+      const rows = unwrapSupabaseResult(
+        'listSeatAssignmentsForEnrollment',
+        await db
+          .from('seat_assignments')
+          .select('*,course_subjects(id,course_id,name,sort_order)')
+          .eq('enrollment_id', enrollmentId)
+          .order('id')
+          .range(offset, offset + size - 1),
+      )
+      return (rows ?? []) as SeatAssignment[]
+    })
 
     return ((data ?? []) as SeatAssignment[])
       .filter((assignment) => {
@@ -1045,15 +952,19 @@ export async function listSeatAssignmentsForEnrollment(
 const getCachedReceiptRows = unstable_cache(
   async (enrollmentId: number) => {
     const db = createServerClient()
-    const data = unwrapSupabaseResult(
-      'getReceiptRows',
-      await db
-        .from('distribution_logs')
-        .select('material_id,distributed_at')
-        .eq('enrollment_id', enrollmentId),
-    )
+    return readAllPages<{ material_id: number; distributed_at: string }>(async (offset, size) => {
+      const data = unwrapSupabaseResult(
+        'getReceiptRows',
+        await db
+          .from('distribution_logs')
+          .select('material_id,distributed_at')
+          .eq('enrollment_id', enrollmentId)
+          .order('id')
+          .range(offset, offset + size - 1),
+      )
 
-    return (data ?? []) as Array<{ material_id: number; distributed_at: string }>
+      return (data ?? []) as Array<{ material_id: number; distributed_at: string }>
+    })
   },
   ['receipt-rows'],
   {
@@ -1090,6 +1001,7 @@ function getStudentCourseRedirects(course: Course, enrollmentId: number, divisio
 
 async function loadStudentCourseAccessContext(params: {
   division: TenantType
+  studentId: number
   enrollmentId: number
   courseSlug: string
   name: string
@@ -1106,7 +1018,7 @@ async function loadStudentCourseAccessContext(params: {
       .maybeSingle(),
   ) as EnrollmentWithStudentRow | null
 
-  if (!enrollment) {
+  if (!enrollment || !params.studentId || enrollment.student_id !== params.studentId) {
     return null
   }
 
@@ -1243,6 +1155,7 @@ export async function listStudentCoursesForStudent(
 
 export async function buildPassPayload(params: {
   division: TenantType
+  studentId: number
   enrollmentId: number
   courseSlug: string
   name: string
@@ -1315,6 +1228,7 @@ export async function buildPassPayload(params: {
 
 export async function buildArchivedPassPayload(params: {
   division: TenantType
+  studentId: number
   enrollmentId: number
   courseSlug: string
   name: string

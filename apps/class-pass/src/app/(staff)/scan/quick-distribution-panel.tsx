@@ -5,24 +5,28 @@ type QuickDistributionPanelProps = {
   quickPhone: string
   quickStudentName: string
   quickLoading: boolean
+  quickWriting: boolean
   quickMaterials: MaterialItem[]
   selectedMaterialId: number | null
   selectedCourseName: string | null
   onQuickPhoneChange: (value: string) => void
   onSelectedMaterialChange: (materialId: number | null) => void
-  onSubmit: () => void
+  onLookup: () => void
+  onDistribute: () => void
 }
 
 export function QuickDistributionPanel({
   quickPhone,
   quickStudentName,
   quickLoading,
+  quickWriting,
   quickMaterials,
   selectedMaterialId,
   selectedCourseName,
   onQuickPhoneChange,
   onSelectedMaterialChange,
-  onSubmit,
+  onLookup,
+  onDistribute,
 }: QuickDistributionPanelProps) {
   return (
     <>
@@ -31,21 +35,19 @@ export function QuickDistributionPanel({
         <p className="mt-1 text-[15px] font-semibold text-[var(--student-text)]">
           {selectedCourseName ?? '강의 선택 필요'}
         </p>
-        <p className="student-body mt-2">
-          휴대폰 번호로 학생을 찾은 뒤, 배부할 교재나 자료를 바로 선택합니다.
-        </p>
 
         <form
           className="mt-4"
           onSubmit={(event) => {
             event.preventDefault()
-            onSubmit()
+            onLookup()
           }}
         >
           <label className="block">
             <span className="mb-2 block text-[13px] font-medium text-[var(--student-text-muted)]">휴대폰 번호</span>
             <input
               value={quickPhone}
+              disabled={quickWriting}
               onChange={(event) => onQuickPhoneChange(event.target.value.replace(/\D/g, ''))}
               placeholder="01012345678"
               inputMode="numeric"
@@ -88,6 +90,7 @@ export function QuickDistributionPanel({
                       <button
                         type="button"
                         onClick={() => onSelectedMaterialChange(material.id)}
+                        disabled={quickLoading}
                         className={`flex min-h-[56px] w-full items-center justify-between gap-3 rounded-[16px] px-4 py-3 text-left ${
                           selected
                             ? 'bg-[rgba(0,113,227,0.08)]'
@@ -111,8 +114,8 @@ export function QuickDistributionPanel({
 
             <button
               type="button"
-              onClick={onSubmit}
-              disabled={quickLoading || quickMaterials.length > 1 && !selectedMaterialId}
+              onClick={onDistribute}
+              disabled={quickLoading || !selectedMaterialId || quickMaterials.length === 0}
               className="student-pill-button student-pill-primary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60"
             >
               {quickLoading ? '처리 중...' : '배부 처리'}

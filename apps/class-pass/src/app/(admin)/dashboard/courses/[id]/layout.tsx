@@ -1,13 +1,11 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { motion } from 'framer-motion'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
-import { formatCourseTypeLabel } from '@/lib/utils'
 import type { Course } from '@/types/database'
 
 type CourseLayoutProps = {
@@ -33,7 +31,6 @@ async function fetchCourseHeader(courseId: number): Promise<Course> {
 }
 
 export default function CourseLayout({ children }: CourseLayoutProps) {
-  const motionConfig = useMotionConfig()
   const params = useParams<{ id: string }>()
   const pathname = usePathname()
   const router = useRouter()
@@ -120,12 +117,6 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
     return [
       {
-        label: '설정',
-        href: basePath,
-        enabled: true,
-        match: (currentPathname) => currentPathname === basePath,
-      },
-      {
         label: '수강생',
         href: `${basePath}/students`,
         enabled: true,
@@ -161,6 +152,12 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
         enabled: course ? course.feature_qr_distribution : true,
         match: matches(`${basePath}/materials`),
       },
+      {
+        label: '설정',
+        href: `${basePath}/settings`,
+        enabled: true,
+        match: matches(`${basePath}/settings`),
+      },
     ]
   }, [basePath, course])
 
@@ -195,16 +192,13 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
   return (
     <>
     <div className="flex flex-col gap-6">
-      <section className="rounded-[8px] border border-slate-200 bg-white px-5 pt-5 sm:px-6 sm:pt-6">
+      <section className="admin-course-header">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">강좌 관리</p>
         <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-semibold text-[#1d1d1f]">
               {course?.name ?? (loading ? '강좌 정보를 불러오는 중...' : '강좌 정보를 확인할 수 없습니다.')}
             </h1>
-            <p className="mt-1 text-sm text-[#86868b]">
-              {course ? `${formatCourseTypeLabel(course.course_type)} slug ${course.slug}` : `강좌 ID ${courseId}`}
-            </p>
             {course?.copied_from_course_name ? (
               <p className="mt-1 text-xs font-medium text-indigo-600">
                 원본 강좌: {course.copied_from_course_name}
@@ -214,7 +208,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
 
         </div>
 
-        <div className="mt-5 flex gap-6 border-b border-slate-200 overflow-x-auto">
+        <nav className="admin-tabs" aria-label="강좌 관리 메뉴">
           {tabs.map((tab) => {
             const isActive = hasMounted && tab.match(pathname)
 
@@ -224,7 +218,7 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
                   key={tab.href}
                   title="이 기능은 비활성화되어 있습니다"
                   aria-disabled="true"
-                  className="-mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold text-slate-300 cursor-not-allowed"
+                  className="admin-tab"
                 >
                   {tab.label}
                 </span>
@@ -236,33 +230,23 @@ export default function CourseLayout({ children }: CourseLayoutProps) {
                 key={tab.href}
                 href={tab.href}
                 onClick={(event) => handleCourseTabClick(event, tab.href)}
-                className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
-                  isActive
-                    ? 'text-[#1d1d1f]'
-                    : 'text-slate-500 hover:text-[#1d1d1f]'
-                }`}
+                className="admin-tab"
+                aria-current={isActive ? 'page' : undefined}
               >
                 {tab.label}
-                {isActive ? (
-                  <motion.div
-                    layoutId="course-tabs"
-                    className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
-                    transition={motionConfig.tab}
-                  />
-                ) : null}
               </Link>
             )
           })}
-        </div>
+        </nav>
       </section>
 
       {error ? (
-        <div className="rounded-[8px] border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-          {error}
-        </div>
+        <p className="admin-notice admin-notice-danger">
+          {getUserErrorMessage(error)}
+        </p>
       ) : null}
 
-      {children}
+      <div className="admin-flat-page min-w-0">{children}</div>
     </div>
     </>
   )

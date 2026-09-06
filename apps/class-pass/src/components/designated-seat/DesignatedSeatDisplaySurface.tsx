@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { QRCodeSVG } from 'qrcode.react'
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
@@ -307,7 +308,7 @@ function DesignatedSeatDisplayTile({ target, compact = false, targetCount = 1 }:
   if (error) {
     return (
       <div className={`${compact ? 'min-h-[520px]' : 'min-h-dvh'} flex items-center justify-center bg-slate-950 px-8 text-center text-white`}>
-        <p className="text-lg font-semibold">{error}</p>
+        <p className="text-lg font-semibold">{getUserErrorMessage(error)}</p>
       </div>
     )
   }

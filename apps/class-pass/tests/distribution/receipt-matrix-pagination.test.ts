@@ -1,62 +1,61 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { describe, it } from 'node:test'
+import { createRequire } from 'node:module'
+import { test } from 'node:test'
+import { NextRequest } from 'next/server'
 
-function readProjectFile(relativePath: string) {
-  return readFileSync(path.join(process.cwd(), relativePath), 'utf8')
-}
+const require = createRequire(import.meta.url)
 
-function section(source: string, startMarker: string, endMarker: string) {
-  const start = source.indexOf(startMarker)
-  assert.notEqual(start, -1, `missing section start: ${startMarker}`)
-
-  const end = endMarker === '<EOF>'
-    ? source.length
-    : source.indexOf(endMarker, start + startMarker.length)
-  assert.notEqual(end, -1, `missing section end: ${endMarker}`)
-
-  return source.slice(start, end)
-}
-
-describe('distribution receipt matrix pagination', () => {
-  const routeSource = readProjectFile('src/app/api/distribution/receipt-matrix/route.ts')
-
-  it('reads every distribution log page for high-volume courses', () => {
-    const helper = section(
-      routeSource,
-      'async function listAllDistributionLogsByMaterialIds',
-      'async function listAllSeatAssignmentsForCourseSubjects',
-    )
-
-    assert.match(routeSource, /RECEIPT_MATRIX_FETCH_CHUNK_SIZE\s*=\s*1000/)
-    assert.match(helper, /for \(let offset = 0; ; offset \+= RECEIPT_MATRIX_FETCH_CHUNK_SIZE\)/)
-    assert.match(helper, /\.from\('distribution_logs'\)/)
-    assert.match(helper, /\.in\('material_id', materialIds\)/)
-    assert.match(helper, /\.order\('material_id'\)[\s\S]*\.order\('enrollment_id'\)[\s\S]*\.order\('id'\)/)
-    assert.match(helper, /\.range\(offset, offset \+ RECEIPT_MATRIX_FETCH_CHUNK_SIZE - 1\)/)
-    assert.match(helper, /if \(page\.length < RECEIPT_MATRIX_FETCH_CHUNK_SIZE\)/)
-  })
-
-  it('reads every subject-gated seat assignment page for high-volume courses', () => {
-    const helper = section(
-      routeSource,
-      'async function listAllSeatAssignmentsForCourseSubjects',
-      'export async function GET',
-    )
-
-    assert.match(helper, /\.from\('seat_assignments'\)/)
-    assert.match(helper, /\.in\('subject_id', subjectIds\)/)
-    assert.match(helper, /\.eq\('enrollments\.course_id', courseId\)/)
-    assert.match(helper, /\.order\('subject_id'\)[\s\S]*\.order\('enrollment_id'\)[\s\S]*\.order\('id'\)/)
-    assert.match(helper, /\.range\(offset, offset \+ RECEIPT_MATRIX_FETCH_CHUNK_SIZE - 1\)/)
-    assert.match(helper, /if \(page\.length < RECEIPT_MATRIX_FETCH_CHUNK_SIZE\)/)
-  })
-
-  it('uses the paginated readers from the route handler', () => {
-    const handler = section(routeSource, 'export async function GET', '<EOF>')
-
-    assert.match(handler, /listAllDistributionLogsByMaterialIds\(db, materialIds\)/)
-    assert.match(handler, /listAllSeatAssignmentsForCourseSubjects\(db, courseId, seatGatedSubjectIds\)/)
-  })
+test('receipt matrix reads every row under normal and lower caps, failing closed on page errors', async () => {
+  const Module = require('node:module')
+  const original = Module._load
+  let cap = 300
+  let failPage = false
+  let allowed = true
+  const offsets: Record<string, number[]> = { distribution_logs: [], seat_assignments: [] }
+  const fixture = Array.from({ length: 1200 }, (_, i) => ({ id: i + 1, enrollment_id: i + 1, material_id: 10, subject_id: 9, distributed_at: '2026-09-05T00:00:00Z' }))
+  const db = { from(table: string) {
+    const query = {
+      select() { return query }, in() { return query }, eq() { return query }, order() { return query },
+      async range(start: number, end: number) {
+        offsets[table].push(start)
+        if (failPage && start > 0) return { data: null, error: new Error('fixture later page failure') }
+        return { data: fixture.slice(start, Math.min(end + 1, start + cap)), error: null }
+      },
+    }
+    return query
+  } }
+  Module._load = function (request: string, parent: unknown, isMain: boolean) {
+    if (request === '@/lib/auth/require-admin-api') return { requireAdminApi: async () => null }
+    if (request === '@/lib/app-feature-guard') return { requireAppFeature: async () => null }
+    if (request === '@/lib/tenant.server') return { getServerTenantType: async () => 'police' }
+    if (request === '@/lib/class-pass-data') return {
+      verifyCourseOwnership: async () => allowed,
+      listMaterialsForCourse: async () => [{ id: 10, subject_id: 9, material_type: 'handout' }],
+      getTextbookAssignmentsByCourse: async () => [],
+    }
+    if (request === '@/lib/supabase/server') return { createServerClient: () => db }
+    return original.call(this, request, parent, isMain)
+  }
+  try {
+    const { GET } = require('../../src/app/api/distribution/receipt-matrix/route')
+    const request = () => new NextRequest('http://localhost/api/distribution/receipt-matrix?courseId=8&materialType=handout')
+    for (const limit of [300, 1000]) {
+      cap = limit
+      offsets.distribution_logs = []; offsets.seat_assignments = []
+      const response = await GET(request())
+      const payload = await response.json()
+      assert.equal(response.status, 200)
+      assert.equal(payload.logs.length, 1200, `receipt rows with cap ${cap}`)
+      assert.equal(payload.seatAssignments.length, 1200, `seat rows with cap ${cap}`)
+      assert.equal(new Set(payload.logs.map((row: { id: number }) => row.id)).size, 1200)
+      assert.deepEqual(offsets.distribution_logs, cap === 300 ? [0, 300, 600, 900, 1200] : [0, 1000, 1200])
+      assert.deepEqual(offsets.seat_assignments, offsets.distribution_logs)
+    }
+    failPage = true
+    assert.equal((await GET(request())).status, 500, 'never return a successful truncated matrix')
+    allowed = false
+    offsets.distribution_logs = []
+    assert.equal((await GET(request())).status, 404)
+    assert.deepEqual(offsets.distribution_logs, [], 'foreign course must not query receipts')
+  } finally { Module._load = original }
 })

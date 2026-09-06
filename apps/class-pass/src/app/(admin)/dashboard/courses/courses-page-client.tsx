@@ -1,11 +1,14 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { DragEvent, FormEvent } from 'react'
-import { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowDown, ArrowUp, GripVertical, Loader2 } from 'lucide-react'
+import type { FormEvent } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { AnimatePresence, motion, Reorder } from 'framer-motion'
+import { SortableCourseRow } from '@/components/admin/SortableCourseRow'
+import { useCourseOrdering } from '@/components/admin/useCourseOrdering'
+import { AdminDrawer } from '@/components/admin/AdminDrawer'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig } from '@/lib/motion'
@@ -36,7 +39,6 @@ type CreateCourseForm = {
 }
 
 type CourseFilter = 'active' | 'archived'
-type MoveDirection = 'up' | 'down'
 type ConfirmationRequest = {
   title: string
   description?: string
@@ -105,77 +107,6 @@ function getActiveEnrollmentCount(course: Course) {
   return course.active_enrollment_count ?? 0
 }
 
-function isVisibleForFilter(course: Course, filter: CourseFilter) {
-  return course.status === filter
-}
-
-function normalizeSortOrder(courseList: Course[]) {
-  return courseList.map((course, index) => (
-    course.sort_order === index ? course : { ...course, sort_order: index }
-  ))
-}
-
-function mergeVisibleCourseOrder(
-  allCourses: Course[],
-  filter: CourseFilter,
-  nextVisibleCourses: Course[],
-) {
-  let visibleIndex = 0
-  return normalizeSortOrder(allCourses.map((course) => {
-    if (!isVisibleForFilter(course, filter)) {
-      return course
-    }
-
-    const nextCourse = nextVisibleCourses[visibleIndex]
-    visibleIndex += 1
-    return nextCourse ?? course
-  }))
-}
-
-function moveVisibleCourse(
-  allCourses: Course[],
-  filter: CourseFilter,
-  courseId: number,
-  direction: MoveDirection,
-) {
-  const visibleCourses = allCourses.filter((course) => isVisibleForFilter(course, filter))
-  const currentIndex = visibleCourses.findIndex((course) => course.id === courseId)
-  const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-
-  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= visibleCourses.length) {
-    return null
-  }
-
-  const nextVisibleCourses = [...visibleCourses]
-  const [movedCourse] = nextVisibleCourses.splice(currentIndex, 1)
-  nextVisibleCourses.splice(nextIndex, 0, movedCourse)
-  return mergeVisibleCourseOrder(allCourses, filter, nextVisibleCourses)
-}
-
-function dropVisibleCourse(
-  allCourses: Course[],
-  filter: CourseFilter,
-  sourceCourseId: number,
-  targetCourseId: number,
-) {
-  if (sourceCourseId === targetCourseId) {
-    return null
-  }
-
-  const visibleCourses = allCourses.filter((course) => isVisibleForFilter(course, filter))
-  const sourceIndex = visibleCourses.findIndex((course) => course.id === sourceCourseId)
-  const targetIndex = visibleCourses.findIndex((course) => course.id === targetCourseId)
-
-  if (sourceIndex < 0 || targetIndex < 0) {
-    return null
-  }
-
-  const nextVisibleCourses = [...visibleCourses]
-  const [movedCourse] = nextVisibleCourses.splice(sourceIndex, 1)
-  nextVisibleCourses.splice(targetIndex, 0, movedCourse)
-  return mergeVisibleCourseOrder(allCourses, filter, nextVisibleCourses)
-}
-
 export default function CoursesPageClient({
   initialCourses,
   initialError = '',
@@ -194,15 +125,18 @@ export default function CoursesPageClient({
   const [filter, setFilter] = useState<CourseFilter>('active')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const [copyingTemplateCourseId, setCopyingTemplateCourseId] = useState<number | null>(null)
   const [restoringCourseId, setRestoringCourseId] = useState<number | null>(null)
-  const [reorderingCourseId, setReorderingCourseId] = useState<number | null>(null)
-  const [draggedCourseId, setDraggedCourseId] = useState<number | null>(null)
-  const [dragOverCourseId, setDragOverCourseId] = useState<number | null>(null)
   const [error, setError] = useState(initialError)
   const [message, setMessage] = useState('')
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null)
   const [confirmSubmitting, setConfirmSubmitting] = useState(false)
+  const ordering = useCourseOrdering({ courses, filter, onChange: setCourses,
+    onFeedback: (text, failed) => { setError(failed ? text : ''); setMessage(failed ? '' : text) },
+  })
+  const orderLocked = ordering.pending || ordering.draggingId !== null
+  const orderUnavailable = saving || copyingTemplateCourseId !== null || restoringCourseId !== null || confirmSubmitting || showForm
 
   async function loadCourses() {
     const response = await fetch('/api/courses', { cache: 'no-store' })
@@ -227,39 +161,48 @@ export default function CoursesPageClient({
   const filtered = courses.filter((course) => course.status === filter)
 
   function handleOpenCourseDetail(courseId: number) {
-    router.push(withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type))
+    router.push(withTenantPrefix(`/dashboard/courses/${courseId}/students`, tenant.type))
   }
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
-    setSaving(true)
-    setError('')
-    setMessage('')
+    if (savingRef.current) return
+    savingRef.current = true
+    try {
+      setSaving(true)
+      setError('')
+      setMessage('')
 
-    const response = await fetch('/api/courses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        theme_color: form.theme_color.trim(),
-        tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
-        settlement_report_code: form.settlement_report_code.trim() || null,
-      }),
-    })
-    const payload = await response.json().catch(() => null)
-    setSaving(false)
+      const response = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          theme_color: form.theme_color.trim(),
+          tuition_amount: Number(form.tuition_amount.replace(/[^\d]/g, '') || 0),
+          settlement_report_code: form.settlement_report_code.trim() || null,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
 
-    if (!response.ok) {
-      setError(payload?.error ?? '강좌를 생성하지 못했습니다.')
-      return
+
+      if (!response.ok) {
+        setError(payload?.error ?? '강좌를 생성하지 못했습니다.')
+        return
+      }
+
+      setForm({ ...DEFAULT_FORM, theme_color: form.theme_color, course_type: form.course_type })
+      setMessage('강좌를 생성했습니다.')
+      setError(payload?.warning ?? '')
+      setShowForm(false)
+      setFilter('active')
+      await loadCourses().catch(() => {})
+    } catch (reason) {
+      setError(getUserErrorMessage(reason, '저장하지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.'))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
     }
-
-    setForm({ ...DEFAULT_FORM, theme_color: form.theme_color, course_type: form.course_type })
-    setMessage('강좌를 생성했습니다.')
-    setError(payload?.warning ?? '')
-    setShowForm(false)
-    setFilter('active')
-    await loadCourses().catch(() => {})
   }
 
   function requestArchive(course: Course) {
@@ -386,151 +329,6 @@ export default function CoursesPageClient({
     }
   }
 
-  async function persistCourseOrder(nextCourses: Course[], movedCourseId: number) {
-    const previousCourses = courses
-    setCourses(nextCourses)
-    setReorderingCourseId(movedCourseId)
-    setError('')
-    setMessage('')
-
-    try {
-      const response = await fetch('/api/courses/reorder', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courseIds: nextCourses.map((course) => course.id) }),
-      })
-      const payload = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        setCourses(previousCourses)
-        setError(payload?.error ?? '강좌 순서를 저장하지 못했습니다.')
-        return
-      }
-
-      setMessage('강좌 순서를 저장했습니다.')
-    } catch {
-      setCourses(previousCourses)
-      setError('강좌 순서를 저장하지 못했습니다. 네트워크 상태를 확인해 주세요.')
-    } finally {
-      setReorderingCourseId(null)
-    }
-  }
-
-  function handleMoveCourse(courseId: number, direction: MoveDirection) {
-    if (reorderingCourseId !== null) {
-      return
-    }
-
-    const nextCourses = moveVisibleCourse(courses, filter, courseId, direction)
-    if (!nextCourses) {
-      return
-    }
-
-    void persistCourseOrder(nextCourses, courseId)
-  }
-
-  function handleDragStart(event: DragEvent<HTMLButtonElement>, courseId: number) {
-    if (reorderingCourseId !== null) {
-      event.preventDefault()
-      return
-    }
-
-    setDraggedCourseId(courseId)
-    setDragOverCourseId(null)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(courseId))
-  }
-
-  function handleDragOver(event: DragEvent<HTMLElement>, courseId: number) {
-    if (reorderingCourseId !== null) {
-      return
-    }
-
-    const sourceCourseId = Number(event.dataTransfer.getData('text/plain')) || draggedCourseId
-    if (!sourceCourseId || sourceCourseId === courseId) {
-      return
-    }
-
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    setDragOverCourseId(courseId)
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>, courseId: number) {
-    event.preventDefault()
-    const sourceCourseId = Number(event.dataTransfer.getData('text/plain')) || draggedCourseId
-    setDraggedCourseId(null)
-    setDragOverCourseId(null)
-
-    if (!sourceCourseId || sourceCourseId === courseId || reorderingCourseId !== null) {
-      return
-    }
-
-    const nextCourses = dropVisibleCourse(courses, filter, sourceCourseId, courseId)
-    if (!nextCourses) {
-      return
-    }
-
-    void persistCourseOrder(nextCourses, sourceCourseId)
-  }
-
-  function handleDragEnd() {
-    setDraggedCourseId(null)
-    setDragOverCourseId(null)
-  }
-
-  function renderOrderControls(course: Course, index: number, total: number) {
-    const isSavingThisCourse = reorderingCourseId === course.id
-    const disabled = reorderingCourseId !== null
-    const iconButtonClassName = 'flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100'
-
-    return (
-      <div
-        className="flex shrink-0 items-center gap-1.5"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          draggable={!disabled}
-          onDragStart={(event) => handleDragStart(event, course.id)}
-          onDragEnd={handleDragEnd}
-          disabled={disabled}
-          aria-label={`${course.name} 드래그해서 순서 변경`}
-          title="드래그해서 순서 변경"
-          className={`${iconButtonClassName} cursor-grab active:cursor-grabbing`}
-        >
-          {isSavingThisCourse ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <GripVertical className="h-4 w-4" />
-          )}
-        </button>
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={() => handleMoveCourse(course.id, 'up')}
-            disabled={disabled || index === 0}
-            aria-label={`${course.name} 위로 이동`}
-            title="위로 이동"
-            className="flex h-[15px] w-8 items-center justify-center rounded-[6px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100"
-          >
-            <ArrowUp className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleMoveCourse(course.id, 'down')}
-            disabled={disabled || index === total - 1}
-            aria-label={`${course.name} 아래로 이동`}
-            title="아래로 이동"
-            className="flex h-[15px] w-8 items-center justify-center rounded-[6px] bg-[#f5f5f7] text-[#86868b] transition-all duration-200 ease-ios hover:bg-[#e8e8ed] hover:text-[#1d1d1f] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-35 disabled:active:scale-100"
-          >
-            <ArrowDown className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <>
     <ConfirmationModal
@@ -560,39 +358,32 @@ export default function CoursesPageClient({
       {/* ── Header + actions ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-[#1d1d1f]">강좌 관리</h2>
+          <h2 className="admin-page-title">강좌 관리</h2>
           <p className="mt-1 text-sm text-[#86868b]">
             운영강좌 {activeCoursesCount}개 · 보관강좌 {archivedCoursesCount}개
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="w-full rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 sm:w-auto"
+          onClick={() => { setError(''); setMessage(''); setShowForm(true) }}
+          disabled={orderLocked}
+          className="admin-button admin-button-primary w-full sm:w-auto"
         >
-          {showForm ? '닫기' : '+ 새 강좌'}
+          + 새 강좌
         </button>
       </div>
 
-      {/* ── Create form (collapsible) ── */}
-      <AnimatePresence initial={false}>
-      {showForm ? (
-        <motion.form
-          layout
-          onSubmit={handleCreate}
-          initial={{ opacity: 0, scale: 0.98, y: -8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.98, y: -8 }}
-          transition={motionConfig.modal}
-          className="rounded-[8px] border border-[#d2d2d7] bg-white p-5"
-        >
-          <h3 className="text-sm font-bold text-[#1d1d1f]">새 강좌 만들기</h3>
-          <p className="mt-1 text-xs text-[#86868b]">
-            강좌 금액은 결제 추가 시 정가와 수납 금액으로 자동 적용됩니다.
-          </p>
+      {/* ── Create drawer ── */}
+      <AdminDrawer open={showForm} title="새 강좌 만들기" closeDisabled={saving}
+        onClose={() => { if (!saving) setShowForm(false) }} onSubmit={handleCreate}
+        footer={<>
+          <button type="button" className="admin-button" disabled={saving} onClick={() => setShowForm(false)}>취소</button>
+          <button type="submit" className="admin-button admin-button-primary" disabled={saving}>{saving ? '생성 중...' : '강좌 생성'}</button>
+        </>}>
+        <fieldset disabled={saving} className="min-w-0">
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[2fr_1fr_1fr_120px]">
-            <label className="flex flex-col gap-1.5">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-[#86868b]">강좌명</span>
               <input
                 value={form.name}
@@ -601,7 +392,7 @@ export default function CoursesPageClient({
                 className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
               />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-[#86868b]">강좌 유형</span>
               <select
                 value={form.course_type}
@@ -614,7 +405,7 @@ export default function CoursesPageClient({
                 <option value="interview">면접</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-[#86868b]">강좌 금액</span>
               <div className="relative">
                 <input
@@ -627,7 +418,7 @@ export default function CoursesPageClient({
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#86868b]">원</span>
               </div>
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-[#86868b]">보고 코드</span>
               <input
                 value={form.settlement_report_code}
@@ -641,7 +432,7 @@ export default function CoursesPageClient({
 
           <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             {FEATURE_LABELS.map((item) => (
-              <label key={item.key} className="flex min-h-9 items-center gap-1.5 rounded-[8px] bg-[#f5f5f7] px-2.5 text-xs text-[#1d1d1f] sm:min-h-0 sm:bg-transparent sm:px-0">
+              <label key={item.key} className="flex min-h-9 items-center gap-2 rounded-[8px] bg-[#f5f5f7] px-2.5 text-xs text-[#1d1d1f] sm:min-h-0 sm:bg-transparent sm:px-0">
                 <input
                   type="checkbox"
                   checked={Boolean(form[item.key])}
@@ -653,30 +444,19 @@ export default function CoursesPageClient({
             ))}
           </div>
 
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100 sm:py-2"
-            >
-              {saving ? '생성 중...' : '강좌 생성'}
-            </button>
-            {error && <span className="text-xs text-red-500">{error}</span>}
-            {message && <span className="text-xs text-[#1b7a1b]">{message}</span>}
-          </div>
-        </motion.form>
-      ) : null}
-      </AnimatePresence>
+        </fieldset>
+        {error ? <p role="alert" className="mt-4 text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
+      </AdminDrawer>
 
       {/* ── Filter tabs ── */}
       {(error || message) && !showForm ? (
         <div className="flex flex-col gap-1">
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p>}
           {message && <p className="text-xs text-[#1b7a1b]">{message}</p>}
         </div>
       ) : null}
 
-      <motion.div layout className="grid grid-cols-2 gap-1 rounded-[10px] bg-[#e8e8ed] p-1">
+      <div className="admin-tabs" aria-label="강좌 상태 필터">
         {([
           { key: 'active', label: '운영강좌', count: activeCoursesCount },
           { key: 'archived', label: '보관강좌', count: archivedCoursesCount },
@@ -685,28 +465,24 @@ export default function CoursesPageClient({
             key={item.key}
             type="button"
             onClick={() => setFilter(item.key)}
-            className={`relative flex-1 rounded-[8px] px-3 py-2.5 text-sm font-semibold transition-all duration-200 ease-ios active:scale-[0.98] ${
-              filter === item.key
-                ? 'text-white'
-                : 'text-[#1d1d1f] hover:bg-white/70'
-            }`}
+            disabled={orderLocked}
+            className="admin-tab"
+            data-active={filter === item.key}
+            aria-pressed={filter === item.key}
           >
-            {filter === item.key ? (
-              <motion.div
-                layoutId="courses-filter-tabs"
-                className="absolute inset-0 rounded-[8px] bg-[#1d1d1f] shadow-sm"
-                transition={motionConfig.tab}
-              />
-            ) : null}
             <span className="relative z-10 inline-flex items-center justify-center gap-2">
               <span>{item.label}</span>
-              <span className={filter === item.key ? 'text-white/70' : 'text-[#86868b]'}>
+              <span className="admin-tab-count">
                 {item.count.toLocaleString('ko-KR')}
               </span>
             </span>
           </button>
         ))}
-      </motion.div>
+      </div>
+
+      <p id="course-order-help" role="status" className="text-xs text-slate-500">
+        {ordering.pending ? '순서를 저장하고 있습니다…' : ordering.draggingId !== null ? '원하는 위치에 놓으면 저장됩니다. Esc 키로 취소할 수 있습니다.' : '강좌명 옆 손잡이를 드래그해 순서를 변경하세요. 손잡이에 초점을 두고 위·아래 방향키로도 이동할 수 있습니다.'}
+      </p>
 
       {/* ── Course table ── */}
       <motion.section layout transition={motionConfig.tab}>
@@ -736,13 +512,12 @@ export default function CoursesPageClient({
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={motionConfig.modal}
-            className="overflow-hidden rounded-[8px] bg-white shadow-sm ring-1 ring-slate-100"
+            className="admin-table-frame overflow-hidden bg-white"
           >
             <div className="overflow-x-auto">
               <table className="min-w-[1080px] w-full">
                 <thead className="border-b border-[#e8e8ed] bg-[#f5f5f7] text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-[#86868b]">
                   <tr>
-                    <th className="px-3 py-3 text-center">순서</th>
                     <th className="px-3 py-3">유형</th>
                     <th className="px-4 py-3">강좌명</th>
                     <th className="px-3 py-3 text-center">상태</th>
@@ -753,27 +528,21 @@ export default function CoursesPageClient({
                     <th className="px-4 py-3 text-right">작업</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#f0f0f2] text-sm text-[#1d1d1f]">
-                  {filtered.map((course, index) => {
+                <Reorder.Group as="tbody" axis="y" values={filtered.map((course) => course.id)} onReorder={ordering.preview}
+                  className="divide-y divide-[#f0f0f2] text-sm text-[#1d1d1f]">
+                  {filtered.map((course) => {
                     const tags = getCourseFeatureTags(course)
                     const isActive = course.status === 'active'
                     const activeEnrollmentCount = getActiveEnrollmentCount(course)
-                    const isDragTarget = dragOverCourseId === course.id
-                    const isDragging = draggedCourseId === course.id
 
                     return (
-                      <tr
-                        key={course.id}
-                        onClick={() => handleOpenCourseDetail(course.id)}
-                        onDragOver={(event) => handleDragOver(event, course.id)}
-                        onDrop={(event) => handleDrop(event, course.id)}
-                        className={`cursor-pointer transition-colors hover:bg-[#f5f5f7] ${
-                          isDragTarget ? 'bg-[#0071e3]/5' : ''
-                        } ${isDragging ? 'opacity-55' : ''}`}
-                      >
-                        <td className="px-3 py-3 align-middle">
-                          {renderOrderControls(course, index, filtered.length)}
-                        </td>
+                      <SortableCourseRow key={course.id} id={course.id} name={course.name}
+                        disabled={ordering.pending || orderUnavailable || (ordering.draggingId !== null && ordering.draggingId !== course.id)}
+                        dragging={ordering.draggingId === course.id}
+                        onBegin={() => ordering.beginDrag(course.id)} onEnd={() => { void ordering.endDrag() }}
+                        onCancel={ordering.cancelDrag} onMove={(direction) => { void ordering.move(course.id, direction) }}
+                        onOpen={() => handleOpenCourseDetail(course.id)}>
+                        {(handle) => <>
                         <td className="px-3 py-3 align-middle">
                           <div className="flex flex-col items-start gap-1">
                             <span className="rounded-[6px] bg-[#f5f5f7] px-2 py-1 text-[11px] font-semibold text-[#1d1d1f]">
@@ -781,15 +550,17 @@ export default function CoursesPageClient({
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="min-w-0">
-                            <p className="line-clamp-1 font-semibold text-[#1d1d1f]">{course.name}</p>
-                            <p className="mt-0.5 truncate text-xs text-[#86868b]">{course.slug}</p>
+                        <td className="admin-table-course px-4 py-3 align-middle">
+                          <div className="admin-course-name-cell">
+                            {handle}
+                            <div className="min-w-0">
+                            <p className="break-words font-semibold text-[#1d1d1f]">{course.name}</p>
                             {course.copied_from_course_name ? (
-                              <p className="mt-0.5 truncate text-[11px] text-[#86868b]">
+                              <p className="mt-0.5 break-words text-[11px] text-[#86868b]">
                                 원본 {course.copied_from_course_name}
                               </p>
                             ) : null}
+                            </div>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-center align-middle">
@@ -802,7 +573,7 @@ export default function CoursesPageClient({
                         <td className="px-3 py-3 text-right align-middle font-semibold tabular-nums">
                           {activeEnrollmentCount.toLocaleString('ko-KR')}명
                         </td>
-                        <td className="px-3 py-3 text-right align-middle tabular-nums">
+                        <td className="admin-table-amount px-3 py-3 text-right align-middle tabular-nums">
                           {formatWon(course.tuition_amount ?? 0)}
                         </td>
                         <td className="px-3 py-3 text-center align-middle text-[#86868b]">
@@ -824,6 +595,7 @@ export default function CoursesPageClient({
                         <td className="px-4 py-3 align-middle">
                           <div
                             className="flex items-center justify-end gap-1.5"
+                            inert={orderLocked}
                             onClick={(event) => event.stopPropagation()}
                           >
                             <Link
@@ -866,10 +638,11 @@ export default function CoursesPageClient({
                             )}
                           </div>
                         </td>
-                      </tr>
+                        </>}
+                      </SortableCourseRow>
                     )
                   })}
-                </tbody>
+                </Reorder.Group>
               </table>
             </div>
           </motion.div>

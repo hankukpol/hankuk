@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { randomUUID } from 'node:crypto'
+import { invalidateMaterialCache } from '@/lib/distribution/material-cache'
 import { getCourseById, listMaterialsForCourse, verifyCourseOwnership } from '@/lib/class-pass-data'
 import { createServerClient } from '@/lib/supabase/server'
 import { unwrapSupabaseResult } from '@/lib/supabase/result'
 import { getServerTenantType } from '@/lib/tenant.server'
 
 const schema = z.object({
+  requestId: z.string().uuid().optional(),
   courseId: z.number().int().positive(),
   name: z.string().min(1).max(100),
   description: z.string().optional().nullable(),
@@ -96,24 +98,35 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data, error } = await db
-    .from('materials')
-    .insert({
-      course_id: parsed.data.courseId,
+  const { data, error } = await db.rpc('create_material_atomic', {
+    p_division: division,
+    // Legacy callers remain compatible; updated clients persist one UUID across retries.
+    p_request_id: parsed.data.requestId ?? randomUUID(),
+    p_course_id: parsed.data.courseId,
+    p_payload: {
       name: parsed.data.name,
       description: parsed.data.description || null,
       is_active: parsed.data.is_active,
       sort_order: parsed.data.sort_order,
       material_type: parsed.data.material_type,
       subject_id: parsed.data.subject_id ?? null,
-    })
-    .select('*')
-    .single()
+    },
+  })
 
   if (error) {
     return NextResponse.json({ error: '자료를 생성하지 못했습니다.' }, { status: 500 })
   }
 
-  await invalidateCache('materials')
-  return NextResponse.json({ material: data }, { status: 201 })
+  if (!data?.success) {
+    const reason = data?.reason
+    const status = reason === 'IDEMPOTENCY_CONFLICT' || reason === 'MATERIAL_DELETED' ? 409
+      : reason === 'COURSE_NOT_FOUND' ? 404 : 400
+    return NextResponse.json({
+      error: reason === 'MATERIAL_DELETED' ? '이미 생성된 자료가 삭제되었습니다. 목록을 확인해 주세요.'
+        : reason === 'IDEMPOTENCY_CONFLICT' ? '같은 생성 요청의 내용이 변경되었습니다. 기존 요청 결과를 확인해 주세요.'
+          : '자료 생성 요청을 확인해 주세요.',
+    }, { status })
+  }
+  const cacheResult = await invalidateMaterialCache()
+  return NextResponse.json({ material: data.material, ...cacheResult }, { status: 201 })
 }

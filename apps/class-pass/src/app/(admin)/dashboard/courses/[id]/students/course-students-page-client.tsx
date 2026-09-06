@@ -1,13 +1,17 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
+import { isPendingHandout } from '@/lib/distribution/handout-eligibility'
 import Image from 'next/image'
-import Link from 'next/link'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useParams } from 'next/navigation'
-import { Download, Plus, Search, Trash2, Upload, UserCheck, X } from 'lucide-react'
+import { Check, Search, TriangleAlert, UserCheck, X } from 'lucide-react'
+import { AdminActionMenu } from '@/components/admin/AdminActionMenu'
+import { AdminPortal } from '@/components/admin/AdminPortal'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { useModalDialog } from '@/components/admin/useModalDialog'
 import { StudentHistoryPanel } from '@/components/admin/student-history-panel'
 import { EnrollmentPaymentDrawer } from '@/components/payments/EnrollmentPaymentDrawer'
 import { ReceiptNoticeModal } from '@/components/payments/ReceiptNoticeModal'
@@ -36,7 +40,10 @@ import { downloadCourseSettlementXlsx } from '@/lib/payments/xlsx-export'
 import { buildSettlementReport } from '@/lib/payments/settlement-report'
 import type { EnrollmentPayment } from '@/lib/payments/types'
 import { formatPhoneNumber } from '@/lib/utils'
-import { getTuitionExemptBillingRuleError } from '@/lib/payments/billing-rules'
+import { isLikelyPhoneNumber, isValidBirthDateKey } from '@/lib/validation/primitives'
+import { RegistrationCoursesSection, getRegistrationBillingIssue, type RegistrationBillingDraft } from './registration-courses-section'
+import registrationStyles from './registration-courses.module.css'
+import { registrationDraftSnapshot } from './registration-draft'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
 import {
@@ -287,9 +294,10 @@ function parseDistributionLogsFromPayload(payload: unknown): DistributionLogPayl
       const materialId = Number(source.material_id)
       const distributedAt = typeof source.distributed_at === 'string'
         ? source.distributed_at
-        : new Date().toISOString()
+        : ''
 
-      if (!Number.isInteger(logId) || logId <= 0 || !Number.isInteger(materialId) || materialId <= 0) {
+      if (!Number.isInteger(logId) || logId <= 0 || !Number.isInteger(materialId) || materialId <= 0
+        || !distributedAt || !Number.isFinite(Date.parse(distributedAt))) {
         return null
       }
 
@@ -321,10 +329,7 @@ function getReceiptNoticeFromPayload(payload: unknown) {
     .join(', ')
 }
 
-type BundleBillingDraft = {
-  discountAmount: string
-  discountReason: string
-}
+type BundleBillingDraft = RegistrationBillingDraft
 
 function getDefaultSeriesOptionId(options: BranchSeriesOption[]) {
   const activeOptions = options.filter((option) => option.is_active)
@@ -369,10 +374,6 @@ function sanitizeDownloadFilename(value: string) {
     .slice(0, 80) || 'course'
 }
 
-function numberInputValue(value: string) {
-  return value.replace(/[^\d]/g, '')
-}
-
 function toNumber(value: string) {
   return Number(value.replace(/,/g, '') || 0)
 }
@@ -406,6 +407,7 @@ function rebalancePaymentEntriesForTotal(
 }
 
 function getEnrollmentStatusLabel(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {
+  if (enrollment.status === 'cancelled') return '수강종료'
   if (enrollment.status === 'active' && enrollment.suspended_at) {
     return '정지'
   }
@@ -454,18 +456,16 @@ function StudentTypeSelector({
   return (
     <div
       aria-label="학원구분"
-      className="grid min-w-[136px] grid-cols-2 gap-1 rounded-[10px] bg-[#f5f5f7] p-1"
+      role="group"
+      className="admin-choice-group grid grid-cols-2 gap-1"
     >
       {options.map((option) => (
         <button
           key={option}
           type="button"
           onClick={() => onChange(option)}
-          className={`whitespace-nowrap rounded-[8px] px-3 py-2 text-center text-sm font-semibold leading-none transition-all duration-200 ease-ios active:scale-[0.97] ${
-            value === option
-              ? 'bg-white text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-              : 'text-slate-500 hover:text-[#1d1d1f]'
-          }`}
+          aria-pressed={value === option}
+          className="admin-choice-button"
         >
           {ENROLLMENT_STUDENT_TYPE_LABEL[option]}
         </button>
@@ -539,8 +539,8 @@ async function fetchStudentsPageData(
     course: coursePay.course as Course,
     enrollments: (enrollPay.enrollments ?? []) as Enrollment[],
     total: (enrollPay.total ?? 0) as number,
-    summary: (enrollPay.summary ?? { active: 0, refunded: 0, suspended: 0 }) as {
-      active: number; refunded: number; suspended: number
+    summary: (enrollPay.summary ?? { active: 0, refunded: 0, suspended: 0, cancelled: 0 }) as {
+      active: number; refunded: number; suspended: number; cancelled: number
     },
     textbooks: (textbookPay.materials ?? []) as Material[],
     seriesOptions: (seriesPay.options ?? []) as BranchSeriesOption[],
@@ -579,7 +579,7 @@ export default function CourseStudentsPage({
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [totalCount, setTotalCount] = useState(0)
-  const [pageSummary, setPageSummary] = useState({ active: 0, refunded: 0, suspended: 0 })
+  const [pageSummary, setPageSummary] = useState({ active: 0, refunded: 0, suspended: 0, cancelled: 0 })
   const excelUploadInputRef = useRef<HTMLInputElement | null>(null)
   const searchTimerRef = useRef<number | null>(null)
   const paginationRef = useRef({ currentPage: 1, pageSize: 50, search: '', statusFilter: 'all' as EnrollmentManageStatusFilter })
@@ -588,6 +588,14 @@ export default function CourseStudentsPage({
   const [matrixMaterials, setMatrixMaterials] = useState<Material[]>([])
   const [matrixRows, setMatrixRows] = useState<MatrixRow[]>([])
   const [matrixLoading, setMatrixLoading] = useState(false)
+  const matrixRequestRef = useRef(0)
+  const matrixContextRef = useRef('')
+  const matrixReadyRef = useRef<string | null>(null)
+  const matrixWriteRef = useRef(false)
+  const matrixContext = `${courseId}:${tab}`
+  matrixContextRef.current = matrixContext
+  const [matrixReadyContext, setMatrixReadyContext] = useState<string | null>(null)
+  const matrixUnavailable = matrixLoading || matrixReadyContext !== matrixContext
   const [matrixSearch, setMatrixSearch] = useState('')
   const [filterMatId, setFilterMatId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -604,6 +612,11 @@ export default function CourseStudentsPage({
     initialData?.course ? [initialData.course.id] : []
   ))
   const [bundleBillingDrafts, setBundleBillingDrafts] = useState<Record<number, BundleBillingDraft>>({})
+  const [allCoursesExempt, setAllCoursesExempt] = useState(false)
+  const [allCoursesExemptReason, setAllCoursesExemptReason] = useState('')
+  const [registrationAttempted, setRegistrationAttempted] = useState(false)
+  const registrationInFlightRef = useRef(false)
+  const registrationBaselineRef = useRef('')
   const [bundleCourseToAdd, setBundleCourseToAdd] = useState('')
   const studentLookupInputTimerRef = useRef<number | null>(null)
   const [studentLookupQuery, setStudentLookupQuery] = useState('')
@@ -612,6 +625,10 @@ export default function CourseStudentsPage({
   const [studentLookupError, setStudentLookupError] = useState('')
   const [selectedStudent, setSelectedStudent] = useState<StudentSearchResult | null>(null)
   const [selectedStudentEditable, setSelectedStudentEditable] = useState(false)
+  // 선택을 마친 검색어를 기억해 두고, 같은 검색어의 결과 목록만 접는다. 다시 검색하면 목록이 돌아온다.
+  const [studentLookupQueryAtSelect, setStudentLookupQueryAtSelect] = useState('')
+  // 신규 수강생을 직접 입력하겠다고 밝힌 경우에만 프로필 입력란을 편다.
+  const [profileFieldsOpen, setProfileFieldsOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<EnrollmentForm>(emptyForm())
   const [paymentDetailEnrollmentId, setPaymentDetailEnrollmentId] = useState<number | null>(null)
@@ -642,6 +659,9 @@ export default function CourseStudentsPage({
     () => textbooks.filter((textbook) => textbook.is_active),
     [textbooks],
   )
+  const allTextbooksSelected = visibleTextbooks.length > 0
+    && visibleTextbooks.every((textbook) => createForm.textbookIds.includes(textbook.id))
+  const someTextbooksSelected = visibleTextbooks.some((textbook) => createForm.textbookIds.includes(textbook.id))
   const defaultSeriesOptionId = useMemo(
     () => getDefaultSeriesOptionId(seriesOptions),
     [seriesOptions],
@@ -671,30 +691,35 @@ export default function CourseStudentsPage({
   const bundleBillingRows = useMemo(() => (
     selectedBundleCourses.map((entry) => {
       const draft = bundleBillingDrafts[entry.id]
-      const expectedAmount = Math.max(0, Number(entry.tuition_amount ?? 0))
-      const discountAmount = Math.min(toNumber(draft?.discountAmount ?? ''), expectedAmount)
+      const expectedAmount = toNumber(draft?.expectedAmount ?? String(entry.tuition_amount ?? 0))
+      const tuitionExempt = allCoursesExempt || Boolean(draft?.tuitionExempt)
+      const discountAmount = tuitionExempt ? 0 : toNumber(draft?.discountAmount ?? '')
       return {
         course: entry,
         expectedAmount,
         discountAmount,
-        discountReason: draft?.discountReason?.trim() ?? '',
-        payableAmount: Math.max(expectedAmount - discountAmount, 0),
+        discountReason: tuitionExempt ? '' : draft?.discountReason?.trim() ?? '',
+        payableAmount: tuitionExempt ? 0 : Math.max(expectedAmount - discountAmount, 0),
+        tuitionExempt,
+        tuitionExemptReason: tuitionExempt ? (allCoursesExempt ? allCoursesExemptReason : draft?.tuitionExemptReason ?? '').trim() : '',
       }
     })
-  ), [bundleBillingDrafts, selectedBundleCourses])
+  ), [bundleBillingDrafts, selectedBundleCourses, allCoursesExempt, allCoursesExemptReason])
   const bundleTotals = useMemo(() => (
     bundleBillingRows.reduce((sum, row) => ({
       expectedAmount: sum.expectedAmount + row.expectedAmount,
       discountAmount: sum.discountAmount + row.discountAmount,
       payableAmount: sum.payableAmount + row.payableAmount,
-    }), { expectedAmount: 0, discountAmount: 0, payableAmount: 0 })
+      exemptAmount: sum.exemptAmount + (row.tuitionExempt ? row.expectedAmount : 0),
+      exemptCount: sum.exemptCount + Number(row.tuitionExempt),
+    }), { expectedAmount: 0, discountAmount: 0, payableAmount: 0, exemptAmount: 0, exemptCount: 0 })
   ), [bundleBillingRows])
   const bundleAddableCourses = useMemo(() => (
     bundleSelectableCourses.filter((entry) => !bundleCourseIds.includes(entry.id))
   ), [bundleCourseIds, bundleSelectableCourses])
 
   useEffect(() => {
-    if (panel !== 'create' || !isBundleRegistration) {
+    if (panel !== 'create') {
       return
     }
 
@@ -704,27 +729,64 @@ export default function CourseStudentsPage({
       .join('\n')
 
     setCreatePaymentForm((current) => {
-      const previousPayableAmount = Math.max(
-        toNumber(current.expectedAmount) - toNumber(current.discountAmount),
-        0,
-      )
-      const currentPaymentTotal = current.entries.reduce((sum, entry) => sum + toNumber(entry.amount), 0)
-      const shouldRebalanceEntries = current.entries.length <= 1 || currentPaymentTotal === previousPayableAmount
-
       return {
         ...current,
-        expectedAmount: String(bundleTotals.expectedAmount),
+        expectedAmount: String(bundleTotals.expectedAmount - bundleTotals.exemptAmount),
         discountAmount: bundleTotals.discountAmount > 0 ? String(bundleTotals.discountAmount) : '',
         discountReason,
         paidAmount: '',
-        tuitionExempt: false,
-        tuitionExemptReason: '',
-        entries: shouldRebalanceEntries
+        tuitionExempt: bundleBillingRows.length > 0 && bundleTotals.exemptCount === bundleBillingRows.length,
+        tuitionExemptReason: bundleBillingRows.filter((row) => row.tuitionExempt).map((row) => row.tuitionExemptReason).join('\n'),
+        // Preserve payment methods, metadata and split-payment drafts through course changes.
+        entries: bundleTotals.payableAmount > 0 && current.entries.length === 1
+          && toNumber(current.expectedAmount) - toNumber(current.discountAmount) !== bundleTotals.payableAmount
           ? rebalancePaymentEntriesForTotal(current.entries, bundleTotals.payableAmount)
           : current.entries,
       }
     })
-  }, [bundleBillingRows, bundleTotals, isBundleRegistration, panel])
+  }, [bundleBillingRows, bundleTotals, panel])
+
+  const registrationIdentityErrors = {
+    name: createForm.name.trim() ? '' : '이름을 입력해 주세요.',
+    phone: isLikelyPhoneNumber(createForm.phone) ? '' : '연락처를 확인해 주세요. 예: 010-1234-5678',
+    birth_date: isValidBirthDateKey(createForm.birth_date) ? '' : '실제 생년월일 6자리를 입력해 주세요. 예: 990101',
+  }
+  const registrationIdentityErrorVisible = registrationAttempted && Boolean(
+    registrationIdentityErrors.name || registrationIdentityErrors.phone || registrationIdentityErrors.birth_date,
+  )
+  const studentLookupNoMatch = studentLookupQuery.trim().length >= 2
+    && !studentLookupLoading
+    && studentLookupResults.length === 0
+  // 값이 들어 있는 항목을 접어 두면 무엇을 저장하는지 볼 수 없다. 초안이 남아 있으면 항상 펼친다.
+  const hasProfileDraft = Boolean(
+    createForm.name.trim() || createForm.phone.trim() || createForm.birth_date.trim()
+    || createForm.exam_number.trim() || createForm.cohort_number.trim() || createForm.gender.trim(),
+  )
+  // 프로필 항목은 검색으로 채워지는 값이다. 새로 입력해야 할 때만 펼친다.
+  const showProfileFields = selectedStudent
+    ? selectedStudentEditable
+    : (profileFieldsOpen || hasProfileDraft || studentLookupNoMatch || registrationIdentityErrorVisible)
+  const registrationPaymentTotal = bundleTotals.payableAmount === 0 ? 0 : createPaymentForm.entries.reduce((sum, entry) => sum + toNumber(entry.amount), 0)
+  const registrationPaymentDifference = registrationPaymentTotal - bundleTotals.payableAmount
+  const registrationDraft = registrationDraftSnapshot({
+    form: createForm, courses: selectedBundleCourses, billing: bundleBillingDrafts,
+    allExempt: allCoursesExempt, commonReason: allCoursesExemptReason, payment: createPaymentForm,
+    studentId: selectedStudent?.id ?? null, editable: selectedStudentEditable,
+  })
+
+  function requestCreateClose() {
+    if (submitting || registrationInFlightRef.current || confirmation) return
+    if (registrationDraft !== registrationBaselineRef.current) {
+      openConfirmation({
+        title: '입력 내용을 버리고 닫을까요?',
+        description: '아직 등록하지 않은 학생 정보와 강좌·수납 입력이 사라집니다. 계속 작성하려면 돌아가세요.',
+        confirmLabel: '입력 버리고 닫기', cancelLabel: '계속 작성', tone: 'danger',
+        onConfirm: () => setPanel('none'),
+      })
+    } else {
+      setPanel('none')
+    }
+  }
 
   useEffect(() => {
     if (!error) {
@@ -762,26 +824,18 @@ export default function CourseStudentsPage({
     })
   }, [panel, studentLookupError])
 
-  useEffect(() => {
-    if (panel !== 'create') {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting) {
-        setPanel('none')
-      }
-    }
-
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [panel, submitting])
+  const createDialogRef = useModalDialog<HTMLElement>({
+    open: panel === 'create',
+    onClose: requestCreateClose,
+    closeDisabled: submitting || Boolean(confirmation),
+    priority: 101,
+  })
+  const editDialogRef = useModalDialog<HTMLFormElement>({
+    open: panel === 'edit',
+    onClose: () => { setPanel('none'); setEditingId(null) },
+    closeDisabled: submitting || photoUploading,
+    priority: 101,
+  })
 
   useEffect(() => {
     return () => {
@@ -809,6 +863,7 @@ export default function CourseStudentsPage({
     setStudentLookupLoading(false)
     setSelectedStudent(null)
     setSelectedStudentEditable(false)
+    setProfileFieldsOpen(false)
   }, [panel])
 
   useEffect(() => {
@@ -936,6 +991,7 @@ export default function CourseStudentsPage({
 
     setSelectedStudent(student)
     setSelectedStudentEditable(false)
+    setStudentLookupQueryAtSelect(studentLookupQuery.trim())
     setCreateForm((current) => ({
       ...current,
       name: student.name,
@@ -986,15 +1042,30 @@ export default function CourseStudentsPage({
     }))
   }
 
+  // 교재를 통째로 사가는 경우가 흔해 한 번에 켜고 끈다.
+  // 화면에 없는 비활성 교재가 선택돼 있을 수 있으므로, 해제는 지금 보이는 것만 건드린다.
+  function toggleAllCreateTextbooks(selectAll: boolean) {
+    const visibleIds = visibleTextbooks.map((textbook) => textbook.id)
+    setCreateForm((current) => ({
+      ...current,
+      textbookIds: selectAll
+        ? Array.from(new Set([...current.textbookIds, ...visibleIds]))
+        : current.textbookIds.filter((id) => !visibleIds.includes(id)),
+    }))
+  }
+
   function resetCreateBundleState(nextCourse: Course) {
     setBundleCourseIds([nextCourse.id])
     setBundleBillingDrafts({})
     setBundleCourseToAdd('')
+    setAllCoursesExempt(false)
+    setAllCoursesExemptReason('')
+    setRegistrationAttempted(false)
   }
 
   function addBundleCourse() {
     const nextCourseId = Number(bundleCourseToAdd)
-    if (!Number.isInteger(nextCourseId) || nextCourseId <= 0 || bundleCourseIds.includes(nextCourseId)) {
+    if (bundleCourseIds.length >= 8 || !Number.isInteger(nextCourseId) || nextCourseId <= 0 || bundleCourseIds.includes(nextCourseId)) {
       return
     }
 
@@ -1007,26 +1078,16 @@ export default function CourseStudentsPage({
       return
     }
 
-    setBundleCourseIds((current) => {
-      const next = current.filter((id) => id !== nextCourseId)
-      if (next.length <= 1 && course) {
-        setCreatePaymentForm(createPaymentSectionValueForAmount(course.tuition_amount ?? 0))
-      }
-      return next
-    })
-    setBundleBillingDrafts((current) => {
-      const next = { ...current }
-      delete next[nextCourseId]
-      return next
-    })
+    const nextCourseIds = bundleCourseIds.filter((id) => id !== nextCourseId)
+    setBundleCourseIds(nextCourseIds)
+    // Keep removed-course drafts too, so re-adding it restores the operator's inputs.
   }
 
   function updateBundleBilling(courseIdToUpdate: number, patch: Partial<BundleBillingDraft>) {
     setBundleBillingDrafts((current) => ({
       ...current,
       [courseIdToUpdate]: {
-        discountAmount: current[courseIdToUpdate]?.discountAmount ?? '',
-        discountReason: current[courseIdToUpdate]?.discountReason ?? '',
+        ...(current[courseIdToUpdate] ?? { discountAmount: '', discountReason: '' }),
         ...patch,
       },
     }))
@@ -1064,7 +1125,7 @@ export default function CourseStudentsPage({
   }
 
   async function handleUndoConfirmed(logId: number, studentName: string, materialName: string) {
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setError('')
     setMessage('')
 
@@ -1076,17 +1137,18 @@ export default function CourseStudentsPage({
       })
       const payload = await response.json().catch(() => null)
 
-      if (!response.ok) {
-        setError(payload?.error ?? '수령 기록 취소에 실패했습니다.')
-        return
+      if (!response.ok || payload?.success !== true || payload?.logId !== logId) {
+        throw new Error(payload?.error ?? '수령 기록 취소 결과를 확인하지 못했습니다.')
       }
 
       removeMatrixReceiptByLogId(logId)
-      setMessage(`${studentName} - ${materialName} 수령 기록을 취소했습니다.`)
-    } catch {
-      setError('수령 기록 취소에 실패했습니다.')
+      if (payload.refreshRequired) await reloadCurrentMatrix()
+      setMessage(`${studentName} - ${materialName} 수령 기록을 취소했습니다.${payload.warning ? ` ${payload.warning}` : ''}`)
+    } catch (reason) {
+      await reloadCurrentMatrix()
+      setError(`${getUserErrorMessage(reason)} 수령 현황을 다시 확인한 뒤 처리해 주세요.`)
     } finally {
-      setBulkProcessing(false)
+      endMatrixWrite()
     }
   }
 
@@ -1306,13 +1368,6 @@ export default function CourseStudentsPage({
       })
   }, [courseId, refresh, initialLoaded])
 
-  const summary = {
-    total: totalCount,
-    active: pageSummary.active,
-    refunded: pageSummary.refunded,
-    suspended: pageSummary.suspended,
-  }
-
   const applyEnrollmentFetch = useCallback((
     params: Parameters<typeof fetchStudentsPageData>[1],
   ) => {
@@ -1382,6 +1437,18 @@ export default function CourseStudentsPage({
       search: paginationRef.current.search,
       status: value,
     })
+  }, [applyEnrollmentFetch])
+
+  const handleResetFilters = useCallback(() => {
+    if (searchTimerRef.current !== null) {
+      window.clearTimeout(searchTimerRef.current)
+      searchTimerRef.current = null
+    }
+    setSearch('')
+    setStatusFilter('all')
+    setCurrentPage(1)
+    paginationRef.current = { ...paginationRef.current, search: '', statusFilter: 'all', currentPage: 1 }
+    applyEnrollmentFetch({ page: 1, pageSize: paginationRef.current.pageSize, search: '', status: 'all' })
   }, [applyEnrollmentFetch])
 
   const handleDownloadStudentList = useCallback(async () => {
@@ -1563,6 +1630,14 @@ export default function CourseStudentsPage({
   }, [course, courseId])
 
   const loadMatrixData = useCallback(async (mode: MatrixMode) => {
+    const request = ++matrixRequestRef.current
+    const context = `${courseId}:${mode}`
+    const isCurrent = () => request === matrixRequestRef.current && matrixContextRef.current === context
+    matrixReadyRef.current = null
+    setMatrixReadyContext(null)
+    setMatrixMaterials([])
+    setMatrixRows([])
+    setSelectedIds(new Set())
     setMatrixLoading(true)
     setError('')
 
@@ -1587,6 +1662,12 @@ export default function CourseStudentsPage({
         throw new Error(enrollmentPayload?.error ?? '?섍컯??紐⑸줉??遺덈윭?ㅼ? 紐삵뻽?듬땲??')
       }
 
+      if (!Array.isArray(payload?.materials) || !Array.isArray(payload?.logs)
+        || !Array.isArray(enrollmentPayload?.enrollments)
+        || (mode !== 'receipts' && !Array.isArray(payload?.assignments))) {
+        throw new Error('현황 응답을 확인하지 못했습니다. 다시 조회해 주세요.')
+      }
+      if (!isCurrent()) return false
       const materials = (payload?.materials ?? []) as Material[]
       const matrixEnrollments = ((enrollmentPayload?.enrollments ?? []) as Enrollment[])
         .filter((enrollment) => enrollment.status === 'active')
@@ -1644,10 +1725,14 @@ export default function CourseStudentsPage({
         current !== null && materials.some((material) => material.id === current) ? current : null
       ))
       setSelectedIds(new Set())
+      matrixReadyRef.current = context
+      setMatrixReadyContext(context)
+      return true
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '매트릭스 데이터를 불러오지 못했습니다.')
+      if (isCurrent()) setError(reason instanceof Error ? reason.message : '매트릭스 데이터를 불러오지 못했습니다.')
+      return false
     } finally {
-      setMatrixLoading(false)
+      if (isCurrent()) setMatrixLoading(false)
     }
   }, [courseId])
 
@@ -1663,7 +1748,24 @@ export default function CourseStudentsPage({
     }
 
     void loadMatrixData(tab)
+    return () => {
+      matrixRequestRef.current += 1
+      matrixReadyRef.current = null
+    }
   }, [loadMatrixData, tab])
+
+  function beginMatrixWrite() {
+    if (matrixWriteRef.current || matrixReadyRef.current !== matrixContext
+      || matrixContextRef.current !== matrixContext) return false
+    matrixWriteRef.current = true
+    setBulkProcessing(true)
+    return true
+  }
+
+  function endMatrixWrite() {
+    matrixWriteRef.current = false
+    setBulkProcessing(false)
+  }
 
   const filteredMatrixRows = useMemo(() => {
     let rows = matrixRows
@@ -1681,7 +1783,8 @@ export default function CourseStudentsPage({
     }
 
     if (tab === 'receipts') {
-      return rows.filter((row) => !row.receipts[filterMatId])
+      const material = matrixMaterials.find((entry) => entry.id === filterMatId)
+      return material ? rows.filter((row) => isPendingHandout(row, material)) : []
     }
 
     if (tab === 'textbook-assign') {
@@ -1689,7 +1792,7 @@ export default function CourseStudentsPage({
     }
 
     return rows.filter((row) => row.assignments[filterMatId] && !row.receipts[filterMatId])
-  }, [filterMatId, matrixRows, matrixSearch, tab])
+  }, [filterMatId, matrixMaterials, matrixRows, matrixSearch, tab])
 
   const bulkActionEnabled = filterMatId !== null && (tab === 'receipts' || tab === 'textbook-assign')
 
@@ -1778,7 +1881,7 @@ export default function CourseStudentsPage({
   }
 
   async function handleDistribute(enrollmentId: number, materialId: number) {
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setError('')
     setMessage('')
     try {
@@ -1789,25 +1892,26 @@ export default function CourseStudentsPage({
       })
       const payload = await response.json().catch(() => null)
 
-      if (!response.ok) {
-        setError(payload?.error ?? '배부 처리에 실패했습니다.')
-        return
+      if (!response.ok || payload?.success !== true) {
+        throw new Error(payload?.error ?? '배부 결과를 확인하지 못했습니다.')
       }
 
       const logs = parseDistributionLogsFromPayload(payload)
       applyMatrixReceipts(enrollmentId, logs)
-      setMessage(`${payload?.student_name ?? '수강생'} - ${payload?.material_name ?? '자료'} 배부 완료`)
-    } catch {
-      setError('배부 처리에 실패했습니다.')
+      if (payload.refreshRequired || logs.length !== 1) await reloadCurrentMatrix()
+      setMessage(`${payload.student_name ?? '수강생'} - ${payload.material_name ?? '자료'} 배부 완료${payload.warning ? ` ${payload.warning}` : ''}`)
+    } catch (reason) {
+      await reloadCurrentMatrix()
+      setError(`${getUserErrorMessage(reason)} 배부 결과를 확인하지 못했습니다. 수령 현황을 확인한 뒤 남은 자료만 다시 배부해 주세요.`)
     } finally {
-      setBulkProcessing(false)
+      endMatrixWrite()
     }
   }
 
   async function handleDistributeAllForEnrollment(enrollmentId: number, materialIds: number[]) {
     if (materialIds.length === 0) return
 
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setBulkProgress({ done: 0, total: materialIds.length })
     setError('')
     setMessage('')
@@ -1822,18 +1926,21 @@ export default function CourseStudentsPage({
 
       setBulkProgress({ done: materialIds.length, total: materialIds.length })
 
-      if (!response.ok) {
-        setError(payload?.error ?? '자료 일괄 배부에 실패했습니다.')
-        return
+      if (!response.ok || payload?.success !== true || !Number.isInteger(payload?.success_count)) {
+        throw new Error(payload?.error ?? '자료 일괄 배부 결과를 확인하지 못했습니다.')
       }
 
       const successCount = Number(payload?.success_count ?? materialIds.length)
       const failCount = Number(payload?.failed_count ?? Math.max(0, materialIds.length - successCount))
       const logs = parseDistributionLogsFromPayload(payload)
       applyMatrixReceipts(enrollmentId, logs)
-      setMessage(`자료 일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
+      if (payload.refreshRequired || logs.length !== successCount || failCount > 0) await reloadCurrentMatrix()
+      setMessage(`자료 일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 미처리` : ''}${payload.warning ? ` ${payload.warning}` : ''}`)
+    } catch (reason) {
+      await reloadCurrentMatrix()
+      setError(`${getUserErrorMessage(reason)} 수령 현황을 확인한 뒤 남은 자료만 다시 배부해 주세요.`)
     } finally {
-      setBulkProcessing(false)
+      endMatrixWrite()
     }
   }
 
@@ -1842,7 +1949,7 @@ export default function CourseStudentsPage({
     const totalCount = targets.reduce((sum, item) => sum + item.materialIds.length, 0)
     if (targets.length === 0 || totalCount === 0) return
 
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setBulkProgress({ done: 0, total: totalCount })
     setError('')
     setMessage('')
@@ -1868,10 +1975,10 @@ export default function CourseStudentsPage({
               })
               const payload = await response.json().catch(() => null)
 
-              if (response.ok) {
+              if (response.ok && payload?.success === true && Number.isInteger(payload?.success_count)) {
                 const logs = parseDistributionLogsFromPayload(payload)
                 applyMatrixReceipts(item.enrollmentId, logs)
-                const itemSuccessCount = Number(payload?.success_count ?? item.materialIds.length)
+                const itemSuccessCount = Number(payload.success_count)
                 successCount += itemSuccessCount
                 failCount += Number(payload?.failed_count ?? Math.max(0, item.materialIds.length - itemSuccessCount))
               } else {
@@ -1887,10 +1994,11 @@ export default function CourseStudentsPage({
         )
       }
 
+      await reloadCurrentMatrix()
       setSelectedIds(new Set())
-      setMessage(`일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
+      setMessage(`일괄 배부 결과: ${successCount}건 저장 확인${failCount > 0 ? `, ${failCount}건 미처리 또는 결과 미확인` : ''}. 수령 현황을 다시 조회했습니다.`)
     } finally {
-      setBulkProcessing(false)
+      endMatrixWrite()
     }
   }
 
@@ -1912,7 +2020,7 @@ export default function CourseStudentsPage({
   async function handleBulkDistributeSelected() {
     if (filterMatId === null || selectedIds.size === 0) return
     const ids = Array.from(selectedIds)
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setBulkProgress({ done: 0, total: ids.length })
     setError('')
     setMessage('')
@@ -1930,7 +2038,7 @@ export default function CourseStudentsPage({
           })
           const payload = await r.json().catch(() => null)
           setBulkProgress((p) => ({ ...p, done: p.done + 1 }))
-          if (r.ok) {
+          if (r.ok && payload?.success === true && payload?.success_count === 1) {
             const logs = parseDistributionLogsFromPayload(payload)
             applyMatrixReceipts(enrollmentId, logs)
             successCount++
@@ -1941,14 +2049,15 @@ export default function CourseStudentsPage({
       if (chunk.length > 1 && results.every((r) => r.status === 'rejected')) break
     }
 
-    setBulkProcessing(false)
+    await reloadCurrentMatrix()
+    endMatrixWrite()
     setSelectedIds(new Set())
     const failCount = ids.length - successCount
-    setMessage(`일괄 배부 완료: ${successCount}건 성공${failCount > 0 ? `, ${failCount}건 실패` : ''}`)
+    setMessage(`일괄 배부 결과: ${successCount}건 저장 확인${failCount > 0 ? `, ${failCount}건 미처리 또는 결과 미확인` : ''}. 수령 현황을 다시 조회했습니다.`)
   }
 
   async function handleAssignTextbook(enrollmentId: number, materialId: number, checked: boolean) {
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setError('')
     setMessage('')
     applyMatrixAssignments(enrollmentId, [materialId], checked)
@@ -1961,172 +2070,146 @@ export default function CourseStudentsPage({
       })
       const payload = await response.json().catch(() => null)
 
-      if (!response.ok) {
-        applyMatrixAssignments(enrollmentId, [materialId], !checked)
-        setError(payload?.error ?? '교재 배정 처리에 실패했습니다.')
-        return
+      const confirmed = checked
+        ? payload?.assignment?.enrollment_id === enrollmentId && payload?.assignment?.material_id === materialId
+        : payload?.success === true
+      if (!response.ok || !confirmed) {
+        throw new Error(payload?.error ?? '교재 배정 결과를 확인하지 못했습니다.')
       }
 
-      setMessage(checked ? '교재를 배정했습니다.' : '교재 배정을 해제했습니다.')
-    } catch {
-      applyMatrixAssignments(enrollmentId, [materialId], !checked)
-      setError('교재 배정 처리에 실패했습니다.')
+      setMessage(`${checked ? '교재를 배정했습니다.' : '교재 배정을 해제했습니다.'}${payload.warning ? ` ${payload.warning}` : ''}`)
+    } catch (reason) {
+      await reloadCurrentMatrix()
+      setError(`${getUserErrorMessage(reason)} 배정 결과를 확인하지 못해 현황을 다시 조회했습니다. 배정 현황을 확인한 뒤 다시 처리해 주세요.`)
     } finally {
-      setBulkProcessing(false)
+      endMatrixWrite()
     }
   }
 
   async function handleAssignAllTextbooks(enrollmentId: number) {
-    if (matrixMaterials.length === 0) return
+    if (bulkProcessing || matrixMaterials.length === 0) return
 
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setError('')
     setMessage('')
 
-    const response = await fetch('/api/textbook-assignments/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        enrollmentId,
-        materialIds: matrixMaterials.map((material) => material.id),
-      }),
-    })
-    const payload = await response.json().catch(() => null)
-    setBulkProcessing(false)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '교재 전체 배정에 실패했습니다.')
-      return
+    try {
+      const response = await fetch('/api/textbook-assignments/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enrollmentId,
+          materialIds: matrixMaterials.map((material) => material.id),
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !Array.isArray(payload?.assignments)) {
+        throw new Error(payload?.error ?? '교재 전체 배정 결과를 확인하지 못했습니다.')
+      }
+      const assignedMaterialIds = (payload.assignments as TextbookAssignment[])
+        .map((assignment) => assignment.material_id)
+      applyMatrixAssignments(enrollmentId, assignedMaterialIds, true)
+      setMessage('전체 교재를 배정했습니다.')
+    } catch (reason) {
+      await reloadCurrentMatrix()
+      setError(`${getUserErrorMessage(reason)} 배정 현황을 새로고침한 뒤 다시 시도해 주세요.`)
+    } finally {
+      endMatrixWrite()
     }
-
-    const assignedMaterialIds = Array.isArray(payload?.assignments)
-      ? (payload.assignments as TextbookAssignment[]).map((assignment) => assignment.material_id)
-      : matrixMaterials.map((material) => material.id)
-    applyMatrixAssignments(enrollmentId, assignedMaterialIds, true)
-    setMessage('전체 교재를 배정했습니다.')
   }
 
   async function handleBulkAssignSelected() {
-    if (filterMatId === null || selectedIds.size === 0) return
+    if (bulkProcessing || filterMatId === null || selectedIds.size === 0) return
 
-    setBulkProcessing(true)
+    if (!beginMatrixWrite()) return
     setBulkProgress({ done: 0, total: selectedIds.size })
     setError('')
     setMessage('')
 
     const enrollmentIds = Array.from(selectedIds)
-    const response = await fetch('/api/textbook-assignments/bulk-by-material', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ materialId: filterMatId, enrollmentIds }),
-    })
-    const payload = await response.json().catch(() => null)
-
-    setBulkProgress({ done: enrollmentIds.length, total: enrollmentIds.length })
-    setBulkProcessing(false)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '교재 일괄 배정에 실패했습니다.')
-      return
+    try {
+      const response = await fetch('/api/textbook-assignments/bulk-by-material', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ materialId: filterMatId, enrollmentIds }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !Array.isArray(payload?.assignments)) {
+        throw new Error(payload?.error ?? '교재 일괄 배정 결과를 확인하지 못했습니다.')
+      }
+      const assignedEnrollmentIds = (payload.assignments as TextbookAssignment[])
+        .map((assignment) => assignment.enrollment_id)
+      const successfulIds = new Set(assignedEnrollmentIds)
+      // Treat every unconfirmed item as retryable, including incomplete responses.
+      const failedIds = enrollmentIds.filter((id) => !successfulIds.has(id))
+      applyMatrixAssignmentsByMaterial(filterMatId, assignedEnrollmentIds, true)
+      setSelectedIds(new Set(failedIds))
+      setBulkProgress({ done: enrollmentIds.length, total: enrollmentIds.length })
+      setMessage(`${assignedEnrollmentIds.length}명에게 교재를 배정했습니다.${payload.warning ? ` ${payload.warning}` : ''}`)
+      if (failedIds.length > 0) {
+        const failedNames = matrixRows.filter((row) => failedIds.includes(row.enrollment.id))
+          .map((row) => row.enrollment.name).slice(0, 5).join(', ')
+        setError(`${failedIds.length}명의 배정 결과를 확인하지 못했습니다${failedNames ? ` (${failedNames}${failedIds.length > 5 ? ' 외' : ''})` : ''}. 해당 학생만 선택해 두었습니다. 배정 현황을 확인하거나 일괄 배정 버튼으로 재시도해 주세요.`)
+      }
+    } catch (reason) {
+      await reloadCurrentMatrix()
+      setError(`${getUserErrorMessage(reason)} 일부 배정이 저장됐을 수 있습니다. 배정 현황을 새로고침하고 남은 학생만 다시 선택해 주세요.`)
+    } finally {
+      endMatrixWrite()
     }
-
-    setSelectedIds(new Set())
-    const assignedEnrollmentIds = Array.isArray(payload?.assignments)
-      ? (payload.assignments as TextbookAssignment[]).map((assignment) => assignment.enrollment_id)
-      : enrollmentIds
-    applyMatrixAssignmentsByMaterial(filterMatId, assignedEnrollmentIds, true)
-    setMessage(`${payload?.assignments?.length ?? enrollmentIds.length}명에게 교재를 배정했습니다.`)
   }
 
   // CRUD
   async function handleCreate(ev: FormEvent) {
     ev.preventDefault()
+    if (confirmation) return
     const submitter = (ev.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
     const shouldSavePayment = submitter?.dataset.paymentMode === 'with-payment'
+    await saveRegistration(shouldSavePayment)
+  }
+
+  async function saveRegistration(shouldSavePayment: boolean, unpaidConfirmed = false) {
+    if (registrationInFlightRef.current) return
     setError('')
     setMessage('')
+    setRegistrationAttempted(true)
 
     if (selectedStudent?.alreadyEnrolled) {
       setError('이미 현재 강좌에 등록된 수강생입니다.')
       return
     }
 
-    if (!/^\d{6}$/.test(createForm.birth_date)) {
-      setError('생년월일 6자리를 입력해 주세요.')
+    const invalidIdentity = Object.entries(registrationIdentityErrors).find(([, message]) => message)
+    if (invalidIdentity) {
+      document.getElementById('create-student-form')?.querySelector<HTMLInputElement>(`[data-registration-field="${invalidIdentity[0]}"]:not(:disabled)`)?.focus()
       return
     }
-
-    const paymentPayload = normalizePaymentSectionPayload(createPaymentForm)
-    const isZeroAmountBilling = !paymentPayload.tuitionExempt
-      && paymentPayload.expectedAmount === 0
-      && paymentPayload.discountAmount === 0
-      && paymentPayload.payableAmount === 0
-    const shouldRecordPayments = shouldSavePayment && !isZeroAmountBilling
+    if (bundleBillingRows.length === 0 || bundleBillingRows.length !== bundleCourseIds.length || bundleBillingRows.length > 8) {
+      setError('등록할 강좌 정보를 다시 확인해 주세요. 한 번에 최대 8강좌까지 등록할 수 있습니다.')
+      return
+    }
+    for (const row of bundleBillingRows) {
+      const issue = getRegistrationBillingIssue(row)
+      if (issue) {
+        setError(`${row.course.name}: ${issue.message}`)
+        return
+      }
+    }
+    if (createPaymentForm.paidAt && !Number.isFinite(new Date(createPaymentForm.paidAt).getTime())) {
+      setError('수납일시를 올바른 날짜와 시간으로 입력해 주세요.')
+      return
+    }
+    const paymentPayload = normalizePaymentSectionPayload({
+      ...createPaymentForm,
+      expectedAmount: String(bundleTotals.expectedAmount - bundleTotals.exemptAmount),
+      discountAmount: String(bundleTotals.discountAmount),
+      tuitionExempt: bundleTotals.exemptCount === bundleBillingRows.length,
+    })
+    const isZeroAmountBilling = !paymentPayload.tuitionExempt && bundleTotals.payableAmount === 0
+    const shouldRecordPayments = paymentPayload.tuitionExempt || (shouldSavePayment && !isZeroAmountBilling)
     const shouldUseBatchRegistration = isBundleRegistration
-    if (!Number.isInteger(paymentPayload.expectedAmount) || paymentPayload.expectedAmount < 0) {
-      setError('강좌 정가를 확인해 주세요.')
-      return
-    }
-
-    if (!Number.isInteger(paymentPayload.discountAmount) || paymentPayload.discountAmount < 0) {
-      setError('할인 금액을 확인해 주세요.')
-      return
-    }
-
-    if (paymentPayload.discountAmount > paymentPayload.expectedAmount) {
-      setError('할인 금액은 강좌 정가보다 클 수 없습니다.')
-      return
-    }
-
-    if (!paymentPayload.tuitionExempt && paymentPayload.discountAmount > 0 && !createPaymentForm.discountReason.trim()) {
-      setError('할인 금액을 입력한 경우 할인 사유가 필요합니다.')
-      return
-    }
-
-    if (paymentPayload.tuitionExempt && !createPaymentForm.tuitionExemptReason.trim()) {
-      setError('무료 수강 또는 수납 면제 사유를 입력해 주세요.')
-      return
-    }
-
-    if (paymentPayload.tuitionExempt) {
-      const exemptRuleError = getTuitionExemptBillingRuleError({
-        tuitionExempt: paymentPayload.tuitionExempt,
-        discountAmount: paymentPayload.discountAmount,
-        tuitionExemptReason: createPaymentForm.tuitionExemptReason,
-      })
-      if (exemptRuleError) {
-        setError(exemptRuleError)
-        return
-      }
-    }
-
-    if (shouldUseBatchRegistration) {
-      if (bundleBillingRows.length !== bundleCourseIds.length) {
-        setError('묶음 등록할 강좌 정보를 다시 확인해 주세요.')
-        return
-      }
-
-      const discountWithoutReason = bundleBillingRows.find((row) => (
-        row.discountAmount > 0 && !row.discountReason
-      ))
-      if (discountWithoutReason) {
-        setError(`${discountWithoutReason.course.name} 할인 사유를 입력해 주세요.`)
-        return
-      }
-
-      if (paymentPayload.tuitionExempt) {
-        setError('묶음 등록에서는 무료/면제를 결제 섹션에서 처리하지 않습니다.')
-        return
-      }
-
-      if (shouldRecordPayments && paymentPayload.payments.length > 20) {
-        setError('결제 수단은 최대 20개까지 입력할 수 있습니다.')
-        return
-      }
-    }
-
-    if (!paymentPayload.tuitionExempt && paymentPayload.payableAmount <= 0 && !isZeroAmountBilling) {
-      setError('적용 금액이 0원이면 무료 수강으로 기록해 주세요.')
+    if (shouldRecordPayments && paymentPayload.payments.length > 20) {
+      setError('결제 수단은 최대 20개까지 입력할 수 있습니다.')
       return
     }
 
@@ -2152,14 +2235,25 @@ export default function CourseStudentsPage({
       }
     }
 
+    if (!shouldSavePayment && bundleTotals.payableAmount > 0 && !unpaidConfirmed) {
+      openConfirmation({
+        title: '수납 없이 등록할까요?',
+        description: `${createForm.name.trim()} 학생을 총 ${bundleBillingRows.length}강좌에 등록합니다.\n유료 강좌의 ${formatWon(bundleTotals.payableAmount)} 전액이 미수납으로 남습니다.\n화면에 입력된 수납액 ${formatWon(registrationPaymentTotal)}은 저장되지 않습니다.${bundleTotals.exemptCount > 0 ? '\n무료 강좌의 면제 사유와 0원 기록은 유지됩니다.' : ''}`,
+        confirmLabel: '수납 없이 등록하기', cancelLabel: '돌아가기', pendingLabel: '등록 중...',
+        onConfirm: () => saveRegistration(false, true),
+      })
+      return
+    }
+
+    registrationInFlightRef.current = true
     setSubmitting(true)
     try {
       const paymentsToSave = shouldRecordPayments ? paymentPayload.payments : []
       const commonPayload = {
         studentId: selectedStudent?.id ?? null,
         updateSelectedStudent: Boolean(selectedStudent && selectedStudentEditable),
-        name: createForm.name,
-        phone: createForm.phone,
+        name: createForm.name.trim(),
+        phone: createForm.phone.trim(),
         exam_number: createForm.exam_number || null,
         cohort_number: createForm.cohort_number ? Number(createForm.cohort_number) : null,
         birth_date: createForm.birth_date || null,
@@ -2179,23 +2273,24 @@ export default function CourseStudentsPage({
               discountAmount: row.discountAmount,
               discountReason: row.discountReason || null,
               payableAmount: row.payableAmount,
-              tuitionExempt: false,
-              tuitionExemptReason: null,
+              tuitionExempt: row.tuitionExempt,
+              tuitionExemptReason: row.tuitionExemptReason || null,
             },
           })),
           payments: paymentsToSave,
+          exemptionPaidAt: createPaymentForm.paidAt ? new Date(createPaymentForm.paidAt).toISOString() : null,
         }
         : {
           ...commonPayload,
           courseId,
           textbookIds: createForm.textbookIds,
           billing: {
-            expectedAmount: paymentPayload.expectedAmount,
-            discountAmount: paymentPayload.discountAmount,
-            discountReason: createPaymentForm.discountReason.trim() || null,
-            payableAmount: paymentPayload.payableAmount,
-            tuitionExempt: paymentPayload.tuitionExempt,
-            tuitionExemptReason: createPaymentForm.tuitionExemptReason.trim() || null,
+            expectedAmount: bundleBillingRows[0].expectedAmount,
+            discountAmount: bundleBillingRows[0].discountAmount,
+            discountReason: bundleBillingRows[0].discountReason || null,
+            payableAmount: bundleBillingRows[0].payableAmount,
+            tuitionExempt: bundleBillingRows[0].tuitionExempt,
+            tuitionExemptReason: bundleBillingRows[0].tuitionExemptReason || null,
           },
           payments: paymentsToSave,
         }
@@ -2249,9 +2344,13 @@ export default function CourseStudentsPage({
       const reactivatedNoChargeMessage = paymentPayload.tuitionExempt
         ? '환불 완료 수강생을 다시 활성 등록으로 전환하고 수납 면제로 기록했습니다.'
         : '환불 완료 수강생을 다시 활성 등록으로 전환하고 납부할 금액 없음으로 기록했습니다.'
-      const batchSuccessMessage = shouldRecordPayments
-        ? `${bundleBillingRows.length}개 강좌를 묶음 등록하고 결제를 강좌별로 저장했습니다.`
-        : `${bundleBillingRows.length}개 강좌를 묶음 미수납 등록했습니다.`
+      const batchSuccessMessage = paymentPayload.tuitionExempt
+        ? `${bundleBillingRows.length}개 강좌를 모두 무료 수강으로 등록했습니다.`
+        : isZeroAmountBilling
+          ? `${bundleBillingRows.length}개 0원 강좌 수강생을 등록했습니다.`
+          : shouldRecordPayments
+            ? `${bundleBillingRows.length}개 강좌를 묶음 등록하고 결제를 강좌별로 저장했습니다.`
+            : `${bundleBillingRows.length}개 강좌를 묶음 미수납 등록했습니다.`
       setMessage(
         shouldUseBatchRegistration
           ? batchSuccessMessage
@@ -2275,6 +2374,7 @@ export default function CourseStudentsPage({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '수강생을 등록하지 못했습니다.')
     } finally {
+      registrationInFlightRef.current = false
       setSubmitting(false)
     }
   }
@@ -2567,7 +2667,7 @@ export default function CourseStudentsPage({
     <ConfirmationModal
       open={Boolean(notice)}
       title={notice?.title ?? ''}
-      description={notice?.description}
+      description={notice?.tone === 'danger' ? getUserErrorMessage(notice.description) : notice?.description}
       confirmLabel="확인"
       cancelLabel={null}
       tone={notice?.tone}
@@ -2588,62 +2688,68 @@ export default function CourseStudentsPage({
   if (!course) {
     return (
       <>
-        <p className="py-12 text-center text-sm text-red-500">{error || '강좌를 찾을 수 없습니다.'}</p>
+        <p className="py-12 text-center text-sm text-red-500">{getUserErrorMessage(error || '강좌를 찾을 수 없습니다.')}</p>
         {noticeModal}
       </>
     )
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* ── Header ── */}
-      <div className="flex flex-wrap justify-end gap-2">
-        {false ? (
-          <div>
-          <Link
-            href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
-            className="text-xs font-medium text-slate-500 hover:underline"
+    <div className="admin-students-page flex flex-col gap-6">
+      <div className="admin-subtabs" role="group" aria-label="수강생 세부 메뉴">
+        {([
+          ['manage', '명단 관리'],
+          ['receipts', '배부자료 수령현황'],
+          ['textbook-assign', '교재 배정'],
+          ['textbook-receipts', '교재 수령현황'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            disabled={bulkProcessing}
+            type="button"
+            onClick={() => {
+              if (tab === key) {
+                if (isMatrixTab(key) && !matrixWriteRef.current && !matrixLoading && matrixReadyRef.current !== matrixContext) {
+                  void loadMatrixData(key)
+                }
+                return
+              }
+              deferInteractionWork(() => {
+                if (matrixWriteRef.current) return
+                matrixReadyRef.current = null
+                matrixRequestRef.current += 1
+                startTransition(() => setTab(key))
+              })
+            }}
+            className="admin-subtab"
+            aria-pressed={tab === key}
           >
-            ← {course!.name}
-          </Link>
-          <h2 className="mt-1 text-xl font-extrabold text-gray-900">수강생 관리</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            전체 등록 {summary.total} · 수강중 {summary.active}
-            {summary.suspended > 0 ? ` · 정지 ${summary.suspended}` : ''}
-            {' · '}
-            환불 {summary.refunded}
-          </p>
-          </div>
-        ) : null}
-        <div className="flex flex-wrap justify-end gap-2">
-          {course.feature_attendance ? (
-            <button
-              type="button"
-              onClick={() => {
-                openConfirmation({
-                  title: '출석 기기를 전체 초기화할까요?',
-                  description: '이 강좌의 모든 출석 기기 등록을 초기화합니다. 학생들은 다음 출석 시 현장에서 사용하는 기기로 다시 등록됩니다.',
-                  confirmLabel: '전체 초기화',
-                  pendingLabel: '초기화 중...',
-                  tone: 'danger',
-                  onConfirm: handleResetAllAttendanceDevicesConfirmed,
-                })
-              }}
-              className="rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-rose-600 shadow-[inset_0_0_0_1px_rgba(180,35,24,0.3)] transition-all duration-200 ease-ios hover:bg-rose-50 active:scale-[0.97]"
-            >
-              출석 기기 전체 초기화
-            </button>
-          ) : null}
+            {label}
+          </button>
+        ))}
+      </div>
+      {/* ── Header ── */}
+      {tab === 'manage' && <div className="admin-students-header">
+        <h2 className="text-base font-bold">명단 관리</h2>
+        <div className="admin-students-actions">
           <button
             type="button"
             onClick={() => {
               const opening = panel !== 'create'
               if (opening) {
-                setCreatePaymentForm(createPaymentSectionValueForAmount(course.tuition_amount ?? 0))
-                setCreateForm(emptyForm(defaultSeriesOptionId))
+                const payment = createPaymentSectionValueForAmount(course.tuition_amount ?? 0)
+                const form = emptyForm(defaultSeriesOptionId)
+                registrationBaselineRef.current = registrationDraftSnapshot({
+                  form, payment, courses: [course], billing: {}, allExempt: false,
+                  commonReason: '', studentId: null, editable: false,
+                })
+                setCreatePaymentForm(payment)
+                setCreateForm(form)
                 resetCreateBundleState(course)
+                setPanel('create')
+              } else {
+                requestCreateClose()
               }
-              setPanel(opening ? 'create' : 'none')
             }}
             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100"
           >
@@ -2664,43 +2770,26 @@ export default function CourseStudentsPage({
           >
             명단 붙여넣기
           </button>
-          <button
-            type="button"
-            onClick={handleDownloadStudentList}
-            disabled={totalCount === 0}
-            title={totalCount === 0 ? '다운로드할 수강생이 없습니다.' : '현재 강좌의 전체 수강생 명단을 CSV로 다운로드'}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-50 disabled:active:scale-100"
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            명단 다운로드
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadCourseSettlement}
-            title="이 강좌 전체 기간의 결제·환불 내역을 정산용 엑셀로 다운로드 (요약·수강생별·결제명세·환불내역 시트 포함)"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-all duration-200 ease-ios hover:bg-emerald-100 active:scale-[0.97]"
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            정산 다운로드
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadExcelTemplate}
-            title="현재 명단을 비고 포함 엑셀 템플릿으로 다운로드 (편집 후 업로드 가능). 수강생이 없으면 빈 양식이 다운로드됩니다."
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            템플릿 다운로드
-          </button>
-          <button
-            type="button"
-            onClick={() => excelUploadInputRef.current?.click()}
-            title="엑셀(.xlsx) 템플릿 파일 업로드. 다운로드한 템플릿을 수정해서 그대로 올리시면 됩니다."
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
-          >
-            <Upload className="h-4 w-4" aria-hidden="true" />
-            템플릿 업로드
-          </button>
+          <AdminActionMenu
+            label="명단 작업"
+            items={[
+              { id: 'download', label: '명단 다운로드', description: '전체 수강생 명단 · CSV', disabled: totalCount === 0, onSelect: handleDownloadStudentList },
+              { id: 'settlement', label: '정산 다운로드', description: '이 강좌의 결제·환불 내역 · 엑셀', onSelect: handleDownloadCourseSettlement },
+              { id: 'template-download', label: '템플릿 다운로드', description: '현재 명단 또는 빈 등록 양식 · 엑셀', onSelect: handleDownloadExcelTemplate },
+              { id: 'template-upload', label: '템플릿 업로드', description: '편집한 엑셀 파일로 명단 가져오기', onSelect: () => excelUploadInputRef.current?.click() },
+              ...(course.feature_photo ? [{ id: 'photos', label: '사진 일괄 업로드', href: withTenantPrefix(`/dashboard/courses/${courseId}/students/photos`, tenant.type) }] : []),
+              ...(course.feature_attendance ? [{
+                id: 'reset-devices', label: '출석 기기 전체 초기화', danger: true,
+                description: '모든 학생의 기기 등록 해제 · 실행 전 확인',
+                onSelect: () => openConfirmation({
+                  title: '출석 기기를 전체 초기화할까요?',
+                  description: '이 강좌의 모든 출석 기기 등록을 초기화합니다. 학생들은 다음 출석 시 현장에서 사용하는 기기로 다시 등록됩니다.',
+                  confirmLabel: '전체 초기화', pendingLabel: '초기화 중...', tone: 'danger',
+                  onConfirm: handleResetAllAttendanceDevicesConfirmed,
+                }),
+              }] : []),
+            ]}
+          />
           <input
             ref={excelUploadInputRef}
             type="file"
@@ -2714,37 +2803,28 @@ export default function CourseStudentsPage({
               }
             }}
           />
-          {course.feature_photo && (
-            <Link
-              href={withTenantPrefix(`/dashboard/courses/${courseId}/students/photos`, tenant.type)}
-              className="rounded-xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97]"
-            >
-              사진 일괄 업로드
-            </Link>
-          )}
         </div>
-      </div>
+      </div>}
 
       {/* ── Collapsible panels ── */}
       <AnimatePresence>
       {panel === 'create' ? (
         <>
           <motion.div
-            className="fixed inset-0 z-[100] bg-black/40 sm:backdrop-blur-sm"
+            className="admin-dialog-backdrop fixed inset-0 z-[100]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: panelBackdropDuration }}
-            onClick={() => {
-              if (!submitting) {
-                setPanel('none')
-              }
-            }}
+            onClick={requestCreateClose}
           />
           <motion.aside
+            ref={createDialogRef}
             role="dialog"
             aria-modal="true"
-            className="fixed inset-y-0 right-0 z-[101] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:max-w-[760px]"
+            aria-label="수강생 등록"
+            tabIndex={-1}
+            className="admin-drawer-panel fixed inset-y-0 right-0 z-[101] flex h-dvh w-full flex-col bg-white sm:max-w-[760px]"
             initial={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
@@ -2755,36 +2835,32 @@ export default function CourseStudentsPage({
             whileDrag={{ scale: 0.995 }}
             onDragEnd={(_event, info) => {
               if (!submitting && info.offset.x > 100 && info.velocity.x > 200) {
-                setPanel('none')
+                requestCreateClose()
               }
             }}
           >
-            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-3 sm:px-6">
+            <header className="admin-dialog-header">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">New Student</p>
-                <h3 className="mt-1 text-[25px] font-semibold leading-[1.05] text-[#1d1d1f]">수강생 등록</h3>
-                <p className="mt-1 truncate text-sm text-slate-500">{course.name}</p>
+                <h3 className="admin-dialog-title">수강생 등록</h3>
+                <p className="mt-1 break-words text-sm text-slate-500">{course.name}</p>
               </div>
               <button
                 type="button"
                 aria-label="닫기"
-                onClick={() => {
-                  if (!submitting) {
-                    setPanel('none')
-                  }
-                }}
-                disabled={submitting}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-50 text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+                onClick={requestCreateClose}
+                disabled={submitting || Boolean(confirmation)}
+                className="admin-dialog-close bg-slate-50 transition-colors disabled:opacity-50"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </header>
-            <form id="create-student-form" onSubmit={handleCreate} className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-3 sm:px-6">
+            <form id="create-student-form" noValidate onSubmit={handleCreate} className="admin-dialog-body flex-1">
+          <fieldset disabled={submitting || Boolean(confirmation)} className={registrationStyles.fieldset}>
           <section>
-            <div className="flex items-end justify-between gap-3">
-              <label className="min-w-0 flex-1">
-                <span className="text-[11px] font-medium text-slate-500">기존 수강생 검색</span>
-                  <div className="mt-1.5 flex items-center gap-2 rounded-[8px] bg-white px-3 py-2 border border-slate-200 transition focus-within:border-slate-400">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <label className="min-w-0 w-full sm:flex-1">
+                <span className="text-[11px] font-semibold text-slate-500">기존 수강생 검색</span>
+                  <div className="admin-input-group mt-2">
                   <Search className="h-4 w-4 text-slate-500" />
                   <input
                     defaultValue=""
@@ -2792,19 +2868,21 @@ export default function CourseStudentsPage({
                     onKeyDown={handleStudentLookupKeyDown}
                     placeholder="학번, 이름, 연락처"
                     className="min-w-0 flex-1 text-sm outline-none"
+                    aria-label="기존 수강생 검색"
                   />
                 </div>
               </label>
-              <span className="hidden shrink-0 pb-2 text-xs text-slate-500 sm:inline">
+              <span className="min-w-0 w-full text-xs text-slate-500 sm:w-auto">
                 {studentLookupLoading ? '검색 중...' : '선택하면 기존 수강생 정보가 자동 채워집니다.'}
               </span>
             </div>
 
             {studentLookupError ? (
-              <p className="mt-2 text-xs font-medium text-rose-600">{studentLookupError}</p>
+              <p className="mt-2 text-xs font-medium text-rose-600">{getUserErrorMessage(studentLookupError)}</p>
             ) : null}
 
-            {studentLookupResults.length > 0 ? (
+            {studentLookupResults.length > 0
+              && (!selectedStudent || studentLookupQuery.trim() !== studentLookupQueryAtSelect) ? (
               <div className="mt-3 grid gap-2">
                 {studentLookupResults.map((student) => (
                   <button
@@ -2851,12 +2929,12 @@ export default function CourseStudentsPage({
             {selectedStudent ? (
               <div className="mt-3 flex flex-col gap-3 rounded-[8px] shadow-[inset_0_0_0_1px_rgba(0,113,227,0.18)] bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#eff6ff] text-blue-600">
+                  <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--admin-accent-soft)] text-blue-600">
                     <UserCheck className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[#1d1d1f]">{selectedStudent.name} 수강생 선택됨</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs leading-[1.5] text-slate-500">
                       {selectedStudentEditable ? '이번 등록 전에 수강생 인적사항도 함께 수정합니다.' : '기본 인적사항은 기존 수강생 정보를 그대로 사용합니다.'}
                     </p>
                   </div>
@@ -2881,16 +2959,59 @@ export default function CourseStudentsPage({
             ) : null}
           </section>
 
-          <section className="mt-4">
+          <section className="mt-6">
             <h4 className="text-sm font-semibold text-[#1d1d1f]">인적 사항</h4>
-            <p className="mt-0.5 text-xs text-slate-500">학번·이름·연락처는 필수입니다.</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-6">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">학번</span>
+            {selectedStudentLocked || showProfileFields ? (
+              <p className="mt-1 text-xs leading-[1.5] text-slate-500">
+                {selectedStudentLocked
+                  ? '바꾸려면 위에서 정보 수정을 선택하세요.'
+                  : '이름·연락처·생년월일은 필수입니다. 학번은 선택 입력입니다.'}
+              </p>
+            ) : null}
+            <div className="mt-3 grid gap-4 sm:grid-cols-3">
+              {/* 프로필 항목은 검색으로 채워진다. 선택했으면 요약 줄, 새로 입력할 때만 입력란을 편다. 강좌별로 바뀌는 항목은 항상 노출한다. */}
+              {selectedStudentLocked ? (
+                <div className="flex flex-col gap-2 rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 sm:col-span-3">
+                  <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+                    {([
+                      ['학번', createForm.exam_number],
+                      ['기수', createForm.cohort_number],
+                      ['이름', createForm.name],
+                      ['연락처', createForm.phone],
+                      ['생년월일', createForm.birth_date],
+                      ['성별', createForm.gender],
+                    ] as const).map(([label, value]) => (
+                      <div key={label} className="flex items-baseline gap-2">
+                        <span className="text-[11px] font-semibold text-slate-500">{label}</span>
+                        <span className="text-sm text-[#1d1d1f]">{value || '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {registrationAttempted && (registrationIdentityErrors.name || registrationIdentityErrors.phone || registrationIdentityErrors.birth_date) ? (
+                    <div className="flex flex-col gap-1">
+                      {registrationIdentityErrors.name ? <span id="registration-name-error" className={registrationStyles.error}>{registrationIdentityErrors.name}</span> : null}
+                      {registrationIdentityErrors.phone ? <span id="registration-phone-error" className={registrationStyles.error}>{registrationIdentityErrors.phone}</span> : null}
+                      {registrationIdentityErrors.birth_date ? <span id="registration-birth_date-error" className={registrationStyles.error}>{registrationIdentityErrors.birth_date} 위에서 정보 수정을 선택해 입력해 주세요.</span> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : !showProfileFields ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-4 py-3 sm:col-span-3">
+                  <span className="min-w-0 text-xs leading-[1.5] text-slate-500">
+                    위에서 기존 수강생을 검색해 선택하면 인적 사항이 자동으로 채워집니다.
+                  </span>
+                  <button type="button" className="admin-button" onClick={() => setProfileFieldsOpen(true)}>
+                    새 수강생 직접 입력
+                  </button>
+                </div>
+              ) : (
+                <>
+              <label className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold text-slate-500">학번</span>
                 <input value={createForm.exam_number} onChange={(e) => setCreateForm((c) => ({ ...c, exam_number: e.target.value }))} disabled={selectedStudentLocked} placeholder="예: A-001" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">기수</span>
+              <label className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold text-slate-500">기수</span>
                 <input
                   value={createForm.cohort_number}
                   onChange={(event) => setCreateForm((current) => ({
@@ -2903,36 +3024,41 @@ export default function CourseStudentsPage({
                   className="rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                 />
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">이름</span>
-                <input value={createForm.name} onChange={(e) => setCreateForm((c) => ({ ...c, name: e.target.value }))} disabled={selectedStudentLocked} placeholder="홍길동" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              <label className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold text-slate-500">이름</span>
+                <input data-registration-field="name" aria-required="true" aria-invalid={registrationAttempted && Boolean(registrationIdentityErrors.name)} aria-describedby={registrationAttempted && registrationIdentityErrors.name ? 'registration-name-error' : undefined} value={createForm.name} onChange={(e) => setCreateForm((c) => ({ ...c, name: e.target.value }))} disabled={selectedStudentLocked} placeholder="홍길동" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                {registrationAttempted && registrationIdentityErrors.name ? <span id="registration-name-error" className={registrationStyles.error}>{registrationIdentityErrors.name}</span> : null}
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">연락처</span>
-                <input value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="010-0000-0000" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              <label className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold text-slate-500">연락처</span>
+                <input type="tel" inputMode="tel" data-registration-field="phone" aria-required="true" aria-invalid={registrationAttempted && Boolean(registrationIdentityErrors.phone)} aria-describedby={registrationAttempted && registrationIdentityErrors.phone ? 'registration-phone-error' : undefined} value={createForm.phone} onChange={(e) => setCreateForm((c) => ({ ...c, phone: e.target.value }))} disabled={selectedStudentLocked} placeholder="010-0000-0000" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                {registrationAttempted && registrationIdentityErrors.phone ? <span id="registration-phone-error" className={registrationStyles.error}>{registrationIdentityErrors.phone}</span> : null}
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">생년월일</span>
-                <input value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+              <label className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold text-slate-500">생년월일</span>
+                <input inputMode="numeric" data-registration-field="birth_date" aria-required="true" aria-invalid={registrationAttempted && Boolean(registrationIdentityErrors.birth_date)} aria-describedby={registrationAttempted && registrationIdentityErrors.birth_date ? 'registration-birth_date-error' : undefined} value={createForm.birth_date} onChange={(e) => setCreateForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} disabled={selectedStudentLocked} placeholder="YYMMDD" className="rounded-[8px] bg-white px-3 py-2 text-sm border border-slate-200 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" />
+                {registrationAttempted && registrationIdentityErrors.birth_date ? <span id="registration-birth_date-error" className={registrationStyles.error}>{registrationIdentityErrors.birth_date}</span> : null}
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-slate-500">성별</span>
+              <label className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold text-slate-500">성별</span>
                 <GenderSelect
                   value={createForm.gender}
                   onChange={(gender) => setCreateForm((current) => ({ ...current, gender }))}
                 />
               </label>
-              <div className="grid gap-3 sm:col-span-6 sm:grid-cols-6">
-                <div className="sm:col-span-2">
-                  <span className="mb-2 block text-[11px] font-medium text-slate-500">직렬</span>
+                </>
+              )}
+              <div className="grid gap-4 sm:col-span-3 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <span className="mb-2 block text-[11px] font-semibold text-slate-500">직렬</span>
                   <SeriesSelector
                     options={seriesOptions}
                     valueId={createForm.series_option_id}
                     onChange={(seriesOptionId) => setCreateForm((current) => ({ ...current, series_option_id: seriesOptionId }))}
                   />
                 </div>
-                <div className="sm:col-span-2 sm:col-start-5">
-                  <span className="mb-2 block text-[11px] font-medium text-slate-500">학원구분</span>
+                <div className="min-w-0">
+                  <span className="mb-2 block text-[11px] font-semibold text-slate-500">학원구분</span>
                   <StudentTypeSelector
                     value={createForm.student_type}
                     onChange={(studentType) => setCreateForm((current) => ({ ...current, student_type: studentType }))}
@@ -2945,115 +3071,41 @@ export default function CourseStudentsPage({
             </div>
           </section>
 
-          <section className={`${isBundleRegistration ? 'mt-3 rounded-[10px] bg-slate-50 p-2' : 'mt-4 rounded-[10px] bg-slate-50 p-3'}`}>
-            <div className={`flex flex-col sm:flex-row sm:items-end sm:justify-between ${isBundleRegistration ? 'gap-2' : 'gap-3'}`}>
-              <div className="min-w-0">
-                <h4 className="text-sm font-semibold text-[#1d1d1f]">등록 강좌</h4>
-                <p className={`${isBundleRegistration ? 'hidden' : 'mt-0.5'} text-xs text-slate-500`}>
-                  여러 강좌를 동시에 등록하면 결제는 한 번 받고 정산은 강좌별로 나뉘어 저장됩니다.
-                </p>
-              </div>
-              <div className={`flex min-w-0 gap-2 ${isBundleRegistration ? 'sm:min-w-[280px]' : 'sm:min-w-[320px]'}`}>
-                <select
-                  value={bundleCourseToAdd}
-                  onChange={(event) => setBundleCourseToAdd(event.target.value)}
-                  className="min-w-0 flex-1 rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-                >
-                  <option value="">추가 강좌 선택</option>
-                  {bundleAddableCourses.map((entry) => (
-                    <option key={entry.id} value={entry.id}>{entry.name}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={addBundleCourse}
-                  disabled={!bundleCourseToAdd}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-[8px] bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)] transition-all duration-200 ease-ios hover:bg-slate-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  추가
-                </button>
-              </div>
-            </div>
-
-            <div className={`${isBundleRegistration ? 'mt-2 gap-1.5' : 'mt-3 gap-2'} grid`}>
-              {bundleBillingRows.map((row) => {
-                const removable = row.course.id !== courseId
-                const draft = bundleBillingDrafts[row.course.id]
-
-                return (
-                  <div
-                    key={row.course.id}
-                    className={`grid gap-2 rounded-[8px] bg-white shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)] sm:grid-cols-[minmax(0,1.4fr)_96px_104px_minmax(0,1fr)_96px_32px] ${isBundleRegistration ? 'p-1.5 sm:items-center sm:[&>div>span]:hidden sm:[&>label>span]:hidden' : 'p-2 sm:items-end'}`}
-                  >
-                    <div className="min-w-0">
-                      <span className="block text-[11px] font-medium text-slate-500">강좌</span>
-                      <p className={`${isBundleRegistration ? 'mt-0' : 'mt-1'} truncate text-sm font-semibold text-[#1d1d1f]`}>{row.course.name}</p>
-                      <p className={`${isBundleRegistration ? 'mt-0 text-[10px]' : 'mt-0.5 text-[11px]'} text-slate-400`}>Code {row.course.settlement_report_code?.trim() || '-'}</p>
-                    </div>
-                    <div>
-                      <span className="block text-[11px] font-medium text-slate-500">정가</span>
-                      <p className={`${isBundleRegistration ? 'mt-0 py-1.5' : 'mt-1 py-2'} rounded-[8px] bg-slate-50 px-2 text-right text-sm font-semibold text-slate-700`}>
-                        {formatWon(row.expectedAmount)}
-                      </p>
-                    </div>
-                    <label className={`flex flex-col ${isBundleRegistration ? 'gap-0' : 'gap-1'}`}>
-                      <span className="text-[11px] font-medium text-slate-500">할인</span>
-                      <input
-                        inputMode="numeric"
-                        value={draft?.discountAmount ?? ''}
-                        onChange={(event) => updateBundleBilling(row.course.id, {
-                          discountAmount: numberInputValue(event.target.value),
-                        })}
-                        placeholder="0"
-                        className={`${isBundleRegistration ? 'py-1.5' : 'py-2'} rounded-[8px] border border-slate-200 px-2 text-right text-sm outline-none focus:border-slate-400`}
-                      />
-                    </label>
-                    <label className={`flex flex-col ${isBundleRegistration ? 'gap-0' : 'gap-1'}`}>
-                      <span className="text-[11px] font-medium text-slate-500">할인 사유</span>
-                      <input
-                        value={draft?.discountReason ?? ''}
-                        onChange={(event) => updateBundleBilling(row.course.id, {
-                          discountReason: event.target.value,
-                        })}
-                        placeholder="형제 할인, 이벤트 등"
-                        className={`${isBundleRegistration ? 'py-1.5' : 'py-2'} rounded-[8px] border border-slate-200 px-2 text-sm outline-none focus:border-slate-400`}
-                      />
-                    </label>
-                    <div>
-                      <span className="block text-[11px] font-medium text-slate-500">적용</span>
-                      <p className={`${isBundleRegistration ? 'mt-0 py-1.5' : 'mt-1 py-2'} rounded-[8px] bg-blue-50 px-2 text-right text-sm font-bold text-blue-700`}>
-                        {formatWon(row.payableAmount)}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeBundleCourse(row.course.id)}
-                      disabled={!removable}
-                      aria-label="강좌 제거"
-                      className={`${isBundleRegistration ? 'h-7 w-7' : 'h-8 w-8'} inline-flex items-center justify-center rounded-[8px] text-slate-400 transition-all duration-200 ease-ios hover:bg-rose-50 hover:text-rose-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 disabled:active:scale-100`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-
-            {isBundleRegistration ? (
-              <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs font-semibold text-slate-500">
-                <span>정가 <span className="text-[#1d1d1f]">{formatWon(bundleTotals.expectedAmount)}</span></span>
-                <span>할인 <span className="text-rose-600">{formatWon(bundleTotals.discountAmount)}</span></span>
-                <span>결제 <span className="text-blue-700">{formatWon(bundleTotals.payableAmount)}</span></span>
-              </div>
-            ) : null}
-          </section>
+          <RegistrationCoursesSection
+            rows={bundleBillingRows}
+            drafts={bundleBillingDrafts}
+            baseCourseId={courseId}
+            addableCourses={bundleAddableCourses}
+            courseToAdd={bundleCourseToAdd}
+            onCourseToAdd={setBundleCourseToAdd}
+            onAdd={addBundleCourse}
+            onRemove={removeBundleCourse}
+            onChange={updateBundleBilling}
+            allExempt={allCoursesExempt}
+            onAllExempt={setAllCoursesExempt}
+            commonReason={allCoursesExemptReason}
+            onCommonReason={setAllCoursesExemptReason}
+            attempted={registrationAttempted}
+          />
 
           {visibleTextbooks.length > 0 ? (
-            <section className="mt-4">
-              <div className="flex items-baseline justify-between gap-3">
+            <section className="mt-6">
+              <div className="flex items-center justify-between gap-3">
                 <h4 className="text-sm font-semibold text-[#1d1d1f]">구매 교재</h4>
-                <span className="text-xs text-slate-500">등록과 동시에 교재를 배정합니다.</span>
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+                  <input
+                    type="checkbox"
+                    aria-label="구매 교재 전체 선택"
+                    checked={allTextbooksSelected}
+                    ref={(node) => {
+                      // 일부만 고른 상태를 checked/unchecked 어느 쪽으로도 읽히지 않게 표시한다.
+                      if (node) node.indeterminate = !allTextbooksSelected && someTextbooksSelected
+                    }}
+                    onChange={(event) => toggleAllCreateTextbooks(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#1d1d1f] focus:ring-[#0071e3]"
+                  />
+                  전체 선택
+                </label>
               </div>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {visibleTextbooks.map((textbook) => {
@@ -3074,24 +3126,53 @@ export default function CourseStudentsPage({
             </section>
           ) : null}
 
-          <div className={isBundleRegistration ? 'mt-2' : 'mt-4'}>
+          <div className={registrationStyles.paymentIntro}>
+            <h4>수납 확인</h4>
+            <p className={registrationStyles.caption}>{bundleTotals.payableAmount > 0 ? '실제로 받은 금액을 기록합니다. 카드 승인이나 계좌 이체를 실행하지 않습니다.' : '납부할 금액이 없습니다. 무료 수강은 면제 사유와 0원 기록을 남깁니다.'}</p>
+          </div>
+          <div>
             <PaymentSection
               value={createPaymentForm}
               onChange={setCreatePaymentForm}
               compact
-              lockedBilling={isBundleRegistration}
-              hideBillingControls={isBundleRegistration}
-              hidePaymentMeta={isBundleRegistration}
-              hideSummaryHeader={isBundleRegistration}
+              lockedBilling
+              hideBillingControls
+              hideSummaryHeader
+              hidePaymentDetails={bundleTotals.payableAmount === 0}
+              preserveEnteredAmounts
             />
           </div>
+          </fieldset>
             </form>
 
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-2.5 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] sm:px-6">
+            <div className="admin-dialog-footer admin-dialog-footer-accent">
+              <div className={registrationStyles.summary} aria-label="등록 요약" aria-live="polite">
+                <div>
+                  총 {bundleBillingRows.length}강좌
+                  {bundleBillingRows.length > 1 ? (
+                    <small>유료 {bundleBillingRows.filter((row) => row.payableAmount > 0).length} · 무료/0원 {bundleBillingRows.filter((row) => row.payableAmount === 0).length}</small>
+                  ) : null}
+                </div>
+                <div>
+                  <strong>납부할 금액 <span className={registrationStyles.summaryAmount}>{formatWon(bundleTotals.payableAmount)}</span></strong>
+                  {/* 일치는 체크 하나로 줄이고, 어긋날 때만 수납 입력액과 차액을 펼친다. */}
+                  {bundleTotals.payableAmount <= 0 ? null : registrationPaymentDifference === 0 ? (
+                    <span role="status" aria-label="수납 금액 확인" className={registrationStyles.balanceNotice}>
+                      <Check size={16} aria-hidden="true" />
+                      <span className="sr-only">수납 금액 일치</span>
+                    </span>
+                  ) : (
+                    <span role="status" aria-label="수납 금액 확인" className={registrationStyles.balanceNotice} data-mismatch="true">
+                      <TriangleAlert size={16} aria-hidden="true" />
+                      수납 입력 {formatWon(registrationPaymentTotal)} · {registrationPaymentDifference < 0 ? `${formatWon(-registrationPaymentDifference)} 부족` : `${formatWon(registrationPaymentDifference)} 초과`}
+                    </span>
+                  )}
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={() => setPanel('none')}
-                disabled={submitting}
+                onClick={requestCreateClose}
+                disabled={submitting || Boolean(confirmation)}
                 className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-700 disabled:opacity-50"
               >
                 취소
@@ -3100,19 +3181,20 @@ export default function CourseStudentsPage({
                 type="submit"
                 form="create-student-form"
                 data-payment-mode="without-payment"
-                disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
+                hidden={bundleTotals.payableAmount === 0}
+                disabled={submitting || Boolean(confirmation) || Boolean(selectedStudent?.alreadyEnrolled)}
                 className="rounded-[8px] bg-slate-50 px-4 py-2.5 text-[14px] font-medium text-[#1d1d1f] transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
               >
-                {submitting ? '등록 중...' : '미수납 등록'}
+                {submitting ? '등록 중...' : '수납 없이 등록'}
               </button>
               <button
                 type="submit"
                 form="create-student-form"
                 data-payment-mode="with-payment"
-                disabled={submitting || Boolean(selectedStudent?.alreadyEnrolled)}
+                disabled={submitting || Boolean(confirmation) || Boolean(selectedStudent?.alreadyEnrolled)}
                 className="rounded-[8px] bg-blue-600 px-5 py-2.5 text-[14px] font-medium text-white transition-all duration-200 ease-ios hover:bg-blue-700 active:scale-[0.97] active:duration-100 disabled:opacity-50 disabled:active:scale-100"
               >
-                {submitting ? '저장 중...' : '등록 + 결제 저장'}
+                {submitting ? '저장 중...' : bundleTotals.payableAmount === 0 ? (bundleTotals.exemptCount > 0 ? '무료 수강 등록' : '0원 강좌 등록') : '등록 + 수납 저장'}
               </button>
             </div>
           </motion.aside>
@@ -3125,9 +3207,6 @@ export default function CourseStudentsPage({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-gray-700">명단 붙여넣기</h3>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                전체 명단을 먼저 검사한 뒤 정상 학생은 바로 등록하고, 오류 학생만 아래에 남겨 다시 처리합니다.
-              </p>
             </div>
             {bulkImportResult ? (
               <button
@@ -3227,7 +3306,7 @@ export default function CourseStudentsPage({
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-2 text-xs font-medium leading-5 text-rose-700">{item.message}</p>
+                        <p className="mt-2 text-xs font-medium leading-5 text-rose-700">{getUserErrorMessage(item.message)}</p>
                       </div>
                       {item.master ? (
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -3335,7 +3414,6 @@ export default function CourseStudentsPage({
             </section>
           ) : null}
 
-          <p className="mt-3 text-xs text-slate-500">교재 배정은 등록 후 `교재 배정` 탭에서 교재별로 일괄 처리할 수 있습니다.</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             {bulkRowErrors.length > 0 ? (
               <button
@@ -3372,11 +3450,12 @@ export default function CourseStudentsPage({
         </form>
       )}
 
+      <AdminPortal>
       <AnimatePresence>
       {panel === 'edit' && editingId ? (
         <>
           <motion.div
-            className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-[2px]"
+            className="admin-dialog-backdrop fixed inset-0 z-[100]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -3389,33 +3468,36 @@ export default function CourseStudentsPage({
             }}
           />
           <motion.form
+            ref={editDialogRef}
             onSubmit={handleSaveEdit}
             role="dialog"
             aria-modal="true"
-            className="fixed inset-x-4 top-8 z-[101] mx-auto max-h-[calc(100dvh-64px)] max-w-3xl overflow-hidden rounded-[18px] bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] ring-1 ring-black/5 sm:top-16"
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 18, scale: 0.98 }}
-            transition={motionConfig.modal}
+            aria-label="수강생 편집"
+            aria-busy={submitting || photoUploading}
+            tabIndex={-1}
+            className="admin-drawer-panel fixed inset-y-0 right-0 z-[101] flex flex-col overflow-hidden"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={motionConfig.drawer}
           >
-            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+            <header className="admin-dialog-header">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Edit Student</p>
-                <h3 className="mt-1 truncate text-xl font-semibold leading-tight text-[#1d1d1f]">수강생 편집</h3>
-                <p className="mt-1 truncate text-sm text-slate-500">{editForm.name || course.name}</p>
+                <h3 className="admin-dialog-title">수강생 편집</h3>
+                <p className="mt-1 break-words text-sm text-slate-500">{editForm.name || course.name}</p>
               </div>
               <button
                 type="button"
                 onClick={() => { setPanel('none'); setEditingId(null) }}
                 disabled={submitting || photoUploading}
                 aria-label="닫기"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-slate-500 transition-all duration-200 ease-ios hover:bg-slate-200 hover:text-[#1d1d1f] active:scale-[0.94] disabled:opacity-50 disabled:active:scale-100"
+                className="admin-dialog-close bg-slate-100 disabled:opacity-50"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </header>
 
-            <div className="max-h-[calc(100dvh-220px)] overflow-y-auto px-6 py-5">
+            <div className="admin-dialog-body flex-1">
           {course.feature_photo && (
             <div className="mb-5 flex items-center gap-4 border-b border-slate-100 pb-5">
               <div className="h-[80px] w-[60px] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -3461,11 +3543,11 @@ export default function CourseStudentsPage({
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className={editModalLabelClass}>학번</span>
               <input value={editForm.exam_number} onChange={(e) => setEditForm((c) => ({ ...c, exam_number: e.target.value }))} placeholder="학번" className={editModalInputClass} />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className={editModalLabelClass}>기수</span>
               <input
                 value={editForm.cohort_number}
@@ -3478,19 +3560,19 @@ export default function CourseStudentsPage({
                 className={editModalInputClass}
               />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className={editModalLabelClass}>이름</span>
               <input value={editForm.name} onChange={(e) => setEditForm((c) => ({ ...c, name: e.target.value }))} placeholder="이름" className={editModalInputClass} />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className={editModalLabelClass}>연락처</span>
               <input value={editForm.phone} onChange={(e) => setEditForm((c) => ({ ...c, phone: e.target.value }))} placeholder="연락처" className={editModalInputClass} />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className={editModalLabelClass}>생년월일</span>
               <input value={editForm.birth_date} onChange={(e) => setEditForm((c) => ({ ...c, birth_date: e.target.value.replace(/\D/g, '').slice(0, 6) }))} placeholder="YYMMDD" className={editModalInputClass} />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-2">
               <span className={editModalLabelClass}>성별</span>
               <GenderSelect
                 value={editForm.gender}
@@ -3520,19 +3602,19 @@ export default function CourseStudentsPage({
             ))}
           </div>
             </div>
-            <footer className="flex items-center justify-end gap-2 border-t border-slate-100 bg-[#fafafc] px-6 py-4">
+            <footer className="admin-dialog-footer">
               <button
                 type="button"
                 onClick={() => { setPanel('none'); setEditingId(null) }}
                 disabled={submitting || photoUploading}
-                className="rounded-[8px] px-4 py-2 text-sm font-semibold text-slate-600 transition-all duration-200 ease-ios hover:bg-slate-200 hover:text-[#1d1d1f] active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+                className="admin-button"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:bg-[#0066cc] active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+                className="admin-button admin-button-primary"
               >
                 {submitting ? '저장 중...' : '저장'}
               </button>
@@ -3541,9 +3623,10 @@ export default function CourseStudentsPage({
         </>
       ) : null}
       </AnimatePresence>
+      </AdminPortal>
 
       {/* Messages */}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p>}
       {message && <p className="text-xs text-emerald-600">{message}</p>}
       <ConfirmationModal
         open={Boolean(confirmation)}
@@ -3580,49 +3663,12 @@ export default function CourseStudentsPage({
         }}
       />
 
-      {/* ── Tab toggle ── */}
-      <div className="flex gap-6 overflow-x-auto border-b border-slate-200">
-        {([
-          ['manage', '관리'],
-          ['receipts', '배부자료 수령현황'],
-          ['textbook-assign', '교재 배정'],
-          ['textbook-receipts', '교재 수령현황'],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => {
-              if (tab === key) {
-                return
-              }
-
-              deferInteractionWork(() => {
-                startTransition(() => setTab(key))
-              })
-            }}
-            className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
-              tab === key
-                ? 'text-[#1d1d1f]'
-                : 'text-slate-500 hover:text-[#1d1d1f]'
-            }`}
-          >
-            {label}
-            {tab === key ? (
-              <motion.div
-                layoutId="students-tabs"
-                className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
-                transition={motionConfig.tab}
-              />
-            ) : null}
-          </button>
-        ))}
-      </div>
-
       {/* ── Manage tab ── */}
       {tab === 'manage' && (
         <StudentsManageTable
+          courseName={course.name}
           filtered={enrollments}
-          summary={summary}
+          summary={pageSummary}
           search={search}
           statusFilter={statusFilter}
           customFields={customFields}
@@ -3635,6 +3681,7 @@ export default function CourseStudentsPage({
           onPageSizeChange={handlePageSizeChange}
           onSearchChange={handleSearchChange}
           onStatusFilterChange={handleStatusFilterChange}
+          onResetFilters={handleResetFilters}
           onOpenDetail={openPaymentDetail}
           onOpenStudentHistory={openStudentHistory}
           onEdit={startEdit}
@@ -3697,7 +3744,7 @@ export default function CourseStudentsPage({
       {isMatrixTab(tab) && (
         <StudentsMatrixPanel
           tab={tab}
-          matrixLoading={matrixLoading}
+          matrixLoading={matrixLoading || (matrixReadyContext !== matrixContext && matrixMaterials.length > 0)}
           matrixMaterials={matrixMaterials}
           filteredMatrixRows={filteredMatrixRows}
           matrixSearch={matrixSearch}
@@ -3705,6 +3752,7 @@ export default function CourseStudentsPage({
           selectedIds={selectedIds}
           bulkActionEnabled={bulkActionEnabled}
           bulkProcessing={bulkProcessing}
+          matrixUnavailable={matrixUnavailable}
           bulkProgress={bulkProgress}
           onMatrixSearchChange={setMatrixSearch}
           onToggleFilterMaterial={(materialId) => {

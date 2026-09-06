@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { invalidateMaterialCache } from '@/lib/distribution/material-cache'
 import {
   bulkAssignTextbooks,
   isTextbookAssignmentError,
@@ -36,10 +36,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    const assignments = await bulkAssignTextbooks(parsed.data.enrollmentId, parsed.data.materialIds, 'admin')
-    await invalidateCache('materials')
-    return NextResponse.json({ assignments })
+    const assignments = await bulkAssignTextbooks(parsed.data.enrollmentId, parsed.data.materialIds, 'admin', division)
+    const refresh = await invalidateMaterialCache()
+    return NextResponse.json({ assignments, ...refresh })
   } catch (error) {
+    if (isTextbookAssignmentError(error, 'STUDENT_INACTIVE') || isTextbookAssignmentError(error, 'COURSE_INACTIVE')) {
+      return NextResponse.json({ error: '수강 중인 학생과 진행 중인 강좌에만 교재를 배정할 수 있습니다.' }, { status: 400 })
+    }
     if (isTextbookAssignmentError(error, 'ENROLLMENT_NOT_FOUND')) {
       return NextResponse.json({ error: '수강생을 찾을 수 없습니다.' }, { status: 404 })
     }

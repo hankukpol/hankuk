@@ -31,7 +31,7 @@ async function getVerifiedEnrollment(
   void courses
   return enrollment as {
     id: number
-    status: 'active' | 'refunded'
+    status: 'active' | 'refunded' | 'cancelled'
     suspended_at: string | null
   }
 }
@@ -70,7 +70,7 @@ export async function POST(
   }
 
   if (currentEnrollment.status !== 'active') {
-    return NextResponse.json({ error: '환불된 수강은 응시 정지할 수 없습니다.' }, { status: 409 })
+    return NextResponse.json({ error: '환불되거나 종료된 수강은 응시 정지할 수 없습니다.' }, { status: 409 })
   }
 
   const reason = parsed.data.reason?.trim() || null

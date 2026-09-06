@@ -1,0 +1,84 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+}
+
+.label {
+  color: var(--admin-text-secondary);
+  font-size: var(--admin-type-body);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Specificity preserves admin typography over legacy utility aliases. */
+.page .intro {
+  margin-top: 8px;
+  font-size: var(--admin-type-body);
+  line-height: 1.5;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: var(--admin-control-height);
+  padding: 8px 12px;
+  border-radius: var(--admin-radius);
+  color: var(--admin-text);
+  font-size: var(--admin-type-body);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.choice input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+}
+
+.choice:hover:not(:has(input:disabled)) {
+  background: var(--admin-surface-soft);
+}
+
+.choice:has(input:checked):not(:has(input:disabled)) {
+  background: var(--admin-accent-soft);
+}
+
+.choice:has(input:disabled) {
+  color: var(--admin-text-disabled);
+  cursor: not-allowed;
+}
+
+.fieldHeadings {
+  color: var(--admin-text-secondary);
+  font-size: var(--admin-type-body);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.page .orderButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--admin-control-height);
+  min-width: var(--admin-control-height);
+  min-height: var(--admin-control-height);
+  padding: 0;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  background: var(--admin-surface);
+  color: var(--admin-text-secondary);
+}
+
+.page .orderButton:hover:not(:disabled) {
+  background: var(--admin-surface-soft);
+}
+
+.page .orderButton:disabled {
+  color: var(--admin-text-disabled);
+  cursor: not-allowed;
+}

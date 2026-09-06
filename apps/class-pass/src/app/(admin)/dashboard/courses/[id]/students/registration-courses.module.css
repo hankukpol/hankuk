@@ -1,0 +1,44 @@
+.section { margin-top: 24px; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.caption { color: var(--admin-text-muted); font-size: var(--admin-type-caption); line-height: 1.5; }
+.toolbar { display: flex; gap: 8px; margin-top: 12px; }
+.toolbar select { flex: 1; min-width: 0; }
+.add, .actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.add { flex-shrink: 0; }
+.allFree { margin-top: 12px; padding: 8px 12px; border: 1px solid var(--admin-line); border-radius: var(--admin-radius); background: var(--admin-surface-soft); }
+.choice { display: inline-flex; align-items: center; gap: 8px; min-height: var(--admin-control-height); font-size: var(--admin-type-caption); cursor: pointer; }
+.list { margin-top: 12px; border-top: 1px solid var(--admin-line); }
+.course { display: grid; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--admin-line-soft); }
+.courseName { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.moneyGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.field > span { color: var(--admin-text-muted); font-size: var(--admin-type-caption); font-weight: 600; }
+.field input, .field textarea, .toolbar select { padding: var(--admin-control-padding-y) var(--admin-control-padding-x); }
+.moneyGrid input { text-align: right; font-variant-numeric: tabular-nums; }
+.amount { display: flex; align-items: center; justify-content: flex-end; min-height: var(--admin-control-height); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--admin-accent); }
+.error { color: var(--admin-danger); font-size: var(--admin-type-caption); }
+.summary { flex: 1 1 auto; min-width: 0; margin-right: auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.summary strong { font-size: var(--admin-type-title); line-height: 1.3; font-variant-numeric: tabular-nums; }
+.summaryAmount { color: var(--admin-accent); }
+.summary small { display: block; font-size: var(--admin-type-caption); color: var(--admin-text-muted); }
+.paymentIntro { display: grid; gap: 4px; margin: 24px 0 8px; }
+.fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.details { display: grid; gap: 12px; }
+.collapse { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: var(--admin-control-height); padding: 8px 12px; border: 1px solid var(--admin-line); border-radius: var(--admin-radius); background: var(--admin-surface); color: var(--admin-text-secondary); }
+.collapse:hover:not(:disabled) { background: var(--admin-surface-soft); }
+.collapse:disabled { color: var(--admin-text-disabled); cursor: not-allowed; }
+.courseSummary { font-size: var(--admin-type-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
+.balanceNotice { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: middle; color: var(--admin-text-secondary); font-size: var(--admin-type-caption); }
+.balanceNotice[data-mismatch='true'] { display: flex; margin-top: 4px; margin-left: 0; color: var(--admin-danger); font-weight: 600; }
+.balanceNotice svg { flex-shrink: 0; color: var(--admin-text-secondary); }
+.balanceNotice[data-mismatch='true'] svg { color: var(--admin-danger); }
+@media (max-width: 767px) {
+  .summary { flex: 1 0 100%; }
+}
+@media (max-width: 639px) {
+  .moneyGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .applied { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; }
+  .heading { align-items: flex-start; }
+  .courseName { flex-basis: 100%; }
+  .actions { margin-left: auto; }
+}

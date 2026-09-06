@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -41,6 +42,20 @@ type ExtendedConstraintSet = MediaTrackConstraintSet & {
   zoom?: number
 }
 
+type QrSelectionSession = {
+  generation: number
+  courseId: number
+  token: string
+  studentName: string
+  materials: MaterialItem[]
+}
+
+type QuickSelectionSession = {
+  courseId: number
+  phone: string
+  materials: MaterialItem[]
+}
+
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
 
 export default function StaffScanPage() {
@@ -48,12 +63,20 @@ export default function StaffScanPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const scannerRef = useRef<ScannerInstance | null>(null)
+  const scannerGenerationRef = useRef(0)
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const processingRef = useRef(false)
+  const qrGenerationRef = useRef(0)
+  const qrRequestRef = useRef<number | null>(null)
+  const qrSelectionRef = useRef<QrSelectionSession | null>(null)
+  const quickGenerationRef = useRef(0)
+  const quickRequestRef = useRef<{ generation: number; writing: boolean } | null>(null)
+  const quickSelectionRef = useRef<QuickSelectionSession | null>(null)
   const isStartingRef = useRef(false)
   const lastScanRef = useRef<LastScanState>({ token: '', at: 0 })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const bootstrappedCourseIdRef = useRef<number | null>(null)
+  const readyCourseIdRef = useRef<number | null>(null)
 
   const [isFeatureLoading, setIsFeatureLoading] = useState(true)
   const [staffScanEnabled, setStaffScanEnabled] = useState(true)
@@ -70,11 +93,11 @@ export default function StaffScanPage() {
   const [quickPhone, setQuickPhone] = useState('')
   const [quickStudentName, setQuickStudentName] = useState('')
   const [quickLoading, setQuickLoading] = useState(false)
+  const [quickWriting, setQuickWriting] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [overlay, setOverlay] = useState<OverlayState | null>(null)
   const [selectOptions, setSelectOptions] = useState<MaterialItem[]>([])
-  const [pendingToken, setPendingToken] = useState('')
   const [lastStudentName, setLastStudentName] = useState('')
 
   const tokenFromUrl = searchParams.get('token')?.trim() ?? ''
@@ -84,6 +107,7 @@ export default function StaffScanPage() {
   )
   const selectedCourseName = selectedCourse?.name ?? null
   const materialsCount = courseMaterials.length
+  const courseReady = selectedCourseId !== null && readyCourseIdRef.current === selectedCourseId
   const formattedDate = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
     year: 'numeric',
@@ -111,8 +135,26 @@ export default function StaffScanPage() {
   }, [])
 
   const clearPendingSelection = useCallback(() => {
+    qrGenerationRef.current += 1
+    qrSelectionRef.current = null
+    processingRef.current = false
+    if (overlayTimerRef.current) {
+      clearTimeout(overlayTimerRef.current)
+      overlayTimerRef.current = null
+    }
+    setOverlay(null)
     setSelectOptions([])
-    setPendingToken('')
+  }, [])
+
+  const clearQuickSelection = useCallback(() => {
+    quickGenerationRef.current += 1
+    quickSelectionRef.current = null
+    quickRequestRef.current = null
+    setQuickLoading(false)
+    setQuickWriting(false)
+    setQuickStudentName('')
+    setQuickMaterials([])
+    setSelectedMaterialId(null)
   }, [])
 
   const parseCameraZoom = useCallback((label: string) => {
@@ -226,16 +268,10 @@ export default function StaffScanPage() {
   }, [])
 
   const stopScanner = useCallback(async () => {
+    const generation = ++scannerGenerationRef.current
     const scanner = scannerRef.current
     scannerRef.current = null
     isStartingRef.current = false
-
-    if (overlayTimerRef.current) {
-      clearTimeout(overlayTimerRef.current)
-      overlayTimerRef.current = null
-    }
-
-    processingRef.current = false
 
     if (!scanner) {
       clearScannerContainer()
@@ -247,6 +283,7 @@ export default function StaffScanPage() {
     } catch {
       // ignore stop failures
     }
+    if (generation !== scannerGenerationRef.current || scannerRef.current) return
 
     try {
       scanner.clear()
@@ -258,6 +295,7 @@ export default function StaffScanPage() {
   }, [clearScannerContainer])
 
   const showOverlay = useCallback((nextOverlay: OverlayState, timeoutMs = OVERLAY_TIMEOUT_MS) => {
+    const generation = qrGenerationRef.current
     setOverlay(nextOverlay)
 
     // Haptic feedback
@@ -272,6 +310,7 @@ export default function StaffScanPage() {
     }
 
     overlayTimerRef.current = setTimeout(() => {
+      if (generation !== qrGenerationRef.current || qrRequestRef.current !== null || qrSelectionRef.current) return
       setOverlay(null)
       processingRef.current = false
       setScanState('scanning')
@@ -283,9 +322,10 @@ export default function StaffScanPage() {
       const token = normalizeToken(decodedText).trim()
       const now = Date.now()
 
-      if (!token || processingRef.current) {
+      if (!token || processingRef.current || qrRequestRef.current !== null || qrSelectionRef.current) {
         return
       }
+      if (readyCourseIdRef.current !== selectedCourseId) return
 
       if (lastScanRef.current.token === token && now - lastScanRef.current.at < SCAN_COOLDOWN_MS) {
         return
@@ -297,10 +337,11 @@ export default function StaffScanPage() {
       }
 
       lastScanRef.current = { token, at: now }
+      const generation = ++qrGenerationRef.current
+      qrRequestRef.current = generation
       processingRef.current = true
       setScanState('processing')
       setSelectOptions([])
-      setPendingToken(token)
       setMessage('')
       setError('')
 
@@ -311,6 +352,8 @@ export default function StaffScanPage() {
           body: JSON.stringify({ token, courseId: selectedCourseId }),
         })
         const payload = (await response.json().catch(() => null)) as ScanResponse | null
+        if (generation !== qrGenerationRef.current) return
+        if (payload?.warning) setMessage(payload.warning)
 
         const studentName = payload?.studentName ?? ''
         if (studentName) {
@@ -339,6 +382,7 @@ export default function StaffScanPage() {
         }
 
         if (payload?.needsSelection && payload.unreceived?.length) {
+          qrSelectionRef.current = { generation, token, courseId: selectedCourseId, studentName, materials: payload.unreceived }
           setSelectOptions(payload.unreceived)
           setScanState('selecting')
           processingRef.current = true
@@ -372,9 +416,12 @@ export default function StaffScanPage() {
           ERROR_OVERLAY_TIMEOUT_MS,
         )
       } catch {
+        if (generation !== qrGenerationRef.current) return
         processingRef.current = false
         setScanState('scanning')
         setError('스캔 요청에 실패했습니다. 다시 시도해 주세요.')
+      } finally {
+        if (qrRequestRef.current === generation) qrRequestRef.current = null
       }
     },
     [selectedCourseId, showOverlay],
@@ -393,19 +440,29 @@ export default function StaffScanPage() {
       return
     }
 
-    const readinessError = await getCameraReadinessError()
-    if (readinessError) {
-      setScanState('idle')
-      setError(readinessError)
-      return
+    const scannerGeneration = ++scannerGenerationRef.current
+    isStartingRef.current = true
+    const isCurrentScanner = () => scannerGeneration === scannerGenerationRef.current
+    const stopAttempt = async (scanner: ScannerInstance) => {
+      try { await scanner.stop() } catch { /* A failed start may have no live stream. */ }
+      // html5-qrcode.clear() targets the current element by ID, not the old node.
+      // A retired attempt must never clear a replacement camera's container.
+      if (isCurrentScanner()) {
+        try { scanner.clear() } catch { /* Already stopped or removed. */ }
+      }
     }
 
-    isStartingRef.current = true
-    setScanState('scanning')
-    processingRef.current = false
-    setError('')
-
     try {
+      const readinessError = await getCameraReadinessError()
+      if (!isCurrentScanner()) return
+      if (readinessError) {
+        if (!processingRef.current && !qrSelectionRef.current && qrRequestRef.current === null) setScanState('idle')
+        setError(readinessError)
+        return
+      }
+      if (!processingRef.current && !qrSelectionRef.current && qrRequestRef.current === null) setScanState('scanning')
+      setError('')
+
       const qrModule = (await import('html5-qrcode')) as {
         Html5Qrcode: {
           new (
@@ -428,7 +485,10 @@ export default function StaffScanPage() {
         qrbox: { width: boxSize, height: boxSize },
         aspectRatio: 1,
       }
-      const onSuccess = (decodedText: string) => void handleScan(decodedText)
+      const onSuccess = (decodedText: string) => {
+        if (scannerGeneration === scannerGenerationRef.current) void handleScan(decodedText)
+      }
+      if (!isCurrentScanner()) return
       const createScanner = () =>
         new qrModule.Html5Qrcode('class-pass-qr-reader', {
           verbose: false,
@@ -439,8 +499,10 @@ export default function StaffScanPage() {
 
       try {
         const cameras = await qrModule.Html5Qrcode.getCameras()
+        if (!isCurrentScanner()) return
         targets.push(...getRankedCameraTargets(cameras))
       } catch (cameraListError) {
+        if (!isCurrentScanner()) return
         if (isPermissionDeniedError(cameraListError)) {
           throw cameraListError
         }
@@ -452,76 +514,71 @@ export default function StaffScanPage() {
       let lastError: unknown = null
 
       for (const target of targets) {
+        if (!isCurrentScanner()) return
         clearScannerContainer()
         const scanner = createScanner()
 
         try {
           await scanner.start(target, config, onSuccess)
+          if (!isCurrentScanner()) {
+            await stopAttempt(scanner)
+            return
+          }
           scannerRef.current = scanner
           await optimizeRunningCamera(scanner)
+          if (!isCurrentScanner()) return
           optimizeScannerVideo()
           return
         } catch (startError) {
           lastError = startError
-
-          try {
-            await scanner.stop()
-          } catch {
-            // ignore
-          }
-
-          try {
-            scanner.clear()
-          } catch {
-            // ignore
-          }
+          await stopAttempt(scanner)
+          if (!isCurrentScanner()) return
         }
       }
 
       if (!isPermissionDeniedError(lastError)) {
         try {
           const cameras = await qrModule.Html5Qrcode.getCameras()
+          if (!isCurrentScanner()) return
           const fallbackTargets = cameras.map((camera) => camera.id).filter(Boolean)
 
           for (const target of fallbackTargets) {
+            if (!isCurrentScanner()) return
             clearScannerContainer()
             const scanner = createScanner()
 
             try {
               await scanner.start(target, config, onSuccess)
+              if (!isCurrentScanner()) {
+                await stopAttempt(scanner)
+                return
+              }
               scannerRef.current = scanner
               await optimizeRunningCamera(scanner)
+              if (!isCurrentScanner()) return
               optimizeScannerVideo()
               return
             } catch (startError) {
               lastError = startError
-
-              try {
-                await scanner.stop()
-              } catch {
-                // ignore
-              }
-
-              try {
-                scanner.clear()
-              } catch {
-                // ignore
-              }
+              await stopAttempt(scanner)
+              if (!isCurrentScanner()) return
             }
           }
         } catch (cameraListError) {
+          if (!isCurrentScanner()) return
           lastError = cameraListError
         }
       }
 
       throw lastError ?? new Error('camera-start-failed')
     } catch (cameraError) {
+      if (!isCurrentScanner()) return
       clearScannerContainer()
       scannerRef.current = null
-      setScanState('idle')
+      if (!processingRef.current && !qrSelectionRef.current && qrRequestRef.current === null) setScanState('idle')
       setError(getCameraAccessErrorMessage(cameraError))
     } finally {
-      isStartingRef.current = false
+      if (isCurrentScanner()) isStartingRef.current = false
     }
   }, [
     clearScannerContainer,
@@ -533,122 +590,28 @@ export default function StaffScanPage() {
   ])
 
   const handleCancelSelection = useCallback(() => {
-    processingRef.current = false
+    if (qrRequestRef.current !== null) return
     setScanState('scanning')
     clearPendingSelection()
+    setMessage('')
   }, [clearPendingSelection])
 
-  // 한 번 QR 스캔 후 표시되는 자료 목록에서 자료 1개를 터치할 때.
-  // - 그 1건만 즉시 배부
-  // - selectOptions에서 해당 ID만 제거 (목록 유지)
-  // - 남은 자료가 있으면 패널 유지 + 작은 안내 메시지로 진행 표시
-  // - 모두 배부 끝나면 success overlay + 카메라 스캔 모드 복귀
-  // - 동시 배부 충돌 등으로 API가 unreceived 갱신 응답을 주면 새 목록으로 교체
-  const handleDistributeOne = useCallback(async (materialId: number) => {
-    if (!pendingToken || !selectedCourseId) {
-      setError('강좌를 먼저 선택해 주세요.')
+  // The confirmed student, token, course and material list travel together.
+  // Request locking is separate from the selection lock, which survives each write.
+  const handleQrDistribute = useCallback(async (materialId?: number) => {
+    if (qrRequestRef.current !== null) return
+    const selection = qrSelectionRef.current
+    if (!selection || selection.generation !== qrGenerationRef.current || selection.courseId !== selectedCourseId) {
+      setError('학생 QR을 다시 스캔해 주세요.')
       return
     }
 
-    processingRef.current = true
-    setScanState('processing')
-    setError('')
-
-    try {
-      const response = await fetch('/api/distribution/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: pendingToken,
-          courseId: selectedCourseId,
-          materialId,
-        }),
-      })
-      const payload = (await response.json().catch(() => null)) as ScanResponse | null
-
-      // 실패: 동시 배부로 인해 unreceived 갱신 요청이 오면 목록만 교체하고 사용자가 다시 고르도록
-      if (payload?.needsSelection && Array.isArray(payload.unreceived)) {
-        setSelectOptions(payload.unreceived)
-        processingRef.current = false
-        setScanState('selecting')
-        setError('다른 직원이 먼저 배부했을 수 있습니다. 갱신된 목록에서 다시 선택해 주세요.')
-        return
-      }
-
-      if (!response.ok || !payload?.success) {
-        processingRef.current = false
-        setScanState('selecting')
-        setError(getScanFailureDescription(payload) || '배부에 실패했습니다.')
-        return
-      }
-
-      // success — 응답의 distributedMaterials 우선, 없으면 단건 materialId fallback
-      const distributedMaterials = payload.distributedMaterials ?? []
-      const distributedIdSet = new Set<number>(distributedMaterials.map((material) => material.id))
-      if (distributedIdSet.size === 0) {
-        distributedIdSet.add(materialId)
-      }
-
-      const remaining = selectOptions.filter((material) => !distributedIdSet.has(material.id))
-
-      // 안내 메시지·overlay에 쓸 자료 라벨용 배열 — 응답이 부실해도 1건 표시 보장
-      const labelMaterials: Array<{ id?: number; name: string; material_type?: 'handout' | 'textbook' }> =
-        distributedMaterials.length > 0
-          ? distributedMaterials
-          : [{
-              id: materialId,
-              name: payload.materialName || '자료',
-              material_type: payload.materialType,
-            }]
-
-      const studentName = payload.studentName || lastStudentName || '학생'
-
-      if (remaining.length > 0) {
-        // 남은 자료 있음 → 패널 유지, 작은 안내 메시지만 표시
-        setSelectOptions(remaining)
-        processingRef.current = false
-        setScanState('selecting')
-
-        const distributedSummary = describeDistributedMaterials(labelMaterials) ?? '자료 배부'
-        setMessage(`${studentName} · ${distributedSummary} 배부 완료 · 남은 자료 ${remaining.length}건`)
-
-        try { navigator.vibrate?.(35) } catch { /* vibration not supported */ }
-        return
-      }
-
-      // 모두 배부됨 → success overlay + 카메라 모드 복귀
-      setSelectOptions([])
-      setPendingToken('')
-      setMessage('')
-
-      showOverlay(
-        {
-          success: true,
-          title: summarizeDistributedMaterials(labelMaterials),
-          description: [studentName, describeDistributedMaterials(labelMaterials)]
-            .filter(Boolean)
-            .join(' · '),
-        },
-        OVERLAY_TIMEOUT_MS,
-      )
-    } catch {
-      processingRef.current = false
-      setScanState('selecting')
-      setError('배부 요청에 실패했습니다. 다시 시도해 주세요.')
-    }
-  }, [pendingToken, selectedCourseId, selectOptions, lastStudentName, showOverlay])
-
-  const handleDistributeAllSelected = useCallback(async () => {
-    if (!pendingToken || !selectedCourseId) {
-      setError('강좌를 먼저 선택해 주세요.')
-      return
-    }
-
-    const materialIds = selectOptions.map((material) => material.id)
-    if (materialIds.length === 0) {
-      return
-    }
-
+    const selectedMaterials = materialId === undefined
+      ? selection.materials
+      : selection.materials.filter(material => material.id === materialId)
+    if (selectedMaterials.length === 0) return
+    const generation = selection.generation
+    qrRequestRef.current = generation
     processingRef.current = true
     setScanState('processing')
     setError('')
@@ -659,52 +622,65 @@ export default function StaffScanPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: pendingToken,
-          courseId: selectedCourseId,
-          materialIds,
+          token: selection.token,
+          courseId: selection.courseId,
+          ...(materialId === undefined ? { materialIds: selectedMaterials.map(material => material.id) } : { materialId }),
         }),
       })
       const payload = (await response.json().catch(() => null)) as ScanResponse | null
+      if (generation !== qrGenerationRef.current || qrSelectionRef.current !== selection) return
 
-      if (payload?.needsSelection && Array.isArray(payload.unreceived)) {
-        setSelectOptions(payload.unreceived)
-        processingRef.current = false
-        setScanState('selecting')
-        setError('다른 직원이 먼저 배부했을 수 있습니다. 갱신된 목록에서 다시 선택해 주세요.')
+      if (['INVALID_TOKEN', 'ENROLLMENT_NOT_FOUND', 'COURSE_MISMATCH', 'ALL_RECEIVED'].includes(payload?.reason ?? '')) {
+        clearPendingSelection()
+        setLastStudentName('')
+        setScanState('scanning')
+        setError(`${getScanFailureDescription(payload)} 학생 QR을 다시 스캔해 주세요.`)
         return
       }
 
       const distributedMaterials = payload?.distributedMaterials ?? []
-      const distributedIdSet = new Set<number>(distributedMaterials.map((material) => material.id))
+      const distributedIdSet = new Set(distributedMaterials.map(material => material.id))
+      if (response.ok && payload?.success && distributedIdSet.size === 0) {
+        selectedMaterials.forEach(material => distributedIdSet.add(material.id))
+      }
+      const remaining = (payload?.needsSelection && Array.isArray(payload.unreceived)
+        ? payload.unreceived
+        : selection.materials).filter(material => !distributedIdSet.has(material.id))
+      qrSelectionRef.current = remaining.length > 0 ? { ...selection, materials: remaining } : null
+      setSelectOptions(remaining)
 
-      if (!response.ok || !payload?.success) {
-        if (distributedIdSet.size > 0) {
-          const remaining = selectOptions.filter((material) => !distributedIdSet.has(material.id))
-          setSelectOptions(remaining)
-          processingRef.current = false
-          setScanState(remaining.length > 0 ? 'selecting' : 'scanning')
-          setError(
-            `일부 자료만 배부되었습니다. ${describeDistributedMaterials(distributedMaterials) ?? ''}`.trim(),
-          )
-          return
-        }
-
-        processingRef.current = false
-        setScanState('selecting')
-        setError(getScanFailureDescription(payload) || '전체 배부에 실패했습니다.')
+      // A partial failure must also remove every confirmed receipt before retry.
+      if (payload?.needsSelection && Array.isArray(payload.unreceived)) {
+        processingRef.current = remaining.length > 0
+        setScanState(remaining.length > 0 ? 'selecting' : 'scanning')
+        setError('다른 직원이 먼저 배부했을 수 있습니다. 갱신된 목록에서 다시 선택해 주세요.')
         return
       }
 
-      const labelMaterials = distributedMaterials.length > 0
-        ? distributedMaterials
-        : selectOptions
+      if (!response.ok || !payload?.success) {
+        processingRef.current = remaining.length > 0
+        setScanState(remaining.length > 0 ? 'selecting' : 'scanning')
+        setError(distributedMaterials.length > 0
+          ? [`일부 자료만 배부되었습니다. ${describeDistributedMaterials(distributedMaterials) ?? ''}`.trim(), payload?.warning].filter(Boolean).join(' ')
+          : getScanFailureDescription(payload) || '배부에 실패했습니다.')
+        return
+      }
 
-      const studentName = payload.studentName || lastStudentName || '학생'
+      const labelMaterials = distributedMaterials.length > 0 ? distributedMaterials : selectedMaterials
+      const studentName = selection.studentName || '학생'
 
-      setSelectOptions([])
-      setPendingToken('')
-      setMessage('')
+      if (remaining.length > 0) {
+        processingRef.current = true
+        setScanState('selecting')
 
+        const distributedSummary = describeDistributedMaterials(labelMaterials) ?? '자료 배부'
+        setMessage([`${studentName} · ${distributedSummary} 배부 완료 · 남은 자료 ${remaining.length}건`, payload.warning].filter(Boolean).join(' '))
+
+        try { navigator.vibrate?.(35) } catch { /* vibration not supported */ }
+        return
+      }
+
+      setMessage(payload.warning ?? '')
       showOverlay(
         {
           success: true,
@@ -716,24 +692,41 @@ export default function StaffScanPage() {
         OVERLAY_TIMEOUT_MS,
       )
     } catch {
-      processingRef.current = false
+      if (generation !== qrGenerationRef.current) return
+      processingRef.current = true
       setScanState('selecting')
-      setError('전체 배부 요청에 실패했습니다. 다시 시도해 주세요.')
+      setError('배부 요청에 실패했습니다. 다시 시도해 주세요.')
+    } finally {
+      if (qrRequestRef.current === generation) qrRequestRef.current = null
     }
-  }, [pendingToken, selectedCourseId, selectOptions, lastStudentName, showOverlay])
+  }, [clearPendingSelection, selectedCourseId, showOverlay])
 
-  async function handleQuickDistribute() {
+  async function handleQuickDistribute(writing = false) {
+    if (quickRequestRef.current || qrRequestRef.current !== null) return
+    if (readyCourseIdRef.current !== selectedCourseId) return
     if (!selectedCourseId || !quickPhone.trim()) {
       setError('강좌를 선택하고 전화번호를 입력해 주세요.')
       return
     }
 
-    if (quickMaterials.length > 1 && !selectedMaterialId) {
+    const phone = quickPhone.replace(/\D/g, '')
+    const selection = quickSelectionRef.current
+    if (writing && (!selection || selection.courseId !== selectedCourseId || selection.phone !== phone)) {
+      clearQuickSelection()
+      setError('전화번호로 학생을 다시 조회해 주세요.')
+      return
+    }
+    if (writing && (!selectedMaterialId || !selection?.materials.some(material => material.id === selectedMaterialId))) {
       setError('배부할 자료를 선택해 주세요.')
       return
     }
 
+    if (!writing) clearQuickSelection()
+    const generation = ++quickGenerationRef.current
+    const request = { generation, writing }
+    quickRequestRef.current = request
     setQuickLoading(true)
+    setQuickWriting(writing)
     setError('')
     setMessage('')
 
@@ -742,17 +735,24 @@ export default function StaffScanPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: selectedCourseId,
-          phone: quickPhone.replace(/\D/g, ''),
-          materialId: quickMaterials.length > 0 ? (selectedMaterialId ?? undefined) : undefined,
+          courseId: writing ? selection!.courseId : selectedCourseId,
+          phone: writing ? selection!.phone : phone,
+          ...(writing ? { materialId: selectedMaterialId } : {}),
         }),
       })
       const payload = (await response.json().catch(() => null)) as QuickDistributionResponse | null
+      if (generation !== quickGenerationRef.current) return
 
       if (!response.ok) {
         if (payload?.distributed_materials?.length) {
+          const distributedIds = new Set(payload.distributed_materials.map(material => material.id))
+          const remaining = (selection?.materials ?? []).filter(material => !distributedIds.has(material.id))
+          quickSelectionRef.current = selection && remaining.length > 0 ? { ...selection, materials: remaining } : null
+          setQuickMaterials(remaining)
+          setSelectedMaterialId(remaining.length === 1 ? remaining[0].id : null)
+          if (remaining.length === 0) setQuickStudentName('')
           setError(
-            `일부 자료만 배부되었습니다. ${describeDistributedMaterials(payload.distributed_materials) ?? ''}`.trim(),
+            [`일부 자료만 배부되었습니다. ${describeDistributedMaterials(payload.distributed_materials) ?? ''}`.trim(), payload.warning].filter(Boolean).join(' '),
           )
           return
         }
@@ -762,12 +762,18 @@ export default function StaffScanPage() {
       }
 
       if (payload?.needsSelection && payload.available_materials?.length) {
+        quickSelectionRef.current = { courseId: selectedCourseId, phone, materials: payload.available_materials }
         setQuickStudentName(payload.student_name ?? '')
         setQuickMaterials(payload.available_materials)
         setSelectedMaterialId(
           payload.available_materials.length === 1 ? payload.available_materials[0]?.id ?? null : null,
         )
         setMessage(`${payload.student_name ?? '수강생'} 수강생을 찾았습니다. 배부할 자료를 선택해 주세요.`)
+        return
+      }
+
+      if (!payload?.success) {
+        setError(payload?.error ?? '배부 결과를 확인하지 못했습니다. 학생을 다시 조회해 주세요.')
         return
       }
 
@@ -779,19 +785,24 @@ export default function StaffScanPage() {
           : payload?.material_name
             ? [{ name: payload.material_name, material_type: payload.material_type }]
             : []),
-      ].join(' · '))
+        payload?.warning,
+      ].filter(Boolean).join(' · '))
       setQuickPhone('')
-      setQuickStudentName('')
-      setQuickMaterials([])
-      setSelectedMaterialId(null)
+      clearQuickSelection()
     } catch {
+      if (generation !== quickGenerationRef.current) return
       setError('수동 배부 요청에 실패했습니다. 다시 시도해 주세요.')
     } finally {
-      setQuickLoading(false)
+      if (quickRequestRef.current === request) {
+        quickRequestRef.current = null
+        setQuickLoading(false)
+        setQuickWriting(false)
+      }
     }
   }
 
   async function handleLogout() {
+    if (qrRequestRef.current !== null || quickRequestRef.current?.writing) return
     await fetch('/api/auth/staff/logout', { method: 'POST' }).catch(() => null)
     router.push(withTenantPrefix('/staff/login', tenant.type))
   }
@@ -813,6 +824,7 @@ export default function StaffScanPage() {
         setCourseMaterials(data.materials)
         setQuickMaterials([])
         bootstrappedCourseIdRef.current = data.selectedCourseId
+        readyCourseIdRef.current = data.selectedCourseId
         setSelectedCourseId(data.selectedCourseId)
         setSelectedMaterialId(null)
         clearPendingSelection()
@@ -832,6 +844,9 @@ export default function StaffScanPage() {
 
     return () => {
       cancelled = true
+      qrGenerationRef.current += 1
+      quickGenerationRef.current += 1
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current)
       void stopScanner()
     }
   }, [clearPendingSelection, stopScanner])
@@ -839,6 +854,7 @@ export default function StaffScanPage() {
   useEffect(() => {
     if (!selectedCourseId) {
       bootstrappedCourseIdRef.current = null
+      readyCourseIdRef.current = null
       setCourseMaterials([])
       setQuickMaterials([])
       setSelectedMaterialId(null)
@@ -861,6 +877,7 @@ export default function StaffScanPage() {
           return
         }
 
+        readyCourseIdRef.current = selectedCourseId
         setStaffScanEnabled(data.staffScanEnabled)
         setStaffQuickEnabled(data.staffQuickEnabled)
         setCourses(data.courses)
@@ -890,7 +907,7 @@ export default function StaffScanPage() {
 
     if (tokenFromUrl) {
       void handleScan(tokenFromUrl)
-      router.replace(withTenantPrefix('/staff/scan', tenant.type), { scroll: false })
+      router.replace(withTenantPrefix('/scan', tenant.type), { scroll: false })
     }
 
     void startScanner()
@@ -957,6 +974,7 @@ export default function StaffScanPage() {
           <button
             type="button"
             onClick={() => void handleLogout()}
+            disabled={scanState === 'processing' || quickWriting}
             className="text-[13px] font-semibold tracking-[-0.02em] text-white/72 transition-opacity hover:text-white"
           >
             로그아웃
@@ -985,7 +1003,7 @@ export default function StaffScanPage() {
       {error ? (
         <section className="student-card mx-4 mt-4 px-4 py-4 sm:mx-5">
           <p className="student-eyebrow student-eyebrow-light">오류</p>
-          <p className="mt-2 text-[14px] font-medium text-[#b42318]">{error}</p>
+          <p className="mt-2 text-[14px] font-medium text-[#b42318]">{getUserErrorMessage(error)}</p>
         </section>
       ) : null}
 
@@ -1002,14 +1020,18 @@ export default function StaffScanPage() {
           <span className="mb-2 block text-[13px] font-medium text-[var(--student-text-muted)]">강좌 선택</span>
           <select
             value={selectedCourseId ?? ''}
+            disabled={scanState === 'processing' || quickWriting}
             onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+              if (qrRequestRef.current !== null || quickRequestRef.current?.writing) return
               const nextCourseId = event.target.value ? Number(event.target.value) : null
+              readyCourseIdRef.current = null
               setCourseMaterials([])
-              setQuickMaterials([])
-              setSelectedMaterialId(null)
+              clearQuickSelection()
               clearPendingSelection()
-              setQuickStudentName('')
               setLastStudentName('')
+              setMessage('')
+              setError('')
+              setScanState('idle')
               setSelectedCourseId(nextCourseId)
             }}
             className="student-input appearance-none"
@@ -1027,10 +1049,16 @@ export default function StaffScanPage() {
           <button
             type="button"
             onClick={() => {
+              if (qrRequestRef.current !== null || quickRequestRef.current?.writing) return
+              if (tab === 'qr') return
               setTab('qr')
               clearPendingSelection()
+              clearQuickSelection()
+              setScanState('idle')
+              setMessage('')
+              setError('')
             }}
-            disabled={!staffScanEnabled}
+            disabled={!staffScanEnabled || scanState === 'processing' || quickWriting}
             className={`student-pill-button flex-1 ${
               tab === 'qr' ? 'student-pill-primary' : 'student-pill-secondary'
             } disabled:cursor-not-allowed disabled:opacity-40`}
@@ -1040,10 +1068,16 @@ export default function StaffScanPage() {
           <button
             type="button"
             onClick={() => {
+              if (qrRequestRef.current !== null || quickRequestRef.current?.writing) return
+              if (tab === 'quick') return
               setTab('quick')
               clearPendingSelection()
+              clearQuickSelection()
+              setScanState('idle')
+              setMessage('')
+              setError('')
             }}
-            disabled={!staffQuickEnabled}
+            disabled={!staffQuickEnabled || scanState === 'processing' || quickWriting}
             className={`student-pill-button flex-1 ${
               tab === 'quick' ? 'student-pill-primary' : 'student-pill-secondary'
             } disabled:cursor-not-allowed disabled:opacity-40`}
@@ -1055,7 +1089,7 @@ export default function StaffScanPage() {
 
       {tab === 'qr' ? (
         <QrDistributionPanel
-          staffScanEnabled={staffScanEnabled}
+          staffScanEnabled={staffScanEnabled && courseReady}
           scanState={scanState}
           overlay={overlay}
           lastStudentName={lastStudentName}
@@ -1063,14 +1097,17 @@ export default function StaffScanPage() {
           selectOptions={selectOptions}
           containerRef={containerRef}
           onRestartScanner={() => {
+            if (qrRequestRef.current !== null) return
+            clearPendingSelection()
+            setMessage('')
             setError('')
             void stopScanner().then(() => startScanner())
           }}
           onDistributeMaterial={(materialId) => {
-            void handleDistributeOne(materialId)
+            void handleQrDistribute(materialId)
           }}
           onDistributeAllMaterials={() => {
-            void handleDistributeAllSelected()
+            void handleQrDistribute()
           }}
           onCancelSelection={handleCancelSelection}
         />
@@ -1078,19 +1115,26 @@ export default function StaffScanPage() {
         <QuickDistributionPanel
           quickPhone={quickPhone}
           quickStudentName={quickStudentName}
-          quickLoading={quickLoading}
+          quickLoading={quickLoading || !courseReady}
+          quickWriting={quickWriting}
           quickMaterials={quickMaterials}
           selectedMaterialId={selectedMaterialId}
           selectedCourseName={selectedCourseName}
           onQuickPhoneChange={(nextPhone) => {
+            if (quickRequestRef.current?.writing) return
             setQuickPhone(nextPhone)
-            setQuickStudentName('')
-            setQuickMaterials([])
-            setSelectedMaterialId(null)
+            clearQuickSelection()
+            setMessage('')
+            setError('')
           }}
-          onSelectedMaterialChange={setSelectedMaterialId}
-          onSubmit={() => {
-            void handleQuickDistribute()
+          onSelectedMaterialChange={(materialId) => {
+            if (!quickRequestRef.current?.writing) setSelectedMaterialId(materialId)
+          }}
+          onLookup={() => {
+            void handleQuickDistribute(false)
+          }}
+          onDistribute={() => {
+            void handleQuickDistribute(true)
           }}
         />
       )}

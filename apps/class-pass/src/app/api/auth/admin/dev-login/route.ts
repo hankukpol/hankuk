@@ -19,7 +19,7 @@ function isDevEnabled() {
 
 export async function POST(req: NextRequest) {
   if (!isDevEnabled()) {
-    return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+    return NextResponse.json({ error: '요청한 경로를 찾을 수 없습니다.' }, { status: 404 })
   }
 
   const formData = await req.formData().catch(() => null)

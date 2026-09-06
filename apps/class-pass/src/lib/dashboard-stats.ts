@@ -27,7 +27,7 @@ type DashboardEnrollmentRow = {
   student_id: number | null
   name: string
   phone: string
-  status: 'active' | 'refunded'
+  status: 'active' | 'refunded' | 'cancelled'
   suspended_at: string | null
 }
 
@@ -293,6 +293,7 @@ export async function getDashboardStats(division: TenantType): Promise<Dashboard
   let suspendedEnrollmentCount = 0
 
   for (const enrollment of enrollments) {
+    if (enrollment.status === 'cancelled') continue
     const current = enrollmentCountMap.get(enrollment.course_id) ?? { active: 0, refunded: 0, suspended: 0 }
     if (enrollment.status === 'refunded') {
       current.refunded += 1

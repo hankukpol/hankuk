@@ -81,6 +81,8 @@ function isPublicApiRoute(pathname: string, method: string) {
   return (
     pathname === '/api/enrollments/lookup'
     || pathname === '/api/enrollments/pass'
+    // Student session validation is performed by the route, not by administrator auth.
+    || pathname === '/api/enrollments/archived-pass'
     || pathname === '/api/presence/exception-request'
     || /^\/api\/enrollments\/\d+\/receipts$/.test(pathname)
     || (pathname === '/api/config/app' && method === 'GET')
@@ -131,11 +133,21 @@ export async function middleware(req: NextRequest) {
   const currentPathname = req.nextUrl.pathname
   const originalPathname = currentPathname
 
-  if (originalPathname.startsWith('/_next') || PUBLIC_FILE.test(originalPathname)) {
-    return NextResponse.next()
+  const divisionFromPath = parseTenantTypeFromPathname(currentPathname)
+  const pathname = divisionFromPath ? stripTenantPrefix(currentPathname) : currentPathname
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.delete(TENANT_HEADER)
+  requestHeaders.delete('x-hankuk-original-pathname')
+  requestHeaders.delete(VERIFIED_ADMIN_HEADER)
+  requestHeaders.delete(VERIFIED_STAFF_HEADER)
+  requestHeaders.delete(VERIFIED_SUPER_ADMIN_HEADER)
+
+  // A file-like suffix must never exempt an API from authentication.
+  const isApiPath = pathname === '/api' || pathname.startsWith('/api/')
+  if (!isApiPath && (originalPathname.startsWith('/_next') || PUBLIC_FILE.test(originalPathname))) {
+    return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
-  const divisionFromPath = parseTenantTypeFromPathname(currentPathname)
   const divisionCookie = req.cookies.get(TENANT_COOKIE)?.value
   const hostname = req.headers.get('host') ?? req.nextUrl.hostname
   const divisionFromHostname = inferTenantFromHostname(hostname)
@@ -145,15 +157,8 @@ export async function middleware(req: NextRequest) {
     ?? normalizeTenantType(divisionCookie)
     ?? DEFAULT_TENANT_TYPE
 
-  const pathname = divisionFromPath ? stripTenantPrefix(currentPathname) : currentPathname
-  const requestHeaders = new Headers(req.headers)
-  requestHeaders.delete(TENANT_HEADER)
-  requestHeaders.delete('x-hankuk-original-pathname')
   requestHeaders.set(TENANT_HEADER, division)
   requestHeaders.set('x-hankuk-original-pathname', originalPathname)
-  requestHeaders.delete(VERIFIED_ADMIN_HEADER)
-  requestHeaders.delete(VERIFIED_STAFF_HEADER)
-  requestHeaders.delete(VERIFIED_SUPER_ADMIN_HEADER)
 
   if (
     !divisionFromPath
@@ -258,5 +263,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.[^/]+$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico$).*)'],
 }

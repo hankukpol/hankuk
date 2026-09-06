@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireStudentSession } from '@/lib/auth/student-session'
 import { z } from 'zod'
 import { handleRouteError } from '@/lib/api/error-response'
 import { verifyStudentSeatAccess } from '@/lib/designated-seat/service'
@@ -47,6 +48,9 @@ const EVENT_DEDUPE_WINDOW_MS = 30_000
 
 export async function POST(req: NextRequest) {
   try {
+    const studentSession = await requireStudentSession(req)
+    if (studentSession instanceof NextResponse) return studentSession
+
     const body = await req.json().catch(() => null)
     const parsed = schema.safeParse(body)
     if (!parsed.success) {
@@ -60,6 +64,7 @@ export async function POST(req: NextRequest) {
     const access = await verifyStudentSeatAccess({
       courseId: parsed.data.courseId,
       enrollmentId: parsed.data.enrollmentId,
+      studentId: studentSession.studentId,
       name: parsed.data.name,
       phone: parsed.data.phone,
       division,

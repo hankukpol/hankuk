@@ -6,6 +6,7 @@ import {
   findEnrollmentForQuickDistribution,
   getCourseById,
 } from '@/lib/class-pass-data'
+import { getDistributionFailureDetails } from '@/lib/distribution/reason-messages'
 import {
   distributeMaterialsToEnrollment,
   resolvePendingDistributionSelection,
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
       courseId: course.id,
       materialId: parsed.data.materialId,
       materialIds: parsed.data.materialIds,
+      requireExplicitSelection: parsed.data.materialId == null && (parsed.data.materialIds?.length ?? 0) === 0,
     })
 
     if (selection.kind === 'all_received') {
@@ -87,15 +89,13 @@ export async function POST(req: NextRequest) {
     })
 
     if (distribution.kind === 'failed' || distribution.kind === 'partial') {
-      if (distribution.reason === 'NOT_ASSIGNED') {
-        return NextResponse.json({ error: '해당 수강생에게 배정되지 않은 교재입니다.' }, { status: 400 })
-      }
-
+      const failure = getDistributionFailureDetails(distribution.reason)
       return NextResponse.json(
         {
-          error: distribution.reason === 'DISTRIBUTION_FAILED'
-            ? '자료 배부 처리에 실패했습니다.'
-            : distribution.reason,
+          refreshRequired: distribution.refreshRequired,
+          warning: distribution.warning,
+          error: failure.error,
+          reason: failure.reason,
           distributed_materials: distribution.kind === 'partial'
             ? distribution.materials.map((material) => ({
               id: material.id,
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
             }))
             : [],
         },
-        { status: distribution.reason === 'DISTRIBUTION_FAILED' ? 500 : 400 },
+        { status: failure.status },
       )
     }
 
@@ -112,6 +112,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      refreshRequired: distribution.refreshRequired,
+      warning: distribution.warning,
       student_name: distribution.studentName,
       material_name: distribution.materials.length === 1 ? firstMaterial?.name : `${distribution.materials.length}건`,
       material_type: distribution.materials.length === 1 ? firstMaterial?.materialType : undefined,

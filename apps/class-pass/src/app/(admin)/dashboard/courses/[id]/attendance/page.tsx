@@ -1,11 +1,13 @@
 'use client'
 
+import { AdminPagination as PaginationControls } from "@/components/admin/AdminPagination"
+import { getUserErrorMessage } from '@/lib/user-error-message'
+import { AdminSectionTabs, AdminSectionPanel } from '@/components/admin/AdminSectionTabs'
+
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import { useTenantConfig } from '@/components/TenantProvider'
-import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import type { Course, CourseSubject, Enrollment } from '@/types/database'
 import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
@@ -208,9 +210,9 @@ function StatCard(props: {
   valueClassName?: string
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+    <article className="border border-slate-200 bg-white">
       <p className="text-xs font-semibold text-slate-500">{props.label}</p>
-      <p className={`mt-2 text-3xl font-extrabold ${props.valueClassName ?? 'text-slate-900'}`}>
+      <p className={`mt-1 font-extrabold ${props.valueClassName ?? 'text-slate-900'}`}>
         {props.value}
       </p>
       {props.hint ? <p className="mt-1 text-xs text-slate-400">{props.hint}</p> : null}
@@ -224,17 +226,13 @@ function TabButton(props: {
   count: number
   onClick: () => void
 }) {
-  const motionConfig = useMotionConfig()
-
   return (
     <button
       type="button"
       onClick={props.onClick}
-      className={`relative -mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
-        props.active
-          ? 'text-[#1d1d1f]'
-          : 'text-slate-500 hover:text-[#1d1d1f]'
-      }`}
+      className="admin-choice-button"
+      data-active={props.active}
+      aria-pressed={props.active}
     >
       <span>{props.label}</span>
       <span
@@ -244,13 +242,6 @@ function TabButton(props: {
       >
         {props.count}
       </span>
-      {props.active ? (
-        <motion.div
-          layoutId="attendance-tabs"
-          className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
-          transition={motionConfig.tab}
-        />
-      ) : null}
     </button>
   )
 }
@@ -346,7 +337,6 @@ function AbsenceDetailModal(props: {
     <SeatEditModal
       open={props.state.open}
       title="연속 결석 상세"
-      badge="Attendance"
       description={target
         ? `${target.studentName} 학생의 연속 결석으로 계산된 날짜를 확인합니다.`
         : undefined}
@@ -396,9 +386,9 @@ function AbsenceDetailModal(props: {
             결석 날짜를 불러오는 중입니다.
           </div>
         ) : props.state.error ? (
-          <div className="rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {props.state.error}
-          </div>
+          <p className="admin-notice admin-notice-danger">
+            {getUserErrorMessage(props.state.error)}
+          </p>
         ) : (
           <div className="overflow-hidden rounded-[8px] border border-[#d2d2d7] bg-white">
             <div className="border-b border-[#d2d2d7] bg-[#f5f5f7] px-4 py-3">
@@ -436,58 +426,6 @@ function AbsenceDetailModal(props: {
         )}
       </div>
     </SeatEditModal>
-  )
-}
-
-function PaginationControls(props: {
-  currentPage: number
-  pageCount: number
-  pageSize: number
-  totalCount: number
-  onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
-}) {
-  const start = props.totalCount === 0 ? 0 : ((props.currentPage - 1) * props.pageSize) + 1
-  const end = Math.min(props.currentPage * props.pageSize, props.totalCount)
-
-  return (
-    <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3 text-sm text-slate-500">
-        <span>
-          {start}-{end} / {props.totalCount}
-        </span>
-        <select
-          value={props.pageSize}
-          onChange={(event) => props.onPageSizeChange(Number(event.target.value))}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none"
-        >
-          <option value={20}>20개</option>
-          <option value={50}>50개</option>
-          <option value={100}>100개</option>
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => props.onPageChange(props.currentPage - 1)}
-          disabled={props.currentPage <= 1}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
-        >
-          이전
-        </button>
-        <span className="text-sm font-medium text-slate-600">
-          {props.currentPage} / {props.pageCount}
-        </span>
-        <button
-          type="button"
-          onClick={() => props.onPageChange(props.currentPage + 1)}
-          disabled={props.currentPage >= props.pageCount}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
-        >
-          다음
-        </button>
-      </div>
-    </div>
   )
 }
 
@@ -533,6 +471,20 @@ export default function AdminAttendancePage() {
   const [excusesRefreshKey, setExcusesRefreshKey] = useState(0)
   const courseLoadedRef = useRef(false)
   const studentsLoadedRef = useRef(false)
+  const queryKey = `${courseId}:${date}:${selectedSubjectId}`
+  const currentQueryRef = useRef(queryKey)
+  currentQueryRef.current = queryKey
+  const requestRef = useRef({ generation: 0, queryKey: '', controller: null as AbortController | null })
+  const mutationRef = useRef(false)
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null)
+  const staleData = loadedQueryKey !== queryKey
+  const writesDisabled = working || staleData
+
+  function invalidateReads() {
+    requestRef.current.generation++
+    requestRef.current.controller?.abort()
+    setLoadedQueryKey(null)
+  }
 
   useEffect(() => {
     courseLoadedRef.current = false
@@ -560,119 +512,142 @@ export default function AdminAttendancePage() {
     setStopAttendanceConfirmOpen(false)
   }, [courseId])
 
-  const loadData = useCallback(async () => {
-    const dashboardQuery = new URLSearchParams({
-      courseId: String(courseId),
-      date,
-    })
-    const reportQuery = new URLSearchParams({
-      courseId: String(courseId),
-      threshold: '2',
-    })
-    const excuseQuery = new URLSearchParams({
-      courseId: String(courseId),
-      fromDate: date,
-      toDate: date,
-    })
+  const loadData = useCallback(async (options: { afterMutation?: boolean; passive?: boolean } = {}) => {
+    if (mutationRef.current && !options.afterMutation) return
+    // Passive triggers must not repeatedly cancel a slow same-filter batch.
+    if (options.passive && requestRef.current.queryKey === queryKey
+      && requestRef.current.controller && !requestRef.current.controller.signal.aborted) return
+    const generation = ++requestRef.current.generation
+    requestRef.current.controller?.abort()
+    const controller = new AbortController()
+    requestRef.current.controller = controller
+    requestRef.current.queryKey = queryKey
+    const isCurrent = () => !controller.signal.aborted
+      && generation === requestRef.current.generation && currentQueryRef.current === queryKey
+    const requestOptions = { cache: 'no-store' as const, signal: controller.signal }
+    try {
+      const dashboardQuery = new URLSearchParams({
+        courseId: String(courseId),
+        date,
+      })
+      const reportQuery = new URLSearchParams({
+        courseId: String(courseId),
+        threshold: '2',
+      })
+      const excuseQuery = new URLSearchParams({
+        courseId: String(courseId),
+        fromDate: date,
+        toDate: date,
+      })
 
-    if (selectedSubjectId) {
-      dashboardQuery.set('subjectId', selectedSubjectId)
-      reportQuery.set('subjectId', selectedSubjectId)
+      if (selectedSubjectId) {
+        dashboardQuery.set('subjectId', selectedSubjectId)
+        reportQuery.set('subjectId', selectedSubjectId)
+      }
+
+      const [courseResponse, studentsResponse, subjectsResponse, dashboardResponse, reportResponse, excusesResponse] = await Promise.all([
+        courseLoadedRef.current
+          ? Promise.resolve(null)
+          : fetch(`/api/courses/${courseId}`, requestOptions),
+        studentsLoadedRef.current
+          ? Promise.resolve(null)
+          : fetch(`/api/courses/${courseId}/bootstrap?view=students`, requestOptions),
+        fetch(`/api/courses/${courseId}/subjects`, requestOptions),
+        fetch(`/api/attendance/admin/dashboard?${dashboardQuery.toString()}`, requestOptions),
+        fetch(`/api/attendance/admin/absence-report?${reportQuery.toString()}`, requestOptions),
+        fetch(`/api/attendance/admin/excuses?${excuseQuery.toString()}`, requestOptions),
+      ])
+
+      const coursePayload = courseResponse ? await readJson<{ course?: Course; error?: string }>(courseResponse) : null
+      const studentsPayload = studentsResponse
+        ? await readJson<{ enrollments?: Enrollment[]; course?: Course; error?: string }>(studentsResponse)
+        : null
+      const subjectsPayload = await readJson<{ subjects?: CourseSubject[]; error?: string }>(subjectsResponse)
+      const dashboardPayload = await readJson<DashboardPayload & { error?: string }>(dashboardResponse)
+      const reportPayload = await readJson<AbsenceReportPayload & { error?: string }>(reportResponse)
+      const excusesPayload = await readJson<{ excuses?: AttendanceExcuseRecord[]; error?: string }>(excusesResponse)
+
+      if (courseResponse && !courseResponse.ok) {
+        throw new Error(coursePayload?.error ?? '강의 정보를 불러오지 못했습니다.')
+      }
+
+      if (studentsResponse && !studentsResponse.ok) {
+        throw new Error(studentsPayload?.error ?? '학생 목록을 불러오지 못했습니다.')
+      }
+
+      if (!dashboardResponse.ok) {
+        throw new Error(dashboardPayload?.error ?? '출석 현황을 불러오지 못했습니다.')
+      }
+
+      if (!subjectsResponse.ok) {
+        throw new Error(subjectsPayload?.error ?? '과목 정보를 불러오지 못했습니다.')
+      }
+
+      if (!reportResponse.ok) {
+        throw new Error(reportPayload?.error ?? '결석 경고 정보를 불러오지 못했습니다.')
+      }
+
+      if (!excusesResponse.ok) {
+        throw new Error(excusesPayload?.error ?? '사유서 정보를 불러오지 못했습니다.')
+      }
+
+      if (!dashboardPayload || !reportPayload || !subjectsPayload || !excusesPayload
+        || (courseResponse && !coursePayload?.course) || (studentsResponse && !studentsPayload?.enrollments)) {
+        throw new Error('출석 조회 응답을 확인하지 못했습니다. 다시 조회해 주세요.')
+      }
+      // Commit the complete batch only while both the filter and generation match.
+      if (!isCurrent()) return
+
+      if (coursePayload?.course) {
+        setCourse(coursePayload.course)
+        courseLoadedRef.current = true
+      }
+
+      if (studentsPayload?.course && !courseLoadedRef.current) {
+        setCourse(studentsPayload.course)
+        courseLoadedRef.current = true
+      }
+
+      if (studentsPayload?.enrollments) {
+        setStudentOptions(
+          studentsPayload.enrollments
+            .filter((enrollment) => enrollment.status === 'active')
+            .map((enrollment) => ({
+              id: enrollment.id,
+              name: enrollment.name,
+              examNumber: enrollment.exam_number,
+              phone: enrollment.phone,
+            })),
+        )
+        studentsLoadedRef.current = true
+      }
+
+      setSubjects(subjectsPayload?.subjects ?? [])
+      setDashboard(dashboardPayload as DashboardPayload)
+      setAbsenceReport(reportPayload as AbsenceReportPayload)
+      setDailyExcuses(excusesPayload?.excuses ?? [])
+      setLoadedQueryKey(queryKey)
+      setError('')
+    } catch (reason) {
+      if (isCurrent()) {
+        setLoadedQueryKey(null)
+        setError(reason instanceof Error ? reason.message : '출석 정보를 불러오지 못했습니다.')
+      }
+    } finally {
+      if (isCurrent()) {
+        requestRef.current.controller = null
+        setLoading(false)
+      }
     }
-
-    const [courseResponse, studentsResponse, subjectsResponse, dashboardResponse, reportResponse, excusesResponse] = await Promise.all([
-      courseLoadedRef.current
-        ? Promise.resolve(null)
-        : fetch(`/api/courses/${courseId}`, { cache: 'no-store' }),
-      studentsLoadedRef.current
-        ? Promise.resolve(null)
-        : fetch(`/api/courses/${courseId}/bootstrap?view=students`, { cache: 'no-store' }),
-      fetch(`/api/courses/${courseId}/subjects`, { cache: 'no-store' }),
-      fetch(`/api/attendance/admin/dashboard?${dashboardQuery.toString()}`, { cache: 'no-store' }),
-      fetch(`/api/attendance/admin/absence-report?${reportQuery.toString()}`, { cache: 'no-store' }),
-      fetch(`/api/attendance/admin/excuses?${excuseQuery.toString()}`, { cache: 'no-store' }),
-    ])
-
-    const coursePayload = courseResponse ? await readJson<{ course?: Course; error?: string }>(courseResponse) : null
-    const studentsPayload = studentsResponse
-      ? await readJson<{ enrollments?: Enrollment[]; course?: Course; error?: string }>(studentsResponse)
-      : null
-    const subjectsPayload = await readJson<{ subjects?: CourseSubject[]; error?: string }>(subjectsResponse)
-    const dashboardPayload = await readJson<DashboardPayload & { error?: string }>(dashboardResponse)
-    const reportPayload = await readJson<AbsenceReportPayload & { error?: string }>(reportResponse)
-    const excusesPayload = await readJson<{ excuses?: AttendanceExcuseRecord[]; error?: string }>(excusesResponse)
-
-    if (courseResponse && !courseResponse.ok) {
-      throw new Error(coursePayload?.error ?? '강의 정보를 불러오지 못했습니다.')
-    }
-
-    if (studentsResponse && !studentsResponse.ok) {
-      throw new Error(studentsPayload?.error ?? '학생 목록을 불러오지 못했습니다.')
-    }
-
-    if (!dashboardResponse.ok) {
-      throw new Error(dashboardPayload?.error ?? '출석 현황을 불러오지 못했습니다.')
-    }
-
-    if (!subjectsResponse.ok) {
-      throw new Error(subjectsPayload?.error ?? '과목 정보를 불러오지 못했습니다.')
-    }
-
-    if (!reportResponse.ok) {
-      throw new Error(reportPayload?.error ?? '결석 경고 정보를 불러오지 못했습니다.')
-    }
-
-    if (!excusesResponse.ok) {
-      throw new Error(excusesPayload?.error ?? '사유서 정보를 불러오지 못했습니다.')
-    }
-
-    if (coursePayload?.course) {
-      setCourse(coursePayload.course)
-      courseLoadedRef.current = true
-    }
-
-    if (studentsPayload?.course && !courseLoadedRef.current) {
-      setCourse(studentsPayload.course)
-      courseLoadedRef.current = true
-    }
-
-    if (studentsPayload?.enrollments) {
-      setStudentOptions(
-        studentsPayload.enrollments
-          .filter((enrollment) => enrollment.status === 'active')
-          .map((enrollment) => ({
-            id: enrollment.id,
-            name: enrollment.name,
-            examNumber: enrollment.exam_number,
-            phone: enrollment.phone,
-          })),
-      )
-      studentsLoadedRef.current = true
-    }
-
-    setSubjects(subjectsPayload?.subjects ?? [])
-    setDashboard(dashboardPayload as DashboardPayload)
-    setAbsenceReport(reportPayload as AbsenceReportPayload)
-    setDailyExcuses(excusesPayload?.excuses ?? [])
-  }, [courseId, date, selectedSubjectId])
+  }, [courseId, date, selectedSubjectId, queryKey])
 
   useEffect(() => {
-    let cancelled = false
-
-    loadData()
-      .catch((reason: unknown) => {
-        if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : '출석 정보를 불러오지 못했습니다.')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
+    setOverrideConfirmation(null)
+    void loadData()
 
     return () => {
-      cancelled = true
+      requestRef.current.generation++
+      requestRef.current.controller?.abort()
     }
   }, [loadData])
 
@@ -683,7 +658,7 @@ export default function AdminAttendancePage() {
 
     const reload = () => {
       if (document.visibilityState === 'visible') {
-        void loadData().catch(() => null)
+        void loadData({ passive: true }).catch(() => null)
       }
     }
 
@@ -697,7 +672,7 @@ export default function AdminAttendancePage() {
   }, [dashboard?.displaySession.isActive, loadData])
 
   useEffect(() => {
-    if (selectedSubjectId || !dashboard || subjects.length === 0) {
+    if (staleData || selectedSubjectId || !dashboard || subjects.length === 0) {
       return
     }
 
@@ -711,7 +686,7 @@ export default function AdminAttendancePage() {
     if (autoSubjectId != null) {
       setSelectedSubjectId(String(autoSubjectId))
     }
-  }, [dashboard, date, selectedSubjectId, subjects.length])
+  }, [dashboard, date, selectedSubjectId, subjects.length, staleData])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -857,59 +832,76 @@ export default function AdminAttendancePage() {
   const latestRecentRecord = dashboard?.recentRecords[0] ?? null
 
   async function handleStart() {
+    if (mutationRef.current || staleData) return
     if (startBlockedBySubjectSelection) {
       setError('과목이 있는 강좌는 과목을 선택한 뒤 출석을 시작할 수 있습니다.')
       setMessage('')
       return
     }
 
+    mutationRef.current = true
+    invalidateReads()
     setWorking(true)
     setError('')
     setMessage('')
+    let failure = ''
+    try {
+      const response = await fetch('/api/attendance/admin/display', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          durationMinutes,
+          subjectId: selectedSubjectId ? Number(selectedSubjectId) : null,
+        }),
+      })
+      const payload = await readJson<{ displayUrl?: string; error?: string }>(response)
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? '출석 세션 시작 응답을 확인하지 못했습니다.')
+      }
 
-    const response = await fetch('/api/attendance/admin/display', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId,
-        durationMinutes,
-        subjectId: selectedSubjectId ? Number(selectedSubjectId) : null,
-      }),
-    })
-    const payload = await readJson<{ displayUrl?: string; error?: string }>(response)
-    setWorking(false)
-
-    if (!response.ok) {
-      setError(payload?.error ?? '출석 세션을 시작하지 못했습니다.')
-      return
+      setDisplayUrl(payload?.displayUrl ?? '')
+      setMessage(selectedSubjectName ? `${selectedSubjectName} 출석 세션을 시작했습니다.` : '출석 세션을 시작했습니다.')
+    } catch (reason) {
+      failure = reason instanceof Error ? reason.message : '출석 세션 시작 응답을 확인하지 못했습니다.'
+    } finally {
+      await loadData({ afterMutation: true })
+      if (failure) setError(failure)
+      mutationRef.current = false
+      setWorking(false)
     }
-
-    setDisplayUrl(payload?.displayUrl ?? '')
-    setMessage(selectedSubjectName ? `${selectedSubjectName} 출석 세션을 시작했습니다.` : '출석 세션을 시작했습니다.')
-    await loadData().catch(() => null)
   }
 
   async function handleStop() {
+    if (mutationRef.current || staleData) return
+    mutationRef.current = true
+    invalidateReads()
     setWorking(true)
     setError('')
     setMessage('')
 
-    const response = await fetch('/api/attendance/admin/display', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId }),
-    })
-    const payload = await readJson<{ error?: string }>(response)
-    setWorking(false)
+    let failure = ''
+    try {
+      const response = await fetch('/api/attendance/admin/display', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId }),
+      })
+      const payload = await readJson<{ error?: string }>(response)
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? '출석 세션 종료 응답을 확인하지 못했습니다.')
+      }
 
-    if (!response.ok) {
-      setError(payload?.error ?? '출석 세션을 종료하지 못했습니다.')
-      return
+      setDisplayUrl('')
+      setMessage('출석 세션을 종료했습니다.')
+    } catch (reason) {
+      failure = reason instanceof Error ? reason.message : '출석 세션 종료 응답을 확인하지 못했습니다.'
+    } finally {
+      await loadData({ afterMutation: true })
+      if (failure) setError(failure)
+      mutationRef.current = false
+      setWorking(false)
     }
-
-    setDisplayUrl('')
-    setMessage('출석 세션을 종료했습니다.')
-    await loadData().catch(() => null)
   }
 
   async function handleStopConfirmed() {
@@ -918,34 +910,45 @@ export default function AdminAttendancePage() {
   }
 
   async function handleOverride(enrollmentId: number, status: 'present' | 'absent') {
+    if (mutationRef.current || staleData) return
+    mutationRef.current = true
+    invalidateReads()
     setWorking(true)
     setError('')
     setMessage('')
+    let failure = ''
+    try {
+      const response = await fetch('/api/attendance/admin/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          enrollmentId,
+          date,
+          status,
+          subjectId: selectedSubjectId ? Number(selectedSubjectId) : null,
+        }),
+      })
+      const payload = await readJson<{ error?: string }>(response)
 
-    const response = await fetch('/api/attendance/admin/override', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseId,
-        enrollmentId,
-        date,
-        status,
-        subjectId: selectedSubjectId ? Number(selectedSubjectId) : null,
-      }),
-    })
-    const payload = await readJson<{ error?: string }>(response)
-    setWorking(false)
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? '수동 출석 처리 응답을 확인하지 못했습니다.')
+      }
 
-    if (!response.ok) {
-      setError(payload?.error ?? '수동 출석 처리에 실패했습니다.')
-      return
+      setMessage(status === 'present' ? '수동 출석 처리했습니다.' : '결석 처리했습니다.')
+    } catch (reason) {
+      failure = reason instanceof Error ? reason.message : '수동 출석 처리 응답을 확인하지 못했습니다.'
+      setMessage('처리 응답을 확인하지 못해 출석 현황을 다시 조회합니다.')
+    } finally {
+      await loadData({ afterMutation: true })
+      if (failure) setError(failure)
+      mutationRef.current = false
+      setWorking(false)
     }
-
-    setMessage(status === 'present' ? '수동 출석 처리했습니다.' : '결석 처리했습니다.')
-    await loadData().catch(() => null)
   }
 
   function requestOverrideConfirmation(params: OverrideConfirmationState) {
+    if (mutationRef.current || staleData) return
     setOverrideConfirmation(params)
   }
 
@@ -1024,6 +1027,7 @@ export default function AdminAttendancePage() {
     subjectId?: number | null
     date?: string
   }) {
+    if (mutationRef.current || staleData) return
     if (subjects.length === 0) {
       setError('사유서를 등록할 과목이 없습니다.')
       setMessage('')
@@ -1055,6 +1059,7 @@ export default function AdminAttendancePage() {
   }
 
   function openEditExcuseModal(excuse: AttendanceExcuseRecord) {
+    if (mutationRef.current || staleData) return
     setExcuseModalState({
       open: true,
       editingExcuse: excuse,
@@ -1087,7 +1092,10 @@ export default function AdminAttendancePage() {
   }
 
   if (!course || !dashboard) {
-    return <p className="py-12 text-center text-sm text-red-500">{error || '출석 정보를 찾을 수 없습니다.'}</p>
+    return <div className="py-12 text-center">
+      <p className="text-sm text-red-500">{getUserErrorMessage(error || '출석 정보를 찾을 수 없습니다.')}</p>
+      <button type="button" className="admin-button mt-3" onClick={() => void loadData()}>새로고침</button>
+    </div>
   }
 
   if (!course.feature_attendance) {
@@ -1095,7 +1103,7 @@ export default function AdminAttendancePage() {
       <div className="flex flex-col gap-4 rounded-2xl bg-white p-6 shadow-sm">
         <p className="text-sm text-gray-500">이 강의는 출석 체크 기능이 비활성화되어 있습니다.</p>
         <Link
-          href={withTenantPrefix(`/dashboard/courses/${courseId}`, tenant.type)}
+          href={withTenantPrefix(`/dashboard/courses/${courseId}/settings`, tenant.type)}
           className="inline-flex w-fit rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97]"
         >
           강의 설정으로 이동
@@ -1106,6 +1114,21 @@ export default function AdminAttendancePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-end gap-3" role="status">
+        {staleData ? <p className="text-sm text-slate-600">선택한 날짜·과목의 현황을 확인하기 전에는 수동 변경할 수 없습니다.</p> : null}
+        <button type="button" className="admin-button" disabled={working} onClick={() => void loadData()}>새로고침</button>
+      </div>
+      {(error || message) ? (
+        <div role="status">
+          {error ? <p className="text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
+          {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+        </div>
+      ) : null}
+      <AdminSectionTabs label="출결 세부 메뉴" items={[
+        { value: 'records', label: '출석 명단·결석 관리' },
+        { value: 'session', label: '출석 시작·화면 운영' },
+      ]}>
+      <AdminSectionPanel value="session">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
         <div className="flex flex-wrap justify-end gap-2">
           {false ? (
@@ -1116,16 +1139,14 @@ export default function AdminAttendancePage() {
             >
               &larr; {course!.name}
             </Link>
-            <h2 className="mt-2 text-2xl font-extrabold text-gray-900">출석 관리</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-500">
-              교실 화면 코드 기반 출석과 결석 누적 현황을 한곳에서 관리합니다.
-            </p>
+            <h2 className="admin-page-title mt-2">출석 관리</h2>
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {subjects.length > 0 ? (
               <select
                 value={selectedSubjectId}
+                disabled={working}
                 onChange={(event) => setSelectedSubjectId(event.target.value)}
                 className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none"
               >
@@ -1153,7 +1174,7 @@ export default function AdminAttendancePage() {
             <button
               type="button"
               onClick={() => void handleStart()}
-              disabled={working || startBlockedBySubjectSelection}
+              disabled={writesDisabled || startBlockedBySubjectSelection}
               className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 ease-ios hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
             >
               출석 시작
@@ -1161,7 +1182,7 @@ export default function AdminAttendancePage() {
             <button
               type="button"
               onClick={() => setStopAttendanceConfirmOpen(true)}
-              disabled={working || !dashboard.displaySession.isActive}
+              disabled={writesDisabled || !dashboard.displaySession.isActive}
               className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
             >
               출석 종료
@@ -1169,28 +1190,13 @@ export default function AdminAttendancePage() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-4">
-          <p className="text-sm font-semibold text-sky-900">운영 가이드</p>
-          <div className="mt-2 space-y-1 text-sm text-sky-800">
-            <p>1. 과목이 있는 강좌는 먼저 과목을 선택합니다.</p>
-            <p>2. 과목을 선택한 뒤 출석 시작을 눌러 교실 화면을 엽니다.</p>
-            <p>3. 수업이 끝나면 출석 종료 후 다음 과목으로 다시 시작합니다.</p>
-          </div>
-          {requiresSubjectSelection ? (
-            <p className="mt-3 text-xs font-medium text-sky-700">
-              과목형 출석에서는 선택한 과목의 좌석이 있는 학생만 출석 대상에 포함됩니다.
-            </p>
-          ) : null}
-        </div>
-
-        {(error || message) ? (
-          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
-            {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
-          </div>
+        {requiresSubjectSelection ? (
+          <p className="admin-notice admin-notice-info mt-4">
+            과목형 출석에서는 선택한 과목의 좌석이 있는 학생만 출석 대상에 포함됩니다.
+          </p>
         ) : null}
 
-        <div className="mt-5 grid gap-4 md:grid-cols-4">
+        <div className="admin-metric-strip mt-5">
           <StatCard label="출석 대상" value={dashboard.totalEnrolled} />
           <StatCard label="출석" value={dashboard.presentCount} valueClassName="text-emerald-600" />
           <StatCard label="결석" value={dashboard.absentCount} valueClassName="text-rose-600" />
@@ -1275,14 +1281,13 @@ export default function AdminAttendancePage() {
           </div>
         ) : null}
       </section>
+      </AdminSectionPanel>
 
+      <AdminSectionPanel value="records">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h3 className="text-lg font-extrabold text-slate-900">출석 대상 관리</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              전체 대상, 출석자, 결석자, 연속 결석 경고를 분리해 필요한 학생만 빠르게 확인할 수 있습니다.
-            </p>
+            <h3 className="admin-section-title">출석 대상 관리</h3>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[640px] xl:grid-cols-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -1312,7 +1317,7 @@ export default function AdminAttendancePage() {
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="admin-choice-group mt-5" role="group" aria-label="출결 명단 필터">
           <TabButton
             active={activeTab === 'targets'}
             label="전체 대상"
@@ -1346,7 +1351,7 @@ export default function AdminAttendancePage() {
         </div>
 
         {activeTab !== 'excuses' ? (
-          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="admin-table-toolbar mt-4 flex flex-col gap-3 py-4">
             <div className="flex flex-col gap-2">
               <p className="text-sm font-semibold text-slate-800">
                 {activeTab === 'targets'
@@ -1369,7 +1374,8 @@ export default function AdminAttendancePage() {
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <input
-                type="text"
+                type="search"
+                aria-label="출석 명단 검색"
                 value={attendanceSearch}
                 onChange={(event) => setAttendanceSearch(event.target.value)}
                 placeholder={
@@ -1377,12 +1383,13 @@ export default function AdminAttendancePage() {
                     ? '이름, 수험번호, 좌석번호, 과목 검색'
                     : '이름, 연락처, 수험번호, 좌석번호 검색'
                 }
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400 sm:w-80"
+                className="admin-students-search rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
               />
               <input
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
+                disabled={working}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none"
               />
             </div>
@@ -1396,12 +1403,12 @@ export default function AdminAttendancePage() {
         ) : null}
 
         {isBeforeAttendanceStartForSelectedDate ? (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="admin-notice admin-notice-warning mt-4">
             수강 시작일 {dashboard.attendanceStartDate} 이전 날짜에서는 결석 집계와 출석 대상 목록을 표시하지 않습니다.
-          </div>
+          </p>
         ) : null}
 
-        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+        <div className="admin-table-frame mt-5 overflow-hidden border border-slate-200">
           {activeTab === 'targets' ? (
             <>
               <div className="overflow-x-auto">
@@ -1475,7 +1482,7 @@ export default function AdminAttendancePage() {
 
                                 void handleOverride(row.enrollmentId, nextStatus)
                               }}
-                              disabled={working}
+                              disabled={writesDisabled}
                               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 ease-ios active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 ${
                                 row.status === 'present'
                                   ? 'bg-slate-100 text-slate-700'
@@ -1544,7 +1551,7 @@ export default function AdminAttendancePage() {
                                   status: 'absent',
                                 })
                               }}
-                              disabled={working}
+                              disabled={writesDisabled}
                               className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100"
                             >
                               결석 처리
@@ -1625,14 +1632,14 @@ export default function AdminAttendancePage() {
                               <button
                                 type="button"
                                 onClick={() => void handleOverride(row.enrollmentId, 'present')}
-                                disabled={working}
+                                disabled={writesDisabled}
                                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
                               >
                                 출석 처리
                               </button>
                               <ExcuseActionButton
                                 excuse={existingExcuse}
-                                disabled={working}
+                                disabled={writesDisabled}
                                 onCreate={() => openCreateExcuseModal({
                                   enrollmentId: row.enrollmentId,
                                   subjectId: effectiveSubjectId,
@@ -1734,7 +1741,7 @@ export default function AdminAttendancePage() {
                           <td className="px-4 py-3 align-middle text-center">
                             <ExcuseActionButton
                               excuse={existingExcuse}
-                              disabled={working}
+                              disabled={writesDisabled}
                               onCreate={() => openCreateExcuseModal({
                                 enrollmentId: row.enrollmentId,
                                 subjectId: row.subjectId ?? effectiveSubjectId,
@@ -1785,6 +1792,8 @@ export default function AdminAttendancePage() {
           ) : null}
         </div>
       </section>
+      </AdminSectionPanel>
+      </AdminSectionTabs>
 
       <AbsenceDetailModal
         state={absenceDetailState}

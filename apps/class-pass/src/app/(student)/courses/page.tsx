@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
@@ -11,6 +12,7 @@ import {
   STUDENT_SESSION_PHONE_KEY,
   STUDENT_SESSION_VERIFICATION_KEY,
   clearStudentSession,
+  fetchStudentApi,
   readStudentCourseCache,
   writeStudentCourseCache,
 } from '@/lib/student-session'
@@ -55,7 +57,7 @@ export default function StudentCoursesPage() {
       setLoading(false)
     }
 
-    fetch(withTenantPrefix('/api/enrollments/lookup', tenant.type), {
+    fetchStudentApi(tenant.type, withTenantPrefix('/api/enrollments/lookup', tenant.type), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -97,7 +99,14 @@ export default function StudentCoursesPage() {
     [courses],
   )
 
-  function handleReset() {
+  async function handleReset() {
+    try {
+      const response = await fetchStudentApi(tenant.type, withTenantPrefix('/api/auth/student/logout', tenant.type), { method: 'POST' })
+      if (!response.ok) throw new Error('logout failed')
+    } catch {
+      setError('로그아웃을 완료하지 못했습니다. 다시 시도해 주세요.')
+      return
+    }
     clearStudentSession(sessionStorage)
     router.push(`${withTenantPrefix('/', tenant.type)}?loggedOut=1`)
   }
@@ -128,7 +137,7 @@ export default function StudentCoursesPage() {
       <section className="px-4 pt-4">
         {error ? (
           <div className="student-card px-5 py-6 text-center">
-            <p className="text-[15px] font-medium text-[#c2410c]">{error}</p>
+            <p className="text-[15px] font-medium text-[#c2410c]">{getUserErrorMessage(error)}</p>
             <button
               type="button"
               onClick={handleReset}

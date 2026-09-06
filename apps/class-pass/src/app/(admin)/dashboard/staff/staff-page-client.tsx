@@ -1,7 +1,9 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { AdminDrawer } from '@/components/admin/AdminDrawer'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { StaffAccountSummary } from '@/lib/staff-accounts'
 import { formatDateTime } from '@/lib/utils'
@@ -26,6 +28,7 @@ export default function StaffAccountsPageClient({
   const [editPin, setEditPin] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [deleteTarget, setDeleteTarget] = useState<StaffAccount | null>(null)
@@ -42,21 +45,41 @@ export default function StaffAccountsPageClient({
   }, [initialLoaded])
 
   async function handleCreate(e: FormEvent) {
-    e.preventDefault(); setSaving(true); setError(''); setMessage('')
-    const r = await fetch('/api/staff-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, pin }) })
-    const p = await r.json().catch(() => null); setSaving(false)
-    if (!r.ok) { setError(p?.error ?? '생성 실패'); return }
-    setAccounts((c) => [...c, p.account as StaffAccount]); setName(''); setPin(''); setMessage('직원 등록 완료'); setShowForm(false)
+    e.preventDefault()
+    if (savingRef.current) return
+    savingRef.current = true
+    try {
+      setSaving(true); setError(''); setMessage('')
+      const r = await fetch('/api/staff-accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, pin }) })
+      const p = await r.json().catch(() => null);
+      if (!r.ok) { setError(p?.error ?? '생성 실패'); return }
+      setAccounts((c) => [...c, p.account as StaffAccount]); setName(''); setPin(''); setMessage('직원 등록 완료'); setShowForm(false)
+    } catch (reason) {
+      setError(getUserErrorMessage(reason, '저장하지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.'))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   function startEdit(a: StaffAccount) { setEditingId(a.id); setEditName(a.name); setEditPin(''); setError(''); setMessage('') }
 
   async function handleSaveEdit(e: FormEvent) {
-    e.preventDefault(); if (!editingId) return; setSaving(true); setError(''); setMessage('')
-    const r = await fetch('/api/staff-accounts', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, name: editName || undefined, pin: editPin || undefined }) })
-    const p = await r.json().catch(() => null); setSaving(false)
-    if (!r.ok) { setError(p?.error ?? '수정 실패'); return }
-    const u = p.account as StaffAccount; setAccounts((c) => c.map((x) => (x.id === u.id ? u : x))); setEditingId(null); setMessage('수정 완료')
+    e.preventDefault(); if (!editingId) return
+    if (savingRef.current) return
+    savingRef.current = true
+    try {
+      setSaving(true); setError(''); setMessage('')
+      const r = await fetch('/api/staff-accounts', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, name: editName || undefined, pin: editPin || undefined }) })
+      const p = await r.json().catch(() => null);
+      if (!r.ok) { setError(p?.error ?? '수정 실패'); return }
+      const u = p.account as StaffAccount; setAccounts((c) => c.map((x) => (x.id === u.id ? u : x))); setEditingId(null); setMessage('수정 완료')
+    } catch (reason) {
+      setError(getUserErrorMessage(reason, '저장하지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.'))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   async function handleDeleteConfirmed() {
@@ -94,50 +117,49 @@ export default function StaffAccountsPageClient({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-[#1d1d1f]">직원 로그인 계정 관리</h2>
+          <h2 className="admin-page-title">직원 로그인 계정 관리</h2>
           <p className="mt-1 text-sm text-[#86868b]">{accounts.length}명 등록</p>
         </div>
-        <button type="button" onClick={() => setShowForm((v) => !v)} className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700">
-          {showForm ? '닫기' : '+ 직원 등록'}
+        <button type="button" onClick={() => { setError(''); setMessage(''); setShowForm(true) }} className="admin-button admin-button-primary">
+          + 직원 등록
         </button>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="rounded-[8px] border border-[#d2d2d7] bg-white p-5">
-            <h3 className="text-sm font-bold text-[#1d1d1f]">새 직원 로그인 계정 등록</h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="직원 로그인 ID" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
-              <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="PIN (최소 4자리)" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
+      <AdminDrawer open={showForm} title="새 직원 로그인 계정 등록" closeDisabled={saving}
+        onClose={() => { if (!saving) setShowForm(false) }} onSubmit={handleCreate}
+        footer={<>
+          <button type="button" className="admin-button" disabled={saving} onClick={() => setShowForm(false)}>취소</button>
+          <button type="submit" className="admin-button admin-button-primary" disabled={saving}>{saving ? '등록 중...' : '등록'}</button>
+        </>}>
+        <fieldset disabled={saving} className="min-w-0">
+          <div className="grid gap-4 sm:grid-cols-2">
+              <label className="admin-material-field"><span className="admin-material-label">직원 로그인 ID</span><input autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} placeholder="직원 로그인 ID" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" /></label>
+              <label className="admin-material-field"><span className="admin-material-label">PIN (최소 4자리)</span><input type="password" autoComplete="new-password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="PIN (최소 4자리)" className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" /></label>
             </div>
-          <div className="mt-3 flex items-center gap-3">
-            <button type="submit" disabled={saving} className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? '등록 중...' : '등록'}</button>
-            {error && <span className="text-xs text-red-500">{error}</span>}
-            {message && <span className="text-xs text-[#1b7a1b]">{message}</span>}
-          </div>
-        </form>
-      )}
+        </fieldset>
+        {error ? <p role="alert" className="mt-4 text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
+      </AdminDrawer>
 
-      {editingId && (
-        <form onSubmit={handleSaveEdit} className="rounded-[8px] border border-blue-200 bg-blue-50/30 p-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#1d1d1f]">직원 로그인 계정 수정</h3>
-            <button type="button" onClick={() => setEditingId(null)} className="text-xs text-[#86868b] hover:underline">닫기</button>
+      <AdminDrawer open={editingId !== null} title="직원 로그인 계정 수정" closeDisabled={saving}
+        onClose={() => { if (!saving) setEditingId(null) }} onSubmit={handleSaveEdit}
+        footer={<>
+          <button type="button" className="admin-button" disabled={saving} onClick={() => setEditingId(null)}>취소</button>
+          <button type="submit" className="admin-button admin-button-primary" disabled={saving}>{saving ? '저장 중...' : '저장'}</button>
+        </>}>
+        <fieldset disabled={saving} className="min-w-0">
+          <div className="grid gap-4 sm:grid-cols-2">
+              <label className="admin-material-field"><span className="admin-material-label">직원 로그인 ID</span><input autoComplete="off" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="직원 로그인 ID" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" /></label>
+            <label className="admin-material-field"><span className="admin-material-label">새 PIN (변경 시에만)</span><input type="password" autoComplete="new-password" value={editPin} onChange={(e) => setEditPin(e.target.value)} placeholder="새 PIN (변경 시에만)" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" /></label>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="직원 로그인 ID" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
-            <input type="password" value={editPin} onChange={(e) => setEditPin(e.target.value)} placeholder="새 PIN (변경 시에만)" className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]" />
-          </div>
-          <div className="mt-3">
-            <button type="submit" disabled={saving} className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{saving ? '저장 중...' : '저장'}</button>
-          </div>
-        </form>
-      )}
+        </fieldset>
+        {error ? <p role="alert" className="mt-4 text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
+      </AdminDrawer>
 
       {!showForm && !editingId && (error || message) && (
-        <div>{error && <p className="text-xs text-red-500">{error}</p>}{message && <p className="text-xs text-[#1b7a1b]">{message}</p>}</div>
+        <div>{error && <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p>}{message && <p className="text-xs text-[#1b7a1b]">{message}</p>}</div>
       )}
 
-      <section className="overflow-hidden rounded-[8px] bg-white">
+      <section className="admin-table-frame overflow-x-auto bg-white">
         {accounts.length === 0 ? (
           <p className="px-5 py-12 text-center text-sm text-[#86868b]">등록된 직원이 없습니다.</p>
         ) : (

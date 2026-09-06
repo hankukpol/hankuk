@@ -1,5 +1,5 @@
 import type { PassCourseSummary } from '@/types/database'
-import type { TenantType } from '@/lib/tenant'
+import { withTenantPrefix, type TenantType } from '@/lib/tenant'
 import { normalizeName, normalizePhone } from '@/lib/utils'
 
 export const STUDENT_SESSION_NAME_KEY = 'class_pass_student_name'
@@ -70,6 +70,16 @@ export function clearStudentSession(storage: Pick<Storage, 'removeItem'>) {
   storage.removeItem(STUDENT_SESSION_PHONE_KEY)
   storage.removeItem(STUDENT_SESSION_VERIFICATION_KEY)
   storage.removeItem(STUDENT_SESSION_COURSES_KEY)
+}
+
+/** A rejected server session never falls back to name/phone or stored credentials. */
+export async function fetchStudentApi(division: TenantType, input: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetch(input, { ...init, credentials: 'same-origin', cache: 'no-store' })
+  if (response.status === 401 && typeof window !== 'undefined') {
+    clearStudentSession(window.sessionStorage)
+    window.location.replace(`${withTenantPrefix('/', division)}?loggedOut=1&sessionExpired=1`)
+  }
+  return response
 }
 
 const STUDENT_REMEMBER_KEY = 'class_pass_remember_me'

@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -110,7 +111,7 @@ export default function AttendanceDisplayPage() {
       <div className="flex min-h-dvh items-center justify-center bg-[#050816] px-8 text-center text-white">
         <div className="max-w-xl">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-rose-300">Attendance Check</p>
-          <p className="mt-4 text-2xl font-semibold">{error}</p>
+          <p className="mt-4 text-2xl font-semibold">{getUserErrorMessage(error)}</p>
         </div>
       </div>
     )

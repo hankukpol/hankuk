@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -32,7 +33,8 @@ export default function StudentLoginPage() {
   const [savedVerificationCode, setSavedVerificationCode] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(searchParams.get('sessionExpired') === '1'
+    ? '학생 인증이 만료되었거나 변경되었습니다. 다시 로그인해 주세요.' : '')
   const [loading, setLoading] = useState(false)
   const [appName, setAppName] = useState(tenant.defaultAppName)
   const [studentLoginEnabled, setStudentLoginEnabled] = useState(true)
@@ -201,7 +203,14 @@ export default function StudentLoginPage() {
     await login(name, phone, verificationCode)
   }
 
-  function handleReset() {
+  async function handleReset() {
+    try {
+      const response = await fetch(withTenantPrefix('/api/auth/student/logout', tenant.type), { method: 'POST' })
+      if (!response.ok) throw new Error('logout failed')
+    } catch {
+      setError('로그아웃을 완료하지 못했습니다. 다시 시도해 주세요.')
+      return
+    }
     clearStudentSession(sessionStorage)
     clearSavedStudentCredentials()
     quickLoginTriggeredRef.current = false
@@ -283,7 +292,7 @@ export default function StudentLoginPage() {
                 </div>
               </div>
 
-              {error ? <p className="text-center text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
+              {error ? <p className="text-center text-[14px] font-medium text-[#c2410c]">{getUserErrorMessage(error)}</p> : null}
 
               <button
                 type="button"
@@ -340,7 +349,7 @@ export default function StudentLoginPage() {
                 <span className="text-[14px] font-medium text-[var(--student-text-muted)]">로그인 정보 저장</span>
               </label>
 
-              {error ? <p className="text-center text-[14px] font-medium text-[#c2410c]">{error}</p> : null}
+              {error ? <p className="text-center text-[14px] font-medium text-[#c2410c]">{getUserErrorMessage(error)}</p> : null}
 
               <button
                 type="submit"

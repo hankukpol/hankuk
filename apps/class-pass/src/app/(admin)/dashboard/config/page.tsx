@@ -1,9 +1,11 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { BranchSeriesOptionsEditor } from '@/components/series/BranchSeriesOptionsEditor'
+import { AdminSectionTabs, AdminSectionPanel, AdminSectionActions } from '@/components/admin/AdminSectionTabs'
 import {
   APP_CONFIG_DEFAULTS,
   APP_FEATURE_GROUPS,
@@ -18,6 +20,13 @@ import type { BranchSeriesOption } from '@/types/database'
 const TRACK_OPTIONS = [
   { value: 'police', label: '경찰' },
   { value: 'fire', label: '소방' },
+] as const
+const CONFIG_SECTIONS = [
+  { value: 'branch', label: '지점 정보' },
+  { value: 'series', label: '직렬' },
+  { value: 'brand', label: '브랜드' },
+  { value: 'features', label: '기능 설정' },
+  { value: 'access', label: '계정·접속' },
 ] as const
 
 const FEATURE_GROUP_ITEMS = APP_FEATURE_GROUPS.map((group) => ({
@@ -209,23 +218,24 @@ export default function ConfigPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-extrabold text-gray-900">지점 설정</h2>
+        <h2 className="admin-page-title">지점 설정</h2>
         <p className="mt-1 text-sm text-gray-400">
-          현재 운영 지점: {config.branch_name} ({tenant.slug})
+          현재 운영 지점: {config.branch_name}
         </p>
       </div>
 
       {(error || message) ? (
         <div className="rounded-2xl bg-white px-5 py-3 shadow-sm">
-          {error ? <p className="text-xs text-red-500">{error}</p> : null}
+          {error ? <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p> : null}
           {message ? <p className="text-xs text-emerald-600">{message}</p> : null}
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
-        <form onSubmit={saveConfig} className="flex flex-col gap-6">
+      <AdminSectionTabs label="지점 설정 세부 메뉴" items={CONFIG_SECTIONS}>
+        <form onSubmit={saveConfig} className="admin-section-form">
+          <AdminSectionPanel value="branch">
           <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700">지점 정보</h3>
+            <h3 className="admin-section-title">지점 정보</h3>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-500">지점명</label>
@@ -289,30 +299,10 @@ export default function ConfigPage() {
             </div>
           </section>
 
+          </AdminSectionPanel>
+          <AdminSectionPanel value="brand">
           <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-gray-700">직렬 설정</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  학생 등록 기본값은 공채이며, 경채 수강생은 여기서 관리한 세부 직렬을 선택합니다.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void saveSeriesOptions()}
-                disabled={seriesSaving}
-                className="rounded-[8px] bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                {seriesSaving ? '저장 중...' : '직렬 설정 저장'}
-              </button>
-            </div>
-            <div className="mt-4">
-              <BranchSeriesOptionsEditor value={seriesOptions} onChange={setSeriesOptions} />
-            </div>
-          </section>
-
-          <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700">브랜드</h3>
+            <h3 className="admin-section-title">브랜드</h3>
             <div className="mt-4 grid gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-500">앱 이름</label>
@@ -328,7 +318,7 @@ export default function ConfigPage() {
                   <input
                     value={config.theme_color}
                     onChange={(event) => updateConfig('theme_color', event.target.value)}
-                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                   />
                   <span
                     className="h-10 w-10 shrink-0 rounded-xl border border-slate-200"
@@ -339,8 +329,10 @@ export default function ConfigPage() {
             </div>
           </section>
 
+          </AdminSectionPanel>
+          <AdminSectionPanel value="features">
           <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700">기능 설정</h3>
+            <h3 className="admin-section-title">기능 설정</h3>
             <div className="mt-4 flex flex-col gap-5">
               {FEATURE_GROUP_ITEMS.map((group) => (
                 <div key={group.scope}>
@@ -369,20 +361,48 @@ export default function ConfigPage() {
             </div>
           </section>
 
+          </AdminSectionPanel>
+          <AdminSectionActions values={['branch', 'brand', 'features']}>
+          <p>직렬과 계정은 각 메뉴에서 저장합니다.</p>
           <button
             type="submit"
             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
           >
             지점 설정 저장
           </button>
+          </AdminSectionActions>
         </form>
 
+        <AdminSectionPanel value="series">
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="admin-section-title">직렬 설정</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  학생 등록 기본값은 공채이며, 경채 수강생은 여기서 관리한 세부 직렬을 선택합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveSeriesOptions()}
+                disabled={seriesSaving}
+                className="rounded-[8px] bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {seriesSaving ? '저장 중...' : '직렬 설정 저장'}
+              </button>
+            </div>
+            <div className="mt-4">
+              <BranchSeriesOptionsEditor value={seriesOptions} onChange={setSeriesOptions} />
+            </div>
+          </section>
+        </AdminSectionPanel>
+
+        <AdminSectionPanel value="access">
         <div className="flex flex-col gap-6">
           <section className="rounded-2xl bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700">운영 경로</h3>
+            <h3 className="admin-section-title">운영 경로</h3>
             <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
               <p className="font-semibold text-slate-800">{tenant.branchName}</p>
-              <p className="mt-1 break-all text-xs text-slate-500">/{tenant.slug}</p>
               <p className="mt-2 text-xs text-slate-500">
                 이 지점이 활성 상태면 `/gangnam-police` 같은 경로로 접속했을 때 관리자 설정이 바로 반영됩니다.
               </p>
@@ -390,7 +410,7 @@ export default function ConfigPage() {
           </section>
 
           <form onSubmit={saveAdminIdentity} className="rounded-2xl bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700">관리자 아이디</h3>
+            <h3 className="admin-section-title">관리자 아이디</h3>
             <input
               value={adminId}
               onChange={(event) => setAdminId(event.target.value)}
@@ -405,7 +425,7 @@ export default function ConfigPage() {
           </form>
 
           <form onSubmit={savePins} className="rounded-2xl bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700">PIN 관리</h3>
+            <h3 className="admin-section-title">PIN 관리</h3>
             <div className="mt-3 grid gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-500">관리자 PIN 변경</label>
@@ -436,7 +456,8 @@ export default function ConfigPage() {
             </button>
           </form>
         </div>
-      </div>
+        </AdminSectionPanel>
+      </AdminSectionTabs>
     </div>
   )
 }

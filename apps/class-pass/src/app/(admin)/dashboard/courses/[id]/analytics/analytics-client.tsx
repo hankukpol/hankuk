@@ -1,10 +1,10 @@
 'use client'
 
-import { AlertTriangle, BarChart3, CheckCircle2, Sparkles, Users } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Sparkles } from 'lucide-react'
 
 import type { AnalyticsBucket, CourseAnalyticsResult } from '@/lib/course-analytics'
 
-const APPLE_BLUE = '#0071e3'
+const ADMIN_ACCENT = 'var(--admin-accent)'
 const MISSING_LABEL = '미입력'
 
 function getPercent(count: number, total: number) {
@@ -155,7 +155,6 @@ function DataQualityCard({ analytics }: { analytics: CourseAnalyticsResult }) {
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#0071e3]" />
         <div>
           <div className="font-semibold text-[#1d1d1f]">기본 분석 정보가 모두 입력되어 있습니다.</div>
-          <div className="mt-0.5 text-slate-500">현재 강좌의 기수, 성별, 직렬 기준 분석을 그대로 참고할 수 있습니다.</div>
         </div>
       </section>
     )
@@ -195,7 +194,6 @@ function CohortSection({ analytics }: { analytics: CourseAnalyticsResult }) {
             <BarChart3 className="h-4 w-4 text-[#0071e3]" />
             기수별 수강 현황
           </div>
-          <p className="mt-1 text-sm text-slate-500">현재 강좌에 실제 등록된 기수만 표시합니다.</p>
         </div>
         <div className="text-sm text-slate-500">총 {analytics.total.toLocaleString('ko-KR')}명</div>
       </div>
@@ -230,7 +228,7 @@ function CohortSection({ analytics }: { analytics: CourseAnalyticsResult }) {
                 <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
                   <div
                     className="h-full rounded-full transition-all"
-                    style={{ width: `${width}%`, backgroundColor: APPLE_BLUE }}
+                    style={{ width: `${width}%`, backgroundColor: ADMIN_ACCENT }}
                   />
                 </div>
               </div>
@@ -329,7 +327,7 @@ function SplitCard({
                 bucket.label === MISSING_LABEL
                   ? '#9ca3af'
                   : index === 0
-                    ? APPLE_BLUE
+                    ? ADMIN_ACCENT
                     : index === 1
                       ? '#1d1d1f'
                       : '#64748b'
@@ -354,7 +352,7 @@ function SplitCard({
                 bucket.label === MISSING_LABEL
                   ? '#9ca3af'
                   : index === 0
-                    ? APPLE_BLUE
+                    ? ADMIN_ACCENT
                     : index === 1
                       ? '#1d1d1f'
                       : '#64748b'
@@ -395,15 +393,8 @@ export function CourseAnalyticsClient({
       <section className="rounded-[14px] border border-slate-100 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase text-[#0071e3]">Course Insight</div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-normal text-[#1d1d1f]">수강생 현황</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              {course.name} 수강생 구성을 기수 중심으로 요약합니다.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 rounded-full bg-[#f5f5f7] px-3 py-2 text-sm font-medium text-slate-600">
-            <Users className="h-4 w-4 text-[#0071e3]" />
-            강좌 ID {course.id}
+            <h1 className="admin-page-title mt-2">수강생 현황</h1>
+            <p className="mt-2 text-sm text-slate-500">{course.name}</p>
           </div>
         </div>
 

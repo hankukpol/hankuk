@@ -14,6 +14,13 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const confirmSchema = z.object({
   date: dateSchema,
   memo: z.string().max(500).optional().nullable(),
+  expectedManifest: z.object({
+    version: z.literal(1),
+    payments: z.array(z.record(z.unknown())),
+    refunds: z.array(z.record(z.unknown())),
+    items: z.array(z.record(z.unknown())),
+    confirmations: z.array(z.record(z.unknown())),
+  }).strict(),
 })
 
 export async function GET(req: NextRequest) {
@@ -64,6 +71,7 @@ export async function POST(req: NextRequest) {
       division,
       actorStaffId,
       memo: parsed.data.memo,
+      expectedManifest: parsed.data.expectedManifest,
     })
     return NextResponse.json(result, { status: 201 })
   } catch (error) {

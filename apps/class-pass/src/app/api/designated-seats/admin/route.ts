@@ -5,6 +5,7 @@ import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { requireAppFeature } from '@/lib/app-feature-guard'
 import { invalidateCache } from '@/lib/cache/revalidate'
 import { getCourseById } from '@/lib/class-pass-data'
+import { getSeatLayoutFailure } from '@/lib/designated-seat/reason-messages'
 import {
   getActiveDisplaySessionForDisplayTarget,
   getDesignatedSeatAdminData,
@@ -254,6 +255,10 @@ export async function PUT(req: NextRequest) {
       })),
     })
     if (layoutSaveResult.error) {
+      const failure = getSeatLayoutFailure(layoutSaveResult.error)
+      if (failure) {
+        return NextResponse.json({ error: failure.message, reason: failure.reason }, { status: failure.status })
+      }
       return writeError('좌석 레이아웃을 저장하지 못했습니다.', layoutSaveResult.error)
     }
 

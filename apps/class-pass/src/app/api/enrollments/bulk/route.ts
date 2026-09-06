@@ -70,7 +70,7 @@ type ExistingEnrollmentRow = {
   series_option_id: number | null
   series_group: 'public' | 'career' | null
   series: string | null
-  status: 'active' | 'refunded'
+  status: 'active' | 'refunded' | 'cancelled'
   photo_url: string | null
   memo: string | null
   refunded_at: string | null
@@ -409,6 +409,15 @@ export async function POST(req: NextRequest) {
     const inspection = inspections.get(inspectionKeyByRow.get(row) ?? '')
     const master = inspection?.student ? toMasterSnapshot(inspection.student) : null
     const existingEnrollment = findExistingEnrollmentForImportedRow(row, existingByExamNumber)
+    const matchedEnrollment = existingEnrollment
+      ?? (inspection?.student ? existingByStudentId.get(inspection.student.id) : null)
+    if (matchedEnrollment?.status === 'cancelled') {
+      addBulkImportIssue(
+        issuesByRow, row, 'status',
+        '수강종료된 등록이 있습니다. 별도 복구 절차를 확인한 뒤 다시 등록해 주세요.',
+        'cancelled', master,
+      )
+    }
     if (inspection?.conflict) {
       addBulkImportIssue(
         issuesByRow,

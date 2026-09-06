@@ -137,6 +137,8 @@ export async function POST(req: NextRequest) {
 
     if (distribution.kind === 'failed' || distribution.kind === 'partial') {
       return NextResponse.json({
+        refreshRequired: distribution.refreshRequired,
+        warning: distribution.warning,
         success: false,
         reason: distribution.reason,
         studentName: enrollment.name,
@@ -154,6 +156,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      refreshRequired: distribution.refreshRequired,
+      warning: distribution.warning,
       materialName: distribution.materials.length === 1 ? firstMaterial?.name : `${distribution.materials.length}건`,
       materialType: distribution.materials.length === 1 ? firstMaterial?.materialType : undefined,
       studentName: distribution.studentName,

@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getUserErrorMessage } from '@/lib/user-error-message'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion'
 import { Plus, ReceiptText, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { AdminPortal } from '@/components/admin/AdminPortal'
+import { useModalDialog } from '@/components/admin/useModalDialog'
 import { ReceiptNoticeModal } from '@/components/payments/ReceiptNoticeModal'
 import type { Course, Enrollment } from '@/types/database'
 import { useMotionConfig, useReducedMotionDuration } from '@/lib/motion'
@@ -47,7 +50,8 @@ type EnrollmentCancellationPrompt = {
   enrollmentId: number
   studentName: string
   payableAmount: number
-  source: 'refund' | 'void'
+  source: 'refund' | 'void' | 'manual'
+  retainedNetAmount?: number
 }
 
 function getPaymentStatusClass(status: EnrollmentPayment['status']) {
@@ -94,8 +98,9 @@ function mergePaymentUpdates(current: EnrollmentPayment[], updates: EnrollmentPa
     return current
   }
 
-  const updatedById = new Map(updates.map((payment) => [payment.id, payment]))
-  return current.map((payment) => updatedById.get(payment.id) ?? payment)
+  const paymentsById = new Map(current.map((payment) => [payment.id, payment]))
+  for (const payment of updates) paymentsById.set(payment.id, payment)
+  return Array.from(paymentsById.values())
 }
 
 function shouldPromptEnrollmentCancellation(options: {
@@ -125,69 +130,98 @@ export function EnrollmentPaymentDrawer({
   onClose,
   onDataChanged,
 }: EnrollmentPaymentDrawerProps) {
+  const enrollmentId = enrollment?.id
+  const titleId = useId()
   const motionConfig = useMotionConfig()
   const backdropDuration = useReducedMotionDuration(0.2)
   const [payments, setPayments] = useState<EnrollmentPayment[]>([])
+  const [loadedEnrollmentId, setLoadedEnrollmentId] = useState<number | null>(null)
+  const [snapshotEnrollmentId, setSnapshotEnrollmentId] = useState<number | null>(null)
+  const paymentLoadGeneration = useRef(0)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [paymentDraft, setPaymentDraft] = useState<PaymentSectionValue>(createEmptyPaymentSectionValue)
   const [refundTarget, setRefundTarget] = useState<EnrollmentPayment | null>(null)
   const [correctionTarget, setCorrectionTarget] = useState<EnrollmentPayment | null>(null)
+  const correctionRequest = useRef<{ requestId: string; input: PaymentCorrectionConfirmInput; uncertain: boolean } | null>(null)
+  const correctionInFlight = useRef(false)
+  const [correctionRetryOnly, setCorrectionRetryOnly] = useState(false)
   const [voidTarget, setVoidTarget] = useState<EnrollmentPayment | null>(null)
   const [cancelEnrollmentPrompt, setCancelEnrollmentPrompt] = useState<EnrollmentCancellationPrompt | null>(null)
+  const [terminationReason, setTerminationReason] = useState('')
+  const [locallyEndedEnrollmentId, setLocallyEndedEnrollmentId] = useState<number | null>(null)
   const [notice, setNotice] = useState<DrawerNotice | null>(null)
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const lastErrorNoticeRef = useRef('')
+  const nestedDialogOpen = Boolean(
+    refundTarget
+    || correctionTarget
+    || voidTarget
+    || cancelEnrollmentPrompt
+    || notice
+    || receiptNotice,
+  )
+  const dialogRef = useModalDialog<HTMLElement>({
+    open: open && Boolean(enrollment),
+    onClose,
+    closeDisabled: submitting || nestedDialogOpen,
+    priority: 120,
+  })
 
-  const loadPayments = useCallback(async () => {
-    if (!enrollment) {
+  const loadPayments = useCallback(async (refreshFailureMessage?: string) => {
+    const generation = ++paymentLoadGeneration.current
+    if (!enrollmentId) {
       setPayments([])
-      return
+      setLoadedEnrollmentId(null)
+      setSnapshotEnrollmentId(null)
+      setLoading(false)
+      return false
     }
 
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`/api/payments?courseId=${course.id}&enrollmentId=${enrollment.id}`, { cache: 'no-store' })
+      const response = await fetch(`/api/payments?courseId=${course.id}&enrollmentId=${enrollmentId}`, { cache: 'no-store' })
       const payload = await response.json().catch(() => null)
+      if (generation !== paymentLoadGeneration.current) return false
       if (!response.ok) {
         throw new Error(payload?.error ?? '결제 내역을 불러오지 못했습니다.')
       }
 
-      setPayments((payload?.payments ?? []) as EnrollmentPayment[])
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '결제 내역을 불러오지 못했습니다.')
-    } finally {
-      setLoading(false)
-    }
-  }, [course.id, enrollment])
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting && !refundTarget && !correctionTarget && !voidTarget && !cancelEnrollmentPrompt && !notice) {
-        onClose()
+      if (!Array.isArray(payload?.payments)) {
+        throw new Error('결제 내역 응답을 확인하지 못했습니다.')
       }
+      setPayments(payload.payments as EnrollmentPayment[])
+      setLoadedEnrollmentId(enrollmentId)
+      setSnapshotEnrollmentId(enrollmentId)
+      return true
+    } catch (reason) {
+      if (generation !== paymentLoadGeneration.current) return false
+      // A committed replay snapshot is useful for display, but cannot authorize another write.
+      setLoadedEnrollmentId(null)
+      setError(refreshFailureMessage ?? (reason instanceof Error ? reason.message : '결제 내역을 불러오지 못했습니다.'))
+      return false
+    } finally {
+      if (generation === paymentLoadGeneration.current) setLoading(false)
     }
-
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [cancelEnrollmentPrompt, correctionTarget, notice, onClose, open, refundTarget, submitting, voidTarget])
+  }, [course.id, enrollmentId])
 
   useEffect(() => {
-    if (!open || !enrollment) {
+    paymentLoadGeneration.current += 1
+    setPayments([])
+    setLocallyEndedEnrollmentId(null)
+    setLoadedEnrollmentId(null)
+    setSnapshotEnrollmentId(null)
+    correctionRequest.current = null
+    setCorrectionRetryOnly(false)
+    return () => { paymentLoadGeneration.current += 1 }
+  }, [open, course.id, enrollmentId])
+
+  useEffect(() => {
+    if (!open || !enrollmentId) {
       return
     }
 
@@ -200,7 +234,7 @@ export function EnrollmentPaymentDrawer({
     setCancelEnrollmentPrompt(null)
     setNotice(null)
     void loadPayments()
-  }, [enrollment, loadPayments, open])
+  }, [enrollmentId, loadPayments, open])
 
   useEffect(() => {
     if (!error) {
@@ -223,15 +257,30 @@ export function EnrollmentPaymentDrawer({
   const summary = useMemo(() => summarizePayments(payments), [payments])
   const tuitionSummary = useMemo(() => summarizePayments(payments, { category: 'tuition' }), [payments])
   const payableAmount = enrollment?.billing?.payable_amount ?? course.tuition_amount ?? 0
-  const remainingAmount = Math.max(payableAmount - tuitionSummary.net, 0)
-  const canWritePayment = Boolean(enrollment && !enrollment.billing?.tuition_exempt)
+  const enrollmentEnded = Boolean(enrollment && (enrollment.status === 'cancelled' || locallyEndedEnrollmentId === enrollment.id))
+  const paymentsReady = Boolean(enrollment && loadedEnrollmentId === enrollment.id && !loading && !correctionRetryOnly)
+  const canDisplayPayments = Boolean(enrollment && snapshotEnrollmentId === enrollment.id && !loading)
+  const remainingAmount = enrollmentEnded ? 0 : Math.max(payableAmount - tuitionSummary.net, 0)
+  const canWritePayment = Boolean(enrollment && !enrollmentEnded && !enrollment.billing?.tuition_exempt && paymentsReady)
 
-  const refreshAll = useCallback(async () => {
-    await loadPayments()
-    await onDataChanged?.()
+  const refreshAll = useCallback(async (savedOperation?: string) => {
+    const refreshFailureMessage = savedOperation
+      ? `${savedOperation} 저장은 완료했지만 화면 갱신에 실패했습니다. 새로고침 후 확인해 주세요.`
+      : undefined
+    const paymentsRefreshed = await loadPayments(refreshFailureMessage)
+    try {
+      await onDataChanged?.()
+      return paymentsRefreshed
+    } catch (reason) {
+      setError(refreshFailureMessage ?? (reason instanceof Error ? reason.message : '화면을 갱신하지 못했습니다.'))
+      return false
+    }
   }, [loadPayments, onDataChanged])
 
   function openPaymentForm() {
+    if (!paymentsReady || enrollmentEnded) {
+      return
+    }
     if (enrollment?.billing?.tuition_exempt) {
       setError('이미 무료 수강 또는 수납 면제로 기록된 수강생입니다.')
       return
@@ -258,7 +307,7 @@ export function EnrollmentPaymentDrawer({
   }
 
   async function handleCreatePayment() {
-    if (!enrollment) {
+    if (!enrollment || enrollment.course_id !== course.id || !paymentsReady || enrollmentEnded) {
       return
     }
 
@@ -404,6 +453,8 @@ export function EnrollmentPaymentDrawer({
   }
 
   async function handleCreateRefund(input: {
+    requestId: string
+    endEnrollment: boolean
     refunds: Array<{
       paymentId: number
       amount: number
@@ -415,11 +466,12 @@ export function EnrollmentPaymentDrawer({
       memo: string
     }>
   }) {
-    if (!refundTarget) {
+    if (!enrollment || !refundTarget || !paymentsReady
+      || refundTarget.enrollment_id !== enrollment.id || refundTarget.course_id !== course.id
+      || enrollment.course_id !== course.id) {
       return
     }
 
-    const target = refundTarget
     setSubmitting(true)
     setError('')
     setMessage('')
@@ -437,22 +489,44 @@ export function EnrollmentPaymentDrawer({
     }
 
     const updatedPayments = Array.isArray(result?.payments) ? result.payments as EnrollmentPayment[] : []
-    const shouldUpdateEnrollmentStatus = shouldPromptEnrollmentCancellation({
-      enrollment,
-      payments: mergePaymentUpdates(payments, updatedPayments),
-      payableAmount,
-      changedCategory: target.category,
-    })
+    const hasConfirmedSnapshot = result?.requestId === input.requestId
+      && result?.enrollmentEnded === input.endEnrollment
+      && Array.isArray(result?.refunds)
+      && updatedPayments.length === input.refunds.length
+      && updatedPayments.every((payment) => input.refunds.some((requested) => requested.paymentId === payment?.id))
+      && input.refunds.every((requested) => {
+        const snapshot = updatedPayments.find((payment) => payment?.id === requested.paymentId)
+        const savedRefund = result.refunds.find((refund: { id?: number; payment_id?: number; amount?: number }) => (
+          refund?.payment_id === requested.paymentId && refund.amount === requested.amount
+        ))
+        return snapshot?.enrollment_id === refundTarget.enrollment_id
+          && snapshot?.course_id === course.id
+          && Number.isSafeInteger(snapshot.amount) && snapshot.amount >= 0
+          && ['paid', 'partial_refunded', 'fully_refunded', 'voided'].includes(snapshot.status)
+          && Array.isArray(snapshot.enrollment_refunds)
+          && snapshot.enrollment_refunds.every((refund) => Number.isSafeInteger(refund?.amount) && refund.amount > 0)
+          && savedRefund && snapshot.enrollment_refunds.some((refund) => refund.id === savedRefund.id && refund.amount === requested.amount)
+      })
+    if (!hasConfirmedSnapshot) {
+      setError('환불 저장 결과를 확인하지 못했습니다. 내용을 바꾸지 말고 같은 요청으로 다시 확인해 주세요.')
+      return
+    }
 
+    // Keep the committed balance even when the following read or parent refresh fails.
+    setPayments((current) => mergePaymentUpdates(current, updatedPayments))
+    if (result.enrollmentEnded) {
+      setLocallyEndedEnrollmentId(refundTarget.enrollment_id)
+      setFormOpen(false)
+    }
     setRefundTarget(null)
     setMessage(
-      shouldUpdateEnrollmentStatus
-        ? '환불 처리를 완료했고 수강 상태를 환불로 변경했습니다.'
+      result.enrollmentEnded
+        ? '환불과 수강 종료를 함께 저장했습니다. 이미 이용한 금액은 보존됩니다.'
         : input.refunds.length > 1
           ? '복수 결제 건의 환불 처리를 완료했습니다.'
           : '환불 처리를 완료했습니다.',
     )
-    await refreshAll()
+    await refreshAll('환불')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '환불을 저장하지 못했습니다.')
     } finally {
@@ -461,10 +535,17 @@ export function EnrollmentPaymentDrawer({
   }
 
   async function handleCreateCorrection(input: PaymentCorrectionConfirmInput) {
-    if (!enrollment) {
+    if (correctionInFlight.current || !enrollment || !correctionTarget
+      || (!correctionRequest.current && (enrollmentEnded || !paymentsReady))
+      || correctionTarget.enrollment_id !== enrollment.id || correctionTarget.course_id !== course.id
+      || enrollment.course_id !== course.id) {
       return
     }
 
+    correctionInFlight.current = true
+    correctionRequest.current ??= { requestId: crypto.randomUUID(), input, uncertain: false }
+    const request = correctionRequest.current
+    setCorrectionRetryOnly(true)
     setSubmitting(true)
     setError('')
     setMessage('')
@@ -473,34 +554,75 @@ export function EnrollmentPaymentDrawer({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        requestId: request.requestId,
         enrollmentId: enrollment.id,
         courseId: course.id,
-        ...input,
+        ...request.input,
       }),
     })
     const result = await response.json().catch(() => null)
 
     if (!response.ok) {
+      // Definitive API rejections roll back; ambiguous outcomes keep the draft.
+      if (!request.uncertain && [400, 401, 403, 404, 409].includes(response.status)) {
+        correctionRequest.current = null
+        setCorrectionRetryOnly(false)
+      } else {
+        request.uncertain = true
+      }
       setError(result?.error ?? '결제 정정을 저장하지 못했습니다.')
       return
     }
 
+    const refundedPayment = result?.refundedPayments?.[0] as EnrollmentPayment | undefined
+    const createdPayment = result?.payments?.[0] as EnrollmentPayment | undefined
+    const savedRefund = result?.refunds?.[0] as { id: number; payment_id: number; amount: number } | undefined
+    const validScope = (payment: EnrollmentPayment | undefined) => payment
+      && payment.enrollment_id === enrollment.id && payment.course_id === course.id
+      && Number.isSafeInteger(payment.id) && payment.id > 0
+      && Number.isSafeInteger(payment.amount) && payment.amount >= 0
+      && ['paid', 'partial_refunded', 'fully_refunded', 'voided'].includes(payment.status)
+      && Array.isArray(payment.enrollment_refunds)
+    if (result?.requestId !== request.requestId
+      || !Array.isArray(result?.refunds) || result.refunds.length !== 1
+      || !Array.isArray(result?.refundedPayments) || result.refundedPayments.length !== 1
+      || !Array.isArray(result?.payments) || result.payments.length !== 1
+      || !validScope(refundedPayment) || !validScope(createdPayment)
+      || refundedPayment?.id !== request.input.refund.paymentId
+      || createdPayment?.id === refundedPayment?.id
+      || createdPayment?.amount !== request.input.payment.amount
+      || !savedRefund || !Number.isSafeInteger(savedRefund.id) || savedRefund.id <= 0
+      || savedRefund.payment_id !== request.input.refund.paymentId || savedRefund.amount !== request.input.refund.amount
+      || !refundedPayment?.enrollment_refunds?.some((refund) => refund.id === savedRefund.id && refund.amount === savedRefund.amount)) {
+      request.uncertain = true
+      setError('정정 저장 결과를 확인하지 못했습니다. 내용을 바꾸지 말고 같은 요청으로 다시 확인해 주세요.')
+      return
+    }
+
+    setPayments((current) => mergePaymentUpdates(current, [refundedPayment!, createdPayment!]))
+    correctionRequest.current = null
+    setCorrectionRetryOnly(false)
     setCorrectionTarget(null)
     setMessage('환불과 재수납 정정을 저장했습니다.')
-    await refreshAll()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '결제 정정을 저장하지 못했습니다.')
+    await refreshAll('정정')
+    } catch {
+      request.uncertain = true
+      setError('정정 처리 결과를 확인하지 못했습니다. 내용을 바꾸지 말고 같은 요청으로 다시 확인해 주세요.')
     } finally {
+      correctionInFlight.current = false
       setSubmitting(false)
     }
   }
 
   function handleVoidPayment(payment: EnrollmentPayment) {
+    if (!enrollment || !paymentsReady || payment.enrollment_id !== enrollment.id || payment.course_id !== course.id) return
     setVoidTarget(payment)
   }
 
   async function handleVoidPaymentConfirmed() {
-    if (!voidTarget) {
+    if (!enrollment || !voidTarget || !paymentsReady
+      || voidTarget.enrollment_id !== enrollment.id || voidTarget.course_id !== course.id
+      || enrollment.course_id !== course.id) {
       return
     }
 
@@ -531,6 +653,7 @@ export function EnrollmentPaymentDrawer({
     setMessage('결제를 취소했습니다.')
     await refreshAll()
     if (shouldAskToCancelEnrollment && enrollment) {
+      setTerminationReason('결제 취소 후 관리자 수강 종료')
       setCancelEnrollmentPrompt({
         enrollmentId: enrollment.id,
         studentName: enrollment.name,
@@ -546,14 +669,18 @@ export function EnrollmentPaymentDrawer({
   }
 
   async function handleCancelEnrollmentConfirmed() {
-    if (!cancelEnrollmentPrompt) {
+    if (!enrollment || !cancelEnrollmentPrompt || !terminationReason.trim() || !paymentsReady
+      || cancelEnrollmentPrompt.enrollmentId !== enrollment.id || enrollment.course_id !== course.id) {
       return
     }
 
     setSubmitting(true)
     setError('')
     try {
-    const response = await fetch(`/api/enrollments/${cancelEnrollmentPrompt.enrollmentId}/refund`, { method: 'POST' })
+    const response = await fetch(`/api/enrollments/${cancelEnrollmentPrompt.enrollmentId}/end`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: terminationReason.trim() }),
+    })
     const result = await response.json().catch(() => null)
 
     if (!response.ok) {
@@ -561,9 +688,19 @@ export function EnrollmentPaymentDrawer({
       return
     }
 
+    if (result?.enrollment?.id !== cancelEnrollmentPrompt.enrollmentId || result?.enrollment?.status !== 'cancelled') {
+      setError('수강 종료 결과를 확인하지 못했습니다. 같은 사유로 다시 확인해 주세요.')
+      return
+    }
+    setLocallyEndedEnrollmentId(cancelEnrollmentPrompt.enrollmentId)
+    setFormOpen(false)
+    setPayments((current) => current.map((payment) => ({
+      ...payment,
+      enrollments: payment.enrollments ? { ...payment.enrollments, status: 'cancelled' } : payment.enrollments,
+    })))
     setCancelEnrollmentPrompt(null)
-    setMessage('수강 상태를 수강취소로 변경했습니다.')
-    await refreshAll()
+    setMessage('수강 종료를 저장했습니다. 남은 수강료 실수납과 수납·환불 기록은 보존됩니다.')
+    await refreshAll('수강 종료')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '수강 상태를 취소하지 못했습니다.')
     } finally {
@@ -576,8 +713,10 @@ export function EnrollmentPaymentDrawer({
       return
     }
 
+    if (cancelEnrollmentPrompt?.source !== 'manual') {
+      setMessage('수강 상태는 활성으로 유지했습니다. 재결제 예정이면 수납을 다시 추가해 주세요.')
+    }
     setCancelEnrollmentPrompt(null)
-    setMessage('수강 상태는 활성으로 유지했습니다. 재결제 예정이면 수납을 다시 추가해 주세요.')
   }
 
   function handleDrawerDragEnd(
@@ -593,11 +732,11 @@ export function EnrollmentPaymentDrawer({
 
   return (
     <>
-      <AnimatePresence>
+      <AdminPortal><AnimatePresence>
         {open && enrollment ? (
           <>
             <motion.div
-              className="fixed inset-0 z-[120] bg-black/40 sm:backdrop-blur-sm"
+              className="admin-dialog-backdrop fixed inset-0 z-[120] bg-black/40 sm:backdrop-blur-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -609,9 +748,12 @@ export function EnrollmentPaymentDrawer({
               }}
             />
             <motion.aside
+              ref={dialogRef}
               role="dialog"
               aria-modal="true"
-              className="fixed inset-y-0 right-0 z-[121] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:w-[640px] xl:w-[780px] 2xl:w-[960px]"
+              aria-labelledby={titleId}
+              tabIndex={-1}
+              className="admin-drawer-panel fixed inset-y-0 right-0 z-[121] flex h-dvh w-full flex-col bg-white shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] sm:w-[640px] xl:w-[780px] 2xl:w-[960px]"
               initial={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 'calc(100% + 24px)', opacity: 0.96 }}
@@ -622,68 +764,65 @@ export function EnrollmentPaymentDrawer({
               whileDrag={{ scale: 0.995 }}
               onDragEnd={handleDrawerDragEnd}
             >
-          <header className="border-b border-slate-100 px-5 py-5 sm:px-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Student Detail</p>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <h2 className="truncate text-[28px] font-semibold text-[#1d1d1f]">{enrollment.name}</h2>
-                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                  }`}>
-                    {enrollment.status === 'active' ? '수강 중' : '환불'}
-                  </span>
-                </div>
-                <p className="mt-2 truncate text-sm text-slate-500">
-                  {enrollment.exam_number || '-'} · {enrollment.phone || '-'} · {course.name}
-                </p>
+          <header className="admin-dialog-header border-b border-slate-100 px-5 py-5 sm:px-6">
+            <div className="min-w-0">
+              <div className="mt-1.5 flex items-center gap-2">
+                <h2 id={titleId} className="admin-dialog-title min-w-0 break-words text-[28px] font-semibold text-[#1d1d1f]">{enrollment.name}</h2>
+                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                  enrollmentEnded ? 'bg-slate-100 text-slate-600' : enrollment.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                }`}>
+                  {enrollmentEnded ? '수강종료' : enrollment.status === 'active' ? '수강 중' : '환불'}
+                </span>
               </div>
-              <button
-                type="button"
-                aria-label="닫기"
-                onClick={onClose}
-                disabled={submitting}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-50 text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <p className="mt-2 truncate text-sm text-slate-500">
+                {enrollment.exam_number || '-'} · {enrollment.phone || '-'} · {course.name}
+              </p>
             </div>
+            <button
+              type="button"
+              aria-label="닫기"
+              onClick={onClose}
+              disabled={submitting}
+              className="admin-dialog-close inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-slate-50 text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-200 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+            >
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="admin-dialog-body min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
             {(message || error) ? (
               <div className="mb-4 space-y-2">
                 {message ? (
                   <p className="rounded-[8px] bg-[#ecfdf5] px-3 py-2 text-xs font-medium text-emerald-600">{message}</p>
                 ) : null}
                 {error ? (
-                  <p className="rounded-[8px] bg-[#fef2f2] px-3 py-2 text-xs font-medium text-rose-600">{error}</p>
+                  <p className="rounded-[8px] bg-[#fef2f2] px-3 py-2 text-xs font-medium text-rose-600">{getUserErrorMessage(error)}</p>
                 ) : null}
               </div>
             ) : null}
 
             <section>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+              <div className="admin-metric-strip">
+                <article>
                   <p className="text-xs font-semibold text-slate-500">총 수납</p>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">{formatWon(summary.gross)}</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">{canDisplayPayments ? formatWon(summary.gross) : '확인 중'}</p>
                 </article>
-                <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                <article>
                   <p className="text-xs font-semibold text-slate-500">환불</p>
                   <p className="mt-2 text-2xl font-bold text-rose-600">
-                    {summary.refund > 0 ? '−' : ''}{formatWon(summary.refund)}
+                    {canDisplayPayments ? `${summary.refund > 0 ? '−' : ''}${formatWon(summary.refund)}` : '확인 중'}
                   </p>
                 </article>
-                <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                <article>
                   <p className="text-xs font-semibold text-slate-500">미납</p>
                   <p className={`mt-2 text-2xl font-bold ${remainingAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                    {formatWon(remainingAmount)}
+                    {canDisplayPayments ? formatWon(remainingAmount) : '확인 중'}
                   </p>
                 </article>
               </div>
 
               {billing ? (
-                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                <div className="admin-payment-breakdown">
                   <span>정가 <span className="font-semibold text-slate-900">{formatWon(billing.expected_amount)}</span></span>
                   <span className="text-slate-300">·</span>
                   <span>할인 <span className="font-semibold text-rose-600">{formatWon(billing.discount_amount)}</span></span>
@@ -697,11 +836,29 @@ export function EnrollmentPaymentDrawer({
             </section>
 
             <section className="mt-6">
-              <div className="flex items-center justify-between gap-3 px-1 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
                 <div>
                   <h3 className="text-base font-semibold text-[#1d1d1f]">결제 내역</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">전체 {payments.length}건 · 합계 {formatWon(summary.gross)}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{canDisplayPayments ? `전체 ${payments.length}건 · 합계 ${formatWon(summary.gross)}` : '결제 내역 확인 중'}</p>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={enrollmentEnded || submitting || !paymentsReady}
+                  onClick={() => {
+                    setTerminationReason('')
+                    setCancelEnrollmentPrompt({
+                      enrollmentId: enrollment.id,
+                      studentName: enrollment.name,
+                      payableAmount,
+                      retainedNetAmount: tuitionSummary.net,
+                      source: 'manual',
+                    })
+                  }}
+                  className="inline-flex items-center rounded-[8px] border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition-all duration-200 ease-ios hover:bg-slate-50 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100"
+                >
+                  수강 종료
+                </button>
                 <button
                   type="button"
                   onClick={openPaymentForm}
@@ -711,15 +868,16 @@ export function EnrollmentPaymentDrawer({
                   <Plus className="h-3.5 w-3.5" />
                   수납 추가
                 </button>
+                </div>
               </div>
 
-              <div className="overflow-hidden rounded-[10px] bg-white border border-slate-200">
+              <div className="admin-table-frame overflow-hidden bg-white border border-slate-200">
                 {/* 보조 안내는 제거 — 사용자가 한번 보면 충분 */}
 
               {formOpen ? (
                 <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
                   <PaymentSection value={paymentDraft} onChange={setPaymentDraft} compact />
-                  <div className="mt-4 flex justify-end gap-2">
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => setFormOpen(false)}
@@ -731,7 +889,7 @@ export function EnrollmentPaymentDrawer({
                     <button
                       type="button"
                       onClick={() => void handleCreatePayment()}
-                      disabled={submitting}
+                      disabled={submitting || !paymentsReady}
                       className="rounded-[8px] bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                     >
                       {submitting ? '저장 중...' : '결제 저장'}
@@ -776,8 +934,8 @@ export function EnrollmentPaymentDrawer({
                         <button
                           type="button"
                           onClick={() => setRefundTarget(payment)}
-                          disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
-                          className="inline-flex items-center gap-1 rounded-[8px] bg-[#fffbeb] px-2.5 py-1.5 text-[11px] font-semibold text-amber-600 transition-all duration-200 ease-ios hover:bg-amber-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+                          disabled={!paymentsReady || payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                          className="inline-flex items-center gap-1 rounded-[8px] bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-600 transition-all duration-200 ease-ios hover:bg-amber-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                           환불
@@ -785,7 +943,8 @@ export function EnrollmentPaymentDrawer({
                         <button
                           type="button"
                           onClick={() => setCorrectionTarget(payment)}
-                          disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                          disabled={enrollmentEnded || !paymentsReady || payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                          title={enrollmentEnded ? '종료된 수강은 재수납이 포함된 결제 정정을 할 수 없습니다.' : undefined}
                           className="inline-flex items-center gap-1 rounded-[8px] bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-all duration-200 ease-ios hover:bg-blue-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
                           <RefreshCw className="h-3.5 w-3.5" />
@@ -794,7 +953,7 @@ export function EnrollmentPaymentDrawer({
                         <button
                           type="button"
                           onClick={() => handleVoidPayment(payment)}
-                          disabled={payment.status !== 'paid' || submitting}
+                          disabled={!paymentsReady || payment.status !== 'paid' || submitting}
                           className="inline-flex items-center gap-1 rounded-[8px] bg-[#fef2f2] px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 transition-all duration-200 ease-ios hover:bg-rose-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
                           <XCircle className="h-3.5 w-3.5" />
@@ -836,7 +995,7 @@ export function EnrollmentPaymentDrawer({
                                 </p>
                               ) : null}
                             </td>
-                            <td className="px-3 py-3.5 text-right">
+                            <td className="admin-table-amount px-3 py-3.5 text-right">
                               <p className="whitespace-nowrap font-semibold text-[#1d1d1f]">{formatWon(payment.amount)}</p>
                               {refundTotal > 0 ? (
                                 <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-rose-600">
@@ -858,7 +1017,7 @@ export function EnrollmentPaymentDrawer({
                                     <button
                                       type="button"
                                       onClick={() => setRefundTarget(payment)}
-                                      disabled={submitting}
+                                      disabled={submitting || !paymentsReady}
                                       className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-amber-50 hover:text-amber-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                                     >
                                       <RotateCcw className="h-3 w-3" />
@@ -867,7 +1026,8 @@ export function EnrollmentPaymentDrawer({
                                     <button
                                       type="button"
                                       onClick={() => setCorrectionTarget(payment)}
-                                      disabled={payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                                      disabled={enrollmentEnded || !paymentsReady || payment.status === 'voided' || payment.status === 'fully_refunded' || submitting}
+                                      title={enrollmentEnded ? '종료된 수강은 재수납이 포함된 결제 정정을 할 수 없습니다.' : undefined}
                                       className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-blue-50 hover:text-blue-700 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                                     >
                                       <RefreshCw className="h-3 w-3" />
@@ -876,7 +1036,7 @@ export function EnrollmentPaymentDrawer({
                                     <button
                                       type="button"
                                       onClick={() => handleVoidPayment(payment)}
-                                      disabled={payment.status !== 'paid' || submitting}
+                                      disabled={!paymentsReady || payment.status !== 'paid' || submitting}
                                       className="inline-flex items-center gap-1 rounded-[6px] bg-white border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition-all duration-200 ease-ios hover:bg-rose-50 hover:text-rose-600 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                                     >
                                       <XCircle className="h-3 w-3" />
@@ -900,7 +1060,7 @@ export function EnrollmentPaymentDrawer({
             </motion.aside>
           </>
         ) : null}
-      </AnimatePresence>
+      </AnimatePresence></AdminPortal>
 
       <RefundModal
         open={Boolean(refundTarget)}
@@ -925,8 +1085,9 @@ export function EnrollmentPaymentDrawer({
         currentTuitionNetAmount={tuitionSummary.net}
         billingPayableAmount={payableAmount}
         submitting={submitting}
+        retryOnly={correctionRetryOnly}
         onClose={() => {
-          if (!submitting) {
+          if (!submitting && !correctionRetryOnly) {
             setCorrectionTarget(null)
           }
         }}
@@ -940,6 +1101,7 @@ export function EnrollmentPaymentDrawer({
         title="결제를 취소할까요?"
         description={voidTarget ? `${formatWon(voidTarget.amount)} 결제를 취소합니다.\n\n이유: 오입력 또는 실제 승인 취소가 필요한 경우에만 사용해 주세요. 환불 기록이 있는 결제는 취소할 수 없습니다.` : undefined}
         confirmLabel="결제 취소"
+        confirmDisabled={!paymentsReady}
         pendingLabel="취소 중..."
         tone="danger"
         submitting={submitting}
@@ -956,16 +1118,20 @@ export function EnrollmentPaymentDrawer({
 
       <ConfirmationModal
         open={Boolean(cancelEnrollmentPrompt)}
-        title="수강 상태도 취소할까요?"
+        panelClassName="max-w-lg"
+        title="수강을 종료할까요?"
         description={cancelEnrollmentPrompt ? [
-          `${cancelEnrollmentPrompt.studentName} 학생의 수강료 실수납이 0원이 되어 미납액이 ${formatWon(cancelEnrollmentPrompt.payableAmount)}입니다.`,
+          cancelEnrollmentPrompt.source === 'manual'
+            ? `${cancelEnrollmentPrompt.studentName} 학생의 수강을 종료합니다. 남은 수강료 실수납 ${formatWon(cancelEnrollmentPrompt.retainedNetAmount ?? 0)}과 수납·환불 기록은 보존됩니다. 이 작업으로 추가 환불되지는 않습니다.`
+            : `${cancelEnrollmentPrompt.studentName} 학생의 수강료 실수납이 0원이 되어 미납액이 ${formatWon(cancelEnrollmentPrompt.payableAmount)}입니다.`,
           cancelEnrollmentPrompt.source === 'void'
             ? '결제 취소만 정정한 것이고 재결제 예정이면 활성 상태를 유지하세요.'
-            : '전액 환불 후 실제 수강도 종료된 경우에만 수강취소로 변경하세요.',
+            : '실제 수강을 중단한 경우에만 종료하세요. 종료 후에는 수납을 추가할 수 없습니다.',
         ].join('\n\n') : undefined}
-        confirmLabel="수강취소"
+        confirmLabel="수강 종료 확인"
+        confirmDisabled={!terminationReason.trim() || !paymentsReady}
         pendingLabel="처리 중..."
-        cancelLabel="활성 유지"
+        cancelLabel={cancelEnrollmentPrompt?.source === 'manual' ? '취소' : '활성 유지'}
         tone="danger"
         submitting={submitting}
         overlayClassName="z-[205]"
@@ -973,12 +1139,27 @@ export function EnrollmentPaymentDrawer({
         onConfirm={() => {
           void handleCancelEnrollmentConfirmed()
         }}
-      />
+      >
+        <label className="admin-material-field">
+          <span className="admin-material-label">수강 종료 사유 <span className="text-rose-600">*</span></span>
+          <textarea
+            aria-label="수강 종료 사유"
+            value={terminationReason}
+            onChange={(event) => setTerminationReason(event.target.value)}
+            required
+            maxLength={1000}
+            disabled={submitting}
+            rows={3}
+            className="admin-material-control"
+          />
+          <span className="admin-material-help text-right">{terminationReason.length}/1000자</span>
+        </label>
+      </ConfirmationModal>
 
       <ConfirmationModal
         open={Boolean(notice)}
         title={notice?.title ?? '확인이 필요합니다'}
-        description={notice?.description}
+        description={notice?.tone === 'danger' ? getUserErrorMessage(notice.description) : notice?.description}
         confirmLabel="확인"
         cancelLabel={null}
         tone={notice?.tone ?? 'danger'}

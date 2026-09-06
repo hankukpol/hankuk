@@ -1,7 +1,9 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { AdminDrawer } from '@/components/admin/AdminDrawer'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
 import type { PopupRow } from '@/lib/popups.shared'
 import { formatDateTime } from '@/lib/utils'
@@ -29,6 +31,7 @@ export default function PopupManagementPageClient({
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState(initialError)
   const [deleteTarget, setDeleteTarget] = useState<Popup | null>(null)
@@ -61,17 +64,26 @@ export default function PopupManagementPageClient({
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault()
-    setSaving(true); setError(''); setMessage('')
-    const response = await fetch('/api/popups', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: newType, title: newTitle, content: newContent, is_active: true }),
-    })
-    const payload = await response.json().catch(() => null)
-    setSaving(false)
-    if (!response.ok) { setError(payload?.error ?? '팝업을 생성하지 못했습니다.'); return }
-    setPopups((c) => [...c, payload.popup as Popup])
-    setNewTitle(''); setNewContent(''); setMessage('팝업을 생성했습니다.'); setShowForm(false)
+    if (savingRef.current) return
+    savingRef.current = true
+    try {
+      setSaving(true); setError(''); setMessage('')
+      const response = await fetch('/api/popups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: newType, title: newTitle, content: newContent, is_active: true }),
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) { setError(payload?.error ?? '팝업을 생성하지 못했습니다.'); return }
+      setPopups((c) => [...c, payload.popup as Popup])
+      setNewTitle(''); setNewContent(''); setMessage('팝업을 생성했습니다.'); setShowForm(false)
+    } catch (reason) {
+      setError(getUserErrorMessage(reason, '저장하지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.'))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   function startEdit(popup: Popup) {
@@ -82,18 +94,27 @@ export default function PopupManagementPageClient({
   async function handleSaveEdit(event: FormEvent) {
     event.preventDefault()
     if (!editingId) return
-    setSaving(true); setError(''); setMessage('')
-    const response = await fetch('/api/popups', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editingId, type: editType, title: editTitle, content: editContent, is_active: editActive }),
-    })
-    const payload = await response.json().catch(() => null)
-    setSaving(false)
-    if (!response.ok) { setError(payload?.error ?? '팝업을 수정하지 못했습니다.'); return }
-    const updated = payload.popup as Popup
-    setPopups((c) => c.map((p) => (p.id === updated.id ? updated : p)))
-    setEditingId(null); setMessage('팝업을 수정했습니다.')
+    if (savingRef.current) return
+    savingRef.current = true
+    try {
+      setSaving(true); setError(''); setMessage('')
+      const response = await fetch('/api/popups', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingId, type: editType, title: editTitle, content: editContent, is_active: editActive }),
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) { setError(payload?.error ?? '팝업을 수정하지 못했습니다.'); return }
+      const updated = payload.popup as Popup
+      setPopups((c) => c.map((p) => (p.id === updated.id ? updated : p)))
+      setEditingId(null); setMessage('팝업을 수정했습니다.')
+    } catch (reason) {
+      setError(getUserErrorMessage(reason, '저장하지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.'))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   async function handleDeleteConfirmed() {
@@ -157,24 +178,28 @@ export default function PopupManagementPageClient({
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-[#1d1d1f]">팝업 관리</h2>
+          <h2 className="admin-page-title">팝업 관리</h2>
           <p className="mt-1 text-sm text-[#86868b]">{popups.length}개 등록</p>
         </div>
         <button
           type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-[8px] bg-[#0071e3] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+          onClick={() => { setError(''); setMessage(''); setShowForm(true) }}
+          className="admin-button admin-button-primary"
         >
-          {showForm ? '닫기' : '+ 새 팝업'}
+          + 새 팝업
         </button>
       </div>
 
-      {/* ── Create form (collapsible) ── */}
-      {showForm && (
-        <form onSubmit={handleCreate} className="rounded-[8px] border border-[#d2d2d7] bg-white p-5">
-          <h3 className="text-sm font-bold text-[#1d1d1f]">새 팝업 만들기</h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <select
+      {/* ── Create drawer ── */}
+      <AdminDrawer open={showForm} title="새 팝업 만들기" closeDisabled={saving}
+        onClose={() => { if (!saving) setShowForm(false) }} onSubmit={handleCreate}
+        footer={<>
+          <button type="button" className="admin-button" disabled={saving} onClick={() => setShowForm(false)}>취소</button>
+          <button type="submit" className="admin-button admin-button-primary" disabled={saving}>{saving ? '생성 중...' : '팝업 생성'}</button>
+        </>}>
+        <fieldset disabled={saving} className="min-w-0">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="admin-material-field"><span className="admin-material-label">팝업 유형</span><select
               value={newType}
               onChange={(e) => setNewType(e.target.value)}
               className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
@@ -182,40 +207,35 @@ export default function PopupManagementPageClient({
               {POPUP_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
-            </select>
-            <input
+            </select></label>
+            <label className="admin-material-field"><span className="admin-material-label">제목</span><input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="제목"
               className="rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-            />
+            /></label>
           </div>
-          <textarea
+          <label className="admin-material-field mt-4"><span className="admin-material-label">내용</span><textarea
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
             rows={4}
             placeholder="내용을 입력하세요..."
-            className="mt-3 w-full rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <button type="submit" disabled={saving} className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
-              {saving ? '생성 중...' : '팝업 생성'}
-            </button>
-            {error && <span className="text-xs text-red-500">{error}</span>}
-            {message && <span className="text-xs text-[#1b7a1b]">{message}</span>}
-          </div>
-        </form>
-      )}
+            className="w-full rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+          /></label>
+        </fieldset>
+        {error ? <p role="alert" className="mt-4 text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
+      </AdminDrawer>
 
-      {/* ── Edit form (inline) ── */}
-      {editingId && (
-        <form onSubmit={handleSaveEdit} className="rounded-[8px] border border-blue-200 bg-blue-50/30 p-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#1d1d1f]">팝업 편집</h3>
-            <button type="button" onClick={() => setEditingId(null)} className="text-xs text-[#86868b] hover:underline">닫기</button>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <select
+      {/* ── Edit drawer ── */}
+      <AdminDrawer open={editingId !== null} title="팝업 편집" closeDisabled={saving}
+        onClose={() => { if (!saving) setEditingId(null) }} onSubmit={handleSaveEdit}
+        footer={<>
+          <button type="button" className="admin-button" disabled={saving} onClick={() => setEditingId(null)}>취소</button>
+          <button type="submit" className="admin-button admin-button-primary" disabled={saving}>{saving ? '저장 중...' : '저장'}</button>
+        </>}>
+        <fieldset disabled={saving} className="min-w-0">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="admin-material-field"><span className="admin-material-label">팝업 유형</span><select
               value={editType}
               onChange={(e) => setEditType(e.target.value)}
               className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
@@ -223,44 +243,40 @@ export default function PopupManagementPageClient({
               {POPUP_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
-            </select>
-            <input
+            </select></label>
+            <label className="admin-material-field"><span className="admin-material-label">제목</span><input
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               placeholder="제목"
               className="rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-            />
+            /></label>
           </div>
-          <textarea
+          <label className="admin-material-field mt-4"><span className="admin-material-label">내용</span><textarea
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             rows={4}
             placeholder="내용"
-            className="mt-3 w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
-          />
+            className="w-full rounded-[8px] border border-[#d2d2d7] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#86868b]"
+          /></label>
           <div className="mt-3 flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-[#1d1d1f]">
+            <label className="flex items-center gap-2 text-xs text-[#1d1d1f]">
               <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} className="rounded" />
               활성 상태
             </label>
           </div>
-          <div className="mt-3">
-            <button type="submit" disabled={saving} className="rounded-[8px] bg-[#0071e3] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
-              {saving ? '저장 중...' : '저장'}
-            </button>
-          </div>
-        </form>
-      )}
+        </fieldset>
+        {error ? <p role="alert" className="mt-4 text-sm text-red-600">{getUserErrorMessage(error)}</p> : null}
+      </AdminDrawer>
 
       {!showForm && !editingId && (error || message) && (
         <div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-red-500">{getUserErrorMessage(error)}</p>}
           {message && <p className="text-xs text-[#1b7a1b]">{message}</p>}
         </div>
       )}
 
       {/* ── Popup table ── */}
-      <section className="overflow-hidden rounded-[8px] bg-white">
+      <section className="admin-table-frame overflow-hidden bg-white">
         {popups.length === 0 ? (
           <p className="px-5 py-12 text-center text-sm text-[#86868b]">등록된 팝업이 없습니다.</p>
         ) : (

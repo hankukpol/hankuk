@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it } from 'node:test'
+import { getScanReasonMessage } from '../../src/app/(staff)/scan/scan-page-utils'
 
 function readProjectFile(relativePath: string) {
   return readFileSync(path.join(process.cwd(), relativePath), 'utf8')
@@ -45,6 +46,7 @@ describe('QR scan receipt status workflow', () => {
   it('shows clear staff-facing status when there is no material to receive', () => {
     assert.match(staffPageSource, /'수령자료 없음'/)
     assert.match(staffUtilsSource, /현재 받을 미수령 자료가 없습니다/)
+    assert.match(getScanReasonMessage('ALL_RECEIVED'), /수령할 자료가 없습니다/)
     assert.match(staffPanelSource, /미수령 자료를 확인한 뒤 배부하세요/)
     assert.match(staffPanelSource, /미수령 자료 \{selectOptions\.length\}건/)
   })
@@ -57,11 +59,11 @@ describe('QR scan receipt status workflow', () => {
     assert.doesNotMatch(adminMatrixSource, /formatDateTime\(receipt\.distributed_at\)\.split\(' '\)\[0\]/)
   })
 
-  it('refreshes the student QR token before the ten-minute token expires', () => {
-    assert.match(studentPageSource, /QR_TOKEN_REFRESH_MS\s*=\s*5 \* 60 \* 1000/)
-    assert.match(studentPageSource, /qrRefreshTimer = setInterval/)
-    assert.match(studentPageSource, /void load\(\)\.catch\(\(\) => null\)/)
-    assert.match(studentPageSource, /document\.visibilityState !== 'visible'/)
-    assert.match(staffUtilsSource, /학생 수강증을 새로고침하거나 다시 열어 달라고 안내/)
+  // The pre-expiry refresh invariant now lives in the real mounted-page test:
+  // tests/admin/student-material-freshness.test.tsx checks its registered polling
+  // interval against a generated QR token's lifetime, triggers that timer, and
+  // verifies the rendered QR SVG rotates. A source-code timer name is not a contract.
+  it('gives staff a recovery action when a student QR token is invalid or expired', () => {
+    assert.match(getScanReasonMessage('INVALID_TOKEN'), /학생 수강증을 새로고침하거나 다시 열어 달라고 안내/)
   })
 })

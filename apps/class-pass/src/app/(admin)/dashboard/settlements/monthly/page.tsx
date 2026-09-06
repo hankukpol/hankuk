@@ -1,5 +1,6 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarDays, Download, FileSpreadsheet, RefreshCw } from 'lucide-react'
@@ -71,9 +72,9 @@ function toSeriesFilterValue(group: string, label: string) {
 function StatCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'blue' | 'rose' }) {
   const toneClass = tone === 'blue' ? 'text-blue-600' : tone === 'rose' ? 'text-rose-600' : 'text-slate-900'
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+    <article className="border border-slate-200 bg-white">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${toneClass}`}>{value}</p>
+      <p className={`mt-1 font-bold ${toneClass}`}>{value}</p>
     </article>
   )
 }
@@ -116,7 +117,7 @@ export default function MonthlySettlementsPage() {
   }, [courseId, range.from, range.to])
 
   useEffect(() => {
-    fetch('/api/courses?activeOnly=1', { cache: 'no-store' })
+    fetch('/api/courses', { cache: 'no-store' })
       .then(async (response) => {
         const result = await response.json().catch(() => null)
         if (!response.ok) {
@@ -200,9 +201,7 @@ export default function MonthlySettlementsPage() {
       <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Monthly Settlement</p>
-            <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">월별 정산</h1>
-            <p className="mt-2 text-sm text-slate-500">월간 수납 흐름, 환불률, 강좌별 매출 순위를 확인합니다.</p>
+            <h1 className="admin-page-title mt-1">월별 정산</h1>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -233,7 +232,7 @@ export default function MonthlySettlementsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[220px,1fr,220px,auto]">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[200px_minmax(0,1fr)_160px_auto]">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-slate-500">정산월</span>
             <select
@@ -255,7 +254,7 @@ export default function MonthlySettlementsPage() {
             >
               <option value="">전체 강좌</option>
               {courses.map((course) => (
-                <option key={course.id} value={course.id}>{course.name}</option>
+                <option key={course.id} value={course.id}>{course.name}{course.status === 'archived' ? ' (보관)' : ''}</option>
               ))}
             </select>
           </label>
@@ -288,9 +287,9 @@ export default function MonthlySettlementsPage() {
         </div>
       </section>
 
-      {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+      {error ? <p className="text-sm font-medium text-rose-600">{getUserErrorMessage(error)}</p> : null}
 
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <section className="admin-metric-strip">
         <StatCard label="월 총매출" value={formatWon(summary.grossAmount)} />
         <StatCard label="환불" value={formatWon(summary.refundAmount)} tone="rose" />
         <StatCard label="순매출" value={formatWon(summary.netAmount)} tone="blue" />
@@ -328,7 +327,7 @@ export default function MonthlySettlementsPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <article className="rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-bold text-[#1d1d1f]">결제수단별 월간 합계</h2>
@@ -347,9 +346,9 @@ export default function MonthlySettlementsPage() {
                   <tr key={row.method}>
                     <td className="px-4 py-3 font-semibold text-[#1d1d1f]">{row.label}</td>
                     <td className="px-4 py-3 text-slate-600">{row.count}건</td>
-                    <td className="px-4 py-3 text-right font-semibold text-[#1d1d1f]">{formatWon(row.gross)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-rose-600">{formatWon(row.refund)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-600">{formatWon(row.net)}</td>
+                    <td className="admin-table-amount px-4 py-3 text-right font-semibold text-[#1d1d1f]">{formatWon(row.gross)}</td>
+                    <td className="admin-table-amount px-4 py-3 text-right font-semibold text-rose-600">{formatWon(row.refund)}</td>
+                    <td className="admin-table-amount px-4 py-3 text-right font-bold text-blue-600">{formatWon(row.net)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -423,9 +422,9 @@ export default function MonthlySettlementsPage() {
                         {row.date}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-[#1d1d1f]">{formatWon(row.grossAmount)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-600">{formatWon(row.netAmount)}</td>
+                    <td className="admin-table-amount px-4 py-3 text-right font-semibold text-[#1d1d1f]">{formatWon(row.grossAmount)}</td>
+                    <td className="admin-table-amount px-4 py-3 text-right font-semibold text-rose-600">{formatWon(row.refundAmount)}</td>
+                    <td className="admin-table-amount px-4 py-3 text-right font-bold text-blue-600">{formatWon(row.netAmount)}</td>
                     <td className="px-4 py-3 text-slate-600">수납 {row.paymentCount} · 환불 {row.refundCount}</td>
                   </tr>
                 ))}

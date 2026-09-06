@@ -1,6 +1,7 @@
-import { invalidateCache } from '@/lib/cache/revalidate'
+import { invalidateDistributionCache, type DistributionRefreshNotice } from '@/lib/distribution/cache'
 import { getUnreceivedMaterialsForEnrollment } from '@/lib/class-pass-data'
 import { createServerClient } from '@/lib/supabase/server'
+import { getServerTenantType } from '@/lib/tenant.server'
 import type { MaterialType } from '@/types/database'
 
 type DistributionResult = {
@@ -28,7 +29,7 @@ export type DistributedMaterialSummary = {
   materialType: MaterialType
 }
 
-export type DistributionExecutionResult =
+export type DistributionExecutionResult = DistributionRefreshNotice & (
   | {
     kind: 'distributed'
     studentName: string
@@ -44,6 +45,7 @@ export type DistributionExecutionResult =
     kind: 'failed'
     reason: string
   }
+)
 
 export async function resolvePendingDistributionSelection(params: {
   enrollmentId: number
@@ -100,18 +102,20 @@ export async function distributeMaterialsToEnrollment(params: {
   materials: DistributionMaterialOption[]
 }): Promise<DistributionExecutionResult> {
   const db = createServerClient()
+  const division = await getServerTenantType()
   const distributedMaterials: DistributedMaterialSummary[] = []
 
   for (const material of params.materials) {
-    const rpcResult = await db.rpc('distribute_material', {
+    const rpcResult = await db.rpc('distribute_material_atomic', {
+      p_division: division,
       p_enrollment_id: params.enrollmentId,
       p_material_id: material.id,
-    })
+    }).then(result => result, error => ({ data: null, error }))
 
     if (rpcResult.error) {
       if (distributedMaterials.length > 0) {
-        await invalidateCache('distribution-logs')
         return {
+          ...await invalidateDistributionCache(),
           kind: 'partial',
           studentName: params.studentName,
           materials: distributedMaterials,
@@ -127,8 +131,8 @@ export async function distributeMaterialsToEnrollment(params: {
       const reason = result?.reason ?? 'DISTRIBUTION_FAILED'
 
       if (distributedMaterials.length > 0) {
-        await invalidateCache('distribution-logs')
         return {
+          ...await invalidateDistributionCache(),
           kind: 'partial',
           studentName: result?.student_name ?? params.studentName,
           materials: distributedMaterials,
@@ -146,11 +150,10 @@ export async function distributeMaterialsToEnrollment(params: {
     })
   }
 
-  if (distributedMaterials.length > 0) {
-    await invalidateCache('distribution-logs')
-  }
+  const notice = distributedMaterials.length > 0 ? await invalidateDistributionCache() : {}
 
   return {
+    ...notice,
     kind: 'distributed',
     studentName: params.studentName,
     materials: distributedMaterials,

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
   const loginId = parsed.data.login_id.trim()
   const existingAccount = (await listOperatorAccounts()).find((account) => account.login_id === loginId)
   if (existingAccount) {
-    return NextResponse.json({ error: 'Operator account login id already exists.' }, { status: 409 })
+    return NextResponse.json({ error: '이미 사용 중인 운영자 로그인 아이디입니다. 다른 아이디를 사용해 주세요.' }, { status: 409 })
   }
 
   const account = await upsertOperatorAccount({ ...parsed.data, login_id: loginId })

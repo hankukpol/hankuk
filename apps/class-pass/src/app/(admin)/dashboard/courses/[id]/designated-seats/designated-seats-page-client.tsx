@@ -1,17 +1,20 @@
 'use client'
 
+import { getUserErrorMessage } from '@/lib/user-error-message'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import type { FormEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { AdminDialogClose } from '@/components/admin/AdminDialogClose'
+import { AdminDrawerSurface } from '@/components/admin/AdminDrawer'
+import { AdminPortal } from '@/components/admin/AdminPortal'
+import { AdminSectionTabs, AdminSectionPanel } from '@/components/admin/AdminSectionTabs'
 import { SeatEditModal } from '@/components/designated-seat/SeatEditModal'
 import { SeatGrid } from '@/components/designated-seat/SeatGrid'
 import { useTenantConfig } from '@/components/TenantProvider'
 import { useDeferredInteractionWork } from '@/hooks/use-deferred-interaction-work'
 import { defaultSeatLabel, sortSeats } from '@/lib/designated-seat/layout'
-import { useMotionConfig } from '@/lib/motion'
 import { withTenantPrefix } from '@/lib/tenant'
 import type {
   Course,
@@ -25,6 +28,12 @@ import { DesignatedSeatAttendancePanel } from './designated-seat-attendance-pane
 import { DesignatedSeatScanIssuesPanel } from './designated-seat-scan-issues-panel'
 
 type TabMode = 'editor' | 'status' | 'attendance' | 'scan-issues' | 'rooms'
+const STATUS_SECTIONS = [
+  { value: 'assignments', label: '좌석 배정 현황' },
+  { value: 'display', label: 'QR 표시·연결' },
+  { value: 'devices', label: '표시 기기' },
+  { value: 'schedule', label: '스케줄·수동 운영' },
+] as const
 type ManualSeatConfirmation =
   | {
     type: 'clear'
@@ -271,7 +280,6 @@ export default function CourseDesignatedSeatsPage({
 }: CourseDesignatedSeatsPageProps) {
   const params = useParams<{ id: string }>()
   const tenant = useTenantConfig()
-  const motionConfig = useMotionConfig()
   const deferInteractionWork = useDeferredInteractionWork()
   const courseId = Number(params.id)
   const initialState = getInitialViewState(initialPayload)
@@ -338,6 +346,12 @@ export default function CourseDesignatedSeatsPage({
   const [confirmingPendingTab, setConfirmingPendingTab] = useState(false)
   const [manualSeatConfirmation, setManualSeatConfirmation] = useState<ManualSeatConfirmation | null>(null)
   const [displayStopConfirmOpen, setDisplayStopConfirmOpen] = useState(false)
+  const closeAssignmentDialog = () => {
+    if (working) return
+    setModalSeatId(null)
+    setStudentSearch('')
+    setManualEnrollmentId(null)
+  }
   const savedSnapshotRef = useRef(initialSnapshot)
   const roomRequestRef = useRef(0)
   const displayConfigRequestRef = useRef(0)
@@ -1319,7 +1333,7 @@ export default function CourseDesignatedSeatsPage({
   }
 
   if (!course) {
-    return <p className="py-12 text-center text-sm text-red-500">{error || '강좌를 찾을 수 없습니다.'}</p>
+    return <p className="py-12 text-center text-sm text-red-500">{getUserErrorMessage(error || '강좌를 찾을 수 없습니다.')}</p>
   }
 
   const bulkCount = allSelectedIds.size
@@ -1404,10 +1418,7 @@ export default function CourseDesignatedSeatsPage({
             >
               &larr; {course!.name}
             </Link>
-            <h2 className="mt-2 text-2xl font-semibold text-[#1d1d1f]">지정좌석</h2>
-            <p className="mt-2 text-sm leading-6 text-[#86868b]">
-              학생이 직접 좌석을 선착순으로 선택할 수 있는 기능입니다. 기존 과목별 좌석 배정과는 독립적으로 운영됩니다.
-            </p>
+            <h2 className="admin-page-title mt-2">지정좌석</h2>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -1429,28 +1440,19 @@ export default function CourseDesignatedSeatsPage({
       ) : null}
 
       {/* Tab switcher */}
-      <div className="flex gap-4 overflow-x-auto border-b border-slate-200 sm:gap-6">
+      <div className="admin-subtabs">
         {TAB_ITEMS.map((item) => (
           <button
             key={item.key}
             type="button"
             onClick={() => handleTabChange(item.key)}
-            className={`relative -mb-px whitespace-nowrap border-b-2 border-transparent px-1 pb-3 pt-1 text-sm font-semibold transition-colors ${
-              tab === item.key
-                ? 'text-[#1d1d1f]'
-                : 'text-slate-500 hover:text-[#1d1d1f]'
-            }`}
+            className="admin-subtab"
+            data-active={tab === item.key}
+            aria-pressed={tab === item.key}
           >
             {item.label}
             {item.key === 'editor' && isDirty ? (
               <span className="ml-2 inline-block h-2 w-2 rounded-full bg-amber-400" />
-            ) : null}
-            {tab === item.key ? (
-              <motion.div
-                layoutId="designated-seats-tabs"
-                className="absolute inset-x-0 bottom-0 h-0.5 bg-[#1d1d1f]"
-                transition={motionConfig.tab}
-              />
             ) : null}
           </button>
         ))}
@@ -1487,16 +1489,16 @@ export default function CourseDesignatedSeatsPage({
 
       {/* Summary stats */}
       {tab !== 'attendance' && tab !== 'rooms' ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="admin-metric-strip">
           {[
             { label: '활성 좌석', value: summary.activeSeatCount },
             { label: '배정 완료', value: summary.reservedCount },
             { label: '잔여 좌석', value: summary.availableCount },
             { label: '신청 상태', value: seatOpen && activeRoom?.is_open ? 'OPEN' : 'CLOSED' },
           ].map((item) => (
-            <article key={item.label} className="rounded-[8px] bg-white px-4 py-3 sm:p-5">
-              <p className="text-xs font-semibold text-[#86868b] sm:text-sm">{item.label}</p>
-              <p className="mt-1 text-2xl font-semibold text-[#1d1d1f] sm:mt-3 sm:text-3xl">{item.value}</p>
+            <article key={item.label} className="bg-white">
+              <p className="text-xs font-semibold text-[#86868b]">{item.label}</p>
+              <p className="mt-1 font-semibold text-[#1d1d1f]">{item.value}</p>
             </article>
           ))}
         </div>
@@ -1505,7 +1507,7 @@ export default function CourseDesignatedSeatsPage({
       {/* Feedback */}
       {(error || message) ? (
         <div className="flex flex-col gap-2">
-          {error ? <p className="text-sm text-[#ff3b30]">{error}</p> : null}
+          {error ? <p className="text-sm text-[#ff3b30]">{getUserErrorMessage(error)}</p> : null}
           {message ? <p className="text-sm text-[#1b7a1b]">{message}</p> : null}
         </div>
       ) : null}
@@ -1629,9 +1631,8 @@ export default function CourseDesignatedSeatsPage({
                   <div>
                     <h3 className="text-base font-bold text-[#1d1d1f]">좌석 맵</h3>
                     <p className="text-xs text-[#86868b]">
-                      클릭으로 좌석 편집, <kbd className="rounded border border-[#d2d2d7] bg-[#f5f5f7] px-1 py-0.5 text-[10px] font-semibold">Shift</kbd>+클릭으로 다중 선택
+                      <kbd className="rounded border border-[#d2d2d7] bg-[#f5f5f7] px-1 py-0.5 text-[10px] font-semibold">Shift</kbd>+클릭으로 다중 선택
                     </p>
-                    <p className="mt-1 text-xs text-[#86868b]">새 좌석 번호는 가로 A, B, C / 세로 1, 2, 3 순서로 자동 생성됩니다.</p>
                   </div>
                   {bulkCount > 1 ? (
                     <div className="flex flex-wrap items-center gap-2">
@@ -1656,9 +1657,6 @@ export default function CourseDesignatedSeatsPage({
                 />
               </div>
 
-              {bulkCount <= 1 ? (
-                <p className="text-sm text-[#86868b]">좌석을 클릭하면 좌석 번호와 운영 좌석 상태를 모달에서 바로 수정할 수 있습니다.</p>
-              ) : null}
 
               <button
                 type="submit"
@@ -1674,8 +1672,8 @@ export default function CourseDesignatedSeatsPage({
             open={tab === 'editor' && editorSeat !== null}
             onClose={closeEditorSeatModal}
             title="좌석 편집"
+            footer={<button type="button" onClick={closeEditorSeatModal} className="admin-button">닫기</button>}
             badge={editorSeat ? `${editorSeat.position_x}열 ${editorSeat.position_y}행` : undefined}
-            description="좌석 번호와 운영 좌석 여부를 바로 수정할 수 있습니다."
           >
             {editorSeat ? (
               <div className="space-y-5">
@@ -1686,7 +1684,6 @@ export default function CourseDesignatedSeatsPage({
                     onChange={(event) => updateSelectedSeats({ label: event.target.value })}
                     className="w-full rounded-[10px] border border-[#d2d2d7] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#0071e3]"
                     placeholder="예: A-1"
-                    autoFocus
                   />
                 </label>
 
@@ -1715,15 +1712,6 @@ export default function CourseDesignatedSeatsPage({
                   </p>
                 </div>
 
-                <div className="flex items-center justify-end border-t border-[#f5f5f7] pt-4">
-                  <button
-                    type="button"
-                    onClick={closeEditorSeatModal}
-                    className="rounded-full bg-[#1d1d1f] px-5 py-2 text-sm font-medium text-white transition-all duration-200 ease-ios hover:bg-black hover:shadow-md active:scale-[0.97]"
-                  >
-                    닫기
-                  </button>
-                </div>
               </div>
             ) : null}
           </SeatEditModal>
@@ -1732,8 +1720,9 @@ export default function CourseDesignatedSeatsPage({
 
       {/* ───── Tab 2: Status ───── */}
       {tab === 'status' && (
-        <div className="flex flex-col gap-6">
+        <AdminSectionTabs label="지정좌석 현황 세부 메뉴" items={STATUS_SECTIONS}>
           {/* QR Display — top */}
+          <AdminSectionPanel value="display">
           <section className="rounded-[8px] bg-white p-4 sm:p-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -1752,8 +1741,7 @@ export default function CourseDesignatedSeatsPage({
               </button>
             </div>
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_1.25fr]">
-              <div className="flex flex-col gap-4">
+              <div className="mt-5 flex flex-col gap-4">
                 <div className="rounded-[8px] bg-[#f5f5f7] p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <label className="flex-1">
@@ -1878,6 +1866,12 @@ export default function CourseDesignatedSeatsPage({
                   </p>
                 </div>
 
+              </div>
+          </section>
+          </AdminSectionPanel>
+          <AdminSectionPanel value="devices">
+            <section className="flex flex-col gap-4 bg-white p-4 sm:p-6">
+              <h3>표시 기기 관리</h3>
                 <div className="rounded-[8px] bg-[#f5f5f7] p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <label className="flex-1">
@@ -1941,16 +1935,18 @@ export default function CourseDesignatedSeatsPage({
                     ))}
                   </div>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-4">
+            </section>
+          </AdminSectionPanel>
+          <AdminSectionPanel value="schedule">
+              <section className="flex flex-col gap-4 bg-white p-4 sm:p-6">
+                <h3>스케줄·수동 운영</h3>
                 <div className="rounded-[8px] bg-[#f5f5f7] p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-semibold text-[#1d1d1f]">주간 자동 표시 스케줄</p>
                       <p className="mt-1 text-xs text-[#86868b]">KST 기준이며 자정을 넘기는 시간대는 나누어 등록합니다.</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 gap-2">
                       <button
                         type="button"
                         onClick={addDisplaySchedule}
@@ -1971,7 +1967,7 @@ export default function CourseDesignatedSeatsPage({
 
                   <div className="mt-4 flex flex-col gap-2">
                     {displaySchedules.map((schedule, index) => (
-                      <div key={`${schedule.dayOfWeek}-${index}`} className="grid gap-2 rounded-[8px] bg-white p-3 sm:grid-cols-[70px_1fr_1fr_1.5fr_80px_60px] sm:items-center">
+                      <div key={`${schedule.dayOfWeek}-${index}`} className="grid gap-2 rounded-[8px] bg-white p-3 sm:grid-cols-2 xl:grid-cols-[80px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)_80px_64px] sm:items-center">
                         <select
                           value={schedule.dayOfWeek}
                           onChange={(event) => updateDisplaySchedule(index, { dayOfWeek: Number(event.target.value) })}
@@ -2024,7 +2020,6 @@ export default function CourseDesignatedSeatsPage({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-semibold text-[#1d1d1f]">수동 표시 세션</p>
-                      <p className="mt-1 text-xs text-[#86868b]">스케줄과 별도로 즉시 켜야 할 때만 사용합니다.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <select
@@ -2067,11 +2062,11 @@ export default function CourseDesignatedSeatsPage({
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
           </section>
+          </AdminSectionPanel>
 
           {/* Seat map */}
+          <AdminSectionPanel value="assignments">
           <section className="rounded-[8px] bg-white p-4 sm:p-6">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -2134,7 +2129,8 @@ export default function CourseDesignatedSeatsPage({
               mode="admin"
             />
           </section>
-        </div>
+          </AdminSectionPanel>
+        </AdminSectionTabs>
       )}
 
       {tab === 'attendance' && course ? (
@@ -2150,17 +2146,14 @@ export default function CourseDesignatedSeatsPage({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-[#1d1d1f]">강의실 관리</h3>
-              <p className="mt-1 text-sm text-[#86868b]">
-                강의실별로 좌석 배치와 배정 현황이 분리됩니다.
-              </p>
             </div>
             <span className="text-xs font-semibold text-[#86868b]">{sortedRooms.length}개</span>
           </div>
 
           {!seatOpen ? (
-            <div className="mt-4 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+            <p className="admin-notice admin-notice-warning mt-4">
               강좌 전체 신청이 닫혀 있습니다. 강의실을 열어도 강좌 신청을 열기 전까지 학생은 좌석을 선택할 수 없습니다.
-            </div>
+            </p>
           ) : null}
 
           <form onSubmit={handleCreateRoom} className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -2276,29 +2269,17 @@ export default function CourseDesignatedSeatsPage({
         const currentEnrollment = currentReservation ? enrollmentMap.get(currentReservation.enrollment_id) : null
 
         return (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-            onClick={() => { setModalSeatId(null); setStudentSearch(''); setManualEnrollmentId(null) }}
-          >
-            <div
-              className="w-full max-w-md rounded-[10px] bg-white p-6"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[#1d1d1f]">
+          <AdminPortal><AdminDrawerSurface labelledBy="designated-seat-assignment-title"
+            priority={50} onClose={closeAssignmentDialog} closeDisabled={working}>
+              <div className="admin-dialog-header">
+                <h3 id="designated-seat-assignment-title" className="admin-dialog-title min-w-0">
                   {modalSeat?.label ?? `좌석 #${modalSeatId}`} 좌석 관리
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => { setModalSeatId(null); setStudentSearch(''); setManualEnrollmentId(null) }}
-                  className="text-sm font-semibold text-[#86868b] transition-all duration-200 ease-ios hover:text-[#1d1d1f] active:scale-[0.97]"
-                >
-                  닫기
-                </button>
+                <AdminDialogClose onClick={closeAssignmentDialog} disabled={working} />
               </div>
-
+              <div className="admin-dialog-body">
               {currentEnrollment ? (
-                <div className="mt-4">
+                <div>
                   <div className="rounded-[8px] border border-blue-200 bg-blue-50 px-4 py-3">
                     <p className="text-xs font-semibold text-[#0066cc]">현재 배정 학생</p>
                     <p className="mt-1 text-base font-bold text-[#1d1d1f]">
@@ -2329,13 +2310,13 @@ export default function CourseDesignatedSeatsPage({
                 </div>
               ) : null}
 
-              <div className={currentEnrollment ? 'mt-2' : 'mt-4'}>
+              <div className={currentEnrollment ? 'mt-2' : undefined}>
                 <input
                   value={studentSearch}
                   onChange={(event) => setStudentSearch(event.target.value)}
                   placeholder="이름, 수험번호, 연락처로 검색"
+                  aria-label="좌석 배정 학생 검색"
                   className="w-full rounded-[8px] border border-[#d2d2d7] px-3 py-2.5 text-sm outline-none focus:border-blue-400"
-                  autoFocus
                 />
                 <div className="mt-2 max-h-60 overflow-y-auto rounded-[8px] border border-[#d2d2d7]">
                   {filteredEnrollments.length === 0 ? (
@@ -2372,7 +2353,9 @@ export default function CourseDesignatedSeatsPage({
                   )}
                 </div>
               </div>
-
+              </div>
+              <div className="admin-dialog-footer">
+              <button type="button" className="admin-button" disabled={working} onClick={closeAssignmentDialog}>취소</button>
               <button
                 type="button"
                 onClick={() => {
@@ -2387,12 +2370,12 @@ export default function CourseDesignatedSeatsPage({
                   })
                 }}
                 disabled={working || !manualEnrollmentId}
-                className="mt-3 w-full rounded-[8px] bg-[#0071e3] px-4 py-3 text-sm font-bold text-white transition-all duration-200 ease-ios hover:bg-blue-700 hover:shadow-md active:scale-[0.97] active:duration-100 disabled:opacity-60 disabled:active:scale-100"
+                className="admin-button admin-button-primary"
               >
                 {currentEnrollment ? '학생 변경' : '배정하기'}
               </button>
-            </div>
-          </div>
+              </div>
+          </AdminDrawerSurface></AdminPortal>
         )
       })()}
       </div>

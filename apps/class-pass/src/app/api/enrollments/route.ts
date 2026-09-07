@@ -10,6 +10,7 @@ import {
   resolveBranchSeriesOptionRequestFromOptions,
 } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
+import { ACTIVE_PHONE_CONFLICT_MESSAGE, describeEnrollmentConflict, pickActivePhoneConflict } from '@/lib/enrollments/phone-conflict'
 import {
   assertCohortOptionBelongsToCurrentBranch,
   attachCohortLabelsToEnrollments,
@@ -481,6 +482,25 @@ export async function POST(req: NextRequest) {
       student.name,
       student.phone,
     )
+    // 연락처는 한 강좌에 수강중인 사람 하나만 쓸 수 있다. 학생 레코드를 더 건드리기 전에 멈춘다.
+    const samePhoneRows = await db
+      .from('enrollments')
+      .select('id, name, phone, status, student_id')
+      .eq('course_id', parsed.data.courseId)
+      .eq('phone', student.phone)
+      .eq('status', 'active')
+    if (samePhoneRows.error) {
+      throw samePhoneRows.error
+    }
+    const phoneConflict = pickActivePhoneConflict(samePhoneRows.data ?? [], {
+      phone: student.phone,
+      studentId: student.id,
+      name: student.name,
+    })
+    if (phoneConflict) {
+      return NextResponse.json({ error: ACTIVE_PHONE_CONFLICT_MESSAGE }, { status: 409 })
+    }
+
     const activeRegistration = existingRegistrations.find((entry) => entry.status === 'active')
     if (activeRegistration) {
       return NextResponse.json({ error: '같은 과정에 동일한 수강생이 이미 등록되어 있습니다.' }, { status: 409 })
@@ -541,7 +561,7 @@ export async function POST(req: NextRequest) {
       const { data, error } = updateResult
       if (error) {
         if (error.code === '23505') {
-          return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
+          return NextResponse.json({ error: describeEnrollmentConflict(error, '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.') }, { status: 409 })
         }
 
         return NextResponse.json({ error: '환불 완료 수강생을 재등록하지 못했습니다.' }, { status: 500 })
@@ -567,7 +587,7 @@ export async function POST(req: NextRequest) {
       const { data, error } = insertResult
       if (error) {
         if (error.code === '23505') {
-          return NextResponse.json({ error: '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
+          return NextResponse.json({ error: describeEnrollmentConflict(error, '같은 과정에 동일한 이름/연락처 수강생이 이미 존재합니다.') }, { status: 409 })
         }
 
         return NextResponse.json({ error: '수강생을 생성하지 못했습니다.' }, { status: 500 })

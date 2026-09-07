@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { describeEnrollmentConflict } from '@/lib/enrollments/phone-conflict'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import {
   listBranchSeriesOptions,
@@ -235,7 +236,7 @@ export async function PATCH(
 
   if (error) {
     if (error.code === '23505') {
-      return NextResponse.json({ error: '같은 강좌에 동일한 이름/연락처 수강생이 이미 존재합니다.' }, { status: 409 })
+      return NextResponse.json({ error: describeEnrollmentConflict(error, '같은 강좌에 동일한 이름/연락처 수강생이 이미 존재합니다.') }, { status: 409 })
     }
 
     return NextResponse.json({ error: '수강생을 수정하지 못했습니다.' }, { status: 500 })

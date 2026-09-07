@@ -10,6 +10,7 @@ import {
   resolveBranchSeriesOptionRequestFromOptions,
 } from '@/lib/branch-series'
 import { invalidateCache } from '@/lib/cache/revalidate'
+import { ACTIVE_PHONE_CONFLICT_MESSAGE, describeEnrollmentConflict, pickActivePhoneConflict } from '@/lib/enrollments/phone-conflict'
 import {
   assertCohortOptionBelongsToCurrentBranch,
   attachCohortLabelsToEnrollments,
@@ -648,6 +649,24 @@ export async function POST(req: NextRequest) {
       const activeRegistration = existingRegistrations.find((entry) => entry.status === 'active')
       if (activeRegistration) {
         return NextResponse.json({ error: '선택한 강좌 중 이미 등록된 강좌가 있습니다.' }, { status: 409 })
+      }
+
+      // 연락처는 한 강좌에 수강중인 사람 하나만 쓸 수 있다.
+      const samePhoneRows = await db
+        .from('enrollments')
+        .select('id, name, phone, status, student_id')
+        .eq('course_id', registration.courseId)
+        .eq('phone', student.phone)
+        .eq('status', 'active')
+      if (samePhoneRows.error) {
+        throw samePhoneRows.error
+      }
+      if (pickActivePhoneConflict(samePhoneRows.data ?? [], {
+        phone: student.phone,
+        studentId: student.id,
+        name: student.name,
+      })) {
+        return NextResponse.json({ error: ACTIVE_PHONE_CONFLICT_MESSAGE }, { status: 409 })
       }
     }
 

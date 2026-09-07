@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAppFeature } from '@/lib/app-feature-guard'
+import { describeEnrollmentConflict } from '@/lib/enrollments/phone-conflict'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import {
   findBranchSeriesOptionByLabel,
@@ -667,7 +668,7 @@ export async function POST(req: NextRequest) {
       .upsert(updates, { onConflict: 'id' })
     if (error) {
       if (error.code === '23505') {
-        return NextResponse.json({ error: '중복된 수강생이 하나 이상 포함되어 있습니다.' }, { status: 409 })
+        return NextResponse.json({ error: describeEnrollmentConflict(error, '중복된 수강생이 하나 이상 포함되어 있습니다.') }, { status: 409 })
       }
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }
@@ -679,7 +680,7 @@ export async function POST(req: NextRequest) {
       .insert(inserts)
     if (error) {
       if (error.code === '23505') {
-        return NextResponse.json({ error: '중복된 수강생이 하나 이상 포함되어 있습니다.' }, { status: 409 })
+        return NextResponse.json({ error: describeEnrollmentConflict(error, '중복된 수강생이 하나 이상 포함되어 있습니다.') }, { status: 409 })
       }
       return NextResponse.json({ error: '수강생 명단을 저장하지 못했습니다.' }, { status: 500 })
     }

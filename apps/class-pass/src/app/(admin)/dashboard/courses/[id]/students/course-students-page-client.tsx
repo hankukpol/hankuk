@@ -1773,9 +1773,11 @@ export default function CourseStudentsPage({
 
     if (matrixSearch.trim()) {
       const query = matrixSearch.trim().toLowerCase()
+      // 화면에는 연락처를 010-1234-5678로 보여 준다. 보이는 대로 쳐도 찾히도록 양쪽 숫자만 비교한다.
+      const queryDigits = query.replace(/\D/g, '')
       rows = rows.filter((row) =>
         row.enrollment.name.toLowerCase().includes(query)
-        || row.enrollment.phone.includes(query)
+        || (queryDigits !== '' && row.enrollment.phone.replace(/\D/g, '').includes(queryDigits))
         || (row.enrollment.exam_number ?? '').toLowerCase().includes(query))
     }
 

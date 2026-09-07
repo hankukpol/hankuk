@@ -2,7 +2,7 @@ import { AdminPagination as MatrixPaginationControls } from "@/components/admin/
 import { useDragPan } from '@/components/admin/useDragPan'
 import { useSyncedTableHeader } from '@/components/admin/useSyncedTableHeader'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { formatDateTime, formatKoreanMonthDay } from '@/lib/utils'
+import { formatDateTime, formatKoreanMonthDay, formatPhoneNumber } from '@/lib/utils'
 import type { Material } from '@/types/database'
 import {
   MATRIX_TAB_META,
@@ -324,7 +324,8 @@ function StudentFocusTable({
       <div className="admin-material-focus-head">
         <div className="min-w-0">
           <p className="admin-material-focus-name">{row.enrollment.name}</p>
-          <p className="admin-material-focus-meta">{row.enrollment.exam_number || row.enrollment.phone}</p>
+          {/* 자료를 건네줄 때 같은 이름이 둘이면 연락처로 가른다. 수험번호는 연락처가 없을 때만 쓴다. */}
+          <p className="admin-material-focus-meta">{formatPhoneNumber(row.enrollment.phone) || row.enrollment.exam_number}</p>
         </div>
         <div className="admin-material-actions">
           <button type="button" className="admin-button" disabled={disabled} onClick={onNextStudent}>
@@ -715,7 +716,8 @@ export function StudentsMatrixPanel({
                       onClick={() => setManualFocusId(row.enrollment.id)}
                     >
                       <span className="block whitespace-nowrap">{row.enrollment.name}</span>
-                      <span className="block whitespace-nowrap text-xs text-gray-400">{row.enrollment.exam_number || row.enrollment.phone}</span>
+                      {/* 같은 이름이 둘일 때 연락처가 가장 빨리 가른다. 수험번호는 연락처가 없을 때만 쓴다. */}
+                      <span className="block whitespace-nowrap text-xs text-gray-400">{formatPhoneNumber(row.enrollment.phone) || row.enrollment.exam_number}</span>
                     </button>
                   </td>
                   {showAllDistributeColumn ? (

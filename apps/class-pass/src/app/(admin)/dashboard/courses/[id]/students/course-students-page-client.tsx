@@ -386,6 +386,7 @@ function rebalancePaymentEntriesForTotal(
     return entries.map((entry) => ({
       ...entry,
       amount: totalAmount > 0 ? String(totalAmount) : '',
+      autoFilled: true,
     }))
   }
 

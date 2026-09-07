@@ -363,6 +363,23 @@ test('registration preserves billing, payment drafts and per-course exemptions',
       await submit()
       assert.equal(posted.length, 0, 'the overpayment warning is still enforced on save')
     })
+    await t.test('a split reduces the auto-filled amount so the entries still add up to the bill', async () => {
+      await open()
+      // 강좌 정가에서 자동으로 채워진 100,000원이다. 아직 아무도 정하지 않은 몫이라 나눠 담을 수 있다.
+      assert.equal(field('수납 금액').value, '100000')
+      await click(button('수단 추가'))
+      const entries = document.querySelectorAll('#create-student-form article')
+      await input(field('수납 금액', entries[1]), '30000')
+      assert.equal(field('수납 금액', entries[0]).value, '70000', 'the auto-filled entry gives way to the split')
+      assert.equal(field('수납 금액', entries[1]).value, '30000')
+      assert.match(document.querySelector('[aria-label="수납 금액 확인"]')?.textContent ?? '', /일치/)
+      // 수단을 더 추가해도 같은 방식으로 자동 입력분에서 빠진다.
+      await click(button('수단 추가'))
+      const three = document.querySelectorAll('#create-student-form article')
+      await input(field('수납 금액', three[2]), '10000')
+      assert.equal(field('수납 금액', three[0]).value, '60000')
+      assert.equal(field('수납 금액', three[1]).value, '30000', 'an amount the operator typed stays put')
+    })
     await t.test('other payment screens retain their default amount-capping behavior', async () => {
       const { PaymentSection, createPaymentSectionValueForAmount } = require('../../src/components/payments/PaymentSection')
       const { useState } = require('react') as typeof import('react')

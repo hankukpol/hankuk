@@ -23,6 +23,8 @@ export type PaymentEntryDraft = {
   cardCompany: string
   depositorName: string
   cashReceiptApprovalNo: string
+  /** 시스템이 납부할 금액에서 채운 값인지. 운영자가 직접 친 금액은 함부로 줄이지 않는다. */
+  autoFilled?: boolean
 }
 
 export type NormalizedPaymentDraft = {
@@ -72,6 +74,7 @@ type PaymentSectionProps = {
   hidePaymentMeta?: boolean
   hideSummaryHeader?: boolean
   hidePaymentDetails?: boolean
+  /** 운영자가 직접 입력한 금액을 다른 칸을 줄여 맞추지 않는다. 등록 창처럼 초과를 경고로 알리는 화면에서 쓴다. */
   preserveEnteredAmounts?: boolean
 }
 
@@ -106,6 +109,7 @@ function createEmptyEntry(options?: Partial<Omit<PaymentEntryDraft, 'id'>>): Pay
     cardCompany: normalizeCardCompanyName(options?.cardCompany) ?? '',
     depositorName: options?.depositorName ?? '',
     cashReceiptApprovalNo: options?.cashReceiptApprovalNo ?? '',
+    autoFilled: options?.autoFilled ?? false,
   }
 }
 
@@ -132,7 +136,7 @@ export function createPaymentSectionValueForAmount(amount: number): PaymentSecti
   return {
     ...next,
     expectedAmount: amountText,
-    entries: [createEmptyEntry({ amount: normalizedAmount > 0 ? amountText : '' })],
+    entries: [createEmptyEntry({ amount: normalizedAmount > 0 ? amountText : '', autoFilled: true })],
   }
 }
 
@@ -159,7 +163,7 @@ export function createPaymentSectionValueForBilling(options: {
     paidAmount: paidAmount > 0 ? String(paidAmount) : '',
     tuitionExempt: Boolean(options.tuitionExempt),
     tuitionExemptReason: options.tuitionExemptReason ?? '',
-    entries: [createEmptyEntry({ amount: remainingAmount > 0 ? String(remainingAmount) : '' })],
+    entries: [createEmptyEntry({ amount: remainingAmount > 0 ? String(remainingAmount) : '', autoFilled: true })],
   }
 }
 
@@ -297,7 +301,7 @@ export function PaymentSection({
       return nextValue.entries
     }
 
-    return nextValue.entries.map((entry) => ({ ...entry, amount: nextPayableAmount > 0 ? String(nextPayableAmount) : '' }))
+    return nextValue.entries.map((entry) => ({ ...entry, amount: nextPayableAmount > 0 ? String(nextPayableAmount) : '', autoFilled: true }))
   }
 
   function patchWithAutoAmount(next: Partial<PaymentSectionValue>) {
@@ -345,19 +349,30 @@ export function PaymentSection({
   }
 
   function updateEntryAmount(entryId: string, nextAmountText: string) {
+    // 직접 친 금액은 더 이상 시스템이 채운 값이 아니다. 이 표시가 아래에서 무엇을 줄일지 가른다.
     const entries = value.entries.map((entry) => (
-      entry.id === entryId ? { ...entry, amount: nextAmountText } : entry
+      entry.id === entryId ? { ...entry, amount: nextAmountText, autoFilled: false } : entry
     ))
     let overage = paymentTotal(entries) - dueAmount
 
-    if (preserveEnteredAmounts || overage <= 0) {
+    if (overage <= 0) {
       patch({ entries })
       return
     }
 
     const editedIndex = entries.findIndex((entry) => entry.id === entryId)
+
+    // 넘친 만큼을 다른 수단에서 뺀다. 60,000원짜리에 카드가 60,000으로 차 있을 때
+    // 포인트에 10,000을 넣으면 카드가 50,000이 되는, 나눠 담기 흐름이다.
     for (let index = 0; index < entries.length && overage > 0; index += 1) {
       if (index === editedIndex) {
+        continue
+      }
+
+      // 등록 창에서는 운영자가 직접 친 금액을 건드리지 않는다.
+      // 오타로 인한 초과를 조용히 흡수해 버리면 경고 없이 묻힌다.
+      // 시스템이 납부할 금액에서 채워 넣은 값은 아직 아무도 정하지 않은 몫이라 줄여도 된다.
+      if (preserveEnteredAmounts && !entries[index].autoFilled) {
         continue
       }
 
@@ -371,7 +386,9 @@ export function PaymentSection({
       overage -= reduction
     }
 
-    if (overage > 0 && editedIndex >= 0) {
+    // 줄일 곳이 없으면 방금 친 칸을 납부할 금액에 맞춘다.
+    // 등록 창은 여기서도 그대로 두고 초과 경고로 알린다.
+    if (overage > 0 && editedIndex >= 0 && !preserveEnteredAmounts) {
       const editedAmount = toNumber(entries[editedIndex].amount)
       const nextEditedAmount = Math.max(editedAmount - overage, 0)
       entries[editedIndex] = {
@@ -399,6 +416,7 @@ export function PaymentSection({
           ...entry,
           method,
           amount: entry.amount.trim() ? entry.amount : remaining > 0 ? String(remaining) : '',
+          autoFilled: entry.amount.trim() ? entry.autoFilled : true,
           cardCompany: method === 'card' ? entry.cardCompany : '',
           depositorName: method === 'bank_transfer' ? entry.depositorName : '',
           cashReceiptApprovalNo: usesCashReceipt(method) ? entry.cashReceiptApprovalNo : '',
@@ -429,6 +447,7 @@ export function PaymentSection({
         createEmptyEntry({
           method: value.entries[0]?.method === 'card' ? 'cash' : 'card',
           amount: remaining > 0 ? String(remaining) : '',
+          autoFilled: true,
         }),
       ],
     })

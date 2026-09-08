@@ -1,18 +1,19 @@
 "use client";
 
 import { Download, LoaderCircle, RefreshCcw, Save } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { isExamDate } from "@/lib/exam-meta";
 import type { ExamScoreSheet, ExamTypeItem } from "@/lib/services/exam.service";
 
 type ExamScoreManagerProps = {
   divisionSlug: string;
   initialExamTypes: ExamTypeItem[];
-  initialSelection?: { examTypeId: string; examRound: number; examDate: string };
+  initialSelection?: { examTypeId: string; examDate: string; examRound?: number };
 };
 
 type ScoreSheetRow = ExamScoreSheet["rows"][number];
@@ -93,19 +94,8 @@ function toEditableRows(sheet: ExamScoreSheet): EditableRow[] {
   }));
 }
 
-function normalizeRound(value: string) {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    return null;
-  }
-
-  return String(parsed);
+function normalizeDate(value: string) {
+  return isExamDate(value) ? value : null;
 }
 
 function formatTrackLabel(studyTrack: string | null) {
@@ -153,9 +143,10 @@ export function ExamScoreManager({
 }: ExamScoreManagerProps) {
   const [examTypes] = useState(initialExamTypes);
   const [selectedExamTypeId, setSelectedExamTypeId] = useState(initialSelection?.examTypeId ?? initialExamTypes[0]?.id ?? "");
-  const [examRoundInput, setExamRoundInput] = useState(String(initialSelection?.examRound ?? 1));
-  const [appliedExamRound, setAppliedExamRound] = useState(String(initialSelection?.examRound ?? 1));
+  const [examDateInput, setExamDateInput] = useState(initialSelection?.examDate ?? getKstToday());
+  const [appliedExamDate, setAppliedExamDate] = useState(initialSelection?.examDate ?? getKstToday());
   const [examDate, setExamDate] = useState(initialSelection?.examDate ?? getKstToday());
+  const requestVersion = useRef(0);
   const [sheet, setSheet] = useState<ExamScoreSheet | null>(null);
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [pasteText, setPasteText] = useState("");
@@ -170,35 +161,35 @@ export function ExamScoreManager({
     () => examTypes.find((examType) => examType.id === selectedExamTypeId) ?? null,
     [examTypes, selectedExamTypeId],
   );
-  const normalizedRoundInput = useMemo(
-    () => normalizeRound(examRoundInput),
-    [examRoundInput],
+  const normalizedDateInput = useMemo(
+    () => normalizeDate(examDateInput),
+    [examDateInput],
   );
   const currentSnapshot = useMemo(() => buildSnapshot(rows, examDate), [examDate, rows]);
   const hasUnsavedChanges =
     Boolean(sheet) && savedSnapshot.length > 0 && currentSnapshot !== savedSnapshot;
-  const hasPendingRoundChange =
-    normalizedRoundInput !== null && normalizedRoundInput !== appliedExamRound;
+  const hasPendingDateChange =
+    normalizedDateInput !== null && normalizedDateInput !== appliedExamDate;
   const blockingChangeMessage = useMemo(() => {
-    if (hasUnsavedChanges && hasPendingRoundChange) {
-      return "저장하지 않은 성적 입력과 적용되지 않은 회차 변경";
+    if (hasUnsavedChanges && hasPendingDateChange) {
+      return "저장하지 않은 성적 입력과 적용되지 않은 시험일 변경";
     }
     if (hasUnsavedChanges) {
       return "저장하지 않은 성적 입력";
     }
-    if (hasPendingRoundChange) {
-      return "적용되지 않은 회차 변경";
+    if (hasPendingDateChange) {
+      return "적용되지 않은 시험일 변경";
     }
     return null;
-  }, [hasPendingRoundChange, hasUnsavedChanges]);
+  }, [hasPendingDateChange, hasUnsavedChanges]);
 
   async function loadSheet(options?: {
     showToast?: boolean;
     targetExamTypeId?: string;
-    targetRound?: string;
+    targetDate?: string;
   }) {
     const nextExamTypeId = options?.targetExamTypeId ?? selectedExamTypeId;
-    const nextRound = options?.targetRound ?? appliedExamRound;
+    const nextDate = options?.targetDate ?? appliedExamDate;
 
     if (!nextExamTypeId) {
       setSheet(null);
@@ -207,51 +198,57 @@ export function ExamScoreManager({
       return;
     }
 
-    const normalizedRound = normalizeRound(nextRound);
-    if (!normalizedRound) {
-      toast.error("회차는 1 이상의 숫자로 입력해 주세요.");
+    const normalizedDate = normalizeDate(nextDate);
+    if (!normalizedDate) {
+      toast.error("올바른 시험일을 선택해 주세요.");
       setIsRefreshing(false);
       return;
     }
 
+    const version = ++requestVersion.current;
+    setSheet(null);
+    setRows([]);
+    setSavedSnapshot("");
     setIsLoading(true);
 
     try {
       const response = await fetch(
-        `/api/${divisionSlug}/exams?examTypeId=${nextExamTypeId}&examRound=${normalizedRound}`,
+        `/api/${divisionSlug}/exams?${new URLSearchParams({ examTypeId: nextExamTypeId, examDate: normalizedDate })}`,
         { cache: "no-store" },
       );
       const data = await response.json();
+      if (version !== requestVersion.current) return;
 
       if (!response.ok) {
         throw new Error(data.error ?? "성적 시트를 불러오지 못했습니다.");
       }
 
-      const nextExamDate = data.sheet.examDate ?? getKstToday();
+      const nextExamDate = data.sheet.examDate ?? normalizedDate;
 
       const editableRows = toEditableRows(data.sheet);
 
       setSheet(data.sheet);
       setRows(editableRows);
       setExamDate(nextExamDate);
-      setExamRoundInput(normalizedRound);
+      setExamDateInput(normalizedDate);
       setSavedSnapshot(buildSnapshot(editableRows, nextExamDate));
 
       if (options?.showToast) {
         toast.success("성적 시트를 새로 불러왔습니다.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "성적 시트를 불러오지 못했습니다.");
+      if (version === requestVersion.current) toast.error(error instanceof Error ? error.message : "성적 시트를 불러오지 못했습니다.");
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (version === requestVersion.current) { setIsLoading(false); setIsRefreshing(false); }
     }
   }
 
   useEffect(() => {
     void loadSheet();
+    const pendingRequests = requestVersion;
+    return () => { pendingRequests.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedExamTypeId, appliedExamRound]);
+  }, [divisionSlug, selectedExamTypeId, appliedExamDate]);
 
   async function confirmDiscardChanges(targetLabel: string) {
     if (!blockingChangeMessage) {
@@ -272,13 +269,9 @@ export function ExamScoreManager({
   }
 
   async function handleSave() {
-    if (!sheet) {
-      return;
-    }
-
-    const roundNumber = Number(appliedExamRound);
-    if (Number.isNaN(roundNumber) || roundNumber < 1) {
-      toast.error("회차를 다시 확인해 주세요.");
+    if (!sheet || isSaving || isLoading) return;
+    if (hasPendingDateChange || !normalizedDateInput) {
+      toast.error("시험일을 먼저 적용해 주세요.");
       return;
     }
 
@@ -290,8 +283,7 @@ export function ExamScoreManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           examTypeId: sheet.examTypeId,
-          examRound: roundNumber,
-          examDate: examDate || null,
+          examDate: appliedExamDate,
           rows: rows.map((row) => ({
             studentId: row.studentId,
             scores: row.scores,
@@ -316,7 +308,7 @@ export function ExamScoreManager({
       toast.success("성적을 저장했습니다.");
       showActionComplete({
         title: "성적 저장 완료",
-        description: `${selectedExamType?.name ?? "시험"} ${appliedExamRound}회차 성적을 저장했습니다.`,
+        description: `${selectedExamType?.name ?? "시험"} ${appliedExamDate} 성적을 저장했습니다.`,
         notice: "저장된 성적은 학생 화면과 집계 화면에 바로 반영됩니다.",
       });
     } catch (error) {
@@ -331,8 +323,8 @@ export function ExamScoreManager({
       return;
     }
 
-    if (examRoundInput.trim() && !normalizedRoundInput) {
-      toast.error("회차는 1 이상의 숫자로 입력해 주세요.");
+    if (examDateInput.trim() && !normalizedDateInput) {
+      toast.error("올바른 시험일을 선택해 주세요.");
       return;
     }
 
@@ -340,29 +332,29 @@ export function ExamScoreManager({
       return;
     }
 
-    const nextRound = normalizedRoundInput ?? appliedExamRound;
-    setExamRoundInput(nextRound);
-    setAppliedExamRound(nextRound);
+    const nextDate = normalizedDateInput ?? appliedExamDate;
+    setExamDateInput(nextDate);
+    setAppliedExamDate(nextDate);
     setSelectedExamTypeId(nextExamTypeId);
   }
 
-  async function handleApplyRound() {
-    if (!normalizedRoundInput) {
-      toast.error("회차는 1 이상의 숫자로 입력해 주세요.");
+  async function handleApplyDate() {
+    if (!normalizedDateInput) {
+      toast.error("올바른 시험일을 선택해 주세요.");
       return;
     }
 
-    if (normalizedRoundInput === appliedExamRound) {
-      toast.message("현재 보고 있는 회차와 같습니다.");
+    if (normalizedDateInput === appliedExamDate) {
+      toast.message("현재 보고 있는 시험일과 같습니다.");
       return;
     }
 
-    if (!(await confirmDiscardChanges("회차 변경"))) {
+    if (!(await confirmDiscardChanges("시험일 변경"))) {
       return;
     }
 
-    setExamRoundInput(normalizedRoundInput);
-    setAppliedExamRound(normalizedRoundInput);
+    setExamDateInput(normalizedDateInput);
+    setAppliedExamDate(normalizedDateInput);
   }
 
   async function handleRefresh() {
@@ -483,7 +475,7 @@ export function ExamScoreManager({
                 시험 성적 입력
               </h2>
               <p className="admin-page-description">
-                시험, 회차, 날짜, 붙여넣기와 저장 순서를 한 화면에서 처리합니다. 저장 전
+                시험, 시험일, 붙여넣기와 저장 순서를 한 화면에서 처리합니다. 저장 전
                 내부 이동과 브라우저 이탈도 경고 후 진행됩니다.
               </p>
             </div>
@@ -496,7 +488,7 @@ export function ExamScoreManager({
                   if (!sheet || !selectedExamType) return;
                   const url = new URL(`/api/${divisionSlug}/exams/template`, window.location.origin);
                   url.searchParams.set("examTypeId", selectedExamType.id);
-                  url.searchParams.set("examRound", appliedExamRound);
+                  url.searchParams.set("examRound", String(sheet.examRound));
                   triggerDownload(url.toString());
                 }}
                 className="admin-button"
@@ -507,7 +499,7 @@ export function ExamScoreManager({
               <button
                 type="button"
                 onClick={() => void handleRefresh()}
-                disabled={isRefreshing || isLoading}
+                disabled={isSaving || isRefreshing || isLoading}
                 className="admin-button"
               >
                 {isRefreshing || isLoading ? (
@@ -520,7 +512,7 @@ export function ExamScoreManager({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={isSaving || !sheet}
+                disabled={isSaving || isLoading || !sheet || hasPendingDateChange}
                 className="admin-button admin-button-primary"
               >
                 {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -543,10 +535,11 @@ export function ExamScoreManager({
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="grid gap-4 md:grid-cols-[1.3fr_0.8fr_0.6fr_1fr]">
+            <div className="admin-filter-bar">
               <label className="block">
                 <span className="admin-label mb-2 block">시험 템플릿</span>
                 <select
+                  disabled={isSaving}
                   value={selectedExamTypeId}
                   onChange={(event) => void handleExamTypeChange(event.target.value)}
                   className="w-full"
@@ -560,41 +553,32 @@ export function ExamScoreManager({
               </label>
 
               <label className="block">
-                <span className="admin-label mb-2 block">회차</span>
+                <span className="admin-label mb-2 block">시험일</span>
                 <input
-                  value={examRoundInput}
-                  onChange={(event) => setExamRoundInput(event.target.value)}
+                  type="date"
+                  disabled={isSaving}
+                  value={examDateInput}
+                  onChange={(event) => setExamDateInput(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
-                      void handleApplyRound();
+                      void handleApplyDate();
                     }
                   }}
                   className="w-full"
-                  inputMode="numeric"
-                  placeholder="1"
                 />
               </label>
 
               <div className="flex items-end">
                 <button
                   type="button"
-                  onClick={() => void handleApplyRound()}
+                  disabled={isSaving || isLoading}
+                  onClick={() => void handleApplyDate()}
                   className="admin-button w-full"
                 >
-                  회차 적용
+                  시험일 적용
                 </button>
               </div>
-
-              <label className="block">
-                <span className="admin-label mb-2 block">시험일</span>
-                <input
-                  type="date"
-                  value={examDate}
-                  onChange={(event) => setExamDate(event.target.value)}
-                  className="w-full"
-                />
-              </label>
             </div>
 
             <div className="admin-section">
@@ -626,7 +610,7 @@ export function ExamScoreManager({
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h3 className="admin-section-title">
-                {selectedExamType?.name || "시험"} {appliedExamRound}회차 성적 시트
+                {selectedExamType?.name || "시험"} {appliedExamDate} 성적 시트
               </h3>
               <p className="admin-help mt-2 leading-6">
                 선택한 템플릿의 대상 직렬 학생만 표시됩니다. 총점은 입력값 기준으로 즉시
@@ -654,7 +638,7 @@ export function ExamScoreManager({
                 <span className="mx-2 text-slate-300">|</span>
                 대상 학생 <span className="font-semibold text-slate-900">{rows.length}명</span>
                 <span className="mx-2 text-slate-300">|</span>
-                현재 회차 <span className="font-semibold text-slate-900">{sheet.examRound}회차</span>
+                현재 시험일 <span className="font-semibold text-slate-900">{sheet.examDate}</span>
               </div>
 
               <div className="admin-table-frame mt-6 overflow-x-auto">
@@ -748,7 +732,7 @@ export function ExamScoreManager({
             <div className="admin-help mt-6 px-4 py-6">
               {isLoading
                 ? "성적 시트를 불러오는 중입니다."
-                : "시험 템플릿과 회차를 선택해 주세요."}
+                : "시험 템플릿과 시험일을 선택해 주세요."}
             </div>
           )}
         </section>
@@ -762,7 +746,7 @@ export function ExamScoreManager({
                 <div>
                   <h2 className="admin-section-title">{blockingChangeMessage}이 있습니다.</h2>
                   <p className="admin-help mt-1">
-                    시험 변경, 회차 변경, 내부 이동, 새로고침 전에 저장하거나 정리해 주세요.
+                    시험 변경, 시험일 변경, 내부 이동, 새로고침 전에 저장하거나 정리해 주세요.
                   </p>
                 </div>
               </div>
@@ -778,7 +762,7 @@ export function ExamScoreManager({
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={isSaving}
+                  disabled={isSaving || isLoading || hasPendingDateChange}
                   className="admin-button admin-button-primary"
                 >
                   {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

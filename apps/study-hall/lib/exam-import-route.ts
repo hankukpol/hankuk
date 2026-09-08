@@ -65,7 +65,7 @@ export async function handleExamImport(
         throw badRequest("업로드 파일을 읽을 수 없습니다.");
       });
     const values = Object.fromEntries(
-      ["category", "examTypeId", "examRound", "topic", "overwrite"].map(
+      ["category", "examTypeId", "topic", "overwrite"].map(
         (key) => [key, form.get(key) || undefined],
       ),
     );

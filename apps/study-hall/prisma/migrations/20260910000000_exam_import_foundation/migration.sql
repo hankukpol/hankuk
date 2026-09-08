@@ -4,7 +4,7 @@ ALTER TABLE study_hall.division_settings ADD COLUMN IF NOT EXISTS exam_analysis 
 
 CREATE TABLE IF NOT EXISTS study_hall.exam_sessions (
  id TEXT PRIMARY KEY, division_id TEXT NOT NULL, exam_type_id TEXT NOT NULL,
- identity_key TEXT NOT NULL, morning_subject_id TEXT, exam_date DATE NOT NULL, exam_round INTEGER,
+ identity_key TEXT NOT NULL, primary_subject_id TEXT, exam_date DATE NOT NULL,
  topic TEXT, item_count INTEGER NOT NULL, full_score DOUBLE PRECISION NOT NULL,
  external_cohort_size INTEGER NOT NULL, external_stats JSONB NOT NULL,
  source_file_name TEXT NOT NULL, imported_by_id TEXT NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS study_hall.exam_session_items (
 CREATE TABLE IF NOT EXISTS study_hall.exam_session_participants (
  id TEXT PRIMARY KEY, division_id TEXT NOT NULL, session_id TEXT NOT NULL, student_id TEXT NOT NULL,
  region TEXT, external_rank INTEGER, external_percentile DOUBLE PRECISION, regional_rank INTEGER,
- subject_scores JSONB NOT NULL, total_score DOUBLE PRECISION NOT NULL, is_partial BOOLEAN NOT NULL DEFAULT false
+ subject_scores JSONB NOT NULL, total_score DOUBLE PRECISION NOT NULL, is_partial BOOLEAN NOT NULL DEFAULT false, derived_score_id TEXT, derived_score_snapshot JSONB
 );
 CREATE TABLE IF NOT EXISTS study_hall.exam_item_responses (
  id TEXT PRIMARY KEY, division_id TEXT NOT NULL, session_id TEXT NOT NULL, student_id TEXT NOT NULL,
@@ -29,6 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS students_id_division_import_key ON study_hall.
 CREATE UNIQUE INDEX IF NOT EXISTS exam_types_id_division_import_key ON study_hall.exam_types (id, division_id);
 CREATE UNIQUE INDEX IF NOT EXISTS exam_subjects_id_type_import_key ON study_hall.exam_subjects (id, exam_type_id);
 CREATE UNIQUE INDEX IF NOT EXISTS exam_sessions_identity_key ON study_hall.exam_sessions (division_id, exam_type_id, identity_key);
+CREATE UNIQUE INDEX IF NOT EXISTS exam_sessions_date_subject_key ON study_hall.exam_sessions (exam_type_id, exam_date, primary_subject_id);
 CREATE UNIQUE INDEX IF NOT EXISTS exam_sessions_id_division_key ON study_hall.exam_sessions (id, division_id);
 CREATE INDEX IF NOT EXISTS exam_sessions_division_id_exam_date_idx ON study_hall.exam_sessions (division_id, exam_date);
 CREATE UNIQUE INDEX IF NOT EXISTS exam_session_items_session_id_subject_id_item_no_key ON study_hall.exam_session_items (session_id, subject_id, item_no);
@@ -64,7 +65,7 @@ END $$;
 
 DO $$ BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'exam_sessions_morning_subject_fkey' AND conrelid = 'study_hall.exam_sessions'::regclass) THEN
-  ALTER TABLE study_hall.exam_sessions ADD CONSTRAINT exam_sessions_morning_subject_fkey FOREIGN KEY (morning_subject_id, exam_type_id) REFERENCES study_hall.exam_subjects(id, exam_type_id) ON DELETE RESTRICT ON UPDATE CASCADE;
+  ALTER TABLE study_hall.exam_sessions ADD CONSTRAINT exam_sessions_morning_subject_fkey FOREIGN KEY (primary_subject_id, exam_type_id) REFERENCES study_hall.exam_subjects(id, exam_type_id) ON DELETE RESTRICT ON UPDATE CASCADE;
  END IF;
 END $$;
 
@@ -76,7 +77,7 @@ END $$;
 
 DO $$ BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'exam_sessions_identity_check' AND conrelid = 'study_hall.exam_sessions'::regclass) THEN
-  ALTER TABLE study_hall.exam_sessions ADD CONSTRAINT exam_sessions_identity_check CHECK ((exam_round IS NOT NULL AND exam_round > 0 AND morning_subject_id IS NULL AND identity_key = 'regular:' || exam_round::text) OR (exam_round IS NULL AND morning_subject_id IS NOT NULL AND length(btrim(morning_subject_id)) > 0 AND identity_key = 'morning:' || morning_subject_id || ':' || to_char(exam_date, 'YYYY-MM-DD')));
+  ALTER TABLE study_hall.exam_sessions ADD CONSTRAINT exam_sessions_identity_check CHECK ((primary_subject_id IS NULL AND identity_key = 'regular:' || to_char(exam_date, 'YYYY-MM-DD')) OR (primary_subject_id IS NOT NULL AND length(btrim(primary_subject_id)) > 0 AND identity_key = 'morning:' || primary_subject_id || ':' || to_char(exam_date, 'YYYY-MM-DD')));
  END IF;
 END $$;
 

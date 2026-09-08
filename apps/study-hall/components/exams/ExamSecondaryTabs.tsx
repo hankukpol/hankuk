@@ -42,9 +42,8 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
             key={scoreVersion}
             divisionSlug={divisionSlug}
             initialExamTypes={examTypes}
-            initialSelection={lastImport && lastImport.examRound !== null ? {
+            initialSelection={lastImport ? {
               examTypeId: lastImport.examTypeId,
-              examRound: lastImport.examRound,
               examDate: lastImport.examDate,
             } : undefined}
           />
@@ -74,6 +73,7 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
               setScoreVersion((version) => version + 1);
             }}
             onShowScores={() => setActive("input")}
+            onDeleted={() => { setLastImport(null); setScoreVersion((version) => version + 1); }}
           />
         )}
       </AdminTabPanel>

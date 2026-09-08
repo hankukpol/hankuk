@@ -83,7 +83,7 @@ export type ImportAssembly = {
     subjects: Record<string, ImportSubjectAggregate>;
     regions: Record<string, ImportRegionAggregate>;
   };
-  morningSubjectId: string | null;
+  primarySubjectId: string | null;
 };
 const normalized = (value: string) => value.replace(/\s+/g, "");
 const equal = (a: number, b: number) => Math.abs(a - b) < 0.000001;
@@ -155,7 +155,7 @@ export function assembleExamImport(
       subjects: {},
       regions: {},
     },
-    morningSubjectId: null,
+    primarySubjectId: null,
   };
   if (!examType) {
     preview.errors.push(
@@ -207,7 +207,7 @@ export function assembleExamImport(
       preview.errors.push(`${subject.name}: 설정과 파일의 문항 수가 다릅니다.`);
   }
   if (preview.errors.length) return result;
-  result.morningSubjectId =
+  result.primarySubjectId =
     selection.category === "MORNING" ? active[0].id : null;
   preview.fullScore = getGroupedFullScore(active);
   preview.itemCount = getGroupedFullScore(

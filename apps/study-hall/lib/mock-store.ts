@@ -353,12 +353,12 @@ export type MockChatReadStateRecord = {
 
 export type MockExamSessionRecord = {
   id: string; divisionId: string; examTypeId: string; identityKey: string;
-  morningSubjectId: string | null; examDate: string; examRound: number | null;
+  primarySubjectId: string | null; examDate: string;
   topic: string | null; itemCount: number; fullScore: number; externalCohortSize: number;
   externalStats: ImportAssembly["externalStats"]; sourceFileName: string; importedById: string; importedAt: string;
 };
 export type MockExamSessionItemRecord = ImportItem & { id: string; divisionId: string; sessionId: string };
-export type MockExamSessionParticipantRecord = Omit<ImportAssembly["participants"][number], "responses"> & { id: string; divisionId: string; sessionId: string };
+export type MockExamSessionParticipantRecord = Omit<ImportAssembly["participants"][number], "responses"> & { id: string; divisionId: string; sessionId: string; derivedScoreId?: string | null; derivedScoreSnapshot?: Record<string, unknown> | null };
 export type MockExamItemResponseRecord = ImportAssembly["participants"][number]["responses"][number] & { id: string; divisionId: string; sessionId: string; studentId: string };
 
 type MockState = {

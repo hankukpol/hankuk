@@ -55,6 +55,7 @@ function mount(category = "MORNING") {
     require: (name: string) => {
       if (name === "react") return hooks;
       if (name === "next/navigation") return { useRouter: () => ({ refresh: () => refreshes++ }) };
+      if (name === "@/components/exams/import/ExamImportHistory") return { ExamImportHistory: "history" };
       if (name === "react/jsx-runtime") return {
         Fragment: "fragment",
         jsx: (type: unknown, props: unknown) => ({ type, props }),
@@ -87,7 +88,7 @@ function mount(category = "MORNING") {
     nodes((n) => n.props.id === `wizard-${suffix}`)[0].props.onChange({ target: { files: [new File([new Uint8Array(size)], name)], value: name } });
     render();
   };
-  const ready = () => { file("score"); file("analysis"); if (category === "REGULAR") change("round", "2"); };
+  const ready = () => { file("score"); file("analysis"); if (category === "MORNING") change("topic", "총론 3강"); };
   return {
     render, nodes, button, change, file, ready, refs, requests,
     get refreshes() { return refreshes; }, get imports() { return imports; }, get lateWrites() { return lateWrites; },
@@ -122,10 +123,12 @@ test("import wizard: auto selection, files resent, double-submit blocked, succes
   assert.equal(view.requests[1].body.get("examTypeId"), "type-a");
   assert.ok(view.requests[1].body.get("scoreFile") instanceof File);
   assert.ok(view.requests[1].body.get("analysisFile") instanceof File);
-  await respond(view, 1, { result: { sessionId: "s", importedCount: 5, examDate: "2026-09-08", examTypeId: "type-a", examRound: null } });
+  await respond(view, 1, { result: { sessionId: "s", importedCount: 5, examDate: "2026-09-08", examTypeId: "type-a" } });
   assert.equal(view.refreshes, 1); assert.equal(view.imports, 1);
   assert.equal(view.button("미리보기").props.disabled, true);
   assert.deepEqual(Object.values(view.refs[0].current as object), [null, null]);
+  assert.equal(view.nodes((n) => n.props.id === "wizard-topic")[0].props.value, "");
+  assert.equal(view.nodes((n) => n.type === "history")[0].props.refreshKey, 1);
 });
 
 test("import wizard: mismatch blocks confirmation even if server canConfirm is true", async () => {
@@ -137,16 +140,51 @@ test("import wizard: mismatch blocks confirmation even if server canConfirm is t
 
 test("import wizard: overwrite requires explicit consent and selection changes invalidate it", async () => {
   const view = mount("REGULAR"); view.ready(); view.button("미리보기").props.onClick();
-  assert.equal(view.requests[0].body.get("examRound"), "2");
+  assert.equal(view.requests[0].body.has("examRound"), false);
+  assert.equal(view.nodes((n) => n.props.id === "wizard-round").length, 0);
   await respond(view, 0, { preview: preview({ category: "REGULAR", existing: true }) });
   assert.equal(view.button("가져오기 확정").props.disabled, true);
   view.nodes((n) => n.props.type === "checkbox")[0].props.onChange({ target: { checked: true } }); view.render();
   assert.equal(view.button("가져오기 확정").props.disabled, false);
-  view.change("round", "3"); assert.equal(view.button("가져오기 확정"), undefined);
+  view.file("analysis", 10, "next-date.xls"); assert.equal(view.button("가져오기 확정"), undefined);
   view.button("미리보기").props.onClick();
   await respond(view, 1, { preview: preview({ category: "REGULAR", existing: true }) });
   assert.equal(view.nodes((n) => n.props.type === "checkbox")[0].props.checked, false);
   view.change("type", "type-a"); assert.equal(view.button("가져오기 확정"), undefined);
+});
+
+test("import wizard: morning topic is required every time, trimmed in both requests, and changes invalidate consent", async () => {
+  const view = mount(); view.file("score"); view.file("analysis");
+  assert.equal(view.button("미리보기").props.disabled, true);
+  view.change("topic", "   "); view.button("미리보기").props.onClick();
+  assert.equal(view.requests.length, 0);
+  view.change("topic", " 총론 3강 "); view.button("미리보기").props.onClick();
+  assert.equal(view.requests[0].body.get("topic"), "총론 3강");
+  await respond(view, 0, { preview: preview({ existing: true }) });
+  view.nodes((n) => n.props.type === "checkbox")[0].props.onChange({ target: { checked: true } }); view.render();
+  view.button("가져오기 확정").props.onClick();
+  assert.equal(view.requests[1].body.get("topic"), "총론 3강");
+  await respond(view, 1, { error: "다시 확인해 주세요." }, false);
+  view.change("topic", "다음 진도");
+  assert.equal(view.button("가져오기 확정"), undefined);
+});
+
+test("import wizard: regular confirmation uses file date without round; history deletion invalidates preview", async () => {
+  const view = mount("REGULAR"); view.ready(); view.button("미리보기").props.onClick();
+  await respond(view, 0, { preview: preview({ category: "REGULAR", examDate: "2026-10-01" }) });
+  const history = view.nodes((n) => n.type === "history")[0];
+  assert.equal(history.props.examTypeId, "type-a");
+  history.props.onBusyChange(true); view.render();
+  assert.equal(view.button("가져오기 확정").props.disabled, true);
+  view.button("가져오기 확정").props.onClick(); assert.equal(view.requests.length, 1);
+  history.props.onBusyChange(false); view.render();
+  view.button("가져오기 확정").props.onClick();
+  assert.equal(view.requests[1].body.has("examRound"), false);
+  assert.equal(view.requests[1].body.has("topic"), false);
+  await respond(view, 1, { result: { sessionId: "s", importedCount: 5, examDate: "2026-10-01", examTypeId: "type-a" } });
+  view.nodes((n) => n.type === "history")[0].props.onDeleted(); view.render();
+  assert.equal(view.button("가져오기 확정"), undefined);
+  assert.equal(view.refreshes, 2);
 });
 
 test("import wizard: reset aborts request; stale response cannot replace newer preview", async () => {

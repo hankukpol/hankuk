@@ -20,7 +20,7 @@ function setup(category: "REGULAR" | "MORNING" = "REGULAR") {
     })),
   };
   const students: ImportStudent[] = parsed.score.map((row, index) => ({ id: `internal-${index}`, studentNumber: row.studentNumber, name: `Internal student ${index}` }));
-  const run = (input: ParsedExamImport = parsed, roster: ImportStudent[] = students, types = [examType]) => assembleExamImport(input, types, roster, { category, examTypeId: examType.id, ...(category === "REGULAR" ? { examRound: 1 } : {}) });
+  const run = (input: ParsedExamImport = parsed, roster: ImportStudent[] = students, types = [examType]) => assembleExamImport(input, types, roster, { category, examTypeId: examType.id });
   return { parsed, examType, students, run };
 }
 
@@ -92,7 +92,7 @@ test("synthetic morning creates 100-point single-subject scores and trusts marks
   const { run } = setup("MORNING"); const result = run();
   assert.equal(result.preview.canConfirm, true); assert.equal(result.preview.fullScore, 100);
   assert.equal(result.preview.itemCount, 20); assert.equal(result.items.length, 20);
-  assert.equal(result.morningSubjectId, "subject-0"); assert.equal(result.preview.reproduction.matchedCount, 8);
+  assert.equal(result.primarySubjectId, "subject-0"); assert.equal(result.preview.reproduction.matchedCount, 8);
   assert.equal(result.participants.length, 8);
   for (const row of result.participants) {
     assert.equal(row.totalScore, 90); assert.equal(row.responses.length, 20);

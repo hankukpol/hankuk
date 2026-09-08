@@ -86,7 +86,7 @@ test("analysis helpers preserve all other mock fields and reject invalid writes"
   assert.deepEqual(state.divisionSettingsByDivision.b, before.divisionSettingsByDivision.b);
   const validWrites = writes;
   const snapshot = structuredClone(state);
-  for (const morning of [{ consecutiveDrops: 1 }, { movingAverageDays: 31 }, { trendWindowDays: 91 }, { movingAverageDays: 30, trendWindowDays: 7 }]) {
+  for (const morning of [{ consecutiveDrops: 1 }, { movingAverageSessions: 21 }, { trendWindowSessions: 41 }, { movingAverageSessions: 20, trendWindowSessions: 3 }]) {
     await assert.rejects(service.updateExamAnalysisSettings("a", { ...input, morning: { ...input.morning, ...morning } }));
   }
   assert.equal(writes, validWrites);
@@ -133,7 +133,7 @@ test("analysis DB helper writes only analysis and shares rule cache invalidation
   assert.equal(row.warnLevel1, 17);
   assert.equal(row.futureField, "keep");
   assert.deepEqual(await service.getExamAnalysisSettings("a"), input);
-  assert.deepEqual(tags, ["division-settings:a", "admin-dashboard", "super-admin-overview", "super-admin-student-trend", "super-admin-tuition-status", "report-data"]);
+  assert.deepEqual(tags, ["exam-analysis:a", "division-settings:a", "admin-dashboard", "super-admin-overview", "super-admin-student-trend", "super-admin-tuition-status", "report-data"]);
   for (const role of ["admin", "assistant", "student"]) {
     assert.ok(paths.some((p) => p[0] === "/a/" + role && p[1] === "layout"));
     assert.ok(paths.some((p) => p[0] === "/a/" + role && p.length === 1));

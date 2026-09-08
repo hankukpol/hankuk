@@ -679,22 +679,22 @@ export function RulesSettingsManager({
                 <span className="admin-help mt-2 block">최근 평균이 이전 평균보다 낮아진 정도를 만점 대비 비율로 판단합니다.</span>
               </label>
               <label className="block">
-                <span className="admin-label mb-2 block">이동평균 기간 (일)</span>
-                <input className="w-full" type="number" required min={3} max={30} step={1}
-                  value={Number.isFinite(form.examAnalysis.morning.movingAverageDays) ? form.examAnalysis.morning.movingAverageDays : ""}
+                <span className="admin-label mb-2 block">이동평균 응시 횟수 (회)</span>
+                <input className="w-full" type="number" required min={2} max={20} step={1}
+                  value={Number.isFinite(form.examAnalysis.morning.movingAverageSessions) ? form.examAnalysis.morning.movingAverageSessions : ""}
                   onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
-                    morning: { ...current.examAnalysis.morning, movingAverageDays: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                    morning: { ...current.examAnalysis.morning, movingAverageSessions: event.target.value === "" ? Number.NaN : Number(event.target.value) },
                   } }))} />
-                <span className="admin-help mt-2 block">추세선에 사용할 평균 점수를 계산하는 기간입니다.</span>
+                <span className="admin-help mt-2 block">같은 과목에 최근 응시한 횟수만큼 평균을 냅니다. 미응시는 제외합니다.</span>
               </label>
               <label className="block">
-                <span className="admin-label mb-2 block">추세 기간 (일)</span>
-                <input className="w-full" type="number" required min={7} max={90} step={1}
-                  value={Number.isFinite(form.examAnalysis.morning.trendWindowDays) ? form.examAnalysis.morning.trendWindowDays : ""}
+                <span className="admin-label mb-2 block">추세 응시 횟수 (회)</span>
+                <input className="w-full" type="number" required min={3} max={40} step={1}
+                  value={Number.isFinite(form.examAnalysis.morning.trendWindowSessions) ? form.examAnalysis.morning.trendWindowSessions : ""}
                   onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
-                    morning: { ...current.examAnalysis.morning, trendWindowDays: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                    morning: { ...current.examAnalysis.morning, trendWindowSessions: event.target.value === "" ? Number.NaN : Number(event.target.value) },
                   } }))} />
-                <span className="admin-help mt-2 block">성적 흐름을 분석할 기간이며 이동평균 기간 이상으로 설정합니다.</span>
+                <span className="admin-help mt-2 block">같은 과목의 추세를 분석할 응시 횟수이며 이동평균 응시 횟수 이상으로 설정합니다.</span>
               </label>
               <label className="block">
                 <span className="admin-label mb-2 block">추세 해석 최소 응시율 (%)</span>

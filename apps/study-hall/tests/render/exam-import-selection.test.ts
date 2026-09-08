@@ -4,6 +4,7 @@ import path from "node:path";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import { isExamDate } from "../../lib/exam-meta";
 
 // Run real component initialization, effects and wrapper callbacks. Children
 // remain opaque, so this checks the selected request, not browser appearance.
@@ -32,9 +33,10 @@ function mount(name: string, props: Record<string, unknown>) {
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, `../../components/exams/${name}.tsx`), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText, {
-    module: loaded, exports: loaded.exports,
+    module: loaded, exports: loaded.exports, URLSearchParams,
     fetch: (url: string) => { requests.push(url); return new Promise(() => {}); },
     require: (module: string) => {
+      if (module === "@/lib/exam-meta") return { isExamDate };
       if (module === "react") return hooks;
       if (module === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
       if (module.endsWith("useActionCompleteModal")) return { useActionCompleteModal: () => ({}) };
@@ -71,7 +73,7 @@ for (const category of ["REGULAR", "MORNING"]) {
     wrapper.nodes("AdminTabs")[0].props.onChange("import"); wrapper.render();
     wrapper.nodes("ExamImportWizard")[0].props.onImported({
       sessionId: "session", importedCount: 5, examTypeId: "imported", examDate: "2026-08-15",
-      examRound: category === "REGULAR" ? 2 : null, subjectId: "imported-subject",
+      subjectId: "imported-subject",
     });
     wrapper.render();
     wrapper.nodes("ExamImportWizard")[0].props.onShowScores(); wrapper.render();
@@ -83,8 +85,8 @@ for (const category of ["REGULAR", "MORNING"]) {
     const input = mount(managerName, manager.props);
     input.runEffects();
     if (category === "REGULAR") {
-      assert.equal(manager.props.initialSelection.examRound, 2);
-      assert.equal(input.requests[0], "/api/test/exams?examTypeId=imported&examRound=2");
+      assert.equal(manager.props.initialSelection.examRound, undefined);
+      assert.equal(input.requests[0], "/api/test/exams?examTypeId=imported&examDate=2026-08-15");
     } else {
       assert.equal(manager.props.initialSelection.subjectId, "imported-subject");
       assert.equal(input.requests[0], "/api/test/morning-exams?examTypeId=imported&subjectId=imported-subject&date=2026-08-15");
@@ -92,13 +94,16 @@ for (const category of ["REGULAR", "MORNING"]) {
     assert.ok(input.nodes("input").some((node) => node.props.type === "date" && node.props.value === "2026-08-15"));
     // A repeated import, including overwrite of the same session, reloads again.
     wrapper.nodes("AdminTabs")[0].props.onChange("import"); wrapper.render();
-    wrapper.nodes("ExamImportWizard")[0].props.onImported({ sessionId: "session", importedCount: 5, examTypeId: "imported", examDate: "2026-08-15", examRound: 2 });
+    wrapper.nodes("ExamImportWizard")[0].props.onImported({ sessionId: "session", importedCount: 5, examTypeId: "imported", examDate: "2026-08-15" });
     wrapper.render(); assert.notEqual(wrapper.nodes(managerName)[0].key, manager.key);
   });
 }
 
-test("import selection: existing regular callers retain default type and first round", () => {
+test("import selection: regular manager defaults to today with no round input", () => {
   const input = mount("ExamScoreManager", { divisionSlug: "test", initialExamTypes: types });
   input.runEffects();
-  assert.equal(input.requests[0], "/api/test/exams?examTypeId=default&examRound=1");
+  const dateInput = input.nodes("input").find((node) => node.props.type === "date")!;
+  assert.equal(input.requests[0], `/api/test/exams?examTypeId=default&examDate=${dateInput.props.value}`);
+  assert.equal(input.nodes("input").filter((node) => node.props.type === "date").length, 1);
+  assert.ok(!input.requests[0].includes("examRound"));
 });

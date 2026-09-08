@@ -1,7 +1,6 @@
 export type ExamImportSelection = {
   category: "MORNING" | "REGULAR";
   examTypeId?: string;
-  examRound?: number;
   topic?: string;
   overwrite?: boolean;
 };
@@ -45,5 +44,17 @@ export type ExamImportResult = {
   importedCount: number;
   examDate: string;
   examTypeId: string;
-  examRound: number | null;
+};
+
+export type ExamImportHistoryRow = {
+  sessionId: string;
+  examTypeName: string;
+  examDate: string;
+  primarySubjectName: string | null;
+  topic: string | null;
+  itemCount: number;
+  externalCohortSize: number;
+  matchedStudentCount: number;
+  importedByName: string | null;
+  importedAt: string;
 };

@@ -7,9 +7,9 @@ Base: `ad46b67`
 
 ## Scope and delivery boundary
 
-This report covers Phase 1. The latest user request extends delivery through Phase 4. Phase 2 reference calculations are being prepared separately in ignored local files; analysis screens are not yet implemented and the analysis tab remains disabled.
+This report covers Phase 1, including the latest operating-interview correction. Delivery continues through Phase 4, with a separate validation record for the analysis screens.
 The original checkout had concurrent changes in schema, mock storage, settings and morning score UI. All work is isolated in this registered worktree; the original checkout was not edited. Integrating this branch must reconcile those concurrent changes; do not overwrite original files wholesale.
-No production database connection, `db:deploy`, deployment tag, push or commit was performed. The first commit awaits the user's release choices under the updated handoff §11. These choices were requested once and will apply to subsequent phases.
+Phase 1 was committed locally as `aeb901a` after the user explicitly requested continuing Phases 2–4. No production database connection, `db:deploy`, deployment tag or push was performed. The release choices were requested once; without production approval, subsequent phases remain local and use no deployment tag.
 
 ## Implemented
 
@@ -19,12 +19,17 @@ No production database connection, `db:deploy`, deployment tag, push or commit w
 - SheetJS 0.20.3 from the exact vendor CDN tarball. The repository's pnpm workspace installer was needed; package.json retains the URL and the existing pnpm lockfile is updated. No client bundle parser import was found.
 - Header-based BIFF parser; answer-key-based subject mapping; score and published-total reconstruction; five-digit matching; optional-subject and absent handling; metadata validation; bounded uploads and fixed safe parser errors.
 - Shared mock/DB assembler, preview and confirmation APIs, transactional replacement plus legacy ExamScore/MorningExamScore generation, explicit overwrite consent and tenant authorization.
-- Import wizard under both existing exam tabs. Successful import opens the corresponding exam type, round/date and morning subject in the existing score manager.
+- Import wizard under both existing exam tabs. Successful import opens the corresponding exam type, date and morning subject in the score manager. Regular entry and analysis use a date, with no round input.
+- Import history and transactional deletion. Each matched participant stores the exact generated score ID and scalar snapshot. Deletion removes only unchanged importer-owned scores, checks the snapshot again in the database DELETE to protect concurrent edits, and reports preserved manual/ambiguous records. A morning topic is required on confirmation; regular exams do not require one.
 - No external examinee names or DOB are retained by parser outputs. Invalid student IDs do not suppress external cohort/subject statistics. Only matched students' detailed responses are stored; filenames are stored as generic provenance labels.
 
-## Deliberate identity adjustment
+## Date identity and legacy compatibility
 
-The plan's nullable `(examTypeId, examDate, examRound)` unique key does not prevent duplicate morning imports, and the existing regular ExamScore identity is round-based. Sessions therefore use an enforced identityKey: regular `regular:<round>`, morning `morning:<subjectId>:<date>`, unique within division/type. A repeat regular round replaces its former date atomically, matching the legacy score table. Imports lock the tenant's exam-type row before replacement. SQL-only composite indexes/FKs preserve the instruction not to add Student fields or inverse relations.
+ExamSession has no examRound column. Its tuple is `(examTypeId, examDate, primarySubjectId)`, with an additional enforced identityKey for null-safe uniqueness: regular `regular:<date>`, morning `morning:<subjectId>:<date>`. Different dates remain different exams. Import and delete serialize on the tenant's exam-type row. Student stays unchanged.
+
+The pre-existing required integer ExamScore.examRound column is retained for compatibility with existing callers. New date-based entries encode YYYYMMDD into that existing column; they do not allocate or display a new exam round. Existing manual rows are read by date and keep their original storage key when edited. Analysis contracts omit that legacy field.
+
+Morning analysis windows now use attended sessions: movingAverageSessions and trendWindowSessions. Legacy day-valued settings are ignored rather than reinterpreted as counts.
 
 ## Evidence
 
@@ -35,14 +40,14 @@ The plan's nullable `(examTypeId, examDate, examRound)` unique key does not prev
 - **Morning originals were absent from the documented Desktop paths.** The requested paths were asked for. Morning tests use a clearly named synthetic fixture (8 examinees, 20 items, 10 padding columns, five padding rows, multiple answers). This is not original morning-file verification.
 - Test categories include parser malformed inputs, conflicting mappings, no-answer score contradictions, all-cohort statistics, mock/DB parity and transaction rollback, cross-division access, overwrite, legacy-score persistence, client races and imported selection.
 - Local HTTP flow: five students seeded with five-digit IDs; regular and synthetic morning preview/confirm/overwrite persist five legacy scores each. Assistant/foreign-division import denied. Student own score returns 200, another student's ID returns 403, student import returns 401.
-- Real browser: regular fixture upload → 250-point preview → confirmation → corresponding regular round/date and five saved scores visible; synthetic morning legacy scores visible. Analysis settings changed to four consecutive drops and persisted after reload in local mock only.
+- Real browser: regular fixture upload → 250-point preview → confirmation → corresponding regular date and five saved scores visible; synthetic morning legacy scores visible. Analysis settings changed to four consecutive drops and persisted after reload in local mock only.
 - Responsive checks at 390/768/1280 viewport overrides: new import and settings views have zero nested bordered cards and zero type-scale deviations. Visible content uses Pretendard. Existing paste-help code font was aligned with the same font while connecting the score manager.
 
 ## Remaining acceptance/release gates
 
 1. Supply the two original morning-file paths to verify their actual format and reproduce their scores.
 2. Reconcile this branch with the concurrent original-checkout changes before release.
-3. Obtain the user's `db:deploy` and deployment-tag choices before the first commit. SQL migration execution against a database has not been claimed; current DB-path tests use a scoped in-memory Prisma harness.
+3. Production `db:deploy` and deployment tags remain unapproved and deferred. SQL execution against a database has not been claimed; current DB-path tests use a scoped in-memory Prisma harness.
 4. After an approved production migration, the administrator must correct the affected subject's points and alternate group in settings. Preview deliberately blocks incorrect points instead of applying hardcoded production changes.
 
 ## Final command results
@@ -51,8 +56,8 @@ The plan's nullable `(examTypeId, examDate, examRound)` unique key does not prev
 |---|---|
 | `npm run typecheck` | Exit 0 |
 | `npm run lint` | Exit 0; no warnings/errors |
-| `npm test` | 342/342 pass after updated handoff alignment |
-| `npm run test:integration` | PASS; production build in its own temporary runtime, existing smoke scenarios, HTTP matrix 339/339, import/IDOR scenarios 2/2 |
+| `npm test` | 455/455 pass after operating-interview corrections |
+| `npm run test:integration` | PASS; production build in its own temporary runtime, existing smoke scenarios, HTTP matrix 349/349, import/history/IDOR scenarios 3/3, regular-analysis scenario 1/1 |
 | `git diff --check` | No whitespace errors |
 | Independent follow-up review | Both identified bugs resolved; no new P1 issue found within reviewed scope |
 
@@ -67,3 +72,9 @@ Added test files:
 - `tests/render/exam-import-wizard.test.ts`
 - `tests/render/exam-import-selection.test.ts`
 - `tests/integration/exam-import-http.test.ts`
+
+## Operating-interview correction verification
+
+Latest evidence: apps/study-hall/.local/phase1-date-{typecheck,lint,tests,integration}.log and .local/test-2fff59da/integration.log. Fresh local browser import/history view at 390/768/1280px: layout n=0, Pretendard only, offScale=[], no body overflow. Original-file verification remains regular-only; the two morning originals are still absent.
+
+Before first production import, the administrator must: change the regular constitution subject from 5 to 2.5 points; add criminology 20 x 2.5; put those two in the same alternate group; unify the morning type with criminology 20 x 5 and disable its duplicate; align five-digit student numbers. These are manual settings, never hardcoded tenant migrations.

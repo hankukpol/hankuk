@@ -45,7 +45,7 @@ function upload(
   );
   form.set("category", category);
   form.set("examTypeId", examTypeId);
-  if (category === "REGULAR") form.set("examRound", "1");
+  if (category === "MORNING") form.set("topic", "단원 테스트");
   form.set("overwrite", String(overwrite));
   return form;
 }
@@ -193,4 +193,39 @@ test("student may read own imported morning score but another student ID is forb
   assert.equal(body.includes(other.name), false);
   const importDenied = await fetch(`${base}/api/police/exam-imports/preview`, { method: "POST", headers: { cookie }, body: upload("MORNING", "import-http-morning") });
   assert.equal(importDenied.status, 401);
+});
+
+test("history deletion removes importer-owned scores and keeps subsequently edited manual scores", async () => {
+  const admin = await login("admin-police@mock.local");
+  const assistant = await login("assistant-police@mock.local");
+  const url = `${base}/api/police/exam-imports`;
+  const historyResponse = await fetch(`${url}?examTypeId=import-http-morning`, { headers: { cookie: admin } });
+  assert.equal(historyResponse.status, 200);
+  const { history } = await historyResponse.json();
+  assert.equal(history.length, 1);
+  assert.equal(history[0].matchedStudentCount, 5);
+  assert.equal(history[0].topic, "단원 테스트");
+  const endpoint = `${url}/${history[0].sessionId}`;
+  assert.equal((await fetch(endpoint, { method: "DELETE", headers: { cookie: assistant } })).status, 403);
+  assert.equal((await fetch(endpoint.replace("/police/", "/fire/"), { method: "DELETE", headers: { cookie: admin } })).status, 403);
+  await updateMockState((state) => {
+    const score = state.morningExamScoresByDivision.police.find((row) => row.examTypeId === "import-http-morning")!;
+    score.score = 37;
+    score.notes = "수기로 수정";
+    score.updatedAt = new Date(Date.now() + 1000).toISOString();
+  });
+  const removed = await fetch(endpoint, { method: "DELETE", headers: { cookie: admin } });
+  assert.equal(removed.status, 200, await removed.clone().text());
+  const { result } = await removed.json();
+  assert.equal(result.removedStudents, 5);
+  assert.equal(result.keptManualScores, 1);
+  const state = await readMockState();
+  const kept = state.morningExamScoresByDivision.police.filter((row) => row.examTypeId === "import-http-morning");
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].score, 37);
+  assert.equal(state.examItemResponsesByDivision.police.some((row) => row.sessionId === history[0].sessionId), false);
+  assert.equal((await fetch(endpoint, { method: "DELETE", headers: { cookie: admin } })).status, 404);
+  // Restore this test-owned fixture for the subsequent analysis suite.
+  const restored = await fetch(url, { method: "POST", headers: { cookie: admin }, body: upload("MORNING", "import-http-morning", true) });
+  assert.equal(restored.status, 201, await restored.clone().text());
 });

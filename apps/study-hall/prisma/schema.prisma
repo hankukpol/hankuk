@@ -646,9 +646,8 @@ model ExamSession {
   divisionId String @map("division_id")
   examTypeId String @map("exam_type_id")
   identityKey String @map("identity_key")
-  morningSubjectId String? @map("morning_subject_id")
+  primarySubjectId String? @map("primary_subject_id")
   examDate DateTime @map("exam_date") @db.Date
-  examRound Int? @map("exam_round")
   topic String?
   itemCount Int @map("item_count")
   fullScore Float @map("full_score")
@@ -659,6 +658,7 @@ model ExamSession {
   importedAt DateTime @default(now()) @map("imported_at")
 
   @@unique([divisionId, examTypeId, identityKey], map: "exam_sessions_identity_key")
+  @@unique([examTypeId, examDate, primarySubjectId], map: "exam_sessions_date_subject_key")
   @@unique([id, divisionId], map: "exam_sessions_id_division_key")
   @@index([divisionId, examDate])
   @@map("exam_sessions")
@@ -695,6 +695,8 @@ model ExamSessionParticipant {
   subjectScores Json @map("subject_scores")
   totalScore Float @map("total_score")
   isPartial Boolean @default(false) @map("is_partial")
+  derivedScoreId String? @map("derived_score_id")
+  derivedScoreSnapshot Json? @map("derived_score_snapshot")
 
   @@unique([sessionId, studentId])
   @@unique([sessionId, divisionId, studentId], map: "exam_session_participants_scope_key")

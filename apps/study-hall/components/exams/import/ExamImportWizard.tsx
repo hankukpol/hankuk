@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { ExamImportPreview, ExamImportResult, ExamImportSelection } from "@/lib/exam-import-types";
+import { ExamImportHistory } from "@/components/exams/import/ExamImportHistory";
 
 type Props = {
   divisionSlug: string;
@@ -11,12 +12,13 @@ type Props = {
   onImported?: (result: ExamImportResult) => void;
   onBusyChange?: (busy: boolean) => void;
   onShowScores?: () => void;
+  onDeleted?: () => void;
 };
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 type FileKey = "scoreFile" | "analysisFile";
 
-export function ExamImportWizard({ divisionSlug, category, examTypes, onImported, onBusyChange, onShowScores }: Props) {
+export function ExamImportWizard({ divisionSlug, category, examTypes, onImported, onBusyChange, onShowScores, onDeleted }: Props) {
   const router = useRouter();
   const id = useId();
   const files = useRef<Record<FileKey, File | null>>({ scoreFile: null, analysisFile: null });
@@ -28,8 +30,9 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
   const mounted = useRef(true);
   const [fileNames, setFileNames] = useState({ scoreFile: "", analysisFile: "" });
   const [examTypeId, setExamTypeId] = useState("");
-  const [examRound, setExamRound] = useState("");
   const [topic, setTopic] = useState("");
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [overwrite, setOverwrite] = useState(false);
   const [preview, setPreview] = useState<ExamImportPreview | null>(null);
   const [result, setResult] = useState<ExamImportResult | null>(null);
@@ -50,9 +53,9 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
     };
   }, []);
 
-  const busy = pending !== null;
-  const validRound = category !== "REGULAR" || (/^[1-9]\d*$/.test(examRound) && Number(examRound) <= 2147483647);
-  const canPreview = !!fileNames.scoreFile && !!fileNames.analysisFile && validRound && examTypes.length > 0;
+  const busy = pending !== null || historyBusy;
+  const validTopic = category !== "MORNING" || (topic.trim().length > 0 && topic.trim().length <= 200);
+  const canPreview = !!fileNames.scoreFile && !!fileNames.analysisFile && validTopic && examTypes.length > 0;
   const canConfirm = canPreview && !!preview?.canConfirm && !!preview.examTypeId
     && preview.category === category && preview.reproduction.mismatches.length === 0
     && preview.errors.length === 0 && (!preview.existing || overwrite);
@@ -81,7 +84,6 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
     invalidate();
     clearFiles();
     setExamTypeId("");
-    setExamRound("");
     setTopic("");
   }
 
@@ -102,7 +104,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
 
   async function submit(mode: "preview" | "confirm") {
     // The ref closes the gap before React renders the disabled button.
-    if (locked.current || (mode === "confirm" ? !canConfirm : !canPreview)) return;
+    if (busy || locked.current || (mode === "confirm" ? !canConfirm : !canPreview)) return;
     const { scoreFile, analysisFile } = files.current;
     if (!scoreFile || !analysisFile) return;
     locked.current = true;
@@ -126,7 +128,6 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
     body.set("category", category);
     const selectedType = mode === "confirm" ? preview?.examTypeId : examTypeId;
     if (selectedType) body.set("examTypeId", selectedType);
-    if (category === "REGULAR") body.set("examRound", examRound);
     if (category === "MORNING" && topic.trim()) body.set("topic", topic.trim());
     body.set("overwrite", String(mode === "confirm" && !!preview?.existing && overwrite));
 
@@ -150,6 +151,8 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
         setPreview(null);
         setOverwrite(false);
         clearFiles();
+        setTopic("");
+        setHistoryVersion((version) => version + 1);
         router.refresh();
         onImported?.(data.result);
       }
@@ -179,6 +182,16 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
       <section className="admin-section space-y-4">
         <h2 className="admin-section-title">채점 파일 가져오기</h2>
         <p className="admin-help">같은 시험의 채점표와 문항분석표를 선택하세요. 파일별 최대 5MB이며, 미리보기 후 확정해야 성적에 반영됩니다.</p>
+        <p className="admin-help">시험은 파일의 시험일자로 구분합니다. 아침 시험은 통합된 시험 종류에서 파일의 과목을 찾습니다.</p>
+        <details>
+          <summary className="admin-button">첫 가져오기 전 준비사항</summary>
+          <ol className="admin-help list-decimal space-y-2 pl-5">
+            <li>시험 설정의 과목별 문항 수와 배점이 가져올 파일과 일치하는지 확인합니다.</li>
+            <li>서로 선택하는 과목은 같은 택1 그룹으로 지정합니다.</li>
+            <li>같은 시험지를 사용하는 아침 시험 종류는 하나로 통합하고, 필요한 과목을 등록한 뒤 중복 종류는 비활성화합니다.</li>
+            <li>학생 학번을 채점 시스템의 수험번호 5자리와 일치시킵니다.</li>
+          </ol>
+        </details>
         {examTypes.length === 0 && <p className="admin-notice admin-notice-warning">활성 시험 종류가 없습니다. 시험 설정에서 시험 종류와 과목을 등록한 후 이용해 주세요.</p>}
         <fieldset disabled={busy} className="grid min-w-0 gap-4 md:grid-cols-2">
           <legend className="sr-only">가져올 파일과 시험 정보</legend>
@@ -197,32 +210,27 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
               {examTypes.map((examType) => <option key={examType.id} value={examType.id}>{examType.name}</option>)}
             </select>
           </label>
-          {category === "REGULAR" ? (
-            <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-round`}>
-              <span className="admin-label">회차 (필수)</span>
-              <input id={`${id}-round`} type="number" min="1" max="2147483647" step="1" required value={examRound} onChange={(event) => { invalidate(); setExamRound(event.target.value); }} />
-              {!validRound && <span className="admin-help">회차는 1~2,147,483,647 사이의 정수로 입력해 주세요.</span>}
-            </label>
-          ) : (
+          {category === "MORNING" && (
             <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-topic`}>
-              <span className="admin-label">진도 라벨 (선택)</span>
-              <input id={`${id}-topic`} type="text" maxLength={200} value={topic} onChange={(event) => { invalidate(); setTopic(event.target.value); }} />
+              <span className="admin-label">진도 라벨 (필수)</span>
+              <input id={`${id}-topic`} type="text" required maxLength={200} value={topic} placeholder="예: 총론 3강" aria-describedby={`${id}-topic-help`} onChange={(event) => { invalidate(); setTopic(event.target.value); }} />
+              <span id={`${id}-topic-help`} className="admin-help">매 가져오기마다 이번 시험의 진도를 입력해 주세요.</span>
             </label>
           )}
         </fieldset>
-        <p className="admin-help">파일·시험 종류·회차·진도를 변경하면 미리보기를 다시 실행해 주세요.</p>
+        <p className="admin-help">파일·시험 종류·진도를 변경하면 미리보기를 다시 실행해 주세요.</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={`admin-button${preview ? "" : " admin-button-primary"}`} disabled={busy || !canPreview} onClick={() => void submit("preview")}>
             {pending === "preview" ? "미리보기 확인 중…" : preview ? "미리보기 다시 실행" : "미리보기"}
           </button>
-          <button type="button" className="admin-button" disabled={pending === "confirm"} onClick={reset}>초기화</button>
+          <button type="button" className="admin-button" disabled={pending === "confirm" || historyBusy} onClick={reset}>초기화</button>
         </div>
       </section>
       {error && <p role="alert" className="admin-notice admin-notice-danger break-words">{error}</p>}
       {pending && <p role="status" className="admin-help">{pending === "preview" ? "두 파일의 문항과 점수를 대조하고 있습니다." : "파일을 다시 검증하고 성적을 저장하고 있습니다. 완료될 때까지 기다려 주세요."}</p>}
       {result && (
         <section className="admin-section space-y-4">
-          <p role="status" className="admin-notice admin-notice-success">{result.examDate}{result.examRound !== null ? ` / ${result.examRound}회차` : ""} 성적 {result.importedCount}명 가져오기를 완료했습니다.</p>
+          <p role="status" className="admin-notice admin-notice-success">{result.examDate} 성적 {result.importedCount}명 가져오기를 완료했습니다.</p>
           {onShowScores && <button type="button" className="admin-button" onClick={onShowScores}>입력 화면에서 성적 확인</button>}
         </section>
       )}
@@ -244,6 +252,15 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
           </button>
         </section>
       </>}
+      <ExamImportHistory
+        key={divisionSlug}
+        divisionSlug={divisionSlug}
+        examTypeId={examTypeId || preview?.examTypeId || result?.examTypeId || undefined}
+        refreshKey={historyVersion}
+        disabled={pending !== null}
+        onBusyChange={(value) => { setHistoryBusy(value); onBusyChange?.(value || pending !== null); }}
+        onDeleted={() => { invalidate(); router.refresh(); onDeleted?.(); }}
+      />
     </div>
   );
 }

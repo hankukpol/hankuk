@@ -868,6 +868,7 @@ function normalizeAttendancePointRuleSettings(
 }
 
 function revalidateDivisionRuleSettings(divisionSlug: string) {
+  revalidateTag(`exam-analysis:${divisionSlug}`);
   revalidateTag(`division-settings:${divisionSlug}`);
   revalidateTag("admin-dashboard");
   revalidateDivisionRuntimePaths(divisionSlug);

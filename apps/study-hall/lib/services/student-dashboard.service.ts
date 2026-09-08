@@ -365,26 +365,22 @@ export async function getStudentDashboardData(
 
   const attendanceManagementEnabled = settings.featureFlags.attendanceManagement;
 
-  const [periods, attendanceRecords] = await Promise.all([
+  const [periods, attendanceRecords, announcements, visibleRecentPoints, visibleLatestExam, visibleUpcomingExamSchedule] = await Promise.all([
     attendanceManagementEnabled ? getPeriods(divisionSlug) : Promise.resolve([]),
     attendanceManagementEnabled
       ? getStudentAttendanceRecords(divisionSlug, studentId, monthStart, today)
       : Promise.resolve([]),
+    settings.featureFlags.announcements ? listAnnouncements(divisionSlug) : Promise.resolve([]),
+    settings.featureFlags.pointManagement
+      ? listPointRecords(divisionSlug, { studentId, limit: 5 })
+      : Promise.resolve([]),
+    settings.featureFlags.examManagement
+      ? getLatestExamSummaryForStudent(divisionSlug, studentId)
+      : Promise.resolve(null),
+    settings.featureFlags.examScheduleManagement
+      ? getNextExamSchedule(divisionSlug)
+      : Promise.resolve(null),
   ]);
-
-  const [announcements, visibleRecentPoints, visibleLatestExam, visibleUpcomingExamSchedule] =
-    await Promise.all([
-      settings.featureFlags.announcements ? listAnnouncements(divisionSlug) : Promise.resolve([]),
-      settings.featureFlags.pointManagement
-        ? listPointRecords(divisionSlug, { studentId, limit: 5 })
-        : Promise.resolve([]),
-      settings.featureFlags.examManagement
-        ? getLatestExamSummaryForStudent(divisionSlug, studentId)
-        : Promise.resolve(null),
-      settings.featureFlags.examScheduleManagement
-        ? getNextExamSchedule(divisionSlug)
-        : Promise.resolve(null),
-    ]);
 
   const attendanceRecordMap = buildAttendanceRecordMap(attendanceRecords);
   const operatingDays = normalizeOperatingDays(settings.operatingDays);

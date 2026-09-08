@@ -37,14 +37,11 @@ export function SuperAdminAttendanceComparisonChart({
   }));
 
   return (
-    <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+    <section className="admin-section">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-            출결 비교
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-slate-950">지점별 출결률 비교</h3>
-          <p className="mt-1 text-sm text-slate-500">오늘 필수 교시 기준입니다.</p>
+          <h3 className="admin-section-title">지점별 출결률 비교</h3>
+          <p className="admin-help mt-1">오늘 필수 교시 기준입니다.</p>
         </div>
       </div>
       <div className="mt-4 h-44">
@@ -55,12 +52,12 @@ export function SuperAdminAttendanceComparisonChart({
             barSize={32}
             margin={{ left: 8, right: 24, top: 4, bottom: 4 }}
           >
-            <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="#f1f5f9" />
+            <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--admin-line-soft)" />
             <XAxis
               type="number"
               domain={[0, 100]}
               tickFormatter={(value: number) => `${value}%`}
-              tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tick={{ fontSize: "var(--admin-type-caption)", fill: "var(--admin-text-muted)" }}
               axisLine={false}
               tickLine={false}
             />
@@ -68,7 +65,7 @@ export function SuperAdminAttendanceComparisonChart({
               type="category"
               dataKey="name"
               width={100}
-              tick={{ fontSize: 13, fontWeight: 600, fill: "#334155" }}
+              tick={{ fontSize: 13, fontWeight: 600, fill: "var(--admin-text-secondary)" }}
               axisLine={false}
               tickLine={false}
             />
@@ -83,7 +80,7 @@ export function SuperAdminAttendanceComparisonChart({
                 }명)`,
                 "출결률",
               ]}
-              contentStyle={{ borderRadius: 8, fontSize: 13, border: "1px solid #e2e8f0" }}
+              contentStyle={{ borderRadius: "var(--admin-radius)", fontSize: 13, border: "1px solid var(--admin-grid)" }}
             />
             <Bar dataKey="rate" radius={[0, 6, 6, 0]}>
               {chartData.map((entry) => (

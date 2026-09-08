@@ -16,11 +16,23 @@ export const phoneSubmissionBatchSchema = z.object({
       z.object({
         studentId: z.string().min(1),
         status: phoneSubmissionStatusInputSchema,
-        rentalNote: z.string().max(200).optional(),
+        rentalNote: z.string().max(10000).optional(),
+        loanApproval: z.object({ until: z.string().datetime({ offset: true }), place: z.string().trim().min(1).max(80), purpose: z.string().trim().min(1).max(200) }).optional(),
       }),
     )
     .min(1, "학생 정보가 없습니다.")
     .max(PHONE_RECORDS_MAX, `한 번에 ${PHONE_RECORDS_MAX}명까지만 저장할 수 있습니다.`),
+}).superRefine((input, context) => {
+  const studentIds = new Set<string>();
+  input.records.forEach((record, index) => {
+    if (studentIds.has(record.studentId)) {
+      context.addIssue({ code: "custom", path: ["records", index, "studentId"], message: "같은 학생의 휴대폰 체크가 중복되었습니다." });
+    }
+    studentIds.add(record.studentId);
+    if (record.loanApproval && record.status !== "RENTED") {
+      context.addIssue({ code: "custom", path: ["records", index, "loanApproval"], message: "관리자 반출 승인은 대여 상태에서만 입력할 수 있습니다." });
+    }
+  });
 });
 
 export type PhoneSubmissionBatchSchemaInput = z.infer<typeof phoneSubmissionBatchSchema>;

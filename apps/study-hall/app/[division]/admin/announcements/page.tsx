@@ -16,12 +16,9 @@ export default async function AdminAnnouncementsPage({ params }: AdminAnnounceme
   const announcements = await listAnnouncements(params.division, { includeScheduled: true });
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">공지사항</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-          직렬 공지와 전체 공지를 게시판 형태로 함께 관리합니다. 선택한 글은 우측 상세 패널에서 확인하고 바로 수정하거나 삭제할 수 있습니다.
-        </p>
+    <div className="admin-flat-page">
+      <section>
+        <h1 className="admin-page-title">공지사항</h1>
       </section>
 
       <AnnouncementManager

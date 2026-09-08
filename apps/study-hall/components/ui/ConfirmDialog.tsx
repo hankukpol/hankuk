@@ -1,8 +1,11 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { LoaderCircle, X } from "lucide-react";
-import { useEffect } from "react";
+import { useId } from "react";
+
+import { useDialogFocus } from "@/lib/useDialogFocus";
+import { MODAL_SPRING, OVERLAY_FADE, withReducedMotion } from "@/lib/motion";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -16,13 +19,14 @@ type ConfirmDialogProps = {
   onCancel: () => void;
 };
 
+/**
+ * DESIGN.md 5.10 — 확인창. 최대 512px, 공통 제목·본문·footer·닫기 규격.
+ * 위험 확인은 admin-danger, 일반 확인은 강조색 primary.
+ */
 const CONFIRM_BUTTON_CLASS: Record<NonNullable<ConfirmDialogProps["variant"]>, string> = {
-  danger:
-    "inline-flex items-center gap-2 rounded-[12px] bg-[var(--division-color,#e11d48)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60",
-  warning:
-    "inline-flex items-center gap-2 rounded-[12px] bg-[var(--division-color,#d97706)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60",
-  default:
-    "inline-flex items-center gap-2 rounded-[12px] bg-[var(--division-color,#0f172a)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60",
+  danger: "admin-button admin-button-danger",
+  warning: "admin-button admin-button-primary",
+  default: "admin-button admin-button-primary",
 };
 
 export function ConfirmDialog({
@@ -36,18 +40,10 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    if (!open) return;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onCancel();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onCancel]);
+  const shouldReduceMotion = useReducedMotion();
+  const close = () => { if (!isLoading) onCancel(); };
+  const panelRef = useDialogFocus<HTMLDivElement>(open, close);
+  const titleId = useId();
 
   return (
     <AnimatePresence>
@@ -57,69 +53,72 @@ export function ConfirmDialog({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-slate-900/38 backdrop-blur-[2px]"
+            transition={withReducedMotion(OVERLAY_FADE, shouldReduceMotion)}
+            className="admin-overlay"
           >
             <button
               type="button"
               aria-label="닫기"
-              onClick={onCancel}
-              className="h-full w-full cursor-default"
+              onClick={close}
+              tabIndex={-1}
+              className="admin-overlay-dismiss"
             />
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -15 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={withReducedMotion(MODAL_SPRING, shouldReduceMotion)}
+            ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="confirm-dialog-title"
-            className="relative z-10 w-full max-w-md overflow-hidden rounded-[18px] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
+            aria-labelledby={titleId}
+            className="admin-dialog relative z-10 w-full max-w-[512px]"
           >
-            <div className="border-b border-slate-100 px-6 py-5">
-              <div className="flex items-start justify-between gap-4">
-                <h2
-                  id="confirm-dialog-title"
-                  className="text-[28px] font-bold tracking-tight text-slate-950"
-                >
-                  {title}
-                </h2>
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+            <div className="admin-dialog-header">
+              <h2 id={titleId} className="admin-dialog-title break-keep">
+                {title}
+              </h2>
+              <button
+                type="button"
+                onClick={close}
+                disabled={isLoading}
+                className="admin-dialog-close"
+                aria-label="닫기"
+                title="닫기"
+              >
+                <X />
+              </button>
             </div>
 
-            <div className="px-6 py-6">
-              {description ? (
-                <p className="text-sm leading-7 text-slate-700">{description}</p>
-              ) : null}
-
-              <div className="mt-8 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 rounded-[12px] border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-                >
-                  {cancelLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={onConfirm}
-                  disabled={isLoading}
-                  className={CONFIRM_BUTTON_CLASS[variant]}
-                >
-                  {isLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                  {confirmLabel}
-                </button>
+            {description ? (
+              <div className="admin-dialog-body">
+                <p className="text-[15px] leading-[1.5] text-admin-text break-keep">
+                  {description}
+                </p>
               </div>
+            ) : null}
+
+            <div className="admin-dialog-footer">
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isLoading}
+                className="admin-button"
+              >
+                {cancelLabel}
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={isLoading}
+                className={CONFIRM_BUTTON_CLASS[variant]}
+              >
+                {isLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                {confirmLabel}
+              </button>
             </div>
           </motion.div>
         </div>

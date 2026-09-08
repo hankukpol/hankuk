@@ -84,14 +84,12 @@ function SortablePeriodRow({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={`rounded-[10px] border px-4 py-4 transition ${
-        isDragging ? "border-slate-400 bg-slate-100 shadow-lg" : "border-slate-200 bg-white"
-      }`}
+      className={`rounded-lg border px-4 py-4 transition ${ isDragging ? "border-slate-400 bg-slate-100" : "border-slate-200 bg-white" }`}
     >
       <div className="flex flex-wrap items-start gap-3">
         <button
           type="button"
-          className="mt-1 inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200-slate-200 text-slate-500 touch-none"
+          className="admin-button admin-button-compact w-11 px-0 mt-1"
           aria-label="교시 순서 이동"
           {...attributes}
           {...listeners}
@@ -101,28 +99,20 @@ function SortablePeriodRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xl font-bold text-slate-950">{period.name}</p>
+            <h2 className="admin-section-title">{period.name}</h2>
             <span
-              className={`rounded-full px-2 py-1 text-xs font-medium ${
-                period.isMandatory
-                  ? "bg-slate-950 text-white"
-                  : "bg-slate-100 text-slate-600"
-              }`}
+              className={`rounded-lg px-2 py-1 text-xs font-medium ${ period.isMandatory ? "bg-admin-accent text-white" : "bg-slate-100 text-slate-600" }`}
             >
               {period.isMandatory ? "필수" : "선택"}
             </span>
             <span
-              className={`rounded-full px-2 py-1 text-xs font-medium ${
-                period.isActive
-                  ? "bg-white border border-slate-200-slate-200 text-emerald-700"
-                  : "bg-white border border-slate-200-slate-200 text-red-700"
-              }`}
+              className={`rounded-lg px-2 py-1 text-xs font-medium ${ period.isActive ? "bg-white border border-slate-200 text-emerald-700" : "bg-white border border-slate-200 text-red-700" }`}
             >
               {period.isActive ? "활성" : "비활성"}
             </span>
           </div>
 
-          <p className="mt-1 text-sm text-slate-500">{period.label || "부제 없음"}</p>
+          <p className="admin-help mt-1">{period.label || "부제 없음"}</p>
 
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
             <span className="inline-flex items-center gap-2">
@@ -137,7 +127,7 @@ function SortablePeriodRow({
           <button
             type="button"
             onClick={() => onEdit(period)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200-slate-200 text-slate-600 transition hover:bg-slate-50"
+            className="admin-button admin-button-compact w-11 px-0"
             aria-label="교시 수정"
           >
             <Pencil className="h-4 w-4" />
@@ -146,7 +136,7 @@ function SortablePeriodRow({
             type="button"
             onClick={() => onDelete(period.id)}
             disabled={isDeleting}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200-slate-200 text-red-600 transition hover:bg-slate-50 disabled:opacity-60"
+            className="admin-button admin-button-danger-outline"
             aria-label="교시 삭제"
           >
             {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -349,14 +339,11 @@ export function PeriodSettingsManager({
   return (
     <>
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              교시 목록
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">교시 목록 정렬</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <h2 className="admin-section-title">교시 목록 정렬</h2>
+            <p className="admin-help mt-2 leading-6">
               드래그로 순서를 바꾸고, 각 교시의 시간과 활성 상태를 관리할 수 있습니다.
             </p>
           </div>
@@ -366,7 +353,7 @@ export function PeriodSettingsManager({
               type="button"
               onClick={refreshPeriods}
               disabled={isRefreshing}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              className="admin-button"
             >
               {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               새로고침
@@ -374,7 +361,7 @@ export function PeriodSettingsManager({
             <button
               type="button"
               onClick={resetForm}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+              className="admin-button admin-button-primary"
             >
               <Plus className="h-4 w-4" />
               새 교시
@@ -399,67 +386,64 @@ export function PeriodSettingsManager({
         </div>
         </section>
 
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-          {editingId ? "교시 수정" : "교시 추가"}
-        </p>
-        <h2 className="mt-2 text-2xl font-bold text-slate-950">
+        <section className="admin-section">
+        <h2 className="admin-section-title">
           {editingId ? "교시 수정" : "새 교시 추가"}
         </h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
+        <p className="admin-help mt-2 leading-6">
           출석 의무 여부와 활성 상태는 이후 출석 체크 대상 계산에 직접 사용됩니다.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">교시 이름</span>
+            <span className="admin-label mb-2 block">교시 이름</span>
             <input
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: 1교시"
               required
             />
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">부제</span>
+            <span className="admin-label mb-2 block">부제</span>
             <input
               value={form.label}
               onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: 아침 모의고사"
             />
           </label>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">시작 시간</span>
+              <span className="admin-label mb-2 block">시작 시간</span>
               <input
                 type="time"
                 value={form.startTime}
                 onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))}
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 required
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">종료 시간</span>
+              <span className="admin-label mb-2 block">종료 시간</span>
               <input
                 type="time"
                 value={form.endTime}
                 onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))}
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 required
               />
             </label>
           </div>
 
-          <label className="flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+          <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
             <span>
-              <span className="block text-sm font-medium text-slate-800">필수 교시</span>
-              <span className="block text-xs text-slate-500">출석률 계산 대상 교시로 포함합니다.</span>
+              <span className="admin-label block">필수 교시</span>
+              <span className="admin-help block">출석률 계산 대상 교시로 포함합니다.</span>
             </span>
             <input
               type="checkbox"
@@ -471,10 +455,10 @@ export function PeriodSettingsManager({
             />
           </label>
 
-          <label className="flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+          <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
             <span>
-              <span className="block text-sm font-medium text-slate-800">활성 상태</span>
-              <span className="block text-xs text-slate-500">비활성 교시는 출석 체크 대상에서 제외됩니다.</span>
+              <span className="admin-label block">활성 상태</span>
+              <span className="admin-help block">비활성 교시는 출석 체크 대상에서 제외됩니다.</span>
             </span>
             <input
               type="checkbox"
@@ -488,7 +472,7 @@ export function PeriodSettingsManager({
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {editingId ? "교시 수정" : "교시 추가"}
@@ -497,7 +481,7 @@ export function PeriodSettingsManager({
             <button
               type="button"
               onClick={resetForm}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               초기화
             </button>

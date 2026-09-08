@@ -16,20 +16,14 @@ import {
   ArrowRight,
   BookOpenCheck,
   CalendarClock,
-  CalendarDays,
   CalendarX,
-  ClipboardList,
   Copy,
   CreditCard,
-  DoorOpen,
   LoaderCircle,
   MapPin,
-  MessageSquare,
   Phone,
   RefreshCcw,
-  Star,
   TrendingUp,
-  UserCheck,
   Users,
 } from "lucide-react";
 import { toast } from "@/lib/sonner";
@@ -47,6 +41,7 @@ type AdminDashboardProps = {
 type SummaryCard = {
   title: string;
   value: string;
+  unit: string;
   description: string;
   subtext: string;
   icon: React.ElementType;
@@ -252,11 +247,11 @@ function CircularGauge({ rate }: { rate: number }) {
   const r = 38;
   const circumference = 2 * Math.PI * r;
   const offset = circumference * (1 - Math.min(rate, 100) / 100);
-  const color = rate >= 90 ? "#10b981" : rate >= 75 ? "#f59e0b" : "#f43f5e";
+  const color = rate >= 90 ? "var(--admin-success)" : rate >= 75 ? "var(--admin-warning)" : "var(--admin-danger)";
 
   return (
     <svg viewBox="0 0 100 100" className="h-20 w-20 -rotate-90">
-      <circle cx="50" cy="50" r={r} fill="none" stroke="#e2e8f0" strokeWidth="9" />
+      <circle cx="50" cy="50" r={r} fill="none" stroke="var(--admin-grid)" strokeWidth="9" />
       <circle
         cx="50"
         cy="50"
@@ -344,12 +339,14 @@ function PeriodTimerWidget({
 
   if (info.type === "END") return null;
 
-  const bgColor =
+  // DESIGN.md 1절: 값의 색으로 상태를 전달하되 읽을 수 있는 상태 문구도 함께 둔다.
+  // 장식용 색면 대신 상태 점과 문구로만 구분한다.
+  const statusDotClass =
     info.type === "STUDYING"
-      ? { from: "#059669", to: "#064e3b" }
+      ? "bg-attend-present"
       : info.type === "BREAK"
-        ? { from: "#d97706", to: "#78350f" }
-        : { from: "#0284c7", to: "#0c4a6e" };
+        ? "bg-attend-tardy"
+        : "bg-attend-excused";
 
   const isMealBreak = info.type === "BREAK" && info.totalBreakMin >= 30;
 
@@ -373,63 +370,38 @@ function PeriodTimerWidget({
   const timeDisplay = `${String(remainingMin).padStart(2, "0")}:${String(remainingSec).padStart(2, "0")}`;
 
   return (
-    <section
-      className="overflow-hidden rounded-[10px] shadow-[0_20px_60px_rgba(18,32,56,0.15)]"
-      style={{ backgroundColor: `${bgColor.from}` }}
-    >
-      <div className="px-7 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
-              현재 상태
-            </p>
-            <h2 className="mt-1.5 text-2xl font-bold text-white">{statusLabel}</h2>
-            {subLabel && <p className="mt-0.5 text-sm text-white/75">{subLabel}</p>}
-          </div>
-
-          <div className="text-right">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
-              남은 시간
-            </p>
-            <p className="mt-1 font-mono text-5xl font-extrabold tabular-nums text-white">
-              {timeDisplay}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {notificationPermission === "default" ? (
-            <button
-              type="button"
-              onClick={() => void handleEnableNotifications()}
-              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/15"
-            >
-              브라우저 알림 허용
-            </button>
-          ) : notificationPermission === "granted" ? (
-            <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/85">
-              브라우저 알림 사용 중
-            </span>
-          ) : notificationPermission === "denied" ? (
-            <span className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80">
-              브라우저 알림 차단됨
-            </span>
+    <section className="admin-panel">
+      <div className="admin-panel-header">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClass}`} aria-hidden />
+          <h2 className="admin-section-title truncate">{statusLabel}</h2>
+          {subLabel ? (
+            <span className="truncate text-[13px] text-admin-text-muted">{subLabel}</span>
           ) : null}
         </div>
 
+        <div className="flex shrink-0 items-baseline gap-2">
+          <span className="text-[13px] font-semibold text-admin-text-muted">남은 시간</span>
+          <span className="text-[32px] font-bold leading-none tabular-nums">
+            {timeDisplay}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-5 py-4">
         {(info.type === "STUDYING" || info.type === "BREAK") && (
-          <div className="mt-5">
-            <div className="relative h-3 w-full overflow-hidden rounded-full bg-white/20">
+          <>
+            <div className="relative h-2 w-full overflow-hidden rounded-lg bg-admin-surface-muted">
               <div
-                className="h-full rounded-full bg-white/80 transition-all duration-1000"
+                className="h-full rounded-lg bg-admin-accent transition-all duration-1000"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-white/55">
+            <div className="mt-2 flex items-center justify-between text-[13px] text-admin-text-muted">
               {info.type === "STUDYING" ? (
                 <>
                   <span>{info.startTime} 시작</span>
-                  <span className="font-semibold text-white/80">
+                  <span className="font-semibold text-admin-text">
                     {Math.round(progressPercent)}% 경과
                   </span>
                   <span>{info.endTime} 종료</span>
@@ -437,15 +409,31 @@ function PeriodTimerWidget({
               ) : (
                 <>
                   <span>{isMealBreak ? "식사 시간 중" : "쉬는 시간 중"}</span>
-                  <span className="font-semibold text-white/80">
+                  <span className="font-semibold text-admin-text">
                     {Math.round(progressPercent)}% 경과
                   </span>
                   <span>{info.nextPeriodName} 시작까지</span>
                 </>
               )}
             </div>
-          </div>
+          </>
         )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {notificationPermission === "default" ? (
+            <button
+              type="button"
+              onClick={() => void handleEnableNotifications()}
+              className="admin-button admin-button-compact"
+            >
+              브라우저 알림 허용
+            </button>
+          ) : notificationPermission === "granted" ? (
+            <span className="admin-badge">브라우저 알림 사용 중</span>
+          ) : notificationPermission === "denied" ? (
+            <span className="admin-badge">브라우저 알림 차단됨</span>
+          ) : null}
+        </div>
       </div>
     </section>
   );
@@ -523,7 +511,8 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
     (): SummaryCard[] => [
       {
         title: "오늘 출석률",
-        value: `${rate}%`,
+        value: `${rate}`,
+        unit: "%",
         description: `${data.summary.attendedCount} / ${data.summary.expectedCount} 교시`,
         subtext: formatDelta(data.summary.deltaFromYesterday),
         icon: BookOpenCheck,
@@ -532,7 +521,8 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       },
       {
         title: "현재 학생",
-        value: `${data.studentOverview.activeCount}명`,
+        value: `${data.studentOverview.activeCount}`,
+        unit: "명",
         description: "활성 재실 중",
         subtext: `휴가 ${data.studentOverview.onLeaveCount}명 포함`,
         icon: Users,
@@ -541,7 +531,8 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       },
       {
         title: "이번 주 지각/결석",
-        value: `${data.summary.weeklyTardyAbsentCount}건`,
+        value: `${data.summary.weeklyTardyAbsentCount}`,
+        unit: "건",
         description: `지각 ${data.summary.weeklyTardyCount} / 결석 ${data.summary.weeklyAbsentCount}`,
         subtext: "월요일부터 오늘까지",
         icon: TrendingUp,
@@ -550,7 +541,8 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       },
       {
         title: "이번 달 수납",
-        value: `${data.paymentStats.thisMonthTotal.toLocaleString("ko-KR")}원`,
+        value: data.paymentStats.thisMonthTotal.toLocaleString("ko-KR"),
+        unit: "원",
         description: "총 납부 건수",
         subtext: `${data.paymentStats.thisMonthCount}건`,
         icon: CreditCard,
@@ -584,7 +576,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           data.summary.uncheckedPeriodCount > 0
             ? "bg-amber-50 text-amber-700"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.summary.uncheckedPeriodCount > 0 ? "border-amber-100" : "border-black/5",
+        borderClass: data.summary.uncheckedPeriodCount > 0 ? "border-amber-100" : "border-admin-line",
         featureKey: "attendanceManagement",
       },
       {
@@ -603,7 +595,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           data.attentionStudents.length > 0
             ? "bg-amber-50 text-amber-700"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.attentionStudents.length > 0 ? "border-amber-100" : "border-black/5",
+        borderClass: data.attentionStudents.length > 0 ? "border-amber-100" : "border-admin-line",
         featureKey: "attendanceManagement",
       },
       {
@@ -622,7 +614,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           data.summary.riskStudentCount > 0
             ? "bg-rose-50 text-rose-700"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.summary.riskStudentCount > 0 ? "border-rose-100" : "border-black/5",
+        borderClass: data.summary.riskStudentCount > 0 ? "border-rose-100" : "border-admin-line",
         featureKey: "warningManagement",
       },
       {
@@ -641,7 +633,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           data.expiringStudents.length > 0
             ? "bg-rose-50 text-rose-700"
             : "bg-slate-100 text-slate-600",
-        borderClass: data.expiringStudents.length > 0 ? "border-rose-100" : "border-black/5",
+        borderClass: data.expiringStudents.length > 0 ? "border-rose-100" : "border-admin-line",
         featureKey: "studentManagement",
       },
     ];
@@ -662,80 +654,51 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
   const lastUpdatedLabel = lastUpdatedAt ? formatUpdatedAt(lastUpdatedAt) : "방금";
 
   return (
-    <div className="space-y-6">
-      {/* 헤더 */}
-      <section className="overflow-hidden rounded-[10px] border border-black/5 bg-white shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
-        <div className="grid gap-5 px-6 py-7 md:grid-cols-[1.2fr_0.8fr] md:px-8">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                운영 대시보드
-              </p>
-              <span className="text-xs text-slate-500">
-                마지막 업데이트: {lastUpdatedLabel}
-              </span>
-              {isRefreshing ? (
-                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  갱신 중
-                </span>
-              ) : null}
-            </div>
+    <div className="admin-flat-page">
+      {/* 제목 · 주요 작업 */}
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="admin-page-title">{data.division.name} 운영 현황</h1>
+          <p className="admin-page-description">
+            {data.summary.todayDate} 기준
+            {data.summary.uncheckedPeriodCount > 0
+              ? ` · ${data.summary.uncheckedPeriodCount}개 교시가 아직 미처리 상태입니다.`
+              : " · 오늘 필수 교시는 모두 처리되었습니다."}
+            {` · 마지막 업데이트 ${lastUpdatedLabel}`}
+            {isRefreshing ? " · 갱신 중" : ""}
+          </p>
+        </div>
 
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">
-              {data.division.name} 운영 현황
-            </h1>
-
-            <div className="flex flex-wrap gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => void refreshDashboard(true)}
-                disabled={isRefreshing}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                {isRefreshing ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" />
-                )}
-                수동 새로고침
-              </button>
-
-              <Link
-                href={`/${divisionSlug}/admin/attendance`}
-                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 ${
-                  featureFlags.attendanceManagement ? "" : "hidden"
-                }`}
-                style={{ backgroundColor: data.division.color }}
-              >
-                출석부로 이동
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-
-              <Link
-                href={`/${divisionSlug}/admin/seats`}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                좌석 현황
-                <MapPin className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-
-          <div
-            className="rounded-[10px] border border-white/30 p-5 text-white"
-            style={{
-              backgroundColor: `${data.division.color}`,
-            }}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void refreshDashboard(true)}
+            disabled={isRefreshing}
+            className="admin-button"
           >
-            <p className="text-sm font-medium text-white/75">오늘 기준</p>
-            <p className="mt-3 text-3xl font-extrabold">{data.summary.todayDate}</p>
-            <p className="mt-3 text-sm leading-6 text-white/80">
-              {data.summary.uncheckedPeriodCount > 0
-                ? `${data.summary.uncheckedPeriodCount}개 교시가 아직 미처리 상태입니다.`
-                : "오늘 필수 교시는 모두 처리되었습니다."}
-            </p>
-          </div>
+            {isRefreshing ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" />
+            )}
+            새로고침
+          </button>
+
+          <Link
+            href={`/${divisionSlug}/admin/seats`}
+            className="admin-button"
+          >
+            좌석 현황
+            <MapPin className="h-4 w-4" />
+          </Link>
+
+          <Link
+            href={`/${divisionSlug}/admin/attendance`}
+            className={`admin-button admin-button-primary ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
+          >
+            출석부로 이동
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </section>
 
@@ -744,24 +707,16 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
       {/* 시험 일정 D-Day */}
       {featureFlags.examScheduleManagement && data.upcomingExamSchedules.length > 0 && (
-        <section
-          className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]"
-        >
+        <section className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <CalendarDays className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  시험 일정
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">시험 일정</h2>
+                <h2 className="admin-section-title">시험 일정</h2>
               </div>
             </div>
             <Link
               href={`/${divisionSlug}/admin/settings/exam-schedules`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               일정 관리
               <ArrowRight className="h-4 w-4" />
@@ -771,21 +726,17 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
             {data.upcomingExamSchedules.map((exam) => (
               <div
                 key={exam.id}
-                className="rounded-[10px] border border-slate-100 bg-slate-50 p-4"
+                className="admin-panel-row"
               >
                 <span
-                  className={`inline-block rounded-full px-3 py-1 text-sm font-extrabold ${
-                    exam.dDayValue === 0
-                      ? "bg-red-100 text-red-600"
-                      : exam.dDayValue < 0
-                        ? "bg-slate-200 text-slate-500"
-                        : "bg-blue-50 text-blue-600"
-                  }`}
+                  className={`inline-block rounded-lg px-3 py-1 text-sm font-extrabold ${ exam.dDayValue === 0 ? "bg-red-100 text-red-600" : exam.dDayValue < 0 ? "bg-slate-200 text-slate-500" : "bg-blue-50 text-blue-600" }`}
                 >
                   {exam.dDayLabel}
                 </span>
-                <p className="mt-3 text-base font-bold text-slate-900 truncate">{exam.name}</p>
-                <p className="mt-1 text-xs text-slate-500">{exam.examDate}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-base font-bold text-slate-900">{exam.name}</p>
+                  <p className="admin-help mt-1">{exam.examDate}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -793,19 +744,15 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       )}
 
       {/* 핵심 지표 */}
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="admin-dashboard-metrics">
         {visibleSummaryCards.map((card) => {
-          const Icon = card.icon;
 
           return (
             <article
               key={card.title}
-              className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_12px_30px_rgba(18,32,56,0.06)]"
+              className="admin-dashboard-metric min-w-0"
             >
               <div className="flex items-start justify-between">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-[10px] bg-slate-100 text-slate-900">
-                  <Icon className="h-5 w-5" />
-                </div>
                 {card.gauge && (
                   <div className="relative flex items-center justify-center">
                     <CircularGauge rate={rate} />
@@ -815,24 +762,21 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   </div>
                 )}
               </div>
-              <p className="mt-4 text-sm text-slate-500">{card.title}</p>
-              <p className="mt-1 text-3xl font-extrabold text-slate-950">{card.value}</p>
-              <p className="mt-3 text-sm text-slate-600">{card.description}</p>
-              <p className="mt-1 text-xs text-slate-500">{card.subtext}</p>
+              <p className="admin-dashboard-metric-label mt-4">{card.title}</p>
+              <p className="admin-dashboard-metric-value break-words">{card.value}<span className="admin-dashboard-metric-unit">{card.unit}</span></p>
+              <p className="admin-help mt-3">{card.description}</p>
+              <p className="admin-help mt-1">{card.subtext}</p>
             </article>
           );
         })}
       </section>
 
       {/* 오늘 처리할 일 */}
-      <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              오늘 처리할 일
-            </p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-950">오늘 처리할 일</h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <h2 className="admin-section-title">오늘 처리할 일</h2>
+            <p className="admin-help mt-2">
               바로 움직여야 하는 항목만 먼저 모았습니다.
             </p>
           </div>
@@ -846,13 +790,13 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
               <Link
                 key={card.title}
                 href={card.href}
-                className={`group rounded-[10px] border ${card.borderClass} bg-white p-5 shadow-[0_12px_30px_rgba(18,32,56,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(18,32,56,0.08)]`}
+                className={`group rounded-lg border ${card.borderClass} bg-white p-5 transition hover:bg-admin-surface-soft`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className={`inline-flex h-12 w-12 items-center justify-center rounded-[10px] ${card.iconClass}`}>
+                  <div className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${card.iconClass}`}>
                     <Icon className="h-5 w-5" />
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${card.badgeClass}`}>
+                  <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${card.badgeClass}`}>
                     {card.value}
                   </span>
                 </div>
@@ -862,7 +806,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   {card.description}
                 </p>
                 <div className="mt-4 flex items-center justify-between gap-3">
-                  <span className="text-xs text-slate-500">{card.note}</span>
+                  <span className="admin-help">{card.note}</span>
                   <span className="inline-flex items-center gap-1 text-sm font-medium text-slate-700 transition group-hover:text-slate-950">
                     {card.cta}
                     <ArrowRight className="h-4 w-4" />
@@ -877,16 +821,11 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       <div className="grid gap-6 xl:grid-cols-2">
         {/* 교시별 출결 현황 */}
         <section
-          className={`flex h-full flex-col rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)] ${
-            featureFlags.attendanceManagement ? "" : "hidden"
-          }`}
+          className={`flex h-full flex-col rounded-lg border border-admin-line bg-white p-5 ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <ClipboardList className="h-4 w-4" />
-              </div>
-              <h2 className="text-base font-bold text-slate-950">교시별 출결 현황</h2>
+              <h2 className="admin-section-title">교시별 출결 현황</h2>
             </div>
             <Link
               href={`/${divisionSlug}/admin/attendance`}
@@ -896,12 +835,12 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
             </Link>
           </div>
 
-          <div className="mt-3 flex flex-1 flex-col divide-y divide-slate-100">
+          <div className="mt-3 flex flex-1 flex-col">
             {data.periodRows.map((row) => (
               <div key={row.periodId} className="flex min-h-[60px] flex-1 items-center gap-3 py-3 md:min-h-[68px]">
                 <div className="w-[88px] shrink-0">
                   <p className="text-sm font-semibold text-slate-900">{row.periodName}</p>
-                  {row.label && <p className="text-[11px] text-slate-400">{row.label}</p>}
+                  {row.label && <p className="text-[13px] text-slate-400">{row.label}</p>}
                 </div>
 
                 <div className="flex-1">
@@ -918,13 +857,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   </div>
                   <div className="h-1 rounded-full bg-slate-100">
                     <div
-                      className={`h-full rounded-full transition-all ${
-                        row.attendanceRate >= 90
-                          ? "bg-emerald-400"
-                          : row.attendanceRate >= 75
-                            ? "bg-amber-400"
-                            : "bg-rose-400"
-                      }`}
+                      className={`h-full rounded-full transition-all ${ row.attendanceRate >= 90 ? "bg-emerald-400" : row.attendanceRate >= 75 ? "bg-amber-400" : "bg-rose-400" }`}
                       style={{ width: `${row.attendanceRate}%` }}
                     />
                   </div>
@@ -933,7 +866,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 {row.isUnchecked ? (
                   <Link
                     href={`/${divisionSlug}/admin/attendance`}
-                    className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-200"
+                    className="admin-button shrink-0"
                   >
                     체크
                   </Link>
@@ -948,18 +881,13 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         <section className="space-y-5">
           {/* 반복 지각/결석 */}
           <section
-            className={`rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)] ${
-              featureFlags.attendanceManagement ? "" : "hidden"
-            }`}
+            className={`rounded-lg border border-admin-line bg-white p-5 ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
           >
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <AlertTriangle className="h-4 w-4" />
-              </div>
-              <h2 className="text-base font-bold text-slate-950">반복 지각 · 결석</h2>
+              <h2 className="admin-section-title">반복 지각 · 결석</h2>
               <div className="ml-auto flex items-center gap-2">
                 {attentionPreview.length > 0 && (
-                  <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">
+                  <span className="rounded-lg bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">
                     {data.attentionStudents.length}명
                   </span>
                 )}
@@ -974,11 +902,11 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
             <div className="mt-3">
               {attentionPreview.length > 0 ? (
-                <div className="divide-y divide-slate-100">
+                <div>
                   {attentionPreview.map((student) => (
                     <div
                       key={`${student.type}-${student.studentId}`}
-                      className="flex items-center gap-3 py-2.5"
+                      className="admin-panel-row"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -994,18 +922,14 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                               {student.studentName}
                             </span>
                           )}
-                          <span className="text-xs text-slate-400">{student.studentNumber}</span>
+                          <span className="admin-help">{student.studentNumber}</span>
                           <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              student.type === "ABSENT"
-                                ? "bg-rose-50 text-rose-600"
-                                : "bg-amber-50 text-amber-600"
-                            }`}
+                            className={`rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ student.type === "ABSENT" ? "bg-rose-50 text-rose-600" : "bg-amber-50 text-amber-600" }`}
                           >
                             {student.type === "ABSENT" ? "결석 반복" : "지각 반복"}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="admin-help mt-0.5">
                           {student.message} · {student.seatLabel || "좌석 미배정"}
                         </p>
                       </div>
@@ -1021,7 +945,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   ))}
                 </div>
               ) : (
-                <p className="py-4 text-center text-sm text-slate-400">
+                <p className="admin-help py-4 text-center">
                   최근 7일 기준 반복 지각/결석 학생이 없습니다.
                 </p>
               )}
@@ -1029,15 +953,12 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           </section>
 
           {/* 경고 위험 학생 */}
-          {featureFlags.warningManagement && <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+          {featureFlags.warningManagement && <section className="rounded-lg border border-admin-line bg-white p-5">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <Phone className="h-4 w-4" />
-              </div>
-              <h2 className="text-base font-bold text-slate-950">경고 위험 학생</h2>
+              <h2 className="admin-section-title">경고 위험 학생</h2>
               <div className="ml-auto flex items-center gap-2">
                 {riskPreview.length > 0 && (
-                  <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-600">
+                  <span className="rounded-lg bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-600">
                     {data.riskStudents.length}명
                   </span>
                 )}
@@ -1052,9 +973,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
             <div className="mt-3">
               {riskPreview.length > 0 ? (
-                <div className="divide-y divide-slate-100">
+                <div>
                   {riskPreview.map((student) => (
-                    <div key={student.id} className="flex items-center gap-3 py-2.5">
+                    <div key={student.id} className="admin-panel-row">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {featureFlags.studentManagement ? (
@@ -1069,10 +990,10 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                               {student.name}
                             </span>
                           )}
-                          <span className="text-xs text-slate-400">{student.studentNumber}</span>
-                          <WarningStageBadge stage={student.warningStage} />
+                          <span className="admin-help">{student.studentNumber}</span>
+                          <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                         </div>
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="admin-help mt-0.5">
                           벌점 {student.netPoints}p · {student.seatLabel || "좌석 미배정"}
                         </p>
                       </div>
@@ -1088,7 +1009,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                   ))}
                 </div>
               ) : (
-                <p className="py-4 text-center text-sm text-slate-400">경고 위험 학생이 없습니다.</p>
+                <p className="admin-help py-4 text-center">경고 위험 학생이 없습니다.</p>
               )}
             </div>
           </section>}
@@ -1099,22 +1020,16 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       {featureFlags.studentManagement && (
         <div className="grid gap-6 xl:grid-cols-2">
         {/* 수강 만료 임박 */}
-        <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-lg border border-admin-line bg-white p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <CalendarX className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  만료 예정
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">수강 만료 임박</h2>
+                <h2 className="admin-section-title">수강 만료 임박</h2>
               </div>
             </div>
             <Link
               href={`/${divisionSlug}/admin/students`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               학생 관리로
               <ArrowRight className="h-4 w-4" />
@@ -1123,17 +1038,17 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
           <div className="mt-5">
             {expiringPreview.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="admin-table-frame overflow-x-auto">
+                <table className="w-full">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">학생</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">직렬</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">만료일</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">D-Day</th>
+                      <th className="admin-table-name">학생</th>
+                      <th className="admin-table-name">직렬</th>
+                      <th className="admin-table-name">만료일</th>
+                      <th className="admin-table-name">D-Day</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {expiringPreview.map((student) => {
                       const dBadge =
                         student.daysRemaining < 0
@@ -1145,19 +1060,19 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                               : { label: `D-${student.daysRemaining}`, cls: "bg-slate-100 text-slate-600" };
                       return (
                         <tr key={student.id} className="group">
-                          <td className="py-3 pr-4">
+                          <td>
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.id}`}
                               className="font-semibold text-slate-900 transition group-hover:text-slate-600"
                             >
                               {student.name}
                             </Link>
-                            <p className="text-xs text-slate-400">{student.studentNumber}</p>
+                            <p className="admin-help">{student.studentNumber}</p>
                           </td>
-                          <td className="py-3 pr-4 text-xs text-slate-500">{student.studyTrack || "—"}</td>
-                          <td className="py-3 pr-4 text-xs text-slate-600">{student.courseEndDate}</td>
-                          <td className="py-3">
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${dBadge.cls}`}>
+                          <td>{student.studyTrack || "—"}</td>
+                          <td>{student.courseEndDate}</td>
+                          <td>
+                            <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${dBadge.cls}`}>
                               {dBadge.label}
                             </span>
                           </td>
@@ -1168,7 +1083,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 </table>
               </div>
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              <div className="admin-help py-6 text-center">
                 수강 만료 임박 학생이 없습니다.
               </div>
             )}
@@ -1176,37 +1091,31 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         </section>
 
         {/* 신규 입실 */}
-        <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="rounded-lg border border-admin-line bg-white p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <UserCheck className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  신규 입실
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">신규 입실</h2>
+                <h2 className="admin-section-title">신규 입실</h2>
               </div>
             </div>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+            <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
               최근 10일 {data.newStudents.length}명
             </span>
           </div>
 
           <div className="mt-5">
             {newStudentsPreview.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="admin-table-frame overflow-x-auto">
+                <table className="w-full">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">학생</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">직렬</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">좌석</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">경과</th>
+                      <th className="admin-table-name">학생</th>
+                      <th className="admin-table-name">직렬</th>
+                      <th className="admin-table-name">좌석</th>
+                      <th className="admin-table-name">경과</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {newStudentsPreview.map((student) => {
                       const dayLabel =
                         student.daysAgo === 0 ? "오늘" : student.daysAgo === 1 ? "어제" : `${student.daysAgo}일 전`;
@@ -1216,19 +1125,19 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           : "bg-slate-100 text-slate-600";
                       return (
                         <tr key={student.id} className="group">
-                          <td className="py-3 pr-4">
+                          <td>
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.id}`}
                               className="font-semibold text-slate-900 transition group-hover:text-slate-600"
                             >
                               {student.name}
                             </Link>
-                            <p className="text-xs text-slate-400">{student.studentNumber}</p>
+                            <p className="admin-help">{student.studentNumber}</p>
                           </td>
-                          <td className="py-3 pr-4 text-xs text-slate-500">{student.studyTrack || "—"}</td>
-                          <td className="py-3 pr-4 text-xs text-slate-500">{student.seatLabel || "미배정"}</td>
-                          <td className="py-3">
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${dayCls}`}>
+                          <td>{student.studyTrack || "—"}</td>
+                          <td>{student.seatLabel || "미배정"}</td>
+                          <td>
+                            <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${dayCls}`}>
                               {dayLabel}
                             </span>
                           </td>
@@ -1239,7 +1148,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 </table>
               </div>
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              <div className="admin-help py-6 text-center">
                 최근 10일 이내 신규 입실 학생이 없습니다.
               </div>
             )}
@@ -1250,22 +1159,16 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
       {/* 최근 변동 */}
       <div className="grid gap-6 xl:grid-cols-2">
-        {featureFlags.pointManagement && <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        {featureFlags.pointManagement && <section className="rounded-lg border border-admin-line bg-white p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <Star className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  최근 상벌점
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">최근 상벌점</h2>
+                <h2 className="admin-section-title">최근 상벌점</h2>
               </div>
             </div>
             <Link
               href={`/${divisionSlug}/admin/points`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               전체 보기
               <ArrowRight className="h-4 w-4" />
@@ -1274,32 +1177,28 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
           <div className="mt-5">
             {recentPointPreview.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div>
                 {recentPointPreview.map((record) => (
-                  <div key={record.id} className="flex items-center gap-3 py-3">
+                  <div key={record.id} className="admin-panel-row">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-slate-900">
                           {record.studentName}
                         </span>
-                        <span className="text-xs text-slate-400">{record.studentNumber}</span>
+                        <span className="admin-help">{record.studentNumber}</span>
                       </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                      <p className="admin-help mt-0.5 truncate">
                         {record.ruleName || "직접 입력"}
                         {record.notes ? ` · ${record.notes}` : ""}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                          record.points > 0
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-rose-50 text-rose-700"
-                        }`}
+                        className={`rounded-lg px-2.5 py-0.5 text-xs font-bold ${ record.points > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700" }`}
                       >
                         {formatPointValue(record.points)}
                       </span>
-                      <p className="mt-0.5 text-[10px] text-slate-400">
+                      <p className="mt-0.5 text-[13px] text-slate-400">
                         {new Date(record.date).toLocaleDateString("ko-KR")}
                       </p>
                     </div>
@@ -1307,29 +1206,23 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 ))}
               </div>
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              <div className="admin-help py-6 text-center">
                 최근 상벌점 기록이 없습니다.
               </div>
             )}
           </div>
         </section>}
 
-        {featureFlags.paymentManagement && <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        {featureFlags.paymentManagement && <section className="rounded-lg border border-admin-line bg-white p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <CreditCard className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  최근 수납
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">최근 수납 내역</h2>
+                <h2 className="admin-section-title">최근 수납 내역</h2>
               </div>
             </div>
             <Link
               href={`/${divisionSlug}/admin/payments`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               수납 관리로
               <ArrowRight className="h-4 w-4" />
@@ -1338,39 +1231,39 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
           <div className="mt-5">
             {recentPaymentPreview.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="admin-table-frame overflow-x-auto">
+                <table className="w-full">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">학생</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">유형</th>
-                      <th className="pb-2 text-right text-xs font-medium text-slate-500">금액</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">방법</th>
-                      <th className="pb-2 text-left text-xs font-medium text-slate-500">날짜</th>
+                      <th className="admin-table-name">학생</th>
+                      <th className="admin-table-name">유형</th>
+                      <th className="admin-table-amount">금액</th>
+                      <th className="admin-table-name">방법</th>
+                      <th className="admin-table-name">날짜</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {recentPaymentPreview.map((payment, index) => (
                       <tr key={index}>
-                        <td className="py-3 pr-4">
+                        <td>
                           <p className="font-semibold text-slate-900">{payment.studentName}</p>
-                          <p className="text-xs text-slate-400">{payment.studentNumber}</p>
+                          <p className="admin-help">{payment.studentNumber}</p>
                         </td>
-                        <td className="py-3 pr-4 text-xs text-slate-600">{payment.paymentTypeName}</td>
-                        <td className="py-3 pr-4 text-right font-bold text-emerald-700">
+                        <td>{payment.paymentTypeName}</td>
+                        <td className="admin-table-amount text-emerald-700">
                           {payment.amount.toLocaleString("ko-KR")}원
                         </td>
-                        <td className="py-3 pr-4 text-xs text-slate-500">
+                        <td>
                           {formatPaymentMethod(payment.method)}
                         </td>
-                        <td className="py-3 text-xs text-slate-500">{payment.paymentDate}</td>
+                        <td>{payment.paymentDate}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              <div className="admin-help py-6 text-center">
                 최근 수납 내역이 없습니다.
               </div>
             )}
@@ -1382,25 +1275,17 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       <div className="grid gap-6 xl:grid-cols-2">
         {/* 오늘 외출/휴가 현황 */}
         <section
-          className={`rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)] ${
-            leaveManagementEnabled ? "" : "hidden"
-          }`}
+          className={`rounded-lg border border-admin-line bg-white p-5 ${ leaveManagementEnabled ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <DoorOpen className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  오늘 외출/휴가
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">오늘 외출/휴가</h2>
+                <h2 className="admin-section-title">오늘 외출/휴가</h2>
               </div>
             </div>
             <Link
               href={`/${divisionSlug}/admin/leave`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               외출/휴가 관리
               <ArrowRight className="h-4 w-4" />
@@ -1409,11 +1294,11 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
           <div className="mt-5">
             {data.todayLeaveStudents.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div>
                 {data.todayLeaveStudents.map((leave) => {
                   const statusInfo = LEAVE_STATUS_LABEL[leave.status] ?? { label: leave.status, cls: "bg-slate-100 text-slate-600" };
                   return (
-                    <div key={leave.id} className="flex items-center gap-3 py-3">
+                    <div key={leave.id} className="admin-panel-row">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {featureFlags.studentManagement ? (
@@ -1428,16 +1313,16 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                               {leave.studentName}
                             </span>
                           )}
-                          <span className="text-xs text-slate-400">{leave.studentNumber}</span>
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                          <span className="admin-help">{leave.studentNumber}</span>
+                          <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-[13px] font-semibold text-blue-700">
                             {LEAVE_TYPE_LABEL[leave.type] ?? leave.type}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="admin-help mt-0.5">
                           {leave.seatLabel || "좌석 미배정"}
                         </p>
                       </div>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusInfo.cls}`}>
+                      <span className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ${statusInfo.cls}`}>
                         {statusInfo.label}
                       </span>
                     </div>
@@ -1445,7 +1330,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 })}
               </div>
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              <div className="admin-help py-6 text-center">
                 오늘 외출/휴가 학생이 없습니다.
               </div>
             )}
@@ -1454,25 +1339,17 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
         {/* 면담 필요 학생 */}
         <section
-          className={`rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)] ${
-            interviewManagementEnabled ? "" : "hidden"
-          }`}
+          className={`rounded-lg border border-admin-line bg-white p-5 ${ interviewManagementEnabled ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <MessageSquare className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  면담 필요
-                </p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950">면담 필요 학생</h2>
+                <h2 className="admin-section-title">면담 필요 학생</h2>
               </div>
             </div>
             <Link
               href={`/${divisionSlug}/admin/interviews`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               면담 기록
               <ArrowRight className="h-4 w-4" />
@@ -1481,9 +1358,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
           <div className="mt-5">
             {data.interviewNeededStudents.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div>
                 {data.interviewNeededStudents.slice(0, 5).map((student) => (
-                  <div key={student.id} className="flex items-center gap-3 py-3">
+                  <div key={student.id} className="admin-panel-row">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {featureFlags.studentManagement ? (
@@ -1498,9 +1375,9 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                             {student.name}
                           </span>
                         )}
-                        <span className="text-xs text-slate-400">{student.studentNumber}</span>
+                        <span className="admin-help">{student.studentNumber}</span>
                       </div>
-                      <p className="mt-0.5 text-xs text-slate-500">
+                      <p className="admin-help mt-0.5">
                         벌점 {student.netPoints}p ·{" "}
                         {student.lastInterviewDate
                           ? `최근 면담: ${student.lastInterviewDate}`
@@ -1520,7 +1397,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 ))}
               </div>
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+              <div className="admin-help py-6 text-center">
                 면담이 필요한 학생이 없습니다.
               </div>
             )}

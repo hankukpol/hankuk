@@ -1,3 +1,4 @@
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiAuth } from "@/lib/api-auth";
@@ -40,9 +41,6 @@ export async function GET(
       headers: { "Cache-Control": "max-age=10, stale-while-revalidate=5" },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "출석 통계를 계산하지 못했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "출석 통계를 계산하지 못했습니다.", 400);
   }
 }

@@ -19,23 +19,25 @@ type PortalEmptyStateProps = {
   description: string;
 };
 
+/**
+ * DESIGN.md 8절 — 학생 포털은 관리자와 같은 토큰·타입·모서리를 쓰되,
+ * 모바일 우선 레이아웃(카드형, 넓은 터치 영역)은 유지한다.
+ */
 export const portalPageClass =
-  "min-h-[100dvh] w-full overflow-x-hidden bg-[var(--background)] px-3 py-3 md:px-5 md:py-5";
+  "min-h-[100dvh] w-full overflow-x-hidden bg-admin-surface px-4 py-4 md:px-6 md:py-6";
 
 export const portalContainerClass =
-  "mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-3 md:gap-4";
+  "mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4";
 
 export const portalSectionClass =
-  "rounded-[10px] border border-[var(--border)] bg-white p-4 shadow-card md:p-6";
+  "rounded-lg border border-admin-line bg-admin-surface p-4 md:p-5";
 
 export const portalInsetClass =
-  "rounded-[10px] border border-[var(--border)] bg-[#F4F4F2] p-3.5 md:p-4";
+  "rounded-lg border border-admin-line-soft bg-admin-surface-soft p-4";
 
-export const portalCardClass =
-  "rounded-[10px] border border-[var(--border)] bg-white shadow-card";
+export const portalCardClass = "rounded-lg border border-admin-line bg-admin-surface";
 
-export const portalChipClass =
-  "inline-flex items-center rounded-[10px] border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--foreground)]";
+export const portalChipClass = "admin-badge";
 
 export function getBrandSurfaceStyle(alpha = 0.12): CSSProperties {
   return {
@@ -67,12 +69,10 @@ export function PortalSectionHeader({
               {icon}
             </div>
           ) : null}
-          <h2 className="text-[17px] font-bold text-[var(--foreground)] md:text-[20px]">
-            {title}
-          </h2>
+          <h2 className="admin-section-title">{title}</h2>
         </div>
         {description ? (
-          <p className="mt-1.5 text-[13px] leading-[1.5] text-[var(--muted)] md:text-sm">
+          <p className="mt-1.5 text-[13px] leading-[1.5] text-admin-text-muted">
             {description}
           </p>
         ) : null}
@@ -86,19 +86,19 @@ export function PortalMetricCard({
   label,
   value,
   caption,
-  valueToneClassName = "text-[var(--foreground)]",
+  valueToneClassName = "text-admin-text",
 }: PortalMetricCardProps) {
   return (
     <article className={`${portalSectionClass} flex min-h-[88px] flex-col justify-between md:min-h-[110px]`}>
-      <p className="text-[12px] font-medium text-[var(--muted)]">
+      <p className="text-[13px] font-medium text-admin-text-muted">
         {label}
       </p>
       <p
-        className={`mt-2 text-[24px] font-bold tracking-tight md:text-[28px] ${valueToneClassName}`}
+        className={`mt-2 text-[20px] font-bold tracking-tight md:text-[20px] ${valueToneClassName}`}
       >
         {value}
       </p>
-      <p className="mt-1.5 text-[12px] leading-[1.5] text-[var(--muted)] md:text-[13px]">
+      <p className="mt-1.5 text-[13px] leading-[1.5] text-admin-text-muted md:text-[13px]">
         {caption}
       </p>
     </article>
@@ -117,19 +117,19 @@ export function PortalMiniTile({
   label,
   title,
   description,
-  titleClassName = "text-[14px] font-bold text-[var(--foreground)] md:text-[16px]",
+  titleClassName = "text-[15px] font-bold text-admin-text md:text-[16px]",
   className = "",
 }: PortalMiniTileProps) {
   return (
     <article className={`${portalInsetClass} min-w-0 ${className}`.trim()}>
-      <p className="text-[12px] font-medium text-[var(--muted)]">
+      <p className="text-[13px] font-medium text-admin-text-muted">
         {label}
       </p>
       <div className={`mt-1.5 min-w-0 break-keep [overflow-wrap:anywhere] ${titleClassName}`}>
         {title}
       </div>
       {description ? (
-        <div className="mt-1 min-w-0 break-keep text-[13px] leading-[1.5] text-[var(--muted)] [overflow-wrap:anywhere] md:text-sm">
+        <div className="mt-1 min-w-0 break-keep text-[13px] leading-[1.5] text-admin-text-muted [overflow-wrap:anywhere] md:text-sm">
           {description}
         </div>
       ) : null}
@@ -142,9 +142,9 @@ export function PortalEmptyState({
   description,
 }: PortalEmptyStateProps) {
   return (
-    <div className="rounded-[10px] border border-dashed border-[var(--border)] bg-[#F4F4F2] px-4 py-5 md:px-5 md:py-6">
-      <p className="text-[14px] font-semibold text-[var(--foreground)]">{title}</p>
-      <p className="mt-1.5 text-[13px] leading-[1.5] text-[var(--muted)]">{description}</p>
+    <div className="rounded-lg border border-dashed border-admin-line bg-admin-surface-soft px-4 py-5 md:px-5 md:py-6">
+      <p className="text-[15px] font-semibold text-admin-text">{title}</p>
+      <p className="mt-1.5 text-[13px] leading-[1.5] text-admin-text-muted">{description}</p>
     </div>
   );
 }

@@ -44,10 +44,10 @@ function DDayBadge({ dDayValue, dDayLabel }: { dDayValue: number; dDayLabel: str
   const isPast = dDayValue < 0;
   const isToday = dDayValue === 0;
   const className = isPast
-    ? "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500"
+    ? "rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500"
     : isToday
-      ? "rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600"
-      : "rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-600";
+      ? "rounded-lg bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600"
+      : "rounded-lg bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-600";
   return <span className={className}>{dDayLabel}</span>;
 }
 
@@ -194,14 +194,14 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
     <>
       <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-600">
+        <p className="admin-help">
           총 <strong>{schedules.length}</strong>개 일정 (활성:{" "}
           <strong>{schedules.filter((s) => s.isActive).length}</strong>개)
         </p>
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 transition"
+          className="admin-button admin-button-primary"
         >
           <Plus className="h-4 w-4" />
           일정 추가
@@ -209,7 +209,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
       </div>
 
       {(isCreating || editingId) && (
-        <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-5 space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 space-y-4">
           <p className="text-sm font-semibold text-slate-900">
             {editingId ? "일정 수정" : "새 일정 추가"}
           </p>
@@ -221,7 +221,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="예: 2026 경찰공채 1차 필기"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -229,7 +229,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
               <select
                 value={form.type}
                 onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as ExamScheduleTypeValue }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               >
                 {EXAM_SCHEDULE_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -242,7 +242,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
                 type="date"
                 value={form.examDate}
                 onChange={(e) => setForm((f) => ({ ...f, examDate: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -252,7 +252,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 placeholder="선택 사항"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -270,7 +270,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition"
+              className="admin-button admin-button-primary"
             >
               <Save className="h-4 w-4" />
               {isSaving ? "저장 중..." : "저장"}
@@ -278,7 +278,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
             <button
               type="button"
               onClick={cancelForm}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition"
+              className="admin-button"
             >
               <X className="h-4 w-4" />
               취소
@@ -297,21 +297,19 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
           {schedules.map((item) => (
             <div
               key={item.id}
-              className={`flex items-center gap-4 rounded-[10px] border p-4 ${
-                item.isActive ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60"
-              }`}
+              className={`flex items-center gap-4 rounded-lg border p-4 ${ item.isActive ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60" }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-slate-900 text-sm">{item.name}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                  <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                     {getExamScheduleTypeLabel(item.type)}
                   </span>
                   {item.isActive && (
                     <DDayBadge dDayValue={item.dDayValue} dDayLabel={item.dDayLabel} />
                   )}
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="admin-help mt-1">
                   {item.examDate}
                   {item.description && ` · ${item.description}`}
                 </p>
@@ -321,11 +319,7 @@ export function ExamScheduleManager({ divisionSlug, initialSchedules }: ExamSche
                   type="button"
                   onClick={() => handleToggleActive(item)}
                   title={item.isActive ? "비활성화" : "활성화"}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                    item.isActive
-                      ? "bg-green-100 text-green-700 hover:bg-green-200"
-                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                  }`}
+                  className={`rounded-lg px-3 py-1 text-xs font-medium transition ${ item.isActive ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-slate-100 text-slate-500 hover:bg-slate-200" }`}
                 >
                   {item.isActive ? "활성" : "비활성"}
                 </button>

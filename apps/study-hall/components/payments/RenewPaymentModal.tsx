@@ -1,5 +1,8 @@
 "use client";
 
+import { useId } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "@/lib/sonner";
@@ -11,7 +14,7 @@ import {
 } from "@/components/payments/PaymentEntriesEditor";
 import { findDefaultPaymentCategoryId, getKstToday } from "@/components/payments/payment-client-helpers";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { formatCurrency } from "@/lib/payment-meta";
 import type { PaymentCategoryItem } from "@/lib/services/payment.service";
@@ -101,6 +104,7 @@ export function RenewPaymentModal({
   onSuccess,
   initialStudentId,
 }: RenewPaymentModalProps) {
+  const dialogFormId = useId();
   const [form, setForm] = useState<FormState>(() =>
     createInitialState(paymentCategories, tuitionPlans, initialStudentId),
   );
@@ -189,7 +193,7 @@ export function RenewPaymentModal({
 
   return (
     <>
-      <Modal
+      <SlideOver
         open={open}
         onClose={() => !isSubmitting && onClose()}
         badge="연장 등록"
@@ -200,10 +204,10 @@ export function RenewPaymentModal({
             : "기존 학생의 수강 기간을 연장하고 결제를 함께 기록합니다."
         }
       >
-        <form onSubmit={handleSubmit} className="space-y-6">
-        <section className="rounded-[10px] border border-slate-200 bg-white p-5">
+        <form id={`${dialogFormId}-1`} onSubmit={handleSubmit} className="space-y-6">
+        <section className="admin-section">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">학생 선택</span>
+            <span className="admin-label mb-2 block">학생 선택</span>
             <StudentSearchCombobox
               students={activeStudents}
               value={form.studentId}
@@ -215,17 +219,17 @@ export function RenewPaymentModal({
 
           {selectedStudent ? (
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-sm font-medium text-slate-700">현재 수강 정보</p>
                 <p className="mt-2 text-base font-semibold text-slate-950">
                   {selectedStudent.tuitionPlanName || "직접 입력"}
                 </p>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="admin-help mt-1">
                   {selectedStudent.courseStartDate || "-"} ~ {selectedStudent.courseEndDate || "-"}
                 </p>
               </div>
 
-              <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-sm font-medium text-slate-700">남은 기간</p>
                 <p className="mt-2 text-base font-semibold text-slate-950">
                   {remainingDays == null
@@ -234,17 +238,17 @@ export function RenewPaymentModal({
                       ? `${remainingDays}일`
                       : `${Math.abs(remainingDays)}일 경과`}
                 </p>
-                <p className="mt-1 text-sm text-slate-600">현재 종료일 기준으로 계산합니다.</p>
+                <p className="admin-help mt-1">현재 종료일 기준으로 계산합니다.</p>
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <div className="admin-notice mt-4">
               연장할 학생을 먼저 선택해 주세요.
             </div>
           )}
 
           {selectedStudent?.tuitionExempt ? (
-            <div className="mt-4 rounded-[10px] border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900">
+            <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900">
               <p className="font-semibold">수납 면제 학생</p>
               <p className="mt-1">
                 {selectedStudent.tuitionExemptReason || "면제 사유가 아직 입력되지 않았습니다."}
@@ -253,10 +257,10 @@ export function RenewPaymentModal({
           ) : null}
         </section>
 
-        <section className="rounded-[10px] border border-slate-200 bg-white p-5">
+        <section className="admin-section">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">연장 플랜</span>
+              <span className="admin-label mb-2 block">연장 플랜</span>
               <select
                 value={form.tuitionPlanId}
                 onChange={(event) => {
@@ -280,7 +284,7 @@ export function RenewPaymentModal({
                   }));
                 }}
                 required
-                className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                className="w-full"
               >
                 <option value="">플랜 선택</option>
                 {tuitionPlans.map((plan) => (
@@ -292,20 +296,20 @@ export function RenewPaymentModal({
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">연장 금액</span>
+              <span className="admin-label mb-2 block">연장 금액</span>
               <input
                 type="number"
                 value={form.tuitionAmount}
                 onChange={(event) => setForm((current) => ({ ...current, tuitionAmount: event.target.value }))}
                 min="0"
-                className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                className="w-full"
               />
             </label>
 
-            <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2">
               <p className="text-sm font-medium text-slate-700">예상 종료일</p>
-              <p className="mt-2 text-lg font-bold text-slate-950">{expectedCourseEndDate ?? "계산할 수 없음"}</p>
-              <p className="mt-1 text-xs text-slate-500">
+              <h2 className="admin-section-title">{expectedCourseEndDate ?? "계산할 수 없음"}</h2>
+              <p className="admin-help mt-1">
                 현재 종료일이 남아 있으면 그 날짜부터 연장하고, 지났다면 오늘부터 다시 계산합니다.
               </p>
             </div>
@@ -313,7 +317,7 @@ export function RenewPaymentModal({
         </section>
 
         {selectedStudent?.tuitionExempt ? (
-          <section className="rounded-[10px] border border-sky-200 bg-sky-50 p-5">
+          <section className="rounded-lg border border-sky-200 bg-sky-50 p-5">
             <p className="text-sm font-semibold text-sky-900">수납 없이 연장합니다.</p>
             <p className="mt-2 text-sm leading-6 text-sky-800">
               면제 학생은 결제 레코드를 만들지 않고 종료일만 갱신합니다.
@@ -330,26 +334,26 @@ export function RenewPaymentModal({
           />
         )}
 
-        <div className="flex justify-end gap-2">
+        <DialogActions>
           <button
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            className="admin-button"
           >
             취소
           </button>
-          <button
+          <button form={`${dialogFormId}-1`}
             type="submit"
             disabled={isSubmitting || !form.studentId}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+            className="admin-button admin-button-primary"
           >
             {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
             {selectedStudent?.tuitionExempt ? "연장 완료" : "연장 수납 완료"}
           </button>
-        </div>
+        </DialogActions>
         </form>
-      </Modal>
+      </SlideOver>
 
       <ActionCompleteModal
         open={saveSuccessModal !== null}

@@ -1,4 +1,7 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isPolicyEffective, isControlledPeriod, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
+import { logServerError } from "@/lib/server-log";
 
 import {
   readMockState,
@@ -180,7 +183,7 @@ function buildRecordId(record: Pick<MockAttendanceRecord, "studentId" | "periodI
 
 /**
  * PRESENT → period start time on the given date (KST, as UTC)
- * TARDY   → now (server time)
+ * TARDY   → preserve the first recorded time; use now only for today's first entry
  * Others  → null
  */
 function resolveCheckInTime(
@@ -188,7 +191,11 @@ function resolveCheckInTime(
   date: string,
   periodStartTime: string,
   now: Date,
+  existing?: { status: AttendanceStatus; checkInTime: Date | string | null },
 ): Date | null {
+  if (existing?.status === status) {
+    return existing.checkInTime ? new Date(existing.checkInTime) : null;
+  }
   if (status === "PRESENT") {
     const [hh, mm] = periodStartTime.split(":").map(Number);
     const [y, m, d] = date.split("-").map(Number);
@@ -196,7 +203,7 @@ function resolveCheckInTime(
     return new Date(Date.UTC(y, m - 1, d, hh - 9, mm, 0, 0));
   }
   if (status === "TARDY") {
-    return now;
+    return date === toKstDateString(now) ? now : null;
   }
   return null;
 }
@@ -226,6 +233,7 @@ function serializePeriods(
 }
 
 type AttendanceContext = {
+  policy: ManagementPolicy | null;
   students: Awaited<ReturnType<typeof getDivisionStudents>>;
   periods: Awaited<ReturnType<typeof getPeriods>>;
 };
@@ -291,15 +299,13 @@ async function getSeatedStudents(divisionSlug: string) {
 }
 
 async function getAttendanceContext(divisionSlug: string): Promise<AttendanceContext> {
-  const [students, periods] = await Promise.all([
+  const [students, periods, policy] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
 
-  return {
-    students,
-    periods,
-  };
+  return { students, periods, policy };
 }
 
 function buildAttendanceSnapshot(
@@ -308,9 +314,11 @@ function buildAttendanceSnapshot(
   records: AttendanceSnapshot["records"],
   periodId?: string,
 ): AttendanceSnapshot {
-  const periods = periodId
-    ? context.periods.filter((period) => period.id === periodId)
+  const policy = context.policy;
+  const available = isPolicyEffective(policy, date)
+    ? context.periods.filter((p) => policy.attendancePeriodIds.includes(p.id)).map((p) => ({ ...p, isMandatory: isControlledPeriod(policy, p.id, date) }))
     : context.periods;
+  const periods = periodId ? available.filter((period) => period.id === periodId) : available;
 
   return {
     date,
@@ -1073,17 +1081,21 @@ export async function syncAttendanceDerivedPoints(
   actorId: string,
 ) {
   const normalizedDate = normalizeDate(date);
+  const policy = await getManagementPolicy(divisionSlug);
+  // v3.1: assistant attendance produces candidates; explicit manager confirmation commits them.
+  // No daily generic attendance reward exists in this policy.
+  if (isPolicyEffective(policy, normalizedDate)) return;
 
   try {
     await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actorId);
   } catch (error) {
-    console.error("[PerfectAttendancePoints]", error);
+    logServerError("PerfectAttendancePoints", error);
   }
 
   try {
     await syncAttendancePenaltyPoints(divisionSlug, normalizedDate, actorId);
   } catch (error) {
-    console.error("[AttendancePenaltyPoints]", error);
+    logServerError("AttendancePenaltyPoints", error);
   }
 }
 
@@ -1099,14 +1111,19 @@ export async function upsertAttendanceBatch(
   const normalizedDate = normalizeDate(input.date);
   await ensureAssistantAllowed(divisionSlug, actor, normalizedDate);
 
-  const [students, periods] = await Promise.all([
+  const [students, periods, policy] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
 
   const period = periods.find((item) => item.id === input.periodId);
+  if (isPolicyEffective(policy, normalizedDate) && !policy.attendancePeriodIds.includes(input.periodId)) throw badRequest("관리반 출석은 1~5교시에서 기록합니다. 아침모의고사는 별도 시험 기록을 사용해 주세요.");
   if (!period) {
     throw notFound("교시 정보를 찾을 수 없습니다.");
+  }
+  if (!period.isActive) {
+    throw badRequest("비활성 교시는 출석을 기록할 수 없습니다.");
   }
 
   const studentIds = new Set(students.map((student) => student.id));
@@ -1139,6 +1156,7 @@ export async function upsertAttendanceBatch(
           normalizedDate,
           period.startTime,
           now,
+          touchedMap.get(id),
         );
 
         touchedMap.set(id, {
@@ -1186,6 +1204,11 @@ export async function upsertAttendanceBatch(
   const division = await getDivisionOrThrow(divisionSlug);
   const { start } = toUtcDateRange(normalizedDate);
   const now = new Date();
+  const existingRecords = await prisma.attendance.findMany({
+    where: { student: { divisionId: division.id }, studentId: { in: input.records.map((record) => record.studentId) }, periodId: input.periodId, date: start },
+    select: { studentId: true, status: true, checkInTime: true },
+  });
+  const existingByStudent = new Map(existingRecords.map((record) => [record.studentId, record]));
 
   await prisma.$transaction(
     input.records.map((record) => {
@@ -1195,6 +1218,7 @@ export async function upsertAttendanceBatch(
             studentId: record.studentId,
             periodId: input.periodId,
             date: start,
+            student: { divisionId: division.id },
           },
         });
       }
@@ -1204,10 +1228,12 @@ export async function upsertAttendanceBatch(
         normalizedDate,
         period.startTime,
         now,
+        existingByStudent.get(record.studentId),
       );
 
       return prisma.attendance.upsert({
         where: {
+          student: { divisionId: division.id },
           studentId_periodId_date: {
             studentId: record.studentId,
             periodId: input.periodId,
@@ -1292,9 +1318,10 @@ export async function applyRecurringAttendance(
     throw badRequest("결석 또는 사유결석은 사유를 입력해야 합니다.");
   }
 
-  const [students, periods] = await Promise.all([
+  const [students, periods, policy] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
   const targetStudent = students.find((student) => student.id === input.studentId);
 
@@ -1312,6 +1339,7 @@ export async function applyRecurringAttendance(
   const [fromPeriodIndex, toPeriodIndex] =
     startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
   const targetPeriods = periods.slice(fromPeriodIndex, toPeriodIndex + 1);
+  if (isPolicyEffective(policy, normalizedTo) && targetPeriods.some((p) => !policy.attendancePeriodIds.includes(p.id))) throw badRequest("새 관리규정 적용 기간의 출석은 1~5교시에서 기록해 주세요.");
 
   if (targetPeriods.length === 0) {
     throw badRequest("적용할 교시를 찾을 수 없습니다.");
@@ -1360,13 +1388,13 @@ export async function applyRecurringAttendance(
             periodId: period.id,
             date,
           });
-          const checkInTime = resolveCheckInTime(input.status, date, period.startTime, now);
           const existingRecord = touchedMap.get(id);
 
           if (existingRecord && !overwriteExisting) {
             skippedExistingCount += 1;
             continue;
           }
+          const checkInTime = resolveCheckInTime(input.status, date, period.startTime, now, existingRecord);
 
           touchedMap.set(id, {
             id,
@@ -1433,6 +1461,8 @@ export async function applyRecurringAttendance(
       studentId: true,
       periodId: true,
       date: true,
+      status: true,
+      checkInTime: true,
     },
   });
   const existingRecordByKey = new Map(
@@ -1478,7 +1508,7 @@ export async function applyRecurringAttendance(
               date,
               status: input.status,
               reason,
-              checkInTime: resolveCheckInTime(input.status, date, period.startTime, now),
+              checkInTime: resolveCheckInTime(input.status, date, period.startTime, now, existingRecord),
               recordedById: actor.id,
             },
           ];
@@ -1499,6 +1529,7 @@ export async function applyRecurringAttendance(
         prisma.attendance.update({
           where: {
             id: record.id,
+            student: { divisionId: division.id },
           },
           data: {
             status: record.status,
@@ -1608,6 +1639,16 @@ export async function getAttendanceStats(
     }));
   }
 
+  const policy = context.policy;
+  const periodById = new Map(periods.map((p) => [p.id, p]));
+  const studentIds = new Set(students.map((s) => s.id));
+  const expectedCell = (periodId: string, date: string, studentId: string) => {
+    const period = periodById.get(periodId);
+    return !!period?.isActive && (isPolicyEffective(policy, date)
+      ? isControlledPeriod(policy, periodId, date, studentId)
+      : period.isMandatory);
+  };
+  records = records.filter((r) => !isPolicyEffective(policy, r.date) || (studentIds.has(r.studentId) && expectedCell(r.periodId, r.date, r.studentId)));
   const totals = createEmptyCounts();
   const periodSummaries = periods.map((period) => ({
     periodId: period.id,
@@ -1627,6 +1668,30 @@ export async function getAttendanceStats(
   // --- Totals: unique student counts per date ---
   // 출석: 왔는데 지각 없음, 지각: 왔는데 지각 1회 이상, 결석: 아예 안 옴 (기록 없거나 전부 결석)
   for (const date of dates) {
+    if (isPolicyEffective(policy, date)) {
+      const byStudent = new Map<string, Map<string, AttendanceStatus>>();
+      for (const record of records) {
+        if (record.date !== date) continue;
+        const cells = byStudent.get(record.studentId) ?? new Map<string, AttendanceStatus>();
+        cells.set(record.periodId, record.status);
+        byStudent.set(record.studentId, cells);
+      }
+      for (const student of students) {
+        const expected = periods.filter((p) => expectedCell(p.id, date, student.id));
+        if (!expected.length) continue;
+        const cells = byStudent.get(student.id);
+        const statuses = expected.map((p) => cells?.get(p.id));
+        if (statuses.includes("TARDY")) totals.tardy += 1;
+        else if (statuses.includes("PRESENT")) totals.present += 1;
+        else if (statuses.includes(undefined)) totals.unprocessed += 1;
+        else if (statuses.every((status) => status === "ABSENT")) totals.absent += 1;
+        else if (statuses.includes("EXCUSED")) totals.excused += 1;
+        else if (statuses.includes("HOLIDAY")) totals.holiday += 1;
+        else if (statuses.includes("HALF_HOLIDAY")) totals.half_holiday += 1;
+        else totals.not_applicable += 1;
+      }
+      continue;
+    }
     const studentStatuses = new Map<string, Set<string>>();
 
     for (const record of records) {
@@ -1650,7 +1715,8 @@ export async function getAttendanceStats(
   }
 
   for (const summary of periodSummaries) {
-    const expectedPerPeriod = summary.isMandatory ? students.length * dates.length : 0;
+    const policyRange = dates.some((d) => isPolicyEffective(policy, d));
+    const expectedPerPeriod = policyRange ? dates.reduce((sum, d) => sum + students.filter((s) => expectedCell(summary.periodId, d, s.id)).length, 0) : summary.isMandatory ? students.length * dates.length : 0;
     const processed = Object.entries(summary.counts)
       .filter(([key]) => key !== "unprocessed")
       .reduce((sum, [, value]) => sum + value, 0);
@@ -1661,7 +1727,7 @@ export async function getAttendanceStats(
       summary.counts.tardy +
       summary.counts.holiday +
       summary.counts.half_holiday;
-    const expected = summary.isMandatory
+    const expected = (summary.isMandatory || policyRange)
       ? expectedPerPeriod - summary.counts.not_applicable
       : processed;
 
@@ -1670,7 +1736,7 @@ export async function getAttendanceStats(
 
   // 출석률 = (출석 + 지각) / 전체학생 × 100  (학생 기준)
   const cameStudents = totals.present + totals.tardy;
-  const expectedStudentDates = students.length * dates.length;
+  const expectedStudentDates = dates.reduce((sum, date) => sum + (isPolicyEffective(policy, date) ? students.filter((s) => periods.some((p) => expectedCell(p.id, date, s.id))).length : students.length), 0);
   const attendanceRate =
     expectedStudentDates > 0 ? Number(((cameStudents / expectedStudentDates) * 100).toFixed(1)) : 0;
 

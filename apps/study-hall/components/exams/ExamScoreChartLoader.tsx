@@ -19,8 +19,8 @@ const ExamScoreChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="mt-5 rounded-[10px] border border-[var(--border)] bg-white p-5">
-        <div className="h-48 animate-pulse rounded-[10px] bg-[#F4F4F2]" />
+      <div className="mt-5 rounded-lg border border-admin-line bg-white p-5">
+        <div className="h-48 animate-pulse rounded-lg bg-admin-surface-soft" />
       </div>
     ),
   },
@@ -40,7 +40,7 @@ export function ExamScoreChartLoader({ results }: ExamScoreChartLoaderProps) {
         <button
           type="button"
           onClick={() => setIsChartVisible((current) => !current)}
-          className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[#F4F4F2]"
+          className="admin-button"
         >
           {isChartVisible ? "차트 숨기기" : "차트 보기"}
         </button>
@@ -51,7 +51,7 @@ export function ExamScoreChartLoader({ results }: ExamScoreChartLoaderProps) {
           <ExamScoreChart results={results} />
         </div>
       ) : (
-        <div className="mt-5 rounded-[10px] border border-dashed border-[var(--border)] bg-[#F4F4F2] px-5 py-8 text-[13px] text-[var(--muted)]">
+        <div className="mt-5 rounded-lg border border-dashed border-admin-line bg-admin-surface-soft px-5 py-8 text-[13px] text-admin-text-muted">
           차트는 필요할 때만 로드됩니다.
         </div>
       )}

@@ -1,15 +1,20 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+
+import {
+  useRouter } from "next/navigation";
+import { useEffect,
+  useId,
+  useMemo,
+  useState,
+  type FormEvent } from "react";
 import {
   CalendarDays,
-  CreditCard,
   LoaderCircle,
   MapPinned,
   Phone,
   Save,
-  UserRound,
 } from "lucide-react";
 import { toast } from "@/lib/sonner";
 
@@ -73,6 +78,7 @@ export function StudentForm({
   onCancel,
   onSuccess,
 }: StudentFormProps) {
+  const dialogFormId = useId();
   const router = useRouter();
   const studyTrackListId = useId();
   const isWithdrawn = initialStudent?.status === "WITHDRAWN";
@@ -369,25 +375,22 @@ export function StudentForm({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="space-y-6">
-      {!showSeatSectionOnly && (<><section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+      <form id={`${dialogFormId}-1`} onSubmit={handleSubmit} className="space-y-6">
+      {!showSeatSectionOnly && (<><section className="admin-section">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-            <UserRound className="h-5 w-5" />
-          </div>
           <div>
-            <p className="text-xl font-bold text-slate-950">기본 정보</p>
-            <p className="text-sm text-slate-500">학생 식별과 연락에 필요한 핵심 정보를 먼저 입력합니다.</p>
+            <h2 className="admin-section-title">기본 정보</h2>
+            <p className="admin-help">학생 식별과 연락에 필요한 핵심 정보를 먼저 입력합니다.</p>
           </div>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">이름</span>
+            <span className="admin-label mb-2 block">이름</span>
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: 김지훈"
               autoComplete="name"
               disabled={!canEdit || isSaving}
@@ -396,11 +399,11 @@ export function StudentForm({
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">수험번호</span>
+            <span className="admin-label mb-2 block">수험번호</span>
             <input
               value={studentNumber}
               onChange={(event) => setStudentNumber(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: P-2026-001"
               autoComplete="off"
               disabled={!canEdit || isSaving}
@@ -409,12 +412,12 @@ export function StudentForm({
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">직렬</span>
+            <span className="admin-label mb-2 block">직렬</span>
             <input
               list={studyTrackListId}
               value={studyTrack}
               onChange={(event) => setStudyTrack(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: 경찰"
               disabled={!canEdit || isSaving}
             />
@@ -433,7 +436,7 @@ export function StudentForm({
             <input
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: 010-1234-5678"
               autoComplete="tel"
               disabled={!canEdit || isSaving}
@@ -442,19 +445,16 @@ export function StudentForm({
         </div>
       </section>
 
-      <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+      <section className="admin-section">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-amber-600">
-            <CreditCard className="h-5 w-5" />
-          </div>
           <div>
-            <p className="text-xl font-bold text-slate-950">등록 기간 및 금액</p>
-            <p className="text-sm text-slate-500">등록 플랜을 선택하면 금액과 종료일을 빠르게 맞출 수 있습니다.</p>
+            <h2 className="admin-section-title">등록 기간 및 금액</h2>
+            <p className="admin-help">등록 플랜을 선택하면 금액과 종료일을 빠르게 맞출 수 있습니다.</p>
           </div>
         </div>
 
         <div className="mt-5 space-y-4">
-          <label className="flex items-start gap-3 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4">
+          <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4">
             <input
               type="checkbox"
               checked={tuitionExempt}
@@ -464,7 +464,7 @@ export function StudentForm({
             />
             <div className="flex-1">
               <p className="text-sm font-semibold text-slate-900">수납 면제</p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
+              <p className="admin-help mt-1 leading-6">
                 조교, 장학생처럼 수납 대상에서 제외해야 하는 학생이면 켜 두세요. 면제 학생은 미납 목록에서 제외되고 등록 시 결제를 건너뛸 수 있습니다.
               </p>
             </div>
@@ -472,12 +472,12 @@ export function StudentForm({
 
           {tuitionExempt ? (
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">면제 사유</span>
+              <span className="admin-label mb-2 block">면제 사유</span>
               <textarea
                 value={tuitionExemptReason}
                 onChange={(event) => setTuitionExemptReason(event.target.value)}
                 rows={3}
-                className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 placeholder="예: 조교, 장학생, 내부 운영 지원"
                 disabled={!canEdit || isSaving}
               />
@@ -496,11 +496,7 @@ export function StudentForm({
                   type="button"
                   onClick={() => applyTuitionPlan(plan.id)}
                   disabled={!canEdit || isSaving}
-                  className={`rounded-[10px] border px-4 py-4 text-left transition ${
-                    selected
-                      ? "border-[var(--division-color)] bg-[var(--division-color)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
-                      : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-white"
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                  className={`rounded-lg border px-4 py-4 text-left transition ${ selected ? "border-[var(--division-color)] bg-[var(--division-color)] text-white" : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-white" } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -510,9 +506,7 @@ export function StudentForm({
                       </p>
                     </div>
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        selected ? "bg-white/15 text-white" : "bg-white text-slate-600"
-                      }`}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${ selected ? "bg-white/15 text-white" : "bg-white text-slate-600" }`}
                     >
                       {formatCurrency(plan.amount)}
                     </span>
@@ -530,11 +524,11 @@ export function StudentForm({
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">등록 플랜</span>
+            <span className="admin-label mb-2 block">등록 플랜</span>
             <select
               value={tuitionPlanId}
               onChange={(event) => applyTuitionPlan(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               disabled={!canEdit || isSaving}
             >
               <option value="">직접 입력</option>
@@ -547,18 +541,18 @@ export function StudentForm({
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">적용 금액</span>
+            <span className="admin-label mb-2 block">적용 금액</span>
             <input
               type="number"
               min={0}
               value={tuitionAmount}
               onChange={(event) => setTuitionAmount(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               placeholder="예: 320000"
               disabled={!canEdit || isSaving}
             />
             {selectedPlan ? (
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="admin-help mt-2">
                 선택한 플랜 기본 금액은 {formatCurrency(selectedPlan.amount)}입니다.
               </p>
             ) : null}
@@ -583,24 +577,24 @@ export function StudentForm({
                   setCourseEndDate(calculateCourseEndDate(nextStartDate, plan.durationDays) ?? "");
                 }
               }}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               disabled={!canEdit || isSaving}
             />
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">종료일</span>
+            <span className="admin-label mb-2 block">종료일</span>
             <input
               type="date"
               value={courseEndDate}
               onChange={(event) => setCourseEndDate(event.target.value)}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               disabled={!canEdit || isSaving}
             />
           </label>
         </div>
 
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="admin-help mt-3">
           시작일과 기간이 있는 등록 플랜을 함께 선택하면 종료일이 자동 계산됩니다.
         </p>
         {tuitionExempt ? (
@@ -610,14 +604,11 @@ export function StudentForm({
         ) : null}
       </section></>)}
 
-      {!hideSeatSection && <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+      {!hideSeatSection && <section className="admin-section">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-sky-600">
-            <MapPinned className="h-5 w-5" />
-          </div>
           <div>
-            <p className="text-xl font-bold text-slate-950">좌석 및 운영 정보</p>
-            <p className="text-sm text-slate-500">
+            <h2 className="admin-section-title">좌석 및 운영 정보</h2>
+            <p className="admin-help">
               자습실별 좌석 현황을 보면서 바로 배정할 수 있고, 이미 사용 중인 좌석은 선택할 수 없습니다.
             </p>
           </div>
@@ -625,7 +616,7 @@ export function StudentForm({
 
         <div className="mt-5 space-y-4">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">자습실 / 좌석</span>
+            <span className="admin-label mb-2 block">자습실 / 좌석</span>
             <select
               value={seatId}
               onChange={(event) => {
@@ -637,7 +628,7 @@ export function StudentForm({
                   setSelectedRoomId(nextSeat.studyRoomId);
                 }
               }}
-              className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-full"
               disabled={!canEdit || isSaving}
             >
               <option value="">미배정</option>
@@ -650,14 +641,14 @@ export function StudentForm({
             </select>
           </label>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-4">
-            <p className="text-sm text-slate-500">
+          <div className="admin-help flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+            <p className="admin-help">
               아래 좌석 맵을 열면 자습실별 배치도를 한눈에 확인하고 빈 자리를 바로 선택할 수 있습니다. 원하는 좌석을 선택하면 즉시 배정 내용을 확인할 수 있습니다.
             </p>
             <button
               type="button"
               onClick={() => setIsSeatBrowserOpen((current) => !current)}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="admin-button admin-button-compact"
             >
               <MapPinned className="h-4 w-4" />
               {isSeatBrowserOpen ? "좌석 맵 닫기" : "좌석 맵 열기"}
@@ -665,15 +656,15 @@ export function StudentForm({
           </div>
 
           {isSeatBrowserOpen && rooms.length > 0 ? (
-            <div className="space-y-4 rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">좌석 현황에서 바로 배정</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                  <p className="admin-help mt-1 leading-5">
                     빈 좌석을 클릭하면 바로 선택됩니다. 사용 중인 좌석은 선택되지 않습니다.
                   </p>
                 </div>
-                <div className="rounded-full border border-slate-200-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500">
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500">
                   빈 좌석 {availableSeatCount}석 / 운영 좌석 {activeRoomSeatCount}석
                 </div>
               </div>
@@ -684,11 +675,7 @@ export function StudentForm({
                     key={room.id}
                     type="button"
                     onClick={() => setSelectedRoomId(room.id)}
-                    className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                      selectedRoomId === room.id
-                        ? "border-[var(--division-color)] bg-[var(--division-color)] text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
+                    className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
                   >
                     {room.name}
                   </button>
@@ -706,23 +693,23 @@ export function StudentForm({
                   onCellClick={(_, __, clickedSeatId) => handleSeatMapSelect(clickedSeatId)}
                 />
               ) : (
-                <div className="rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                <div className="admin-help px-4 py-6 text-center">
                   {isSeatLayoutLoading ? "좌석 현황을 불러오는 중입니다." : "선택한 자습실의 좌석 현황이 없습니다."}
                 </div>
               )}
 
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 text-emerald-700">
+                <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-emerald-700">
                   사용 중 {occupiedSeatCount}석
                 </span>
-                <span className="rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 text-slate-600">
+                <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-slate-600">
                   선택 좌석 {selectedSeatChoice ? `${selectedSeatChoice.studyRoomName} · ${selectedSeatChoice.label}` : "없음"}
                 </span>
                 {selectedSeatChoice ? (
                   <button
                     type="button"
                     onClick={() => setSeatId("")}
-                    className="rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 font-medium text-slate-600 transition hover:bg-slate-100"
+                    className="admin-button"
                   >
                     좌석 해제
                   </button>
@@ -732,7 +719,7 @@ export function StudentForm({
           ) : null}
 
           {isSeatBrowserOpen && !hasLoadedSeatBrowser ? (
-            <div className="rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+            <div className="admin-help px-4 py-6 text-center">
               <span className="inline-flex items-center gap-2">
                 <LoaderCircle className="h-4 w-4 animate-spin" />
                 좌석 현황을 불러오는 중입니다.
@@ -741,7 +728,7 @@ export function StudentForm({
           ) : null}
 
           {isSeatBrowserOpen && hasLoadedSeatBrowser && rooms.length === 0 ? (
-            <div className="rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+            <div className="admin-help px-4 py-6 text-center">
               등록된 자습실이 없습니다.
             </div>
           ) : null}
@@ -749,18 +736,18 @@ export function StudentForm({
           {showAdvancedFields ? (
             <>
               {isWithdrawn ? (
-                <div className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm leading-6 text-rose-700">
+                <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-rose-700">
                   퇴실 처리된 학생은 상태를 다시 변경할 수 없습니다. 퇴실 사유와 이력은 상단 상세 정보에서 확인할 수 있습니다.
                 </div>
               ) : (
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">상태</span>
+                  <span className="admin-label mb-2 block">상태</span>
                   <select
                     value={status}
                     onChange={(event) =>
                       setStatus(event.target.value as (typeof editableStatusOptions)[number]["value"])
                     }
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-full"
                     disabled={!canEdit || isSaving}
                   >
                     {editableStatusOptions.map((option) => (
@@ -773,59 +760,59 @@ export function StudentForm({
               )}
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">메모</span>
+                <span className="admin-label mb-2 block">메모</span>
                 <textarea
                   value={memo}
                   onChange={(event) => setMemo(event.target.value)}
-                  className="min-h-[120px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   placeholder="상담 메모나 특이사항을 기록합니다."
                   disabled={!canEdit || isSaving}
                 />
               </label>
             </>
           ) : (
-            <div className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
               등록 후 상세 페이지에서 상태 변경, 메모 추가, 좌석 이동까지 이어서 관리할 수 있습니다.
             </div>
           )}
         </div>
       </section>}
 
-      <div className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 sm:flex sm:items-center sm:justify-between">
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-4 sm:flex sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-900">
             {mode === "create" ? "등록 즉시 학생 목록에 반영됩니다." : "변경 내용은 저장 후 바로 반영됩니다."}
           </p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="admin-help mt-1">
             {mode === "create"
               ? "필수 항목만 먼저 입력하고, 나머지는 상세 페이지에서 이어서 관리할 수 있습니다."
               : "수정 후 학생 목록과 상세 정보가 함께 새로고침됩니다."}
           </p>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2 sm:mt-0">
+        <DialogActions>
           {onCancel ? (
             <button
               type="button"
               onClick={onCancel}
               disabled={isSaving}
-              className="inline-flex items-center rounded-full border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+              className="admin-button"
             >
               취소
             </button>
           ) : null}
 
           {canEdit ? (
-            <button
+            <button form={`${dialogFormId}-1`}
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {mode === "create" ? "학생 등록" : "정보 저장"}
             </button>
           ) : null}
-        </div>
+        </DialogActions>
       </div>
       </form>
 
@@ -838,7 +825,7 @@ export function StudentForm({
         widthClassName="max-w-md"
       >
         <div className="space-y-5">
-          <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm leading-6 text-emerald-900">
+          <div className="admin-notice admin-notice-success">
             저장된 내용은 현재 화면에 바로 반영되며, 새로고침 후에도 유지됩니다.
           </div>
 
@@ -846,7 +833,7 @@ export function StudentForm({
             <button
               type="button"
               onClick={() => setSaveSuccessModal(null)}
-              className="inline-flex items-center rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90"
+              className="admin-button admin-button-primary"
             >
               확인
             </button>

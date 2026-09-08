@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import type { ZodError } from "zod";
+import { ZodError } from "zod";
 
-import { getErrorMessage, getErrorStatus } from "@/lib/errors";
+import { getErrorMessage, getErrorStatus, isAppError } from "@/lib/errors";
+import { logServerError } from "@/lib/server-log";
 
 export function getZodErrorMessage(error: ZodError, fallbackMessage: string) {
   return error.issues[0]?.message ?? fallbackMessage;
@@ -14,5 +15,9 @@ export function toApiErrorResponse(
 ) {
   const message = getErrorMessage(error, fallbackMessage);
   const status = getErrorStatus(error, defaultStatus);
-  return NextResponse.json({ error: message }, { status });
+  const headers: Record<string, string> = { "Cache-Control": "private, no-store" };
+  if (!isAppError(error) && !(error instanceof ZodError)) {
+    headers["X-Error-Id"] = logServerError(fallbackMessage, error);
+  }
+  return NextResponse.json({ error: message }, { status, headers });
 }

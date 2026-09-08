@@ -2,6 +2,7 @@
 
 import { LoaderCircle, Pencil, RefreshCcw, Save, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
@@ -74,6 +75,7 @@ export function SuperAdminManager({
   initialDivisions,
   initialAdmins,
 }: SuperAdminManagerProps) {
+  const [viewTab, setViewTab] = useState<"divisions" | "accounts">("divisions");
   const [divisions, setDivisions] = useState(initialDivisions);
   const [admins, setAdmins] = useState(initialAdmins);
   const [editingDivisionSlug, setEditingDivisionSlug] = useState<string | null>(null);
@@ -373,16 +375,13 @@ export function SuperAdminManager({
   return (
     <>
       <div className="space-y-6">
-      <div className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
+      <div className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              최고관리
-            </p>
-            <h2 className="mt-2 text-3xl font-extrabold text-slate-950">
+            <h2 className="admin-section-title">
               지점 및 운영 계정 관리
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+            <p className="admin-page-description">
               최고관리자가 지점을 추가하거나 수정하고, 각 지점 관리자와 조교 계정을 배정하는
               화면입니다. 지점 관리자는 본인 지점만 관리할 수 있고, 다른 지점 데이터에는 접근할
               수 없습니다.
@@ -392,7 +391,7 @@ export function SuperAdminManager({
           <button
             type="button"
             onClick={() => refreshAll(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            className="admin-button"
           >
             {isRefreshing ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -404,14 +403,12 @@ export function SuperAdminManager({
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+      <AdminTabs items={[{ id: "divisions", label: "지점 관리" }, { id: "accounts", label: "운영 계정 관리" }]} activeId={viewTab} onChange={setViewTab} label="최고관리자 관리 업무" idPrefix="super-manage" variant="secondary" />
+      <div>
+        <AdminTabPanel id="divisions" activeId={viewTab} idPrefix="super-manage" className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                지점
-              </p>
-              <h3 className="mt-2 text-2xl font-bold text-slate-950">
+              <h3 className="admin-section-title">
                 {editingDivisionSlug ? "지점 수정" : "지점 추가"}
               </h3>
             </div>
@@ -419,7 +416,7 @@ export function SuperAdminManager({
             <button
               type="button"
               onClick={resetDivisionForm}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               초기화
             </button>
@@ -428,19 +425,19 @@ export function SuperAdminManager({
           <form onSubmit={handleDivisionSubmit} className="mt-6 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">지점 이름</span>
+                <span className="admin-label mb-2 block">지점 이름</span>
                 <input
                   value={divisionForm.name}
                   onChange={(event) =>
                     setDivisionForm((current) => ({ ...current, name: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                   required
                 />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">slug</span>
+                <span className="admin-label mb-2 block">slug</span>
                 <input
                   value={divisionForm.slug}
                   onChange={(event) =>
@@ -449,7 +446,7 @@ export function SuperAdminManager({
                       slug: event.target.value.toLowerCase(),
                     }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-100"
                   disabled={Boolean(editingDivisionSlug)}
                   required
                 />
@@ -457,32 +454,32 @@ export function SuperAdminManager({
             </div>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">전체 이름</span>
+              <span className="admin-label mb-2 block">전체 이름</span>
               <input
                 value={divisionForm.fullName}
                 onChange={(event) =>
                   setDivisionForm((current) => ({ ...current, fullName: event.target.value }))
                 }
-                className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 required
               />
             </label>
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">브랜드 색상</span>
+                <span className="admin-label mb-2 block">브랜드 색상</span>
                 <input
                   value={divisionForm.color}
                   onChange={(event) =>
                     setDivisionForm((current) => ({ ...current, color: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                   required
                 />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">표시 순서</span>
+                <span className="admin-label mb-2 block">표시 순서</span>
                 <input
                   type="number"
                   min="0"
@@ -493,7 +490,7 @@ export function SuperAdminManager({
                       displayOrder: event.target.value,
                     }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 />
               </label>
             </div>
@@ -512,7 +509,7 @@ export function SuperAdminManager({
 
             {!editingDivisionSlug && divisions.length > 0 && (
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">
+                <span className="admin-label mb-2 block">
                   설정 복사 (선택)
                 </span>
                 <select
@@ -523,7 +520,7 @@ export function SuperAdminManager({
                       copyFromSlug: event.target.value,
                     }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 >
                   <option value="">복사 안 함</option>
                   {divisions.map((division) => (
@@ -532,7 +529,7 @@ export function SuperAdminManager({
                     </option>
                   ))}
                 </select>
-                <p className="mt-1.5 text-xs text-slate-400">
+                <p className="admin-help mt-1.5">
                   선택 시 해당 지점의 교시, 상벌점 규칙, 운영 설정이 새 지점으로 복사됩니다.
                 </p>
               </label>
@@ -541,7 +538,7 @@ export function SuperAdminManager({
             <button
               type="submit"
               disabled={isSavingDivision}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-70"
+              className="admin-button admin-button-primary w-full"
             >
               {isSavingDivision ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -554,23 +551,23 @@ export function SuperAdminManager({
 
           <div className="mt-8 space-y-3">
             {divisions.map((division) => (
-              <div key={division.id} className="rounded-[10px] border border-slate-200 bg-white p-4">
+              <div key={division.id} className="admin-record-card">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="h-3 w-3 rounded-full" style={{ backgroundColor: division.color }} />
-                      <p className="text-xl font-bold text-slate-950">{division.name}</p>
-                      <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">
+                      <h2 className="admin-section-title">{division.name}</h2>
+                      <span className="rounded-lg bg-admin-accent px-2.5 py-1 text-xs font-semibold text-white">
                         /{division.slug}
                       </span>
                       {!division.isActive ? (
-                        <span className="rounded-full bg-white border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700">
+                        <span className="rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700">
                           비활성
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">{division.fullName}</p>
-                    <p className="mt-1 text-xs text-slate-500">표시 순서 {division.displayOrder}</p>
+                    <p className="admin-help mt-2">{division.fullName}</p>
+                    <p className="admin-help mt-1">표시 순서 {division.displayOrder}</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -580,7 +577,7 @@ export function SuperAdminManager({
                         setEditingDivisionSlug(division.slug);
                         setDivisionForm(toDivisionFormState(division));
                       }}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
+                      className="admin-button"
                     >
                       <Pencil className="h-4 w-4" />
                       수정
@@ -589,7 +586,7 @@ export function SuperAdminManager({
                       type="button"
                       onClick={() => handleDivisionDelete(division)}
                       disabled={isDeletingDivisionSlug === division.slug}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-white disabled:opacity-60"
+                      className="admin-button admin-button-danger-outline"
                     >
                       {isDeletingDivisionSlug === division.slug ? (
                         <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -603,15 +600,12 @@ export function SuperAdminManager({
               </div>
             ))}
           </div>
-        </section>
+        </AdminTabPanel>
 
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+        <AdminTabPanel id="accounts" activeId={viewTab} idPrefix="super-manage" className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                계정
-              </p>
-              <h3 className="mt-2 text-2xl font-bold text-slate-950">
+              <h3 className="admin-section-title">
                 {editingAdminId ? "운영 계정 수정" : "운영 계정 추가"}
               </h3>
             </div>
@@ -619,7 +613,7 @@ export function SuperAdminManager({
             <button
               type="button"
               onClick={resetAdminForm}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="admin-button"
             >
               초기화
             </button>
@@ -628,19 +622,19 @@ export function SuperAdminManager({
           <form onSubmit={handleAdminSubmit} className="mt-6 space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">이름</span>
+                <span className="admin-label mb-2 block">이름</span>
                 <input
                   value={adminForm.name}
                   onChange={(event) =>
                     setAdminForm((current) => ({ ...current, name: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                   required
                 />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">권한</span>
+                <span className="admin-label mb-2 block">권한</span>
                 <select
                   value={adminForm.role}
                   onChange={(event) =>
@@ -650,7 +644,7 @@ export function SuperAdminManager({
                       divisionSlug: event.target.value === "SUPER_ADMIN" ? "" : current.divisionSlug,
                     }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 >
                   <option value="SUPER_ADMIN">최고관리자</option>
                   <option value="ADMIN">관리자</option>
@@ -661,13 +655,13 @@ export function SuperAdminManager({
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">이메일</span>
+                <span className="admin-label mb-2 block">이메일</span>
                 <input
                   value={adminForm.email}
                   onChange={(event) =>
                     setAdminForm((current) => ({ ...current, email: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-100"
                   disabled={Boolean(editingAdminId)}
                   required
                 />
@@ -675,14 +669,14 @@ export function SuperAdminManager({
 
               {!editingAdminId ? (
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">초기 비밀번호</span>
+                  <span className="admin-label mb-2 block">초기 비밀번호</span>
                   <input
                     type="password"
                     value={adminForm.password}
                     onChange={(event) =>
                       setAdminForm((current) => ({ ...current, password: event.target.value }))
                     }
-                    className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-full"
                     required
                   />
                 </label>
@@ -690,14 +684,14 @@ export function SuperAdminManager({
             </div>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">소속 지점</span>
+              <span className="admin-label mb-2 block">소속 지점</span>
               <select
                 value={adminForm.divisionSlug}
                 onChange={(event) =>
                   setAdminForm((current) => ({ ...current, divisionSlug: event.target.value }))
                 }
                 disabled={adminForm.role === "SUPER_ADMIN"}
-                className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-100"
               >
                 <option value="">선택하세요</option>
                 {divisions.map((division) => (
@@ -723,7 +717,7 @@ export function SuperAdminManager({
             <button
               type="submit"
               disabled={isSavingAdmin}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-70"
+              className="admin-button admin-button-primary w-full"
             >
               {isSavingAdmin ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -735,7 +729,7 @@ export function SuperAdminManager({
           </form>
 
           {editingAdminId ? (
-            <div className="mt-4 rounded-[10px] border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-medium text-slate-700">비밀번호 재설정</p>
               <div className="mt-2 flex gap-2">
                 <input
@@ -743,13 +737,13 @@ export function SuperAdminManager({
                   placeholder="새 비밀번호 (8자 이상)"
                   value={resetPasswordValue}
                   onChange={(event) => setResetPasswordValue(event.target.value)}
-                  className="flex-1 rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400"
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
                 />
                 <button
                   type="button"
                   disabled={isResettingPassword}
                   onClick={() => handlePasswordReset(editingAdminId)}
-                  className="inline-flex items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                  className="admin-button"
                 >
                   {isResettingPassword ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   변경
@@ -760,22 +754,22 @@ export function SuperAdminManager({
 
           <div className="mt-8 space-y-3">
             {admins.map((admin) => (
-              <div key={admin.id} className="rounded-[10px] border border-slate-200 bg-white p-4">
+              <div key={admin.id} className="admin-record-card">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xl font-bold text-slate-950">{admin.name}</p>
-                      <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">
+                      <h2 className="admin-section-title">{admin.name}</h2>
+                      <span className="rounded-lg bg-admin-accent px-2.5 py-1 text-xs font-semibold text-white">
                         {getRoleLabel(admin.role)}
                       </span>
                       {!admin.isActive ? (
-                        <span className="rounded-full bg-white border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700">
+                        <span className="rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700">
                           비활성
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">{admin.email ?? "이메일 없음"}</p>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="admin-help mt-2">{admin.email ?? "이메일 없음"}</p>
+                    <p className="admin-help mt-1">
                       {admin.divisionName ?? "전체 권한"}{" "}
                       {admin.divisionSlug ? `(/${admin.divisionSlug})` : ""}
                     </p>
@@ -789,7 +783,7 @@ export function SuperAdminManager({
                         setAdminForm(toAdminFormState(admin));
                         setResetPasswordValue("");
                       }}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
+                      className="admin-button"
                     >
                       <Pencil className="h-4 w-4" />
                       수정
@@ -798,7 +792,7 @@ export function SuperAdminManager({
                       type="button"
                       onClick={() => handleAdminDelete(admin)}
                       disabled={isDeletingAdminId === admin.id}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-white disabled:opacity-60"
+                      className="admin-button admin-button-danger-outline"
                     >
                       {isDeletingAdminId === admin.id ? (
                         <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -812,7 +806,7 @@ export function SuperAdminManager({
               </div>
             ))}
           </div>
-        </section>
+        </AdminTabPanel>
       </div>
       </div>
       {confirmDialog}

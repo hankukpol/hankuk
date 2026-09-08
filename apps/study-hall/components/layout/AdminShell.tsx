@@ -1,12 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { LogOut, Menu, X } from "lucide-react";
 
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
-import { MobileHeader } from "@/components/layout/MobileHeader";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 
 type AdminShellProps = {
@@ -18,6 +17,10 @@ type AdminShellProps = {
   featureFlags: DivisionFeatureFlags;
 };
 
+/**
+ * DESIGN.md 5.1 — 흰색 작업 화면 + 검은 좌측 메뉴.
+ * 1024px 이상은 256px 사이드바, 미만은 검은 상단 헤더의 메뉴 버튼으로 펼친다.
+ */
 export function AdminShell({
   children,
   divisionSlug,
@@ -27,10 +30,23 @@ export function AdminShell({
   featureFlags,
 }: AdminShellProps) {
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const closeSidebar = () => setIsSidebarOpen(false);
+  const closeMenu = () => setIsMenuOpen(false);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMenuOpen]);
 
   const handleLogout = () => {
     void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
@@ -42,8 +58,9 @@ export function AdminShell({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 md:grid md:grid-cols-[240px_1fr]">
-      <aside className="hidden md:block md:border-r md:border-black/5">
+    <div className="admin-shell" data-division={divisionSlug}>
+      {/* 데스크톱 좌측 메뉴 */}
+      <div className="admin-sidebar-rail hidden lg:block">
         <AdminSidebar
           divisionSlug={divisionSlug}
           divisionName={divisionName}
@@ -51,50 +68,74 @@ export function AdminShell({
           adminName={adminName}
           featureFlags={featureFlags}
           onLogout={handleLogout}
+          isLoggingOut={isPending}
         />
-      </aside>
+      </div>
 
-      <div className="relative min-w-0">
-        <div className="md:hidden">
-          <MobileHeader
-            title={divisionName}
-            subtitle={adminName}
-            onMenuClick={() => setIsSidebarOpen(true)}
-            onLogout={handleLogout}
-            isLoggingOut={isPending}
-          />
-        </div>
+      <div className="admin-workspace">
+        {/* 1024px 미만 상단 헤더 */}
+        <header className="admin-mobile-header lg:hidden">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((open) => !open)}
+              className="admin-button"
+              aria-expanded={isMenuOpen}
+              aria-controls="admin-mobile-navigation"
+            >
+              {isMenuOpen ? <Menu className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              관리자 메뉴
+            </button>
+            <div className="min-w-0">
+              <p className="truncate text-[15px] font-bold leading-tight">{divisionName}</p>
+              <p className="truncate text-[13px] text-white/60">{adminName}</p>
+            </div>
+          </div>
 
-        {isSidebarOpen ? (
-          <div className="fixed inset-0 z-50 bg-white backdrop-blur-sm md:hidden">
-            <div className="absolute inset-y-0 left-0 w-[86%] max-w-xs">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isPending}
+            className="admin-button shrink-0"
+          >
+            <LogOut className="h-4 w-4" />
+            로그아웃
+          </button>
+        </header>
+
+        {isMenuOpen ? (
+          <div id="admin-mobile-navigation" className="admin-mobile-panel lg:hidden">
+            <div className="flex justify-end px-3 pt-3">
               <button
                 type="button"
-                onClick={closeSidebar}
-                className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200/80 bg-white text-slate-700"
+                onClick={closeMenu}
+                className="admin-button admin-button-compact w-11 px-0"
                 aria-label="메뉴 닫기"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
-
-              <AdminSidebar
-                divisionSlug={divisionSlug}
-                divisionName={divisionName}
-                divisionColor={divisionColor}
-                adminName={adminName}
-                featureFlags={featureFlags}
-                onNavigate={closeSidebar}
-                onLogout={handleLogout}
-              />
             </div>
+            <AdminSidebar
+              divisionSlug={divisionSlug}
+              divisionName={divisionName}
+              divisionColor={divisionColor}
+              adminName={adminName}
+              featureFlags={featureFlags}
+              onNavigate={closeMenu}
+              onLogout={handleLogout}
+              isLoggingOut={isPending}
+              variant="mobile"
+            />
           </div>
         ) : null}
 
-        <main className="min-h-screen px-4 py-5 md:px-8 md:py-8">
-          <div className="mb-4 flex justify-end">
-            <AppSwitchMenu role="admin" divisionSlug={divisionSlug} />
+        <main className="admin-main">
+          <div className="admin-content-frame">
+            <div className="admin-utility-row">
+              <AppSwitchMenu role="admin" divisionSlug={divisionSlug} />
+            </div>
+            {children}
           </div>
-          {children}
         </main>
       </div>
     </div>

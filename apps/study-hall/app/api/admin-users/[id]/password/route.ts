@@ -1,3 +1,4 @@
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
@@ -28,9 +29,6 @@ export async function PATCH(
     const result = await resetManagedAdminPassword(params.id, parsed.data.password);
     return NextResponse.json({ result });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "비밀번호 변경에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "비밀번호 변경에 실패했습니다.", 400);
   }
 }

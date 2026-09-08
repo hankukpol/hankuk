@@ -1,3 +1,6 @@
+import { AttendancePenaltyReview } from "@/components/attendance/AttendancePenaltyReview";
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 import { headers } from "next/headers";
 
 import { ResponsiveAttendanceBoard } from "@/components/attendance/ResponsiveAttendanceBoard";
@@ -41,23 +44,24 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
   await redirectIfDivisionFeatureDisabled(params.division, "attendanceManagement");
 
   const today = getTodayInKst();
-  const [snapshot, stats, currentPeriod, seatRooms, initialSeatLayout] = await Promise.all([
+  const [snapshot, stats, currentPeriod, seatRooms, initialSeatLayout, policy, featureSettings] = await Promise.all([
     getAttendanceSnapshot(params.division, today),
     getAttendanceStats(params.division, today, today),
     getCurrentPeriod(params.division),
     listStudyRooms(params.division),
     getSeatLayout(params.division),
+    getManagementPolicy(params.division),
+    getDivisionFeatureSettings(params.division),
   ]);
 
   const mobilePeriodId = currentPeriod?.id ?? snapshot.periods[0]?.id ?? null;
   const initialMode = getInitialModeFromUserAgent(headers().get("user-agent"));
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">출결 관리</p>
-        <h1 className="mt-3 text-3xl font-extrabold text-slate-950">관리자 출석부</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
+    <div className="admin-flat-page">
+      <section className="admin-section">
+        <h1 className="admin-page-title">관리자 출석부</h1>
+        <p className="admin-page-description">
           데스크톱에서는 학생 x 교시 매트릭스로 한 번에 확인하고, 모바일에서는 스크롤 카드
           형태로 현재 교시를 빠르게 체크할 수 있습니다.
         </p>
@@ -86,6 +90,7 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
             : [],
         }}
       />
+      {policy && featureSettings.featureFlags.pointManagement && <AttendancePenaltyReview divisionSlug={params.division} effectiveFrom={policy.effectiveFrom} students={snapshot.students} />}
     </div>
   );
 }

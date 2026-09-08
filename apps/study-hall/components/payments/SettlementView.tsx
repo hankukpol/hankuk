@@ -10,6 +10,8 @@ import type { PaymentItem, SettlementSummary } from "@/lib/services/payment.serv
 
 type SettlementViewProps = {
   divisionSlug: string;
+  isActive?: boolean;
+  refreshKey?: readonly PaymentItem[];
 };
 
 type RangeMode = "daily" | "weekly" | "monthly" | "custom";
@@ -40,7 +42,7 @@ function formatSignedAmount(payment: PaymentItem) {
   return `${payment.amount < 0 ? "-" : ""}${formatCurrency(Math.abs(payment.amount))}원`;
 }
 
-export function SettlementView({ divisionSlug }: SettlementViewProps) {
+export function SettlementView({ divisionSlug, isActive = true, refreshKey }: SettlementViewProps) {
   const today = getKstToday();
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [dateFrom, setDateFrom] = useState(today);
@@ -69,6 +71,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
   }, [rangeMode, today]);
 
   useEffect(() => {
+    if (!isActive) return;
     const controller = new AbortController();
 
     async function fetchSummary() {
@@ -106,7 +109,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
     void fetchSummary();
 
     return () => controller.abort();
-  }, [dateFrom, dateTo, divisionSlug]);
+  }, [dateFrom, dateTo, divisionSlug, isActive, refreshKey]);
 
   const rangeLabel = useMemo(() => {
     if (!summary) {
@@ -119,11 +122,11 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
   }, [dateFrom, dateTo, summary]);
 
   return (
-    <section className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-[0_18px_44px_rgba(18,32,56,0.06)]">
+    <section className="admin-section">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-2xl font-bold text-slate-950">일일 정산</p>
-          <p className="mt-2 text-sm text-slate-600">
+          <h2 className="admin-section-title">일일 정산</h2>
+          <p className="admin-help mt-2">
             결제수단과 수납 유형별 정산 금액을 한 화면에서 확인합니다.
           </p>
         </div>
@@ -137,7 +140,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
                 "_blank",
               )
             }
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            className="admin-button"
           >
             <Download className="h-4 w-4" />
             엑셀 다운로드
@@ -145,7 +148,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            className="admin-button"
           >
             <Printer className="h-4 w-4" />
             인쇄
@@ -165,11 +168,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
               key={value}
               type="button"
               onClick={() => setRangeMode(value)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                rangeMode === value
-                  ? "bg-[var(--division-color)] text-white"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
+              className="admin-choice-button" data-active={rangeMode === value} aria-pressed={rangeMode === value}
             >
               {label}
             </button>
@@ -184,7 +183,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
               setRangeMode("custom");
               setDateFrom(event.target.value);
             }}
-            className="rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
           />
           <input
             type="date"
@@ -193,58 +192,58 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
               setRangeMode("custom");
               setDateTo(event.target.value);
             }}
-            className="rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
           />
         </div>
 
-        <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <div className="admin-notice">
           조회 기간: <span className="font-semibold text-slate-900">{rangeLabel}</span>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="mt-8 flex items-center justify-center gap-2 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-12 text-sm text-slate-500">
+        <div className="mt-8 flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-12 text-sm text-slate-500">
           <LoaderCircle className="h-4 w-4 animate-spin" />
           정산 정보를 불러오는 중입니다.
         </div>
       ) : summary ? (
         <div className="mt-6 space-y-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <article className="rounded-[10px] border border-slate-200 bg-white p-4">
-              <p className="text-sm text-slate-500">총 거래 건수</p>
-              <p className="mt-2 text-2xl font-bold text-slate-950">{summary.totalCount}건</p>
+          <div className="admin-metric-strip">
+            <article className="admin-metric-box">
+              <p className="admin-metric-box-label">총 거래 건수</p>
+              <p className="admin-metric-box-value">{summary.totalCount}건</p>
             </article>
-            <article className="rounded-[10px] border border-slate-200 bg-white p-4">
-              <p className="text-sm text-slate-500">정산 합계</p>
-              <p className="mt-2 text-2xl font-bold text-slate-950">
+            <article className="admin-metric-box">
+              <p className="admin-metric-box-label">정산 합계</p>
+              <p className="admin-metric-box-value">
                 {summary.totalAmount < 0 ? "-" : ""}
                 {formatCurrency(Math.abs(summary.totalAmount))}원
               </p>
             </article>
-            <article className="rounded-[10px] border border-slate-200 bg-white p-4">
-              <p className="text-sm text-slate-500">결제수단 수</p>
-              <p className="mt-2 text-2xl font-bold text-slate-950">{summary.byMethod.length}개</p>
+            <article className="admin-metric-box">
+              <p className="admin-metric-box-label">결제수단 수</p>
+              <p className="admin-metric-box-value">{summary.byMethod.length}개</p>
             </article>
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <section className="rounded-[10px] border border-slate-200 bg-white p-4">
-              <p className="text-lg font-bold text-slate-950">결제수단별 집계</p>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <section className="admin-section">
+              <h2 className="admin-section-title">결제수단별 집계</h2>
+              <div className="admin-table-frame mt-4 overflow-x-auto">
+                <table className="min-w-full">
                   <thead>
                     <tr className="text-left text-slate-500">
-                      <th className="px-3 py-3 font-medium">결제수단</th>
-                      <th className="px-3 py-3 font-medium">건수</th>
-                      <th className="px-3 py-3 font-medium">금액</th>
+                      <th>결제수단</th>
+                      <th>건수</th>
+                      <th>금액</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {summary.byMethod.map((item) => (
                       <tr key={item.method}>
-                        <td className="px-3 py-3 font-medium text-slate-900">{item.methodLabel}</td>
-                        <td className="px-3 py-3 text-slate-600">{item.count}건</td>
-                        <td className="px-3 py-3 text-slate-900">
+                        <td>{item.methodLabel}</td>
+                        <td>{item.count}건</td>
+                        <td>
                           {item.amount < 0 ? "-" : ""}
                           {formatCurrency(Math.abs(item.amount))}원
                         </td>
@@ -255,23 +254,23 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
               </div>
             </section>
 
-            <section className="rounded-[10px] border border-slate-200 bg-white p-4">
-              <p className="text-lg font-bold text-slate-950">수납 유형별 집계</p>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <section className="admin-section">
+              <h2 className="admin-section-title">수납 유형별 집계</h2>
+              <div className="admin-table-frame mt-4 overflow-x-auto">
+                <table className="min-w-full">
                   <thead>
                     <tr className="text-left text-slate-500">
-                      <th className="px-3 py-3 font-medium">수납 유형</th>
-                      <th className="px-3 py-3 font-medium">건수</th>
-                      <th className="px-3 py-3 font-medium">금액</th>
+                      <th>수납 유형</th>
+                      <th>건수</th>
+                      <th>금액</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {summary.byCategory.map((item) => (
                       <tr key={item.categoryId}>
-                        <td className="px-3 py-3 font-medium text-slate-900">{item.categoryName}</td>
-                        <td className="px-3 py-3 text-slate-600">{item.count}건</td>
-                        <td className="px-3 py-3 text-slate-900">
+                        <td>{item.categoryName}</td>
+                        <td>{item.count}건</td>
+                        <td>
                           {item.amount < 0 ? "-" : ""}
                           {formatCurrency(Math.abs(item.amount))}원
                         </td>
@@ -283,32 +282,32 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
             </section>
           </div>
 
-          <section className="rounded-[10px] border border-slate-200 bg-white p-4">
-            <p className="text-lg font-bold text-slate-950">상세 내역</p>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <section className="admin-section">
+            <h2 className="admin-section-title">상세 내역</h2>
+            <div className="admin-table-frame mt-4 overflow-x-auto">
+              <table className="min-w-full">
                 <thead>
                   <tr className="text-left text-slate-500">
-                    <th className="px-3 py-3 font-medium">납부일</th>
-                    <th className="px-3 py-3 font-medium">학생</th>
-                    <th className="px-3 py-3 font-medium">수납 유형</th>
-                    <th className="px-3 py-3 font-medium">결제수단</th>
-                    <th className="px-3 py-3 font-medium">금액</th>
-                    <th className="px-3 py-3 font-medium">기록자</th>
+                    <th>납부일</th>
+                    <th>학생</th>
+                    <th>수납 유형</th>
+                    <th>결제수단</th>
+                    <th>금액</th>
+                    <th>기록자</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {summary.payments.map((payment) => (
                     <tr key={payment.id}>
-                      <td className="px-3 py-3 text-slate-600">{formatDate(payment.paymentDate)}</td>
-                      <td className="px-3 py-3">
+                      <td>{formatDate(payment.paymentDate)}</td>
+                      <td>
                         <p className="font-medium text-slate-900">{payment.studentName}</p>
-                        <p className="mt-1 text-xs text-slate-500">{payment.studentNumber}</p>
+                        <p className="admin-help mt-1">{payment.studentNumber}</p>
                       </td>
-                      <td className="px-3 py-3 text-slate-600">{payment.paymentTypeName}</td>
-                      <td className="px-3 py-3 text-slate-600">{formatPaymentMethod(payment.method)}</td>
-                      <td className="px-3 py-3 font-medium text-slate-900">{formatSignedAmount(payment)}</td>
-                      <td className="px-3 py-3 text-slate-600">{payment.recordedByName}</td>
+                      <td>{payment.paymentTypeName}</td>
+                      <td>{formatPaymentMethod(payment.method)}</td>
+                      <td>{formatSignedAmount(payment)}</td>
+                      <td>{payment.recordedByName}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -317,7 +316,7 @@ export function SettlementView({ divisionSlug }: SettlementViewProps) {
           </section>
         </div>
       ) : (
-        <div className="mt-8 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-600">
+        <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm text-slate-600">
           조회된 정산 데이터가 없습니다.
         </div>
       )}

@@ -1,3 +1,5 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isControlledPeriod, isPolicyEffective, kstDate, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
 import { Prisma } from "@prisma/client";
 
@@ -220,27 +222,39 @@ function buildAttendanceReason(type: LeaveTypeValue, reason: string | null) {
   return reason ? `${prefix} · ${reason}` : prefix;
 }
 
+function getTargetLeavePeriods<T extends { id: string; isMandatory: boolean; displayOrder: number }>(
+  periods: T[],
+  input: Pick<LeavePermissionSchemaInput, "studentId" | "date" | "type">,
+  policy: ManagementPolicy | null,
+) {
+  const applicable = periods.filter((period) => isPolicyEffective(policy, input.date)
+    ? isControlledPeriod(policy, period.id, input.date, input.studentId)
+    : period.isMandatory).sort((left, right) => left.displayOrder - right.displayOrder);
+  return input.type === "HALF_DAY" ? applicable.slice(0, 3) : applicable;
+}
+
 async function getTargetDbPeriods(
   tx: LeavePrismaClient,
   divisionId: string,
-  type: LeaveTypeValue,
+  input: Pick<LeavePermissionSchemaInput, "studentId" | "date" | "type">,
+  policy: ManagementPolicy | null,
 ) {
   const allPeriods = await tx.period.findMany({
     where: {
       divisionId,
       isActive: true,
-      isMandatory: true,
     },
     select: {
       id: true,
       displayOrder: true,
+      isMandatory: true,
     },
     orderBy: {
       displayOrder: "asc",
     },
   });
 
-  return type === "HALF_DAY" ? allPeriods.slice(0, 3) : allPeriods;
+  return getTargetLeavePeriods(allPeriods, input, policy);
 }
 
 function buildSettlementNote(month: string) {
@@ -307,6 +321,7 @@ async function applyMockLeaveAttendance(
   state: Awaited<ReturnType<typeof readMockState>>,
   actorId: string,
   input: LeavePermissionSchemaInput,
+  policy: ManagementPolicy | null,
 ) {
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
@@ -314,11 +329,9 @@ async function applyMockLeaveAttendance(
     return;
   }
 
-  const allPeriods = (state.periodsByDivision[divisionSlug] ?? [])
-    .filter((period) => period.isActive && period.isMandatory)
-    .sort((left, right) => left.displayOrder - right.displayOrder);
-
-  const targetPeriods = input.type === "HALF_DAY" ? allPeriods.slice(0, 3) : allPeriods;
+  const targetPeriods = getTargetLeavePeriods(
+    (state.periodsByDivision[divisionSlug] ?? []).filter((period) => period.isActive), input, policy,
+  );
 
   if (targetPeriods.length === 0) {
     return;
@@ -355,6 +368,7 @@ async function applyDbLeaveAttendanceWithTx(
   divisionId: string,
   actorId: string,
   input: LeavePermissionSchemaInput,
+  policy: ManagementPolicy | null,
 ) {
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
@@ -362,7 +376,7 @@ async function applyDbLeaveAttendanceWithTx(
     return;
   }
 
-  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input.type);
+  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input, policy);
 
   if (targetPeriods.length === 0) {
     return;
@@ -410,6 +424,7 @@ async function revertMockLeaveAttendance(
     date: string;
     reason: string | null;
   },
+  policy: ManagementPolicy | null,
 ) {
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
@@ -417,10 +432,9 @@ async function revertMockLeaveAttendance(
     return;
   }
 
-  const allPeriods = (state.periodsByDivision[divisionSlug] ?? [])
-    .filter((period) => period.isActive && period.isMandatory)
-    .sort((left, right) => left.displayOrder - right.displayOrder);
-  const targetPeriods = input.type === "HALF_DAY" ? allPeriods.slice(0, 3) : allPeriods;
+  const targetPeriods = getTargetLeavePeriods(
+    (state.periodsByDivision[divisionSlug] ?? []).filter((period) => period.isActive), input, policy,
+  );
 
   if (targetPeriods.length === 0) {
     return;
@@ -450,6 +464,7 @@ async function revertDbLeaveAttendance(
     date: string;
     reason: string | null;
   },
+  policy: ManagementPolicy | null,
 ) {
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
@@ -457,7 +472,7 @@ async function revertDbLeaveAttendance(
     return;
   }
 
-  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input.type);
+  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input, policy);
 
   if (targetPeriods.length === 0) {
     return;
@@ -483,6 +498,9 @@ function buildLeaveSettlementPreviewItems(args: {
     studentNumber: string;
     studyTrack: string | null;
     status: string;
+    courseStartDate: Date | string | null;
+    courseEndDate: Date | string | null;
+    enrolledAt: Date | string;
   }>;
   permissions: Array<{
     studentId: string;
@@ -495,9 +513,19 @@ function buildLeaveSettlementPreviewItems(args: {
   healthLimit: number;
   holidayUnusedPts: number;
   halfDayUnusedPts: number;
+  monthStart: string;
+  monthEnd: string;
+  recognizedHealth: boolean;
 }) {
   return args.students
     .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")
+    .filter((student) => {
+      const start = student.courseStartDate
+        ? toDateString(student.courseStartDate)
+        : kstDate(new Date(student.enrolledAt));
+      return start <= args.monthEnd &&
+        (!student.courseEndDate || toDateString(student.courseEndDate) >= args.monthStart);
+    })
     .map((student) => {
       const records = args.permissions.filter(
         (permission) => permission.studentId === student.id && !isInactiveLeaveStatus(permission.status),
@@ -505,7 +533,9 @@ function buildLeaveSettlementPreviewItems(args: {
       const holidayUsed = records.filter((permission) => permission.type === "HOLIDAY").length;
       const halfDayUsed = records.filter((permission) => permission.type === "HALF_DAY").length;
       const healthUsed = records.filter((permission) => permission.type === "HEALTH").length;
-      const holidayRemaining = Math.max(args.holidayLimit - holidayUsed - healthUsed, 0);
+      const holidayRemaining = Math.max(
+        args.holidayLimit - holidayUsed - (args.recognizedHealth ? 0 : healthUsed), 0,
+      );
       const halfDayRemaining = Math.max(args.halfDayLimit - halfDayUsed, 0);
       const healthRemaining = Math.max(args.healthLimit - healthUsed, 0);
       const rewardPoints =
@@ -617,7 +647,13 @@ export async function createLeavePermission(
   actor: LeaveActor,
   input: LeavePermissionSchemaInput,
 ) {
+  const leaveDate = parseDateString(input.date);
   const reason = normalizeOptionalText(input.reason);
+  const policy = await getManagementPolicy(divisionSlug);
+  if (isPolicyEffective(policy, input.date) && policy.holidayPriorNotice && input.type === "HOLIDAY" && input.date <= kstDate() && !reason) {
+    throw badRequest("휴일권은 전일까지 통보해야 합니다. 당일·사후 승인이라면 질병·사고 등 예외 인정 사유를 기록해 주세요.");
+  }
+  if (isPolicyEffective(policy, input.date) && input.type === "HEALTH" && !reason) throw badRequest("질병·건강 인정사유와 확인 내용을 기록해 주세요.");
   const status = getLeaveStatus(input.type, input.date);
   const settings = await getDivisionSettings(divisionSlug);
 
@@ -660,7 +696,7 @@ export async function createLeavePermission(
           saved.date.startsWith(monthPrefix) &&
           !isInactiveLeaveStatus(saved.status),
       ).length;
-      assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+      if (!(isPolicyEffective(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const nextRecord: MockLeavePermissionRecord = {
         id: `mock-leave-${divisionSlug}-${Date.now()}`,
@@ -680,7 +716,7 @@ export async function createLeavePermission(
       await applyMockLeaveAttendance(divisionSlug, state, actor.id, {
         ...input,
         reason,
-      });
+      }, policy);
 
       return nextRecord;
     });
@@ -699,7 +735,6 @@ export async function createLeavePermission(
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
-  const leaveDate = parseDateString(input.date);
   const { start: monthStart, end: monthEnd } = getMonthRange(input.date.slice(0, 7));
 
   const permission = await prisma.$transaction(async (tx) => {
@@ -758,7 +793,7 @@ export async function createLeavePermission(
           },
         },
       });
-      assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+      if (!(isPolicyEffective(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const created = await tx.leavePermission.create({
         data: {
@@ -774,7 +809,7 @@ export async function createLeavePermission(
       await applyDbLeaveAttendanceWithTx(tx, division.id, actor.id, {
         ...input,
         reason,
-      });
+      }, policy);
 
       return created;
     }, {
@@ -808,6 +843,7 @@ export async function cancelLeavePermission(
   leavePermissionId: string,
   actor: LeaveActor,
 ) {
+  const policy = await getManagementPolicy(divisionSlug);
   if (isMockMode()) {
     const result = await updateMockState(async (state) => {
       const records = state.leavePermissionsByDivision[divisionSlug] ?? [];
@@ -830,7 +866,7 @@ export async function cancelLeavePermission(
         type: record.type,
         date: record.date,
         reason: record.reason,
-      });
+      }, policy);
 
       record.status = "REJECTED";
 
@@ -900,7 +936,7 @@ export async function cancelLeavePermission(
       type: permission.type,
       date: toDateString(permission.date),
       reason: permission.reason,
-    });
+    }, policy);
 
     return tx.leavePermission.update({
       where: {
@@ -951,6 +987,12 @@ export async function previewLeaveSettlement(
   const settlementNote = buildSettlementNote(normalizedMonth);
   const settings = await getDivisionSettings(divisionSlug);
   const isClosedMonth = normalizedMonth < getCurrentMonth();
+  const policy = await getManagementPolicy(divisionSlug);
+  const settlementPeriod = {
+    monthStart: toDateString(start),
+    monthEnd: toDateString(getSettlementDate(normalizedMonth)),
+    recognizedHealth: isPolicyEffective(policy, toDateString(getSettlementDate(normalizedMonth))),
+  };
 
   if (isMockMode()) {
     const state = await readMockState();
@@ -968,6 +1010,7 @@ export async function previewLeaveSettlement(
         .map((record) => record.studentId),
     );
     const items = buildLeaveSettlementPreviewItems({
+      ...settlementPeriod,
       students,
       permissions,
       settledStudentIds,
@@ -995,7 +1038,7 @@ export async function previewLeaveSettlement(
   const [students, permissions, settledStudentIds] = await Promise.all([
     prisma.student.findMany({
       where: { divisionId: division.id },
-      select: { id: true, name: true, studentNumber: true, studyTrack: true, status: true },
+      select: { id: true, name: true, studentNumber: true, studyTrack: true, status: true, courseStartDate: true, courseEndDate: true, enrolledAt: true },
     }),
     prisma.leavePermission.findMany({
       where: {
@@ -1013,6 +1056,7 @@ export async function previewLeaveSettlement(
     }).then((records) => new Set(records.map((record) => record.studentId))),
   ]);
   const items = buildLeaveSettlementPreviewItems({
+    ...settlementPeriod,
     students,
     permissions,
     settledStudentIds,
@@ -1063,7 +1107,13 @@ export async function settleLeaveMonth(
   if (isMockMode()) {
     const records = await updateMockState((state) => {
       const now = new Date().toISOString();
-      const nextRecords = grantTargets.map(
+      const settledStudentIds = new Set((state.pointRecordsByDivision[divisionSlug] ?? [])
+        .filter((record) => record.notes === note).map((record) => record.studentId));
+      const currentStudentIds = new Set((state.studentsByDivision[divisionSlug] ?? [])
+        .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")
+        .map((student) => student.id));
+      const nextRecords = grantTargets.filter((item) =>
+        currentStudentIds.has(item.studentId) && !settledStudentIds.has(item.studentId)).map(
         (item, index) =>
           ({
             id: `mock-point-record-${divisionSlug}-leave-settlement-${Date.now()}-${index}`,
@@ -1089,15 +1139,15 @@ export async function settleLeaveMonth(
       month: preview.month,
       createdCount: records.length,
       skippedCount: preview.items.length - records.length,
-      totalRewardPoints: grantTargets.reduce((sum, item) => sum + item.rewardPoints, 0),
+      totalRewardPoints: records.reduce((sum, record) => sum + record.points, 0),
     } satisfies LeaveSettlementResult;
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
-  const validStudentIds = new Set(
-    (
-      await prisma.student.findMany({
+  const records = await prisma.$transaction(async (tx) => {
+    const [students, settled] = await Promise.all([
+      tx.student.findMany({
         where: {
           divisionId: division.id,
           id: {
@@ -1110,20 +1160,32 @@ export async function settleLeaveMonth(
         select: {
           id: true,
         },
-      })
-    ).map((student) => student.id),
-  );
-  const records = grantTargets.filter((item) => validStudentIds.has(item.studentId));
-
-  await prisma.pointRecord.createMany({
-    data: records.map((item) => ({
-      studentId: item.studentId,
-      ruleId: null,
-      points: item.rewardPoints,
-      date: settlementDate,
-      notes: note,
-      recordedById: actor.id,
-    })),
+      }),
+      tx.pointRecord.findMany({
+        where: { student: { divisionId: division.id }, notes: note },
+        select: { studentId: true },
+      }),
+    ]);
+    const validStudentIds = new Set(students.map((student) => student.id));
+    const settledStudentIds = new Set(settled.map((record) => record.studentId));
+    const targets = grantTargets.filter((item) =>
+      validStudentIds.has(item.studentId) && !settledStudentIds.has(item.studentId));
+    if (targets.length) await tx.pointRecord.createMany({
+      data: targets.map((item) => ({
+        studentId: item.studentId,
+        ruleId: null,
+        points: item.rewardPoints,
+        date: settlementDate,
+        notes: note,
+        recordedById: actor.id,
+      })),
+    });
+    return targets;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error) => {
+    if (isLeaveWriteConflict(error)) {
+      throw conflict("같은 월의 휴가 정산이 동시에 처리 중입니다. 정산 결과를 확인한 뒤 다시 시도해 주세요.");
+    }
+    throw error;
   });
 
   revalidateDivisionOperationalViews(divisionSlug);

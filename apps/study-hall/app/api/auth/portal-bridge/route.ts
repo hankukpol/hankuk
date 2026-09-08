@@ -4,6 +4,8 @@ import { HANKUK_APP_KEYS, getHankukServiceOrigins, isHankukPortalBridgeRoleAllow
 import { applyAdminContextCookies } from "@/lib/auth";
 import { assertLocalRuntimeDoesNotUseRemoteSupabase } from "@/lib/local-env-guard";
 import { prisma } from "@/lib/prisma";
+import { normalizeTargetPath } from "@/lib/safe-redirect";
+import { toApiErrorResponse } from "@/lib/api-error-response";
 
 const APP_KEY = HANKUK_APP_KEYS.STUDY_HALL;
 
@@ -43,14 +45,6 @@ async function consumePortalLaunchToken(token: string) {
 
   const row = Array.isArray(data) ? data[0] : null;
   return (row as ConsumedPortalLaunch | null) ?? null;
-}
-
-function normalizeTargetPath(targetPath: string | null | undefined, fallback: string) {
-  if (!targetPath || !targetPath.startsWith("/") || targetPath.startsWith("//")) {
-    return fallback;
-  }
-
-  return targetPath;
 }
 
 function getAllowedPortalOrigins() {
@@ -129,7 +123,8 @@ function isAllowedPortalOrigin(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData().catch(() => null);
-    const launchToken = String(formData?.get("launchToken") || "").trim();
+    const tokenValue = formData?.get("launchToken");
+    const launchToken = typeof tokenValue === "string" ? tokenValue.trim() : "";
     if (!launchToken) {
       return NextResponse.json({ error: "포털 실행 토큰이 필요합니다." }, { status: 400 });
     }
@@ -209,10 +204,6 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("[portal-bridge] study-hall bridge failed.", error);
-    return NextResponse.json(
-      { error: "Study Hall 포털 이동 처리 중 문제가 발생했습니다." },
-      { status: 500 },
-    );
+    return toApiErrorResponse(error, "Study Hall 포털 이동 처리 중 문제가 발생했습니다.", 500);
   }
 }

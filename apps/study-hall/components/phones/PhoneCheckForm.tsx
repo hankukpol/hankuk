@@ -1,10 +1,14 @@
 "use client";
 
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import dynamic from "next/dynamic";
 
-import { LayoutGrid, Phone, RefreshCcw, Save, Search, Table2, X } from "lucide-react";
+import { Phone, RefreshCcw, Save, Search, X } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
+
+import { AdminTabs } from "@/components/ui/AdminTabs";
 
 import { PhoneCheckTable } from "@/components/phones/PhoneCheckTable";
 import type { PhoneSaveState } from "@/components/phones/PhoneCheckTable";
@@ -12,9 +16,10 @@ import {
   PHONE_CHECK_STATUS_OPTIONS,
   PhoneStatusCheckButton,
 } from "@/components/phones/PhoneStatusCheckButton";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
+import { indexFirstBy } from "@/lib/record-index";
 import type {
   PhoneAttendanceCell,
   PhoneCheckStatus,
@@ -27,7 +32,7 @@ const PhoneCheckSeatMap = dynamic(
   () => import("@/components/phones/PhoneCheckSeatMap").then((mod) => mod.PhoneCheckSeatMap),
   {
     loading: () => (
-      <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-16 text-center text-sm text-slate-500">
+      <div className="admin-help py-16 text-center">
         좌석 지도를 불러오는 중입니다.
       </div>
     ),
@@ -268,7 +273,13 @@ type PhoneCheckFormProps = {
   initialActivePeriodId?: string;
   seatRooms?: StudyRoomItem[];
   initialSeatLayout?: SeatLayout;
+  viewTabsVariant?: "primary" | "secondary";
 };
+
+const PHONE_VIEW_TABS = [
+  { id: "table" as const, label: "테이블" },
+  { id: "seat" as const, label: "좌석" },
+];
 
 export function PhoneCheckForm({
   divisionSlug,
@@ -277,6 +288,7 @@ export function PhoneCheckForm({
   initialActivePeriodId,
   seatRooms,
   initialSeatLayout,
+  viewTabsVariant = "primary",
 }: PhoneCheckFormProps) {
   const [date, setDate] = useState(initialDate);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
@@ -285,7 +297,7 @@ export function PhoneCheckForm({
   );
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [activePeriodId, setActivePeriodId] = useState<string>(
-    resolveActivePeriodId(initialSnapshot, initialDate, initialActivePeriodId),
+    () => resolveActivePeriodId(initialSnapshot, initialDate, initialActivePeriodId),
   );
   const [viewMode, setViewMode] = useState<"seat" | "table">("table");
   const [searchQuery, setSearchQuery] = useState("");
@@ -299,8 +311,11 @@ export function PhoneCheckForm({
   const dirtyCellKeysRef = useRef(dirtyCellKeys);
   const cellSaveStatesRef = useRef(cellSaveStates);
   const saveSequenceRef = useRef<Record<string, number>>({});
+  const snapshotRequestRef = useRef<AbortController | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const isDirty = dirtyCellKeys.size > 0;
+
+  useEffect(() => () => snapshotRequestRef.current?.abort(), [divisionSlug]);
 
   useEffect(() => {
     dirtyCellKeysRef.current = dirtyCellKeys;
@@ -342,7 +357,15 @@ export function PhoneCheckForm({
       ),
     [deferredSearchQuery, students],
   );
-  const activePeriod = periods.find((p) => p.periodId === activePeriodId);
+  const periodById = useMemo(() => indexFirstBy(periods, (period) => period.periodId), [periods]);
+  const attendanceByPeriodId = useMemo(
+    () => new Map(Array.from(periodById, ([periodId, period]) => [
+      periodId,
+      indexFirstBy(period.attendance, (cell) => cell.studentId),
+    ])),
+    [periodById],
+  );
+  const activePeriod = periodById.get(activePeriodId);
   const activePeriodState = useMemo(
     () => periodsState[activePeriodId] ?? {},
     [activePeriodId, periodsState],
@@ -359,23 +382,28 @@ export function PhoneCheckForm({
         return true;
       }
 
-      const period = snapshot.periods.find((item) => item.periodId === periodId);
-      return Boolean(period?.attendance.find((cell) => cell.studentId === studentId)?.checkable);
+      return Boolean(attendanceByPeriodId.get(periodId)?.get(studentId)?.checkable);
     },
-    [snapshot.attendanceIntegrationEnabled, snapshot.periods],
+    [snapshot.attendanceIntegrationEnabled, attendanceByPeriodId],
   );
 
   async function loadSnapshot(newDate: string) {
+    snapshotRequestRef.current?.abort();
+    const controller = new AbortController();
+    snapshotRequestRef.current = controller;
     setIsLoading(true);
     try {
       const res = await fetch(
         `/api/${divisionSlug}/phone-submissions?mode=snapshot&date=${newDate}`,
+        { signal: controller.signal },
       );
+      if (controller.signal.aborted) return;
       if (!res.ok) {
         toast.error("데이터를 불러오는 데 실패했습니다.");
         return;
       }
       const { snapshot: newSnapshot } = (await res.json()) as { snapshot: PhoneDaySnapshot };
+      if (controller.signal.aborted) return;
       setSnapshot(newSnapshot);
       setPeriodsState(buildInitialState(newSnapshot));
       dirtyCellKeysRef.current = new Set();
@@ -386,8 +414,10 @@ export function PhoneCheckForm({
       )?.periodId;
 
       setActivePeriodId(resolveActivePeriodId(newSnapshot, newDate, retainedPeriodId));
+    } catch {
+      if (!controller.signal.aborted) toast.error("데이터를 불러오는 데 실패했습니다.");
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   }
 
@@ -1032,46 +1062,30 @@ export function PhoneCheckForm({
           value={date}
           max={getKstToday()}
           onChange={(e) => handleDateChange(e.target.value)}
-          className="rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400"
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
         />
         <button
           type="button"
           onClick={() => loadSnapshot(date)}
           disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          className="admin-button"
         >
           <RefreshCcw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           새로고침
         </button>
-        {hasSeatLayout && (
-          <div className="ml-auto flex gap-1 rounded-[10px] border border-slate-200 bg-slate-50 p-1">
-            <button
-              type="button"
-              onClick={() => setViewMode("table")}
-              className={`rounded-[10px] px-3 py-1.5 text-xs font-medium transition ${
-                viewMode === "table"
-                  ? "bg-[var(--division-color)] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <Table2 className="mr-1 inline h-3.5 w-3.5" />
-              테이블
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("seat")}
-              className={`rounded-[10px] px-3 py-1.5 text-xs font-medium transition ${
-                viewMode === "seat"
-                  ? "bg-[var(--division-color)] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <LayoutGrid className="mr-1 inline h-3.5 w-3.5" />
-              좌석
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* DESIGN.md 5.4 — 보기 전체가 바뀌므로 1차 폴더 탭 */}
+      {hasSeatLayout ? (
+        <AdminTabs
+          items={PHONE_VIEW_TABS}
+          activeId={viewMode}
+          onChange={setViewMode}
+          label="휴대폰 체크 보기"
+          idPrefix="phone-view"
+          variant={viewTabsVariant}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <label className="relative block w-full md:max-w-md">
@@ -1081,7 +1095,7 @@ export function PhoneCheckForm({
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
-            className="w-full rounded-[10px] border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 transition"
           />
           {hasSearchQuery ? (
             <button
@@ -1096,7 +1110,7 @@ export function PhoneCheckForm({
         </label>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-[8px] border border-slate-200 bg-slate-50 p-1">
+          <div className="admin-choice-group" aria-label="휴대폰 체크 필터">
             {[
               { value: "all" as const, label: "전체" },
               { value: "unchecked" as const, label: "미체크만" },
@@ -1105,31 +1119,28 @@ export function PhoneCheckForm({
                 key={filter.value}
                 type="button"
                 onClick={() => setStudentFilterMode(filter.value)}
-                className={`rounded-[7px] px-3 py-1.5 text-xs font-semibold transition ${
-                  studentFilterMode === filter.value
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
+                className="admin-choice-button"
+                aria-pressed={studentFilterMode === filter.value}
               >
                 {filter.label}
               </button>
             ))}
           </div>
-          <div className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+          <div className="inline-flex items-center rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
             {visibleStudents.length}명 표시 / 검색 {filteredStudents.length}명 / 전체 {students.length}명
           </div>
         </div>
       </div>
 
       {periods.length === 0 ? (
-        <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-16 text-center text-sm text-slate-500">
+        <div className="admin-help py-16 text-center">
           활성화된 교시가 없습니다.
         </div>
       ) : (
         <>
           {/* 교시 탭 */}
           <div className="overflow-x-auto">
-            <div className="flex min-w-max gap-1 rounded-[10px] border border-slate-200 bg-slate-50 p-1.5">
+            <div className="admin-choice-group" aria-label="휴대폰 확인 교시">
               {periods.map((period) => {
                 const isActive = period.periodId === activePeriodId;
                 return (
@@ -1137,11 +1148,7 @@ export function PhoneCheckForm({
                     key={period.periodId}
                     type="button"
                     onClick={() => setActivePeriodId(period.periodId)}
-                    className={`shrink-0 rounded-[10px] px-4 py-2.5 text-sm font-medium transition ${
-                      isActive
-                        ? "bg-[var(--division-color)] text-white shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
+                    className="admin-choice-button" data-active={isActive} aria-pressed={isActive}
                   >
                     {period.periodName}
                   </button>
@@ -1152,7 +1159,7 @@ export function PhoneCheckForm({
 
           {/* 선택된 교시 내용 */}
           {activePeriod && (
-            <div className="space-y-4">
+            <div className="space-y-4" role="tabpanel" id={`phone-view-panel-${viewMode}`} aria-labelledby={hasSeatLayout ? `phone-view-${viewMode}` : undefined} aria-label={hasSeatLayout ? undefined : "휴대폰 체크"}>
               {/* 교시 정보 + 통계 */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1161,36 +1168,36 @@ export function PhoneCheckForm({
                     {activePeriod.periodLabel && (
                       <span className="ml-1.5 text-slate-500">({activePeriod.periodLabel})</span>
                     )}
-                    <span className="ml-2 text-xs font-normal text-slate-400">
+                    <span className="admin-help ml-2">
                       {activePeriod.startTime}–{activePeriod.endTime}
                     </span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                  <span className="inline-flex items-center rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
                     반납 {activePeriodStats.submittedCount}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
+                  <span className="inline-flex items-center rounded-lg bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
                     미반납 {activePeriodStats.notSubmittedCount}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
+                  <span className="inline-flex items-center rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
                     대여 {activePeriodStats.rentedCount}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">
+                  <span className="inline-flex items-center rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">
                     체크대상 {activePeriodStats.checkableStudentCount}
                   </span>
                   {activePeriodStats.uncheckedCount > 0 && (
-                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                    <span className="inline-flex items-center rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
                       미체크 {activePeriodStats.uncheckedCount}
                     </span>
                   )}
                   {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceUnprocessedCount > 0 && (
-                    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
+                    <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
                       출결 미확인 {activePeriodStats.attendanceUnprocessedCount}
                     </span>
                   )}
                   {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceBlockedCount > 0 && (
-                    <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
+                    <span className="inline-flex items-center rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
                       체크 제외 {activePeriodStats.attendanceBlockedCount}
                     </span>
                   )}
@@ -1202,21 +1209,21 @@ export function PhoneCheckForm({
                 <button
                   type="button"
                   onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", visibleStudents)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   표시 학생 반납
                 </button>
                 <button
                   type="button"
                   onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED", visibleStudents)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   표시 학생 미반납
                 </button>
                 <button
                   type="button"
                   onClick={() => openBulkRentalModal()}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
                 >
                   <Phone className="h-3.5 w-3.5" />
                   일괄 대여
@@ -1225,7 +1232,7 @@ export function PhoneCheckForm({
                   type="button"
                   onClick={() => savePeriod(activePeriodId)}
                   disabled={savingPeriodId === activePeriodId || isLoading}
-                  className="ml-auto inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                  className="admin-button admin-button-primary ml-auto"
                 >
                   <Save className="h-4 w-4" />
                   {savingPeriodId === activePeriodId ? "저장 중..." : "저장"}
@@ -1234,7 +1241,7 @@ export function PhoneCheckForm({
 
               {/* 학생 목록 */}
               {visibleStudents.length === 0 ? (
-                <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">
+                <div className="admin-help px-4 py-12 text-center">
                   {studentFilterMode === "unchecked"
                     ? "미체크 학생이 없습니다."
                     : hasSearchQuery
@@ -1260,7 +1267,7 @@ export function PhoneCheckForm({
               ) : seatRooms && seatRooms.length > 0 && initialSeatLayout ? (
                 <div className="space-y-4">
                   {hasSearchQuery ? (
-                    <div className="rounded-[10px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <div className="admin-help px-4 py-3">
                       검색 조건에 맞는 학생만 좌석도에 표시됩니다.
                     </div>
                   ) : null}
@@ -1307,7 +1314,7 @@ export function PhoneCheckForm({
                     return (
                       <div
                         key={student.id}
-                        className={`rounded-[10px] border p-3 transition ${cardBg}`}
+                        className={`rounded-lg border p-3 transition ${cardBg}`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="min-w-0 flex-1">
@@ -1318,15 +1325,12 @@ export function PhoneCheckForm({
                             >
                               {student.name}
                             </button>
-                            <p className="text-xs text-slate-500">
+                            <p className="admin-help">
                               {student.studentNumber}
                               {student.studyTrack && ` · ${student.studyTrack}`}
                             </p>
                             <span
-                              className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
-                                attendanceCell,
-                                snapshot.attendanceIntegrationEnabled,
-                              )}`}
+                              className={`mt-1 inline-flex rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, snapshot.attendanceIntegrationEnabled, )}`}
                             >
                               {snapshot.attendanceIntegrationEnabled
                                 ? getAttendanceStatusLabel(attendanceCell?.status)
@@ -1334,13 +1338,7 @@ export function PhoneCheckForm({
                             </span>
                             {saveState ? (
                               <span
-                                className={`ml-1 mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                  saveState === "saving"
-                                    ? "bg-amber-50 text-amber-700"
-                                    : saveState === "saved"
-                                      ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-red-50 text-red-700"
-                                }`}
+                                className={`ml-1 mt-1 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ saveState === "saving" ? "bg-amber-50 text-amber-700" : saveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
                               >
                                 {saveState === "saving"
                                   ? "저장 중"
@@ -1365,7 +1363,7 @@ export function PhoneCheckForm({
                                 />
                               ))
                             ) : (
-                              <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
+                              <span className="admin-badge">
                                 체크 없음
                               </span>
                             )}
@@ -1382,7 +1380,7 @@ export function PhoneCheckForm({
                               onBlur={() => commitRentalNote(activePeriodId, student.id)}
                               placeholder="대여 사유 (예: 인강 수강)"
                               maxLength={200}
-                              className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2 text-xs outline-none transition focus:border-slate-400 placeholder:text-slate-400"
+                              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs transition placeholder:text-slate-400"
                             />
                           </div>
                         )}
@@ -1395,25 +1393,24 @@ export function PhoneCheckForm({
           )}
         </>
       )}
-      <Modal
+      <SlideOver
         open={bulkRentalDraft !== null}
         title="휴대폰 일괄 대여"
         description="선택한 학생에게 지정한 교시 범위의 대여 상태를 적용합니다."
         badge="대여"
-        widthClassName="max-w-2xl"
-        onClose={() => setBulkRentalDraft(null)}
+        onClose={() => !isSavingBulkRental && setBulkRentalDraft(null)}
       >
         {bulkRentalDraft ? (
           <div className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-semibold text-slate-600">
+              <label className="admin-label">
                 시작 교시
                 <select
                   value={bulkRentalDraft.startPeriodId}
                   onChange={(event) =>
                     updateBulkRentalPeriodRange({ startPeriodId: event.target.value })
                   }
-                  className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                 >
                   {periods.map((period) => (
                     <option key={period.periodId} value={period.periodId}>
@@ -1422,14 +1419,14 @@ export function PhoneCheckForm({
                   ))}
                 </select>
               </label>
-              <label className="text-xs font-semibold text-slate-600">
+              <label className="admin-label">
                 종료 교시
                 <select
                   value={bulkRentalDraft.endPeriodId}
                   onChange={(event) =>
                     updateBulkRentalPeriodRange({ endPeriodId: event.target.value })
                   }
-                  className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400"
+                  className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
                 >
                   {periods.map((period) => (
                     <option key={period.periodId} value={period.periodId}>
@@ -1440,7 +1437,7 @@ export function PhoneCheckForm({
               </label>
             </div>
 
-            <label className="block text-xs font-semibold text-slate-600">
+            <label className="admin-label block">
               대여 메모
               <input
                 type="text"
@@ -1448,7 +1445,7 @@ export function PhoneCheckForm({
                 onChange={(event) => updateBulkRentalDraft({ rentalNote: event.target.value })}
                 placeholder="예: 인강 수강"
                 maxLength={200}
-                className="mt-1.5 h-11 w-full rounded-[10px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-400 placeholder:text-slate-400"
+                className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400"
               />
             </label>
 
@@ -1459,11 +1456,7 @@ export function PhoneCheckForm({
                   overwriteExisting: !bulkRentalDraft.overwriteExisting,
                 })
               }
-              className={`w-full rounded-[10px] border px-3 py-2.5 text-left text-xs font-semibold transition ${
-                bulkRentalDraft.overwriteExisting
-                  ? "border-sky-200 bg-sky-50 text-sky-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
+              className={`w-full rounded-lg border px-3 py-2.5 text-left text-xs font-semibold transition ${ bulkRentalDraft.overwriteExisting ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
             >
               기존 반납/미반납 기록도 대여로 덮어쓰기
             </button>
@@ -1471,10 +1464,10 @@ export function PhoneCheckForm({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-xs font-semibold text-slate-600">
+                  <p className="admin-label">
                     학생 선택 {bulkRentalSelectedCount}명 · 적용 {bulkRentalSelectedTargetCellCount}칸
                   </p>
-                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                  <p className="mt-0.5 text-[13px] font-medium text-slate-400">
                     범위 {bulkRentalRangeLabel}
                   </p>
                 </div>
@@ -1482,7 +1475,7 @@ export function PhoneCheckForm({
                   <button
                     type="button"
                     onClick={selectDefaultBulkRentalStudents}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                    className="admin-button admin-button-compact"
                   >
                     표시 출석자 선택
                   </button>
@@ -1493,14 +1486,14 @@ export function PhoneCheckForm({
                         current ? { ...current, selectedStudentIds: new Set() } : current,
                       )
                     }
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                    className="admin-button admin-button-compact"
                   >
                     선택 해제
                   </button>
                 </div>
               </div>
 
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-[10px] border border-slate-200 p-2">
+              <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
                 {visibleStudents.map((student) => {
                   const checkablePeriodCount = getCheckablePeriodCountForStudent(
                     student.id,
@@ -1526,13 +1519,7 @@ export function PhoneCheckForm({
                   return (
                     <label
                       key={student.id}
-                      className={`flex items-center gap-3 rounded-[10px] border px-3 py-2 transition ${
-                        selected
-                          ? "border-sky-200 bg-sky-50"
-                          : isSelectable
-                            ? "cursor-pointer border-slate-100 bg-white hover:bg-slate-50"
-                            : "cursor-not-allowed border-slate-100 bg-slate-50 opacity-70"
-                      }`}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition ${ selected ? "border-sky-200 bg-sky-50" : isSelectable ? "cursor-pointer border-slate-100 bg-white hover:bg-slate-50" : "cursor-not-allowed border-slate-100 bg-slate-50 opacity-70" }`}
                     >
                       <input
                         type="checkbox"
@@ -1545,18 +1532,13 @@ export function PhoneCheckForm({
                         <span className="block text-sm font-semibold text-slate-900">
                           {student.name}
                         </span>
-                        <span className="block truncate text-xs text-slate-500">
+                        <span className="admin-help block truncate">
                           {student.studentNumber}
                           {student.seatDisplay ? ` · ${student.seatDisplay}` : ""}
                         </span>
                       </span>
                       <span
-                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getBulkRentalRangeBadgeClassName(
-                          checkablePeriodCount,
-                          bulkRentalTargetPeriods.length,
-                          snapshot.attendanceIntegrationEnabled,
-                          rentedPeriodCount,
-                        )}`}
+                        className={`shrink-0 rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getBulkRentalRangeBadgeClassName( checkablePeriodCount, bulkRentalTargetPeriods.length, snapshot.attendanceIntegrationEnabled, rentedPeriodCount, )}`}
                       >
                         {rangeStatusText}
                       </span>
@@ -1566,6 +1548,7 @@ export function PhoneCheckForm({
               </div>
             </div>
 
+            <DialogActions>
             <button
               type="button"
               onClick={applyBulkRental}
@@ -1574,14 +1557,15 @@ export function PhoneCheckForm({
                 bulkRentalSelectedCount === 0 ||
                 bulkRentalSelectedTargetCellCount === 0
               }
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               <Save className="h-4 w-4" />
               {isSavingBulkRental ? "저장 중..." : "일괄 대여 저장"}
             </button>
+            </DialogActions>
           </div>
         ) : null}
-      </Modal>
+      </SlideOver>
     </div>
   );
 }

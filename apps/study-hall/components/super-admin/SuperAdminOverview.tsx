@@ -31,7 +31,7 @@ const LazyAttendanceComparisonChart = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <div className="h-44 animate-pulse rounded-[10px] bg-slate-50" />,
+    loading: () => <div className="h-44 animate-pulse rounded-lg bg-slate-50" />,
   },
 );
 
@@ -42,7 +42,7 @@ const LazyStudentTrendChart = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <div className="h-64 animate-pulse rounded-[10px] bg-slate-50" />,
+    loading: () => <div className="h-64 animate-pulse rounded-lg bg-slate-50" />,
   },
 );
 
@@ -53,7 +53,7 @@ const LazyTuitionCard = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <div className="h-48 animate-pulse rounded-[10px] bg-slate-50" />,
+    loading: () => <div className="h-48 animate-pulse rounded-lg bg-slate-50" />,
   },
 );
 
@@ -72,8 +72,8 @@ function CircularGauge({ rate }: { rate: number }) {
   const radius = 40;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - Math.min(rate, 100) / 100);
-  const color = rate >= 90 ? "#16a34a" : rate >= 70 ? "#d97706" : "#dc2626";
-  const trackColor = rate >= 90 ? "#dcfce7" : rate >= 70 ? "#fef3c7" : "#fee2e2";
+  const color = rate >= 90 ? "var(--admin-success)" : rate >= 70 ? "var(--admin-warning)" : "var(--admin-danger)";
+  const trackColor = rate >= 90 ? "var(--admin-success-soft)" : rate >= 70 ? "var(--admin-warning-soft)" : "var(--admin-danger-soft)";
 
   return (
     <svg viewBox="0 0 100 100" className="h-[100px] w-[100px] -rotate-90">
@@ -110,14 +110,12 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
 
   return (
     <article
-      className={`overflow-hidden rounded-[10px] border bg-white shadow-[0_18px_44px_rgba(15,23,42,0.06)] transition hover:shadow-[0_18px_50px_rgba(15,23,42,0.10)] ${
-        division.isActive ? "border-black/5" : "border-black/5 opacity-50"
-      }`}
+      className={`overflow-hidden rounded-lg border bg-white transition hover: ${ division.isActive ? "border-admin-line" : "border-admin-line opacity-50" }`}
     >
       <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
         <div className="flex items-center gap-3">
           <span
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
             style={{ backgroundColor: division.color }}
           >
             {division.name.slice(0, 1)}
@@ -125,27 +123,27 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-slate-900">{division.name}</span>
-              <span className="text-sm text-slate-400">·</span>
-              <span className="text-sm text-slate-500">{division.fullName}</span>
+              <span className="admin-help">·</span>
+              <span className="admin-help">{division.fullName}</span>
             </div>
-            <span className="text-xs text-slate-400">/{division.slug}</span>
+            <span className="admin-help">/{division.slug}</span>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
           {!division.isActive && (
-            <span className="rounded-[10px] border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-400">
+            <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-400">
               비활성 지점
             </span>
           )}
           {attendanceEnabled && division.uncheckedPeriodCount > 0 && (
-            <span className="rounded-[10px] bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700">
+            <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700">
               미처리 {division.uncheckedPeriodCount}교시
             </span>
           )}
           <Link
             href={`/${division.slug}/admin`}
-            className="flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-85"
+            className="admin-button"
             style={{ backgroundColor: division.color }}
           >
             관리자 입장
@@ -168,8 +166,8 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
                   </span>
                 </div>
               </div>
-              <p className="text-sm font-semibold text-slate-500">오늘 출결률</p>
-              <p className="text-sm text-slate-400">
+              <p className="admin-label">오늘 출결률</p>
+              <p className="admin-help">
                 {division.attendedCount} / {division.expectedCount}명
               </p>
             </>
@@ -178,45 +176,43 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
               <div className="flex h-[100px] w-[100px] items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">
                 비활성화
               </div>
-              <p className="text-sm font-semibold text-slate-500">출결 관리</p>
-              <p className="text-center text-sm text-slate-400">이 지점에서는 사용하지 않습니다.</p>
+              <p className="admin-label">출결 관리</p>
+              <p className="admin-help text-center">이 지점에서는 사용하지 않습니다.</p>
             </>
           )}
         </div>
 
-        <div className="flex flex-1 flex-col divide-y divide-slate-100">
+        <div className="flex flex-1 flex-col">
           <div className="grid grid-cols-2 divide-x divide-slate-100">
             <div className="px-6 py-5">
-              <p className="text-sm font-medium text-slate-400">활성 학생</p>
+              <p className="admin-help">활성 학생</p>
               {studentManagementEnabled ? (
                 <>
                   <p className="mt-2 text-4xl font-extrabold leading-none tabular-nums text-slate-900">
                     {division.activeStudentCount}
                   </p>
-                  <p className="mt-2 text-sm text-slate-400">전체 {division.studentCount}명 기준</p>
+                  <p className="admin-help mt-2">전체 {division.studentCount}명 기준</p>
                 </>
               ) : (
-                <p className="mt-2 text-sm font-semibold text-slate-400">
+                <p className="admin-label mt-2">
                   학생 관리가 비활성화되었습니다.
                 </p>
               )}
             </div>
 
             <div className="px-6 py-5">
-              <p className="text-sm font-medium text-slate-400">경고 위험</p>
+              <p className="admin-help">경고 위험</p>
               {warningManagementEnabled ? (
                 <>
                   <p
-                    className={`mt-2 text-4xl font-extrabold leading-none tabular-nums ${
-                      division.riskStudentCount > 0 ? "text-red-600" : "text-slate-900"
-                    }`}
+                    className={`mt-2 text-4xl font-extrabold leading-none tabular-nums ${ division.riskStudentCount > 0 ? "text-red-600" : "text-slate-900" }`}
                   >
                     {division.riskStudentCount}
                   </p>
-                  <p className="mt-2 text-sm text-slate-400">1차 경고 기준 이상</p>
+                  <p className="admin-help mt-2">1차 경고 기준 이상</p>
                 </>
               ) : (
-                <p className="mt-2 text-sm font-semibold text-slate-400">
+                <p className="admin-label mt-2">
                   경고 관리가 비활성화되었습니다.
                 </p>
               )}
@@ -225,27 +221,25 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
 
           <div className="grid grid-cols-2 divide-x divide-slate-100">
             <div className="px-6 py-5">
-              <p className="text-sm font-medium text-slate-400">만료 임박</p>
+              <p className="admin-help">만료 임박</p>
               {studentManagementEnabled ? (
                 <>
                   <p
-                    className={`mt-2 text-4xl font-extrabold leading-none tabular-nums ${
-                      division.expiringCount > 0 ? "text-orange-600" : "text-slate-900"
-                    }`}
+                    className={`mt-2 text-4xl font-extrabold leading-none tabular-nums ${ division.expiringCount > 0 ? "text-orange-600" : "text-slate-900" }`}
                   >
                     {division.expiringCount}
                   </p>
-                  <p className="mt-2 text-sm text-slate-400">만료 임박 학생</p>
+                  <p className="admin-help mt-2">만료 임박 학생</p>
                 </>
               ) : (
-                <p className="mt-2 text-sm font-semibold text-slate-400">
+                <p className="admin-label mt-2">
                   학생 관리가 비활성화되었습니다.
                 </p>
               )}
             </div>
 
             <div className="flex flex-col justify-between px-6 py-5">
-              <p className="text-sm font-medium text-slate-400">직원 현황</p>
+              <p className="admin-help">직원 현황</p>
               {staffManagementEnabled ? (
                 <>
                   <div className="mt-2 space-y-2">
@@ -270,14 +264,14 @@ function DivisionCard({ division }: { division: DivisionOverviewSummary }) {
                   </div>
                   <Link
                     href={`/${division.slug}/admin/staff`}
-                    className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                    className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
                   >
                     직원 관리
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 </>
               ) : (
-                <p className="mt-2 text-sm font-semibold text-slate-400">
+                <p className="admin-label mt-2">
                   직원 관리가 비활성화되었습니다.
                 </p>
               )}
@@ -344,16 +338,14 @@ function CriticalIssueBanner({ divisions }: { divisions: DivisionOverviewSummary
         <Link
           key={`${issue.divisionName}-${issue.level}-${index}`}
           href={issue.href}
-          className={`flex items-center justify-between gap-3 rounded-[10px] px-5 py-3.5 text-sm font-semibold transition hover:opacity-90 ${
-            issue.level === "critical" ? "bg-red-600 text-white" : "bg-amber-500 text-white"
-          }`}
+          className={`admin-notice flex items-center justify-between gap-3 font-semibold transition ${ issue.level === "critical" ? "admin-notice-danger" : "admin-notice-warning" }`}
         >
           <span className="flex items-center gap-2">
             <Siren className="h-4 w-4 shrink-0" />
-            <span className="opacity-75">[{issue.divisionName}]</span>
+            <span>[{issue.divisionName}]</span>
             {issue.message}
           </span>
-          <span className="flex shrink-0 items-center gap-1 opacity-80">
+          <span className="flex shrink-0 items-center gap-1">
             바로가기
             <ArrowRight className="h-4 w-4" />
           </span>
@@ -386,28 +378,22 @@ function AggCard({
 
   return (
     <div
-      className={`flex items-center gap-4 rounded-[10px] border bg-white px-6 py-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)] ${
-        alert ? "border-red-200 bg-red-50" : "border-black/5"
-      }`}
+      className={`admin-dashboard-metric flex min-w-0 flex-col items-start gap-4 xl:flex-row xl:items-center ${ alert ? "border-red-200 bg-red-50" : "" }`}
     >
       <div
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] ${
-          alert ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-500"
-        }`}
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${ alert ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-500" }`}
       >
         <Icon className="h-6 w-6" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-slate-500">{label}</p>
+        <p className="admin-dashboard-metric-label">{label}</p>
         <p
-          className={`mt-0.5 text-3xl font-extrabold leading-tight tabular-nums ${
-            alert ? "text-red-700" : "text-slate-900"
-          }`}
+          className={`admin-dashboard-metric-value break-words ${ alert ? "text-red-700" : "text-slate-900" }`}
         >
           {value}
-          <span className="ml-1 text-base font-semibold text-slate-400">{unit}</span>
+          <span className="admin-dashboard-metric-unit">{unit}</span>
         </p>
-        <p className="mt-1 truncate text-xs text-slate-400">{sub}</p>
+        <p className="admin-help mt-1 break-words">{sub}</p>
       </div>
     </div>
   );
@@ -501,13 +487,13 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
     : "방금";
 
   return (
-    <div className="space-y-6">
+    <div className="admin-flat-page">
       <CriticalIssueBanner divisions={divisions} />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-extrabold text-slate-950">전체 지점 현황</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <h2 className="admin-section-title">전체 지점 현황</h2>
+          <p className="admin-help mt-1">
             운영 중 {activeCount}개 지점 · 전체 {divisions.length}개 지점
             <span className="mx-2 text-slate-300">|</span>
             마지막 업데이트: {lastUpdatedLabel}
@@ -524,7 +510,7 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
           type="button"
           onClick={() => void refresh(true)}
           disabled={isRefreshing}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          className="admin-button"
         >
           {isRefreshing ? (
             <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -535,7 +521,7 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
         </button>
       </div>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section className="admin-dashboard-metrics">
         <AggCard
           label="전체 학생 수"
           value={totalStudents}
@@ -570,12 +556,9 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
       </section>
 
       {isMounted && paymentManagedDivisionCount > 0 ? (
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-            수납 현황
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-slate-950">수납 현황 집계</h3>
-          <p className="mt-1 text-sm text-slate-500">
+        <section className="admin-section">
+          <h3 className="admin-section-title">수납 현황 집계</h3>
+          <p className="admin-help mt-1">
             수납 관리가 켜진 지점의 이번 달 수납 현황입니다.
           </p>
           <div className="mt-5">
@@ -589,12 +572,9 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
       ) : null}
 
       {isMounted && studentManagedDivisionCount > 0 ? (
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-            학생 추이
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-slate-950">최근 학생 수 추이</h3>
-          <p className="mt-1 text-sm text-slate-500">
+        <section className="admin-section">
+          <h3 className="admin-section-title">최근 학생 수 추이</h3>
+          <p className="admin-help mt-1">
             학생 관리가 켜진 지점의 최근 8주 활성 학생 수입니다.
           </p>
           <div className="mt-4">
@@ -604,7 +584,7 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
       ) : null}
 
       <section>
-        <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+        <p className="mb-3 text-sm font-semibold text-slate-500">
           지점별 상세 현황
         </p>
         <div className="grid gap-5 lg:grid-cols-2">
@@ -614,7 +594,7 @@ export function SuperAdminOverview({ initialDivisions }: SuperAdminOverviewProps
         </div>
 
         {divisions.length === 0 && (
-          <div className="rounded-[10px] border border-dashed border-slate-300 bg-white py-24 text-center text-base text-slate-400">
+          <div className="admin-help py-24 text-center text-base">
             등록된 지점이 없습니다.
           </div>
         )}

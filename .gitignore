@@ -64,3 +64,6 @@ apps/class-pass/20260408_KSCAT_v2.4.0_*/
 **/.local/
 
 .vercel
+
+# 로컬 감사·리뷰 산출물 (스크린샷 등). 저장소에 넣지 않는다.
+.superloopy/

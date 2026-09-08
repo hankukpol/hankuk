@@ -1,5 +1,8 @@
 "use client";
 
+import { DialogActions } from "@/components/ui/DialogActions";
+import { createTabListKeyHandler } from "@/lib/useTabListKeys";
+
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import Link from "next/link";
@@ -15,7 +18,7 @@ import {
 import { toast } from "@/lib/sonner";
 
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { getSeatPositionKey } from "@/lib/seat-layout";
 import type { AttendanceSnapshot } from "@/lib/services/attendance.service";
 import type { PaymentCategoryItem, PaymentItem } from "@/lib/services/payment.service";
@@ -80,14 +83,14 @@ const STATUS_LABEL: Record<AttendanceStatusKey, string> = {
 };
 
 const STATUS_BADGE_CLASS: Record<AttendanceStatusKey, string> = {
-  PRESENT: "border border-slate-200-slate-200 bg-white text-emerald-600 font-medium",
-  TARDY: "border border-slate-200-slate-200 bg-white text-amber-600 font-medium",
-  ABSENT: "border border-slate-200-slate-200 bg-white text-rose-600 font-medium",
-  EXCUSED: "border border-slate-200-slate-200 bg-white text-blue-600 font-medium",
-  HOLIDAY: "border border-slate-200-slate-200 bg-white text-blue-600 font-medium",
-  HALF_HOLIDAY: "border border-slate-200-slate-200 bg-white text-indigo-600 font-medium",
-  NOT_APPLICABLE: "border border-slate-200-slate-200 bg-slate-50 text-slate-500",
-  UNPROCESSED: "border border-slate-200-slate-200 bg-slate-50 text-slate-500",
+  PRESENT: "border border-slate-200 bg-white text-emerald-600 font-medium",
+  TARDY: "border border-slate-200 bg-white text-amber-600 font-medium",
+  ABSENT: "border border-slate-200 bg-white text-rose-600 font-medium",
+  EXCUSED: "border border-slate-200 bg-white text-blue-600 font-medium",
+  HOLIDAY: "border border-slate-200 bg-white text-blue-600 font-medium",
+  HALF_HOLIDAY: "border border-slate-200 bg-white text-indigo-600 font-medium",
+  NOT_APPLICABLE: "border border-slate-200 bg-slate-50 text-slate-500",
+  UNPROCESSED: "border border-slate-200 bg-slate-50 text-slate-500",
 };
 
 const QUICK_ATTENDANCE_STATUSES: AttendanceStatusKey[] = [
@@ -726,7 +729,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="admin-flat-page">
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
@@ -742,9 +745,9 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
         ].map((card) => (
           <div
             key={card.label}
-            className="rounded-[10px] border border-slate-200-black/5 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(18,32,56,0.05)]"
+            className="admin-section"
           >
-            <p className="text-xs font-medium text-slate-500">{card.label}</p>
+            <p className="admin-help">{card.label}</p>
             <p className={`mt-1 text-3xl font-extrabold tracking-tight ${card.color}`}>
               {card.value}
               <span className="ml-1 text-base font-medium">{card.unit}</span>
@@ -754,7 +757,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
       </div>
 
       {/* 자습실 탭 + 배치도 */}
-      <div className="rounded-[10px] border border-slate-200-black/5 bg-white shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <div className="rounded-lg border border-slate-200 bg-white">
         {/* 자습실 탭 */}
         {rooms.length > 1 && (
           <div className="flex gap-1 border-b border-slate-100 px-5 pt-4">
@@ -764,11 +767,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 type="button"
                 onClick={() => handleRoomSelect(room.id)}
                 disabled={loadingRoomId !== null}
-                className={`relative rounded-t-xl px-4 py-2 text-sm font-medium transition ${
-                  selectedRoomId === room.id
-                    ? "bg-[var(--division-color)] text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-700"
-                }`}
+                className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
               >
                 {room.name}
                 {loadingRoomId === room.id && (
@@ -790,7 +789,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="이름 또는 수험번호 검색"
-                className="h-8 rounded-full border border-slate-200-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 placeholder-slate-400 outline-none focus:border-slate-400 focus:bg-white"
+                className="h-8 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 placeholder-slate-400"
               />
             </div>
 
@@ -806,7 +805,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
               ).map(([status, label]) => (
                 <span
                   key={status}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium ${STATUS_BADGE_CLASS[status]}`}
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 font-medium ${STATUS_BADGE_CLASS[status]}`}
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-current" />
                   {label}
@@ -823,7 +822,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
           </div>
 
           {/* 출입구 표시 */}
-          <div className="mb-3 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-500">
+          <div className="admin-help mb-3 text-center">
             칠판
           </div>
 
@@ -842,7 +841,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     return (
                       <div
                         key={`aisle-${positionX}-${positionY}`}
-                        className="flex min-h-[108px] items-center justify-center rounded-[10px] border border-slate-200-dashed border-slate-200 bg-white text-xs font-semibold tracking-widest text-slate-400"
+                        className="admin-help flex min-h-[108px] items-center justify-center text-xs font-semibold"
                       >
                         복도
                       </div>
@@ -855,7 +854,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     return (
                       <div
                         key={`empty-${positionX}-${positionY}`}
-                        className="min-h-[108px] rounded-[10px] border border-slate-200-dashed border-slate-100 bg-slate-50"
+                        className="admin-help min-h-[108px]"
                       />
                     );
                   }
@@ -926,30 +925,24 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                         setDraggingFromSeatId(null);
                         suppressSeatClick();
                       }}
-                      className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-[10px] border p-3 text-left transition hover:opacity-80 ${tone} ${
-                        isSelected ? "ring-2 ring-slate-900 ring-offset-1" : ""
-                      } ${isDragging ? "cursor-grabbing opacity-40" : canDrag ? "cursor-grab" : ""} ${
-                        isDropTarget
-                          ? "border-slate-200 bg-white ring-2 ring-blue-400 ring-offset-1"
-                          : ""
-                      } ${isDimmed ? "opacity-25" : ""}`}
+                      className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${isDragging ? "cursor-grabbing opacity-40" : canDrag ? "cursor-grab" : ""} ${ isDropTarget ? "border-slate-200 bg-white ring-2 ring-blue-400 ring-offset-1" : "" } ${isDimmed ? "opacity-25" : ""}`}
                       style={assignedSeatStyle}
                     >
                       {/* 이동 중 로딩 오버레이 */}
                       {isMoving && (
-                        <div className="absolute inset-0 flex items-center justify-center rounded-[10px] bg-slate-900/40 backdrop-blur-sm">
+                        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-slate-900/40">
                           <LoaderCircle className="h-5 w-5 animate-spin text-white" />
                         </div>
                       )}
 
                       {/* 상단: 좌석번호 + 상태 */}
                       <div className="flex items-start justify-between gap-1">
-                        <span className="text-xs font-semibold tracking-widest">
+                        <span className="text-xs font-semibold">
                           {seat.isActive ? seat.label : ""}
                         </span>
                         {student && dayStatus && (
                           <span
-                            className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE_CLASS[dayStatus]}`}
+                            className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE_CLASS[dayStatus]}`}
                           >
                             {STATUS_LABEL[dayStatus]}
                           </span>
@@ -965,7 +958,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                         {student ? (
                           <>
                             <p className="text-xs opacity-70">{student.studentNumber}</p>
-                            <p className="text-[10px] font-medium opacity-80">
+                            <p className="text-[13px] font-medium opacity-80">
                               {getStudyTrackShortLabel(student.studyTrack)}
                             </p>
                           </>
@@ -996,17 +989,17 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
         onCancel={() => setPendingMove(null)}
       />
 
-      <Modal
+      <SlideOver
         open={assignSeat !== null}
         title="공석 좌석 배정"
         badge="좌석 배정"
         description={`좌석 ${assignSeat?.label ?? ""}에 현재 수강 명단의 학생을 배정합니다.`}
         onClose={closePanel}
-        widthClassName="max-w-2xl"
+
       >
         {assignSeat && (
           <div className="space-y-4">
-            <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <div className="admin-notice">
               검색 후 학생을 선택하면 바로 배정됩니다. 이미 다른 좌석이 있는 학생을 선택하면 현재 좌석에서 이 좌석으로 이동합니다.
             </div>
 
@@ -1017,12 +1010,12 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 value={assignSearchQuery}
                 onChange={(event) => setAssignSearchQuery(event.target.value)}
                 placeholder="이름, 수험번호, 현재 좌석으로 검색"
-                className="w-full rounded-[10px] border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 transition"
               />
             </div>
 
             {filteredAssignableStudents.length === 0 ? (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+              <div className="admin-help px-4 py-10 text-center">
                 배정 가능한 학생을 찾지 못했습니다.
               </div>
             ) : (
@@ -1033,23 +1026,23 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     type="button"
                     disabled={assigningStudentId !== null}
                     onClick={() => void handleAssignStudentToSeat(student)}
-                    className="flex w-full items-center justify-between rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-left transition hover:bg-slate-50 disabled:opacity-60"
+                    className="admin-button w-full"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold text-slate-900">{student.name}</p>
                         <span
-                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getStudyTrackBadgeClasses(student.studyTrack)}`}
+                          className={`rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getStudyTrackBadgeClasses(student.studyTrack)}`}
                         >
                           {getStudyTrackShortLabel(student.studyTrack)}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-500">{student.studentNumber}</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="admin-help mt-1">{student.studentNumber}</p>
+                      <p className="admin-help mt-1">
                         {student.seatDisplay ? `현재 좌석 ${student.seatDisplay}` : "현재 좌석 미배정"}
                       </p>
                     </div>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">
+                    <span className="inline-flex items-center gap-2 rounded-lg bg-admin-accent px-3 py-1.5 text-xs font-medium text-white">
                       {assigningStudentId === student.id ? (
                         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
                       ) : (
@@ -1063,10 +1056,10 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
             )}
           </div>
         )}
-      </Modal>
+      </SlideOver>
 
       {/* 좌석 클릭 시 모달 */}
-      <Modal
+      <SlideOver
         open={panelInfo !== null}
         title={panelInfo?.seat.assignedStudent?.name ?? ""}
         badge="학생 현황"
@@ -1076,7 +1069,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
         {panelInfo?.seat.assignedStudent && (
           <div className="space-y-4">
             {/* 탭 버튼 */}
-            <div className="flex gap-1 rounded-[10px] bg-slate-100 p-1.5">
+            <div className="admin-subtabs" role="tablist" aria-label="좌석 학생 정보">
               {(
                 [
                   { key: "info", label: "기본 정보" },
@@ -1095,12 +1088,18 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 <button
                   key={key}
                   type="button"
+                  role="tab"
+                  id={`seat-student-${key}`}
+                  aria-controls={`seat-student-panel-${key}`}
+                  aria-selected={panelTab === key}
+                  tabIndex={panelTab === key ? 0 : -1}
                   onClick={() => setPanelTab(key)}
-                  className={`flex-1 rounded-[10px] py-3 text-sm font-semibold transition ${
-                    panelTab === key
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
+                  onKeyDown={createTabListKeyHandler<PanelTab>(
+                    ["info", ...(attendanceEnabled ? ["attendance" as const] : []), ...(paymentEnabled ? ["payment" as const] : []), ...(pointsEnabled ? ["points" as const] : [])],
+                    panelTab,
+                    setPanelTab,
+                  )}
+                  className="admin-subtab"
                 >
                   {label}
                 </button>
@@ -1109,18 +1108,18 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
             {/* ── 기본 정보 탭 ── */}
             {panelTab === "info" && (
-              <div className="space-y-4">
+              <div className="space-y-4" role="tabpanel" id="seat-student-panel-info" aria-labelledby="seat-student-info">
                 {/* 학생 기본 정보 */}
-                <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+                <div className="admin-section">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs text-slate-500">수험번호</p>
+                      <p className="admin-help">수험번호</p>
                       <p className="mt-0.5 font-semibold text-slate-800">
                         {panelInfo.seat.assignedStudent.studentNumber}
                       </p>
                     </div>
                     <span
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStudyTrackBadgeClasses(panelInfo.seat.assignedStudent.studyTrack)}`}
+                      className={`rounded-lg border px-3 py-1 text-xs font-semibold ${getStudyTrackBadgeClasses(panelInfo.seat.assignedStudent.studyTrack)}`}
                     >
                       {getStudyTrackShortLabel(panelInfo.seat.assignedStudent.studyTrack)}
                     </span>
@@ -1128,9 +1127,9 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
                   {panelInfo.dayStatus && (
                     <div className="mt-3 flex items-center gap-2">
-                      <span className="text-xs text-slate-500">오늘 종합</span>
+                      <span className="admin-help">오늘 종합</span>
                       <span
-                        className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[panelInfo.dayStatus]}`}
+                        className={`rounded-lg border px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[panelInfo.dayStatus]}`}
                       >
                         {STATUS_LABEL[panelInfo.dayStatus]}
                       </span>
@@ -1141,18 +1140,18 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 {/* 교시별 출석 요약 */}
                 {localPeriodRecords.length > 0 && (
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                    <p className="admin-label mb-2">
                       오늘 교시별
                     </p>
                     <div className="space-y-1.5">
                       {localPeriodRecords.map((rec) => (
                         <div
                           key={rec.periodId}
-                          className="flex items-center justify-between rounded-[10px] border border-slate-200-slate-100 bg-white px-3 py-2"
+                          className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-3 py-2"
                         >
-                          <span className="text-sm text-slate-600">{rec.periodName}</span>
+                          <span className="admin-help">{rec.periodName}</span>
                           <span
-                            className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[rec.status]}`}
+                            className={`rounded-lg border px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[rec.status]}`}
                           >
                             {STATUS_LABEL[rec.status]}
                           </span>
@@ -1165,7 +1164,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 {/* 자습실 간 이동 */}
                 {rooms.length > 1 && (
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                    <p className="admin-label mb-2">
                       다른 자습실로 이동
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -1178,11 +1177,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                             onClick={() =>
                               setTargetRoomId(targetRoomId === room.id ? null : room.id)
                             }
-                            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                              targetRoomId === room.id
-                                ? "border-slate-800 bg-slate-800 text-white"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
-                            }`}
+                            className={`rounded-lg border px-3 py-1 text-xs font-medium transition ${ targetRoomId === room.id ? "border-slate-800 bg-slate-800 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400" }`}
                           >
                             {room.name}
                           </button>
@@ -1201,7 +1196,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                             {targetLayout &&
                             targetLayout.seats.filter((s) => s.isActive && !s.assignedStudent)
                               .length === 0 ? (
-                              <p className="text-xs text-slate-400">빈 좌석이 없습니다.</p>
+                              <p className="admin-help">빈 좌석이 없습니다.</p>
                             ) : (
                               <div className="flex flex-wrap gap-2">
                                 {targetLayout?.seats
@@ -1212,7 +1207,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                                       type="button"
                                       disabled={isMovingToRoom}
                                       onClick={() => void handleMoveToRoom(s.id)}
-                                      className="flex items-center gap-1 rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-slate-50 disabled:opacity-50"
+                                      className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-slate-50 disabled:opacity-50"
                                     >
                                       {isMovingToRoom ? (
                                         <LoaderCircle className="h-3 w-3 animate-spin" />
@@ -1237,7 +1232,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     <Link
                     href={`/${divisionSlug}/admin/students/${panelInfo.seat.assignedStudent.id}`}
                     onClick={closePanel}
-                    className="flex w-full items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="admin-button w-full"
                   >
                     <span className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-slate-400" />
@@ -1251,7 +1246,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     <Link
                     href={`/${divisionSlug}/admin/attendance`}
                     onClick={closePanel}
-                    className="flex w-full items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="admin-button w-full"
                   >
                     <span className="flex items-center gap-2">
                       <BookOpenCheck className="h-4 w-4 text-slate-400" />
@@ -1266,19 +1261,19 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
             {/* ── 출결 탭 ── */}
             {attendanceEnabled && panelTab === "attendance" && (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500">
+              <div className="space-y-3" role="tabpanel" id="seat-student-panel-attendance" aria-labelledby="seat-student-attendance">
+                <p className="admin-help">
                   교시를 선택해 출결 상태를 변경합니다. 저장은 즉시 반영됩니다.
                 </p>
                 {localPeriodRecords.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-slate-400">교시가 없습니다.</p>
+                  <p className="admin-help py-4 text-center">교시가 없습니다.</p>
                 ) : (
                   localPeriodRecords.map((rec) => (
-                    <div key={rec.periodId} className="rounded-[10px] border border-slate-200-slate-100 bg-white p-3">
+                    <div key={rec.periodId} className="rounded-lg border border-slate-100 bg-white p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-slate-700">{rec.periodName}</span>
                         <span
-                          className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[rec.status]}`}
+                          className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[rec.status]}`}
                         >
                           {STATUS_LABEL[rec.status]}
                         </span>
@@ -1290,11 +1285,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                             type="button"
                             disabled={savingPeriodId !== null}
                             onClick={() => void handleAttendanceSave(rec.periodId, s)}
-                            className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
-                              rec.status === s
-                                ? STATUS_BADGE_CLASS[s]
-                                : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
-                            }`}
+                            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${ rec.status === s ? STATUS_BADGE_CLASS[s] : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100" }`}
                           >
                             {savingPeriodId === rec.periodId && (
                               <LoaderCircle className="h-3 w-3 animate-spin" />
@@ -1311,10 +1302,10 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
             {/* ── 수납 탭 ── */}
             {panelTab === "payment" && (
-              <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+              <div className="grid gap-4" role="tabpanel" id="seat-student-panel-payment" aria-labelledby="seat-student-payment">
                 {/* 기존 수납 내역 */}
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+                  <p className="admin-label mb-2">
                     수납 내역
                   </p>
                   {isLoadingPayments ? (
@@ -1329,13 +1320,13 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                       {fetchedPayments.map((p) => (
                         <div
                           key={p.id}
-                          className="rounded-[10px] border border-slate-200-slate-100 bg-white px-3 py-2.5"
+                          className="rounded-lg border border-slate-100 bg-white px-3 py-2.5"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-semibold text-slate-800">
                               {new Intl.NumberFormat("ko-KR").format(p.amount)}원
                             </span>
-                            <span className="text-xs text-slate-500">{p.paymentDate ? new Date(p.paymentDate).toLocaleDateString("ko-KR") : "-"}</span>
+                            <span className="admin-help">{p.paymentDate ? new Date(p.paymentDate).toLocaleDateString("ko-KR") : "-"}</span>
                           </div>
                           <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
                             <span>{p.paymentTypeName}</span>
@@ -1350,14 +1341,14 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
                 {/* 수납 등록 폼 */}
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                  <p className="admin-label">
                     수납 등록
                   </p>
 
                   {/* 등록 플랜 카드 */}
                   {tuitionPlans.length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-xs font-medium text-slate-600">등록 플랜 선택</p>
+                      <p className="admin-help mb-1.5">등록 플랜 선택</p>
                       <div className="grid grid-cols-2 gap-2">
                         {tuitionPlans.map((plan) => (
                           <button
@@ -1368,11 +1359,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                               setPaymentAmount(String(plan.amount));
                               setPaymentNotes(plan.name);
                             }}
-                            className={`rounded-[10px] border p-3 text-left transition ${
-                              selectedPlanId === plan.id
-                                ? "border-slate-800 bg-slate-800 text-white"
-                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-                            }`}
+                            className={`rounded-lg border p-3 text-left transition ${ selectedPlanId === plan.id ? "border-slate-800 bg-slate-800 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-400" }`}
                           >
                             <p className="text-sm font-semibold">{plan.name}</p>
                             <p className={`mt-0.5 text-xs ${selectedPlanId === plan.id ? "text-white/70" : "text-slate-500"}`}>
@@ -1391,14 +1378,14 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                   )}
 
                   <div className="space-y-2">
-                    <label className="block text-xs font-medium text-slate-600">
+                    <label className="admin-help block">
                       수납 유형 <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={paymentTypeId}
                       onChange={(e) => setPaymentTypeId(e.target.value)}
                       disabled={isLoadingPaymentMeta}
-                      className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                      className="w-full"
                     >
                       <option value="">유형 선택</option>
                       {paymentCategories.map((c) => (
@@ -1411,16 +1398,16 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="block text-xs font-medium text-slate-600">납부일</label>
+                      <label className="admin-help block">납부일</label>
                       <input
                         type="date"
                         value={paymentDate}
                         onChange={(e) => setPaymentDate(e.target.value)}
-                        className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                        className="w-full"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="block text-xs font-medium text-slate-600">
+                      <label className="admin-help block">
                         납부 금액 <span className="text-rose-500">*</span>
                       </label>
                       <input
@@ -1428,38 +1415,39 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                         value={paymentAmount}
                         onChange={(e) => setPaymentAmount(e.target.value)}
                         placeholder="0"
-                        className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                        className="w-full"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-medium text-slate-600">납부 방식</label>
+                    <label className="admin-help block">납부 방식</label>
                     <PaymentMethodSelect
                       value={paymentMethod}
                       onChange={setPaymentMethod}
                       required
-                      selectClassName="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
-                      inputClassName="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                      selectClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      inputClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-xs font-medium text-slate-600">메모</label>
+                    <label className="admin-help block">메모</label>
                     <input
                       type="text"
                       value={paymentNotes}
                       onChange={(e) => setPaymentNotes(e.target.value)}
                       placeholder="선택 사항"
-                      className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                      className="w-full"
                     />
                   </div>
 
-                  <button
+                  <DialogActions>
+<button
                     type="button"
                     disabled={!paymentTypeId || !paymentAmount || isSavingPayment || isLoadingPaymentMeta}
                     onClick={() => void handlePaymentSave()}
-                    className="flex w-full items-center justify-center gap-2 rounded-[10px] bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+                    className="admin-button admin-button-primary"
                   >
                     {isSavingPayment ? (
                       <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -1468,15 +1456,16 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     )}
                     수납 등록
                   </button>
+</DialogActions>
                 </div>
               </div>
             )}
 
             {/* ── 상벌점 탭 ── */}
             {panelTab === "points" && (
-              <div className="space-y-3">
+              <div className="space-y-3" role="tabpanel" id="seat-student-panel-points" aria-labelledby="seat-student-points">
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-slate-600">규칙 선택</label>
+                  <label className="admin-help block">규칙 선택</label>
                   <select
                     value={pointRuleId}
                     onChange={(e) => {
@@ -1484,7 +1473,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                       setPointsValue("");
                     }}
                     disabled={isLoadingPointRules}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-slate-400"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
                   >
                     <option value="">직접 점수 입력</option>
                     {pointRules.map((rule) => (
@@ -1496,24 +1485,20 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                 </div>
 
                 {pointRuleId && selectedRule ? (
-                  <div className="rounded-[10px] border border-slate-200-slate-200 bg-slate-50 p-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        selectedRule.points > 0
-                          ? "bg-white border border-slate-200-slate-200 text-emerald-700"
-                          : "bg-white border border-slate-200-slate-200 text-rose-700"
-                      }`}>
+                      <span className={`rounded-lg px-2.5 py-0.5 text-xs font-semibold ${ selectedRule.points > 0 ? "bg-white border border-slate-200 text-emerald-700" : "bg-white border border-slate-200 text-rose-700" }`}>
                         {selectedRule.points > 0 ? "+" : ""}{selectedRule.points}점
                       </span>
                       <span className="text-sm font-medium text-slate-800">{selectedRule.name}</span>
                     </div>
                     {selectedRule.description && (
-                      <p className="mt-1.5 text-xs text-slate-500">{selectedRule.description}</p>
+                      <p className="admin-help mt-1.5">{selectedRule.description}</p>
                     )}
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    <label className="block text-xs font-medium text-slate-600">
+                    <label className="admin-help block">
                       직접 점수 입력 <span className="text-rose-500">*</span>
                     </label>
                     <input
@@ -1521,27 +1506,28 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                       value={pointsValue}
                       onChange={(e) => setPointsValue(e.target.value)}
                       placeholder="예: +3 또는 -2"
-                      className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                      className="w-full"
                     />
                   </div>
                 )}
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-slate-600">사유 메모</label>
+                  <label className="admin-help block">사유 메모</label>
                   <input
                     type="text"
                     value={pointsNotes}
                     onChange={(e) => setPointsNotes(e.target.value)}
                     placeholder="사유 입력 (선택)"
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                    className="w-full"
                   />
                 </div>
 
-                <button
+                <DialogActions>
+<button
                   type="button"
                   disabled={(!pointRuleId && !pointsValue) || isSavingPoints || isLoadingPointRules}
                   onClick={() => void handlePointsSave()}
-                  className="flex w-full items-center justify-center gap-2 rounded-[10px] bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+                  className="admin-button admin-button-primary"
                 >
                   {isSavingPoints ? (
                     <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -1550,11 +1536,12 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                   )}
                   상벌점 부여
                 </button>
+</DialogActions>
               </div>
             )}
           </div>
         )}
-      </Modal>
+      </SlideOver>
     </div>
   );
 });

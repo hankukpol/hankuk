@@ -1,4 +1,7 @@
+import { getManagementPolicy, getPolicyPointTotals, getPolicyHolidayUsage } from "@/lib/services/management-policy.service";
+import { kstMonthBounds } from "@/lib/management-policy";
 import { randomUUID } from "node:crypto";
+import { indexFirstBy } from "@/lib/record-index";
 
 import { cache } from "react";
 
@@ -53,6 +56,11 @@ export type StudentListItem = DivisionStudent & {
   withdrawnNote: string | null;
   memo: string | null;
   netPoints: number;
+  meritPoints?: number;
+  unusedHolidayCount?: number;
+  demeritPoints?: number;
+  warningStageLabel?: string;
+  warningStageLabels?: Record<string, string>;
   warningStage: WarningStageValue;
 };
 
@@ -721,6 +729,9 @@ async function getMockStudentsWithMetrics(
   const students = state.studentsByDivision[divisionSlug] ?? [];
   const seats = state.seatsByDivision[divisionSlug] ?? [];
   const rooms = state.studyRoomsByDivision[divisionSlug] ?? [];
+  const seatsById = indexFirstBy(seats, (seat) => seat.id);
+  const seatsByLabel = indexFirstBy(seats, (seat) => seat.label);
+  const roomsById = indexFirstBy(rooms, (room) => room.id);
   const pointTotals = new Map<string, number>();
   const planById = new Map((state.tuitionPlansByDivision[divisionSlug] ?? []).map((plan) => [plan.id, plan.name]));
   const pointRange = resolvePointMetricRange(options);
@@ -737,10 +748,10 @@ async function getMockStudentsWithMetrics(
     students.map((student) => {
       const netPoints = toNetPoints(pointTotals.get(student.id) ?? 0);
       const seat =
-        (student.seatId ? seats.find((item) => item.id === student.seatId) : null) ??
-        (student.seatLabel ? seats.find((item) => item.label === student.seatLabel) : null) ??
+        (student.seatId ? seatsById.get(student.seatId) : null) ??
+        (student.seatLabel ? seatsByLabel.get(student.seatLabel) : null) ??
         null;
-      const room = seat ? rooms.find((item) => item.id === seat.studyRoomId) ?? null : null;
+      const room = seat ? roomsById.get(seat.studyRoomId) ?? null : null;
 
       return serializeMockStudent(
         student,
@@ -868,13 +879,8 @@ async function getDbStudentsWithMetrics(
     pointAggregatesPromise,
   ]);
 
-  const pointRecords = pointAggregates.map((a) => ({
-    studentId: a.studentId,
-    points: a._sum.points ?? 0,
-  }));
-
   const pointTotals = new Map<string, number>(
-    pointRecords.map((r) => [r.studentId, r.points]),
+    pointAggregates.map((record) => [record.studentId, record._sum.points ?? 0]),
   );
 
   return sortBySeatAndName(
@@ -1085,9 +1091,10 @@ export const listStudents = cache(async function listStudents(
   divisionSlug: string,
   options?: StudentPointMetricOptions,
 ): Promise<StudentListItem[]> {
-  return isMockMode()
+  const students = await (isMockMode()
     ? getMockStudentsWithMetrics(divisionSlug, options)
-    : getDbStudentsWithMetrics(divisionSlug, options);
+    : getDbStudentsWithMetrics(divisionSlug, options));
+  return applyPolicyPointMetrics(divisionSlug, students, options);
 });
 
 export async function getDivisionStudents(divisionSlug: string): Promise<DivisionStudent[]> {
@@ -1118,7 +1125,7 @@ export async function getDivisionStudents(divisionSlug: string): Promise<Divisio
     }));
 }
 
-export async function getStudentDetail(divisionSlug: string, studentId: string) {
+async function getStudentDetailLegacy(divisionSlug: string, studentId: string) {
   if (isMockMode()) {
     const students = await listStudents(divisionSlug);
     const student = students.find((item) => item.id === studentId);
@@ -2003,4 +2010,29 @@ export async function getDefaultMockStudentSession(divisionSlug = "police") {
   }
 
   return toStudentSession(student, divisionSlug);
+}
+
+async function applyPolicyPointMetrics(divisionSlug: string, students: StudentListItem[], options?: StudentPointMetricOptions): Promise<StudentListItem[]> {
+  const month = kstMonthBounds();
+  const totals = await getPolicyPointTotals(divisionSlug, {
+    dateFrom: options?.pointDateFrom ?? month.dateFrom,
+    dateTo: options?.pointDateTo ?? month.dateTo,
+  });
+  if (!totals) return students;
+  // Warnings always use the current management month, even when viewing old rewards.
+  const warningTotals = options?.pointDateFrom || options?.pointDateTo
+    ? await getPolicyPointTotals(divisionSlug) : totals;
+  const [settings, policy] = await Promise.all([getDivisionSettings(divisionSlug), getManagementPolicy(divisionSlug)]);
+  const holidayUsage = await getPolicyHolidayUsage(divisionSlug, options?.pointDateFrom ?? month.dateFrom, options?.pointDateTo ?? month.dateTo);
+  return students.map((student) => {
+    const t = totals.get(student.id) ?? { merit: 0, demerit: 0 };
+    const warningStage = getWarningStage(warningTotals?.get(student.id)?.demerit ?? 0, settings);
+    return { ...student, netPoints: t.merit, meritPoints: t.merit, demeritPoints: t.demerit, unusedHolidayCount: Math.max(0, settings.holidayLimit - (holidayUsage.get(student.id) ?? 0)),
+      warningStage, warningStageLabel: policy?.warningLabels[warningStage], warningStageLabels: policy?.warningLabels };
+  });
+}
+
+export async function getStudentDetail(divisionSlug: string, studentId: string): Promise<StudentDetail> {
+  const student = await getStudentDetailLegacy(divisionSlug, studentId);
+  return (await applyPolicyPointMetrics(divisionSlug, [student]))[0];
 }

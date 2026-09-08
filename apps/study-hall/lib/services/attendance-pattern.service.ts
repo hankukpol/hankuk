@@ -77,7 +77,8 @@ async function getPatternCounts(
   const { prisma } = await import("@/lib/prisma");
   const start = new Date(`${dateFrom}T00:00:00.000Z`);
   const end = new Date(`${addDays(dateTo, 1)}T00:00:00.000Z`);
-  const rows = await prisma.attendance.findMany({
+  const rows = await prisma.attendance.groupBy({
+    by: ["studentId"],
     where: {
       periodId: {
         in: mandatoryPeriods,
@@ -93,15 +94,13 @@ async function getPatternCounts(
         },
       },
     },
-    select: {
-      studentId: true,
-    },
+    _count: { _all: true },
   });
 
   const counts = new Map<string, number>();
 
   for (const row of rows) {
-    counts.set(row.studentId, (counts.get(row.studentId) ?? 0) + 1);
+    counts.set(row.studentId, row._count._all);
   }
 
   return counts;

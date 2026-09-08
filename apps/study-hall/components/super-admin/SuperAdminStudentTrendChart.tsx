@@ -72,7 +72,7 @@ export function SuperAdminStudentTrendChart() {
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-[10px] bg-slate-50">
+      <div className="flex h-64 items-center justify-center rounded-lg bg-slate-50">
         <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" />
       </div>
     );
@@ -86,26 +86,26 @@ export function SuperAdminStudentTrendChart() {
     <div className="h-64">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ left: 0, right: 16, top: 8, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--admin-line-soft)" />
           <XAxis
             dataKey="weekLabel"
-            tick={{ fontSize: 12, fill: "#94a3b8" }}
+            tick={{ fontSize: "var(--admin-type-caption)", fill: "var(--admin-text-muted)" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             allowDecimals={false}
-            tick={{ fontSize: 12, fill: "#94a3b8" }}
+            tick={{ fontSize: "var(--admin-type-caption)", fill: "var(--admin-text-muted)" }}
             axisLine={false}
             tickLine={false}
             width={40}
           />
           <Tooltip
             contentStyle={{
-              borderRadius: 10,
+              borderRadius: "var(--admin-radius)",
               fontSize: 13,
-              border: "1px solid rgba(0,0,0,0.05)",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              border: "1px solid var(--admin-line)",
+              boxShadow: "var(--admin-dialog-shadow)",
             }}
             formatter={(value, name) => {
               const meta = divisionMetas.find((m) => m.slug === String(name));

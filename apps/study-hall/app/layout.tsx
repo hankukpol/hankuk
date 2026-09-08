@@ -4,20 +4,11 @@ import localFont from "next/font/local";
 import { AppToaster } from "@/components/ui/AppToaster";
 import "./globals.css";
 
+// DESIGN.md 3절 — 폰트는 Pretendard 하나뿐이다. 화면별로 다른 웹폰트를 추가하지 않는다.
 const pretendard = localFont({
   src: "./fonts/PretendardVariable.woff2",
   variable: "--font-pretendard",
   display: "swap",
-  weight: "100 900",
-});
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
   weight: "100 900",
 });
 
@@ -33,9 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body
-        className={`${pretendard.variable} ${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${pretendard.variable} antialiased`}>
         {children}
         <AppToaster />
       </body>

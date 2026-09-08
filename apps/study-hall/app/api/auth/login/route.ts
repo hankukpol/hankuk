@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -27,7 +28,7 @@ function rateLimitResponse(error: unknown) {
   );
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const ip = getRequestIp(request.headers);
 
   try {
@@ -139,3 +140,5 @@ export async function POST(request: NextRequest) {
   clearRateLimit(ip, "admin-login");
   return response;
 }
+
+export const POST = withApiHandler(handlePOST, "로그인 처리 중 문제가 발생했습니다.");

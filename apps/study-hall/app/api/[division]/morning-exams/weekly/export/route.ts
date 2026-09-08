@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api-handler";
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildDelimitedLine, buildExcelFriendlyCsv } from "@/lib/csv";
@@ -6,7 +7,7 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { getMorningExamWeeklySummary } from "@/lib/services/morning-exam.service";
 
-export async function GET(
+async function handleGET(
   request: NextRequest,
   { params }: { params: { division: string } },
 ) {
@@ -69,3 +70,5 @@ export async function GET(
     `morning-exam-weekly_${summary.weekYear}W${summary.weekNumber}.csv`,
   );
 }
+
+export const GET = withApiHandler(handleGET, "주간 성적을 내보내지 못했습니다.");

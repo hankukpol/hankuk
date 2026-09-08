@@ -1,6 +1,10 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { X } from "lucide-react";
+
+import { useDialogFocus } from "@/lib/useDialogFocus";
+import { MODAL_SPRING, OVERLAY_FADE, withReducedMotion } from "@/lib/motion";
 
 type ActionCompleteModalProps = {
   open: boolean;
@@ -13,6 +17,7 @@ type ActionCompleteModalProps = {
   widthClassName?: string;
 };
 
+/** DESIGN.md 5.10 — 짧은 완료 안내용 중앙 모달. */
 export function ActionCompleteModal({
   open,
   onClose,
@@ -21,8 +26,11 @@ export function ActionCompleteModal({
   notice = "변경 내용은 현재 화면에 바로 반영되며, 새로고침 이후에도 유지됩니다.",
   badge = "처리 완료",
   confirmLabel = "확인",
-  widthClassName = "max-w-md",
+  widthClassName = "max-w-[512px]",
 }: ActionCompleteModalProps) {
+  const shouldReduceMotion = useReducedMotion();
+  const panelRef = useDialogFocus<HTMLDivElement>(open, onClose);
+
   return (
     <AnimatePresence>
       {open ? (
@@ -31,52 +39,63 @@ export function ActionCompleteModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-slate-900/38 backdrop-blur-[2px]"
+            transition={withReducedMotion(OVERLAY_FADE, shouldReduceMotion)}
+            className="admin-overlay"
           >
             <button
               type="button"
               aria-label="닫기"
               onClick={onClose}
-              className="h-full w-full cursor-default"
+              tabIndex={-1}
+              className="admin-overlay-dismiss"
             />
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -15 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={withReducedMotion(MODAL_SPRING, shouldReduceMotion)}
+            ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className={`relative z-10 w-full ${widthClassName} overflow-hidden rounded-[18px] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]`}
+            className={`admin-dialog relative z-10 w-full ${widthClassName}`}
           >
-            <div className="border-b border-slate-100 px-6 py-4">
-              <p className="text-sm font-semibold text-slate-500">{badge}</p>
-              <h2 className="mt-2 text-[28px] font-bold tracking-tight text-slate-950">
-                {title}
-              </h2>
+            <div className="admin-dialog-header">
+              <div className="min-w-0">
+                <span className="admin-badge mb-2">{badge}</span>
+                <h2 className="admin-dialog-title break-keep">{title}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="admin-dialog-close"
+                aria-label="닫기"
+                title="닫기"
+              >
+                <X />
+              </button>
             </div>
 
-            <div className="px-6 py-6">
+            <div className="admin-dialog-body">
               {description ? (
-                <p className="text-sm leading-7 text-slate-700">{description}</p>
+                <p className="text-[15px] leading-[1.5] text-admin-text break-keep">
+                  {description}
+                </p>
               ) : null}
+              {notice ? <p className="admin-notice mt-4">{notice}</p> : null}
+            </div>
 
-              <div className="mt-5 rounded-[14px] bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-                {notice}
-              </div>
-
-              <div className="mt-8 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="inline-flex items-center rounded-[12px] bg-[var(--division-color)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                >
-                  {confirmLabel}
-                </button>
-              </div>
+            <div className="admin-dialog-footer">
+              <button
+                type="button"
+                onClick={onClose}
+                className="admin-button admin-button-primary"
+              >
+                {confirmLabel}
+              </button>
             </div>
           </motion.div>
         </div>

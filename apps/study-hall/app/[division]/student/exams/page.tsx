@@ -29,7 +29,7 @@ type StudentExamsPageProps = {
 
 const panelFallback = (
   <section className={`${portalSectionClass} animate-pulse`}>
-    <div className="h-28 rounded-[10px] bg-[#F4F4F2]" />
+    <div className="h-28 rounded-lg bg-admin-surface-soft" />
   </section>
 );
 
@@ -119,31 +119,31 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
                 <article key={exam.id} className={portalInsetClass}>
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <p className="text-[12px] font-medium text-[var(--muted)]">
+                      <p className="text-[13px] font-medium text-admin-text-muted">
                         {exam.examTypeName}
                       </p>
-                      <h3 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--foreground)]">
+                      <h3 className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                         {exam.examRound}회차
                       </h3>
-                      <p className="mt-1.5 text-[13px] text-[var(--muted)]">
+                      <p className="mt-1.5 text-[13px] text-admin-text-muted">
                         시험일 {formatDate(exam.examDate)}
                       </p>
                     </div>
 
                     <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:min-w-[260px]">
-                      <div className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-3">
-                        <p className="text-[12px] font-medium text-[var(--muted)]">
+                      <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
+                        <p className="text-[13px] font-medium text-admin-text-muted">
                           총점
                         </p>
-                        <p className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--foreground)]">
+                        <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                           {exam.totalScore ?? "-"}
                         </p>
                       </div>
-                      <div className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-3">
-                        <p className="text-[12px] font-medium text-[var(--muted)]">
+                      <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
+                        <p className="text-[13px] font-medium text-admin-text-muted">
                           반 석차
                         </p>
-                        <p className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--foreground)]">
+                        <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                           {exam.rankInClass ? `${exam.rankInClass}등` : "-"}
                         </p>
                       </div>
@@ -154,20 +154,20 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
                     {exam.subjects.map((subject) => (
                       <div
                         key={`${exam.id}-${subject.subjectId}`}
-                        className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-3"
+                        className="rounded-lg border border-admin-line bg-white px-4 py-3"
                       >
-                        <p className="text-[13px] font-semibold text-[var(--foreground)]">{subject.name}</p>
-                        <p className="mt-1.5 text-[22px] font-bold tracking-tight text-[var(--foreground)]">
+                        <p className="text-[13px] font-semibold text-admin-text">{subject.name}</p>
+                        <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                           {subject.score ?? "-"}
                         </p>
-                        <p className="mt-1.5 text-[12px] text-[var(--muted)]">
+                        <p className="mt-1.5 text-[13px] text-admin-text-muted">
                           {subject.maxScore ? `만점 ${subject.maxScore}` : "만점 정보 없음"}
                         </p>
                       </div>
                     ))}
                   </div>
 
-                  <p className="mt-4 text-[13px] leading-[1.5] text-[var(--muted)]">
+                  <p className="mt-4 text-[13px] leading-[1.5] text-admin-text-muted">
                     {exam.notes || "시험 메모가 없습니다."}
                   </p>
                 </article>

@@ -73,7 +73,7 @@ export default async function StudentAttendancePage({
                 {legendItems.map((item) => (
                   <span
                     key={item.label}
-                    className={`inline-flex rounded-[10px] border px-2 py-1 text-[11px] font-medium ${item.className}`}
+                    className={`inline-flex rounded-lg border px-2 py-1 text-[13px] font-medium ${item.className}`}
                   >
                     {item.label}
                   </span>

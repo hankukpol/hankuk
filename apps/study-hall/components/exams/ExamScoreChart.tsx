@@ -22,9 +22,10 @@ import type { StudentExamResultItem } from "@/lib/services/exam.service";
 
 type ExamScoreChartProps = {
   results: StudentExamResultItem[];
+  variant?: "admin" | "portal";
 };
 
-const COLORS = ["#1d4ed8", "#0f766e", "#c2410c", "#7c3aed", "#be123c", "#0f172a"];
+const COLORS = Array.from({ length: 6 }, (_, index) => `var(--admin-chart-${index + 1})`);
 
 function buildChartLabel(result: StudentExamResultItem) {
   const dateLabel = result.examDate
@@ -38,7 +39,7 @@ function buildChartLabel(result: StudentExamResultItem) {
   return dateLabel ? `${result.examRound}회차 (${dateLabel})` : `${result.examRound}회차`;
 }
 
-export function ExamScoreChart({ results }: ExamScoreChartProps) {
+export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartProps) {
   const examTypeGroups = useMemo(() => {
     const map = new Map<
       string,
@@ -113,7 +114,7 @@ export function ExamScoreChart({ results }: ExamScoreChartProps) {
   }
 
   return (
-    <section className={portalSectionClass}>
+    <section className={variant === "admin" ? "admin-section" : portalSectionClass}>
       <PortalSectionHeader
         title="성적 추이 차트"
         description="시험 종류별로 과목 점수와 총점 변화를 비교할 수 있습니다."
@@ -125,11 +126,7 @@ export function ExamScoreChart({ results }: ExamScoreChartProps) {
             key={group.examTypeId}
             type="button"
             onClick={() => setSelectedExamTypeId(group.examTypeId)}
-            className={`rounded-[10px] border px-3 py-2 text-[13px] font-medium transition ${
-              (selectedGroup?.examTypeId ?? "") === group.examTypeId
-                ? "border-transparent"
-                : "border-[var(--border)] bg-white text-[var(--muted)] hover:text-[var(--foreground)]"
-            }`}
+            className={`rounded-lg border px-3 py-2 text-[13px] font-medium transition ${ (selectedGroup?.examTypeId ?? "") === group.examTypeId ? "border-transparent" : "border-admin-line bg-white text-admin-text-muted hover:text-admin-text" }`}
             style={
               (selectedGroup?.examTypeId ?? "") === group.examTypeId
                 ? {
@@ -148,24 +145,24 @@ export function ExamScoreChart({ results }: ExamScoreChartProps) {
         <div className="h-[320px] md:h-[360px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 12, right: 18, left: -18, bottom: 0 }}>
-              <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+              <CartesianGrid stroke="var(--admin-grid)" strokeDasharray="3 3" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: "#64748b", fontSize: 12 }}
+                tick={{ fill: "var(--admin-text-muted)", fontSize: "var(--admin-type-caption)" }}
                 tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
+                axisLine={{ stroke: "var(--admin-grid)" }}
               />
               <YAxis
-                tick={{ fill: "#64748b", fontSize: 12 }}
+                tick={{ fill: "var(--admin-text-muted)", fontSize: "var(--admin-type-caption)" }}
                 tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
+                axisLine={{ stroke: "var(--admin-grid)" }}
               />
               <YAxis
                 yAxisId="total"
                 orientation="right"
-                tick={{ fill: "#64748b", fontSize: 12 }}
+                tick={{ fill: "var(--admin-text-muted)", fontSize: "var(--admin-type-caption)" }}
                 tickLine={false}
-                axisLine={{ stroke: "#e2e8f0" }}
+                axisLine={{ stroke: "var(--admin-grid)" }}
               />
               <Tooltip />
               <Legend />
@@ -184,7 +181,7 @@ export function ExamScoreChart({ results }: ExamScoreChartProps) {
                 type="monotone"
                 dataKey="totalScore"
                 yAxisId="total"
-                stroke="#111827"
+                stroke="var(--admin-text)"
                 strokeWidth={3}
                 dot={{ r: 4 }}
                 activeDot={{ r: 6 }}

@@ -1,3 +1,4 @@
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
@@ -18,10 +19,7 @@ export async function GET() {
     const admins = await listManagedAdminAccounts();
     return NextResponse.json({ admins }, { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=30" } });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "계정 목록을 불러오지 못했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "계정 목록을 불러오지 못했습니다.", 400);
   }
 }
 
@@ -46,9 +44,6 @@ export async function POST(request: NextRequest) {
     const admin = await createManagedAdminAccount(parsed.data);
     return NextResponse.json({ admin }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "계정 생성에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "계정 생성에 실패했습니다.", 400);
   }
 }

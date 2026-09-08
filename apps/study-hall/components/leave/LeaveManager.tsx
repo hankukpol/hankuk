@@ -1,11 +1,15 @@
 "use client";
 
-import { CalendarClock, LoaderCircle, Plus, RefreshCcw, Save } from "lucide-react";
+import { useId } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
+
+import { LoaderCircle, Plus, RefreshCcw, Save } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import {
@@ -28,7 +32,7 @@ type LeaveManagerProps = {
   settings: {
     holidayLimit: number;
     halfDayLimit: number;
-    healthLimit: number;
+    healthLimit: number | null;
     holidayUnusedPts: number;
     halfDayUnusedPts: number;
   };
@@ -96,6 +100,7 @@ export const LeaveManager = memo(function LeaveManager({
   initialPermissions,
   settings,
 }: LeaveManagerProps) {
+  const dialogFormId = useId();
   const initialMonth = getCurrentMonth();
   const activeStudents = useMemo(
     () => students.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
@@ -103,6 +108,7 @@ export const LeaveManager = memo(function LeaveManager({
   );
   const defaultStudentId = activeStudents[0]?.id ?? "";
   const [permissions, setPermissions] = useState(initialPermissions);
+  const [viewTab, setViewTab] = useState<"history" | "usage" | "settlement">("history");
   const [form, setForm] = useState<FormState>(toFormState(defaultStudentId));
   const [summaryStudentId, setSummaryStudentId] = useState(defaultStudentId);
   const [summaryMonth, setSummaryMonth] = useState(getCurrentMonth());
@@ -436,125 +442,178 @@ export const LeaveManager = memo(function LeaveManager({
 
   return (
     <>
-      <div className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {usageCards.map((card) => (
-            <article key={card.type} className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
-              <p className="text-sm text-slate-500">{card.label}</p>
-              <p className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950">{card.used}회</p>
-              <p className="mt-2 text-xs text-slate-500">
-                {card.limit === null ? "횟수 제한 없음" : `남은 횟수 ${card.remaining}회 / 월 최대 ${card.limit}회`}
-              </p>
-            </article>
-          ))}
-        </section>
+      <div className="admin-flat-page">
+        <AdminTabs
+          items={[
+            { id: "history", label: "외출·휴가 내역" },
+            { id: "usage", label: "학생별 사용 현황" },
+            { id: "settlement", label: "미사용 휴가 정산" },
+          ]}
+          activeId={viewTab}
+          onChange={setViewTab}
+          label="외출·휴가 업무"
+          idPrefix="leave-view"
+        />
+        <div className="admin-workspace-toolbar">
+          <p className="admin-help">운영 학생 <strong className="text-admin-text">{activeStudents.length}명</strong></p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void refreshPermissions(true)} disabled={isRefreshing} className="admin-button">
+              {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}새로고침
+            </button>
+            <button type="button" onClick={() => openCreatePanel()} className="admin-button admin-button-primary">
+              <Plus className="h-4 w-4" />외출/휴가 등록
+            </button>
+          </div>
+        </div>
 
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_18px_44px_rgba(18,32,56,0.06)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <span className="inline-flex rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 text-xs font-semibold tracking-[0.2em] text-slate-500">
-                외출·휴가 데스크
-              </span>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">외출 / 휴가 관리</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                학생별 사용 현황을 먼저 확인하고, 실제 외출·휴가 등록은 우측 패널에서 빠르게 처리합니다.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void refreshPermissions(true)}
-                disabled={isRefreshing}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                새로고침
-              </button>
-
-              <button
-                type="button"
-                onClick={() => openCreatePanel()}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
-              >
-                <Plus className="h-4 w-4" />
-                외출/휴가 등록
-              </button>
-            </div>
+        <AdminTabPanel id="history" activeId={viewTab} idPrefix="leave-view" className="space-y-4">
+          <div className="admin-filter-bar">
+            <label><span className="admin-label mb-2 block">학생</span>
+              <StudentSearchCombobox students={activeStudents} value={historyStudentId} onChange={setHistoryStudentId} allStudentsLabel="전체 학생" />
+            </label>
+            <label><span className="admin-label mb-2 block">조회 월</span>
+              <input type="month" value={historyMonth} onChange={(event) => setHistoryMonth(event.target.value)} className="w-full" />
+            </label>
+          </div>
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">외출·휴가 이력 <span className="text-admin-accent">{historyRows.length}건</span></h2>
+            <p className="admin-help">{historyMonth}</p>
+          </div>
+          <div className="space-y-4 md:hidden">
+            {historyRows.map((permission) => (
+              <article key={permission.id} className="admin-record-card">
+                <div className="admin-workspace-toolbar">
+                  <div><h3 className="admin-section-title">{permission.studentName}</h3><p className="admin-help mt-1">{permission.studentNumber}</p></div>
+                  <span className={`admin-badge ${getLeaveStatusClasses(permission.status)}`}>{getLeaveStatusLabel(permission.status)}</span>
+                </div>
+                <div className="admin-workspace-toolbar mt-4">
+                  <span className="font-semibold">{getLeaveTypeLabel(permission.type)}</span>
+                  <time dateTime={permission.date} className="text-sm tabular-nums">{formatDate(permission.date)}</time>
+                </div>
+                {permission.reason ? <p className="mt-3 whitespace-pre-wrap break-words text-sm">{permission.reason}</p> : null}
+                {canCancelPermission(permission) ? (
+                  <div className="mt-4 flex justify-end border-t border-admin-line-soft pt-4">
+                    <button type="button" onClick={() => void handleCancelPermission(permission)} disabled={cancellingPermissionId === permission.id} className="admin-button">{cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}</button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+            {!historyRows.length ? <div className="admin-empty-state"><p className="font-semibold">조회 조건에 맞는 이력이 없습니다.</p><p className="admin-help mt-2">{historyMonth}</p></div> : null}
+          </div>
+          <div className="admin-table-frame hidden md:block">
+            <table className="min-w-full">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th>학생</th>
+                  <th>유형</th>
+                  <th>날짜</th>
+                  <th>상태</th>
+                  <th>사유</th>
+                  <th className="admin-table-amount">관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyRows.length > 0 ? (
+                  historyRows.map((permission) => (
+                    <tr key={permission.id} className="align-top">
+                      <td className="admin-table-name">
+                        <p className="font-medium text-slate-900">{permission.studentName}</p>
+                        <p className="admin-help mt-1">{permission.studentNumber}</p>
+                      </td>
+                      <td>{getLeaveTypeLabel(permission.type)}</td>
+                      <td>{formatDate(permission.date)}</td>
+                      <td>
+                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-medium ${getLeaveStatusClasses(permission.status)}`}>
+                          {getLeaveStatusLabel(permission.status)}
+                        </span>
+                      </td>
+                      <td className="admin-table-name"><p className="max-w-96 whitespace-pre-wrap break-words">{permission.reason || "-"}</p></td>
+                      <td className="admin-table-amount">
+                        {canCancelPermission(permission) ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleCancelPermission(permission)}
+                            disabled={cancellingPermissionId === permission.id}
+                            className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}
+                          </button>
+                        ) : (
+                          <span className="admin-help">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="admin-help px-3 py-8 text-center">
+                      조건에 맞는 이력이 없습니다.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
-          <div className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-            <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xl font-bold text-slate-950">월별 사용 현황</p>
-                  <p className="mt-1 text-sm text-slate-500">학생별 휴가, 반차, 병가, 외출 사용 횟수를 월 단위로 확인합니다.</p>
+        </AdminTabPanel>
+
+        <AdminTabPanel id="usage" activeId={viewTab} idPrefix="leave-view" className="space-y-4">
+          <div className="admin-filter-bar">
+            <label><span className="admin-label mb-2 block">학생</span>
+              <StudentSearchCombobox students={activeStudents} value={summaryStudentId} onChange={setSummaryStudentId} placeholder="학생을 선택해 주세요." />
+            </label>
+            <label><span className="admin-label mb-2 block">기준 월</span>
+              <input type="month" value={summaryMonth} onChange={(event) => setSummaryMonth(event.target.value)} className="w-full" />
+            </label>
+          </div>
+          <div className="admin-workspace-toolbar">
+            <div>
+              <h2 className="admin-section-title">{selectedSummaryStudent ? `${selectedSummaryStudent.name} 사용 현황` : "학생별 사용 현황"}</h2>
+              <p className="admin-help mt-1">{selectedSummaryStudent?.studentNumber} · {summaryMonth}</p>
+            </div>
+            <button type="button" disabled={!summaryStudentId} onClick={() => { setHistoryStudentId(summaryStudentId); setHistoryMonth(summaryMonth); setViewTab("history"); }} className="admin-button">이 학생 내역 보기</button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {usageCards.map((card) => (
+              <article key={card.type} className="admin-record-card">
+                <h3 className="admin-section-title">{card.label}</h3>
+                <div className="mt-4 flex items-end justify-between gap-3">
+                  <span className="admin-help">사용</span>
+                  <p className="text-2xl font-bold tabular-nums">{card.used}<span className="ml-1 text-xs font-normal">회</span></p>
                 </div>
-              </div>
+                <dl className="mt-4 space-y-2 border-t border-admin-line-soft pt-4 text-sm">
+                  <div className="flex justify-between gap-2"><dt className="text-admin-text-secondary">남은 횟수</dt><dd className={card.remaining === 0 ? "font-semibold text-admin-warning" : "font-semibold text-admin-success"}>{card.remaining === null ? "제한 없음" : `${card.remaining}회`}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-admin-text-secondary">월 한도</dt><dd>{card.limit === null ? "제한 없음" : `${card.limit}회`}</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+          {!selectedSummaryStudent ? <div className="admin-empty-state">선택된 학생이 없습니다.</div> : null}
+        </AdminTabPanel>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px]">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">학생</span>
-                  <StudentSearchCombobox
-                    students={activeStudents}
-                    value={summaryStudentId}
-                    onChange={setSummaryStudentId}
-                    placeholder="학생을 선택해 주세요."
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">기준 월</span>
-                  <input
-                    type="month"
-                    value={summaryMonth}
-                    onChange={(event) => setSummaryMonth(event.target.value)}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm leading-6 text-slate-600">
-                {selectedSummaryStudent
-                  ? `${selectedSummaryStudent.studentNumber} · ${selectedSummaryStudent.name}의 ${summaryMonth} 사용 현황입니다.`
-                  : "학생을 선택하면 월별 사용 현황을 확인할 수 있습니다."}
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {usageCards.map((card) => (
-                  <article key={card.type} className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-                    <p className="text-sm text-slate-500">{card.label}</p>
-                    <p className="mt-3 text-2xl font-bold tracking-tight text-slate-950">{card.used}회</p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      {card.limit === null ? "횟수 제한 없음" : `남은 횟수 ${card.remaining}회`}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+        <AdminTabPanel id="settlement" activeId={viewTab} idPrefix="leave-view" className="space-y-4">
+              <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p className="text-xl font-bold text-slate-950">월말 미사용 휴가 정산</p>
-                  <p className="mt-1 text-sm text-slate-500">이전 월 기준 남은 휴가권을 상점으로 전환합니다.</p>
+                  <h2 className="admin-section-title">월말 미사용 휴가 정산</h2>
+                  <p className="admin-help mt-1">이전 월 기준 남은 휴가권을 상점으로 전환합니다.</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
                   <input
+                    aria-label="정산 대상 월"
                     type="month"
                     value={settlementMonth}
                     onChange={(event) => {
                       setSettlementMonth(event.target.value);
                       setSettlementPreview(null);
                     }}
-                    className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-auto"
                   />
                   <button
                     type="button"
                     onClick={() => void loadSettlementPreview(true)}
                     disabled={isPreviewLoading}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                    className="admin-button"
                   >
                     {isPreviewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
                     미리보기
@@ -563,7 +622,7 @@ export const LeaveManager = memo(function LeaveManager({
                     type="button"
                     onClick={() => void handleSettleMonth()}
                     disabled={isSettling || !settlementPreview || settlementPreview.grantableCount === 0}
-                    className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                    className="admin-button admin-button-primary"
                   >
                     {isSettling ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     상점 지급
@@ -571,145 +630,61 @@ export const LeaveManager = memo(function LeaveManager({
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm leading-6 text-slate-600">
+              <p className="admin-notice mt-4">
                 휴가 미사용 1회당 +{settings.holidayUnusedPts}점, 반차 미사용 1회당 +{settings.halfDayUnusedPts}점을 지급합니다.
-              </div>
+              </p>
 
               {settlementPreview ? (
                 <div className="mt-4 space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-                      <p className="text-sm text-slate-500">지급 대상</p>
-                      <p className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{settlementPreview.grantableCount}명</p>
+                  <div className="admin-metric-strip">
+                    <article className="admin-metric-box">
+                      <p className="admin-metric-box-label">지급 대상</p>
+                      <p className="admin-metric-box-value">{settlementPreview.grantableCount}명</p>
                     </article>
-                    <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-                      <p className="text-sm text-slate-500">총 지급 점수</p>
-                      <p className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{settlementPreview.totalRewardPoints}점</p>
+                    <article className="admin-metric-box">
+                      <p className="admin-metric-box-label">총 지급 점수</p>
+                      <p className="admin-metric-box-value">{settlementPreview.totalRewardPoints}점</p>
                     </article>
-                    <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-                      <p className="text-sm text-slate-500">이미 정산됨</p>
-                      <p className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{settlementPreview.alreadySettledCount}명</p>
+                    <article className="admin-metric-box">
+                      <p className="admin-metric-box-label">이미 정산됨</p>
+                      <p className="admin-metric-box-value">{settlementPreview.alreadySettledCount}명</p>
                     </article>
                   </div>
 
                   {!settlementPreview.isClosedMonth ? (
-                    <div className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm text-amber-800">
+                    <p className="admin-notice admin-notice-warning">
                       진행 중인 월은 아직 정산할 수 없습니다. 지난달 또는 이전 월을 선택해 주세요.
-                    </div>
+                    </p>
                   ) : null}
                 </div>
               ) : (
-                <div className="mt-4 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-8 text-sm text-slate-600">
+                <div className="admin-help mt-4 px-4 py-8">
                   정산 대상 월을 선택하고 미리보기를 조회해 주세요.
                 </div>
               )}
-            </section>
-          </div>
-        </section>
 
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_18px_44px_rgba(18,32,56,0.06)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">이력 조회</p>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">외출 / 휴가 이력</h2>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <StudentSearchCombobox
-                students={activeStudents}
-                value={historyStudentId}
-                onChange={setHistoryStudentId}
-                allStudentsLabel="전체 학생"
-              />
-
-              <input
-                type="month"
-                value={historyMonth}
-                onChange={(event) => setHistoryMonth(event.target.value)}
-                className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
-              />
-            </div>
-          </div>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="px-3 py-3 font-medium">학생</th>
-                  <th className="px-3 py-3 font-medium">유형</th>
-                  <th className="px-3 py-3 font-medium">날짜</th>
-                  <th className="px-3 py-3 font-medium">상태</th>
-                  <th className="px-3 py-3 font-medium">사유</th>
-                  <th className="px-3 py-3 text-right font-medium">관리</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {historyRows.length > 0 ? (
-                  historyRows.map((permission) => (
-                    <tr key={permission.id} className="align-top">
-                      <td className="px-3 py-4">
-                        <p className="font-medium text-slate-900">{permission.studentName}</p>
-                        <p className="mt-1 text-xs text-slate-500">{permission.studentNumber}</p>
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">{getLeaveTypeLabel(permission.type)}</td>
-                      <td className="px-3 py-4 text-slate-700">{formatDate(permission.date)}</td>
-                      <td className="px-3 py-4">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getLeaveStatusClasses(permission.status)}`}>
-                          {getLeaveStatusLabel(permission.status)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-4 text-slate-600">{permission.reason || "-"}</td>
-                      <td className="px-3 py-4 text-right">
-                        {canCancelPermission(permission) ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleCancelPermission(permission)}
-                            disabled={cancellingPermissionId === permission.id}
-                            className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {cancellingPermissionId === permission.id ? "처리 중..." : "승인 취소"}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-400">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500">
-                      조건에 맞는 이력이 없습니다.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        </AdminTabPanel>
       </div>
 
-      <Modal
+      <SlideOver
         open={isEditorOpen}
         onClose={closeEditor}
         badge="빠른 등록"
         title="외출 / 휴가 등록"
         description="학생 선택, 유형, 날짜, 사유를 입력하면 사용 현황과 이력이 즉시 갱신됩니다."
       >
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+        <form id={`${dialogFormId}-1`} onSubmit={handleSubmit} className="space-y-6">
+          <section className="admin-section">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <CalendarClock className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-xl font-bold text-slate-950">사용 등록</p>
-                <p className="text-sm text-slate-500">학생별 외출, 휴가, 반차, 병가를 빠르게 등록합니다.</p>
+                <h2 className="admin-section-title">사용 등록</h2>
+                <p className="admin-help">학생별 외출, 휴가, 반차, 병가를 빠르게 등록합니다.</p>
               </div>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
-                <span className="mb-2 block text-sm font-medium text-slate-700">학생</span>
+                <span className="admin-label mb-2 block">학생</span>
                 <StudentSearchCombobox
                   students={activeStudents}
                   value={form.studentId}
@@ -723,11 +698,11 @@ export const LeaveManager = memo(function LeaveManager({
               </div>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">유형</span>
+                <span className="admin-label mb-2 block">유형</span>
                 <select
                   value={form.type}
                   onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as LeaveTypeValue }))}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 >
                   {LEAVE_TYPE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -738,59 +713,61 @@ export const LeaveManager = memo(function LeaveManager({
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">날짜</span>
+                <span className="admin-label mb-2 block">날짜</span>
                 <input
                   type="date"
                   value={form.date}
                   onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                   required
                 />
               </label>
             </div>
 
             <label className="mt-4 block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">사유</span>
+              <span className="admin-label mb-2 block">사유</span>
               <textarea
                 value={form.reason}
                 onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
-                className="min-h-[140px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="min-h-[140px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                 placeholder="사유를 입력해 주세요."
               />
             </label>
 
-            <div className="mt-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm leading-6 text-slate-600">
-              휴가, 반차, 병가는 월별 사용 한도와 연결되며, 미사용 권한은 월말 정산에서 상점으로 전환할 수 있습니다.
+            <div className="admin-notice mt-4">
+              {settings.healthLimit === null
+                ? `휴일권은 월 ${settings.holidayLimit}회이며 원칙적으로 전일까지 통보합니다. 당일 신청은 불가피한 사유를 기록해 주세요. 병가는 증빙 확인 후 횟수 제한 없이 인정하며 휴일권을 차감하지 않습니다. 외출은 사유에 시간과 대상 교시를 남기고 출석부에서 해당 교시를 처리해 주세요.`
+                : "휴가, 반차, 병가는 월별 사용 한도와 연결되며, 미사용 권한은 월말 정산에서 상점으로 전환할 수 있습니다."}
             </div>
           </section>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 sm:flex sm:items-center sm:justify-between">
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-4 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-900">등록 후 사용 현황과 이력이 즉시 반영됩니다.</p>
-              <p className="mt-1 text-sm text-slate-500">외출은 허가 이력만 남고, 휴가 계열은 출결에도 바로 연결됩니다.</p>
+              <p className="admin-help mt-1">외출은 허가 이력만 남고, 휴가 계열은 출결에도 바로 연결됩니다.</p>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2 sm:mt-0">
+            <DialogActions>
               <button
                 type="button"
                 onClick={closeEditor}
                 disabled={isSaving}
-                className="inline-flex items-center rounded-full border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                className="admin-button"
               >
                 취소
               </button>
-              <button
+              <button form={`${dialogFormId}-1`}
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                className="admin-button admin-button-primary"
               >
                 {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 외출/휴가 등록
               </button>
-            </div>
+            </DialogActions>
           </div>
         </form>
-      </Modal>
+      </SlideOver>
 
       <ActionCompleteModal
         open={saveSuccessModal !== null}

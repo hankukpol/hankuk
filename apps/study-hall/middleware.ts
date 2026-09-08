@@ -28,8 +28,10 @@ export async function middleware(request: NextRequest) {
   const subsection = segments[2];
   const adminToken = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
   const studentToken = request.cookies.get(STUDENT_SESSION_COOKIE)?.value;
-  const adminSession = adminToken ? await verifyAdminSessionToken(adminToken) : null;
-  const studentSession = studentToken ? await verifyStudentSessionToken(studentToken) : null;
+  const needsAdminSession = isSuperAdminPath || section === "admin" || section === "assistant";
+  const needsStudentSession = section === "student" && subsection !== "login";
+  const adminSession = needsAdminSession && adminToken ? await verifyAdminSessionToken(adminToken) : null;
+  const studentSession = needsStudentSession && studentToken ? await verifyStudentSessionToken(studentToken) : null;
   const adminRole = adminSession?.role ?? null;
   const adminDivision = adminSession?.divisionSlug ?? null;
 

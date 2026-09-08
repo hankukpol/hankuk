@@ -93,17 +93,17 @@ export function StudentAnnouncementBoard({
     <div className="grid gap-3">
       <section className={portalSectionClass}>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h3 className="text-[17px] font-bold text-[var(--foreground)]">
+          <h3 className="text-[16px] font-bold text-admin-text">
             공지 목록
           </h3>
 
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[300px]">
             <label className="relative">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" />
               <input
                 value={searchKeyword}
                 onChange={(event) => setSearchKeyword(event.target.value)}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-white py-2.5 pl-10 pr-3.5 text-sm outline-none transition focus:border-[var(--division-color)]"
+                className="w-full rounded-lg border border-admin-line bg-white py-2.5 pl-10 pr-3.5 text-sm transition focus:border-[var(--division-color)]"
                 placeholder="제목 또는 내용 검색"
               />
             </label>
@@ -112,7 +112,7 @@ export function StudentAnnouncementBoard({
               <select
                 value={visibilityFilter}
                 onChange={(event) => setVisibilityFilter(event.target.value as VisibilityFilter)}
-                className="rounded-[10px] border border-[var(--border)] bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-[var(--division-color)]"
+                className="rounded-lg border border-admin-line bg-white px-3.5 py-2.5 text-sm transition focus:border-[var(--division-color)]"
               >
                 <option value="ALL">전체 공지</option>
                 <option value="PINNED">중요 공지만</option>
@@ -122,17 +122,17 @@ export function StudentAnnouncementBoard({
         </div>
 
         {visibleAnnouncements.length > 0 ? (
-          <div className="mt-3 overflow-x-auto rounded-[10px] border border-[var(--border)]">
-            <table className="min-w-[720px] w-full text-sm">
-              <thead className="bg-[#F4F4F2] text-left text-[var(--muted)]">
+          <div className="admin-table-frame mt-3 overflow-x-auto">
+            <table className="min-w-[720px] w-full">
+              <thead>
                 <tr>
-                  <th className="w-[72px] px-4 py-3 font-medium">번호</th>
-                  <th className="px-4 py-3 font-medium">제목</th>
-                  <th className="w-[140px] px-4 py-3 font-medium">구분</th>
-                  <th className="w-[170px] px-4 py-3 font-medium">등록일</th>
+                  <th className="w-[72px]">번호</th>
+                  <th>제목</th>
+                  <th className="w-[140px]">구분</th>
+                  <th className="w-[170px]">등록일</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="bg-white">
                 {visibleAnnouncements.map((announcement, index) => {
                   const isSelected = selectedAnnouncement?.id === announcement.id;
 
@@ -140,33 +140,31 @@ export function StudentAnnouncementBoard({
                     <tr
                       key={announcement.id}
                       onClick={() => setSelectedAnnouncementId(announcement.id)}
-                      className={`cursor-pointer transition ${
-                        isSelected ? "bg-[#F4F4F2]" : "hover:bg-[#F4F4F2]/60"
-                      }`}
+                      className={`cursor-pointer transition ${ isSelected ? "bg-admin-surface-soft" : "hover:bg-admin-surface-soft/60" }`}
                     >
-                      <td className="px-4 py-4 align-top text-[var(--muted)]">
+                      <td className="align-top">
                         {visibleAnnouncements.length - index}
                       </td>
-                      <td className="px-4 py-4 align-top">
+                      <td className="align-top">
                         <div className="max-w-[420px]">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-[var(--foreground)]">{announcement.title}</p>
+                            <p className="font-semibold text-admin-text">{announcement.title}</p>
                             {announcement.isPinned ? (
-                              <span className="inline-flex items-center gap-1 rounded-[10px] border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                              <span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-0.5 text-[13px] font-medium text-amber-700">
                                 <Pin className="h-3 w-3" />
                                 중요
                               </span>
                             ) : null}
                           </div>
-                          <p className="mt-1 text-[12px] leading-[1.5] text-[var(--muted)]">
+                          <p className="mt-1 text-[13px] leading-[1.5] text-admin-text-muted">
                             {getPreviewText(announcement.content)}
                           </p>
                         </div>
                       </td>
-                      <td className="px-4 py-4 align-top">
+                      <td className="align-top">
                         <span className={portalChipClass}>{getScopeLabel(announcement)}</span>
                       </td>
-                      <td className="px-4 py-4 align-top text-[var(--muted)]">
+                      <td className="align-top">
                         {formatDateTime(getAnnouncementDate(announcement))}
                       </td>
                     </tr>
@@ -191,45 +189,45 @@ export function StudentAnnouncementBoard({
             <div className="flex flex-wrap items-center gap-2">
               <span className={portalChipClass}>{getScopeLabel(selectedAnnouncement)}</span>
               {selectedAnnouncement.isPinned ? (
-                <span className="inline-flex items-center gap-1 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-1 text-[12px] font-medium text-amber-700">
+                <span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-[13px] font-medium text-amber-700">
                   <Pin className="h-3 w-3" />
                   중요 공지
                 </span>
               ) : null}
             </div>
 
-            <h3 className="mt-3 text-[20px] font-bold text-[var(--foreground)]">
+            <h3 className="mt-3 text-[20px] font-bold text-admin-text">
               {selectedAnnouncement.title}
             </h3>
 
             <div className={`${portalInsetClass} mt-3`}>
-              <p className="whitespace-pre-line text-[14px] leading-[1.7] text-[var(--foreground)]">
+              <p className="whitespace-pre-line text-[15px] leading-[1.7] text-admin-text">
                 {selectedAnnouncement.content}
               </p>
             </div>
 
             <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
               <div className={portalInsetClass}>
-                <p className="text-[12px] font-medium text-[var(--muted)]">
+                <p className="text-[13px] font-medium text-admin-text-muted">
                   공개 시각
                 </p>
-                <p className="mt-1.5 text-[14px] font-semibold text-[var(--foreground)]">
+                <p className="mt-1.5 text-[15px] font-semibold text-admin-text">
                   {formatDateTime(getAnnouncementDate(selectedAnnouncement))}
                 </p>
               </div>
 
               <div className={portalInsetClass}>
-                <p className="text-[12px] font-medium text-[var(--muted)]">
+                <p className="text-[13px] font-medium text-admin-text-muted">
                   작성자
                 </p>
-                <p className="mt-1.5 text-[14px] font-semibold text-[var(--foreground)]">
+                <p className="mt-1.5 text-[15px] font-semibold text-admin-text">
                   {selectedAnnouncement.createdByName || "관리자"}
                 </p>
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[#F4F4F2] px-3.5 py-3 text-[13px] text-[var(--muted)]">
-              <Megaphone className="h-4 w-4 text-[var(--muted)]" />
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-admin-line bg-admin-surface-soft px-3.5 py-3 text-[13px] text-admin-text-muted">
+              <Megaphone className="h-4 w-4 text-admin-text-muted" />
               최신 공지가 위에서부터 순서대로 정렬됩니다.
             </div>
           </>

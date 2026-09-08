@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api-handler";
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildDelimitedLine, buildExcelFriendlyCsv } from "@/lib/csv";
@@ -5,7 +6,7 @@ import { createCp949CsvResponse } from "@/lib/csv-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 
-export async function GET(
+async function handleGET(
   request: NextRequest,
   { params }: { params: { division: string } },
 ) {
@@ -42,3 +43,5 @@ export async function GET(
 
   return createCp949CsvResponse(content, `morning-exam-template_${dateLabel}.csv`);
 }
+
+export const GET = withApiHandler(handleGET, "아침 시험 양식을 불러오지 못했습니다.");

@@ -21,11 +21,11 @@ export function ReportsTrendChart({ color, trend }: ReportsTrendChartProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={trend} margin={{ top: 12, right: 16, left: -16, bottom: 0 }}>
-        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-        <XAxis dataKey="label" tick={{ fill: "#64748b", fontSize: 12 }} />
+        <CartesianGrid stroke="var(--admin-grid)" strokeDasharray="3 3" />
+        <XAxis dataKey="label" tick={{ fill: "var(--admin-text-muted)", fontSize: "var(--admin-type-caption)" }} />
         <YAxis
           domain={[0, 100]}
-          tick={{ fill: "#64748b", fontSize: 12 }}
+          tick={{ fill: "var(--admin-text-muted)", fontSize: "var(--admin-type-caption)" }}
           tickFormatter={(value) => `${value}%`}
         />
         <Tooltip
@@ -53,8 +53,8 @@ export function ReportsTrendChart({ color, trend }: ReportsTrendChartProps) {
           dot={{ r: 3 }}
           activeDot={{ r: 5 }}
         />
-        <Line type="monotone" dataKey="tardyCount" stroke="#f59e0b" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="absentCount" stroke="#ef4444" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="tardyCount" stroke="var(--admin-warning)" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="absentCount" stroke="var(--admin-danger)" strokeWidth={2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );

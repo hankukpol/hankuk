@@ -21,12 +21,9 @@ export default async function AdminPaymentsPage({ params }: AdminPaymentsPagePro
   ]);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-slate-200 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">수납 관리</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-          학생 등록 수납, 연장 수납, 일반 수납, 정산 조회를 하나의 화면에서 처리합니다.
-        </p>
+    <div className="admin-flat-page">
+      <section>
+        <h1 className="admin-page-title">수납 관리</h1>
       </section>
 
       <PaymentManager

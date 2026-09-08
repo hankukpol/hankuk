@@ -5,6 +5,7 @@ import {
   type AdminSessionRole,
   type StudentSession,
 } from "@/lib/auth";
+import { logServerError } from "@/lib/server-log";
 
 type ApiAuthFailure = {
   ok: false;
@@ -26,11 +27,26 @@ function isRoleAllowed(role: AdminSessionRole, allowedRoles: AdminSessionRole[])
   return allowedRoles.includes(role);
 }
 
+async function resolveApiSession<T>(load: () => Promise<T | null>, scope: string) {
+  try {
+    return { ok: true as const, session: await load() };
+  } catch (error) {
+    logServerError(scope, error);
+    return {
+      ok: false as const,
+      error: "인증 정보를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      status: 503,
+    };
+  }
+}
+
 export async function requireApiAuth(
   divisionSlug: string,
   allowedRoles: AdminSessionRole[] = ["ADMIN", "SUPER_ADMIN"],
 ): Promise<ApiAdminAuthSuccess | ApiAuthFailure> {
-  const session = await getCurrentAdminSession();
+  const resolved = await resolveApiSession(getCurrentAdminSession, "api-auth:admin");
+  if (!resolved.ok) return resolved;
+  const { session } = resolved;
 
   if (!session) {
     return {
@@ -65,7 +81,9 @@ export async function requireApiAuth(
 export async function requireStudentApiAuth(
   divisionSlug: string,
 ): Promise<ApiStudentAuthSuccess | ApiAuthFailure> {
-  const session = await getCurrentStudentSession(divisionSlug);
+  const resolved = await resolveApiSession(() => getCurrentStudentSession(divisionSlug), "api-auth:student");
+  if (!resolved.ok) return resolved;
+  const { session } = resolved;
 
   if (!session) {
     return {
@@ -82,7 +100,9 @@ export async function requireStudentApiAuth(
 }
 
 export async function requireApiSuperAdminAuth(): Promise<ApiAdminAuthSuccess | ApiAuthFailure> {
-  const session = await getCurrentAdminSession();
+  const resolved = await resolveApiSession(getCurrentAdminSession, "api-auth:super-admin");
+  if (!resolved.ok) return resolved;
+  const { session } = resolved;
 
   if (!session) {
     return {

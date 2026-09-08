@@ -14,6 +14,7 @@ import type { ExamTypeItem } from "@/lib/services/exam.service";
 import type { ScoreTargetItem } from "@/lib/services/score-target.service";
 
 type ScoreTargetPanelProps = {
+  variant?: "admin" | "portal";
   divisionSlug: string;
   studentId: string;
   initialTargets: ScoreTargetItem[];
@@ -42,6 +43,7 @@ function getStatusTone(target: ScoreTargetItem) {
 }
 
 export function ScoreTargetPanel({
+  variant = "portal",
   divisionSlug,
   studentId,
   initialTargets,
@@ -149,7 +151,7 @@ export function ScoreTargetPanel({
   }
 
   return (
-    <section className={portalSectionClass}>
+    <section className={variant === "admin" ? "admin-section" : portalSectionClass}>
       <PortalSectionHeader
         title="성적 목표"
         description="시험 종류별로 목표 점수를 확인하고, 관리자 권한이 있을 때만 수정할 수 있습니다."
@@ -160,11 +162,11 @@ export function ScoreTargetPanel({
         <div className={`mt-5 ${portalInsetClass}`}>
           <div className="grid gap-3 md:grid-cols-[1.3fr_0.8fr]">
             <label className="block">
-              <span className="mb-2 block text-[13px] font-semibold text-[var(--foreground)]">시험 종류</span>
+              <span className="mb-2 block text-[13px] font-semibold text-admin-text">시험 종류</span>
               <select
                 value={selectedExamTypeId}
                 onChange={(event) => setSelectedExamTypeId(event.target.value)}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--division-color)]"
+                className="w-full rounded-lg border border-admin-line bg-white px-4 py-3 text-sm text-admin-text focus:border-[var(--division-color)]"
               >
                 {availableExamTypes.length > 0 ? (
                   availableExamTypes.map((examType) => (
@@ -180,38 +182,38 @@ export function ScoreTargetPanel({
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-[13px] font-semibold text-[var(--foreground)]">목표 점수</span>
+              <span className="mb-2 block text-[13px] font-semibold text-admin-text">목표 점수</span>
               <input
                 type="number"
                 min={0}
                 step={1}
                 value={targetScore}
                 onChange={(event) => setTargetScore(event.target.value)}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--division-color)]"
+                className="w-full rounded-lg border border-admin-line bg-white px-4 py-3 text-sm text-admin-text focus:border-[var(--division-color)]"
                 placeholder="예: 420"
               />
             </label>
           </div>
 
           <label className="mt-3 block">
-            <span className="mb-2 block text-[13px] font-semibold text-[var(--foreground)]">메모</span>
+            <span className="mb-2 block text-[13px] font-semibold text-admin-text">메모</span>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
-              className="min-h-[96px] w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--division-color)]"
+              className="min-h-[96px] w-full rounded-lg border border-admin-line bg-white px-4 py-3 text-sm text-admin-text focus:border-[var(--division-color)]"
               placeholder="예: 4월까지 주간 모의고사 420점 이상 유지"
             />
           </label>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[12px] text-[var(--muted)]">
+            <p className="text-[13px] text-admin-text-muted">
               같은 시험 종류를 다시 저장하면 기존 목표가 최신 값으로 갱신됩니다.
             </p>
             <button
               type="button"
               onClick={handleSave}
               disabled={isSaving || availableExamTypes.length === 0}
-              className="inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+              className="admin-button"
               style={{
                 backgroundColor: "var(--division-color)",
                 color: "var(--division-on-accent)",
@@ -234,16 +236,16 @@ export function ScoreTargetPanel({
             <article key={target.id} className={portalInsetClass}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[12px] font-medium text-[var(--muted)]">
+                  <p className="text-[13px] font-medium text-admin-text-muted">
                     {target.studyTrack || "공통"}
                   </p>
-                  <h4 className="mt-1.5 text-[17px] font-bold text-[var(--foreground)]">
+                  <h4 className="mt-1.5 text-[16px] font-bold text-admin-text">
                     {target.examTypeName}
                   </h4>
                 </div>
 
                 <span
-                  className={`rounded-[10px] border px-3 py-1.5 text-[12px] font-medium ${getStatusTone(target)}`}
+                  className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium ${getStatusTone(target)}`}
                 >
                   {target.isAchieved
                     ? "달성"
@@ -254,36 +256,36 @@ export function ScoreTargetPanel({
               </div>
 
               <div className="mt-4 grid grid-cols-3 gap-3">
-                <div className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-3">
-                  <p className="text-[12px] font-medium text-[var(--muted)]">
+                <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
+                  <p className="text-[13px] font-medium text-admin-text-muted">
                     목표 점수
                   </p>
-                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-[var(--foreground)]">
+                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                     {target.targetScore}
                   </p>
                 </div>
-                <div className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-3">
-                  <p className="text-[12px] font-medium text-[var(--muted)]">
+                <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
+                  <p className="text-[13px] font-medium text-admin-text-muted">
                     최신 점수
                   </p>
-                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-[var(--foreground)]">
+                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                     {target.latestScore ?? "-"}
                   </p>
                 </div>
-                <div className="rounded-[10px] border border-[var(--border)] bg-white px-4 py-3">
-                  <p className="text-[12px] font-medium text-[var(--muted)]">
+                <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
+                  <p className="text-[13px] font-medium text-admin-text-muted">
                     최신 회차
                   </p>
-                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-[var(--foreground)]">
+                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
                     {target.latestExamRound ? `${target.latestExamRound}회차` : "-"}
                   </p>
                 </div>
               </div>
 
-              <p className="mt-4 text-[13px] text-[var(--muted)]">
+              <p className="mt-4 text-[13px] text-admin-text-muted">
                 최근 시험일 {formatDate(target.latestExamDate)}
               </p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="admin-help mt-2 leading-6">
                 {target.note || "등록된 목표 메모가 없습니다."}
               </p>
 
@@ -293,7 +295,7 @@ export function ScoreTargetPanel({
                     type="button"
                     onClick={() => void handleDelete(target.id)}
                     disabled={deletingTargetId === target.id}
-                    className="inline-flex items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 disabled:opacity-60"
+                    className="admin-button admin-button-danger-outline"
                   >
                     {deletingTargetId === target.id ? (
                       <LoaderCircle className="h-4 w-4 animate-spin" />

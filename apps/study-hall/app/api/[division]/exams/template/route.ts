@@ -1,3 +1,4 @@
+import { withApiHandler } from "@/lib/api-handler";
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildDelimitedLine, buildExcelFriendlyCsv } from "@/lib/csv";
@@ -6,7 +7,7 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { getExamScoreSheet } from "@/lib/services/exam.service";
 
-export async function GET(
+async function handleGET(
   request: NextRequest,
   { params }: { params: { division: string } },
 ) {
@@ -48,3 +49,5 @@ export async function GET(
 
   return createCp949CsvResponse(content, `exam-score-template_round-${examRound}.csv`);
 }
+
+export const GET = withApiHandler(handleGET, "성적 입력 양식을 불러오지 못했습니다.");

@@ -1,8 +1,10 @@
+import { isIP } from "node:net";
 import { tooManyRequests } from "@/lib/errors";
 
 type RateLimitEntry = {
   count: number;
   firstAttempt: number;
+  expiresAt: number;
 };
 
 type RateLimitOptions = {
@@ -19,14 +21,15 @@ function pruneAllExpired() {
   const now = Date.now();
 
   attempts.forEach((entry, key) => {
-    if (now - entry.firstAttempt >= 10 * 60 * 1000) {
+    if (now >= entry.expiresAt) {
       attempts.delete(key);
     }
   });
 }
 
 if (typeof setInterval !== "undefined") {
-  setInterval(pruneAllExpired, CLEANUP_INTERVAL_MS);
+  const cleanup = setInterval(pruneAllExpired, CLEANUP_INTERVAL_MS);
+  cleanup.unref?.();
 }
 
 function getBucketKey(bucket: string, ip: string) {
@@ -58,28 +61,15 @@ function pruneExpiredEntry(key: string, now: number, windowMs: number) {
 }
 
 export function getRequestIp(headers: Headers) {
-  const trustedHeaders = [
-    "x-vercel-forwarded-for",
-    "x-real-ip",
-    "cf-connecting-ip",
-    "fastly-client-ip",
-  ];
-
-  for (const header of trustedHeaders) {
-    const value = headers.get(header)?.split(",")[0]?.trim();
-    if (value) {
-      return value;
-    }
-  }
-
-  if (process.env.TRUST_X_FORWARDED_FOR === "true") {
-    const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-    if (forwarded) {
-      return forwarded;
-    }
-  }
-
-  return "unknown";
+  // Proxy headers are caller-controlled unless the deployment overwrites them.
+  // A self-hosted proxy opting in must overwrite X-Forwarded-For at its boundary.
+  const value = process.env.VERCEL === "1"
+    ? headers.get("x-vercel-forwarded-for")
+    : process.env.TRUST_X_FORWARDED_FOR === "true"
+      ? headers.get("x-forwarded-for")
+      : null;
+  const ip = value?.split(",", 1)[0]?.trim();
+  return ip && isIP(ip) ? ip : "unknown";
 }
 
 export function assertRateLimit(ip: string, options?: RateLimitOptions) {
@@ -99,12 +89,12 @@ export function recordRateLimitFailure(ip: string, options?: RateLimitOptions) {
   const current = pruneExpiredEntry(key, now, windowMs);
 
   if (!current) {
-    attempts.set(key, { count: 1, firstAttempt: now });
+    attempts.set(key, { count: 1, firstAttempt: now, expiresAt: now + windowMs });
     return;
   }
 
   current.count += 1;
-  attempts.set(key, current);
+  current.expiresAt = current.firstAttempt + windowMs;
 
   if (current.count >= maxAttempts) {
     throw tooManyRequests(getLimitMessage(windowMs));

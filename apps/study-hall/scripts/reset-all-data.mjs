@@ -87,7 +87,6 @@ const isProductionDb = productionPatterns.some((pattern) => dbUrl.includes(patte
 
 if (isProductionDb) {
   console.error("[reset-all-data] 프로덕션 데이터베이스가 감지되었습니다.");
-  console.error(`  DATABASE_URL: ${dbUrl.slice(0, 40)}...`);
   console.error("  프로덕션 DB 초기화는 차단됩니다. 로컬 DB에서만 실행해 주세요.");
 
   if (!process.argv.includes("--i-know-what-i-am-doing")) {

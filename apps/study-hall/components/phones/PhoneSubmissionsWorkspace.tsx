@@ -1,24 +1,14 @@
-import dynamic from "next/dynamic";
-
-import { ClipboardList, Smartphone } from "lucide-react";
-
+import { PhoneLoanApproval } from "@/components/phones/PhoneLoanApproval";
+import { OutstandingPhoneReturns } from "@/components/phones/OutstandingPhoneReturns";
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { getPeriods } from "@/lib/services/period.service";
+import { listStudents } from "@/lib/services/student.service";
 import { PhoneCheckForm } from "@/components/phones/PhoneCheckForm";
+import { PhoneWorkspaceTabs } from "@/components/phones/PhoneWorkspaceTabs";
 import { getCurrentPeriod } from "@/lib/services/period.service";
-import { getPhoneDaySnapshot } from "@/lib/services/phone-submission.service";
+import { getPhoneDaySnapshot, listPhoneRecords } from "@/lib/services/phone-submission.service";
 import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
-
-const PhoneSubmissionManager = dynamic(
-  () =>
-    import("@/components/phones/PhoneSubmissionManager").then((mod) => mod.PhoneSubmissionManager),
-  {
-    loading: () => (
-      <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-16 text-center text-sm text-slate-500">
-        휴대폰 이력 데이터를 불러오는 중입니다.
-      </div>
-    ),
-  },
-);
 
 function getKstToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -42,70 +32,49 @@ export async function PhoneSubmissionsWorkspace({
 }: PhoneSubmissionsWorkspaceProps) {
   const today = getKstToday();
 
-  const [snapshot, currentPeriod, seatRooms, initialSeatLayout, featureSettings] = await Promise.all([
+  const [snapshot, currentPeriod, seatRooms, initialSeatLayout, featureSettings, policy] = await Promise.all([
     getPhoneDaySnapshot(divisionSlug, today),
     getCurrentPeriod(divisionSlug),
     listStudyRooms(divisionSlug),
     getSeatLayout(divisionSlug),
     getDivisionFeatureSettings(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
 
+  const [students, periods] = policy && mode === "admin" ? await Promise.all([listStudents(divisionSlug), getPeriods(divisionSlug)]) : [[], []];
+  const approval = policy && mode === "admin" ? <PhoneLoanApproval divisionSlug={divisionSlug} policy={policy} students={students.filter((s) => s.status === "ACTIVE" || s.status === "ON_LEAVE")} periods={periods} /> : undefined;
+  const outstandingReturns = policy ? (await listPhoneRecords(divisionSlug, { dateFrom: today, dateTo: today })).filter((record) => record.status === "RENTED" && !record.attendanceCheckable) : [];
+
+  const check = (
+    <div className="admin-flat-page">
+    <PhoneCheckForm
+      divisionSlug={divisionSlug}
+      initialDate={today}
+      initialSnapshot={snapshot}
+      initialActivePeriodId={currentPeriod?.id ?? snapshot.periods[0]?.periodId ?? ""}
+      seatRooms={seatRooms}
+      initialSeatLayout={initialSeatLayout}
+      viewTabsVariant={showHistory ? "secondary" : "primary"}
+    />
+    <OutstandingPhoneReturns divisionSlug={divisionSlug} records={outstandingReturns} />
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-          {mode === "assistant" ? "조교 휴대폰 체크" : "휴대폰 관리"}
-        </p>
-        <h1 className="mt-3 text-3xl font-extrabold text-slate-950">
+    <div className="admin-flat-page">
+      <section className="admin-section">
+        <h1 className="admin-page-title">
           {mode === "assistant" ? "휴대폰 체크" : "휴대폰 관리"}
         </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+        <p className="admin-page-description">
           교시별 휴대폰 반납, 미반납, 대여 상태를 체크하고 대여 범위를 한 번에 저장합니다.
           {showHistory ? " 필요한 경우 이력에서 미반납 학생에게 벌점을 부여할 수 있습니다." : ""}
         </p>
       </section>
 
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-600">
-            <Smartphone className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-              오늘 체크
-            </p>
-            <h2 className="text-xl font-bold text-slate-950">오늘 체크</h2>
-          </div>
-        </div>
-        <PhoneCheckForm
-          divisionSlug={divisionSlug}
-          initialDate={today}
-          initialSnapshot={snapshot}
-          initialActivePeriodId={currentPeriod?.id ?? snapshot.periods[0]?.periodId ?? ""}
-          seatRooms={seatRooms}
-          initialSeatLayout={initialSeatLayout}
-        />
-      </section>
-
       {showHistory ? (
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-600">
-              <ClipboardList className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                이력 조회
-              </p>
-              <h2 className="text-xl font-bold text-slate-950">이력 조회</h2>
-            </div>
-          </div>
-          <PhoneSubmissionManager
-            divisionSlug={divisionSlug}
-            pointsEnabled={featureSettings.featureFlags.pointManagement}
-          />
-        </section>
-      ) : null}
+        <PhoneWorkspaceTabs check={check} approval={approval} divisionSlug={divisionSlug} pointsEnabled={featureSettings.featureFlags.pointManagement} />
+      ) : check}
     </div>
   );
 }

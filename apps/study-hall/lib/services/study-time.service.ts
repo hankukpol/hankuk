@@ -70,18 +70,25 @@ type RawStudyTimeRecord = {
  * Calculate study minutes from checkInTime to period end on the given date.
  * endTime is "HH:MM" in KST (UTC+9).
  */
-function calcStudyMinutes(
-  checkInTimeIso: string | null,
-  date: string,
-  periodEndTime: string,
-): number {
-  if (!checkInTimeIso) return 0;
-  const checkIn = new Date(checkInTimeIso);
-  const [hh, mm] = periodEndTime.split(":").map(Number);
-  const [y, mo, d] = date.split("-").map(Number);
-  // KST end → UTC
-  const end = new Date(Date.UTC(y, mo - 1, d, hh - 9, mm, 0, 0));
-  return Math.max(0, Math.floor((end.getTime() - checkIn.getTime()) / 60_000));
+function createStudyMinutesCalculator() {
+  // All students in a date/period share the same KST end timestamp.
+  const endTimes = new Map<string, number>();
+  return function calcStudyMinutes(
+    checkInTimeIso: string | null,
+    date: string,
+    periodEndTime: string,
+  ): number {
+    if (!checkInTimeIso) return 0;
+    const key = `${date}:${periodEndTime}`;
+    let end = endTimes.get(key);
+    if (end === undefined) {
+      const [hh, mm] = periodEndTime.split(":").map(Number);
+      const [y, mo, d] = date.split("-").map(Number);
+      end = Date.UTC(y, mo - 1, d, hh - 9, mm, 0, 0);
+      endTimes.set(key, end);
+    }
+    return Math.max(0, Math.floor((end - new Date(checkInTimeIso).getTime()) / 60_000));
+  };
 }
 
 function getMonthRange(month: string) {
@@ -117,6 +124,7 @@ async function listMonthlyStudyTimeRecords(
 
   if (isMockMode()) {
     const state = await readMockState();
+    const studentIdSet = studentIds ? new Set(studentIds) : null;
 
     return (state.attendanceByDivision[divisionSlug] ?? [])
       .filter((record) => {
@@ -132,7 +140,7 @@ async function listMonthlyStudyTimeRecords(
           return false;
         }
 
-        return !studentIds || studentIds.includes(record.studentId);
+        return !studentIdSet || studentIdSet.has(record.studentId);
       })
       .map((record) => ({
         studentId: record.studentId,
@@ -179,9 +187,12 @@ export async function getStudentStudyTimeStats(
   studentId: string,
   month: string, // "YYYY-MM"
 ): Promise<StudentStudyTimeStats> {
-  const periods = await getPeriods(divisionSlug);
+  const [periods, rawRecords] = await Promise.all([
+    getPeriods(divisionSlug),
+    listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]),
+  ]);
   const periodMap = new Map(periods.map((p) => [p.id, p]));
-  const rawRecords = await listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]);
+  const calcStudyMinutes = createStudyMinutesCalculator();
 
   // Aggregate by date
   const byDateMap = new Map<string, number>();
@@ -242,6 +253,7 @@ export async function getDivisionStudyTimeRanking(
     (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
   );
   const periodMap = new Map(periods.map((period) => [period.id, period]));
+  const calcStudyMinutes = createStudyMinutesCalculator();
   const studentSummaryMap = new Map(
     activeStudents.map((student) => [
       student.id,
@@ -355,6 +367,16 @@ export async function getStudentMonthlyStudyMinutes(
   studentId: string,
   month: string,
 ): Promise<number> {
-  const stats = await getStudentStudyTimeStats(divisionSlug, studentId, month);
-  return stats.totalMinutes;
+  const [periods, records] = await Promise.all([
+    getPeriods(divisionSlug),
+    listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]),
+  ]);
+  const periodMap = new Map(periods.map((period) => [period.id, period]));
+  const calcStudyMinutes = createStudyMinutesCalculator();
+  let totalMinutes = 0;
+  for (const record of records) {
+    const period = periodMap.get(record.periodId);
+    if (period) totalMinutes += calcStudyMinutes(record.checkInTime, record.date, period.endTime);
+  }
+  return totalMinutes;
 }

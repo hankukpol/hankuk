@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle, Trophy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { StudyRankingTable } from "@/components/study-time/StudyRankingTable";
@@ -25,15 +25,23 @@ export function StudentStudyRankingPanel({
   const [month, setMonth] = useState(initialRanking.month);
   const [ranking, setRanking] = useState(initialRanking);
   const [isLoading, setIsLoading] = useState(false);
+  const rankingRequestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => rankingRequestRef.current?.abort(), [divisionSlug]);
 
   async function loadRanking(targetMonth: string) {
+    rankingRequestRef.current?.abort();
+    const controller = new AbortController();
+    rankingRequestRef.current = controller;
     setIsLoading(true);
 
     try {
       const response = await fetch(
         `/api/${divisionSlug}/student/study-ranking?month=${targetMonth}`,
+        { signal: controller.signal },
       );
       const data = await response.json();
+      if (controller.signal.aborted) return;
 
       if (!response.ok) {
         throw new Error(data.error ?? "학습 랭킹을 불러오지 못했습니다.");
@@ -41,11 +49,12 @@ export function StudentStudyRankingPanel({
 
       setRanking(data.ranking);
     } catch (error) {
+      if (controller.signal.aborted) return;
       toast.error(
         error instanceof Error ? error.message : "학습 랭킹을 불러오지 못했습니다.",
       );
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   }
 
@@ -61,28 +70,28 @@ export function StudentStudyRankingPanel({
       >
         <div>
           <p
-            className="text-[12px] font-bold"
+            className="text-[13px] font-bold"
             style={{ color: "var(--division-color)" }}
           >
             MONTHLY RANKING
           </p>
-          <h2 className="mt-1 text-[22px] font-bold tracking-tight text-[var(--foreground)]">
+          <h2 className="mt-1 text-[20px] font-bold tracking-tight text-admin-text">
             월간 학습 랭킹
           </h2>
-          <p className="mt-2 text-[13px] leading-[1.5] text-[var(--muted)]">
+          <p className="mt-2 text-[13px] leading-[1.5] text-admin-text-muted">
             모두 익명으로 표시되며, 전체 순위에서 내 위치와 월 누적 학습시간을 함께
             확인할 수 있습니다.
           </p>
         </div>
 
         <div>
-          <label className="text-[12px] font-semibold text-[var(--muted)]">조회 월</label>
+          <label className="text-[13px] font-semibold text-admin-text-muted">조회 월</label>
           <input
             type="month"
             value={month}
             max={getKstMonth()}
             onChange={(event) => void handleMonthChange(event.target.value)}
-            className="mt-1 block rounded-[10px] border border-[var(--border)] bg-white px-4 py-2.5 text-sm text-[var(--foreground)] outline-none transition focus:border-slate-400"
+            className="mt-1 block rounded-lg border border-admin-line bg-white px-4 py-2.5 text-sm text-admin-text transition"
           />
         </div>
       </section>
@@ -127,7 +136,7 @@ export function StudentStudyRankingPanel({
           icon={<Trophy className="h-5 w-5" />}
           action={
             isLoading ? (
-              <LoaderCircle className="h-5 w-5 animate-spin text-[var(--muted)]" />
+              <LoaderCircle className="h-5 w-5 animate-spin text-admin-text-muted" />
             ) : null
           }
         />

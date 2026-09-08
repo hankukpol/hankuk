@@ -136,20 +136,20 @@ export function AttendanceCalendar({
   return (
     <div className="w-full min-w-0">
       <div className="md:hidden">
-        <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-[10px] border border-[var(--border)] bg-white [-webkit-overflow-scrolling:touch] [touch-action:pan-x]">
+        <div className="admin-table-frame max-w-full overflow-x-auto overscroll-x-contain bg-white [-webkit-overflow-scrolling:touch] [touch-action:pan-x]">
           <table
-            className="w-max border-collapse text-[11px]"
+            className="w-max border-collapse text-[13px]"
             style={{ minWidth: `${mobileTableMinWidth}px` }}
           >
             <thead>
               <tr className="bg-slate-50">
-                <th className="sticky left-0 z-20 min-w-[96px] border-b border-r border-slate-100 bg-slate-50 px-2.5 py-2 text-left text-[10px] font-medium text-[var(--muted)]">
+                <th className="sticky left-0 z-20 min-w-[96px] admin-table-name text-[13px]">
                   날짜
                 </th>
                 {weeklyAttendance.rows.map((row) => (
                   <th
                     key={row.periodId}
-                    className="min-w-[60px] border-b border-r border-slate-100 px-1.5 py-2 text-center text-[10px] font-medium text-[var(--muted)] last:border-r-0"
+                    className="min-w-[60px] border-b border-r border-slate-100 px-1.5 py-2 text-center text-[13px] font-medium text-admin-text-muted last:border-r-0"
                   >
                     {getCompactPeriodLabel(row.periodName)}
                   </th>
@@ -159,23 +159,18 @@ export function AttendanceCalendar({
             <tbody>
               {visibleDateRows.map((row) => (
                 <tr key={row.date.date}>
-                  <th className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-2.5 py-2 text-left align-top">
+                  <th className="sticky left-0 z-10 admin-table-name align-top">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-[var(--muted)]">
+                      <p className="text-[13px] font-medium text-admin-text-muted">
                         {row.date.shortLabel}
                       </p>
                       <p
-                        className={`mt-0.5 min-w-0 break-keep text-[11px] font-bold leading-[1.35] [overflow-wrap:anywhere] ${
-                          row.date.isToday ? "text-[var(--division-color)]" : "text-slate-800"
-                        }`}
+                        className={`mt-0.5 min-w-0 break-keep text-[13px] font-bold leading-[1.35] [overflow-wrap:anywhere] ${ row.date.isToday ? "text-[var(--division-color)]" : "text-slate-800" }`}
                       >
                         {row.date.label}
                       </p>
                       <span
-                        className={`mt-1 inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${getDateStatusClass(
-                          row.date.isToday,
-                          row.date.isOperatingDay,
-                        )}`}
+                        className={`mt-1 inline-flex rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${getDateStatusClass( row.date.isToday, row.date.isOperatingDay, )}`}
                         style={
                           row.date.isToday
                             ? { backgroundColor: "var(--division-color)" }
@@ -192,7 +187,7 @@ export function AttendanceCalendar({
                       className="border-b border-r border-slate-100 px-1.5 py-1.5 text-center align-middle last:border-r-0"
                     >
                       <div
-                        className={`flex min-h-[30px] min-w-[44px] items-center justify-center rounded-[10px] border px-1 text-[10px] font-semibold leading-tight ${getStatusClasses(period.status)}`}
+                        className={`flex min-h-[30px] min-w-[44px] items-center justify-center rounded-lg border px-1 text-[13px] font-semibold leading-tight ${getStatusClasses(period.status)}`}
                         title={period.reason || `${period.periodName} ${period.startTime}-${period.endTime}`}
                       >
                         {period.statusLabel}
@@ -206,16 +201,16 @@ export function AttendanceCalendar({
         </div>
       </div>
 
-      <div className="hidden overflow-x-auto md:block">
+      <div className="admin-table-frame hidden overflow-x-auto md:block">
         <table className="min-w-[640px] w-full border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="sticky left-0 z-20 w-[152px] bg-white pr-3 pb-3 text-left align-bottom">
+              <th className="sticky left-0 z-20 w-[152px] admin-table-name align-bottom">
                 <div className={`${portalInsetClass} bg-white`}>
-                  <p className="text-[12px] font-medium text-[var(--muted)]">
+                  <p className="text-[13px] font-medium text-admin-text-muted">
                     날짜
                   </p>
-                  <p className="mt-1.5 text-sm font-semibold text-[var(--foreground)]">
+                  <p className="mt-1.5 text-sm font-semibold text-admin-text">
                     주간 출석표
                   </p>
                 </div>
@@ -224,13 +219,13 @@ export function AttendanceCalendar({
               {weeklyAttendance.rows.map((row) => (
                 <th key={row.periodId} className="min-w-[96px] px-0 pb-3 text-left align-bottom">
                   <div className={`${portalInsetClass} min-h-[78px] bg-white`}>
-                    <p className="text-[12px] font-medium text-[var(--muted)]">
+                    <p className="text-[13px] font-medium text-admin-text-muted">
                       {row.label || "교시"}
                     </p>
-                    <p className="mt-1.5 text-sm font-semibold text-[var(--foreground)]">
+                    <p className="mt-1.5 text-sm font-semibold text-admin-text">
                       {row.periodName}
                     </p>
-                    <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">
+                    <p className="mt-1 text-[13px] leading-4 text-admin-text-muted">
                       {row.startTime} - {row.endTime}
                     </p>
                   </div>
@@ -242,11 +237,9 @@ export function AttendanceCalendar({
           <tbody>
             {visibleDateRows.map((row) => (
               <tr key={row.date.date}>
-                <th className="sticky left-0 z-10 bg-white pr-3 pb-3 text-left align-top">
+                <th className="sticky left-0 z-10 admin-table-name align-top">
                   <div
-                    className={`rounded-[10px] border px-3 py-2.5 ${getDateBadgeClass(
-                      row.date.isToday,
-                    )}`}
+                    className={`rounded-lg border px-3 py-2.5 ${getDateBadgeClass( row.date.isToday, )}`}
                     style={
                       row.date.isToday
                         ? {
@@ -258,15 +251,13 @@ export function AttendanceCalendar({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-[11px] font-medium">
+                        <p className="text-[13px] font-medium">
                           {row.date.shortLabel}
                         </p>
                         <p className="mt-1 text-sm font-semibold">{row.date.label}</p>
                       </div>
                       <span
-                        className={`rounded-[10px] border px-2 py-0.5 text-[10px] font-medium ${getDateBadgeClass(
-                          row.date.isToday,
-                        )}`}
+                        className={`rounded-lg border px-2 py-0.5 text-[13px] font-medium ${getDateBadgeClass( row.date.isToday, )}`}
                         style={
                           row.date.isToday
                             ? {
@@ -285,14 +276,14 @@ export function AttendanceCalendar({
                 {row.periods.map((period) => (
                   <td key={`${row.date.date}-${period.periodId}`} className="pb-3 align-top">
                     <div
-                      className={`rounded-[10px] border px-2.5 py-2.5 text-center ${getStatusClasses(period.status)}`}
+                      className={`rounded-lg border px-2.5 py-2.5 text-center ${getStatusClasses(period.status)}`}
                       title={period.reason || `${period.periodName} ${period.startTime}-${period.endTime}`}
                     >
-                      <p className="text-[10px] font-medium opacity-75">
+                      <p className="text-[13px] font-medium opacity-75">
                         {period.periodName}
                       </p>
                       <p className="mt-1.5 text-sm font-semibold">{period.statusLabel}</p>
-                      <p className="mt-1 text-[10px] leading-4 opacity-80">
+                      <p className="mt-1 text-[13px] leading-4 opacity-80">
                         {period.reason || `${period.startTime}-${period.endTime}`}
                       </p>
                     </div>
@@ -305,7 +296,7 @@ export function AttendanceCalendar({
       </div>
 
       {showFootnote ? (
-        <div className={`mt-2.5 ${portalCardClass} p-2.5 text-[11px] leading-5 text-[var(--muted)]`}>
+        <div className={`mt-2.5 ${portalCardClass} p-2.5 text-[13px] leading-5 text-admin-text-muted`}>
           {isPreview
             ? "대시보드에서는 일부 날짜만 먼저 보여주고, 전체 표는 출석 상세에서 확인할 수 있습니다."
             : "모바일에서는 표를 좌우로 넘겨 날짜별 교시 출석을 확인할 수 있습니다."}

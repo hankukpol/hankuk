@@ -104,29 +104,22 @@ export function FeatureSettingsManager({
   return (
     <>
       <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <div className="rounded-[10px] bg-slate-950 p-5 text-white">
-          <p className="text-xs uppercase tracking-[0.24em] text-white/65">
-            기능 요약
+        <section className="admin-section">
+        {/* DESIGN.md 5.3 — 색면 카드 대신 선으로 구분한 요약 박스 */}
+        <div className="admin-metric-box">
+          <p className="admin-metric-box-label">기능 요약</p>
+          <p className="admin-metric-box-value">{enabledCount}개 기능 사용 중</p>
+          <p className="admin-help mt-2">
+            비활성 기능 {disabledCount}개는 해당 지점 관리자 화면과 주요 진입 경로에서 함께
+            숨겨집니다.
           </p>
-          <h2 className="mt-3 text-3xl font-extrabold">
-            {enabledCount}개 기능 사용 중
-          </h2>
-          <p className="mt-2 text-sm text-white/75">
-            비활성 기능 {disabledCount}개는 해당 지점 관리자 화면과 주요 진입 경로에서
-            함께 숨겨집니다.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-white/10 px-3 py-1.5">
-              활성 {enabledCount}개
-            </span>
-            <span className="rounded-full bg-white/10 px-3 py-1.5">
-              비활성 {disabledCount}개
-            </span>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="admin-badge">활성 {enabledCount}개</span>
+            <span className="admin-badge">비활성 {disabledCount}개</span>
           </div>
         </div>
 
-        <div className="mt-5 rounded-[10px] border border-slate-200 bg-slate-50 p-4">
+        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">적용 방식</p>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
             <li>비활성 기능은 관리자 사이드바와 설정 허브에서 함께 숨겨집니다.</li>
@@ -135,9 +128,9 @@ export function FeatureSettingsManager({
           </ul>
         </div>
 
-        <article className="mt-5 rounded-[10px] border border-slate-200 bg-white p-4">
+        <article className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-sm font-semibold text-slate-900">최종 저장</p>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="admin-help mt-2">
             {new Date(settings.updatedAt).toLocaleString("ko-KR", {
               timeZone: "Asia/Seoul",
             })}
@@ -145,22 +138,13 @@ export function FeatureSettingsManager({
         </article>
         </section>
 
-        <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              설정 / 기능
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">
-              지점 기능 설정
-            </h2>
-          </div>
-
+        <section className="admin-section">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <button
             type="button"
             onClick={() => refreshSettings(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            className="admin-button"
           >
             {isRefreshing ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -179,17 +163,13 @@ export function FeatureSettingsManager({
               return (
                 <label
                   key={feature.key}
-                  className={`flex items-start justify-between gap-4 rounded-[10px] border px-4 py-4 transition ${
-                    enabled
-                      ? "border-slate-200 bg-white"
-                      : "border-slate-200 bg-slate-50"
-                  }`}
+                  className={`flex items-start justify-between gap-4 rounded-lg border px-4 py-4 transition ${ enabled ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50" }`}
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-slate-900">
                       {feature.label}
                     </span>
-                    <span className="mt-1 block text-sm leading-6 text-slate-600">
+                    <span className="admin-help mt-1 block leading-6">
                       {feature.description}
                     </span>
                   </span>
@@ -212,13 +192,13 @@ export function FeatureSettingsManager({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <p className="text-sm text-slate-500">
+            <p className="admin-help">
               저장 후 화면을 새로고침하면 비활성 기능 메뉴와 화면이 자동으로 정리됩니다.
             </p>
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               {isSaving ? (
                 <LoaderCircle className="h-4 w-4 animate-spin" />

@@ -5,7 +5,7 @@ import { LoaderCircle, Plus, RefreshCcw, Save, Sparkles, Trash2 } from "lucide-r
 import { toast } from "@/lib/sonner";
 
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { SeatMap } from "@/components/seats/SeatMap";
@@ -793,43 +793,42 @@ export function SeatEditor({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="admin-flat-page">
       <UnsavedChangesGuard
         isDirty={isDirty}
         message="저장하지 않은 좌석 변경사항이 있습니다. 페이지를 이동하면 현재 좌석 배치 수정 내용이 사라집니다."
       />
 
       <section className="grid gap-3 md:grid-cols-4">
-        <article className="rounded-[10px] border border-slate-200-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(18,32,56,0.05)]">
-          <p className="text-sm font-medium text-slate-500">자습실 수</p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">{rooms.length}개</p>
+        <article className="admin-section">
+          <p className="admin-help">자습실 수</p>
+          <h2 className="admin-section-title">{rooms.length}개</h2>
         </article>
-        <article className="rounded-[10px] border border-slate-200-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(18,32,56,0.05)]">
-          <p className="text-sm font-medium text-slate-500">운영 좌석</p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">{activeSeatCount}석</p>
+        <article className="admin-section">
+          <p className="admin-help">운영 좌석</p>
+          <h2 className="admin-section-title">{activeSeatCount}석</h2>
         </article>
-        <article className="rounded-[10px] border border-slate-200-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(18,32,56,0.05)]">
-          <p className="text-sm font-medium text-slate-500">배정 학생</p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">{assignedSeatCount}명</p>
+        <article className="admin-section">
+          <p className="admin-help">배정 학생</p>
+          <h2 className="admin-section-title">{assignedSeatCount}명</h2>
         </article>
-        <article className="rounded-[10px] border border-slate-200-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(18,32,56,0.05)]">
-          <p className="text-sm font-medium text-slate-500">즉시 배정 가능</p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">{availableSeatCount}석</p>
+        <article className="admin-section">
+          <p className="admin-help">즉시 배정 가능</p>
+          <h2 className="admin-section-title">{availableSeatCount}석</h2>
         </article>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
+        <article className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">자습실 목록</p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-950">자습실 목록</h2>
+              <h2 className="admin-section-title">자습실 목록</h2>
             </div>
             <button
               type="button"
               onClick={() => refreshRooms(selectedRoomId)}
               disabled={isRefreshingRooms}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              className="admin-button"
             >
               {isRefreshingRooms ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               새로고침
@@ -842,11 +841,7 @@ export function SeatEditor({
                 key={room.id}
                 type="button"
                 onClick={() => setSelectedRoomId(room.id)}
-                className={`rounded-[10px] border px-4 py-4 text-left transition ${
-                  selectedRoomId === room.id
-                    ? "border-[var(--division-color)] bg-[var(--division-color)] text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-white"
-                }`}
+                className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -856,15 +851,7 @@ export function SeatEditor({
                     </p>
                   </div>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      room.isActive
-                        ? selectedRoomId === room.id
-                          ? "bg-white/15 text-white"
-                          : "bg-white border border-slate-200-slate-200 text-emerald-700"
-                        : selectedRoomId === room.id
-                          ? "bg-white/10 text-white/80"
-                          : "bg-slate-200 text-slate-600"
-                    }`}
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold ${ room.isActive ? selectedRoomId === room.id ? "bg-white/15 text-white" : "bg-white border border-slate-200 text-emerald-700" : selectedRoomId === room.id ? "bg-white/10 text-white/80" : "bg-slate-200 text-slate-600" }`}
                   >
                     {room.isActive ? "운영 중" : "비활성"}
                   </span>
@@ -877,11 +864,10 @@ export function SeatEditor({
           </div>
         </article>
 
-        <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
+        <article className="admin-section">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">실별 설정</p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-950">
+              <h2 className="admin-section-title">
                 {currentRoom?.name ?? "자습실"} 설정
               </h2>
             </div>
@@ -890,7 +876,7 @@ export function SeatEditor({
                 type="button"
                 onClick={handleSaveRoom}
                 disabled={!selectedRoomId || isSavingRoom}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                className="admin-button"
               >
                 {isSavingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 자습실 저장
@@ -899,7 +885,7 @@ export function SeatEditor({
                 type="button"
                 onClick={handleDeleteRoom}
                 disabled={!selectedRoomId || isDeletingRoom}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-white disabled:opacity-60"
+                className="admin-button admin-button-danger-outline"
               >
                 {isDeletingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 자습실 삭제
@@ -911,19 +897,19 @@ export function SeatEditor({
             <>
               <div className="mt-5 grid gap-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">자습실 이름</span>
+                  <span className="admin-label mb-2 block">자습실 이름</span>
                   <input
                     value={roomForm.name}
                     onChange={(event) => updateRoomForm({ name: event.target.value })}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-full"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">복도 열 번호</span>
+                  <span className="admin-label mb-2 block">복도 열 번호</span>
                   <input
                     value={roomForm.aisleColumnsText}
                     onChange={(event) => updateRoomForm({ aisleColumnsText: event.target.value })}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-full"
                     placeholder="예: 5, 10"
                   />
                 </label>
@@ -931,33 +917,33 @@ export function SeatEditor({
 
               <div className="mt-4 grid gap-4 grid-cols-2">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">열 수</span>
+                  <span className="admin-label mb-2 block">열 수</span>
                   <input
                     type="number"
                     min={3}
                     max={20}
                     value={roomForm.columns}
                     onChange={(event) => updateRoomForm({ columns: Number(event.target.value) || 9 })}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-full"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">행 수</span>
+                  <span className="admin-label mb-2 block">행 수</span>
                   <input
                     type="number"
                     min={2}
                     max={20}
                     value={roomForm.rows}
                     onChange={(event) => updateRoomForm({ rows: Number(event.target.value) || 6 })}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                    className="w-full"
                   />
                 </label>
               </div>
 
-              <label className="mt-4 flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+              <label className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <span>
-                  <span className="block text-sm font-medium text-slate-800">운영 상태</span>
-                  <span className="block text-xs text-slate-500">
+                  <span className="admin-label block">운영 상태</span>
+                  <span className="admin-help block">
                     비활성 자습실은 좌석도에만 보이고 신규 배정은 막습니다.
                   </span>
                 </span>
@@ -970,36 +956,35 @@ export function SeatEditor({
               </label>
             </>
           ) : (
-            <div className="mt-5 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-8 text-sm text-slate-600">
+            <div className="admin-help mt-5 px-4 py-8">
               먼저 자습실을 생성해 주세요.
             </div>
           )}
         </article>
 
-        <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">자습실 추가</p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950">새 자습실 추가</h2>
+        <article className="admin-section">
+          <h2 className="admin-section-title">새 자습실 추가</h2>
 
           <div className="mt-5 grid gap-4">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">자습실 이름</span>
+              <span className="admin-label mb-2 block">자습실 이름</span>
               <input
                 value={newRoomForm.name}
                 onChange={(event) =>
                   setNewRoomForm((current) => ({ ...current, name: event.target.value }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 placeholder="예: 1열람실"
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">복도 열 번호</span>
+              <span className="admin-label mb-2 block">복도 열 번호</span>
               <input
                 value={newRoomForm.aisleColumnsText}
                 onChange={(event) =>
                   setNewRoomForm((current) => ({ ...current, aisleColumnsText: event.target.value }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 placeholder="예: 5, 10"
               />
             </label>
@@ -1007,7 +992,7 @@ export function SeatEditor({
 
           <div className="mt-4 grid gap-4 grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">열 수</span>
+              <span className="admin-label mb-2 block">열 수</span>
               <input
                 type="number"
                 min={3}
@@ -1019,11 +1004,11 @@ export function SeatEditor({
                     columns: Number(event.target.value) || 9,
                   }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">행 수</span>
+              <span className="admin-label mb-2 block">행 수</span>
               <input
                 type="number"
                 min={2}
@@ -1035,15 +1020,15 @@ export function SeatEditor({
                     rows: Number(event.target.value) || 6,
                   }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
               />
             </label>
           </div>
 
-          <label className="mt-4 flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+          <label className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
             <span>
-              <span className="block text-sm font-medium text-slate-800">운영 상태</span>
-              <span className="block text-xs text-slate-500">
+              <span className="admin-label block">운영 상태</span>
+              <span className="admin-help block">
                 비활성 자습실은 목록에는 남지만 신규 배정은 막습니다.
               </span>
             </span>
@@ -1061,7 +1046,7 @@ export function SeatEditor({
             type="button"
             onClick={handleCreateRoom}
             disabled={isCreatingRoom}
-            className="mt-4 inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+            className="admin-button admin-button-primary mt-4"
           >
             {isCreatingRoom ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             자습실 추가
@@ -1069,14 +1054,13 @@ export function SeatEditor({
         </article>
       </div>
 
-      <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
+      <article className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">좌석 배치</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">
+            <h2 className="admin-section-title">
               {currentRoom?.name ?? "자습실"} 좌석 배치
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <p className="admin-help mt-2 leading-6">
               통로를 제외한 모든 칸이 좌석으로 기본 생성되며, 좌석 번호와 학생 배정, 활성 상태를 바로 수정할 수 있습니다.
             </p>
           </div>
@@ -1085,7 +1069,7 @@ export function SeatEditor({
               type="button"
               onClick={applyDefaultLayout}
               disabled={!selectedRoomId || isSavingLayout}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              className="admin-button"
             >
               <Sparkles className="h-4 w-4" />
               기본 배치 생성
@@ -1094,7 +1078,7 @@ export function SeatEditor({
               type="button"
               onClick={handleSaveLayout}
               disabled={!selectedRoomId || isSavingLayout || isLoadingLayout}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               {isSavingLayout ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               좌석 저장
@@ -1107,7 +1091,7 @@ export function SeatEditor({
             {trackSummary.map((item) => (
               <span
                 key={item.track}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${getStudyTrackBadgeClasses(item.track)}`}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold ${getStudyTrackBadgeClasses(item.track)}`}
               >
                 {getStudyTrackShortLabel(item.track)}
                 <span className="opacity-80">{item.count}명</span>
@@ -1116,23 +1100,23 @@ export function SeatEditor({
           </div>
         ) : null}
 
-        <div className="mt-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <div className="admin-notice mt-4">
           학생이 배정된 좌석은 드래그해서 다른 빈 좌석으로 바로 이동할 수 있습니다. 이미 학생이 있는 좌석에는 덮어쓸 수 없습니다.
         </div>
 
         {isLoadingLayout ? (
-          <div className="mt-6 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
+          <div className="admin-help mt-6 px-4 py-8 text-center">
             좌석 배치를 불러오는 중입니다.
           </div>
         ) : selectedRoomId ? (
           <>
             {isMultiSelect ? (
-              <div className="mt-6 flex flex-wrap items-center gap-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-5 py-3">
+              <div className="mt-6 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-white px-5 py-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-950">{allSelectedSeats.length}개 좌석 선택</span>
-                  <span className="text-xs text-slate-500">(Shift+클릭으로 추가/해제)</span>
+                  <span className="admin-help">(Shift+클릭으로 추가/해제)</span>
                 </div>
-                <label className="flex items-center gap-2 rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2">
+                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
                   <input
                     type="checkbox"
                     checked={allSelectedSeats.every((s) => s.isActive)}
@@ -1147,7 +1131,7 @@ export function SeatEditor({
                 <button
                   type="button"
                   onClick={() => setExtraSelectedLocalIds(new Set())}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-white"
+                  className="admin-button admin-button-danger-outline"
                 >
                   <Trash2 className="h-4 w-4" />
                   선택 좌석 해제
@@ -1155,28 +1139,28 @@ export function SeatEditor({
                 <button
                   type="button"
                   onClick={() => setExtraSelectedLocalIds(new Set())}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                  className="admin-button"
                 >
                   선택 해제
                 </button>
               </div>
             ) : (
-              <div className="mt-6 rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-4 text-center text-sm text-slate-600">
+              <div className="admin-help mt-6 px-4 py-4 text-center">
                 좌석을 클릭하면 편집 모달이 열립니다. <span className="text-slate-400">(Shift+클릭으로 다중 선택)</span>
               </div>
             )}
 
             {movingSeatId ? (
-              <div className="mt-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm text-sky-700">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-sky-700">
                 좌석 이동을 반영하는 중입니다.
               </div>
             ) : null}
 
             <div className="mt-6">
-              <div className="mb-3 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-2 text-sm text-slate-600">
+              <div className="admin-help mb-3">
                 선택 자습실 <span className="font-semibold text-slate-900">{currentRoom?.name}</span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="admin-seat-grid overflow-x-auto">
                 <SeatMap
                   seats={seatMapSeats}
                   columns={roomForm.columns}
@@ -1192,12 +1176,12 @@ export function SeatEditor({
             </div>
           </>
         ) : (
-          <div className="mt-6 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
+          <div className="admin-help mt-6 px-4 py-8 text-center">
             자습실을 선택하면 좌석 배치를 바로 편집할 수 있습니다.
           </div>
         )}
 
-        <Modal
+        <SlideOver
           open={editingSeat !== null && isSeatEditModalOpen && !isMultiSelect}
           onClose={() => {
             setIsSeatEditModalOpen(false);
@@ -1205,7 +1189,7 @@ export function SeatEditor({
           }}
           title="좌석 편집"
           badge={editingSeat ? `${editingSeat.positionX}열 ${editingSeat.positionY}행` : ""}
-          widthClassName="max-w-md"
+
         >
           {editingSeat ? (
             <div className="space-y-5">
@@ -1214,7 +1198,7 @@ export function SeatEditor({
                 <input
                   value={editingSeat.label}
                   onChange={(event) => updateSelectedSeat({ label: event.target.value })}
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
                   placeholder="예: A-01"
                 />
               </label>
@@ -1226,7 +1210,7 @@ export function SeatEditor({
                   onChange={(event) =>
                     updateSelectedSeat({ assignedStudentId: event.target.value || null })
                   }
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
                   disabled={!editingSeat.isActive}
                 >
                   <option value="">배정 안 함</option>
@@ -1238,7 +1222,7 @@ export function SeatEditor({
                 </select>
               </label>
 
-              <label className="flex items-center gap-3 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3">
+              <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <input
                   type="checkbox"
                   checked={editingSeat.isActive}
@@ -1249,40 +1233,26 @@ export function SeatEditor({
                   className="h-5 w-5 rounded border-slate-300"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-slate-800">운영 좌석</span>
-                  <span className="block text-xs text-slate-500">비활성 시 배정 제외</span>
+                  <span className="admin-label block">운영 좌석</span>
+                  <span className="admin-help block">비활성 시 배정 제외</span>
                 </span>
               </label>
 
               {selectedAssignedStudent ? (
-                <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-sm font-bold text-slate-950">{selectedAssignedStudent.name}</p>
                   <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${getStudyTrackBadgeClasses(
-                      selectedAssignedStudent.studyTrack,
-                    )}`}
+                    className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-semibold ${getStudyTrackBadgeClasses( selectedAssignedStudent.studyTrack, )}`}
                   >
                     {formatStudyTrackLabel(selectedAssignedStudent.studyTrack)}
                   </span>
-                  <span className="text-xs text-slate-600">{selectedAssignedStudent.studentNumber}</span>
+                  <span className="admin-help">{selectedAssignedStudent.studentNumber}</span>
                 </div>
               ) : null}
 
-              <div className="flex items-center justify-end border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSeatEditModalOpen(false);
-                    setEditingLocalId(null);
-                  }}
-                  className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                >
-                  닫기
-                </button>
-              </div>
             </div>
           ) : null}
-        </Modal>
+        </SlideOver>
 
         <ActionCompleteModal
           open={saveSuccessModal !== null}

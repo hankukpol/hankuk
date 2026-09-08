@@ -1,9 +1,11 @@
 "use client";
 
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import { Save } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { getSeatPositionKey } from "@/lib/seat-layout";
 import {
   getAttendanceStatusClasses,
@@ -201,11 +203,7 @@ export function AttendanceSeatView({
               type="button"
               onClick={() => handleRoomChange(room.id)}
               disabled={loadingRoomId !== null}
-              className={`relative rounded-t-xl px-4 py-2 text-sm font-medium transition ${
-                selectedRoomId === room.id
-                  ? "bg-[var(--division-color)] text-white"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              }`}
+              className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
             >
               {room.name}
               {loadingRoomId === room.id && (
@@ -217,7 +215,7 @@ export function AttendanceSeatView({
       )}
 
       {/* 출입구 */}
-      <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-500">
+      <div className="admin-notice text-center">
         칠판
       </div>
 
@@ -236,7 +234,7 @@ export function AttendanceSeatView({
                 return (
                   <div
                     key={`aisle-${posX}-${posY}`}
-                    className="flex min-h-[108px] items-center justify-center rounded-[10px] border border-dashed border-slate-200 bg-white text-xs font-semibold tracking-widest text-slate-400"
+                    className="admin-help flex min-h-[108px] items-center justify-center text-xs font-semibold"
                   >
                     복도
                   </div>
@@ -249,7 +247,7 @@ export function AttendanceSeatView({
                 return (
                   <div
                     key={`empty-${posX}-${posY}`}
-                    className="min-h-[108px] rounded-[10px] border border-dashed border-slate-100 bg-slate-50"
+                    className="admin-help min-h-[108px]"
                   />
                 );
               }
@@ -272,15 +270,13 @@ export function AttendanceSeatView({
                   onClick={() => {
                     if (student) setModalStudentId(student.id);
                   }}
-                  className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-[10px] border p-3 text-left transition hover:opacity-80 ${tone} ${
-                    isSelected ? "ring-2 ring-slate-900 ring-offset-1" : ""
-                  } ${!student || !seat.isActive ? "cursor-default" : ""}`}
+                  className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
                 >
                   {/* 상단: 좌석번호 + 상태 배지 */}
                   <div className="flex items-start justify-between gap-1">
-                    <span className="text-xs font-semibold tracking-widest">{seat.label}</span>
+                    <span className="text-xs font-semibold">{seat.label}</span>
                     {student && dayStatus && (
-                      <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[dayStatus]}`}>
+                      <span className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE[dayStatus]}`}>
                         {STATUS_LABEL[dayStatus]}
                       </span>
                     )}
@@ -294,7 +290,7 @@ export function AttendanceSeatView({
                     {student && (
                       <>
                         <p className="text-xs opacity-70">{student.studentNumber}</p>
-                        <p className="text-[10px] font-medium opacity-80">
+                        <p className="text-[13px] font-medium opacity-80">
                           {getStudyTrackShortLabel(student.studyTrack)}
                         </p>
                       </>
@@ -308,12 +304,12 @@ export function AttendanceSeatView({
       </div>
 
       {/* 좌석 클릭 출석 체크 모달 */}
-      <Modal
+      <SlideOver
         open={Boolean(modalStudent)}
         title={modalStudent?.name ?? ""}
         description={`${modalStudent?.seatDisplay ?? "좌석 미배정"} · ${modalStudent?.studentNumber ?? ""}`}
         badge="출석 체크"
-        widthClassName="max-w-md"
+
         onClose={() => setModalStudentId(null)}
       >
         {modalStudentId && (
@@ -325,17 +321,17 @@ export function AttendanceSeatView({
               return (
                 <div
                   key={period.id}
-                  className="space-y-2 rounded-[10px] border border-slate-100 bg-slate-50 p-4"
+                  className="space-y-2 rounded-lg border border-slate-100 bg-slate-50 p-4"
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{period.name}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="admin-help">
                         {period.startTime}–{period.endTime}
                       </p>
                     </div>
                     {cell.status && (
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getAttendanceStatusClasses(cell.status)}`}>
+                      <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getAttendanceStatusClasses(cell.status)}`}>
                         {getAttendanceStatusLabel(cell.status)}
                       </span>
                     )}
@@ -352,11 +348,7 @@ export function AttendanceSeatView({
                               value !== "ABSENT" && value !== "EXCUSED" ? "" : cell.reason,
                           })
                         }
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${
-                          cell.status === value
-                            ? getAttendanceStatusClasses(value)
-                            : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
-                        }`}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${ cell.status === value ? getAttendanceStatusClasses(value) : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50" }`}
                       >
                         {label}
                       </button>
@@ -369,25 +361,27 @@ export function AttendanceSeatView({
                         onUpdateCell(modalStudentId, period.id, { reason: e.target.value })
                       }
                       placeholder="사유"
-                      className="h-8 w-full rounded-[10px] border border-slate-200 bg-white px-3 py-1 text-xs text-slate-900 outline-none focus:border-slate-400"
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-900"
                     />
                   )}
                 </div>
               );
             })}
 
-            <button
+            <DialogActions>
+<button
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               <Save className="h-4 w-4" />
               {isSaving ? "저장 중..." : "저장"}
             </button>
+</DialogActions>
           </div>
         )}
-      </Modal>
+      </SlideOver>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiAuth } from "@/lib/api-auth";
@@ -21,10 +22,7 @@ export async function GET(
     const settings = await getDivisionGeneralSettings(params.division);
     return NextResponse.json({ settings }, { headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=60" } });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "설정 정보를 불러오지 못했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "설정 정보를 불러오지 못했습니다.", 400);
   }
 }
 
@@ -52,9 +50,6 @@ export async function PATCH(
     const settings = await updateDivisionGeneralSettings(params.division, parsed.data);
     return NextResponse.json({ settings });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "기본 정보 저장에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "기본 정보 저장에 실패했습니다.", 400);
   }
 }

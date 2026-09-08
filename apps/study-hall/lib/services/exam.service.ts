@@ -1118,11 +1118,33 @@ export async function getLatestExamSummariesForStudents(
   }
 
   if (isMockMode()) {
-    const entries = await Promise.all(
-      studentIds.map(async (studentId) => [studentId, await getLatestExamSummaryForStudent(divisionSlug, studentId)] as const),
+    const state = await readMockState();
+    const requestedIds = new Set(studentIds);
+    const examTypes = new Map(
+      (state.examTypesByDivision[divisionSlug] ?? []).map((examType) => [examType.id, examType]),
     );
+    const latestByStudent = new Map<string, MockExamScoreRecord>();
+    for (const score of state.examScoresByDivision[divisionSlug] ?? []) {
+      if (!requestedIds.has(score.studentId)) continue;
+      const current = latestByStudent.get(score.studentId);
+      // Equal dates retain the first record, matching the single-student stable sort.
+      if (!current || (score.examDate ?? score.updatedAt).localeCompare(current.examDate ?? current.updatedAt) > 0) {
+        latestByStudent.set(score.studentId, score);
+      }
+    }
 
-    return new Map(entries);
+    return new Map(studentIds.map((studentId) => {
+      const latest = latestByStudent.get(studentId);
+      return [studentId, latest ? {
+        id: latest.id,
+        examTypeName: examTypes.get(latest.examTypeId)?.name ?? "모의고사",
+        examRound: latest.examRound,
+        examDate: latest.examDate,
+        totalScore: latest.totalScore,
+        rankInClass: latest.rankInClass,
+        notes: latest.notes,
+      } : null];
+    }));
   }
 
   const { prisma } = await import("@/lib/prisma");
@@ -1136,7 +1158,14 @@ export async function getLatestExamSummariesForStudents(
         },
       },
     },
-    include: {
+    select: {
+      id: true,
+      studentId: true,
+      examRound: true,
+      examDate: true,
+      totalScore: true,
+      rankInClass: true,
+      notes: true,
       examType: {
         select: {
           name: true,

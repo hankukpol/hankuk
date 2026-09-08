@@ -1,6 +1,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 import { Prisma } from "@prisma/client/index";
+import { indexFirstBy } from "@/lib/record-index";
 
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
@@ -566,30 +567,44 @@ async function normalizePersistedRoomSeatsIfNeeded(
   return true;
 }
 
-function buildMockAssignedStudent(
-  seat: MockSeatRecord,
+function createMockAssignedStudentResolver(
   students: MockStudentRecord[],
   rooms: MockStudyRoomRecord[],
 ) {
-  const student =
-    students.find((item) => item.seatId === seat.id) ??
-    students.find((item) => item.seatLabel === seat.label && item.seatId == null);
+  const studentsBySeatId = indexFirstBy(students, (student) => student.seatId);
+  const fallbackByLabel = indexFirstBy(students.filter((student) => student.seatId == null), (student) => student.seatLabel);
+  const roomsById = indexFirstBy(rooms, (room) => room.id);
+  return (seat: MockSeatRecord) => {
+    const student = studentsBySeatId.get(seat.id) ?? fallbackByLabel.get(seat.label);
 
-  if (!student) {
-    return null;
+    if (!student) {
+      return null;
+    }
+
+    const room = roomsById.get(seat.studyRoomId);
+
+    return {
+      id: student.id,
+      name: student.name,
+      studentNumber: student.studentNumber,
+      status: student.status,
+      studyTrack: student.studyTrack,
+      studyRoomName: room?.name ?? null,
+      courseEndDate: student.courseEndDate ?? null,
+    } satisfies SeatMapStudent;
+  };
+}
+
+function createMockSeatResolver(seats: MockSeatRecord[]) {
+  const byId = indexFirstBy(seats, (seat) => seat.id);
+  const uniqueByLabel = new Map<string, MockSeatRecord | null>();
+  for (const seat of seats) {
+    uniqueByLabel.set(seat.label, uniqueByLabel.has(seat.label) ? null : seat);
   }
-
-  const room = rooms.find((item) => item.id === seat.studyRoomId);
-
-  return {
-    id: student.id,
-    name: student.name,
-    studentNumber: student.studentNumber,
-    status: student.status,
-    studyTrack: student.studyTrack,
-    studyRoomName: room?.name ?? null,
-    courseEndDate: student.courseEndDate ?? null,
-  } satisfies SeatMapStudent;
+  return (student: MockStudentRecord) => {
+    if (student.seatId) return byId.get(student.seatId) ?? null;
+    return student.seatLabel ? uniqueByLabel.get(student.seatLabel) ?? null : null;
+  };
 }
 
 function findMockSeatForStudent(seats: MockSeatRecord[], student: MockStudentRecord) {
@@ -673,15 +688,22 @@ export async function listStudyRooms(divisionSlug: string): Promise<StudyRoomIte
     const seats = state.seatsByDivision[divisionSlug] ?? [];
     const students = state.studentsByDivision[divisionSlug] ?? [];
 
+    const resolveSeat = createMockSeatResolver(seats);
+    const seatCounts = new Map<string, number>();
+    const assignedCounts = new Map<string, number>();
+    for (const seat of seats) {
+      seatCounts.set(seat.studyRoomId, (seatCounts.get(seat.studyRoomId) ?? 0) + 1);
+    }
+    for (const student of students) {
+      const seat = resolveSeat(student);
+      if (seat) assignedCounts.set(seat.studyRoomId, (assignedCounts.get(seat.studyRoomId) ?? 0) + 1);
+    }
     return sortRooms(
       rooms.map((room) =>
         serializeRoom(
           room,
-          seats.filter((seat) => seat.studyRoomId === room.id).length,
-          students.filter((student) => {
-            const seat = findMockSeatForStudent(seats, student);
-            return seat?.studyRoomId === room.id;
-          }).length,
+          seatCounts.get(room.id) ?? 0,
+          assignedCounts.get(room.id) ?? 0,
         ),
       ),
     );
@@ -715,16 +737,23 @@ export async function listSeatOptions(
     const rooms = state.studyRoomsByDivision[divisionSlug] ?? [];
     const seats = state.seatsByDivision[divisionSlug] ?? [];
     const students = state.studentsByDivision[divisionSlug] ?? [];
+    const resolveSeat = createMockSeatResolver(seats);
+    const roomsById = indexFirstBy(rooms, (room) => room.id);
+    const studentBySeatId = new Map<string, MockStudentRecord>();
+    for (const student of students) {
+      const seat = resolveSeat(student);
+      if (seat && !studentBySeatId.has(seat.id)) studentBySeatId.set(seat.id, student);
+    }
 
     return sortSeats(
       seats.filter((seat) => !options?.activeOnly || seat.isActive).map((seat) => ({
         id: seat.id,
         studyRoomId: seat.studyRoomId,
-        studyRoomName: rooms.find((room) => room.id === seat.studyRoomId)?.name ?? "알 수 없는 자습실",
+        studyRoomName: roomsById.get(seat.studyRoomId)?.name ?? "알 수 없는 자습실",
         label: seat.label,
         isActive: seat.isActive,
         assignedStudentId:
-          students.find((student) => findMockSeatForStudent(seats, student)?.id === seat.id)?.id ?? null,
+          studentBySeatId.get(seat.id)?.id ?? null,
         positionX: seat.positionX,
         positionY: seat.positionY,
       })),
@@ -767,11 +796,13 @@ export async function getSeatLayout(
     const room = findMockRoomOrThrow(rooms, roomId);
     const students = state.studentsByDivision[divisionSlug] ?? [];
     const seats = (state.seatsByDivision[divisionSlug] ?? []).filter((seat) => seat.studyRoomId === room.id);
+    const resolveSeat = createMockSeatResolver(seats);
+    const resolveStudent = createMockAssignedStudentResolver(students, rooms);
     const serializedRoom = serializeRoom(
       room,
       seats.length,
       students.filter((student) => {
-        const assignedSeat = findMockSeatForStudent(seats, student);
+        const assignedSeat = resolveSeat(student);
         return assignedSeat?.studyRoomId === room.id;
       }).length,
     );
@@ -789,7 +820,7 @@ export async function getSeatLayout(
           positionX: seat.positionX,
           positionY: seat.positionY,
           isActive: seat.isActive,
-          assignedStudent: buildMockAssignedStudent(seat, students, rooms),
+          assignedStudent: resolveStudent(seat),
         })),
       ),
     };
@@ -1450,8 +1481,9 @@ export async function saveSeatLayout(
     },
   });
 
+  const existingSeatIds = new Set(existingSeats.map((seat) => seat.id));
   for (const seat of seats) {
-    if (seat.id && !existingSeats.some((item) => item.id === seat.id)) {
+    if (seat.id && !existingSeatIds.has(seat.id)) {
       throw notFound("좌석 정보를 찾을 수 없습니다.");
     }
   }
@@ -1598,6 +1630,12 @@ export async function saveSeatEditorLayout(
       const currentSeats = (state.seatsByDivision[divisionSlug] ?? []).filter(
         (seat) => seat.studyRoomId === input.roomId,
       );
+      const currentSeatIds = new Set(currentSeats.map((seat) => seat.id));
+      for (const seat of normalizedSeats) {
+        if (seat.id && !currentSeatIds.has(seat.id)) {
+          throw notFound("좌석 정보를 찾을 수 없습니다.");
+        }
+      }
       const otherSeats = (state.seatsByDivision[divisionSlug] ?? []).filter(
         (seat) => seat.studyRoomId !== input.roomId,
       );
@@ -1713,6 +1751,18 @@ export async function saveSeatEditorLayout(
       }
     }
 
+    // Validate every supplied seat against this division and room before any writes.
+    const existingSeats = await tx.seat.findMany({
+      where: { divisionId: division.id, studyRoomId: input.roomId },
+      select: { id: true, label: true },
+    });
+    const existingSeatIds = new Set(existingSeats.map((seat) => seat.id));
+    for (const seat of normalizedSeats) {
+      if (seat.id && !existingSeatIds.has(seat.id)) {
+        throw notFound("좌석 정보를 찾을 수 없습니다.");
+      }
+    }
+
     // 1. 방 설정 업데이트
     if (input.room) {
       await tx.studyRoom.update({
@@ -1720,12 +1770,6 @@ export async function saveSeatEditorLayout(
         data: nextRoomConfig,
       });
     }
-
-    // 2. 기존 좌석 조회
-    const existingSeats = await tx.seat.findMany({
-      where: { divisionId: division.id, studyRoomId: input.roomId },
-      select: { id: true, label: true },
-    });
 
     const incomingIds = new Set(normalizedSeats.filter((s) => s.id).map((s) => s.id as string));
     const removedIds = existingSeats.filter((s) => !incomingIds.has(s.id)).map((s) => s.id);
@@ -1745,7 +1789,7 @@ export async function saveSeatEditorLayout(
     const existingDrafts = normalizedSeats.filter((s): s is SeatLayoutSaveItem & { id: string } => Boolean(s.id));
     for (const seat of existingDrafts) {
       await tx.seat.update({
-        where: { id: seat.id },
+        where: { id: seat.id, divisionId: division.id, studyRoomId: input.roomId },
         data: { label: "temp-" + seat.id, positionX: seat.positionX, positionY: seat.positionY, isActive: seat.isActive },
       });
     }
@@ -1767,7 +1811,7 @@ export async function saveSeatEditorLayout(
     // 7. 기존 좌석 최종 라벨 복원
     for (const seat of existingDrafts) {
       await tx.seat.update({
-        where: { id: seat.id },
+        where: { id: seat.id, divisionId: division.id, studyRoomId: input.roomId },
         data: { label: seat.label, positionX: seat.positionX, positionY: seat.positionY, isActive: seat.isActive },
       });
     }

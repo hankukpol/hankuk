@@ -15,6 +15,7 @@ type PhoneSubmissionManagerProps = {
   initialRecords?: PhoneCheckRecord[];
   phonePointRule?: PointRuleItem | null;
   pointsEnabled?: boolean;
+  isActive?: boolean;
 };
 
 function getKstToday() {
@@ -71,6 +72,7 @@ export function PhoneSubmissionManager({
   initialRecords = [],
   phonePointRule: initialPhonePointRule = null,
   pointsEnabled = true,
+  isActive = true,
 }: PhoneSubmissionManagerProps) {
   const [records, setRecords] = useState<PhoneCheckRecord[]>(initialRecords);
   const [phonePointRule, setPhonePointRule] = useState<PointRuleItem | null>(initialPhonePointRule);
@@ -80,6 +82,7 @@ export function PhoneSubmissionManager({
   const [isLoading, setIsLoading] = useState(false);
   const [isGranting, setIsGranting] = useState(false);
   const hasBootstrapped = useRef(false);
+  const wasActive = useRef(false);
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
   const { confirm, confirmDialog } = useConfirmDialog();
 
@@ -97,9 +100,9 @@ export function PhoneSubmissionManager({
     [records],
   );
 
-  const handleSearch = useCallback(async () => {
+  const handleSearch = useCallback(async (preserveSelection = false) => {
     setIsLoading(true);
-    setSelectedIds(new Set());
+    if (!preserveSelection) setSelectedIds(new Set());
     try {
       const params = new URLSearchParams();
       if (dateFrom) params.set("dateFrom", dateFrom);
@@ -112,6 +115,12 @@ export function PhoneSubmissionManager({
       }
       const { records: data } = (await res.json()) as { records: PhoneCheckRecord[] };
       setRecords(data);
+      if (preserveSelection) {
+        const eligible = new Set(data.filter((record) => record.status === "NOT_SUBMITTED" && record.attendanceCheckable).map((record) => record.studentId));
+        setSelectedIds((current) => new Set(Array.from(current).filter((id) => eligible.has(id))));
+      }
+    } catch {
+      toast.error("휴대폰 이력을 불러오지 못했습니다. 다시 조회해 주세요.");
     } finally {
       setIsLoading(false);
     }
@@ -135,20 +144,20 @@ export function PhoneSubmissionManager({
   }, [divisionSlug]);
 
   useEffect(() => {
-    if (hasBootstrapped.current) {
+    if (!isActive) {
+      wasActive.current = false;
       return;
     }
-
-    hasBootstrapped.current = true;
-
-    if (initialRecords.length === 0) {
-      void handleSearch();
+    if (wasActive.current) return;
+    wasActive.current = true;
+    if (hasBootstrapped.current || initialRecords.length === 0) {
+      void handleSearch(true);
     }
-
-    if (pointsEnabled && !initialPhonePointRule) {
+    if (!hasBootstrapped.current && pointsEnabled && !initialPhonePointRule) {
       void loadPhonePointRule();
     }
-  }, [handleSearch, initialPhonePointRule, initialRecords.length, loadPhonePointRule, pointsEnabled]);
+    hasBootstrapped.current = true;
+  }, [handleSearch, initialPhonePointRule, initialRecords.length, isActive, loadPhonePointRule, pointsEnabled]);
 
   function toggleSelect(studentId: string) {
     setSelectedIds((prev) => {
@@ -238,7 +247,7 @@ export function PhoneSubmissionManager({
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="mt-1 block rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400"
+            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
           />
         </div>
         <div>
@@ -247,14 +256,14 @@ export function PhoneSubmissionManager({
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="mt-1 block rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400"
+            className="mt-1 block rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
           />
         </div>
         <button
           type="button"
-          onClick={handleSearch}
+          onClick={() => void handleSearch()}
           disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          className="admin-button"
         >
           <RefreshCcw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           조회
@@ -263,20 +272,20 @@ export function PhoneSubmissionManager({
 
       {/* 요약 통계 */}
       <div className="flex flex-wrap gap-2">
-        <span className="inline-flex items-center rounded-full bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+        <span className="inline-flex items-center rounded-lg bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
           반납 {submittedCount}건
         </span>
-        <span className="inline-flex items-center rounded-full bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
+        <span className="inline-flex items-center rounded-lg bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
           미반납 {notSubmittedCount}건
         </span>
-        <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
+        <span className="inline-flex items-center rounded-lg bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
           대여 {rentedCount}건
         </span>
       </div>
 
       {/* 미반납자 벌점 부여 */}
       {notSubmittedCount > 0 && pointsEnabled && (
-        <div className="rounded-[10px] border border-rose-200 bg-rose-50 p-4">
+        <div className="admin-notice admin-notice-danger">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-rose-500" />
             <p className="text-sm font-semibold text-rose-700">미반납자 벌점 부여</p>
@@ -290,7 +299,7 @@ export function PhoneSubmissionManager({
             <button
               type="button"
               onClick={selectAllNotSubmitted}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+              className="admin-button admin-button-primary"
             >
               미반납자 전체 선택 ({notSubmittedCount}명)
             </button>
@@ -299,7 +308,7 @@ export function PhoneSubmissionManager({
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  className="admin-button"
                 >
                   선택 해제
                 </button>
@@ -307,7 +316,7 @@ export function PhoneSubmissionManager({
                   type="button"
                   onClick={handleGrantPoints}
                   disabled={isGranting}
-                  className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                  className="admin-button admin-button-danger-outline"
                 >
                   {isGranting ? "처리 중..." : `선택 ${selectedIds.size}명 벌점 부여`}
                 </button>
@@ -318,7 +327,7 @@ export function PhoneSubmissionManager({
       )}
 
       {notSubmittedCount > 0 && !pointsEnabled && (
-        <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-4">
+        <div className="admin-notice admin-notice-warning">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <p className="text-sm font-semibold text-amber-800">상벌점 기능이 비활성화되었습니다.</p>
@@ -331,28 +340,28 @@ export function PhoneSubmissionManager({
 
       {/* 기록 목록 */}
       {records.length === 0 ? (
-        <div className="rounded-[10px] border border-dashed border-slate-300 px-4 py-16 text-center">
+        <div className="admin-help px-4 py-16 text-center">
           <Smartphone className="mx-auto h-8 w-8 text-slate-300" />
-          <p className="mt-3 text-sm text-slate-500">해당 기간의 기록이 없습니다.</p>
+          <p className="admin-help mt-3">해당 기간의 기록이 없습니다.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="admin-table-frame overflow-x-auto">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200 text-left">
-                <th className="pb-3 pr-4 font-semibold text-slate-600" style={{ width: "2.5rem" }}>
+                <th style={{ width: "2.5rem" }}>
                   선택
                 </th>
-                <th className="pb-3 pr-4 font-semibold text-slate-600">날짜</th>
-                <th className="pb-3 pr-4 font-semibold text-slate-600">교시</th>
-                <th className="pb-3 pr-4 font-semibold text-slate-600">이름</th>
-                <th className="pb-3 pr-4 font-semibold text-slate-600">수험번호</th>
-                <th className="pb-3 pr-4 font-semibold text-slate-600">출석 상태</th>
-                <th className="pb-3 pr-4 font-semibold text-slate-600">상태</th>
-                <th className="pb-3 font-semibold text-slate-600">대여 사유</th>
+                <th>날짜</th>
+                <th>교시</th>
+                <th>이름</th>
+                <th>수험번호</th>
+                <th>출석 상태</th>
+                <th>상태</th>
+                <th>대여 사유</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {records.map((item) => (
                 <tr
                   key={item.id}
@@ -362,7 +371,7 @@ export function PhoneSubmissionManager({
                       : ""
                   }
                 >
-                  <td className="py-3 pr-4">
+                  <td>
                     {item.status === "NOT_SUBMITTED" && item.attendanceCheckable && (
                       <input
                         type="checkbox"
@@ -372,28 +381,22 @@ export function PhoneSubmissionManager({
                       />
                     )}
                   </td>
-                  <td className="py-3 pr-4 text-slate-600">{item.date}</td>
-                  <td className="py-3 pr-4 text-slate-600">{item.periodName}</td>
-                  <td className="py-3 pr-4 font-medium text-slate-900">{item.studentName}</td>
-                  <td className="py-3 pr-4 text-slate-600">{item.studentNumber}</td>
-                  <td className="py-3 pr-4">
+                  <td>{item.date}</td>
+                  <td>{item.periodName}</td>
+                  <td>{item.studentName}</td>
+                  <td>{item.studentNumber}</td>
+                  <td>
                     <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${getAttendanceBadgeClassName(item)}`}
+                      className={`inline-flex rounded-lg px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${getAttendanceBadgeClassName(item)}`}
                     >
                       {item.attendanceStatus === null && item.attendanceCheckable
                         ? "출결 연동 없음"
                         : getAttendanceStatusLabel(item.attendanceStatus)}
                     </span>
                   </td>
-                  <td className="py-3 pr-4">
+                  <td>
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                        item.status === "SUBMITTED"
-                          ? "bg-green-50 text-green-700 ring-green-600/20"
-                          : item.status === "NOT_SUBMITTED"
-                            ? "bg-red-50 text-red-700 ring-red-600/20"
-                            : "bg-sky-50 text-sky-700 ring-sky-700/20"
-                      }`}
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${ item.status === "SUBMITTED" ? "bg-green-50 text-green-700 ring-green-600/20" : item.status === "NOT_SUBMITTED" ? "bg-red-50 text-red-700 ring-red-600/20" : "bg-sky-50 text-sky-700 ring-sky-700/20" }`}
                     >
                       {item.status === "SUBMITTED" ? (
                         <>
@@ -410,7 +413,7 @@ export function PhoneSubmissionManager({
                       )}
                     </span>
                   </td>
-                  <td className="py-3 text-xs text-slate-500">{item.rentalNote ?? ""}</td>
+                  <td>{item.rentalNote ?? ""}</td>
                 </tr>
               ))}
             </tbody>

@@ -20,8 +20,8 @@ export function PaymentMethodSelect({
   onChange,
   required = false,
   disabled = false,
-  selectClassName = "w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400",
-  inputClassName = "w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400",
+  selectClassName = "w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition",
+  inputClassName = "w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition",
 }: PaymentMethodSelectProps) {
   const parsed = parseStoredPaymentMethod(value);
   const selectedValue = parsed?.value ?? "";

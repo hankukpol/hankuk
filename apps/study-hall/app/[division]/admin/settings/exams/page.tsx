@@ -19,13 +19,10 @@ export default async function ExamSettingsPage({ params }: ExamSettingsPageProps
   ]);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-          설정 / 시험
-        </p>
-        <h1 className="mt-3 text-3xl font-extrabold text-slate-950">시험 템플릿 설정</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+    <div className="admin-flat-page">
+      <section className="admin-section">
+        <h1 className="admin-page-title">시험 템플릿 설정</h1>
+        <p className="admin-page-description">
           지점별 운영 방식에 맞게 시험 종류를 만들고, 직렬별로 과목명, 과목 수, 문항 수,
           배점까지 따로 관리합니다. 여기서 설정한 템플릿은 성적 입력 화면과 학생 조회 화면에
           그대로 반영됩니다.

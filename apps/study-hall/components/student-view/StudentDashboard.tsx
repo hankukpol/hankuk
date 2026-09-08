@@ -101,7 +101,7 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
         <section className={`${portalSectionClass} py-3.5`}>
           <div className="flex items-center gap-3">
             <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
               style={{
                 backgroundColor: "var(--division-color)",
                 color: "var(--division-on-accent)",
@@ -110,32 +110,27 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
               <CalendarDays className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p
-                className="text-[12px] font-bold"
-                style={{ color: "var(--division-color)" }}
-              >
-                D-DAY
-              </p>
-              <h2 className="mt-0.5 truncate text-[16px] font-bold text-[var(--foreground)]">
+              <p className="admin-metric-box-label text-left">다가오는 시험</p>
+              <h2 className="mt-0.5 break-words text-[16px] font-bold text-admin-text">
                 {data.upcomingExamSchedule.name}
               </h2>
-              <p className="mt-0.5 text-[12px] text-[var(--muted)]">
+              <p className="mt-0.5 text-[13px] text-admin-text-muted">
                 {data.upcomingExamSchedule.examDate}
               </p>
             </div>
             <div
-              className="rounded-[10px] px-3 py-1.5 text-[13px] font-bold"
+              className="rounded-lg px-3 py-1.5 text-[13px] font-bold"
               style={{
                 backgroundColor:
-                  data.upcomingExamSchedule.dDayValue === 0 ? "#fee2e2" : "white",
+                  data.upcomingExamSchedule.dDayValue === 0 ? "var(--admin-danger-soft)" : "var(--admin-surface)",
                 color:
                   data.upcomingExamSchedule.dDayValue === 0
-                    ? "#b91c1c"
+                    ? "var(--admin-danger)"
                     : "var(--division-color)",
                 border:
                   "1px solid " +
                   (data.upcomingExamSchedule.dDayValue === 0
-                    ? "#fecaca"
+                    ? "var(--admin-danger-line)"
                     : "var(--division-color-light)"),
               }}
             >
@@ -151,9 +146,9 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
         const isCritical = daysRemaining <= 7;
         const isWarning = daysRemaining <= expirationWarningDays;
 
-        const bgColor = isCritical ? "#fef2f2" : isWarning ? "#fffbeb" : "#f0fdf4";
-        const fgColor = isCritical ? "#b91c1c" : isWarning ? "#b45309" : "#15803d";
-        const borderColor = isCritical ? "#fecaca" : isWarning ? "#fde68a" : "#bbf7d0";
+        const bgColor = isCritical ? "var(--admin-danger-soft)" : isWarning ? "var(--admin-warning-soft)" : "var(--admin-success-soft)";
+        const fgColor = isCritical ? "var(--admin-danger)" : isWarning ? "var(--admin-warning)" : "var(--admin-success)";
+        const borderColor = isCritical ? "var(--admin-danger-line)" : isWarning ? "var(--admin-warning-line)" : "var(--admin-success-line)";
 
         const dDayLabel = isExpired
           ? daysRemaining === 0 ? "오늘 만료" : `${Math.abs(daysRemaining)}일 초과`
@@ -163,21 +158,21 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
           <section className={`${portalSectionClass} py-3.5`}>
             <div className="flex items-center gap-3">
               <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
                 style={{ backgroundColor: bgColor, color: fgColor }}
               >
                 <CalendarClock className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-bold" style={{ color: fgColor }}>
+                <p className="text-[13px] font-bold" style={{ color: fgColor }}>
                   수강 기간
                 </p>
-                <h2 className="mt-0.5 truncate text-[16px] font-bold text-[var(--foreground)]">
+                <h2 className="mt-0.5 break-words text-[16px] font-bold text-admin-text">
                   {formatDate(data.enrollment.courseStartDate)} ~ {formatDate(data.enrollment.courseEndDate)}
                 </h2>
               </div>
               <div
-                className="rounded-[10px] px-3 py-1.5 text-[13px] font-bold"
+                className="rounded-lg px-3 py-1.5 text-[13px] font-bold"
                 style={{
                   backgroundColor: bgColor,
                   color: fgColor,
@@ -213,8 +208,8 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
         />
         <PortalMetricCard
           label="현재 경고 단계"
-          value={getWarningStageLabel(data.student.warningStage)}
-          caption={`누적 벌점 ${toDemeritPoints(data.student.netPoints)}점 기준`}
+          value={data.student.warningStageLabel ?? getWarningStageLabel(data.student.warningStage)}
+          caption={`${data.student.demeritPoints !== undefined ? "이번 달" : "누적"} 벌점 ${(data.student.demeritPoints ?? toDemeritPoints(data.student.netPoints))}점 기준`}
           valueToneClassName="text-rose-600"
         />
       </section>
@@ -222,24 +217,15 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
       <section className={portalSectionClass}>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p
-              className="text-[12px] font-bold"
-              style={{ color: "var(--division-color)" }}
-            >
-              STUDY RANKING
-            </p>
-            <h2 className="mt-1 text-[18px] font-bold text-[var(--foreground)]">
-              이번 달 학습 랭킹 확인하기
-            </h2>
-            <p className="mt-1.5 text-[13px] leading-[1.5] text-[var(--muted)]">
+            <h2 className="admin-section-title">이번 달 학습 랭킹 확인하기</h2>
+            <p className="admin-help mt-1.5">
               익명으로 공개되는 월간 학습시간 랭킹에서 내 순위와 공부 흐름을 확인할 수 있습니다.
             </p>
           </div>
 
           <Link
             href={`/${data.division.slug}/student/study-ranking`}
-            className="inline-flex items-center gap-1 self-start rounded-full border border-[var(--border)] px-4 py-2 text-[13px] font-medium transition hover:bg-[#F4F4F2]"
-            style={{ color: "var(--division-color)" }}
+              className="admin-button self-start"
           >
             학습 랭킹 보기
             <ArrowRight className="h-3.5 w-3.5" />
@@ -271,22 +257,22 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
               {data.recentAnnouncements.slice(0, 3).map((announcement) => (
                 <article key={announcement.id} className={`${portalCardClass} p-3.5`}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex rounded-[10px] border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--foreground)]">
+                    <span className="inline-flex rounded-lg border border-admin-line bg-white px-2 py-1 text-[13px] font-medium text-admin-text">
                       {announcement.divisionName || "전체 공지"}
                     </span>
                     {announcement.isPinned ? (
-                      <span className="inline-flex rounded-[10px] border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">
+                      <span className="inline-flex rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[13px] font-medium text-amber-700">
                         중요
                       </span>
                     ) : null}
-                    <span className="text-[11px] text-[var(--muted)]">
+                    <span className="text-[13px] text-admin-text-muted">
                       {formatDateTime(getAnnouncementDate(announcement))}
                     </span>
                   </div>
-                  <h3 className="mt-2.5 text-[15px] font-semibold text-[var(--foreground)]">
+                  <h3 className="mt-2.5 text-[15px] font-semibold text-admin-text">
                     {announcement.title}
                   </h3>
-                  <p className="mt-1.5 text-[13px] leading-[1.5] text-[var(--muted)]">
+                  <p className="mt-1.5 text-[13px] leading-[1.5] text-admin-text-muted">
                     {getPreviewText(announcement.content)}
                   </p>
                 </article>
@@ -350,15 +336,15 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
                         <PointCategoryBadge category={record.category} />
                         <PointValueBadge points={record.points} />
                       </div>
-                      <p className="mt-2 text-[15px] font-semibold text-[var(--foreground)]">
+                      <p className="mt-2 text-[15px] font-semibold text-admin-text">
                         {record.ruleName || "직접 기록"}
                       </p>
                     </div>
-                    <span className="text-[11px] text-[var(--muted)]">
+                    <span className="text-[13px] text-admin-text-muted">
                       {formatDateTime(record.date)}
                     </span>
                   </div>
-                  <p className="mt-2 text-[13px] leading-[1.5] text-[var(--muted)]">
+                  <p className="mt-2 text-[13px] leading-[1.5] text-admin-text-muted">
                     {record.notes || "기록 메모가 없습니다."}
                   </p>
                 </article>
@@ -385,11 +371,11 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
           {data.latestExam ? (
             <div className="mt-3 space-y-2.5">
               <div className={portalInsetClass}>
-                <p className="text-[13px] text-[var(--muted)]">{data.latestExam.examTypeName}</p>
-                <h3 className="mt-1.5 text-[22px] font-bold tracking-tight text-[var(--foreground)] md:text-[26px]">
+                <p className="text-[13px] text-admin-text-muted">{data.latestExam.examTypeName}</p>
+                <h3 className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text md:text-[20px]">
                   {data.latestExam.examRound}회차
                 </h3>
-                <p className="mt-1.5 text-[13px] text-[var(--muted)]">
+                <p className="mt-1.5 text-[13px] text-admin-text-muted">
                   시험일 {formatDate(data.latestExam.examDate)}
                 </p>
               </div>
@@ -408,7 +394,7 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
               </div>
 
               <div className={portalInsetClass}>
-                <p className="text-[13px] leading-[1.5] text-[var(--muted)]">
+                <p className="text-[13px] leading-[1.5] text-admin-text-muted">
                   {data.latestExam.notes || "시험 메모가 없습니다."}
                 </p>
               </div>

@@ -1,3 +1,5 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isPolicyEffective, kstDate } from "@/lib/management-policy";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { cache } from "react";
 import { Prisma } from "@prisma/client";
@@ -190,7 +192,8 @@ function parseDateString(value: string) {
 }
 
 function getPointRecordDateValue(date?: string | null) {
-  return date ? parseDateString(date) : new Date();
+  // Store the KST business date at UTC midnight, just like an explicit date.
+  return parseDateString(date || kstDate());
 }
 
 function toPointDateKey(value: Date | string | null | undefined) {
@@ -1452,6 +1455,9 @@ export async function createPointRecord(
   actor: PointActor,
   input: PointGrantInput,
 ) {
+  const policy = await getManagementPolicy(divisionSlug);
+  if (policy && input.ruleId && !(await listPointRules(divisionSlug, { activeOnly: true })).some((r) => r.id === input.ruleId)) throw badRequest("사용이 종료된 상벌점 규칙입니다. 현재 규칙을 다시 선택해 주세요.");
+  if (policy && input.notes?.startsWith("경고 단계 수동 조정")) throw badRequest("월 벌점은 원기록을 기준으로 집계합니다. 잘못된 원기록을 수정해 주세요.");
   const notes = normalizeOptionalText(input.notes);
   const recordDate = getPointRecordDateValue(input.date);
 
@@ -1612,6 +1618,9 @@ export async function createPointRecordsBatch(
   actor: PointActor,
   input: PointBatchGrantInput,
 ) {
+  const policy = await getManagementPolicy(divisionSlug);
+  if (policy && input.ruleId && !(await listPointRules(divisionSlug, { activeOnly: true })).some((r) => r.id === input.ruleId)) throw badRequest("사용이 종료된 상벌점 규칙입니다. 현재 규칙을 다시 선택해 주세요.");
+  if (policy && input.notes?.startsWith("경고 단계 수동 조정")) throw badRequest("월 벌점은 원기록을 기준으로 집계합니다. 잘못된 원기록을 수정해 주세요.");
   const notes = normalizeOptionalText(input.notes);
   const studentIds = normalizeStudentIds(input.studentIds);
 
@@ -1794,6 +1803,13 @@ export async function deletePointRecord(divisionSlug: string, recordId: string, 
 export async function listWarningStudents(divisionSlug: string) {
   const settings = await getDivisionSettings(divisionSlug);
   const students = await listStudents(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug);
+  if (isPolicyEffective(policy, kstDate()) && policy.monthlyPoints) {
+    return students.filter((s) => (s.status === "ACTIVE" || s.status === "ON_LEAVE") && (s.demeritPoints ?? 0) >= settings.warnLevel1)
+      .sort((a, b) => (b.demeritPoints ?? 0) - (a.demeritPoints ?? 0) || a.name.localeCompare(b.name, "ko"))
+      .map((s) => ({ ...s, netPoints: s.demeritPoints ?? 0,
+        warningStageLabel: policy.warningLabels[s.warningStage] ?? getWarningStageLabel(s.warningStage) }));
+  }
   const activeStudentIds = new Set(
     students
       .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")

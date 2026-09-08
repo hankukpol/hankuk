@@ -1,3 +1,4 @@
+import { kstMonthBounds } from "@/lib/management-policy";
 import { notFound, redirect } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 
@@ -48,10 +49,12 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
     }
 
     const records = await listPointRecords(params.division, { studentId: session.studentId });
-    const demeritPoints = toDemeritPoints(student.netPoints);
+    const demeritPoints = student.demeritPoints ?? toDemeritPoints(student.netPoints);
+    const month = kstMonthBounds();
+    const metricRecords = student.meritPoints !== undefined ? records.filter((r) => r.date.slice(0, 10) >= month.dateFrom && r.date.slice(0, 10) <= month.dateTo) : records;
 
-    const rewardCount = records.filter((record) => record.points > 0).length;
-    const penaltyCount = records.filter((record) => record.points < 0).length;
+    const rewardCount = metricRecords.filter((record) => record.points > 0).length;
+    const penaltyCount = metricRecords.filter((record) => record.points < 0).length;
 
     return (
       <StudentPortalFrame
@@ -69,18 +72,18 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
           <PortalMetricCard
             label="현재 벌점"
             value={`${demeritPoints}점`}
-            caption="경고 단계 반영 기준"
+            caption={student.meritPoints !== undefined ? "이번 달 벌점, 상점과 별도 집계" : "경고 단계 반영 기준"}
           />
           <PortalMetricCard
-            label="가점 기록"
-            value={`${rewardCount}건`}
-            caption="현재 누적된 가점 건수"
+            label={student.meritPoints !== undefined ? "이번 달 상점" : "가점 기록"}
+            value={student.meritPoints !== undefined ? `${student.meritPoints}점` : `${rewardCount}건`}
+            caption={student.meritPoints !== undefined ? "벌점과 상계하지 않습니다" : "현재 누적된 가점 건수"}
             valueToneClassName="text-emerald-700"
           />
           <PortalMetricCard
-            label="벌점 기록"
+            label={student.meritPoints !== undefined ? "이번 달 벌점 기록" : "벌점 기록"}
             value={`${penaltyCount}건`}
-            caption="현재 누적된 벌점 건수"
+            caption={student.meritPoints !== undefined ? "이번 달 확정된 벌점 건수" : "현재 누적된 벌점 건수"}
             valueToneClassName="text-rose-700"
           />
         </section>
@@ -102,16 +105,16 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
                         <PointCategoryBadge category={record.category} />
                         <PointValueBadge points={record.points} />
                       </div>
-                      <p className="mt-2 text-[15px] font-semibold text-[var(--foreground)]">
+                      <p className="mt-2 text-[15px] font-semibold text-admin-text">
                         {record.ruleName || "직접 기록"}
                       </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
+                      <p className="mt-1 text-xs text-admin-text-muted">
                         기록자 {record.recordedByName}
                       </p>
                     </div>
-                    <span className="text-xs text-[var(--muted)]">{formatDateTime(record.date)}</span>
+                    <span className="text-xs text-admin-text-muted">{formatDateTime(record.date)}</span>
                   </div>
-                  <p className="mt-3 text-[13px] leading-[1.5] text-[var(--muted)]">
+                  <p className="mt-3 text-[13px] leading-[1.5] text-admin-text-muted">
                     {record.notes || "기록 메모가 없습니다."}
                   </p>
                 </article>

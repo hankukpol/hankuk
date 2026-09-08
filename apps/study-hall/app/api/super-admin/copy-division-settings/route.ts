@@ -2,6 +2,8 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
+import type { Prisma } from "@prisma/client";
+import { divisionSettingsCopySchema } from "@/lib/super-admin-schemas";
 import { toApiErrorResponse } from "@/lib/api-error-response";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState } from "@/lib/mock-store";
@@ -49,12 +51,11 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await request.json().catch(() => null);
-  const sourceSlug = body?.sourceSlug?.trim();
-  const targetSlug = body?.targetSlug?.trim();
-
-  if (!sourceSlug || !targetSlug) {
+  const parsed = divisionSettingsCopySchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json({ error: "sourceSlug와 targetSlug를 입력해주세요." }, { status: 400 });
   }
+  const { sourceSlug, targetSlug } = parsed.data;
 
   if (sourceSlug === targetSlug) {
     return NextResponse.json({ error: "복사 원본과 대상이 동일합니다." }, { status: 400 });
@@ -303,10 +304,10 @@ export async function POST(request: NextRequest) {
             : null,
           perfectAttendancePtsEnabled: sourceSettings.perfectAttendancePtsEnabled,
           perfectAttendancePts: sourceSettings.perfectAttendancePts,
-          operatingDays: sourceSettings.operatingDays as never,
-          studyTracks: sourceSettings.studyTracks as never,
+          operatingDays: sourceSettings.operatingDays as Prisma.InputJsonValue,
+          studyTracks: sourceSettings.studyTracks as Prisma.InputJsonValue,
           ...(categoryCustomizationEnabled
-            ? { pointCategories: sourceSettings.pointCategories as never }
+            ? { pointCategories: sourceSettings.pointCategories as Prisma.InputJsonValue }
             : {}),
         };
 

@@ -53,16 +53,10 @@ export function PhoneStatusCheckButton({
       aria-pressed={selected}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-[8px] border font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 ${
-        selected
-          ? SELECTED_BUTTON_CLASS[status]
-          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      } ${sizeClassName} ${disabled ? "cursor-wait opacity-60" : ""} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-semibold transition focus-visible: focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 ${ selected ? SELECTED_BUTTON_CLASS[status] : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50" } ${sizeClassName} ${disabled ? "cursor-wait opacity-60" : ""} ${className}`}
     >
       <span
-        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border ${
-          selected ? SELECTED_CHECK_CLASS[status] : "border-slate-300 bg-white text-transparent"
-        }`}
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border ${ selected ? SELECTED_CHECK_CLASS[status] : "border-slate-300 bg-white text-transparent" }`}
       >
         <Check className="h-3 w-3" strokeWidth={3} />
       </span>

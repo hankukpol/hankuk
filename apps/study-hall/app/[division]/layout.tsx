@@ -74,7 +74,7 @@ function getContrastRatio(leftHex: string, rightHex: string) {
 }
 
 function pickReadableTextColor(backgroundHex: string) {
-  const dark = "#0F172A";
+  const dark = "#0a0a0a";
   const light = "#FFFFFF";
 
   return getContrastRatio(backgroundHex, dark) >= getContrastRatio(backgroundHex, light)
@@ -97,18 +97,48 @@ export default async function DivisionLayout({ children, params }: DivisionLayou
   }
 
   const baseColor = normalizeHexColor(division.color);
+  const white = { r: 255, g: 255, b: 255 };
+  const black = { r: 0, g: 0, b: 0 };
   const darkMixTarget = { r: 10, g: 18, b: 40 };
   const rgb = hexToRgb(baseColor);
-  const isLightAccent = pickReadableTextColor(baseColor) === "#0F172A";
+  const isLightAccent = pickReadableTextColor(baseColor) === "#0a0a0a";
   const heroStart = mixHexColor(baseColor, darkMixTarget, isLightAccent ? 0.74 : 0.34);
   const heroEnd = mixHexColor(baseColor, darkMixTarget, isLightAccent ? 0.54 : 0.14);
   const accentForeground = pickReadableTextColor(baseColor);
   const accentForegroundRgb = hexToRgb(accentForeground);
+
+  // DESIGN.md 2절: 강조색은 DB 직렬 색상 하나에서 파생한다.
+  // 컴포넌트는 --admin-accent* 변수만 사용하고 경찰/소방을 판단해 색을 하드코딩하지 않는다.
+  const accentHover = mixHexColor(baseColor, black, 0.15);
+  const accentSoft = mixHexColor(baseColor, white, 0.95);
+  const accentTint = mixHexColor(baseColor, white, 0.88);
+  const accentLine = mixHexColor(baseColor, white, 0.75);
+  const toTriple = (value: string) => {
+    const parsed = hexToRgb(value);
+    return `${parsed.r} ${parsed.g} ${parsed.b}`;
+  };
+
   const style = {
+    "--admin-accent": baseColor,
+    "--admin-chart-1": baseColor,
+    "--admin-accent-rgb": `${rgb.r} ${rgb.g} ${rgb.b}`,
+    "--admin-accent-hover": accentHover,
+    "--admin-accent-hover-rgb": toTriple(accentHover),
+    "--admin-accent-soft": accentSoft,
+    "--admin-accent-soft-rgb": toTriple(accentSoft),
+    "--admin-accent-tint": accentTint,
+    "--admin-accent-tint-rgb": toTriple(accentTint),
+    "--admin-accent-line": accentLine,
+    "--admin-accent-line-rgb": toTriple(accentLine),
+    "--admin-on-accent": accentForeground,
+
+    // 레거시 별칭 (기존 마크업의 var(--division-*) 참조 유지)
     "--division-color": baseColor,
     "--division-color-rgb": `${rgb.r} ${rgb.g} ${rgb.b}`,
-    "--division-color-soft": mixHexColor(baseColor, { r: 255, g: 255, b: 255 }, 0.9),
-    "--division-color-muted": mixHexColor(baseColor, { r: 255, g: 255, b: 255 }, 0.96),
+    "--division-color-light": accentTint,
+    "--division-color-soft": accentSoft,
+    "--division-color-muted": accentSoft,
+    "--division-color-dark": accentHover,
     "--division-color-strong": heroStart,
     "--division-hero-end": heroEnd,
     "--division-on-accent": accentForeground,
@@ -119,5 +149,9 @@ export default async function DivisionLayout({ children, params }: DivisionLayou
     "--division-accent-outline": `rgb(${accentForegroundRgb.r} ${accentForegroundRgb.g} ${accentForegroundRgb.b} / 0.1)`,
   } as CSSProperties;
 
-  return <div style={style}>{children}</div>;
+  return (
+    <div style={style} data-division={division.slug}>
+      {children}
+    </div>
+  );
 }

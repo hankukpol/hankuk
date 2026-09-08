@@ -1,3 +1,5 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isPolicyEffective, isControlledPeriod, kstDate, type ManagementPolicy } from "@/lib/management-policy";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import {
   readMockState,
@@ -7,9 +9,10 @@ import {
 import { normalizeYmdDate } from "@/lib/date-utils";
 import { badRequest, notFound } from "@/lib/errors";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
-import type {
-  PhoneBulkRentalSchemaInput,
-  PhoneSubmissionBatchSchemaInput,
+import {
+  phoneSubmissionBatchSchema,
+  type PhoneBulkRentalSchemaInput,
+  type PhoneSubmissionBatchSchemaInput,
 } from "@/lib/phone-submission-schemas";
 import { getPrismaClient, getDivisionBySlugOrThrow } from "@/lib/service-helpers";
 import { listStudents, type StudentListItem } from "@/lib/services/student.service";
@@ -211,6 +214,8 @@ function buildPeriodSnapshot(
   students: StudentListItem[],
   attendanceLookup: AttendanceLookup,
   attendanceIntegrationEnabled: boolean,
+  policy: ManagementPolicy | null = null,
+  date = "",
 ): PhonePeriodSnapshot {
   const attendance = students.map((student) =>
     getAttendanceCell(
@@ -219,7 +224,8 @@ function buildPeriodSnapshot(
       String(period.id),
       attendanceIntegrationEnabled,
     ),
-  );
+  ).map((cell) => isPolicyEffective(policy, date) && !isControlledPeriod(policy, period.id, date, cell.studentId)
+    ? { ...cell, checkable: false, reason: "시간통제·휴대폰 의무제출 대상 아님" } : cell);
   const checkableStudentIds = new Set(
     attendance.filter((cell) => cell.checkable).map((cell) => cell.studentId),
   );
@@ -302,6 +308,7 @@ export async function getPhoneDaySnapshot(
   date: string,
 ): Promise<PhoneDaySnapshot> {
   const normalizedDate = normalizePhoneDate(date);
+  const policy = await getManagementPolicy(divisionSlug);
   const [allStudents, allPeriods, attendanceIntegrationEnabled] = await Promise.all([
     listStudents(divisionSlug),
     getPeriods(divisionSlug),
@@ -341,7 +348,7 @@ export async function getPhoneDaySnapshot(
       .filter((item): item is PhoneCheckRecord => item !== null);
 
     const periods = activePeriods.map((period) =>
-      buildPeriodSnapshot(period, allRecords, students, attendanceLookup, attendanceIntegrationEnabled),
+      buildPeriodSnapshot(period, allRecords, students, attendanceLookup, attendanceIntegrationEnabled, policy, normalizedDate),
     );
 
     return { date: normalizedDate, attendanceIntegrationEnabled, periods, students };
@@ -393,7 +400,7 @@ export async function getPhoneDaySnapshot(
     .filter((item): item is PhoneCheckRecord => item !== null);
 
   const periods = activePeriods.map((period) =>
-    buildPeriodSnapshot(period, allRecords, students, attendanceLookup, attendanceIntegrationEnabled),
+    buildPeriodSnapshot(period, allRecords, students, attendanceLookup, attendanceIntegrationEnabled, policy, normalizedDate),
   );
 
   return { date: normalizedDate, attendanceIntegrationEnabled, periods, students };
@@ -404,8 +411,65 @@ export async function upsertPhoneCheckBatch(
   actor: PhoneActor,
   input: PhoneSubmissionBatchSchemaInput,
 ): Promise<PhoneDaySnapshot> {
+  input = phoneSubmissionBatchSchema.parse(input);
   const date = normalizePhoneDate(input.date);
-  const { periodId, records } = input;
+  const { periodId } = input;
+  const records = input.records.map((r) => ({ ...r }));
+  const policy = await getManagementPolicy(divisionSlug);
+  const returningStudentIds = new Set<string>();
+  if (!isPolicyEffective(policy, date) && records.some((r) => (r.rentalNote?.length ?? 0) > 200)) throw badRequest("대여 사유는 200자 이내로 입력해 주세요.");
+  if (isPolicyEffective(policy, date)) {
+    // A snapshot hides attendance-blocked cells; the stored loan is still needed
+    // to record its actual return and preserve the original evidence.
+    const previous = new Map((await listPhoneRecords(divisionSlug, { dateFrom: date, dateTo: date }))
+      .filter((record) => record.periodId === periodId).map((record) => [record.studentId, record]));
+    for (const record of records) {
+      const old = previous.get(record.studentId);
+      const returning = old?.status === "RENTED" && record.status === "SUBMITTED";
+      if (returning) returningStudentIds.add(record.studentId);
+      if (record.status !== null && !returning && !isControlledPeriod(policy, periodId, date, record.studentId)) {
+        throw badRequest("이 학생은 해당 날짜·교시의 휴대폰 의무제출 대상이 아닙니다.");
+      }
+      if (record.status === "RENTED") {
+        // Check approval authority before the idempotent save path. An existing
+        // loan must neither bypass authorization nor silently discard approval.
+        if (record.loanApproval && actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+          throw badRequest("장시간 예외는 관리자 사전승인이 필요합니다.");
+        }
+        if (old?.status === "RENTED" && !record.loanApproval) {
+          record.rentalNote = old.rentalNote ?? undefined;
+          continue;
+        }
+        const now = new Date();
+        if (date !== kstDate(now)) throw badRequest("휴대폰 반출·승인은 오늘 날짜에서만 처리할 수 있습니다.");
+        const reason = record.rentalNote?.trim();
+        if (!reason || reason.length > 200 || /\[(?:반출|반납|승인)\s/.test(reason)) {
+          throw badRequest("이전 기록 대신 이번 반출 사유를 200자 이내로 입력해 주세요.");
+        }
+        let deadline = new Date(now.getTime() + policy.phone.shortLoanMinutes * 60_000).toISOString();
+        let place = "5층 지정공간";
+        if (record.loanApproval) {
+          const until = new Date(record.loanApproval.until);
+          if (until <= now || until > new Date(`${date}T${policy.closingTime}:00+09:00`)) throw badRequest("승인 종료시각은 현재 이후, 당일 마감 이전이어야 합니다.");
+          if (old?.status === "RENTED") {
+            const deadlines = Array.from((old.rentalNote ?? "").matchAll(/반납기한 (\S+)/g));
+            const previousDeadline = new Date(deadlines.at(-1)?.[1] ?? "").getTime();
+            if (!Number.isFinite(previousDeadline) || previousDeadline < now.getTime()) {
+              throw badRequest("반납기한이 지났거나 확인되지 않는 반출은 사후 연장할 수 없습니다. 실제 반납을 기록하고 관리자가 초과 사유를 확인해 주세요.");
+            }
+          }
+          if (/\[(?:반출|반납|승인)\s/.test(`${record.loanApproval.place} ${record.loanApproval.purpose}`)) {
+            throw badRequest("승인 장소·목적에는 이전 반출 기록을 입력할 수 없습니다.");
+          }
+          deadline = until.toISOString(); place = `${record.loanApproval.place} / 목적 ${record.loanApproval.purpose} / 승인자 ${actor.id}`;
+        }
+        const event = old?.status === "RENTED" ? "승인" : "반출";
+        record.rentalNote = `${old?.rentalNote ? `${old.rentalNote}\n` : ""}[${event} ${now.toISOString()}] ${reason} | ${place} / 반납기한 ${deadline}`;
+      } else if (old?.rentalNote) {
+        record.rentalNote = old.rentalNote + (old.status === "RENTED" && record.status === "SUBMITTED" ? `\n[반납 ${new Date().toISOString()}]` : "");
+      }
+    }
+  }
   const [allStudents, periods, attendanceIntegrationEnabled] = await Promise.all([
     listStudents(divisionSlug),
     getPeriods(divisionSlug),
@@ -453,7 +517,7 @@ export async function upsertPhoneCheckBatch(
           (e) => e.studentId === r.studentId && e.date === date && e.periodId === periodId,
         );
 
-        if (r.status !== null && !attendanceCell.checkable) {
+        if (r.status !== null && !attendanceCell.checkable && !returningStudentIds.has(r.studentId)) {
           throw badRequest("출석 또는 지각으로 처리된 학생만 휴대폰 상태를 체크할 수 있습니다.");
         }
 
@@ -532,7 +596,7 @@ export async function upsertPhoneCheckBatch(
       attendanceIntegrationEnabled,
     );
 
-    if (record.status !== null && !attendanceCell.checkable) {
+    if (record.status !== null && !attendanceCell.checkable && !returningStudentIds.has(record.studentId)) {
       throw badRequest("출석 또는 지각으로 처리된 학생만 휴대폰 상태를 체크할 수 있습니다.");
     }
   }
@@ -542,6 +606,7 @@ export async function upsertPhoneCheckBatch(
       if (r.status === null) {
         return prisma.phoneSubmission.deleteMany({
           where: {
+            divisionId: division.id,
             studentId: r.studentId,
             date: targetDate,
             periodId,
@@ -551,6 +616,7 @@ export async function upsertPhoneCheckBatch(
 
       return prisma.phoneSubmission.upsert({
         where: {
+          divisionId: division.id,
           studentId_date_periodId: {
             studentId: r.studentId,
             date: targetDate,
@@ -587,6 +653,10 @@ export async function applyPhoneBulkRental(
   input: PhoneBulkRentalSchemaInput,
 ): Promise<{ snapshot: PhoneDaySnapshot; result: PhoneBulkRentalResult }> {
   const date = normalizePhoneDate(input.date);
+  const policy = await getManagementPolicy(divisionSlug);
+  if (isPolicyEffective(policy, input.date) && !policy.phone.allowBulkRental) {
+    throw badRequest("관리규정상 교시 전체·여러 교시의 휴대폰 대여는 허용하지 않습니다. 단기 예외는 해당 교시에서 사유를 기록하고 처리해 주세요.");
+  }
   const rentalNote = input.rentalNote?.trim() || null;
   const overwriteExisting = input.overwriteExisting ?? false;
   const uniqueStudentIds = Array.from(new Set(input.studentIds));
@@ -799,6 +869,7 @@ export async function applyPhoneBulkRental(
       upsertTargets.map((target) =>
         prisma.phoneSubmission.upsert({
           where: {
+            divisionId: division.id,
             studentId_date_periodId: {
               studentId: target.studentId,
               date: targetDate,

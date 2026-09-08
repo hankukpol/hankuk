@@ -1,8 +1,17 @@
 "use client";
 
+import { useId } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { type FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState } from "react";
 import {
   ArrowRight,
   CalendarX,
@@ -15,8 +24,6 @@ import {
   Search,
   ShieldAlert,
   Trash2,
-  UserCheck,
-  UserMinus,
   Users,
   X,
 } from "lucide-react";
@@ -24,6 +31,7 @@ import { toast } from "@/lib/sonner";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { StudentStatusBadge, TuitionExemptBadge, WarningStageBadge } from "@/components/students/StudentBadges";
 import {
   STUDENT_STATUS_OPTIONS,
@@ -70,7 +78,7 @@ const LazyStudentForm = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+      <div className="admin-notice">
         학생 등록 폼을 불러오는 중입니다.
       </div>
     ),
@@ -109,6 +117,8 @@ export function StudentListManager({
   today,
   initialSearchParams = {},
 }: StudentListManagerProps) {
+  const warningLabels = initialStudents[0]?.warningStageLabels;
+  const dialogFormId = useId();
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(() => initialSearchParams.q ?? "");
@@ -165,7 +175,7 @@ export function StudentListManager({
           return left.name.localeCompare(right.name, "ko");
         case "netPoints":
           return (
-            toDemeritPoints(right.netPoints) - toDemeritPoints(left.netPoints) ||
+            (right.demeritPoints ?? toDemeritPoints(right.netPoints)) - (left.demeritPoints ?? toDemeritPoints(left.netPoints)) ||
             left.name.localeCompare(right.name, "ko")
           );
         case "createdAt":
@@ -316,69 +326,59 @@ export function StudentListManager({
 
   return (
     <>
-      <div className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-slate-500">전체 학생</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950">{summary.total}</p>
-                <p className="mt-2 text-xs text-slate-500">현재 지점에 등록된 전체 학생 수</p>
+      <div className="admin-flat-page">
+        {/* DESIGN.md 5.3 — 붙어 있는 스트립이 아니라 16px 간격의 개별 KPI 카드 */}
+        <section className="admin-dashboard-metrics">
+          <article className="admin-dashboard-metric">
+            <div className="min-w-0">
+                <p className="admin-dashboard-metric-label">전체 학생</p>
+                <p className="admin-dashboard-metric-value">
+                  {summary.total}
+                  <span className="admin-dashboard-metric-unit">명</span>
+                </p>
+                <p className="admin-help mt-2">현재 지점에 등록된 전체 학생 수</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <Users className="h-5 w-5" />
-              </div>
-            </div>
           </article>
 
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(16,185,129,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-emerald-700">재원</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-emerald-950">{summary.active}</p>
-                <p className="mt-2 text-xs text-emerald-700/80">현재 출결 및 운영 관리 대상</p>
+          <article className="admin-dashboard-metric">
+            <div className="min-w-0">
+                <p className="admin-dashboard-metric-label">재원</p>
+                <p className="admin-dashboard-metric-value text-attend-present">
+                  {summary.active}
+                  <span className="admin-dashboard-metric-unit">명</span>
+                </p>
+                <p className="admin-help mt-2">현재 출결 및 운영 관리 대상</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-emerald-700">
-                <UserCheck className="h-5 w-5" />
-              </div>
-            </div>
           </article>
 
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(245,158,11,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-amber-700">경고 진입</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-950">{summary.warning}</p>
-                <p className="mt-2 text-xs text-amber-700/80">추가 관리가 필요한 학생 수</p>
+          <article className="admin-dashboard-metric">
+            <div className="min-w-0">
+                <p className="admin-dashboard-metric-label">경고 진입</p>
+                <p className="admin-dashboard-metric-value text-attend-tardy">
+                  {summary.warning}
+                  <span className="admin-dashboard-metric-unit">명</span>
+                </p>
+                <p className="admin-help mt-2">추가 관리가 필요한 학생 수</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-amber-700">
-                <ShieldAlert className="h-5 w-5" />
-              </div>
-            </div>
           </article>
 
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(244,63,94,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-rose-700">퇴실</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-rose-950">{summary.withdrawn}</p>
-                <p className="mt-2 text-xs text-rose-700/80">현재 운영 대상에서 제외된 학생</p>
+          <article className="admin-dashboard-metric">
+            <div className="min-w-0">
+                <p className="admin-dashboard-metric-label">퇴실</p>
+                <p className="admin-dashboard-metric-value text-attend-absent">
+                  {summary.withdrawn}
+                  <span className="admin-dashboard-metric-unit">명</span>
+                </p>
+                <p className="admin-help mt-2">현재 운영 대상에서 제외된 학생</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-rose-700">
-                <UserMinus className="h-5 w-5" />
-              </div>
-            </div>
           </article>
         </section>
 
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_18px_44px_rgba(18,32,56,0.06)]">
+        <section className="admin-section">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <span className="inline-flex rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 text-xs font-semibold tracking-[0.2em] text-slate-500">
-                학생 명단
-              </span>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">학생 명단</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            <div className="min-w-0">
+              <h2 className="admin-section-title">학생 명단</h2>
+              <p className="admin-help mt-1 max-w-2xl">
                 검색과 필터를 조합해 학생 상태를 빠르게 파악하고, 우측 패널에서 바로 신규 등록까지 이어서 처리합니다.
               </p>
             </div>
@@ -387,7 +387,7 @@ export function StudentListManager({
               <Link
                 href={`/${divisionSlug}/admin/seats`}
                 prefetch={false}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="admin-button"
               >
                 <MapPin className="h-4 w-4" />
                 좌석 현황
@@ -396,7 +396,7 @@ export function StudentListManager({
               <button
                 type="button"
                 onClick={() => router.refresh()}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="admin-button"
               >
                 <RefreshCcw className="h-4 w-4" />
                 새로고침
@@ -406,7 +406,7 @@ export function StudentListManager({
                 <button
                   type="button"
                   onClick={openCreatePanel}
-                  className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+                  className="admin-button admin-button-primary"
                 >
                   <Plus className="h-4 w-4" />
                   학생 등록
@@ -415,15 +415,16 @@ export function StudentListManager({
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 xl:grid-cols-[1.4fr_repeat(3,0.8fr)]">
-            <label className="relative block xl:col-span-1">
+          {/* DESIGN.md 5.7 — 검색은 최대 320px, 조건 선택은 뒤로 이어 붙인다. */}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <label className="relative block w-full md:w-[var(--admin-search-width)] md:shrink-0">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
                 }}
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white py-3 pl-11 pr-11 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="pl-11 pr-11"
                 placeholder="이름, 수험번호, 직렬 검색"
               />
               {search ? (
@@ -433,7 +434,7 @@ export function StudentListManager({
                     setSearch("");
                     updateListQuery({ q: null });
                   }}
-                  className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-white hover:text-slate-700"
+                  className="admin-icon-button absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-slate-700"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -446,7 +447,7 @@ export function StudentListManager({
                 setStatusFilter(event.target.value as StatusFilterValue);
                 updateListQuery({ status: event.target.value });
               }}
-              className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-auto min-w-[160px] flex-1 basis-[160px]"
             >
               <option value="ALL">상태 전체</option>
               {STUDENT_STATUS_OPTIONS.map((option) => (
@@ -462,12 +463,12 @@ export function StudentListManager({
                 setWarningFilter(event.target.value as WarningFilterValue);
                 updateListQuery({ warning: event.target.value });
               }}
-              className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-auto min-w-[160px] flex-1 basis-[160px]"
             >
               <option value="ALL">경고 단계 전체</option>
               {WARNING_STAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {warningLabels?.[option.value] ?? option.label}
                 </option>
               ))}
             </select>
@@ -479,7 +480,7 @@ export function StudentListManager({
                 setSortBy(nextValue);
                 updateListQuery({ sort: nextValue });
               }}
-              className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+              className="w-auto min-w-[160px] flex-1 basis-[160px]"
             >
               {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -490,19 +491,15 @@ export function StudentListManager({
           </div>
 
           <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">상태 필터</p>
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <p className="admin-label">상태 필터</p>
+            <div className="admin-choice-group mt-3">
               <button
                 type="button"
                 onClick={() => {
                   setStatusFilter("ALL");
                   updateListQuery({ status: null });
                 }}
-                className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
-                  statusFilter === "ALL"
-                    ? "bg-[var(--division-color)] text-white"
-                    : "border border-slate-200-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
+                className="admin-choice-button" data-active={statusFilter === "ALL"} aria-pressed={statusFilter === "ALL"}
               >
                 전체
               </button>
@@ -514,18 +511,14 @@ export function StudentListManager({
                     setStatusFilter(option.value);
                     updateListQuery({ status: option.value });
                   }}
-                  className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
-                    statusFilter === option.value
-                      ? "bg-[var(--division-color)] text-white"
-                      : "border border-slate-200-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className="admin-choice-button" data-active={statusFilter === option.value} aria-pressed={statusFilter === option.value}
                 >
                   {option.label}
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">빠른 필터</p>
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <p className="admin-label mt-3">빠른 필터</p>
+            <div className="admin-choice-group mt-3">
               <button
                 type="button"
                 onClick={() => {
@@ -533,29 +526,21 @@ export function StudentListManager({
                   setExpiringFilter(next);
                   updateListQuery({ expiring: next ? "true" : null });
                 }}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
-                  expiringFilter
-                    ? "bg-rose-600 text-white"
-                    : "border border-slate-200-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${ expiringFilter ? "bg-rose-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
               >
                 <CalendarX className="h-3.5 w-3.5" />
                 수강 만료 임박
               </button>
             </div>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">직렬 필터</p>
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <p className="admin-label mt-3">직렬 필터</p>
+            <div className="admin-choice-group mt-3">
               <button
                 type="button"
                 onClick={() => {
                   setTrackFilter("ALL");
                   updateListQuery({ track: null });
                 }}
-                className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
-                  trackFilter === "ALL"
-                    ? "bg-[var(--division-color)] text-white"
-                    : "border border-slate-200-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
+                className="admin-choice-button" data-active={trackFilter === "ALL"} aria-pressed={trackFilter === "ALL"}
               >
                 전체 직렬
               </button>
@@ -567,11 +552,7 @@ export function StudentListManager({
                     setTrackFilter(option);
                     updateListQuery({ track: option });
                   }}
-                  className={`whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition ${
-                    trackFilter === option
-                      ? "bg-[var(--division-color)] text-white"
-                      : "border border-slate-200-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className="admin-choice-button" data-active={trackFilter === option} aria-pressed={trackFilter === option}
                 >
                   {option}
                 </button>
@@ -579,32 +560,32 @@ export function StudentListManager({
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
               <Users className="h-4 w-4" />
               <span>{filteredStudents.length}명 표시 중</span>
               {search.trim() ? (
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                   검색어 {search.trim()}
                 </span>
               ) : null}
               {statusFilter !== "ALL" ? (
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                   {getStudentStatusLabel(statusFilter)}
                 </span>
               ) : null}
               {warningFilter !== "ALL" ? (
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                  {getWarningStageLabel(warningFilter)}
+                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                  {warningLabels?.[warningFilter] ?? getWarningStageLabel(warningFilter)}
                 </span>
               ) : null}
               {trackFilter !== "ALL" ? (
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                   {trackFilter}
                 </span>
               ) : null}
               {expiringFilter ? (
-                <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
+                <span className="rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
                   만료 임박
                 </span>
               ) : null}
@@ -614,64 +595,64 @@ export function StudentListManager({
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                className="admin-button admin-button-compact"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 필터 초기화
               </button>
             ) : (
-              <p className="text-xs text-slate-400">필터 없이 전체 학생을 보고 있습니다.</p>
+              <p className="admin-help">필터 없이 전체 학생을 보고 있습니다.</p>
             )}
           </div>
 
-          <div className="mt-6 hidden overflow-hidden rounded-[10px] border border-slate-200-slate-200 lg:block">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-white text-left text-slate-500">
+          <div className="mt-6 hidden lg:block">
+            <table className="min-w-full">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 font-medium">수험번호</th>
-                  <th className="px-4 py-3 font-medium">이름</th>
-                  <th className="px-4 py-3 font-medium">직렬</th>
-                  <th className="px-4 py-3 font-medium">좌석</th>
-                  <th className="px-4 py-3 font-medium">상태</th>
-                  <th className="px-4 py-3 font-medium">벌점</th>
-                  <th className="px-4 py-3 font-medium">경고 단계</th>
-                  <th className="px-4 py-3 font-medium">등록일</th>
-                  <th className="px-4 py-3 font-medium text-right">상세</th>
+                  <th>수험번호</th>
+                  <th>이름</th>
+                  <th>직렬</th>
+                  <th>좌석</th>
+                  <th>상태</th>
+                  <th>벌점</th>
+                  <th>경고 단계</th>
+                  <th>등록일</th>
+                  <th className="admin-table-amount">상세</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="bg-white">
                 {filteredStudents.map((student) => (
                   <tr key={student.id} className="group text-slate-700 transition hover:bg-white">
-                    <td className="px-4 py-4 font-medium text-slate-950">{student.studentNumber}</td>
-                    <td className="px-4 py-4">
+                    <td>{student.studentNumber}</td>
+                    <td>
                       <div className="font-medium text-slate-950">{student.name}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className="text-xs text-slate-500">{student.phone || "연락처 미등록"}</span>
+                        <span className="admin-help">{student.phone || "연락처 미등록"}</span>
                         {student.tuitionExempt ? <TuitionExemptBadge reason={student.tuitionExemptReason} /> : null}
                       </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                    <td>
+                      <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                         {student.studyTrack || "미지정"}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-slate-600">{student.seatDisplay || "미배정"}</td>
-                    <td className="px-4 py-4">
+                    <td>{student.seatDisplay || "미배정"}</td>
+                    <td>
                       <StudentStatusBadge status={student.status} />
                     </td>
-                    <td className="px-4 py-4 font-semibold text-slate-950">
-                      {toDemeritPoints(student.netPoints)}점
+                    <td>
+                      {(student.demeritPoints ?? toDemeritPoints(student.netPoints))}점
                     </td>
-                    <td className="px-4 py-4">
-                      <WarningStageBadge stage={student.warningStage} />
+                    <td>
+                      <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                     </td>
-                    <td className="px-4 py-4 text-slate-600">{formatDate(student.createdAt)}</td>
-                    <td className="px-4 py-4 text-right">
+                    <td>{formatDate(student.createdAt)}</td>
+                    <td className="admin-table-amount">
                       <div className="flex items-center justify-end gap-1.5">
                         <Link
                           href={`/${divisionSlug}/admin/students/${student.id}`}
                           prefetch={false}
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                          className="admin-button admin-button-compact"
                         >
                           상세 보기
                           <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
@@ -680,7 +661,7 @@ export function StudentListManager({
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(student)}
-                            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
                             title="학생 삭제"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -696,37 +677,37 @@ export function StudentListManager({
 
           <div className="mt-5 space-y-3 lg:hidden">
             {filteredStudents.map((student) => (
-              <article key={student.id} className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+              <article key={student.id} className="admin-section">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-500">{student.studentNumber}</p>
-                    <h3 className="mt-1 text-xl font-bold text-slate-950">{student.name}</h3>
+                    <p className="admin-help">{student.studentNumber}</p>
+                    <h3 className="admin-section-title">{student.name}</h3>
                   </div>
-                  <WarningStageBadge stage={student.warningStage} />
+                  <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <StudentStatusBadge status={student.status} />
                   {student.tuitionExempt ? <TuitionExemptBadge reason={student.tuitionExemptReason} /> : null}
-                  <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                     직렬 {student.studyTrack || "미지정"}
                   </span>
-                  <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
                     좌석 {student.seatDisplay || "미배정"}
                   </span>
-                  <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                    벌점 {toDemeritPoints(student.netPoints)}점
+                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                    벌점 {(student.demeritPoints ?? toDemeritPoints(student.netPoints))}점
                   </span>
                 </div>
 
-                <p className="mt-3 text-sm text-slate-500">{student.phone || "연락처 미등록"}</p>
-                <p className="mt-1 text-xs text-slate-400">등록일 {formatDate(student.createdAt)}</p>
+                <p className="admin-help mt-3">{student.phone || "연락처 미등록"}</p>
+                <p className="admin-help mt-1">등록일 {formatDate(student.createdAt)}</p>
 
                 <div className="mt-4 flex items-center gap-2">
                   <Link
                     href={`/${divisionSlug}/admin/students/${student.id}`}
                     prefetch={false}
-                    className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+                    className="admin-button admin-button-primary"
                   >
                     상세 보기
                     <ArrowRight className="h-4 w-4" />
@@ -735,7 +716,7 @@ export function StudentListManager({
                     <button
                       type="button"
                       onClick={() => setDeleteTarget(student)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 transition hover:bg-rose-50"
+                      className="admin-button admin-button-danger-outline"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       삭제
@@ -747,23 +728,22 @@ export function StudentListManager({
           </div>
 
           {filteredStudents.length === 0 ? (
-            <div className="mt-6 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-5 py-10 text-center">
+            <div className="admin-help mt-6 px-5 py-10 text-center">
               <ShieldAlert className="mx-auto h-6 w-6 text-slate-400" />
               <p className="mt-3 text-sm font-semibold text-slate-700">조건에 맞는 학생이 없습니다.</p>
-              <p className="mt-2 text-sm text-slate-500">검색어나 필터를 조정해서 다시 확인해 주세요.</p>
+              <p className="admin-help mt-2">검색어나 필터를 조정해서 다시 확인해 주세요.</p>
             </div>
           ) : null}
         </section>
       </div>
 
       {canManage ? (
-        <Modal
+        <SlideOver
           open={isCreateOpen}
           onClose={closeCreatePanel}
           badge="학생 등록"
           title="학생 등록"
           description="학생 정보를 입력하고 저장하면 목록이 즉시 새로고침됩니다."
-          widthClassName="max-w-4xl"
         >
           <LazyStudentForm
             divisionSlug={divisionSlug}
@@ -777,7 +757,7 @@ export function StudentListManager({
               closeCreatePanel();
             }}
           />
-        </Modal>
+        </SlideOver>
       ) : null}
 
       {/* 학생 삭제 확인 모달 */}
@@ -789,8 +769,8 @@ export function StudentListManager({
         description="삭제된 학생 데이터는 복구할 수 없습니다."
       >
         {deleteTarget && (
-          <form onSubmit={handleDeleteStudent} className="space-y-5">
-            <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-800">
+          <form id={`${dialogFormId}-1`} onSubmit={handleDeleteStudent} className="space-y-5">
+            <div className="admin-notice admin-notice-danger">
               <div className="flex items-start gap-3">
                 <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
                 <div>
@@ -802,10 +782,10 @@ export function StudentListManager({
               </div>
             </div>
 
-            <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+            <div className="admin-notice">
               <p className="font-semibold text-slate-950">
                 {deleteTarget.name}
-                <span className="ml-2 text-xs font-medium text-slate-500">
+                <span className="admin-help ml-2">
                   {deleteTarget.studentNumber}
                 </span>
               </p>
@@ -814,23 +794,23 @@ export function StudentListManager({
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <StudentStatusBadge status={deleteTarget.status} />
-                <WarningStageBadge stage={deleteTarget.warningStage} />
+                <WarningStageBadge stage={deleteTarget.warningStage} label={deleteTarget.warningStageLabel} />
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <DialogActions>
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
                 disabled={isDeleting}
-                className="flex-1 rounded-full border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                className="flex-1 rounded-lg border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
               >
                 취소
               </button>
-              <button
+              <button form={`${dialogFormId}-1`}
                 type="submit"
                 disabled={isDeleting}
-                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-rose-600 py-3 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-rose-600 py-3 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
               >
                 {isDeleting ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -839,7 +819,7 @@ export function StudentListManager({
                 )}
                 삭제 확정
               </button>
-            </div>
+            </DialogActions>
           </form>
         )}
       </Modal>

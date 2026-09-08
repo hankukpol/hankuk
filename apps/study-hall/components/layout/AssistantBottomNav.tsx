@@ -39,35 +39,35 @@ export function AssistantBottomNav({
   );
 
   return (
-    <nav className="fixed inset-x-0 bottom-4 z-40 px-4">
-      <div className="mx-auto max-w-3xl rounded-[10px] border border-black/5 bg-white p-2">
-        <div
-          className={`grid gap-2 ${
-            visibleItems.length === 3 ? "grid-cols-3" : "grid-cols-2"
-          }`}
-        >
-          {visibleItems.map((item) => {
-            const href = item.href(divisionSlug);
-            const isActive = pathname === href;
-            const Icon = item.icon;
+    /* DESIGN.md 5.5 — 하단 탐색도 밑줄형 선택 표시를 쓰고 배경을 박스로 채우지 않는다. */
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-admin-line bg-admin-surface">
+      <div
+        className={`mx-auto grid max-w-3xl ${ visibleItems.length === 3 ? "grid-cols-3" : "grid-cols-2" }`}
+      >
+        {visibleItems.map((item) => {
+          const href = item.href(divisionSlug);
+          const isActive = pathname === href;
+          const Icon = item.icon;
 
-            return (
+          return (
             <Link
               key={href}
               href={href}
               prefetch={false}
-              className={`inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold transition ${
+              aria-current={isActive ? "page" : undefined}
+              className="admin-subtab justify-center border-b-0 border-t-2"
+              data-active={isActive}
+              style={
                 isActive
-                  ? "bg-[var(--division-color)] text-white"
-                    : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
+                  ? { borderTopColor: "var(--admin-accent)", color: "var(--admin-accent)" }
+                  : { borderTopColor: "transparent" }
+              }
+            >
+              <Icon className="mr-2 h-5 w-5" />
+              {item.label}
+            </Link>
+          );
+        })}
       </div>
     </nav>
   );

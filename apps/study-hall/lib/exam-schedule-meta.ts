@@ -17,11 +17,11 @@ export function getExamScheduleTypeLabel(type: ExamScheduleTypeValue): string {
  * Positive = future, 0 = today, negative = past.
  */
 export function calcDDay(examDateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const today = Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate());
   const [y, m, d] = examDateStr.split("-").map(Number);
   const target = new Date(Date.UTC(y, m - 1, d));
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  return Math.round((target.getTime() - today) / 86_400_000);
 }
 
 export function formatDDay(days: number): string {

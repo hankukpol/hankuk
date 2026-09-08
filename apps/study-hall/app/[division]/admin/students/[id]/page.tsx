@@ -88,7 +88,7 @@ export default async function StudentDetailPage({ params }: StudentDetailPagePro
     ]);
 
     return (
-      <div className="space-y-6">
+      <div className="admin-flat-page">
         <div>
           <Link
             href={`/${params.division}/admin/students`}

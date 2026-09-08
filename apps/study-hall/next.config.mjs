@@ -3,6 +3,8 @@ const externalPackages = ["@prisma/client", "prisma", "exceljs"];
 const isProduction = process.env.NODE_ENV === "production";
 
 const nextConfig = {
+  // Concurrent local servers must not overwrite each other's build artifacts.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   experimental: {
     serverComponentsExternalPackages: externalPackages,
     optimizePackageImports: [

@@ -2,6 +2,10 @@
 
 > 이 파일은 AI 코딩 에이전트(Claude Code, Codex 등)가 이 프로젝트를 올바르게 개발하기 위한 핵심 지침서입니다.
 > 개발 시작 전 반드시 `../개발문서.md`를 완독하세요.
+>
+> **UI/UX를 만들거나 고치기 전에는 반드시 [`DESIGN.md`](DESIGN.md)를 먼저 읽으세요.**
+> 색·글자 크기·모서리·간격·탭·표·모달 규격이 모두 그 문서 하나에 있습니다.
+> 디자인 토큰 원본은 `app/globals.css`의 `--admin-*` 변수뿐이며, 화면별로 임의 값을 덧씌우지 않습니다.
 
 ---
 
@@ -10,7 +14,7 @@
 1. **관리자 완전 제어**: 모든 수치 기준(벌점 임계값, 지각 기준 분, 허가 한도 등)을 코드에 하드코딩하지 않음. 반드시 DB(`division_settings` 테이블)에서 읽어 사용.
 2. **직렬 완전 분리**: 모든 쿼리에 `division_id` 필터 필수. 경찰반 데이터가 소방반에 노출되면 안 됨.
 3. **모바일 우선**: 조교 출석체크 페이지(`/[division]/assistant/check`)는 모바일 환경 기준으로 설계.
-4. **PC 대시보드**: 관리자 페이지는 사이드바(240px) + 메인 콘텐츠 2컬럼 레이아웃 기준.
+4. **PC 대시보드**: 관리자 페이지는 사이드바(256px, 1024px 이상) + 메인 콘텐츠 2컬럼 레이아웃 기준. 상세 규격은 `DESIGN.md` 5.1절.
 5. **한글/인코딩 보존**: 모든 문서와 코드 파일은 UTF-8 기준으로 읽고 저장. 한글 UI 문구, 문서, 시드 데이터가 깨지지 않도록 수정 전후 인코딩 상태를 확인.
 6. **승인 지연 금지**: 사용자가 전체 자동 승인을 허용한 상태로 간주하고, 권한 상승이나 네트워크 접근 승인이 필요하면 추가 확인 질문 없이 바로 승인 요청 절차를 진행.
 
@@ -206,37 +210,19 @@ export function StudentTable({ students }) { ... }
 
 ---
 
-## 색상 테마 (tailwind.config.ts에 추가)
+## 색상 테마
+
+색·글자·간격·모서리 토큰은 **[`DESIGN.md`](DESIGN.md) 2~4절**이 기준이다.
+원본은 `app/globals.css`의 `--admin-*` 변수 하나뿐이며, `tailwind.config.ts`는 기존 팔레트를 그 토큰에 연결만 한다.
+
+- 직렬 강조색은 DB `division.color` 에서 `app/[division]/layout.tsx` 가 파생한다. 경찰/소방을 판단해 색을 하드코딩하지 않는다.
+- 출결 상태색(`attend-*`)과 경고 단계색(`warn-*`)은 업무 의미가 있으므로 강조색으로 치환하지 않는다.
 
 ```javascript
-colors: {
-  police: {
-    DEFAULT: '#1B4FBB',
-    light: '#EBF0FB',
-    dark: '#0D2D6B',
-  },
-  fire: {
-    DEFAULT: '#C55A11',
-    light: '#FEF3EC',
-    dark: '#7A3608',
-  },
-  // 출석 상태
-  attend: {
-    present: '#16A34A',
-    tardy: '#CA8A04',
-    absent: '#DC2626',
-    excused: '#2563EB',
-    holiday: '#6B7280',
-    unprocessed: '#F97316',
-  },
-  // 경고 단계
-  warn: {
-    1: '#EAB308',   // 10점+
-    2: '#F97316',   // 20점+
-    interview: '#DC2626',  // 25점+
-    withdraw: '#7F1D1D',   // 30점+
-  }
-}
+// 업무 의미가 있어 유지하는 상태색 (tailwind.config.ts)
+attend: { present: '#16A34A', tardy: '#CA8A04', absent: '#DC2626',
+          excused: '#2563EB', holiday: '#6B7280', unprocessed: '#F97316' },
+warn:   { 1: '#EAB308', 2: '#F97316', interview: '#DC2626', withdraw: '#7F1D1D' }
 ```
 
 ---

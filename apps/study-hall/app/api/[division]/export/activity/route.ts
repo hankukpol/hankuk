@@ -6,7 +6,6 @@ import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import {
   buildActivityExportFilename,
   getActivityLogData,
-  type ActivityActionType,
 } from "@/lib/services/report.service";
 import {
   buildExcelResponse,
@@ -38,9 +37,7 @@ export async function GET(
       dateFrom: request.nextUrl.searchParams.get("dateFrom") ?? undefined,
       dateTo: request.nextUrl.searchParams.get("dateTo") ?? undefined,
       actorId: request.nextUrl.searchParams.get("actorId"),
-      actionType:
-        (request.nextUrl.searchParams.get("actionType") as ActivityActionType | null) ??
-        null,
+      actionType: request.nextUrl.searchParams.get("actionType"),
     });
 
     const workbook = await createWorkbook();

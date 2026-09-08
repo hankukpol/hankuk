@@ -14,16 +14,16 @@ const StudentListManager = dynamic(
     ssr: false,
     loading: () => (
       <div className="space-y-4">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="admin-dashboard-metrics">
           {Array.from({ length: 4 }).map((_, i) => (
-            <article key={i} className="rounded-[10px] border border-slate-200 bg-white p-5">
+            <article key={i} className="admin-dashboard-metric">
               <div className="h-4 w-20 animate-pulse rounded bg-slate-100" />
               <div className="mt-4 h-8 w-14 animate-pulse rounded bg-slate-100" />
               <div className="mt-3 h-3 w-32 animate-pulse rounded bg-slate-100" />
             </article>
           ))}
         </section>
-        <section className="flex items-center justify-center rounded-[10px] border border-slate-200 bg-white p-10">
+        <section className="flex items-center justify-center rounded-lg border border-slate-200 bg-white p-10">
           <div className="flex items-center gap-3 text-sm text-slate-400">
             <Users className="h-5 w-5 animate-pulse" />
             학생 명단을 불러오는 중입니다…
@@ -61,12 +61,12 @@ export default async function StudentsPage({ params, searchParams }: StudentsPag
   ]);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white px-6 py-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">
+    <div className="admin-flat-page">
+      <section>
+        <h1 className="admin-page-title">
           학생 명단 관리
         </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+        <p className="admin-page-description">
           학생 검색, 상태 및 직렬 필터, 경고 단계 확인, 상세 페이지 이동까지 한 화면에서 처리합니다.
         </p>
       </section>

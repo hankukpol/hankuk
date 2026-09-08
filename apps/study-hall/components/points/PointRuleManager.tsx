@@ -43,24 +43,24 @@ function createDefaultForm(categories: string[]): FormState {
 function LoadingSkeleton() {
   return (
     <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="h-7 w-40 animate-pulse rounded bg-slate-100" />
         <div className="mt-5 space-y-3">
-          <div className="h-24 animate-pulse rounded-[10px] bg-slate-100" />
-          <div className="h-24 animate-pulse rounded-[10px] bg-slate-100" />
-          <div className="h-24 animate-pulse rounded-[10px] bg-slate-100" />
+          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
+          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
+          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
         </div>
       </section>
 
       <section className="space-y-6">
-        <div className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <div className="admin-section">
           <div className="h-7 w-44 animate-pulse rounded bg-slate-100" />
-          <div className="mt-5 h-28 animate-pulse rounded-[10px] bg-slate-100" />
+          <div className="mt-5 h-28 animate-pulse rounded-lg bg-slate-100" />
         </div>
 
-        <div className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <div className="admin-section">
           <div className="h-7 w-36 animate-pulse rounded bg-slate-100" />
-          <div className="mt-5 h-72 animate-pulse rounded-[10px] bg-slate-100" />
+          <div className="mt-5 h-72 animate-pulse rounded-lg bg-slate-100" />
         </div>
       </section>
     </div>
@@ -391,13 +391,13 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
 
   if (loadError) {
     return (
-      <div className="rounded-[10px] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
+      <div className="admin-notice admin-notice-danger">
         <p className="font-semibold">상벌점 설정을 불러오지 못했습니다.</p>
         <p className="mt-2">{loadError}</p>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-4 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+          className="admin-button admin-button-danger-outline mt-4"
         >
           새로고침
         </button>
@@ -407,13 +407,10 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-      <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              규칙 목록
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">
+            <h2 className="admin-section-title">
               상벌점 규칙 목록
             </h2>
           </div>
@@ -421,7 +418,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
           <button
             type="button"
             onClick={() => resetForm()}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            className="admin-button admin-button-primary"
           >
             <Plus className="h-4 w-4" />
             새 규칙
@@ -434,7 +431,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
               <div key={group.category}>
                 <div className="mb-3 flex items-center gap-2">
                   <PointCategoryBadge category={group.category} />
-                  <span className="text-sm font-medium text-slate-600">
+                  <span className="admin-help">
                     {group.category}
                   </span>
                 </div>
@@ -444,25 +441,21 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                     {group.rules.map((rule) => (
                       <article
                         key={rule.id}
-                        className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4"
+                        className="admin-section"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-xl font-bold text-slate-950">
+                            <h2 className="admin-section-title">
                               {rule.name}
-                            </p>
-                            <p className="mt-1 text-sm text-slate-600">
+                            </h2>
+                            <p className="admin-help mt-1">
                               {rule.description || "설명 없음"}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
                             <PointValueBadge points={rule.points} />
                             <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                rule.isActive
-                                  ? "bg-white border border-slate-200-slate-200 text-emerald-700"
-                                  : "bg-slate-200 text-slate-600"
-                              }`}
+                              className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${ rule.isActive ? "bg-white border border-slate-200 text-emerald-700" : "bg-slate-200 text-slate-600" }`}
                             >
                               {rule.isActive ? "활성" : "비활성"}
                             </span>
@@ -473,7 +466,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                           <button
                             type="button"
                             onClick={() => startEdit(rule)}
-                            className="rounded-full border border-slate-200-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-white"
+                            className="admin-button admin-button-compact"
                           >
                             수정
                           </button>
@@ -481,7 +474,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                             type="button"
                             onClick={() => void handleDelete(rule.id)}
                             disabled={deletingId === rule.id}
-                            className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-white disabled:opacity-60"
+                            className="admin-button admin-button-danger-outline"
                           >
                             {deletingId === rule.id ? (
                               <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -495,14 +488,14 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-[10px] border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                  <div className="admin-help px-4 py-4">
                     이 카테고리에 등록된 규칙이 없습니다.
                   </div>
                 )}
               </div>
             ))
           ) : (
-            <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+            <div className="admin-help py-6 text-center">
               등록된 상벌점 규칙이 없습니다. 먼저 카테고리를 확인한 뒤 규칙을
               추가해 주세요.
             </div>
@@ -511,16 +504,13 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
       </section>
 
       <section className="space-y-6">
-        <div className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-            카테고리 관리
-          </p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950">
+        <div className="admin-section">
+          <h2 className="admin-section-title">
             상벌점 카테고리 설정
           </h2>
           {categoryCustomizationEnabled ? (
             <>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="admin-help mt-2 leading-6">
                 규칙 추가 전에 사용할 카테고리를 먼저 등록하세요. 카테고리 이름을
                 바꾸면 해당 카테고리를 쓰는 규칙도 함께 반영됩니다.
               </p>
@@ -529,13 +519,13 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                 {categories.map((category) => (
                   <div
                     key={category}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
                   >
                     <PointCategoryBadge category={category} />
                     <button
                       type="button"
                       onClick={() => startCategoryEdit(category)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      className="admin-icon-button inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
                       aria-label="카테고리 수정"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -544,7 +534,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                       type="button"
                       onClick={() => void handleCategoryDelete(category)}
                       disabled={deletingCategoryName === category}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-60"
+                      className="admin-icon-button inline-flex h-7 w-7 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-60"
                       aria-label="카테고리 삭제"
                     >
                       {deletingCategoryName === category ? (
@@ -564,7 +554,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                 <input
                   value={categoryName}
                   onChange={(event) => setCategoryName(event.target.value)}
-                  className="flex-1 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   placeholder="예: 생활지도"
                   required
                 />
@@ -573,7 +563,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                   <button
                     type="submit"
                     disabled={isCategorySaving}
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                    className="admin-button admin-button-primary"
                   >
                     {isCategorySaving ? (
                       <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -587,7 +577,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                     <button
                       type="button"
                       onClick={resetCategoryForm}
-                      className="rounded-full border border-slate-200-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                      className="admin-button"
                     >
                       취소
                     </button>
@@ -597,7 +587,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
             </>
           ) : (
             <>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="admin-help mt-2 leading-6">
                 현재 운영 DB에서는 카테고리 사용자 지정이 아직 적용되지 않아 기본
                 카테고리만 사용할 수 있습니다.
               </p>
@@ -605,10 +595,10 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                 {categories.map((category) => (
                   <div
                     key={category}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
                   >
                     <PointCategoryBadge category={category} />
-                    <span className="text-sm font-medium text-slate-600">
+                    <span className="admin-help">
                       {category}
                     </span>
                   </div>
@@ -618,17 +608,14 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
           )}
         </div>
 
-        <div className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-            {editingId ? "규칙 수정" : "규칙 추가"}
-          </p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950">
+        <div className="admin-section">
+          <h2 className="admin-section-title">
             {editingId ? "규칙 수정" : "규칙 추가"}
           </h2>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
+              <span className="admin-label mb-2 block">
                 카테고리
               </span>
               <select
@@ -640,7 +627,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                   }))
                 }
                 disabled={categories.length === 0}
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-50"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-50"
               >
                 {categories.length > 0 ? (
                   categories.map((category) => (
@@ -655,7 +642,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
+              <span className="admin-label mb-2 block">
                 규칙 이름
               </span>
               <input
@@ -663,14 +650,14 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, name: event.target.value }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 placeholder="예: 지각"
                 required
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
+              <span className="admin-label mb-2 block">
                 점수
               </span>
               <input
@@ -682,13 +669,13 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                     points: Number(event.target.value),
                   }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="w-full"
                 required
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">
+              <span className="admin-label mb-2 block">
                 설명
               </span>
               <textarea
@@ -699,17 +686,17 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
                     description: event.target.value,
                   }))
                 }
-                className="min-h-[120px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                 placeholder="규칙 적용 기준을 남겨둘 수 있습니다."
               />
             </label>
 
-            <label className="flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+            <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
               <span>
-                <span className="block text-sm font-medium text-slate-800">
+                <span className="admin-label block">
                   활성화
                 </span>
-                <span className="block text-xs text-slate-500">
+                <span className="admin-help block">
                   비활성 규칙은 부여 폼에서 숨겨집니다.
                 </span>
               </span>
@@ -730,7 +717,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
               <button
                 type="submit"
                 disabled={isSaving || categories.length === 0}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                className="admin-button admin-button-primary"
               >
                 {isSaving ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -743,7 +730,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
               <button
                 type="button"
                 onClick={() => resetForm()}
-                className="rounded-full border border-slate-200-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="admin-button"
               >
                 초기화
               </button>

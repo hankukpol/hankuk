@@ -68,29 +68,23 @@ export function StudentLoginForm({
     <main className={portalPageClass}>
       <div className={`${portalContainerClass} min-h-[calc(100dvh-1.5rem)] items-center justify-center`}>
         <section className={`${portalCardClass} w-full max-w-sm overflow-hidden`}>
-          <div
-            className="px-5 py-5"
-            style={{
-              background:
-                "linear-gradient(145deg, var(--division-color-strong) 0%, var(--division-hero-end) 100%)",
-              color: "var(--division-on-accent)",
-            }}
-          >
-            <h1 className="text-[22px] font-bold">
-              학생 로그인
-            </h1>
-            <p className="mt-2 text-[13px] leading-[1.5] text-white/70">
-              {divisionName} 학생은 이름과 학번만 입력하면 바로 로그인할 수 있습니다.
-            </p>
+          {/* DESIGN.md 7절 — 그라데이션 대신 선으로 구분한다. */}
+          <div className="admin-dialog-header">
+            <div className="min-w-0">
+              <h1 className="admin-dialog-title">학생 로그인</h1>
+              <p className="admin-dialog-description">
+                {divisionName} 학생은 이름과 학번만 입력하면 바로 로그인할 수 있습니다.
+              </p>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3.5 p-5">
             <label className="block">
-              <span className="mb-2 block text-[13px] font-semibold text-[var(--foreground)]">학번</span>
+              <span className="mb-2 block text-[13px] font-semibold text-admin-text">학번</span>
               <input
                 value={studentNumber}
                 onChange={(event) => setStudentNumber(event.target.value)}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-[#F4F4F2] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--division-color)] focus:bg-white"
+                className="w-full rounded-lg border border-admin-line bg-admin-surface-soft px-4 py-3 text-sm text-admin-text transition focus:border-[var(--division-color)]"
                 placeholder="학번 입력"
                 autoComplete="username"
                 required
@@ -98,11 +92,11 @@ export function StudentLoginForm({
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-[13px] font-semibold text-[var(--foreground)]">이름</span>
+              <span className="mb-2 block text-[13px] font-semibold text-admin-text">이름</span>
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-[#F4F4F2] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--division-color)] focus:bg-white"
+                className="w-full rounded-lg border border-admin-line bg-admin-surface-soft px-4 py-3 text-sm text-admin-text transition focus:border-[var(--division-color)]"
                 placeholder="이름 입력"
                 autoComplete="name"
                 required
@@ -110,7 +104,7 @@ export function StudentLoginForm({
             </label>
 
             {error ? (
-              <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div className="admin-notice admin-notice-danger">
                 {error}
               </div>
             ) : null}
@@ -118,7 +112,7 @@ export function StudentLoginForm({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70"
+              className="admin-button w-full"
               style={{
                 backgroundColor: "var(--division-color)",
                 color: "var(--division-on-accent)",

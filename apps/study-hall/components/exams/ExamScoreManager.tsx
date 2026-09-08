@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Download, LoaderCircle, RefreshCcw, Save } from "lucide-react";
+import { Download, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -433,7 +433,7 @@ export function ExamScoreManager({
 
   if (examTypes.length === 0) {
     return (
-      <section className="rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-6 py-10 text-sm text-slate-600">
+      <section className="admin-help px-6 py-10">
         시험 템플릿이 아직 없습니다. 먼저 시험 설정 화면에서 직렬별 시험 템플릿을
         만들어 주세요.
       </section>
@@ -474,16 +474,13 @@ export function ExamScoreManager({
         }
       />
       <div className="space-y-6 pb-28">
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
+        <section className="admin-section">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                성적 데스크
-              </p>
-              <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950">
+              <h2 className="admin-section-title">
                 시험 성적 입력
               </h2>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              <p className="admin-page-description">
                 시험, 회차, 날짜, 붙여넣기와 저장 순서를 한 화면에서 처리합니다. 저장 전
                 내부 이동과 브라우저 이탈도 경고 후 진행됩니다.
               </p>
@@ -500,7 +497,7 @@ export function ExamScoreManager({
                   url.searchParams.set("examRound", appliedExamRound);
                   triggerDownload(url.toString());
                 }}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                className="admin-button"
               >
                 <Download className="h-4 w-4" />
                 CSV 양식 다운로드
@@ -509,7 +506,7 @@ export function ExamScoreManager({
                 type="button"
                 onClick={() => void handleRefresh()}
                 disabled={isRefreshing || isLoading}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                className="admin-button"
               >
                 {isRefreshing || isLoading ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -522,7 +519,7 @@ export function ExamScoreManager({
                 type="button"
                 onClick={handleSave}
                 disabled={isSaving || !sheet}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                className="admin-button admin-button-primary"
               >
                 {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 성적 저장
@@ -534,11 +531,11 @@ export function ExamScoreManager({
             {summaryCards.map((card) => (
               <article
                 key={card.label}
-                className="rounded-[10px] border border-slate-200-slate-200 bg-white px-5 py-4"
+                className="admin-section"
               >
-                <p className="text-sm font-medium text-slate-500">{card.label}</p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">{card.value}</p>
-                <p className="mt-1 text-xs text-slate-500">{card.hint}</p>
+                <p className="admin-help">{card.label}</p>
+                <h2 className="admin-section-title">{card.value}</h2>
+                <p className="admin-help mt-1">{card.hint}</p>
               </article>
             ))}
           </div>
@@ -546,11 +543,11 @@ export function ExamScoreManager({
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="grid gap-4 md:grid-cols-[1.3fr_0.8fr_0.6fr_1fr]">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">시험 템플릿</span>
+                <span className="admin-label mb-2 block">시험 템플릿</span>
                 <select
                   value={selectedExamTypeId}
                   onChange={(event) => void handleExamTypeChange(event.target.value)}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 >
                   {examTypes.map((examType) => (
                     <option key={examType.id} value={examType.id}>
@@ -561,7 +558,7 @@ export function ExamScoreManager({
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">회차</span>
+                <span className="admin-label mb-2 block">회차</span>
                 <input
                   value={examRoundInput}
                   onChange={(event) => setExamRoundInput(event.target.value)}
@@ -571,7 +568,7 @@ export function ExamScoreManager({
                       void handleApplyRound();
                     }
                   }}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                   inputMode="numeric"
                   placeholder="1"
                 />
@@ -581,40 +578,40 @@ export function ExamScoreManager({
                 <button
                   type="button"
                   onClick={() => void handleApplyRound()}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="admin-button w-full"
                 >
                   회차 적용
                 </button>
               </div>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">시험일</span>
+                <span className="admin-label mb-2 block">시험일</span>
                 <input
                   type="date"
                   value={examDate}
                   onChange={(event) => setExamDate(event.target.value)}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 />
               </label>
             </div>
 
-            <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-              <p className="text-xl font-bold text-slate-950">붙여넣기 입력</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
+            <div className="admin-section">
+              <h2 className="admin-section-title">붙여넣기 입력</h2>
+              <p className="admin-help mt-2 leading-5">
                 <code>수험번호 + 과목 점수</code> 또는 <code>과목 점수만</code> 탭으로 구분해
                 붙여넣을 수 있습니다.
               </p>
               <textarea
                 value={pasteText}
                 onChange={(event) => setPasteText(event.target.value)}
-                className="mt-3 min-h-[120px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                className="mt-3 min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                 placeholder={"P-2026-001\t80\t76\t72\t84\t88.5\nP-2026-002\t88\t80\t78\t86\t90"}
               />
               <div className="mt-3 flex justify-end">
                 <button
                   type="button"
                   onClick={applyPaste}
-                  className="rounded-full border border-slate-200-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="admin-button"
                 >
                   붙여넣기 반영
                 </button>
@@ -623,16 +620,13 @@ export function ExamScoreManager({
           </div>
         </section>
 
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_48px_rgba(18,32,56,0.07)]">
+        <section className="admin-section">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                성적 시트
-              </p>
-              <h3 className="mt-2 text-2xl font-bold text-slate-950">
+              <h3 className="admin-section-title">
                 {selectedExamType?.name || "시험"} {appliedExamRound}회차 성적 시트
               </h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="admin-help mt-2 leading-6">
                 선택한 템플릿의 대상 직렬 학생만 표시됩니다. 총점은 입력값 기준으로 즉시
                 계산됩니다.
               </p>
@@ -640,10 +634,10 @@ export function ExamScoreManager({
 
             {selectedExamType ? (
               <div className="flex flex-wrap gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
                   직렬 {formatTrackLabel(selectedExamType.studyTrack)}
                 </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
+                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
                   과목 {selectedExamType.subjects.filter((subject) => subject.isActive).length}개
                 </span>
               </div>
@@ -652,7 +646,7 @@ export function ExamScoreManager({
 
           {sheet ? (
             <>
-              <div className="mt-5 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
+              <div className="admin-notice mt-5">
                 대상 직렬{" "}
                 <span className="font-semibold text-slate-900">{formatTrackLabel(sheet.studyTrack)}</span>
                 <span className="mx-2 text-slate-300">|</span>
@@ -661,33 +655,33 @@ export function ExamScoreManager({
                 현재 회차 <span className="font-semibold text-slate-900">{sheet.examRound}회차</span>
               </div>
 
-              <div className="mt-6 overflow-x-auto">
-                <table className="min-w-[1160px] divide-y divide-slate-200 text-sm">
+              <div className="admin-table-frame mt-6 overflow-x-auto">
+                <table className="min-w-[1160px]">
                   <thead>
                     <tr className="text-left text-slate-500">
-                      <th className="px-3 py-3 font-medium">수험번호</th>
-                      <th className="px-3 py-3 font-medium">이름</th>
+                      <th>수험번호</th>
+                      <th>이름</th>
                       {sheet.subjects.map((subject) => (
                         <th key={subject.id} className="px-3 py-3 font-medium">
                           <div>
                             <p>{subject.name}</p>
-                            <p className="mt-1 text-[11px] text-slate-400">{getSubjectMeta(subject)}</p>
+                            <p className="mt-1 text-[13px] text-slate-400">{getSubjectMeta(subject)}</p>
                           </div>
                         </th>
                       ))}
-                      <th className="px-3 py-3 font-medium">총점</th>
-                      <th className="px-3 py-3 font-medium">석차</th>
-                      <th className="px-3 py-3 font-medium">비고</th>
+                      <th>총점</th>
+                      <th>석차</th>
+                      <th>비고</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {rows.map((row) => {
                       const previewTotal = sumRowScores(row.scores);
 
                       return (
                         <tr key={row.studentId} className="align-top">
-                          <td className="px-3 py-3 font-medium text-slate-700">{row.studentNumber}</td>
-                          <td className="px-3 py-3 font-medium text-slate-950">{row.studentName}</td>
+                          <td>{row.studentNumber}</td>
+                          <td>{row.studentName}</td>
                           {sheet.subjects.map((subject) => (
                             <td key={subject.id} className="px-3 py-3">
                               <input
@@ -718,17 +712,17 @@ export function ExamScoreManager({
                                     };
                                   });
                                 }}
-                                className="w-24 rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition"
                                 inputMode="decimal"
                                 placeholder="-"
                               />
                             </td>
                           ))}
-                          <td className="px-3 py-3 font-semibold text-slate-950">{previewTotal ?? "-"}</td>
-                          <td className="px-3 py-3 text-slate-600">
+                          <td>{previewTotal ?? "-"}</td>
+                          <td>
                             {row.rankInClass ? `${row.rankInClass}등` : "-"}
                           </td>
-                          <td className="px-3 py-3">
+                          <td>
                             <input
                               value={row.notes ?? ""}
                               onChange={(event) =>
@@ -737,7 +731,7 @@ export function ExamScoreManager({
                                   notes: event.target.value,
                                 }))
                               }
-                              className="w-56 rounded-[10px] border border-slate-200-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                              className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition"
                               placeholder="메모"
                             />
                           </td>
@@ -749,7 +743,7 @@ export function ExamScoreManager({
               </div>
             </>
           ) : (
-            <div className="mt-6 rounded-[10px] border border-slate-200-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+            <div className="admin-help mt-6 px-4 py-6">
               {isLoading
                 ? "성적 시트를 불러오는 중입니다."
                 : "시험 템플릿과 회차를 선택해 주세요."}
@@ -760,15 +754,12 @@ export function ExamScoreManager({
 
       {sheet && blockingChangeMessage ? (
         <div className="fixed bottom-6 left-4 right-4 z-40 mx-auto max-w-5xl">
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white/95 px-5 py-4 shadow-[0_18px_44px_rgba(15,23,42,0.18)] backdrop-blur">
+          <div className="rounded-lg border border-slate-200 bg-white/95 px-5 py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-[10px] bg-white text-amber-700">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
                 <div>
-                  <p className="text-xl font-bold text-slate-950">{blockingChangeMessage}이 있습니다.</p>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <h2 className="admin-section-title">{blockingChangeMessage}이 있습니다.</h2>
+                  <p className="admin-help mt-1">
                     시험 변경, 회차 변경, 내부 이동, 새로고침 전에 저장하거나 정리해 주세요.
                   </p>
                 </div>
@@ -778,7 +769,7 @@ export function ExamScoreManager({
                 <button
                   type="button"
                   onClick={() => void handleRefresh()}
-                  className="rounded-full border border-slate-200-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  className="admin-button"
                 >
                   다시 불러오기
                 </button>
@@ -786,7 +777,7 @@ export function ExamScoreManager({
                   type="button"
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                  className="admin-button admin-button-primary"
                 >
                   {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   변경 저장

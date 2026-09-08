@@ -8,19 +8,19 @@ import {
 export function StudentStatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-[10px] border px-2.5 py-1.5 text-xs font-semibold ${getStudentStatusClasses(status)}`}
+      className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${getStudentStatusClasses(status)}`}
     >
       {getStudentStatusLabel(status)}
     </span>
   );
 }
 
-export function WarningStageBadge({ stage }: { stage: string }) {
+export function WarningStageBadge({ stage, label }: { stage: string; label?: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-[10px] border px-2.5 py-1.5 text-xs font-semibold ${getWarningStageClasses(stage)}`}
+      className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${getWarningStageClasses(stage)}`}
     >
-      {getWarningStageLabel(stage)}
+      {label ?? getWarningStageLabel(stage)}
     </span>
   );
 }
@@ -35,7 +35,7 @@ export function TuitionExemptBadge({
   return (
     <span
       title={reason ?? undefined}
-      className={`inline-flex items-center rounded-[10px] border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 ${className}`.trim()}
+      className={`inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 ${className}`.trim()}
     >
       수납 면제
     </span>

@@ -3,6 +3,11 @@ import { z } from "zod";
 const slugPattern = /^[a-z0-9-]+$/;
 const hexColorPattern = /^#([0-9a-fA-F]{6})$/;
 
+export const divisionSettingsCopySchema = z.object({
+  sourceSlug: z.string().trim().min(1).regex(slugPattern),
+  targetSlug: z.string().trim().min(1).regex(slugPattern),
+});
+
 export const divisionCreateSchema = z.object({
   name: z.string().trim().min(1, "지점 이름을 입력해주세요."),
   slug: z

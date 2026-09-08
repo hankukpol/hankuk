@@ -7,11 +7,14 @@ import { toast } from "@/lib/sonner";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import type { PointRuleItem } from "@/lib/services/point.service";
 import type { DivisionRuleSettings } from "@/lib/services/settings.service";
+import type { ManagementPolicy } from "@/lib/management-policy";
+import Link from "next/link";
 
 type RulesSettingsManagerProps = {
   divisionSlug: string;
   initialSettings: DivisionRuleSettings;
   pointRules: PointRuleItem[];
+  policy?: ManagementPolicy | null;
 };
 
 type FormState = {
@@ -72,6 +75,7 @@ export function RulesSettingsManager({
   divisionSlug,
   initialSettings,
   pointRules,
+  policy,
 }: RulesSettingsManagerProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
@@ -166,29 +170,27 @@ export function RulesSettingsManager({
 
   return (
     <>
+      {policy && <section className="admin-section"><h2 className="admin-section-title">{policy.version} 적용 중</h2><p>월 상점·벌점은 상계하지 않습니다. 지각은 교시 시작 후부터 기록하고, 출결 벌점은 관리자 확인 후 확정합니다. 일일 일반 개근 상점은 적용하지 않습니다. 건강 인정사유는 확인 내용을 기록하여 승인하며 횟수 제한으로 차단하지 않습니다.</p><Link className="admin-button" href={`/${divisionSlug}/admin/settings/periods#optional-study`}>교시 설정·선택자습 신청</Link></section>}
       <div className="grid gap-6 xl:grid-cols-[0.94fr_1.06fr]">
         <section className="space-y-4">
-        <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-            설정 / 운영 규칙
-          </p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950">현재 운영 규칙 요약</h2>
+        <article className="admin-section">
+          <h2 className="admin-section-title">현재 운영 규칙 요약</h2>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[10px] bg-[var(--division-color)] p-4 text-white">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/60">지각</p>
-              <p className="mt-3 text-3xl font-extrabold">{form.tardyMinutes}분</p>
-              <p className="mt-2 text-sm text-white/70">지각 판정 기준</p>
+            <div className="admin-dashboard-metric" data-tone="accent">
+              <p className="admin-dashboard-metric-label">지각</p>
+              <p className="admin-dashboard-metric-value">{form.tardyMinutes}분</p>
+              <p className="admin-help mt-2">지각 판정 기준</p>
             </div>
-            <div className="rounded-[10px] bg-white p-4 text-amber-900">
-              <p className="text-xs uppercase tracking-[0.22em] text-amber-700">경고</p>
-              <p className="mt-3 text-3xl font-extrabold">{form.warnWithdraw}점</p>
-              <p className="mt-2 text-sm text-amber-800">퇴실 기준, 시작점 대비 {warningGap}점 차이</p>
+            <div className="admin-dashboard-metric">
+              <p className="admin-dashboard-metric-label">경고</p>
+              <p className="admin-dashboard-metric-value text-attend-tardy">{form.warnWithdraw}점</p>
+              <p className="admin-help mt-2">퇴실 기준, 시작점 대비 {warningGap}점 차이</p>
             </div>
           </div>
 
           <div className="mt-4 space-y-3">
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-900">출결 자동 상벌점 규칙</p>
+            <article className="admin-section">
+              <p className="text-sm font-semibold text-slate-900">{policy ? "관리자 확정 출결 벌점" : "출결 자동 상벌점 규칙"}</p>
               <div className="mt-3 space-y-2 text-sm text-slate-600">
                 <p>
                   지각: {selectedTardyRule ? `${selectedTardyRule.name} (${selectedTardyRule.points}점)` : "연동 안 함"}
@@ -198,58 +200,58 @@ export function RulesSettingsManager({
                 </p>
               </div>
             </article>
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">조교 출석 수정 범위</p>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="admin-help mt-2">
                 {form.assistantPastEditAllowed
                   ? `당일 포함 최근 ${form.assistantPastEditDays}일 이내 수정 허용`
                   : "당일만 수정 가능"}
               </p>
             </article>
 
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">휴가/외출 한도</p>
               <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                 <span>휴무권 {form.holidayLimit}회</span>
                 <span>반휴권 {form.halfDayLimit}회</span>
-                <span>건강휴무 {form.healthLimit}회</span>
+                <span>{policy ? "병가: 증빙 확인 후 횟수 제한 없이 인정" : `건강휴무 ${form.healthLimit}회`}</span>
                 <span>반휴 미사용 +{form.halfDayUnusedPts}점</span>
               </div>
             </article>
 
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">개근 상점</p>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="admin-help mt-2">
                 {form.perfectAttendancePtsEnabled
                   ? `활성 — 매일 개근 시 +${form.perfectAttendancePts}점 자동 부여`
                   : "비활성"}
               </p>
             </article>
 
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">수강 만료 알림</p>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="admin-help mt-2">
                 수강 종료 {form.expirationWarningDays}일 전부터 만료 임박 표시
               </p>
             </article>
 
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">최근 저장</p>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="admin-help mt-2">
                 {new Date(settings.updatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
               </p>
             </article>
 
-            <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+            <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">경고 문자 템플릿</p>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="admin-help mt-2">
                 변수: {"{학원명}"} {"{직렬명}"} {"{학생이름}"} {"{벌점}"} {"{경고단계}"}
               </p>
             </article>
           </div>
         </article>
 
-        <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5">
+        <article className="admin-section">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-700" />
             <div>
@@ -263,20 +265,17 @@ export function RulesSettingsManager({
         </article>
         </section>
 
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+        <section className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              규칙 편집
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">지각 기준 / 경고 임계값 / 허가 한도</h2>
+            <h2 className="admin-section-title">지각 기준 / 경고 임계값 / 허가 한도</h2>
           </div>
 
           <button
             type="button"
             onClick={() => refreshSettings(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            className="admin-button"
           >
             {isRefreshing ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
@@ -288,28 +287,29 @@ export function RulesSettingsManager({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+          <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">출석 기준</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">지각 기준 (분)</span>
+                <span className="admin-label mb-2 block">지각 기준 (분)</span>
                 <input
                   type="number"
                   min={0}
                   max={180}
+                  disabled={!!policy}
                   value={form.tardyMinutes}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, tardyMinutes: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
 
-              <label className="flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+              <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <span>
-                  <span className="block text-sm font-medium text-slate-800">조교 과거 출석 수정 허용</span>
-                  <span className="block text-xs text-slate-500">끄면 당일 출석만 수정 가능합니다.</span>
+                  <span className="admin-label block">조교 과거 출석 수정 허용</span>
+                  <span className="admin-help block">끄면 당일 출석만 수정 가능합니다.</span>
                 </span>
                 <input
                   type="checkbox"
@@ -329,7 +329,7 @@ export function RulesSettingsManager({
             </div>
 
             <label className="mt-4 block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">과거 수정 허용 일수</span>
+              <span className="admin-label mb-2 block">과거 수정 허용 일수</span>
               <input
                 type="number"
                 min={0}
@@ -339,20 +339,21 @@ export function RulesSettingsManager({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, assistantPastEditDays: event.target.value }))
                 }
-                className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-100"
                 required
               />
             </label>
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">지각 자동 부여 규칙</span>
+                <span className="admin-label mb-2 block">{policy ? "지각 벌점 규칙 (관리자 확정)" : "지각 자동 부여 규칙"}</span>
                 <select
+                  disabled={!!policy}
                   value={form.tardyPointRuleId}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, tardyPointRuleId: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                 >
                   <option value="">연동 안 함</option>
                   {pointRules.map((rule) => (
@@ -364,13 +365,14 @@ export function RulesSettingsManager({
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">결석 자동 부여 규칙</span>
+                <span className="admin-label mb-2 block">결석 자동 부여 규칙</span>
                 <select
+                  disabled={!!policy}
                   value={form.absentPointRuleId}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, absentPointRuleId: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                 >
                   <option value="">연동 안 함</option>
                   {pointRules.map((rule) => (
@@ -383,14 +385,14 @@ export function RulesSettingsManager({
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+          <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">경고 임계값</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              1차 &lt; 2차 &lt; 면담 &lt; 퇴실 순서로 설정해야 합니다.
+            <p className="admin-help mt-2">
+              {policy ? "관리주의 < 정식면담 < 최종경고 < 이용종료 순서로 설정합니다." : "1차 < 2차 < 면담 < 퇴실 순서로 설정해야 합니다."}
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">1차 경고 기준 벌점</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.WARNING_1 ?? "1차 경고"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -398,12 +400,12 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnLevel1: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">2차 경고 기준 벌점</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.WARNING_2 ?? "2차 경고"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -411,12 +413,12 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnLevel2: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">면담 대상 기준 벌점</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.INTERVIEW ?? "면담 대상"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -424,12 +426,12 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnInterview: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">퇴실 대상 기준 벌점</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.WITHDRAWAL ?? "퇴실 대상"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -437,18 +439,18 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnWithdraw: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+          <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">외출/휴가 한도</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">휴무권 월 한도</span>
+                <span className="admin-label mb-2 block">휴무권 월 한도</span>
                 <input
                   type="number"
                   min={0}
@@ -456,12 +458,12 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, holidayLimit: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">반휴권 월 한도</span>
+                <span className="admin-label mb-2 block">반휴권 월 한도</span>
                 <input
                   type="number"
                   min={0}
@@ -469,25 +471,26 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, halfDayLimit: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">건강휴무 월 한도</span>
-                <input
+                <span className="admin-label mb-2 block">{policy ? "병가 인정 기준" : "건강휴무 월 한도"}</span>
+                {policy ? <p className="admin-help">확인 가능한 증빙과 사유를 기록하여 승인합니다. 월 횟수 제한과 휴일권 차감을 적용하지 않습니다.</p> : <input
                   type="number"
                   min={0}
+                  disabled={!!policy}
                   value={form.healthLimit}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, healthLimit: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
-                />
+                />}
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">휴무권 미사용 상점</span>
+                <span className="admin-label mb-2 block">휴무권 미사용 상점</span>
                 <input
                   type="number"
                   min={0}
@@ -495,12 +498,12 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, holidayUnusedPts: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
               <label className="block md:col-span-2">
-                <span className="mb-2 block text-sm font-medium text-slate-700">반휴권 미사용 상점</span>
+                <span className="admin-label mb-2 block">반휴권 미사용 상점</span>
                 <input
                   type="number"
                   min={0}
@@ -508,26 +511,27 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, halfDayUnusedPts: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
               </label>
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+          <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">개근 상점</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              당일 모든 필수 교시에 출석한 학생에게 자동으로 상점을 부여합니다.
+            <p className="admin-help mt-2">
+              {policy ? "일일 일반 출석 개근 상점은 적용하지 않습니다. 아침모의고사 한 달 개근은 결과 확인 후 상벌점 메뉴에서 부여합니다." : "당일 모든 필수 교시에 출석한 학생에게 자동으로 상점을 부여합니다."}
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="flex items-center justify-between rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3">
+              <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <span>
-                  <span className="block text-sm font-medium text-slate-800">개근 상점 자동 부여</span>
-                  <span className="block text-xs text-slate-500">끄면 개근 시에도 상점이 부여되지 않습니다.</span>
+                  <span className="admin-label block">개근 상점 자동 부여</span>
+                  <span className="admin-help block">끄면 개근 시에도 상점이 부여되지 않습니다.</span>
                 </span>
                 <input
                   type="checkbox"
+                  disabled={!!policy}
                   checked={form.perfectAttendancePtsEnabled}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -542,7 +546,7 @@ export function RulesSettingsManager({
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">개근 시 부여 상점</span>
+                <span className="admin-label mb-2 block">개근 시 부여 상점</span>
                 <input
                   type="number"
                   min={0}
@@ -552,21 +556,21 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, perfectAttendancePts: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-100"
                   required
                 />
               </label>
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+          <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">수강 만료 알림</h3>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="admin-help mt-2">
               수강 종료일이 지정된 학생에 대해, 종료일로부터 며칠 전부터 만료 임박 알림을 표시할지 설정합니다.
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">만료 알림 시작 일수</span>
+                <span className="admin-label mb-2 block">만료 알림 시작 일수</span>
                 <input
                   type="number"
                   min={1}
@@ -575,63 +579,63 @@ export function RulesSettingsManager({
                   onChange={(event) =>
                     setForm((current) => ({ ...current, expirationWarningDays: event.target.value }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="w-full"
                   required
                 />
-                <span className="mt-1.5 block text-xs text-slate-500">
+                <span className="admin-help mt-1.5 block">
                   예: 14일로 설정하면, 수강 종료 14일 전부터 대시보드에 만료 임박으로 표시됩니다.
                 </span>
               </label>
             </div>
           </div>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white p-4">
+          <div className="admin-section">
             <h3 className="text-sm font-semibold text-slate-900">경고 문자 템플릿</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <p className="admin-help mt-2 leading-6">
               사용 가능 변수: {"{학원명}"} {"{직렬명}"} {"{학생이름}"} {"{벌점}"} {"{경고단계}"}
             </p>
             <div className="mt-4 grid gap-4">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">1차 경고 문자</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.WARNING_1 ?? "1차 경고"} 문자</span>
                 <textarea
                   value={form.warnMsgLevel1}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnMsgLevel1: event.target.value }))
                   }
-                  className="min-h-[110px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="min-h-[110px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">2차 경고 문자</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.WARNING_2 ?? "2차 경고"} 문자</span>
                 <textarea
                   value={form.warnMsgLevel2}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnMsgLevel2: event.target.value }))
                   }
-                  className="min-h-[110px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="min-h-[110px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">면담 문자</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.INTERVIEW ?? "면담"} 문자</span>
                 <textarea
                   value={form.warnMsgInterview}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnMsgInterview: event.target.value }))
                   }
-                  className="min-h-[110px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="min-h-[110px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   required
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">퇴실 문자</span>
+                <span className="admin-label mb-2 block">{policy?.warningLabels.WITHDRAWAL ?? "퇴실"} 문자</span>
                 <textarea
                   value={form.warnMsgWithdraw}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, warnMsgWithdraw: event.target.value }))
                   }
-                  className="min-h-[110px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                  className="min-h-[110px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   required
                 />
               </label>
@@ -641,7 +645,7 @@ export function RulesSettingsManager({
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+            className="admin-button admin-button-primary"
           >
             {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             운영 규칙 저장

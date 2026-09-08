@@ -1,20 +1,21 @@
 "use client";
 
+import { useId } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import {
-  CircleDollarSign,
-  CreditCard,
   LoaderCircle,
   Pencil,
   Plus,
   RefreshCcw,
   Save,
-  Search,
   Trash2,
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
+import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { EnrollPaymentModal } from "@/components/payments/EnrollPaymentModal";
 import {
   createPaymentEntryFormValue,
@@ -26,7 +27,7 @@ import { RefundModal } from "@/components/payments/RefundModal";
 import { RenewPaymentModal } from "@/components/payments/RenewPaymentModal";
 import { SettlementView } from "@/components/payments/SettlementView";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { formatCurrency, formatPaymentMethod, formatPaymentMonth } from "@/lib/payment-meta";
@@ -48,7 +49,7 @@ type FormState = {
 };
 
 type StatusFilter = "ALL" | "PAID" | "UNPAID";
-type ViewTab = "status" | "settlement";
+type ViewTab = "status" | "history" | "settlement";
 
 function getCurrentMonth() {
   return getKstToday().slice(0, 7);
@@ -107,6 +108,12 @@ function formatDate(value: string) {
   return new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR");
 }
 
+const PAYMENT_VIEW_TABS = [
+  { id: "status" as const, label: "월별 수납 현황" },
+  { id: "history" as const, label: "수납 내역" },
+  { id: "settlement" as const, label: "일일 정산" },
+];
+
 export function PaymentManager({
   divisionSlug,
   students,
@@ -114,6 +121,7 @@ export function PaymentManager({
   initialPayments,
   tuitionPlans,
 }: PaymentManagerProps) {
+  const dialogFormId = useId();
   const [studentList, setStudentList] = useState(students);
   const [payments, setPayments] = useState(initialPayments);
   const [viewTab, setViewTab] = useState<ViewTab>("status");
@@ -450,84 +458,15 @@ export function PaymentManager({
 
   return (
     <>
-      <div className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(16,185,129,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-emerald-700">완납</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-emerald-950">{paidCount}</p>
-                <p className="mt-2 text-xs text-emerald-700/80">
-                  {formatPaymentMonth(summaryMonth)} 기준 납부 완료 학생
-                </p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-emerald-50 text-emerald-700">
-                <WalletCards className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(245,158,11,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-amber-700">미납</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-950">{unpaidCount}</p>
-                <p className="mt-2 text-xs text-amber-700/80">아직 납부 이력이 없는 학생</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-amber-50 text-amber-700">
-                <CreditCard className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-slate-500">월 합계</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950">
-                  {monthlyCollectedAmount < 0 ? "-" : ""}
-                  {formatCurrency(Math.abs(monthlyCollectedAmount))}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">{selectedCategoryName} 기준 합계 금액</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <CircleDollarSign className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-slate-500">기록 건수</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950">{historyRows.length}</p>
-                <p className="mt-2 text-xs text-slate-500">현재 필터 기준 조회 결과</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-100 text-slate-700">
-                <Search className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <section className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-[0_18px_44px_rgba(18,32,56,0.06)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold tracking-[0.2em] text-slate-500">
-                PAYMENT
-              </span>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">수납 관리</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                학생 등록 수납, 연장 수납, 일반 수납과 정산 조회를 한 화면에서 처리합니다.
-              </p>
-            </div>
-
+      <div className="admin-flat-page">
+        <AdminTabs items={PAYMENT_VIEW_TABS} activeId={viewTab} onChange={setViewTab} label="수납 화면" idPrefix="payment-view" />
+        <div className="admin-workspace-toolbar">
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => void refreshData(true)}
                 disabled={isRefreshing}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                className="admin-button"
               >
                 {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
                 새로고침
@@ -536,7 +475,7 @@ export function PaymentManager({
               <button
                 type="button"
                 onClick={() => setIsEnrollOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="admin-button"
               >
                 <Plus className="h-4 w-4" />
                 신규 등록 수납
@@ -548,7 +487,7 @@ export function PaymentManager({
                   setRenewStudentId(null);
                   setIsRenewOpen(true);
                 }}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="admin-button"
               >
                 <Plus className="h-4 w-4" />
                 연장 수납
@@ -557,7 +496,7 @@ export function PaymentManager({
               <button
                 type="button"
                 onClick={() => setIsRefundOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+                className="admin-button admin-button-danger-outline"
               >
                 <WalletCards className="h-4 w-4" />
                 환불 처리
@@ -566,75 +505,23 @@ export function PaymentManager({
               <button
                 type="button"
                 onClick={() => openCreatePanel()}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+                className="admin-button admin-button-primary"
               >
                 <Plus className="h-4 w-4" />
                 일반 수납
               </button>
             </div>
-          </div>
 
-          <div className="mt-6 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setViewTab("status")}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                viewTab === "status"
-                  ? "bg-[var(--division-color)] text-white"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              수납 현황
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewTab("settlement")}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                viewTab === "settlement"
-                  ? "bg-[var(--division-color)] text-white"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              일일 정산
-            </button>
-          </div>
+        </div>
 
-          {viewTab === "settlement" ? (
-            <div className="mt-6">
-              <SettlementView divisionSlug={divisionSlug} />
-            </div>
-          ) : (
-            <div className="mt-6 grid gap-6 xl:grid-cols-[0.98fr_1.02fr]">
-              <section className="rounded-[10px] border border-slate-200 bg-white p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xl font-bold text-slate-950">월별 수납 현황</p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      학생별 납부 여부와 마지막 납부일을 빠르게 확인합니다.
-                    </p>
-                    {exemptCount > 0 ? (
-                      <p className="mt-2 text-xs font-medium text-sky-700">
-                        수납 면제 {exemptCount}명은 미납 집계에서 제외됩니다.
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="rounded-full border border-slate-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      완납 {paidCount}명
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                      미납 {unpaidCount}명
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <AdminTabPanel id="status" activeId={viewTab} idPrefix="payment-view" className="space-y-4">
+                <div className="admin-filter-bar">
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">수납 유형</span>
+                    <span className="admin-label mb-2 block">수납 유형</span>
                     <select
                       value={summaryPaymentTypeId}
                       onChange={(event) => setSummaryPaymentTypeId(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                     >
                       {paymentCategories.map((category) => (
                         <option key={category.id} value={category.id}>
@@ -645,21 +532,21 @@ export function PaymentManager({
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">기준 월</span>
+                    <span className="admin-label mb-2 block">기준 월</span>
                     <input
                       type="month"
                       value={summaryMonth}
                       onChange={(event) => setSummaryMonth(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">상태</span>
+                    <span className="admin-label mb-2 block">상태</span>
                     <select
                       value={summaryStatusFilter}
                       onChange={(event) => setSummaryStatusFilter(event.target.value as StatusFilter)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                     >
                       <option value="ALL">전체</option>
                       <option value="PAID">완납</option>
@@ -668,90 +555,79 @@ export function PaymentManager({
                   </label>
                 </div>
 
-                <div className="mt-4 max-h-[540px] space-y-3 overflow-y-auto pr-1">
-                  {summaryRows.length > 0 ? (
-                    summaryRows.map((row) => (
-                      <article key={`${row.studentId}-${summaryMonth}-${summaryPaymentTypeId}`} className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-lg font-bold text-slate-950">
-                              {row.studentName}
-                              <span className="ml-2 text-xs font-medium text-slate-500">{row.studentNumber}</span>
-                            </p>
-                            <p className="mt-2 text-sm text-slate-600">
-                              좌석 {row.seatLabel || "미배정"}
-                            </p>
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                              <span
-                                className={`rounded-full px-2.5 py-1 font-semibold ${
-                                  row.status === "PAID"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-amber-50 text-amber-700"
-                                }`}
-                              >
-                                {row.status === "PAID" ? "완납" : "미납"}
-                              </span>
-                              {row.lastPaymentDate ? (
-                                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
-                                  마지막 납부 {formatDate(row.lastPaymentDate)}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
 
-                          <div className="text-right">
-                            <p className="text-sm text-slate-500">누적 금액</p>
-                            <p className="mt-2 text-lg font-bold text-slate-950">
-                              {row.totalAmount < 0 ? "-" : ""}
-                              {formatCurrency(Math.abs(row.totalAmount))}원
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => openCreatePanel(row.studentId)}
-                            className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                              row.status === "UNPAID"
-                                ? "bg-[var(--division-color)] text-white hover:opacity-90"
-                                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                            }`}
-                          >
-                            {row.status === "UNPAID" ? "바로 수납" : "추가 수납"}
-                          </button>
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-600">
-                      조건에 맞는 학생이 없습니다.
-                    </div>
-                  )}
+          <div className="admin-metric-strip">
+            <article className="admin-metric-box">
+              <p className="admin-metric-box-label">완납</p>
+              <p className="admin-metric-box-value text-admin-success">{paidCount}명</p>
+            </article>
+            <article className="admin-metric-box">
+              <p className="admin-metric-box-label">미납</p>
+              <p className="admin-metric-box-value text-admin-warning">{unpaidCount}명</p>
+            </article>
+            <article className="admin-metric-box col-span-2 md:col-span-1">
+              <p className="admin-metric-box-label">월 합계</p>
+              <p className="admin-metric-box-value">{monthlyCollectedAmount < 0 ? "-" : ""}{formatCurrency(Math.abs(monthlyCollectedAmount))}원</p>
+            </article>
+          </div>
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">월별 수납 현황 <span className="text-admin-accent">{summaryRows.length}명</span></h2>
+            <p className="admin-help">{formatPaymentMonth(summaryMonth)} · {selectedCategoryName}</p>
+          </div>
+          {exemptCount > 0 ? <p className="admin-notice">수납 면제 {exemptCount}명은 미납 집계에서 제외됩니다.</p> : null}
+          <div className="space-y-4 md:hidden">
+            {summaryRows.map((row) => (
+              <article key={row.studentId} className="admin-record-card">
+                <div className="admin-workspace-toolbar">
+                  <div><h3 className="admin-section-title">{row.studentName}</h3><p className="admin-help mt-1">{row.studentNumber}</p></div>
+                  <span className={row.status === "PAID" ? "admin-badge text-admin-success" : "admin-badge text-admin-warning"}>{row.status === "PAID" ? "완납" : "미납"}</span>
                 </div>
-              </section>
-
-              <section className="rounded-[10px] border border-slate-200 bg-white p-4">
-                <div>
-                  <p className="text-xl font-bold text-slate-950">수납 이력</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    학생, 수납 유형, 기간 조건으로 과거 내역을 조회합니다.
-                  </p>
+                <dl className="mt-4 space-y-2 text-sm">
+                  <div className="flex flex-wrap justify-between gap-2"><dt className="text-admin-text-secondary">좌석</dt><dd>{row.seatLabel || "미배정"}</dd></div>
+                  <div className="flex flex-wrap justify-between gap-2"><dt className="text-admin-text-secondary">마지막 납부일</dt><dd>{row.lastPaymentDate ? formatDate(row.lastPaymentDate) : "납부 이력 없음"}</dd></div>
+                </dl>
+                <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
+                  <p className="text-2xl font-bold tabular-nums">{row.totalAmount < 0 ? "-" : ""}{formatCurrency(Math.abs(row.totalAmount))}<span className="ml-1 text-xs font-normal">원</span></p>
+                  <button type="button" onClick={() => openCreatePanel(row.studentId)} className="admin-button">{row.status === "UNPAID" ? "바로 수납" : "추가 수납"}</button>
                 </div>
+              </article>
+            ))}
+            {!summaryRows.length ? <div className="admin-empty-state">조건에 맞는 학생이 없습니다.</div> : null}
+          </div>
+          <div className="admin-table-frame hidden md:block">
+            <table>
+              <thead><tr><th>학생</th><th>좌석</th><th>납부 상태</th><th>마지막 납부일</th><th>수납 금액</th><th>관리</th></tr></thead>
+              <tbody>
+                {summaryRows.map((row) => (
+                  <tr key={row.studentId}>
+                    <td className="admin-table-name"><p className="font-semibold">{row.studentName}</p><p className="admin-help mt-1">{row.studentNumber}</p></td>
+                    <td>{row.seatLabel || "미배정"}</td>
+                    <td><span className={row.status === "PAID" ? "admin-badge text-admin-success" : "admin-badge text-admin-warning"}>{row.status === "PAID" ? "완납" : "미납"}</span></td>
+                    <td>{row.lastPaymentDate ? formatDate(row.lastPaymentDate) : "-"}</td>
+                    <td className="admin-table-amount font-semibold">{row.totalAmount < 0 ? "-" : ""}{formatCurrency(Math.abs(row.totalAmount))}원</td>
+                    <td><button type="button" onClick={() => openCreatePanel(row.studentId)} className="admin-button admin-button-compact">{row.status === "UNPAID" ? "바로 수납" : "추가 수납"}</button></td>
+                  </tr>
+                ))}
+                {!summaryRows.length ? <tr><td colSpan={6}>조건에 맞는 학생이 없습니다.</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+        </AdminTabPanel>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <label className="relative block lg:col-span-2">
-                    <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <AdminTabPanel id="history" activeId={viewTab} idPrefix="payment-view" className="space-y-4">
+                <div className="admin-filter-bar">
+                  <label className="block">
+                    <span className="admin-label mb-2 block">검색</span>
                     <input
                       value={historySearch}
                       onChange={(event) => setHistorySearch(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                       placeholder="학생명, 수험번호, 수납 유형 검색"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">학생</span>
+                    <span className="admin-label mb-2 block">학생</span>
                     <StudentSearchCombobox
                       students={studentList}
                       value={historyStudentId}
@@ -761,11 +637,11 @@ export function PaymentManager({
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">수납 유형</span>
+                    <span className="admin-label mb-2 block">수납 유형</span>
                     <select
                       value={historyPaymentTypeId}
                       onChange={(event) => setHistoryPaymentTypeId(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                     >
                       <option value="">전체 유형</option>
                       {paymentCategories.map((category) => (
@@ -777,105 +653,98 @@ export function PaymentManager({
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">시작일</span>
+                    <span className="admin-label mb-2 block">시작일</span>
                     <input
                       type="date"
                       value={historyDateFrom}
                       onChange={(event) => setHistoryDateFrom(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">종료일</span>
+                    <span className="admin-label mb-2 block">종료일</span>
                     <input
                       type="date"
                       value={historyDateTo}
                       onChange={(event) => setHistoryDateTo(event.target.value)}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                      className="w-full"
                     />
                   </label>
                 </div>
 
-                <div className="mt-4 space-y-3">
-                  {historyRows.length > 0 ? (
-                    historyRows.map((payment) => {
-                      const isRefund = payment.amount < 0;
 
-                      return (
-                        <article key={payment.id} className={`rounded-[10px] border px-4 py-4 ${isRefund ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
-                          <div className="flex flex-wrap items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-lg font-bold text-slate-950">
-                                  {payment.studentName}
-                                  <span className="ml-2 text-xs font-medium text-slate-500">{payment.studentNumber}</span>
-                                </p>
-                                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${isRefund ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}>
-                                  {payment.paymentTypeName}
-                                </span>
-                              </div>
-
-                              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                                <span>{formatDate(payment.paymentDate)}</span>
-                                <span className={isRefund ? "font-semibold text-rose-700" : "font-semibold text-slate-900"}>
-                                  {payment.amount < 0 ? "-" : ""}
-                                  {formatCurrency(Math.abs(payment.amount))}원
-                                </span>
-                                <span>{formatPaymentMethod(payment.method)}</span>
-                                <span>기록자 {payment.recordedByName}</span>
-                              </div>
-
-                              <p className="mt-3 text-sm leading-6 text-slate-600">{payment.notes || "메모 없음"}</p>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => startEdit(payment)}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 text-slate-600 transition hover:bg-slate-50"
-                                aria-label="수납 수정"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDelete(payment.id)}
-                                disabled={deletingId === payment.id}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 text-rose-600 transition hover:bg-rose-50 disabled:opacity-60"
-                                aria-label="수납 삭제"
-                              >
-                                {deletingId === payment.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-[10px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-600">
-                      조건에 맞는 수납 내역이 없습니다.
-                    </div>
-                  )}
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">수납 내역 <span className="text-admin-accent">{historyRows.length}건</span></h2>
+            <p className="admin-help">{historyDateFrom || "전체 기간"}{historyDateTo ? ` ~ ${historyDateTo}` : ""}</p>
+          </div>
+          <div className="space-y-4 md:hidden">
+            {historyRows.map((payment) => (
+              <article key={payment.id} className="admin-record-card">
+                <div className="admin-workspace-toolbar">
+                  <div><h3 className="admin-section-title">{payment.studentName}</h3><p className="admin-help mt-1">{payment.studentNumber}</p></div>
+                  <span className="admin-badge">{payment.paymentTypeName}</span>
                 </div>
-              </section>
-            </div>
-          )}
-        </section>
+                <div className="admin-workspace-toolbar mt-4">
+                  <p className="admin-help">{formatDate(payment.paymentDate)}<br />{formatPaymentMethod(payment.method)}</p>
+                  <p className={`text-2xl font-bold tabular-nums ${payment.amount < 0 ? "text-admin-danger" : ""}`}>{payment.amount < 0 ? "-" : ""}{formatCurrency(Math.abs(payment.amount))}<span className="ml-1 text-xs font-normal">원</span></p>
+                </div>
+                {payment.notes ? <p className="mt-4 whitespace-pre-wrap break-words text-sm">{payment.notes}</p> : null}
+                <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
+                  <p className="admin-help">기록자 {payment.recordedByName}</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => startEdit(payment)} className="admin-button w-11 px-0" aria-label={`${payment.studentName} 수납 수정`} title="수납 수정"><Pencil className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => void handleDelete(payment.id)} disabled={deletingId === payment.id} className="admin-button admin-button-danger-outline w-11 px-0" aria-label={`${payment.studentName} 수납 삭제`} title="수납 삭제">{deletingId === payment.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!historyRows.length ? <div className="admin-empty-state">조건에 맞는 수납 내역이 없습니다.</div> : null}
+          </div>
+          <div className="admin-table-frame hidden md:block">
+            <table>
+              <thead><tr><th>수납일</th><th>학생</th><th>유형</th><th>금액</th><th>결제수단</th><th>메모</th><th>기록자</th><th>관리</th></tr></thead>
+              <tbody>
+                {historyRows.map((payment) => (
+                  <tr key={payment.id}>
+                    <td>{formatDate(payment.paymentDate)}</td>
+                    <td className="admin-table-name"><p className="font-semibold">{payment.studentName}</p><p className="admin-help mt-1">{payment.studentNumber}</p></td>
+                    <td>{payment.paymentTypeName}</td>
+                    <td className={`admin-table-amount font-semibold ${payment.amount < 0 ? "text-admin-danger" : ""}`}>{payment.amount < 0 ? "-" : ""}{formatCurrency(Math.abs(payment.amount))}원</td>
+                    <td>{formatPaymentMethod(payment.method)}</td>
+                    <td className="admin-table-name"><p className="max-w-80 whitespace-pre-wrap break-words">{payment.notes || "-"}</p></td>
+                    <td>{payment.recordedByName}</td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => startEdit(payment)} className="admin-button admin-button-compact w-11 px-0" aria-label={`${payment.studentName} 수납 수정`} title="수납 수정"><Pencil className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => void handleDelete(payment.id)} disabled={deletingId === payment.id} className="admin-button admin-button-compact admin-button-danger-outline w-11 px-0" aria-label={`${payment.studentName} 수납 삭제`} title="수납 삭제">{deletingId === payment.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!historyRows.length ? <tr><td colSpan={8}>조건에 맞는 수납 내역이 없습니다.</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+        </AdminTabPanel>
+
+        <AdminTabPanel id="settlement" activeId={viewTab} idPrefix="payment-view">
+          <SettlementView divisionSlug={divisionSlug} isActive={viewTab === "settlement"} refreshKey={payments} />
+        </AdminTabPanel>
       </div>
 
-      <Modal
+      <SlideOver
         open={isEditorOpen}
         onClose={closeEditor}
         badge={editingPaymentId ? "일반 수납 수정" : "일반 수납 등록"}
         title={editingPaymentId ? "수납 내역 수정" : "일반 수납 등록"}
         description="학생별 일반 수납 내역을 추가하거나 수정합니다."
       >
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <section className="rounded-[10px] border border-slate-200 bg-white p-5">
+        <form id={`${dialogFormId}-1`} onSubmit={handleSubmit} className="space-y-6">
+          <section className="admin-section">
             <div className="grid gap-4">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">학생 선택</span>
+                <span className="admin-label mb-2 block">학생 선택</span>
                 <StudentSearchCombobox
                   students={activeStudents}
                   value={form.studentId}
@@ -885,14 +754,14 @@ export function PaymentManager({
               </label>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 md:col-span-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 md:col-span-2">
                   <p className="font-medium text-slate-900">
                     {editingPaymentId
                       ? "수정 모드에서는 선택한 수납 1건만 변경합니다."
                       : "여러 결제 수단을 추가하면 같은 납부 건으로 묶어서 저장합니다."}
                   </p>
                   {!editingPaymentId ? (
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="admin-help mt-1">
                       예: 카드 15만 원 + 포인트 15만 원을 한 번의 납부로 등록
                     </p>
                   ) : null}
@@ -901,10 +770,10 @@ export function PaymentManager({
             </div>
 
             {selectedStudent ? (
-              <div className="mt-4 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              <div className="admin-notice mt-4">
                 <p className="font-semibold text-slate-900">
                   {selectedStudent.name}
-                  <span className="ml-2 text-xs font-medium text-slate-500">{selectedStudent.studentNumber}</span>
+                  <span className="admin-help ml-2">{selectedStudent.studentNumber}</span>
                 </p>
                 <p className="mt-1">
                   직렬 {selectedStudent.studyTrack || "미지정"} · 좌석 {selectedStudent.seatDisplay || "미배정"}
@@ -914,10 +783,10 @@ export function PaymentManager({
           </section>
 
           {tuitionPlans.length > 0 ? (
-            <section className="rounded-[10px] border border-slate-200 bg-white p-5">
+            <section className="admin-section">
               <div>
-                <p className="text-lg font-bold text-slate-950">빠른 플랜 선택</p>
-                <p className="mt-1 text-sm text-slate-500">
+                <h2 className="admin-section-title">빠른 플랜 선택</h2>
+                <p className="admin-help mt-1">
                   자주 쓰는 등록 플랜 금액을 일반 수납 폼에 바로 반영할 수 있습니다.
                 </p>
                 {!editingPaymentId && form.payments.length > 1 ? (
@@ -954,11 +823,7 @@ export function PaymentManager({
                             ],
                       }));
                     }}
-                    className={`rounded-[10px] border p-4 text-left transition ${
-                      selectedPlanId === plan.id
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white hover:border-slate-400"
-                    }`}
+                    className={`rounded-lg border p-4 text-left transition ${ selectedPlanId === plan.id ? "border-admin-accent bg-admin-accent text-white" : "border-slate-200 bg-white hover:border-slate-400" }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{plan.name}</p>
@@ -993,26 +858,26 @@ export function PaymentManager({
             }
           />
 
-          <div className="flex justify-end gap-2">
+          <DialogActions>
             <button
               type="button"
               onClick={closeEditor}
               disabled={isSaving}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              className="admin-button"
             >
               취소
             </button>
-            <button
+            <button form={`${dialogFormId}-1`}
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+              className="admin-button admin-button-primary"
             >
               {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {editingPaymentId ? "수납 수정" : "수납 등록"}
             </button>
-          </div>
+          </DialogActions>
         </form>
-      </Modal>
+      </SlideOver>
 
       <EnrollPaymentModal
         open={isEnrollOpen}

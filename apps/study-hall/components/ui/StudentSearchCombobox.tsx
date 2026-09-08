@@ -1,7 +1,7 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type StudentOption = {
   id: string;
@@ -32,9 +32,18 @@ export function StudentSearchCombobox({
 }: StudentSearchComboboxProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const selected = students.find((s) => s.id === value);
+  function cancelCloseTimer() {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => cancelCloseTimer, []);
+
+  const selected = useMemo(() => students.find((s) => s.id === value), [students, value]);
   const displayValue = open
     ? query
     : selected
@@ -43,48 +52,54 @@ export function StudentSearchCombobox({
     ? allStudentsLabel
     : "";
 
-  const filtered = students.filter((s) => {
+  const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return s.name.toLowerCase().includes(q) || s.studentNumber.toLowerCase().includes(q);
-  });
+    return students.filter((s) =>
+      s.name.toLowerCase().includes(q) || s.studentNumber.toLowerCase().includes(q),
+    );
+  }, [students, query]);
 
   function handleSelect(id: string) {
+    cancelCloseTimer();
     onChange(id);
     setQuery("");
     setOpen(false);
   }
 
   return (
-    <div ref={ref} className={`relative ${className}`}>
-      <div className="flex items-center rounded-[10px] border border-slate-200 bg-white px-4 py-3 transition focus-within:border-slate-400 focus-within:bg-white">
-        <Search className="mr-2 h-4 w-4 shrink-0 text-slate-400" />
+    <div className={`relative ${className}`}>
+      <div className="admin-input-group">
+        <Search className="h-5 w-5 shrink-0 text-admin-text-muted" />
         <input
           type="text"
           value={displayValue}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
+            cancelCloseTimer();
             setQuery("");
             setOpen(true);
           }}
           onBlur={() => {
-            setTimeout(() => setOpen(false), 150);
+            cancelCloseTimer();
+            closeTimerRef.current = setTimeout(() => {
+              closeTimerRef.current = null;
+              setOpen(false);
+            }, 150);
           }}
           placeholder={placeholder}
-          className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder-slate-400"
+          className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400"
         />
       </div>
 
       {open && (
-        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-[10px] border border-slate-200 bg-white shadow-lg">
+        <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white">
           {allStudentsLabel && (
             <li>
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect("")}
-                className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 ${
-                  value === "" ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-500"
-                }`}
+                className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 ${ value === "" ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-500" }`}
               >
                 {allStudentsLabel}
               </button>
@@ -99,11 +114,7 @@ export function StudentSearchCombobox({
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(student.id)}
-                  className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 ${
-                    value === student.id
-                      ? "bg-slate-100 font-semibold text-slate-900"
-                      : "text-slate-700"
-                  }`}
+                  className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 ${ value === student.id ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-700" }`}
                 >
                   {student.studentNumber} · {student.name}
                   {showStudyTrack && student.studyTrack ? ` · ${student.studyTrack}` : ""}

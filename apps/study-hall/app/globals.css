@@ -2,27 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Study Hall 디자인 시스템
+   기준 문서: apps/study-hall/DESIGN.md
+   토큰은 이 파일 한 곳에서만 정의한다. 화면별 임의 값을 덧씌우지 않는다.
+   ========================================================================== */
 
 :root {
-  --background: #F7F7F5;
-  --foreground: #191F28;
-  --muted: #6B7684;
-  --border: #EBEBEB;
-  --card: #ffffff;
-  --division-color: #1b4fbb;
-  --division-color-rgb: 27 79 187;
-  --division-color-light: #ebf0fb;
-  --division-color-dark: #0d2d6b;
-  --division-color-soft: #eef4ff;
-  --division-color-muted: #f8faff;
-  --division-color-strong: #183f92;
-  --division-hero-end: #2858c9;
-  --division-on-accent: #ffffff;
+  /* --- 면 --- */
+  --admin-surface: #ffffff;
+  --admin-surface-rgb: 255 255 255;
+  --admin-surface-soft: #fafafa;
+  --admin-surface-soft-rgb: 250 250 250;
+  --admin-surface-muted: #f3f3f5;
+  --admin-surface-muted-rgb: 243 243 245;
+  --admin-surface-strong: #e8e8ec;
+  --admin-surface-strong-rgb: 232 232 236;
+
+  /* --- 선 --- */
+  --admin-line-soft: #e8e8ec;
+  --admin-line-soft-rgb: 232 232 236;
+  --admin-line: #d6d6dc;
+  --admin-line-rgb: 214 214 220;
+  --admin-grid: #dddddd;
+  --admin-grid-rgb: 221 221 221;
+
+  /* --- 글자 --- */
+  --admin-text: #0a0a0a;
+  --admin-text-rgb: 10 10 10;
+  --admin-sidebar-hover: #222222;
+  --admin-sidebar-hover-rgb: 34 34 34;
+  --admin-text-secondary: #4b4b4b;
+  --admin-text-secondary-rgb: 75 75 75;
+  --admin-text-muted: #6b6b6b;
+  --admin-text-muted-rgb: 107 107 107;
+  --admin-text-disabled: #9c9c9c;
+  --admin-text-disabled-rgb: 156 156 156;
+
+  /* --- 강조색: [division]/layout.tsx 가 DB 직렬 색상으로 덮어쓴다 --- */
+  --admin-accent: #1b4fbb;
+  --admin-accent-rgb: 27 79 187;
+  --admin-accent-hover: #17439f;
+  --admin-accent-hover-rgb: 23 67 159;
+  --admin-accent-soft: #f3f6fc;
+  --admin-accent-soft-rgb: 243 246 252;
+  --admin-accent-tint: #e4eaf7;
+  --admin-accent-tint-rgb: 228 234 247;
+  --admin-accent-line: #c5d3ee;
+  --admin-accent-line-rgb: 197 211 238;
+  --admin-on-accent: #ffffff;
+
+  /* --- 상태색: 업무 의미가 있으므로 강조색으로 치환하지 않는다 --- */
+  --admin-danger: #b91c1c;
+  --admin-danger-soft: #fef2f2;
+  --admin-danger-line: #f2c2c2;
+  --admin-warning: #8a5a00;
+  --admin-warning-soft: #fff8e6;
+  --admin-warning-line: #f0dca8;
+  --admin-success: #1b7a1b;
+  --admin-success-soft: #eef8ee;
+  --admin-success-line: #c5e3c5;
+  --admin-chart-1: var(--admin-accent);
+  --admin-chart-2: #0f766e;
+  --admin-chart-3: #c2410c;
+  --admin-chart-4: #7c3aed;
+  --admin-chart-5: #be123c;
+  --admin-chart-6: var(--admin-text);
+
+  /* --- 깊이 --- */
+  --admin-overlay: rgb(0 0 0 / 0.5);
+  --admin-dialog-shadow: 0 12px 32px rgb(10 10 10 / 0.14);
+
+  /* --- 치수 --- */
+  --admin-radius: 8px;
+  --admin-control-height: 44px;
+  --admin-control-compact: 36px;
+  --admin-control-padding-x: 16px;
+  --admin-control-padding-y: 8px;
+  --admin-choice-width: 128px;
+  --admin-search-width: 320px;
+  --admin-dialog-padding: 24px;
+  --admin-dialog-action-width: 80px;
+  --admin-dialog-close-icon: 20px;
+  --admin-sidebar-width: 256px;
+  --admin-content-max: 1440px;
+
+  /* --- 타입 --- */
+  --admin-type-title: 20px;
+  --admin-type-section: 16px;
+  --admin-type-body: 15px;
+  --admin-type-caption: 13px;
+
+  /* --- 레거시 별칭: 기존 마크업이 참조하는 이름을 새 토큰으로 연결 --- */
+  --background: var(--admin-surface);
+  --foreground: var(--admin-text);
+  --muted: var(--admin-text-muted);
+  --border: var(--admin-line-soft);
+  --card: var(--admin-surface);
+  --division-color: var(--admin-accent);
+  --division-color-rgb: var(--admin-accent-rgb);
+  --division-color-light: var(--admin-accent-tint);
+  --division-color-dark: var(--admin-accent-hover);
+  --division-color-soft: var(--admin-accent-soft);
+  --division-color-muted: var(--admin-accent-soft);
+  --division-color-strong: var(--admin-accent-hover);
+  --division-hero-end: var(--admin-accent);
+  --division-on-accent: var(--admin-on-accent);
   --division-on-accent-muted: rgb(255 255 255 / 0.72);
   --division-accent-surface: rgb(255 255 255 / 0.15);
   --division-accent-surface-soft: rgb(255 255 255 / 0.08);
   --division-accent-border: rgb(255 255 255 / 0.2);
   --division-accent-outline: rgb(255 255 255 / 0.12);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --admin-dialog-padding: 16px;
+  }
 }
 
 * {
@@ -36,17 +132,19 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-pretendard), 'Pretendard', sans-serif;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-family: var(--font-pretendard), Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: var(--admin-type-body);
+  line-height: 1.5;
+  letter-spacing: 0;
+  font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
+/* ==========================================================================
+   기본 요소
+   ========================================================================== */
 
 @layer base {
   a {
@@ -59,25 +157,1592 @@ body {
   select,
   textarea {
     font: inherit;
+    letter-spacing: inherit;
   }
 
-  button {
-    @apply transition-transform duration-100 ease-out active:scale-[0.98];
+  h1 {
+    font-size: var(--admin-type-title);
+    font-weight: 700;
+    line-height: 1.3;
   }
 
+  h2,
+  h3,
+  h4 {
+    font-size: var(--admin-type-section);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  /* 키보드 포커스는 2px 강조색 outline */
+  :focus-visible {
+    outline: 2px solid var(--admin-accent);
+    outline-offset: 1px;
+  }
+
+  /* 표: 1px 그리드, 본문 13px, 헤더 가운데 정렬 */
   table {
-    @apply border-collapse w-full text-sm bg-white;
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--admin-surface);
+    font-size: var(--admin-type-caption);
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
   }
-  
+
   th {
-    @apply bg-white font-semibold text-slate-800 border-t-2 border-t-slate-800 border-b border-gray-200 px-4 py-3 text-left;
+    border: 1px solid var(--admin-grid);
+    padding: 12px;
+    background: var(--admin-accent-tint);
+    color: var(--admin-text);
+    font-weight: 600;
+    text-align: center;
+    vertical-align: middle;
   }
-  
+
   td {
-    @apply border-b border-gray-100 px-4 py-3 text-slate-700;
+    border: 1px solid var(--admin-grid);
+    padding: 12px;
+    color: var(--admin-text);
+    text-align: center;
+    vertical-align: middle;
   }
 
   tbody tr:hover td {
-    @apply bg-gray-50;
+    background: var(--admin-accent-soft);
   }
-} 
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ==========================================================================
+   레이아웃 · 사이드바
+   ========================================================================== */
+
+@layer components {
+  .admin-shell {
+    display: flex;
+    min-height: 100dvh;
+    background: var(--admin-surface);
+    color: var(--admin-text);
+  }
+
+  .admin-workspace {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .admin-main {
+    padding: 24px 16px 48px;
+  }
+
+  .admin-content-frame {
+    width: 100%;
+    max-width: var(--admin-content-max);
+    margin-inline: auto;
+  }
+
+  .admin-utility-row {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .admin-sidebar-rail {
+    width: var(--admin-sidebar-width);
+    flex-shrink: 0;
+    align-self: stretch;
+    background: var(--admin-text);
+    color: var(--admin-surface);
+  }
+
+  .admin-sidebar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    flex-direction: column;
+  }
+
+  .admin-sidebar-header {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--admin-sidebar-hover);
+  }
+
+  .admin-sidebar-brand {
+    font-size: var(--admin-type-section);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .admin-sidebar-caption {
+    margin-top: 4px;
+    color: var(--admin-text-disabled);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+  }
+
+  .admin-sidebar-nav {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    padding: 16px 12px;
+  }
+
+  .admin-sidebar-group {
+    margin-top: 16px;
+    padding: 0 12px 4px;
+    color: var(--admin-text-disabled);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-sidebar-nav > .admin-sidebar-group:first-child {
+    margin-top: 0;
+  }
+
+  .admin-sidebar-link {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 12px;
+    border-left: 4px solid transparent;
+    padding: 12px;
+    color: var(--admin-text-disabled);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    text-align: left;
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+  }
+
+  .admin-sidebar-link svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .admin-sidebar-link:hover,
+  .admin-sidebar-link[data-active="true"] {
+    background: var(--admin-sidebar-hover);
+    color: var(--admin-surface);
+  }
+
+  .admin-sidebar-link[data-active="true"] {
+    border-left-color: var(--admin-accent);
+  }
+
+  .admin-sidebar-footer {
+    border-top: 1px solid var(--admin-sidebar-hover);
+    padding: 16px 12px;
+  }
+
+  .admin-mobile-header {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    min-height: 64px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--admin-text);
+    color: var(--admin-surface);
+  }
+
+  .admin-mobile-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 64px);
+    overflow-y: auto;
+    background: var(--admin-text);
+    color: var(--admin-surface);
+  }
+
+  /* ------------------------------------------------------------------
+     평면 페이지 · 제목
+     ------------------------------------------------------------------ */
+
+  .admin-flat-page {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .admin-page-title {
+    font-size: var(--admin-type-title);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .admin-page-description {
+    margin-top: 4px;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    line-height: 1.5;
+  }
+
+  .admin-section-title {
+    font-size: var(--admin-type-section);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .admin-section {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .admin-workspace-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .admin-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px;
+    padding: 16px;
+    background: var(--admin-surface-soft);
+    border-block: 1px solid var(--admin-line-soft);
+  }
+
+  .admin-filter-bar > label {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .admin-record-card {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+  }
+
+  .admin-record-details {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+    border-top: 1px solid var(--admin-line-soft);
+    padding-top: 16px;
+  }
+
+  .admin-record-details dd {
+    margin-top: 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-empty-state {
+    padding: 32px 24px;
+    background: var(--admin-surface-soft);
+    color: var(--admin-text-secondary);
+    text-align: center;
+  }
+
+  @media (max-width: 767px) {
+    .admin-filter-bar > label {
+      flex-basis: 100%;
+    }
+
+    .admin-record-details {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* 세로로 이어진 섹션만 구분선을 갖는다.
+     grid/flex 안에서 가로로 나란히 놓인 형제에까지 선이 생기면 카드가 겹쳐 보인다. */
+  .admin-flat-page > .admin-section + .admin-section {
+    margin-top: 24px;
+    border-top: 1px solid var(--admin-line-soft);
+    padding-top: 24px;
+  }
+
+  /* ------------------------------------------------------------------
+     1차 폴더 탭 · 2차 밑줄 탭
+     ------------------------------------------------------------------ */
+
+  .admin-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  /* 탭은 탭 바 전체 폭을 나눠 채운다. 왼쪽에 칩처럼 몰려 있으면 안 된다. */
+  .admin-tab {
+    position: relative;
+    display: inline-flex;
+    flex: 1 0 auto;
+    min-height: 56px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 0 0 -1px;
+    padding: 16px;
+    border: 1px solid var(--admin-line);
+    border-bottom-color: var(--admin-accent);
+    border-radius: 0;
+    background: var(--admin-surface-muted);
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-section);
+    font-weight: 400;
+    line-height: 1.3;
+    white-space: nowrap;
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+  }
+
+  .admin-tab:first-child {
+    margin-left: 0;
+  }
+
+  .admin-tab:hover:not([data-active="true"]):not([aria-disabled="true"]):not(:disabled) {
+    background: var(--admin-surface-soft);
+    color: var(--admin-text);
+  }
+
+  .admin-tab:is([data-active="true"], [aria-current="page"], [aria-selected="true"]) {
+    z-index: 1;
+    border-color: var(--admin-accent);
+    border-bottom-color: var(--admin-surface);
+    background: var(--admin-surface);
+    color: var(--admin-text);
+    font-weight: 700;
+  }
+
+  .admin-tab:is([aria-disabled="true"], :disabled) {
+    color: var(--admin-text-disabled);
+    cursor: not-allowed;
+  }
+
+  /* 탭 안 숫자 */
+  .admin-tab-count {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .admin-subtabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--admin-line);
+    background: var(--admin-surface);
+  }
+
+  .admin-subtab {
+    position: relative;
+    display: inline-flex;
+    min-height: 44px;
+    max-width: 100%;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 12px 16px;
+    background: transparent;
+    color: var(--admin-text-secondary);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+  }
+
+  .admin-subtab:hover:not(:disabled) {
+    background: var(--admin-surface-soft);
+    color: var(--admin-text);
+  }
+
+  .admin-subtab:disabled {
+    color: var(--admin-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .admin-subtab:is(
+      [data-active="true"],
+      [aria-selected="true"],
+      [aria-pressed="true"],
+      [aria-current="page"]
+    ):not(:disabled) {
+    border-bottom-color: var(--admin-accent);
+    background: transparent;
+    color: var(--admin-accent);
+  }
+
+  .admin-subtab:focus-visible {
+    outline: 2px solid var(--admin-accent);
+    outline-offset: 2px;
+  }
+
+  /* ------------------------------------------------------------------
+     버튼 · 조건 선택
+     ------------------------------------------------------------------ */
+
+  .admin-button {
+    display: inline-flex;
+    min-height: var(--admin-control-height);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: var(--admin-control-padding-y) var(--admin-control-padding-x);
+    background: var(--admin-surface);
+    color: var(--admin-text);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    transition: background-color 150ms ease-out, color 150ms ease-out,
+      border-color 150ms ease-out;
+  }
+
+  .admin-button:hover:not(:disabled) {
+    background: var(--admin-surface-soft);
+    border-color: var(--admin-line);
+  }
+
+  /* 누름 피드백은 면 한 단계로만 준다. 크기를 흔들지 않는다. */
+  .admin-button:active:not(:disabled) {
+    background: var(--admin-surface-muted);
+  }
+
+  .admin-button:disabled {
+    background: var(--admin-surface-muted);
+    color: var(--admin-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .admin-button-primary {
+    border-color: var(--admin-accent);
+    background: var(--admin-accent);
+    color: var(--admin-on-accent);
+  }
+
+  .admin-button-primary:hover:not(:disabled) {
+    border-color: var(--admin-accent-hover);
+    background: var(--admin-accent-hover);
+  }
+
+  .admin-button-primary:active:not(:disabled) {
+    background: var(--admin-accent-hover);
+  }
+
+  /* 강조가 필요한 KPI 한 칸 */
+  .admin-dashboard-metric[data-tone="accent"] {
+    border-color: var(--admin-accent-line);
+    background: var(--admin-accent-soft);
+  }
+
+  .admin-button-danger {
+    border-color: var(--admin-danger);
+    background: var(--admin-danger);
+    color: #ffffff;
+  }
+
+  .admin-button-danger-outline {
+    border-color: var(--admin-danger-line);
+    background: var(--admin-surface);
+    color: var(--admin-danger);
+  }
+
+  .admin-button-danger:is(:hover, :active):not(:disabled) {
+    border-color: var(--admin-danger);
+    background: var(--admin-danger);
+    color: var(--admin-surface);
+  }
+
+  .admin-button-danger-outline:hover:not(:disabled) {
+    background: var(--admin-danger-soft);
+  }
+
+  .admin-button-compact {
+    min-height: var(--admin-control-compact);
+    padding: 8px 12px;
+    font-size: var(--admin-type-caption);
+  }
+
+  .admin-choice-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .admin-choice-button {
+    display: inline-flex;
+    width: var(--admin-choice-width);
+    max-width: 100%;
+    /* 좁은 화면에서 글자 길이에 맞춰 줄이지 않고 줄바꿈한다 */
+    flex-shrink: 0;
+    min-height: var(--admin-control-height);
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 8px 12px;
+    background: var(--admin-surface);
+    color: var(--admin-text-secondary);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.3;
+    transition: background-color 150ms ease-out, color 150ms ease-out,
+      border-color 150ms ease-out;
+  }
+
+  .admin-choice-button:hover:not(:disabled) {
+    background: var(--admin-surface-soft);
+  }
+
+  .admin-choice-button[aria-pressed="true"],
+  .admin-choice-button[data-active="true"] {
+    border-color: var(--admin-accent);
+    background: var(--admin-accent-soft);
+    color: var(--admin-accent);
+  }
+
+  /* ------------------------------------------------------------------
+     폼
+     ------------------------------------------------------------------ */
+
+  .admin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .admin-label {
+    color: var(--admin-text);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-help {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    line-height: 1.5;
+  }
+
+  /* ------------------------------------------------------------------
+     표
+     ------------------------------------------------------------------ */
+
+  .admin-table-frame {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 0;
+  }
+
+  .admin-table-name {
+    text-align: left;
+  }
+
+  .admin-table-amount {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+
+
+  /* ------------------------------------------------------------------
+     모달 · 드로어
+     ------------------------------------------------------------------ */
+
+  .admin-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--admin-overlay);
+  }
+
+  .admin-dialog {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 32px);
+    overflow: hidden;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+    box-shadow: var(--admin-dialog-shadow);
+  }
+
+  .admin-drawer {
+    display: flex;
+    height: 100dvh;
+    width: min(760px, 100%);
+    flex-direction: column;
+    overflow: hidden;
+    border-left: 1px solid var(--admin-line);
+    border-radius: 0;
+    background: var(--admin-surface);
+    box-shadow: var(--admin-dialog-shadow);
+  }
+
+  .admin-dialog-header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--admin-line);
+    border-radius: 0;
+    padding: 20px var(--admin-dialog-padding);
+  }
+
+  .admin-dialog-title {
+    font-size: var(--admin-type-title);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .admin-dialog-description {
+    margin-top: 4px;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    line-height: 1.5;
+  }
+
+  .admin-dialog-body {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    border-radius: 0;
+    padding: 20px var(--admin-dialog-padding);
+  }
+
+  .admin-dialog-footer {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid var(--admin-line);
+    border-radius: 0;
+    padding: 16px var(--admin-dialog-padding);
+    background: var(--admin-surface-soft);
+  }
+
+.admin-dialog-actions-slot {
+    display: contents;
+  }
+
+  .admin-dialog-footer button {
+    min-width: var(--admin-dialog-action-width);
+    min-height: var(--admin-control-height);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+  }
+
+  .admin-dialog-close {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface-soft);
+    color: var(--admin-text-secondary);
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+  }
+
+  .admin-dialog-close:hover {
+    background: var(--admin-surface-muted);
+    color: var(--admin-text);
+  }
+
+  .admin-dialog-close svg {
+    width: var(--admin-dialog-close-icon);
+    height: var(--admin-dialog-close-icon);
+  }
+
+  /* ------------------------------------------------------------------
+     작업 메뉴 (드롭다운)
+     메뉴 항목은 버튼이 아니다. 테두리 없이 hover에서 accent-soft로 반응한다.
+     ------------------------------------------------------------------ */
+
+  .admin-action-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .admin-action-menu-trigger {
+    display: inline-flex;
+    min-height: var(--admin-control-height);
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: var(--admin-control-padding-y) var(--admin-control-padding-x);
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+    color: var(--admin-text-secondary);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-action-menu-trigger:hover:not(:disabled) {
+    background: var(--admin-surface-soft);
+    color: var(--admin-text);
+  }
+
+  .admin-action-menu-panel {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 280px;
+    max-width: calc(100vw - 32px);
+    max-height: min(480px, calc(100dvh - 160px));
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+    box-shadow: var(--admin-dialog-shadow);
+  }
+
+  .admin-action-menu-item {
+    display: flex;
+    width: 100%;
+    min-height: var(--admin-control-height);
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--admin-text-secondary);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: left;
+  }
+
+  .admin-action-menu-item:hover:not(:disabled):not([aria-disabled="true"]),
+  .admin-action-menu-item:focus-visible {
+    background: var(--admin-accent-soft);
+    color: var(--admin-accent);
+    outline: none;
+  }
+
+  .admin-action-menu-item:is(:disabled, [aria-disabled="true"]) {
+    color: var(--admin-text-disabled);
+    cursor: not-allowed;
+  }
+
+  .admin-action-menu-description {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 400;
+    line-height: 1.3;
+  }
+
+  /* 삭제 등 위험 항목은 구분선 아래에 둔다 */
+  .admin-action-menu-item[data-tone="danger"] {
+    margin-top: 8px;
+    border-top: 1px solid var(--admin-line-soft);
+    color: var(--admin-danger);
+  }
+
+  .admin-action-menu-item[data-tone="danger"]:hover:not(:disabled) {
+    background: var(--admin-danger-soft);
+    color: var(--admin-danger);
+  }
+
+  /* ------------------------------------------------------------------
+     안내 상자 · 배지
+     ------------------------------------------------------------------ */
+
+  .admin-notice {
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 12px 16px;
+    background: var(--admin-surface-soft);
+    color: var(--admin-text-secondary);
+    font-size: var(--admin-type-caption);
+    line-height: 1.5;
+  }
+
+  .admin-notice-warning {
+    border-color: var(--admin-warning-line);
+    background: var(--admin-warning-soft);
+    color: var(--admin-warning);
+  }
+
+  .admin-notice-danger {
+    border-color: var(--admin-danger-line);
+    background: var(--admin-danger-soft);
+    color: var(--admin-danger);
+  }
+
+  .admin-notice-success {
+    border-color: var(--admin-success-line);
+    background: var(--admin-success-soft);
+    color: var(--admin-success);
+  }
+
+  .admin-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 2px 8px;
+    background: var(--admin-surface);
+    color: var(--admin-text-secondary);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  /* ------------------------------------------------------------------
+     대시보드 · 요약 박스
+     ------------------------------------------------------------------ */
+
+  .admin-dashboard-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .admin-dashboard-metric {
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 20px;
+    background: var(--admin-surface);
+  }
+
+  .admin-dashboard-metric-label {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-dashboard-metric-value {
+    margin-top: 8px;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .admin-dashboard-metric-unit {
+    margin-left: 4px;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+  }
+
+  .admin-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+  }
+
+  .admin-panel-header {
+    display: flex;
+    min-height: 56px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--admin-line);
+    border-radius: 0;
+    padding: 16px 20px;
+    background: var(--admin-surface-soft);
+  }
+
+  /* 목록 행. 평면 섹션에서는 좌우 여백 0, .admin-panel 안에서는 20px. */
+  .admin-panel-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--admin-line-soft);
+    border-radius: 0;
+    padding: 12px 0;
+  }
+
+  .admin-panel .admin-panel-row {
+    padding-inline: 20px;
+  }
+
+  .admin-panel-row:last-child {
+    border-bottom: 0;
+  }
+
+  .admin-metric-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .admin-metric-box {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 16px;
+    background: var(--admin-surface);
+  }
+
+  .admin-metric-box-label {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-metric-box-value {
+    margin-top: 8px;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ==========================================================================
+   관리자 셸 안의 폼 컨트롤 기본값
+   @layer base 에 두어 화면별 Tailwind 유틸(pl-11 등)이 항상 이길 수 있게 한다.
+   ========================================================================== */
+
+/* Preflight의 태그 기본값은 덮고, 화면별 Tailwind 유틸(pl-11 등)은 유지한다. */
+input:where(:not([type="checkbox"], [type="radio"], [type="file"], [type="color"], [type="range"], [type="hidden"])),
+select,
+textarea {
+  width: 100%;
+  min-height: var(--admin-control-height);
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  padding: 8px 12px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: var(--admin-type-body);
+  line-height: 1.5;
+  transition: border-color 150ms ease-out;
+}
+
+:where(.admin-shell textarea) {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.admin-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  border-color: var(--admin-accent);
+  outline: none;
+}
+
+.admin-shell input:disabled,
+.admin-shell select:disabled,
+.admin-shell textarea:disabled {
+  background: var(--admin-surface-muted);
+  color: var(--admin-text-disabled);
+}
+
+:where(.admin-shell) ::placeholder {
+  color: var(--admin-text-disabled);
+}
+
+.admin-shell input[type="checkbox"],
+.admin-shell input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--admin-accent);
+}
+
+/* ==========================================================================
+   반응형 레이아웃
+   ========================================================================== */
+
+@media (min-width: 768px) {
+  .admin-main {
+    padding: 24px 24px 48px;
+  }
+
+  .admin-metric-strip {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-main {
+    padding: 24px 32px 48px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .admin-dashboard-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-choice-group {
+    width: 260px;
+    max-width: 100%;
+  }
+}
+
+/* ==========================================================================
+   모션: 정적 운영 화면에 장식 애니메이션을 넣지 않는다.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   관리자 셸 정규화
+   화면마다 흩어진 기존 Tailwind 마크업을 규격 안으로 끌어오는 층이다.
+   여기 규칙은 개별 화면이 임의 값을 다시 만들어도 시스템이 이기게 한다.
+   ========================================================================== */
+
+/* 데스크톱 sticky 사이드바가 갇히지 않도록 body에 스크롤 컨테이너를 만들지 않는다. */
+body:has(.admin-shell) {
+  overflow-y: visible;
+}
+
+/* --- 글자 계층 --- */
+
+.admin-shell :is(h1, h2, h3, h4) {
+  color: var(--admin-text);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.admin-shell h1 {
+  font-size: var(--admin-type-title);
+}
+
+.admin-shell :is(h2, h3, h4) {
+  font-size: var(--admin-type-section);
+}
+
+/* 제목이 아닌 곳의 본문 유틸은 15px 하나로 모은다. */
+.admin-shell :is(.text-sm, .text-base):not(h1):not(h2):not(h3):not(h4) {
+  font-size: var(--admin-type-body);
+}
+
+/* 13px 미만은 쓰지 않는다. */
+.admin-shell
+  :is(
+    [class~="text-[9px]"],
+    [class~="text-[10px]"],
+    [class~="text-[11px]"],
+    [class~="text-[12px]"]
+  ) {
+  font-size: var(--admin-type-caption);
+}
+
+/* 장식용 자간이 다시 생기지 않게 막는다. */
+.admin-shell [class*="tracking-"] {
+  letter-spacing: 0;
+}
+
+.admin-shell :where(h1, h2, h3, p, label) {
+  overflow-wrap: anywhere;
+}
+
+.admin-shell :is(.admin-page-title, .admin-dialog-title) {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* --- 깊이: 모달·작업 메뉴 밖에는 그림자를 두지 않는다 --- */
+
+.admin-shell :is(section, article, form)[class*="shadow"]:not(.admin-dialog):not(.admin-drawer),
+.admin-shell
+  :is(div, button, a)[class*="shadow"]:not(.absolute):not(.fixed):not(.admin-dialog):not(
+    .admin-drawer
+  ):not(.admin-action-menu) {
+  box-shadow: none;
+}
+
+.admin-shell [class*="backdrop-blur"] {
+  backdrop-filter: none;
+}
+
+/* 흰 바탕에 테두리를 두른 섹션이 남아 있으면 선 색만 규격으로 맞춘다. */
+.admin-shell :is(section, article)[class*="bg-white"][class*="border"] {
+  border-color: var(--admin-line-soft);
+}
+
+/* --- 폼 컨트롤 --- */
+
+.admin-shell
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(
+        [type="hidden"]
+      ):not([type="color"]),
+    select
+  ) {
+  min-height: var(--admin-control-height);
+  border: 1px solid var(--admin-line);
+  background-color: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: var(--admin-type-body);
+  line-height: 1.5;
+}
+
+.admin-shell textarea {
+  min-height: 112px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: var(--admin-type-body);
+}
+
+.admin-shell :is(input, select, textarea)::placeholder {
+  color: var(--admin-text-disabled);
+}
+
+.admin-shell :is(input, select, textarea):disabled {
+  background: var(--admin-surface-muted);
+  color: var(--admin-text-disabled);
+}
+
+/* 오류 상태는 기존 rose/red 테두리를 유지한다. */
+.admin-shell
+  :is(input, select, textarea):is(
+    [aria-invalid="true"],
+    [class*="border-rose-"],
+    [class*="border-red-"]
+  ) {
+  border-color: var(--admin-danger);
+}
+
+/* 입력 포커스는 기존 테두리가 accent로 바뀐다. 떠 있는 shadow ring을 만들지 않는다. */
+.admin-shell
+  :is(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]),
+    select,
+    textarea
+  ):focus {
+  outline: none;
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+.admin-shell
+  :is(input, select, textarea):focus:not(
+    [aria-invalid="true"],
+    [class*="border-rose-"],
+    [class*="border-red-"]
+  ) {
+  border-color: var(--admin-accent);
+}
+
+/* 버튼·링크·native 입력의 키보드 outline은 제거하지 않는다. */
+.admin-shell :is(button, a, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 2px;
+}
+
+.admin-shell :is(input[type="checkbox"], input[type="radio"]) {
+  flex-shrink: 0;
+  accent-color: var(--admin-accent);
+}
+
+.admin-shell :is(button, summary) {
+  cursor: pointer;
+}
+
+.admin-shell button:disabled {
+  cursor: not-allowed;
+}
+
+.admin-shell :where(label, form, fieldset, input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* --- 버튼 규격 --- */
+
+.admin-shell :where(button:not(.admin-seat-grid *):not(.admin-tab):not(.admin-subtab):not(.admin-record-card)) {
+  min-height: var(--admin-control-height);
+  max-width: 100%;
+  height: auto;
+  padding: var(--admin-control-padding-y) var(--admin-control-padding-x);
+  font-size: var(--admin-type-body);
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 표 안 작업 버튼은 축약 규격 */
+.admin-shell table :where(button) {
+  min-height: var(--admin-control-compact);
+  max-width: none;
+  padding: 8px 12px;
+  font-size: var(--admin-type-caption);
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.admin-shell .admin-button:disabled {
+  opacity: 0.5;
+}
+
+/* --- 표 --- */
+
+.admin-shell table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--admin-grid);
+  color: var(--admin-text);
+  font-size: var(--admin-type-caption);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 셀은 오른쪽·아래만 그린다. 표 외곽선과 겹쳐 2px이 되지 않는다. */
+.admin-shell :is(th, td) {
+  padding: 12px;
+  border-right: 1px solid var(--admin-grid);
+  border-bottom: 1px solid var(--admin-grid);
+  border-top: 0;
+  border-left: 0;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.admin-shell :is(th, td):last-child {
+  border-right: 0;
+}
+
+.admin-shell tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.admin-shell thead,
+.admin-shell thead th {
+  background: var(--admin-accent-tint);
+  color: var(--admin-text);
+  font-weight: 600;
+  text-align: center;
+  text-transform: none;
+}
+
+/* 세로로 긴 표에서 머리글을 붙인다. */
+.admin-shell thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.admin-shell tbody tr:hover {
+  background-color: var(--admin-accent-soft);
+}
+
+/* 셀 안의 flex 자식까지 같은 방향으로 맞춘다. */
+.admin-shell thead th :is(button, .flex, .inline-flex) {
+  justify-content: center;
+  text-align: center;
+}
+
+.admin-shell td > :is(.flex, .inline-flex):not(:has(input, select, textarea)) {
+  justify-content: center;
+}
+
+.admin-shell td > .flex-col:not(:has(input, select, textarea)) {
+  align-items: center;
+}
+
+.admin-shell td > :is(div, p, button, a) {
+  margin-inline: auto;
+}
+
+/* 셀 안에 남은 정렬 유틸은 표 규칙이 이긴다. 정렬은 의미 클래스로만 준다. */
+.admin-shell td > :is(.text-left, .text-right) {
+  text-align: center;
+}
+
+.admin-shell td.admin-table-name {
+  min-width: 120px;
+  max-width: 240px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell td.admin-table-amount {
+  text-align: right;
+}
+
+.admin-shell td.admin-table-name > :is(.flex, .inline-flex):not(:has(input, select, textarea)) {
+  justify-content: flex-start;
+}
+
+.admin-shell td.admin-table-amount > :is(.flex, .inline-flex):not(:has(input, select, textarea)) {
+  justify-content: flex-end;
+}
+
+.admin-shell td.admin-table-name > .flex-col:not(:has(input, select, textarea)) {
+  align-items: flex-start;
+}
+
+.admin-shell td.admin-table-amount > .flex-col:not(:has(input, select, textarea)) {
+  align-items: flex-end;
+}
+
+.admin-shell td.admin-table-name > :is(div, p, button, a) {
+  margin-inline: 0;
+  text-align: left;
+}
+
+.admin-shell td.admin-table-amount > :is(div, p, button, a) {
+  margin-left: auto;
+  margin-right: 0;
+  text-align: right;
+}
+
+/* --- 입력 그룹(검색창 등) --- */
+
+.admin-input-group {
+  display: flex;
+  min-width: 0;
+  min-height: var(--admin-control-height);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  background: var(--admin-surface);
+}
+
+.admin-shell .admin-input-group input {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* 그룹 바깥에 outline·shadow를 덧대지 않는다. */
+.admin-input-group:focus-within {
+  border-color: var(--admin-accent);
+  outline: none;
+  box-shadow: none;
+}
+
+.admin-shell .admin-input-group input:focus-visible {
+  outline: none;
+}
+
+/* --- 모달·드로어 --- */
+
+.admin-shell :is(.admin-dialog, .admin-drawer):focus {
+  outline: none;
+}
+
+.admin-shell :is(.admin-dialog, .admin-drawer) :where(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :is(.admin-dialog, .admin-drawer) :where(.grid > *, label, legend) {
+  min-width: 0;
+}
+
+.admin-shell
+  :is(.admin-dialog, .admin-drawer)
+  :where(label, legend, p, .admin-dialog-title) {
+  overflow-wrap: anywhere;
+}
+
+.admin-shell .admin-dialog-header > :not(button) {
+  min-width: 0;
+}
+
+/* 모달 제목은 자르지 않는다. */
+.admin-shell .admin-dialog-header .truncate {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell .admin-dialog-header p {
+  color: var(--admin-text-muted);
+  font-size: var(--admin-type-caption);
+  line-height: 1.5;
+}
+
+.admin-shell .admin-dialog-close:focus-visible {
+  outline-offset: -2px;
+}
+
+.admin-shell .admin-dialog-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-shell .admin-dialog-close svg {
+  display: block;
+  flex-shrink: 0;
+  width: var(--admin-dialog-close-icon);
+  height: var(--admin-dialog-close-icon);
+}
+
+.admin-shell button.admin-announcement-title {
+  max-width: 100%;
+  padding: 8px 0;
+  color: var(--admin-accent);
+  font-weight: 600;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell .admin-announcement-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell button.admin-announcement-title:hover {
+  text-decoration: underline;
+}
+
+[role="tabpanel"][hidden] {
+  display: none !important;
+}
+
+.admin-shell .admin-dialog-title {
+  font-size: var(--admin-type-title);
+}
+
+.admin-shell .admin-mobile-header :is(h1, h2, h3) {
+  color: inherit;
+}
+
+.admin-overlay .admin-overlay-dismiss {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.admin-shell .admin-dialog-close {
+  width: var(--admin-control-height);
+  height: var(--admin-control-height);
+  padding: 0;
+}
+
+.admin-shell :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]), select, textarea):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.admin-flat-page > *,
+.admin-section > *,
+.admin-dialog-body .grid > * {
+  min-width: 0;
+}
+
+.admin-shell .admin-icon-button {
+  width: var(--admin-control-height);
+  min-width: var(--admin-control-height);
+  height: var(--admin-control-height);
+  padding: 0;
+  border-radius: var(--admin-radius);
+}
+
+.admin-shell table .admin-icon-button {
+  width: var(--admin-control-compact);
+  min-width: var(--admin-control-compact);
+  height: var(--admin-control-compact);
+}
+
+/* --- 요약 박스 --- */
+
+.admin-shell .admin-metric-strip > :is(article, div) > p:first-child,
+.admin-shell .admin-metric-strip > :is(article, div) > dt {
+  color: var(--admin-text-muted);
+  font-size: var(--admin-type-caption);
+}
+
+.admin-shell .admin-metric-strip > :is(article, div) > p:nth-child(2),
+.admin-shell .admin-metric-strip > :is(article, div) > dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* --- 모서리 최종 규칙: 탐색·표·드로어는 직각 --- */
+
+.admin-shell
+  :is(
+    .admin-tabs,
+    .admin-tab,
+    .admin-subtabs,
+    .admin-subtab,
+    .admin-mobile-panel,
+    .admin-drawer,
+    .admin-table-frame,
+    [role="tab"],
+    [role="tablist"],
+    table,
+    thead,
+    tbody,
+    tfoot,
+    tr,
+    th,
+    td
+  ) {
+  border-radius: 0;
+}

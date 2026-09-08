@@ -1,8 +1,9 @@
+import { withApiHandler } from "@/lib/api-handler";
 import { NextResponse } from "next/server";
 
 import { getCurrentAdminSession, getCurrentStudentSession } from "@/lib/auth";
 
-export async function GET() {
+async function handleGET() {
   const admin = await getCurrentAdminSession();
 
   if (admin) {
@@ -17,3 +18,5 @@ export async function GET() {
 
   return NextResponse.json({ error: "인증 정보가 없습니다." }, { status: 401 });
 }
+
+export const GET = withApiHandler(handleGET, "인증 정보를 확인하지 못했습니다.");

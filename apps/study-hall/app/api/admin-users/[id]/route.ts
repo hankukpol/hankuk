@@ -1,3 +1,4 @@
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
@@ -18,10 +19,7 @@ export async function DELETE(
     const result = await deleteManagedAdminAccount(params.id);
     return NextResponse.json({ result });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "계정 비활성화에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "계정 비활성화에 실패했습니다.", 400);
   }
 }
 
@@ -49,9 +47,6 @@ export async function PATCH(
     const admin = await updateManagedAdminAccount(params.id, parsed.data);
     return NextResponse.json({ admin });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "계정 수정에 실패했습니다." },
-      { status: 400 },
-    );
+    return toApiErrorResponse(error, "계정 수정에 실패했습니다.", 400);
   }
 }

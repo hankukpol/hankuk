@@ -18,13 +18,13 @@ export function MobileHeader({
   isLoggingOut = false,
 }: MobileHeaderProps) {
   return (
-    <header className="sticky top-0 z-40 flex items-center justify-between border-b border-black/5 bg-white/90 px-4 py-3 backdrop-blur">
+    <header className="sticky top-0 z-40 flex items-center justify-between border-b border-admin-line bg-white/90 px-4 py-3">
       <div className="flex items-center gap-3">
         {onMenuClick ? (
           <button
             type="button"
             onClick={onMenuClick}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200-black/10 text-slate-700 transition hover:bg-slate-50"
+            className="admin-icon-button"
             aria-label="메뉴 열기"
           >
             <Menu className="h-5 w-5" />
@@ -32,7 +32,7 @@ export function MobileHeader({
         ) : null}
         <div>
           <p className="text-sm font-semibold text-slate-900">{title}</p>
-          {subtitle ? <p className="text-xs text-slate-500">{subtitle}</p> : null}
+          {subtitle ? <p className="admin-help">{subtitle}</p> : null}
         </div>
       </div>
 
@@ -41,7 +41,7 @@ export function MobileHeader({
           type="button"
           onClick={onLogout}
           disabled={isLoggingOut}
-          className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-slate-200-black/10 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          className="admin-button"
         >
           <LogOut className="h-4 w-4" />
           로그아웃

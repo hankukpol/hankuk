@@ -1,9 +1,11 @@
 "use client";
 
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import { Phone, Save } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import {
   PHONE_CHECK_STATUS_LABEL,
   PHONE_CHECK_STATUS_OPTIONS,
@@ -170,11 +172,7 @@ export function PhoneCheckSeatMap({
               type="button"
               onClick={() => handleRoomChange(room.id)}
               disabled={loadingRoomId !== null}
-              className={`relative rounded-t-xl px-4 py-2 text-sm font-medium transition ${
-                selectedRoomId === room.id
-                  ? "bg-[var(--division-color)] text-white"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              }`}
+              className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
             >
               {room.name}
               {loadingRoomId === room.id && (
@@ -186,7 +184,7 @@ export function PhoneCheckSeatMap({
       )}
 
       {/* 출입구 */}
-      <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-500">
+      <div className="admin-notice text-center">
         칠판
       </div>
 
@@ -205,7 +203,7 @@ export function PhoneCheckSeatMap({
                 return (
                   <div
                     key={`aisle-${posX}-${posY}`}
-                    className="flex min-h-[108px] items-center justify-center rounded-[10px] border border-dashed border-slate-200 bg-white text-xs font-semibold tracking-widest text-slate-400"
+                    className="admin-help flex min-h-[108px] items-center justify-center text-xs font-semibold"
                   >
                     복도
                   </div>
@@ -218,7 +216,7 @@ export function PhoneCheckSeatMap({
                 return (
                   <div
                     key={`empty-${posX}-${posY}`}
-                    className="min-h-[108px] rounded-[10px] border border-dashed border-slate-100 bg-slate-50"
+                    className="admin-help min-h-[108px]"
                   />
                 );
               }
@@ -250,19 +248,14 @@ export function PhoneCheckSeatMap({
                   onClick={() => {
                     if (student) setModalStudentId(student.id);
                   }}
-                  className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-[10px] border p-3 text-left transition hover:opacity-80 ${tone} ${
-                    isSelected ? "ring-2 ring-slate-900 ring-offset-1" : ""
-                  } ${!student || !seat.isActive ? "cursor-default" : ""}`}
+                  className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
                 >
                   {/* 상단: 좌석번호 + 상태 배지 */}
                   <div className="flex items-start justify-between gap-1">
-                    <span className="text-xs font-semibold tracking-widest">{seat.label}</span>
+                    <span className="text-xs font-semibold">{seat.label}</span>
                     {student && (
                       <span
-                        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
-                          attendanceCell ?? undefined,
-                          attendanceIntegrationEnabled,
-                        )}`}
+                        className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
                       >
                         {attendanceIntegrationEnabled
                           ? getAttendanceStatusLabel(attendanceCell?.status)
@@ -270,22 +263,22 @@ export function PhoneCheckSeatMap({
                       </span>
                     )}
                     {student && isCheckable && status && (
-                      <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[status]}`}>
+                      <span className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE[status]}`}>
                         {PHONE_CHECK_STATUS_LABEL[status]}
                       </span>
                     )}
                     {student && isCheckable && !status && (
-                      <span className="shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                      <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] font-semibold text-slate-400">
                         미체크
                       </span>
                     )}
                     {student && !isCheckable && (
-                      <span className="shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                      <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] font-semibold text-slate-400">
                         체크 없음
                       </span>
                     )}
                     {student && saveState === "saving" && (
-                      <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                      <span className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[13px] font-semibold text-amber-700">
                         저장 중
                       </span>
                     )}
@@ -299,7 +292,7 @@ export function PhoneCheckSeatMap({
                     {student && (
                       <>
                         <p className="text-xs opacity-70">{student.studentNumber}</p>
-                        <p className="text-[10px] font-medium opacity-80">
+                        <p className="text-[13px] font-medium opacity-80">
                           {getStudyTrackShortLabel(student.studyTrack)}
                         </p>
                       </>
@@ -315,7 +308,7 @@ export function PhoneCheckSeatMap({
       {/* 좌석 없는 학생 (현재 자습실에 없는 경우) */}
       {unseatedStudents.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+          <p className="admin-label">
             {rooms.length > 1 ? "다른 자습실 / 좌석 미배정" : "좌석 미배정"}
           </p>
           {unseatedStudents.map((student) => {
@@ -337,7 +330,7 @@ export function PhoneCheckSeatMap({
                     : "border-slate-100 bg-white";
 
             return (
-              <div key={student.id} className={`rounded-[10px] border p-3 transition ${cardBg}`}>
+              <div key={student.id} className={`rounded-lg border p-3 transition ${cardBg}`}>
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <button
@@ -347,14 +340,11 @@ export function PhoneCheckSeatMap({
                     >
                       {student.name}
                     </button>
-                    <p className="text-xs text-slate-500">
+                    <p className="admin-help">
                       {student.seatDisplay ?? "좌석 미배정"} · {student.studentNumber}
                     </p>
                     <span
-                      className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getAttendanceBadgeClassName(
-                        attendanceCell,
-                        attendanceIntegrationEnabled,
-                      )}`}
+                      className={`mt-1 inline-flex rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                     >
                       {attendanceIntegrationEnabled
                         ? getAttendanceStatusLabel(attendanceCell?.status)
@@ -362,13 +352,7 @@ export function PhoneCheckSeatMap({
                     </span>
                     {saveState ? (
                       <span
-                        className={`ml-1 mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          saveState === "saving"
-                            ? "bg-amber-50 text-amber-700"
-                            : saveState === "saved"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-red-50 text-red-700"
-                        }`}
+                        className={`ml-1 mt-1 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ saveState === "saving" ? "bg-amber-50 text-amber-700" : saveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
                       >
                         {saveState === "saving"
                           ? "저장 중"
@@ -391,7 +375,7 @@ export function PhoneCheckSeatMap({
                         />
                       ))
                     ) : (
-                      <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
+                      <span className="admin-badge">
                         체크 없음
                       </span>
                     )}
@@ -406,7 +390,7 @@ export function PhoneCheckSeatMap({
                       onBlur={() => onRentalNoteCommit(student.id)}
                       placeholder="대여 사유 (예: 인강 수강)"
                       maxLength={200}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2 text-xs outline-none transition focus:border-slate-400 placeholder:text-slate-400"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs transition placeholder:text-slate-400"
                     />
                   </div>
                 )}
@@ -417,39 +401,30 @@ export function PhoneCheckSeatMap({
       )}
 
       {/* 좌석 클릭 모달 */}
-      <Modal
+      <SlideOver
         open={Boolean(modalStudent)}
         title={modalStudent?.name ?? ""}
         description={`${modalStudent?.seatDisplay ?? "좌석 미배정"} · ${modalStudent?.studentNumber ?? ""}`}
         badge="휴대폰 체크"
-        widthClassName="max-w-sm"
+
         onClose={() => setModalStudentId(null)}
       >
         {modalStudentId && modalEntry && (
           <div className="space-y-4">
             <div>
               <span
-                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName(
-                  modalAttendanceCell ?? undefined,
-                  attendanceIntegrationEnabled,
-                )}`}
+                className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( modalAttendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
               >
                 {attendanceIntegrationEnabled
                   ? getAttendanceStatusLabel(modalAttendanceCell?.status)
                   : "출결 연동 없음"}
               </span>
               {modalAttendanceCell?.reason ? (
-                <p className="mt-2 text-xs text-slate-500">{modalAttendanceCell.reason}</p>
+                <p className="admin-help mt-2">{modalAttendanceCell.reason}</p>
               ) : null}
               {modalSaveState ? (
                 <span
-                  className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    modalSaveState === "saving"
-                      ? "bg-amber-50 text-amber-700"
-                      : modalSaveState === "saved"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-red-50 text-red-700"
-                  }`}
+                  className={`mt-2 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ modalSaveState === "saving" ? "bg-amber-50 text-amber-700" : modalSaveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
                 >
                   {modalSaveState === "saving"
                     ? "저장 중"
@@ -461,7 +436,7 @@ export function PhoneCheckSeatMap({
             </div>
 
             {!modalCheckable ? (
-              <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500">
                 출석 또는 지각으로 처리된 학생만 휴대폰 상태를 체크할 수 있습니다.
               </div>
             ) : null}
@@ -473,7 +448,7 @@ export function PhoneCheckSeatMap({
                   onOpenBulkRental(modalStudentId);
                   setModalStudentId(null);
                 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
               >
                 <Phone className="h-4 w-4" />
                 일괄 대여
@@ -512,19 +487,21 @@ export function PhoneCheckSeatMap({
                   placeholder="대여 사유 (예: 인강 수강)"
                   maxLength={200}
                   autoFocus
-                  className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400 placeholder:text-slate-400"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition placeholder:text-slate-400"
                 />
-                <button
+                <DialogActions>
+<button
                   type="button"
                   onClick={() => {
                     onRentalNoteCommit(modalStudentId);
                     setModalStudentId(null);
                   }}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+                  className="admin-button admin-button-primary"
                 >
                   <Save className="h-4 w-4" />
                   확인
                 </button>
+</DialogActions>
               </div>
             )}
 
@@ -536,14 +513,14 @@ export function PhoneCheckSeatMap({
                   onStatusChange(modalStudentId, null);
                   setModalStudentId(null);
                 }}
-                className="w-full rounded-full border border-slate-200 bg-white py-2 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
               >
                 미체크로 초기화
               </button>
             )}
           </div>
         )}
-      </Modal>
+      </SlideOver>
     </div>
   );
 }

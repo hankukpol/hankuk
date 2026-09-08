@@ -1,21 +1,13 @@
 "use client";
 
-import {
-  Clock3,
-  LoaderCircle,
-  Megaphone,
-  Pencil,
-  Pin,
-  Plus,
-  RefreshCcw,
-  Save,
-  Search,
-  Trash2,
-} from "lucide-react";
+import { useId } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+
+import { LoaderCircle, Pencil, Pin, Plus, RefreshCcw, Save, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { AnnouncementItem, AnnouncementScope } from "@/lib/services/announcement.service";
@@ -84,10 +76,6 @@ function getScopeLabel(scope: AnnouncementScope, divisionName?: string | null) {
 }
 
 function getVisibilityLabel(announcement: AnnouncementItem) {
-  if (announcement.isPinned) {
-    return "상단 고정";
-  }
-
   if (!announcement.isPublished && announcement.publishedAt) {
     return "예약 공지";
   }
@@ -109,14 +97,25 @@ function getPreviewText(content: string, maxLength = 72) {
   return `${normalized.slice(0, maxLength)}...`;
 }
 
+
+export function AnnouncementBadges({ announcement }: { announcement: AnnouncementItem }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <span className="admin-badge">{getVisibilityLabel(announcement)}</span>
+      {announcement.isPinned ? <span className="admin-badge"><Pin className="h-4 w-4" aria-hidden="true" />상단 고정</span> : null}
+    </div>
+  );
+}
+
 export function AnnouncementManager({
   divisionSlug,
   initialAnnouncements,
   canManageGlobal,
 }: AnnouncementManagerProps) {
+  const dialogFormId = useId();
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(
-    initialAnnouncements[0]?.id ?? null,
+    null,
   );
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -174,15 +173,8 @@ export function AnnouncementManager({
     visibleAnnouncements.find((announcement) => announcement.id === selectedAnnouncementId) ?? null;
 
   useEffect(() => {
-    if (visibleAnnouncements.length === 0) {
-      if (selectedAnnouncementId !== null) {
-        setSelectedAnnouncementId(null);
-      }
-      return;
-    }
-
-    if (!visibleAnnouncements.some((announcement) => announcement.id === selectedAnnouncementId)) {
-      setSelectedAnnouncementId(visibleAnnouncements[0].id);
+    if (selectedAnnouncementId && !visibleAnnouncements.some((item) => item.id === selectedAnnouncementId)) {
+      setSelectedAnnouncementId(null);
     }
   }, [selectedAnnouncementId, visibleAnnouncements]);
 
@@ -245,6 +237,7 @@ export function AnnouncementManager({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSaving) return;
     setIsSaving(true);
 
     try {
@@ -328,390 +321,146 @@ export function AnnouncementManager({
 
   return (
     <>
-      <div className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-slate-500">전체 공지</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950">
-                  {announcements.length}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">지점 공지와 전체 공지를 함께 집계합니다.</p>
+      <div className="admin-section">
+        <div className="admin-workspace-toolbar">
+          <dl className="flex flex-wrap gap-4" aria-label="공지 집계">
+            {[
+              ["전체", announcements.length], ["공개 중", publishedCount],
+              ["예약", scheduledCount], ["상단 고정", pinnedCount],
+            ].map(([label, count]) => (
+              <div key={label} className="flex items-center gap-2">
+                <dt className="admin-help">{label}</dt>
+                <dd className="font-semibold tabular-nums">{count}건</dd>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <Megaphone className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(245,158,11,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-amber-700">상단 고정</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-950">
-                  {pinnedCount}
-                </p>
-                <p className="mt-2 text-xs text-amber-700/80">학생 홈 상단에 우선 노출되는 공지입니다.</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-amber-700">
-                <Pin className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(14,165,233,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-sky-700">예약 공지</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-sky-950">
-                  {scheduledCount}
-                </p>
-                <p className="mt-2 text-xs text-sky-700/80">미래 시점에 자동 공개될 공지입니다.</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-sky-700">
-                <Clock3 className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_16px_36px_rgba(16,185,129,0.10)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-emerald-700">공개 중</p>
-                <p className="mt-3 text-3xl font-extrabold tracking-tight text-emerald-950">
-                  {publishedCount}
-                </p>
-                <p className="mt-2 text-xs text-emerald-700/80">현재 화면에 노출되는 공지입니다.</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-emerald-700">
-                <Megaphone className="h-5 w-5" />
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-5 shadow-[0_18px_44px_rgba(18,32,56,0.06)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <span className="inline-flex rounded-full border border-slate-200-slate-200 bg-white px-3 py-1 text-xs font-semibold tracking-[0.2em] text-slate-500">
-                공지 보드
-              </span>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">공지 관리</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                제목과 본문 검색, 공개 상태 필터, 빠른 작성 패널까지 한 화면에서 처리합니다.
-              </p>
-            </div>
-
-            <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[620px]">
-              <div className="flex flex-wrap gap-2">
-                <label className="relative min-w-[220px] flex-1">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={searchKeyword}
-                    onChange={(event) => setSearchKeyword(event.target.value)}
-                    className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white py-2.5 pl-11 pr-4 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
-                    placeholder="제목, 본문, 지점명 검색"
-                  />
-                </label>
-
-                <select
-                  value={filterScope}
-                  onChange={(event) => setFilterScope(event.target.value as "ALL" | AnnouncementScope)}
-                  className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
-                >
-                  <option value="ALL">전체 범위</option>
-                  <option value="DIVISION">지점 공지</option>
-                  <option value="GLOBAL">전체 공지</option>
-                </select>
-
-                <select
-                  value={visibilityFilter}
-                  onChange={(event) => setVisibilityFilter(event.target.value as VisibilityFilter)}
-                  className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
-                >
-                  <option value="ALL">전체 상태</option>
-                  <option value="PUBLISHED">공개 중</option>
-                  <option value="SCHEDULED">예약 공지</option>
-                  <option value="PINNED">상단 고정</option>
-                </select>
-              </div>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => void refreshAnnouncements(true)}
-                  disabled={isRefreshing}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-                >
-                  {isRefreshing ? (
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCcw className="h-4 w-4" />
-                  )}
-                  새로고침
-                </button>
-
-                <button
-                  type="button"
-                  onClick={openCreatePanel}
-                  className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
-                >
-                  <Plus className="h-4 w-4" />
-                  공지 작성
-                </button>
-              </div>
-            </div>
+            ))}
+          </dl>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void refreshAnnouncements(true)} disabled={isRefreshing} className="admin-button">
+              {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />} 새로고침
+            </button>
+            <button type="button" onClick={openCreatePanel} className="admin-button admin-button-primary">
+              <Plus className="h-4 w-4" /> 공지 작성
+            </button>
           </div>
-
-          <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-            <section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white">
-              {visibleAnnouncements.length > 0 ? (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[920px] w-full text-sm">
-                      <thead className="bg-[#f8fafc] text-left text-slate-500">
-                        <tr>
-                          <th className="px-4 py-3 font-medium">번호</th>
-                          <th className="px-4 py-3 font-medium">제목</th>
-                          <th className="px-4 py-3 font-medium">구분</th>
-                          <th className="px-4 py-3 font-medium">상태</th>
-                          <th className="px-4 py-3 font-medium">노출 시각</th>
-                          <th className="px-4 py-3 font-medium">작성자</th>
-                          <th className="px-4 py-3 font-medium">관리</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {visibleAnnouncements.map((announcement, index) => {
-                          const isSelected = selectedAnnouncement?.id === announcement.id;
-
-                          return (
-                            <tr
-                              key={announcement.id}
-                              onClick={() => setSelectedAnnouncementId(announcement.id)}
-                              className={`cursor-pointer transition ${
-                                isSelected ? "bg-slate-50" : "hover:bg-slate-50/80"
-                              }`}
-                            >
-                              <td className="px-4 py-4 align-top text-slate-400">
-                                {visibleAnnouncements.length - index}
-                              </td>
-                              <td className="px-4 py-4 align-top">
-                                <div className="max-w-[360px]">
-                                  <p className="font-semibold text-slate-950">
-                                    {announcement.title}
-                                  </p>
-                                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                                    {getPreviewText(announcement.content)}
-                                  </p>
-                                </div>
-                              </td>
-                              <td className="px-4 py-4 align-top">
-                                <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                                  {getScopeLabel(announcement.scope, announcement.divisionName)}
-                                </span>
-                              </td>
-                              <td className="px-4 py-4 align-top">
-                                <div className="flex flex-wrap gap-2">
-                                  <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                                    {getVisibilityLabel(announcement)}
-                                  </span>
-                                  {announcement.isPinned ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                                      <Pin className="h-3 w-3" />
-                                      상단 고정
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </td>
-                              <td className="px-4 py-4 align-top text-slate-500">
-                                {formatBoardDate(getAnnouncementDate(announcement))}
-                              </td>
-                              <td className="px-4 py-4 align-top text-slate-500">
-                                {announcement.createdByName}
-                              </td>
-                              <td className="px-4 py-4 align-top">
-                                {canEditAnnouncement(announcement) ? (
-                                  <div className="flex gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        startEdit(announcement);
-                                      }}
-                                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-white"
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                      수정
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void handleDelete(announcement);
-                                      }}
-                                      disabled={deletingId === announcement.id}
-                                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-white disabled:opacity-60"
-                                    >
-                                      {deletingId === announcement.id ? (
-                                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      )}
-                                      삭제
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-slate-400">보기 전용</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+        </div>
+        <div className="admin-filter-bar">
+          <label>
+            <span className="admin-label mb-2 block">공지 검색</span>
+            <span className="admin-input-group">
+              <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <input value={searchKeyword} onChange={(event) => setSearchKeyword(event.target.value)} className="w-full" placeholder="제목, 본문, 지점명" />
+            </span>
+          </label>
+          <label>
+            <span className="admin-label mb-2 block">공지 범위</span>
+            <select value={filterScope} onChange={(event) => setFilterScope(event.target.value as "ALL" | AnnouncementScope)} className="w-full">
+              <option value="ALL">전체 범위</option><option value="DIVISION">지점 공지</option><option value="GLOBAL">전체 공지</option>
+            </select>
+          </label>
+          <label>
+            <span className="admin-label mb-2 block">공개 상태</span>
+            <select value={visibilityFilter} onChange={(event) => setVisibilityFilter(event.target.value as VisibilityFilter)} className="w-full">
+              <option value="ALL">전체 상태</option><option value="PUBLISHED">공개 중</option><option value="SCHEDULED">예약 공지</option><option value="PINNED">상단 고정</option>
+            </select>
+          </label>
+        </div>
+        <h2 className="admin-section-title">공지 목록 <span className="text-admin-accent">{visibleAnnouncements.length}건</span></h2>
+        {visibleAnnouncements.length ? (
+          <>
+            <div className="admin-table-frame hidden md:block">
+              <table className="admin-announcement-table w-full table-fixed">
+                <thead><tr><th className="w-1/2">제목 · 범위</th><th>상태</th><th>발행 일시</th><th>작성자</th></tr></thead>
+                <tbody>
+                  {visibleAnnouncements.map((item) => (
+                    <tr key={item.id}>
+                      <td className="admin-table-name">
+                        <button type="button" className="admin-announcement-title" onClick={() => setSelectedAnnouncementId(item.id)} aria-haspopup="dialog">{item.title}</button>
+                        <p className="admin-help mt-1">{getScopeLabel(item.scope, item.divisionName)}</p>
+                      </td>
+                      <td><AnnouncementBadges announcement={item} /></td>
+                      <td>{formatBoardDate(getAnnouncementDate(item))}</td>
+                      <td className="break-words">{item.createdByName}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid gap-4 md:hidden">
+              {visibleAnnouncements.map((item) => (
+                <article key={item.id} className="admin-record-card">
+                  <AnnouncementBadges announcement={item} />
+                  <h3 className="mt-3"><button type="button" className="admin-announcement-title" onClick={() => setSelectedAnnouncementId(item.id)} aria-haspopup="dialog">{item.title}</button></h3>
+                  <p className="mt-2 break-words text-admin-text-secondary">{getPreviewText(item.content)}</p>
+                  <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-admin-line-soft pt-4">
+                    <p className="admin-help">{getScopeLabel(item.scope, item.divisionName)} · {item.createdByName}</p>
+                    <p className="admin-help">{formatBoardDate(getAnnouncementDate(item))}</p>
                   </div>
-
-                  <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-                    목록 행을 클릭하면 우측 상세 패널에서 본문을 확인할 수 있습니다.
-                  </div>
-                </>
-              ) : (
-                <div className="px-4 py-8 text-sm text-slate-600">
-                  <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-8">
-                    조건에 맞는 공지가 없습니다.
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <aside className="rounded-[10px] border border-slate-200 bg-white p-5">
-              {selectedAnnouncement ? (
-                <>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                      {getScopeLabel(selectedAnnouncement.scope, selectedAnnouncement.divisionName)}
-                    </span>
-                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                      {getVisibilityLabel(selectedAnnouncement)}
-                    </span>
-                    {selectedAnnouncement.isPinned ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                        <Pin className="h-3 w-3" />
-                        상단 고정
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <h3 className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
-                    {selectedAnnouncement.title}
-                  </h3>
-
-                  <div className="mt-4 rounded-[10px] border border-slate-200 bg-[#f8fafc] px-4 py-4">
-                    <p className="whitespace-pre-line text-sm leading-7 text-slate-700">
-                      {selectedAnnouncement.content}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 grid gap-3">
-                    <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        노출 시각
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-slate-950">
-                        {formatDateTime(getAnnouncementDate(selectedAnnouncement))}
-                      </p>
-                    </div>
-
-                    <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        작성 및 수정
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-slate-950">
-                        작성 {formatDateTime(selectedAnnouncement.createdAt)}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        수정 {formatDateTime(selectedAnnouncement.updatedAt)}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        작성자 {selectedAnnouncement.createdByName}
-                      </p>
-                    </div>
-                  </div>
-
-                  {canEditAnnouncement(selectedAnnouncement) ? (
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(selectedAnnouncement)}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        선택 공지 수정
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(selectedAnnouncement)}
-                        disabled={deletingId === selectedAnnouncement.id}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-slate-50 disabled:opacity-60"
-                      >
-                        {deletingId === selectedAnnouncement.id ? (
-                          <LoaderCircle className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                        선택 공지 삭제
-                      </button>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-8 text-sm text-slate-600">
-                  목록에서 공지를 선택하면 상세 내용이 여기 표시됩니다.
-                </div>
-              )}
-            </aside>
-          </div>
-        </section>
+                </article>
+              ))}
+            </div>
+          </>
+        ) : <div className="admin-empty-state">{announcements.length ? "검색 조건에 맞는 공지가 없습니다." : "등록된 공지가 없습니다."}</div>}
       </div>
 
-      <Modal
+      <SlideOver open={Boolean(selectedAnnouncement)} title="공지 상세" onClose={() => { if (!deletingId) setSelectedAnnouncementId(null); }}
+        footer={selectedAnnouncement && canEditAnnouncement(selectedAnnouncement) ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => startEdit(selectedAnnouncement)} disabled={Boolean(deletingId)} className="admin-button"><Pencil className="h-4 w-4" /> 공지 수정</button>
+            <button type="button" onClick={() => void handleDelete(selectedAnnouncement)} disabled={Boolean(deletingId)} className="admin-button admin-button-danger-outline">
+              {deletingId ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} 공지 삭제
+            </button>
+          </div>
+        ) : undefined}>
+        {selectedAnnouncement ? (
+          <div className="admin-section">
+            <AnnouncementBadges announcement={selectedAnnouncement} />
+            <h3 className="admin-section-title break-words">{selectedAnnouncement.title}</h3>
+            <p className="whitespace-pre-wrap break-words leading-7">{selectedAnnouncement.content}</p>
+            <dl className="grid gap-4 border-t border-admin-line-soft pt-4 sm:grid-cols-2">
+              {[
+                ["공지 범위", getScopeLabel(selectedAnnouncement.scope, selectedAnnouncement.divisionName)],
+                ["발행 일시", formatDateTime(getAnnouncementDate(selectedAnnouncement))],
+                ["작성자", selectedAnnouncement.createdByName],
+                ["최종 수정", formatDateTime(selectedAnnouncement.updatedAt)],
+              ].map(([label, value]) => <div key={label}><dt className="admin-label">{label}</dt><dd className="mt-2 break-words">{value}</dd></div>)}
+            </dl>
+            {!canEditAnnouncement(selectedAnnouncement) ? <p className="admin-help">전체 공지는 최고관리자만 수정·삭제할 수 있습니다.</p> : null}
+          </div>
+        ) : null}
+      </SlideOver>
+
+      <SlideOver
         open={isEditorOpen}
-        onClose={closeEditor}
-        badge={editingAnnouncementId ? "빠른 수정" : "빠른 작성"}
+        onClose={() => { if (!isSaving) closeEditor(); }}
         title={editingAnnouncementId ? "공지 수정" : "공지 작성"}
-        description="제목, 본문, 노출 범위와 예약 발행 시점을 우측 패널에서 바로 관리합니다."
       >
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+        <form id={`${dialogFormId}-1`} onSubmit={handleSubmit} className="space-y-6">
+          <section className="admin-section">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <Megaphone className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-xl font-bold text-slate-950">공지 기본 정보</p>
-                <p className="text-sm text-slate-500">제목과 본문을 먼저 작성합니다.</p>
+                <h2 className="admin-section-title">공지 기본 정보</h2>
+                <p className="admin-help">제목과 본문을 먼저 작성합니다.</p>
               </div>
             </div>
 
             <div className="mt-5 space-y-4">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">공지 제목</span>
+                <span className="admin-label mb-2 block">공지 제목</span>
                 <input
                   value={form.title}
                   onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                   placeholder="공지 제목을 입력해 주세요."
                   required
                 />
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">공지 내용</span>
+                <span className="admin-label mb-2 block">공지 내용</span>
                 <textarea
                   value={form.content}
                   onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
-                  className="min-h-[220px] w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="min-h-[220px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
                   placeholder="학생과 관리자 화면에 노출될 공지 내용을 입력해 주세요."
                   required
                 />
@@ -719,26 +468,23 @@ export function AnnouncementManager({
             </div>
           </section>
 
-          <section className="rounded-[10px] border border-slate-200-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+          <section className="admin-section">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-amber-700">
-                <Pin className="h-5 w-5" />
-              </div>
               <div>
-                <p className="text-xl font-bold text-slate-950">노출 설정</p>
-                <p className="text-sm text-slate-500">범위, 예약 발행, 상단 고정을 함께 설정합니다.</p>
+                <h2 className="admin-section-title">노출 설정</h2>
+                <p className="admin-help">범위, 예약 발행, 상단 고정을 함께 설정합니다.</p>
               </div>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">공지 범위</span>
+                <span className="admin-label mb-2 block">공지 범위</span>
                 <select
                   value={form.scope}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, scope: event.target.value as AnnouncementScope }))
                   }
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 >
                   <option value="DIVISION">현재 지점 공지</option>
                   {canManageGlobal ? <option value="GLOBAL">전체 공지</option> : null}
@@ -746,27 +492,27 @@ export function AnnouncementManager({
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">발행 일시</span>
+                <span className="admin-label mb-2 block">발행 일시</span>
                 <input
                   type="datetime-local"
                   value={form.publishedAt}
                   onChange={(event) => setForm((current) => ({ ...current, publishedAt: event.target.value }))}
-                  className="w-full rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:bg-white"
+                  className="w-full"
                 />
               </label>
             </div>
 
-            <label className="mt-4 flex items-center gap-3 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+            <label className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={form.isPinned}
                 onChange={(event) => setForm((current) => ({ ...current, isPinned: event.target.checked }))}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                className="h-4 w-4 rounded border-slate-300 text-slate-900"
               />
               학생 대시보드 상단에 고정합니다.
             </label>
 
-            <div className="mt-4 rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 text-sm leading-6 text-slate-600">
+            <div className="admin-notice mt-4">
               발행 일시를 비워 두면 즉시 공개됩니다. 미래 시점을 지정하면 예약 공지로 등록됩니다.
               {!canManageGlobal
                 ? " 전체 공지는 최고관리자만 작성할 수 있습니다."
@@ -774,35 +520,35 @@ export function AnnouncementManager({
             </div>
           </section>
 
-          <div className="rounded-[10px] border border-slate-200-slate-200 bg-white px-4 py-4 sm:flex sm:items-center sm:justify-between">
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-4 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-900">저장 후 목록과 노출 상태가 즉시 반영됩니다.</p>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="admin-help mt-1">
                 예약 공지는 지정된 시점 이후 자동으로 공개됩니다.
               </p>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2 sm:mt-0">
+            <DialogActions>
               <button
                 type="button"
                 onClick={closeEditor}
                 disabled={isSaving}
-                className="inline-flex items-center rounded-full border border-slate-200-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                className="admin-button"
               >
                 취소
               </button>
-              <button
+              <button form={`${dialogFormId}-1`}
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                className="admin-button admin-button-primary"
               >
                 {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {editingAnnouncementId ? "공지 수정" : "공지 저장"}
               </button>
-            </div>
+            </DialogActions>
           </div>
         </form>
-      </Modal>
+      </SlideOver>
       {confirmDialog}
       {actionCompleteModal}
     </>

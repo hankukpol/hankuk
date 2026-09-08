@@ -136,29 +136,29 @@ export function PhoneCheckTable({
   );
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-[1100px] w-full border-collapse text-sm">
-        <thead className="bg-white">
+    <div className="admin-table-frame overflow-x-auto">
+      <table className="min-w-[1100px] w-full">
+        <thead>
           <tr>
-            <th className="sticky left-0 z-10 min-w-[140px] border-b border-r border-slate-200 bg-white px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="sticky left-0 z-10 min-w-[140px] admin-table-name">
               좌석
             </th>
-            <th className="min-w-[160px] border-b border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="min-w-[160px] admin-table-name">
               학생
             </th>
-            <th className="min-w-[120px] border-b border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="min-w-[120px] admin-table-name">
               학번
             </th>
-            <th className="min-w-[120px] border-b border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="min-w-[120px] admin-table-name">
               직렬
             </th>
-            <th className="min-w-[130px] border-b border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="min-w-[130px] admin-table-name">
               출석 상태
             </th>
-            <th className="min-w-[280px] border-b border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="min-w-[280px] admin-table-name">
               휴대폰 상태
             </th>
-            <th className="min-w-[240px] border-b border-slate-200 px-4 py-3 text-left font-semibold text-slate-700">
+            <th className="min-w-[240px] admin-table-name">
               대여 메모
             </th>
           </tr>
@@ -176,11 +176,11 @@ export function PhoneCheckTable({
                 key={student.id}
                 className={`align-top ${isCheckable ? "" : "bg-slate-50/70 opacity-75"}`}
               >
-                <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-white px-4 py-4 text-slate-600">
+                <td className="sticky left-0 z-10">
                   <div className="font-semibold text-slate-900">{student.seatLabel ?? "미배정"}</div>
-                  <div className="mt-1 text-xs text-slate-500">{student.studyRoomName ?? "좌석 미배정"}</div>
+                  <div className="admin-help mt-1">{student.studyRoomName ?? "좌석 미배정"}</div>
                 </td>
-                <td className="border-b border-slate-100 px-4 py-4">
+                <td>
                   <button
                     type="button"
                     onClick={() => onOpenBulkRental(student.id)}
@@ -190,13 +190,7 @@ export function PhoneCheckTable({
                   </button>
                   {saveState ? (
                     <span
-                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        saveState === "saving"
-                          ? "bg-amber-50 text-amber-700"
-                          : saveState === "saved"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-red-50 text-red-700"
-                      }`}
+                      className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-[13px] font-semibold ${ saveState === "saving" ? "bg-amber-50 text-amber-700" : saveState === "saved" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700" }`}
                     >
                       {saveState === "saving"
                         ? "저장 중"
@@ -206,18 +200,15 @@ export function PhoneCheckTable({
                     </span>
                   ) : null}
                 </td>
-                <td className="border-b border-slate-100 px-4 py-4 text-slate-600">
+                <td>
                   {student.studentNumber}
                 </td>
-                <td className="border-b border-slate-100 px-4 py-4 text-slate-600">
+                <td>
                   {getStudyTrackShortLabel(student.studyTrack)}
                 </td>
-                <td className="border-b border-slate-100 px-4 py-4">
+                <td>
                   <span
-                    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName(
-                      attendanceCell,
-                      attendanceIntegrationEnabled,
-                    )}`}
+                    className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                   >
                     {attendanceIntegrationEnabled
                       ? getAttendanceStatusLabel(attendanceCell?.status)
@@ -229,7 +220,7 @@ export function PhoneCheckTable({
                     </p>
                   ) : null}
                 </td>
-                <td className="border-b border-slate-100 px-4 py-4">
+                <td>
                   {isCheckable ? (
                     <div className="flex flex-wrap gap-2">
                       {PHONE_CHECK_STATUS_OPTIONS.map((buttonStatus) => (
@@ -248,12 +239,12 @@ export function PhoneCheckTable({
                       ))}
                     </div>
                   ) : (
-                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-400">
+                    <span className="admin-badge">
                       체크 없음
                     </span>
                   )}
                 </td>
-                <td className="border-b border-slate-100 px-4 py-4">
+                <td>
                   {isCheckable && status === "RENTED" ? (
                     <input
                       type="text"
@@ -262,10 +253,10 @@ export function PhoneCheckTable({
                       onBlur={() => onRentalNoteCommit(student.id)}
                       placeholder="대여 사유를 입력하세요"
                       maxLength={200}
-                      className="w-full rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition focus:border-slate-400"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 transition"
                     />
                   ) : (
-                    <span className="text-xs text-slate-400">-</span>
+                    <span className="admin-help">-</span>
                   )}
                 </td>
               </tr>

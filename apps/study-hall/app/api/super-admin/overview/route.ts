@@ -1,3 +1,4 @@
+import { toApiErrorResponse } from "@/lib/api-error-response";
 import { NextResponse } from "next/server";
 
 import { requireApiSuperAdminAuth } from "@/lib/api-auth";
@@ -20,9 +21,6 @@ export async function GET(request: Request) {
       },
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "데이터를 불러오지 못했습니다." },
-      { status: 500 },
-    );
+    return toApiErrorResponse(error, "데이터를 불러오지 못했습니다.", 500);
   }
 }

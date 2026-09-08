@@ -130,67 +130,60 @@ export default async function SettingsHubPage({ params }: SettingsHubPageProps) 
   );
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">설정 허브</p>
-        <h1 className="mt-3 text-3xl font-extrabold text-slate-950">운영 설정</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+    <div className="admin-flat-page">
+      <section>
+        <h1 className="admin-page-title">운영 설정</h1>
+        <p className="admin-page-description">
           교시, 운영 규칙, 지점 기본 정보, 직렬 목록, 등록 플랜, 좌석, 시험 구성을 이곳에서
           관리합니다. 모든 설정은 현재 지점에만 적용됩니다.
         </p>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-4">
-          <div className="rounded-[10px] p-4 text-white" style={{ backgroundColor: "var(--division-color)" }}>
-            <p className="text-xs uppercase tracking-[0.22em] text-white/60">지점</p>
-            <p className="mt-3 text-2xl font-bold">{division?.name ?? generalSettings.name}</p>
-            <p className="mt-2 text-sm text-white/70">{generalSettings.fullName}</p>
-          </div>
-          <div className="rounded-[10px] bg-white p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">출결 규칙</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">{ruleSettings.tardyMinutes}분</p>
-            <p className="mt-2 text-sm text-slate-600">
-              조교 수정{" "}
-              {ruleSettings.assistantPastEditAllowed
-                ? `${ruleSettings.assistantPastEditDays}일 허용`
-                : "당일만 허용"}
-            </p>
-          </div>
-          <div className="rounded-[10px] bg-white p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">직렬 / 운영일</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">
-              직렬 {generalSettings.studyTracks.length}개
-            </p>
-            <p className="mt-2 text-sm text-slate-600">
-              주 {activeOperatingDays}일 운영 / 퇴소 기준 {ruleSettings.warnWithdraw}회
-            </p>
-          </div>
-          <div className="rounded-[10px] bg-white p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">기능</p>
-            <p className="mt-3 text-2xl font-bold text-slate-950">{enabledFeatureCount}개 활성</p>
-            <p className="mt-2 text-sm text-slate-600">
-              비활성 기능은 메뉴와 주요 화면에서 함께 숨겨집니다.
-            </p>
-          </div>
-        </div>
       </section>
+
+      {/* DESIGN.md 5.3 — 16px 간격의 독립 요약 박스. 색면 카드를 쓰지 않는다. */}
+      <dl className="admin-metric-strip">
+        <div className="admin-metric-box">
+          <dt className="admin-metric-box-label">지점</dt>
+          <dd className="admin-metric-box-value">{division?.name ?? generalSettings.name}</dd>
+          <p className="admin-help mt-2 text-right">{generalSettings.fullName}</p>
+        </div>
+        <div className="admin-metric-box">
+          <dt className="admin-metric-box-label">출결 규칙</dt>
+          <dd className="admin-metric-box-value">{ruleSettings.tardyMinutes}분</dd>
+          <p className="admin-help mt-2 text-right">
+            조교 수정{" "}
+            {ruleSettings.assistantPastEditAllowed
+              ? `${ruleSettings.assistantPastEditDays}일 허용`
+              : "당일만 허용"}
+          </p>
+        </div>
+        <div className="admin-metric-box">
+          <dt className="admin-metric-box-label">직렬 / 운영일</dt>
+          <dd className="admin-metric-box-value">직렬 {generalSettings.studyTracks.length}개</dd>
+          <p className="admin-help mt-2 text-right">
+            주 {activeOperatingDays}일 운영 / 퇴소 기준 {ruleSettings.warnWithdraw}회
+          </p>
+        </div>
+        <div className="admin-metric-box">
+          <dt className="admin-metric-box-label">기능</dt>
+          <dd className="admin-metric-box-value">{enabledFeatureCount}개 활성</dd>
+          <p className="admin-help mt-2 text-right">
+            비활성 기능은 메뉴와 주요 화면에서 함께 숨겨집니다.
+          </p>
+        </div>
+      </dl>
 
       <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {visibleSections.map((section) => {
-          const Icon = section.icon;
 
           return (
             <Link
               key={section.key}
               href={`/${params.division}/admin/${section.href}`}
               prefetch={false}
-              className="group rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_50px_rgba(18,32,56,0.10)]"
+              className="group rounded-lg border border-admin-line bg-white p-5 transition hover:bg-admin-surface-soft"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-slate-50 text-slate-600">
-                <Icon className="h-5 w-5" />
-              </div>
-
-              <h2 className="mt-5 text-xl font-bold text-slate-950">{section.label}</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{section.description}</p>
+              <h2 className="admin-section-title">{section.label}</h2>
+              <p className="admin-help mt-3 leading-6">{section.description}</p>
 
               <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-900">
                 바로 이동

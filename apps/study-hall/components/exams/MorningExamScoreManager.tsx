@@ -1,6 +1,8 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Download, LoaderCircle, Save, Upload } from "lucide-react";
+import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -75,6 +77,7 @@ export function MorningExamScoreManager({
   divisionSlug,
   morningExamTypes,
 }: MorningExamScoreManagerProps) {
+  const [viewTab, setViewTab] = useState<"daily" | "weekly">("daily");
   const [selectedExamTypeId, setSelectedExamTypeId] = useState(morningExamTypes[0]?.id ?? "");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [examDate, setExamDate] = useState(getKstToday());
@@ -304,28 +307,32 @@ export function MorningExamScoreManager({
 
   if (morningExamTypes.length === 0) {
     return (
-      <div className="rounded-[10px] border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+      <div className="admin-help py-6 text-center">
         등록된 아침모의고사 템플릿이 없습니다. 설정 &gt; 시험 템플릿에서 아침모의고사 템플릿을 먼저 추가해주세요.
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[10px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">일일 입력</p>
-        <h2 className="mt-2 text-2xl font-bold text-slate-950">일일 성적 입력</h2>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+    <div className="admin-flat-page">
+      <AdminTabs
+        items={[{ id: "daily", label: "일일 성적 입력" }, { id: "weekly", label: "주간 성적 현황" }]}
+        activeId={viewTab}
+        onChange={setViewTab}
+        label="아침 모의고사 업무"
+        idPrefix="morning-view"
+        variant="secondary"
+      />
+        <div className="admin-filter-bar">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-600">시험 템플릿</span>
+            <span className="admin-help mb-1 block">시험 템플릿</span>
             <select
               value={selectedExamTypeId}
               onChange={(e) => {
                 setSelectedExamTypeId(e.target.value);
                 setWeekOffset(0);
               }}
-              className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+              className="w-full"
             >
               {morningExamTypes.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -335,12 +342,12 @@ export function MorningExamScoreManager({
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-600">과목 선택</span>
+          {viewTab === "daily" ? <label className="block">
+            <span className="admin-help mb-1 block">과목 선택</span>
             <select
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
-              className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+              className="w-full"
             >
               {activeSubjects.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -348,10 +355,10 @@ export function MorningExamScoreManager({
                 </option>
               ))}
             </select>
-          </label>
+          </label> : null}
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-600">시험일</span>
+            <span className="admin-help mb-1 block">{viewTab === "daily" ? "시험일" : "기준일"}</span>
             <input
               type="date"
               value={examDate}
@@ -359,10 +366,14 @@ export function MorningExamScoreManager({
                 setExamDate(e.target.value);
                 setWeekOffset(0);
               }}
-              className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+              className="w-full"
             />
           </label>
         </div>
+
+
+      <AdminTabPanel id="daily" activeId={viewTab} idPrefix="morning-view" className="space-y-4">
+        <h2 className="admin-section-title">일일 성적 입력</h2>
 
         <div className="mt-4">
           <details open className="group">
@@ -371,20 +382,20 @@ export function MorningExamScoreManager({
             </summary>
             <div className="mt-3 space-y-3">
               <div>
-                <p className="text-xs text-slate-500">
+                <p className="admin-help">
                   엑셀에서 &quot;수험번호 / 이름 / 점수 / 비고&quot; 순서로 복사한 뒤 아래 영역에 붙여넣으세요.
                   수험번호로 학생을 매칭합니다.
                 </p>
                 <textarea
                   ref={pasteRef}
                   rows={4}
-                  className="mt-2 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 font-mono text-sm outline-none focus:border-slate-400"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 font-mono text-sm"
                   placeholder={"P-001\t홍길동\t85\t\nP-002\t김철수\t92\t잘함"}
                 />
                 <button
                   type="button"
                   onClick={handlePaste}
-                  className="mt-2 inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  className="admin-button mt-2"
                 >
                   붙여넣기 반영
                 </button>
@@ -394,13 +405,13 @@ export function MorningExamScoreManager({
                 <button
                   type="button"
                   onClick={handleDownloadTemplate}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  className="admin-button"
                 >
                   <Download className="h-4 w-4" />
                   CSV 양식 다운로드
                 </button>
 
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                   <Upload className="h-4 w-4" />
                   CSV 업로드
                   <input
@@ -422,39 +433,41 @@ export function MorningExamScoreManager({
           </div>
         ) : (
           <>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-[600px] divide-y divide-slate-200 text-sm">
+            <div className="admin-table-frame mt-4 overflow-x-auto">
+              <table className="min-w-[600px]">
                 <thead>
                   <tr className="text-left text-slate-500">
-                    <th className="px-3 py-3 font-medium">수험번호</th>
-                    <th className="px-3 py-3 font-medium">이름</th>
-                    <th className="px-3 py-3 font-medium">
+                    <th>수험번호</th>
+                    <th>이름</th>
+                    <th>
                       점수 {selectedSubject?.maxScore ? `(만점 ${selectedSubject.maxScore})` : ""}
                     </th>
-                    <th className="px-3 py-3 font-medium">비고</th>
+                    <th>비고</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {rows.map((row) => (
                     <tr key={row.studentId} className="align-top">
-                      <td className="px-3 py-2 text-slate-600">{row.studentNumber}</td>
-                      <td className="px-3 py-2 font-medium text-slate-900">{row.studentName}</td>
-                      <td className="px-3 py-2">
+                      <td>{row.studentNumber}</td>
+                      <td>{row.studentName}</td>
+                      <td>
                         <input
                           type="text"
                           inputMode="numeric"
+                          aria-label={`${row.studentName} 점수`}
                           value={row.score}
                           onChange={(e) => handleRowScoreChange(row.studentId, e.target.value)}
-                          className="w-24 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                          className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                           placeholder="-"
                         />
                       </td>
-                      <td className="px-3 py-2">
+                      <td>
                         <input
                           type="text"
+                          aria-label={`${row.studentName} 비고`}
                           value={row.notes}
                           onChange={(e) => handleRowNotesChange(row.studentId, e.target.value)}
-                          className="w-32 rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                          className="w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                           placeholder=""
                         />
                       </td>
@@ -469,31 +482,28 @@ export function MorningExamScoreManager({
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={isSaving || rows.length === 0}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                className="admin-button admin-button-primary"
               >
                 {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 성적 저장
               </button>
-              <span className="text-sm text-slate-500">{rows.length}명</span>
+              <span className="admin-help">{rows.length}명</span>
             </div>
           </>
         )}
-      </section>
+      </AdminTabPanel>
 
-      <section className="rounded-[10px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <AdminTabPanel id="weekly" activeId={viewTab} idPrefix="morning-view" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-              주간 요약
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">주간 성적 현황</h2>
+            <h2 className="admin-section-title">주간 성적 현황</h2>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setWeekOffset((prev) => prev - 1)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+              className="admin-button admin-button-compact w-11 px-0"
               aria-label="이전 주"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -503,7 +513,7 @@ export function MorningExamScoreManager({
               <button
                 type="button"
                 onClick={() => setWeekOffset(0)}
-                className="rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="admin-button admin-button-compact"
               >
                 이번 주
               </button>
@@ -512,7 +522,7 @@ export function MorningExamScoreManager({
             <button
               type="button"
               onClick={() => setWeekOffset((prev) => prev + 1)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+              className="admin-button admin-button-compact w-11 px-0"
               aria-label="다음 주"
             >
               <ChevronRight className="h-5 w-5" />
@@ -522,7 +532,7 @@ export function MorningExamScoreManager({
               <button
                 type="button"
                 onClick={handleDownloadWeeklyCsv}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="admin-button"
               >
                 <Download className="h-4 w-4" />
                 CSV
@@ -537,31 +547,31 @@ export function MorningExamScoreManager({
           </div>
         ) : weeklySummary ? (
           <div className="mt-4">
-            <p className="text-sm text-slate-600">
+            <p className="admin-help">
               {weeklySummary.weekYear}년 {weeklySummary.weekNumber}주차
               ({weeklySummary.weekDateRange.start} ~ {weeklySummary.weekDateRange.end})
             </p>
 
-            <div className="mt-3 overflow-x-auto">
-              <table className="min-w-[800px] divide-y divide-slate-200 text-sm">
+            <div className="admin-table-frame mt-3 overflow-x-auto">
+              <table className="min-w-[800px]">
                 <thead>
                   <tr className="text-left text-slate-500">
-                    <th className="px-3 py-3 font-medium">이름</th>
+                    <th>이름</th>
                     {weeklySummary.dailyEntries.map((entry) => (
                       <th key={entry.date} className="px-3 py-3 text-center font-medium">
                         <div>{entry.dayOfWeek}</div>
-                        <div className="text-xs font-normal text-slate-400">{entry.subjectName}</div>
+                        <div className="admin-help">{entry.subjectName}</div>
                       </th>
                     ))}
-                    <th className="px-3 py-3 text-center font-bold">주간합</th>
-                    <th className="px-3 py-3 text-center font-bold">평균</th>
-                    <th className="px-3 py-3 text-center font-bold">석차</th>
+                    <th>주간합</th>
+                    <th>평균</th>
+                    <th>석차</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {weeklySummary.rankings.map((ranking) => (
                     <tr key={ranking.studentId} className="align-top">
-                      <td className="px-3 py-2 font-medium text-slate-900">
+                      <td>
                         {ranking.studentName}
                       </td>
                       {weeklySummary.dailyEntries.map((entry) => {
@@ -575,13 +585,13 @@ export function MorningExamScoreManager({
                           </td>
                         );
                       })}
-                      <td className="px-3 py-2 text-center font-bold text-slate-900">
+                      <td>
                         {ranking.weeklyTotal ?? "-"}
                       </td>
-                      <td className="px-3 py-2 text-center text-slate-700">
+                      <td>
                         {ranking.weeklyAverage ?? "-"}
                       </td>
-                      <td className="px-3 py-2 text-center font-bold text-[var(--division-color)]">
+                      <td>
                         {ranking.weeklyRank ? `${ranking.weeklyRank}등` : "-"}
                       </td>
                     </tr>
@@ -591,17 +601,17 @@ export function MorningExamScoreManager({
             </div>
 
             {weeklySummary.rankings.length === 0 && (
-              <p className="mt-4 text-center text-sm text-slate-500">
+              <p className="admin-help mt-4 text-center">
                 이 주차에 등록된 성적이 없습니다.
               </p>
             )}
           </div>
         ) : (
-          <p className="mt-4 text-sm text-slate-500">
+          <p className="admin-help mt-4">
             시험 템플릿을 선택하면 주간 성적이 표시됩니다.
           </p>
         )}
-      </section>
+      </AdminTabPanel>
     </div>
   );
 }

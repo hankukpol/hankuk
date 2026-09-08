@@ -19,25 +19,22 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5]">
+    <div className="admin-shell flex-col">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-screen-2xl px-6 md:px-10">
+        <div className="admin-content-frame px-4 md:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-4 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-slate-900 text-sm font-bold text-white">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-admin-accent text-sm font-bold text-white">
                 SA
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-                  최고관리자
-                </p>
-                <h1 className="text-lg font-extrabold leading-tight text-slate-950">최고관리자</h1>
+              <div className="min-w-0">
+                <h1 className="admin-page-title">최고관리자</h1>
               </div>
             </div>
             <AppSwitchMenu role="super_admin" />
           </div>
 
-          <nav className="flex gap-1 border-t border-slate-100">
+          <nav className="admin-tabs" aria-label="최고관리자 메뉴">
             {tabs.map((tab) => {
               const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
               return (
@@ -45,11 +42,9 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
                   key={tab.href}
                   href={tab.href}
                   prefetch={false}
-                  className={`relative px-5 py-3 text-sm font-semibold transition ${
-                    isActive
-                      ? "text-slate-950 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-950 after:content-['']"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
+                  className="admin-tab"
+                  data-active={isActive}
+                  aria-current={isActive ? "page" : undefined}
                 >
                   {tab.label}
                 </Link>
@@ -59,7 +54,7 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-screen-2xl px-6 py-6 md:px-10">{children}</main>
+      <main className="admin-main admin-content-frame">{children}</main>
     </div>
   );
 }

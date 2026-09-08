@@ -1,5 +1,8 @@
 "use client";
 
+import { useId } from "react";
+import { DialogActions } from "@/components/ui/DialogActions";
+
 import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "@/lib/sonner";
@@ -7,7 +10,7 @@ import { toast } from "@/lib/sonner";
 import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 import { getKstToday } from "@/components/payments/payment-client-helpers";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
-import { Modal } from "@/components/ui/Modal";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import {
   formatCurrency,
@@ -45,6 +48,7 @@ export function RefundModal({
   paymentRecords,
   onSuccess,
 }: RefundModalProps) {
+  const dialogFormId = useId();
   const [selectedStudentId, setSelectedStudentId] = useState(fixedStudent?.id ?? "");
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [originalPaymentId, setOriginalPaymentId] = useState("");
@@ -250,39 +254,39 @@ export function RefundModal({
 
   return (
     <>
-      <Modal open={open} onClose={handleClose} badge="환불" title="환불 처리" description="납부 묶음 기준으로 환불을 처리합니다." widthClassName="max-w-3xl">
-        <form onSubmit={handleSubmit} className="space-y-5">
+      <SlideOver open={open} onClose={handleClose} badge="환불" title="환불 처리" description="납부 묶음 기준으로 환불을 처리합니다.">
+        <form id={`${dialogFormId}-1`} onSubmit={handleSubmit} className="space-y-5">
         {fixedStudent ? (
-          <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
             <p className="text-slate-500">대상 학생</p>
-            <p className="mt-1 font-semibold text-slate-900">{fixedStudent.name} <span className="ml-2 text-xs font-normal text-slate-500">{fixedStudent.studentNumber}</span></p>
+            <p className="mt-1 font-semibold text-slate-900">{fixedStudent.name} <span className="admin-help ml-2">{fixedStudent.studentNumber}</span></p>
           </div>
         ) : (
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">학생 선택</span>
+            <span className="admin-label mb-2 block">학생 선택</span>
             <StudentSearchCombobox students={students} value={selectedStudentId} onChange={setSelectedStudentId} placeholder="학생을 선택해 주세요" />
           </label>
         )}
 
         {activeStudent ? (
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="text-xs text-slate-400">총 납부</p><p className="mt-1 font-semibold text-slate-900">{formatCurrency(totalPaid)}원</p></div>
-            <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="text-xs text-slate-400">기환불</p><p className="mt-1 font-semibold text-rose-600">{formatCurrency(totalRefunded)}원</p></div>
-            <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="text-xs text-slate-400">잔여 환불 가능액</p><p className="mt-1 font-semibold text-slate-900">{formatCurrency(Math.max(totalPaid - totalRefunded, 0))}원</p></div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">총 납부</p><p className="mt-1 font-semibold text-slate-900">{formatCurrency(totalPaid)}원</p></div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">기환불</p><p className="mt-1 font-semibold text-rose-600">{formatCurrency(totalRefunded)}원</p></div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><p className="admin-help">잔여 환불 가능액</p><p className="mt-1 font-semibold text-slate-900">{formatCurrency(Math.max(totalPaid - totalRefunded, 0))}원</p></div>
           </div>
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">환불 방식</span>
-            <select value={mode} onChange={(event) => setMode(event.target.value as RefundMode)} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400">
+            <span className="admin-label mb-2 block">환불 방식</span>
+            <select value={mode} onChange={(event) => setMode(event.target.value as RefundMode)} className="w-full">
               <option value="simple">일반 환불</option>
               <option value="card-full-cancel">카드 전체취소 + 재결제</option>
             </select>
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">납부 묶음</span>
-            <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)} disabled={!activeStudent || isSubmitting} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400">
+            <span className="admin-label mb-2 block">납부 묶음</span>
+            <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)} disabled={!activeStudent || isSubmitting} className="w-full">
               {paymentGroups.length === 0 ? <option value="">납부 묶음 없음</option> : null}
               {paymentGroups.map(([groupId, payments]) => (
                 <option key={groupId} value={groupId}>{`${formatDate(payments[0].paymentDate)} · ${payments.length}건 · ${formatCurrency(payments.reduce((sum, payment) => sum + payment.amount, 0))}원`}</option>
@@ -292,8 +296,8 @@ export function RefundModal({
         </div>
 
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">원결제 선택</span>
-          <select value={originalPaymentId} onChange={(event) => setOriginalPaymentId(event.target.value)} disabled={eligiblePayments.length === 0 || isSubmitting} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400">
+          <span className="admin-label mb-2 block">원결제 선택</span>
+          <select value={originalPaymentId} onChange={(event) => setOriginalPaymentId(event.target.value)} disabled={eligiblePayments.length === 0 || isSubmitting} className="w-full">
             <option value="">{mode === "card-full-cancel" ? "카드 원결제를 선택해 주세요" : "원결제를 선택해 주세요"}</option>
             {eligiblePayments.map((payment) => (
               <option key={payment.id} value={payment.id}>{`${formatDate(payment.paymentDate)} · ${payment.paymentTypeName} · ${formatPaymentMethod(payment.method)} · 결제 ${formatCurrency(payment.amount)}원 · 잔여 ${formatCurrency(payment.remainingAmount)}원`}</option>
@@ -302,13 +306,13 @@ export function RefundModal({
         </label>
 
         {selectedGroupPayments.length > 0 ? (
-          <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm">
             <p className="font-medium text-slate-700">묶음 결제 목록</p>
             <div className="mt-3 space-y-2">
               {selectedGroupPayments.map((payment) => (
-                <div key={payment.id} className={`rounded-[10px] border px-3 py-3 ${payment.id === originalPaymentId ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-white"}`}>
+                <div key={payment.id} className={`rounded-lg border px-3 py-3 ${payment.id === originalPaymentId ? "border-rose-300 bg-rose-50" : "border-slate-200 bg-white"}`}>
                   <p className="font-medium text-slate-900">{payment.paymentTypeName}</p>
-                  <p className="mt-1 text-xs text-slate-500">{formatDate(payment.paymentDate)} · {formatPaymentMethod(payment.method)} · 결제 {formatCurrency(payment.amount)}원 · 기환불 {formatCurrency(payment.refundedAmount)}원 · 잔여 {formatCurrency(payment.remainingAmount)}원</p>
+                  <p className="admin-help mt-1">{formatDate(payment.paymentDate)} · {formatPaymentMethod(payment.method)} · 결제 {formatCurrency(payment.amount)}원 · 기환불 {formatCurrency(payment.refundedAmount)}원 · 잔여 {formatCurrency(payment.remainingAmount)}원</p>
                 </div>
               ))}
             </div>
@@ -318,51 +322,51 @@ export function RefundModal({
         {mode === "simple" ? (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">환불 금액</span>
-              <input type="text" inputMode="numeric" value={refundAmount} onChange={(event) => setRefundAmount(event.target.value.replace(/[^0-9,]/g, ""))} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400" placeholder="예: 150000" />
+              <span className="admin-label mb-2 block">환불 금액</span>
+              <input type="text" inputMode="numeric" value={refundAmount} onChange={(event) => setRefundAmount(event.target.value.replace(/[^0-9,]/g, ""))} className="w-full" placeholder="예: 150000" />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">환불 방법</span>
+              <span className="admin-label mb-2 block">환불 방법</span>
               <PaymentMethodSelect value={refundMethod} onChange={setRefundMethod} required disabled={isSubmitting} />
             </label>
             <label className="block md:col-span-2">
-              <span className="mb-2 block text-sm font-medium text-slate-700">메모</span>
-              <input type="text" value={refundNotes} onChange={(event) => setRefundNotes(event.target.value)} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400" placeholder="예: 이용 기간 미사용분 환불" />
+              <span className="admin-label mb-2 block">메모</span>
+              <input type="text" value={refundNotes} onChange={(event) => setRefundNotes(event.target.value)} className="w-full" placeholder="예: 이용 기간 미사용분 환불" />
             </label>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">재결제 금액</span>
-              <input type="text" inputMode="numeric" value={rechargeAmount} onChange={(event) => setRechargeAmount(event.target.value.replace(/[^0-9,]/g, ""))} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400" placeholder="예: 120000" />
+              <span className="admin-label mb-2 block">재결제 금액</span>
+              <input type="text" inputMode="numeric" value={rechargeAmount} onChange={(event) => setRechargeAmount(event.target.value.replace(/[^0-9,]/g, ""))} className="w-full" placeholder="예: 120000" />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">재결제 수납 유형</span>
-              <select value={rechargeCategoryId} onChange={(event) => setRechargeCategoryId(event.target.value)} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400">
+              <span className="admin-label mb-2 block">재결제 수납 유형</span>
+              <select value={rechargeCategoryId} onChange={(event) => setRechargeCategoryId(event.target.value)} className="w-full">
                 <option value="">선택해 주세요</option>
                 {nonRefundCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">환불 메모</span>
-              <input type="text" value={refundNotes} onChange={(event) => setRefundNotes(event.target.value)} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400" placeholder="예: 중도 해지 전체취소" />
+              <span className="admin-label mb-2 block">환불 메모</span>
+              <input type="text" value={refundNotes} onChange={(event) => setRefundNotes(event.target.value)} className="w-full" placeholder="예: 중도 해지 전체취소" />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">재결제 메모</span>
-              <input type="text" value={rechargeNotes} onChange={(event) => setRechargeNotes(event.target.value)} className="w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400" placeholder="예: 카드 재결제 (공제 후)" />
+              <span className="admin-label mb-2 block">재결제 메모</span>
+              <input type="text" value={rechargeNotes} onChange={(event) => setRechargeNotes(event.target.value)} className="w-full" placeholder="예: 카드 재결제 (공제 후)" />
             </label>
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">취소</button>
-          <button type="submit" disabled={isSubmitting || !selectedPayment || !refundCategory} className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-50">
+        <DialogActions>
+          <button type="button" onClick={handleClose} disabled={isSubmitting} className="admin-button">취소</button>
+          <button form={`${dialogFormId}-1`} type="submit" disabled={isSubmitting || !selectedPayment || !refundCategory} className="admin-button admin-button-danger">
             {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
             환불 처리 완료
           </button>
-        </div>
+        </DialogActions>
         </form>
-      </Modal>
+      </SlideOver>
 
       <ActionCompleteModal
         open={saveSuccessModal !== null}

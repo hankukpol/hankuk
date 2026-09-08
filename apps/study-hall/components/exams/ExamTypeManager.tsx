@@ -133,7 +133,7 @@ function summarizeExamType(examType: ExamTypeItem) {
 function ExamTypeManagerSkeleton() {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-      <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-2">
             <div className="h-4 w-20 rounded bg-slate-100" />
@@ -147,9 +147,9 @@ function ExamTypeManagerSkeleton() {
         </div>
         <div className="mt-5 space-y-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="rounded-[12px] border border-slate-200 bg-white px-4 py-4">
+            <div key={index} className="admin-section">
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-10 w-10 rounded-[10px] bg-slate-100" />
+                <div className="mt-1 h-10 w-10 rounded-lg bg-slate-100" />
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -158,9 +158,9 @@ function ExamTypeManagerSkeleton() {
                       <div className="h-5 w-16 rounded-full bg-slate-100" />
                     </div>
                     <div className="flex gap-2">
-                      <div className="h-10 w-10 rounded-[10px] bg-slate-100" />
-                      <div className="h-10 w-24 rounded-[10px] bg-slate-100" />
-                      <div className="h-10 w-10 rounded-[10px] bg-slate-100" />
+                      <div className="h-10 w-10 rounded-lg bg-slate-100" />
+                      <div className="h-10 w-24 rounded-lg bg-slate-100" />
+                      <div className="h-10 w-10 rounded-lg bg-slate-100" />
                     </div>
                   </div>
                   <div className="h-4 w-72 rounded bg-slate-100" />
@@ -172,7 +172,7 @@ function ExamTypeManagerSkeleton() {
         </div>
       </section>
 
-      <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="space-y-2">
           <div className="h-4 w-20 rounded bg-slate-100" />
           <div className="h-8 w-36 rounded bg-slate-100" />
@@ -180,7 +180,7 @@ function ExamTypeManagerSkeleton() {
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="rounded-[12px] border border-slate-200 px-4 py-4">
+            <div key={index} className="rounded-lg border border-slate-200 px-4 py-4">
               <div className="h-4 w-16 rounded bg-slate-100" />
               <div className="mt-3 h-8 w-20 rounded bg-slate-100" />
             </div>
@@ -188,15 +188,15 @@ function ExamTypeManagerSkeleton() {
         </div>
         <div className="mt-5 space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="h-24 rounded-[12px] border border-slate-200 bg-slate-50" />
-            <div className="h-24 rounded-[12px] border border-slate-200 bg-slate-50" />
+            <div className="h-24 rounded-lg border border-slate-200 bg-slate-50" />
+            <div className="h-24 rounded-lg border border-slate-200 bg-slate-50" />
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="h-20 rounded-[12px] border border-slate-200 bg-slate-50" />
-            <div className="h-20 rounded-[12px] border border-slate-200 bg-slate-50" />
+            <div className="h-20 rounded-lg border border-slate-200 bg-slate-50" />
+            <div className="h-20 rounded-lg border border-slate-200 bg-slate-50" />
           </div>
-          <div className="h-14 rounded-[12px] border border-slate-200 bg-slate-50" />
-          <div className="rounded-[12px] border border-slate-200 p-4">
+          <div className="h-14 rounded-lg border border-slate-200 bg-slate-50" />
+          <div className="rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="space-y-2">
                 <div className="h-5 w-20 rounded bg-slate-100" />
@@ -206,16 +206,16 @@ function ExamTypeManagerSkeleton() {
             </div>
             <div className="mt-4 space-y-3">
               {Array.from({ length: 2 }).map((_, index) => (
-                <div key={index} className="rounded-[12px] border border-slate-200 p-4">
+                <div key={index} className="rounded-lg border border-slate-200 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="h-4 w-12 rounded bg-slate-100" />
-                    <div className="h-9 w-9 rounded-[10px] bg-slate-100" />
+                    <div className="h-9 w-9 rounded-lg bg-slate-100" />
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
-                    <div className="h-12 rounded-[12px] bg-slate-100" />
-                    <div className="h-12 rounded-[12px] bg-slate-100" />
-                    <div className="h-12 rounded-[12px] bg-slate-100" />
-                    <div className="h-12 rounded-[12px] bg-slate-100" />
+                    <div className="h-12 rounded-lg bg-slate-100" />
+                    <div className="h-12 rounded-lg bg-slate-100" />
+                    <div className="h-12 rounded-lg bg-slate-100" />
+                    <div className="h-12 rounded-lg bg-slate-100" />
                   </div>
                 </div>
               ))}
@@ -251,20 +251,12 @@ function SortableExamTypeCard({
     <article
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-[12px] border px-4 py-4 transition ${
-        isDragging
-          ? "border-slate-400 bg-slate-100 shadow-lg"
-          : isSelected
-            ? "border-[var(--division-color)] bg-[var(--division-color)] text-white"
-            : "border-slate-200 bg-white text-slate-950"
-      }`}
+      className={`rounded-lg border px-4 py-4 transition ${ isDragging ? "border-slate-400 bg-slate-100" : isSelected ? "border-[var(--division-color)] bg-[var(--division-color)] text-white" : "border-slate-200 bg-white text-slate-950" }`}
     >
       <div className="flex items-start gap-3">
         <button
           type="button"
-          className={`mt-1 inline-flex h-10 w-10 shrink-0 cursor-grab touch-none items-center justify-center rounded-[10px] border transition active:cursor-grabbing ${
-            isSelected ? "border-white/20 bg-white/10 text-white hover:bg-white/15" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
-          }`}
+          className={`mt-1 inline-flex h-10 w-10 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg border transition active:cursor-grabbing ${ isSelected ? "border-white/20 bg-white/10 text-white hover:bg-white/15" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100" }`}
           aria-label="시험 템플릿 순서 이동"
           title="시험 템플릿 순서 이동"
           {...attributes}
@@ -278,11 +270,11 @@ function SortableExamTypeCard({
             <button type="button" onClick={() => onSelect(examType)} className="min-w-0 flex-1 text-left">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-bold">{examType.name}</span>
-                <span className={`rounded-full px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>{getCategoryLabel(examType.category)}</span>
-                <span className={`rounded-full px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>직렬 {getTrackLabel(examType.studyTrack)}</span>
-                {isCopySource ? <span className={`rounded-full px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-900 text-white"}`}>복사 기준</span> : null}
-                <span className={`rounded-full px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>순서 {examType.displayOrder + 1}</span>
-                <span className={`rounded-full px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : examType.isActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{examType.isActive ? "활성" : "비활성"}</span>
+                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>{getCategoryLabel(examType.category)}</span>
+                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>직렬 {getTrackLabel(examType.studyTrack)}</span>
+                {isCopySource ? <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-admin-accent text-white"}`}>복사 기준</span> : null}
+                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>순서 {examType.displayOrder + 1}</span>
+                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : examType.isActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{examType.isActive ? "활성" : "비활성"}</span>
               </span>
               <span className={`mt-2 block text-sm ${isSelected ? "text-white/75" : "text-slate-500"}`}>{summary.subjectNames}</span>
               <span className={`mt-1 block text-xs ${isSelected ? "text-white/70" : "text-slate-400"}`}>
@@ -291,9 +283,9 @@ function SortableExamTypeCard({
             </button>
 
             <div className="flex shrink-0 items-center gap-2">
-              <button type="button" onClick={() => onSelect(examType)} className={`inline-flex h-10 w-10 items-center justify-center rounded-[10px] border transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-white"}`} aria-label="시험 템플릿 수정"><Pencil className="h-4 w-4" /></button>
-              <button type="button" onClick={() => onCopy(examType)} className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-sm font-medium transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}><Copy className="h-4 w-4" />시험 템플릿 복사</button>
-              <button type="button" onClick={() => onDelete(examType.id)} disabled={isDeleting} className={`inline-flex h-10 w-10 items-center justify-center rounded-[10px] border transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-rose-600 hover:bg-white"} disabled:opacity-60`} aria-label="시험 템플릿 삭제">{isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
+              <button type="button" onClick={() => onSelect(examType)} className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-white"}`} aria-label="시험 템플릿 수정"><Pencil className="h-4 w-4" /></button>
+              <button type="button" onClick={() => onCopy(examType)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}><Copy className="h-4 w-4" />시험 템플릿 복사</button>
+              <button type="button" onClick={() => onDelete(examType.id)} disabled={isDeleting} className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-rose-600 hover:bg-white"} disabled:opacity-60`} aria-label="시험 템플릿 삭제">{isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
             </div>
           </div>
         </div>
@@ -489,16 +481,15 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   return (
     <>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-      <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">시험 템플릿</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">시험 템플릿 목록</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">드래그로 템플릿 순서를 바꾸고, 복사, 수정, 활성 상태를 함께 관리할 수 있습니다.</p>
+            <h2 className="admin-section-title">시험 템플릿 목록</h2>
+            <p className="admin-help mt-2 leading-6">드래그로 템플릿 순서를 바꾸고, 복사, 수정, 활성 상태를 함께 관리할 수 있습니다.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void refreshExamTypes(true)} disabled={isRefreshing} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">{isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}새로고침</button>
-            <button type="button" onClick={resetForm} className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"><Plus className="h-4 w-4" />새 템플릿</button>
+            <button type="button" onClick={() => void refreshExamTypes(true)} disabled={isRefreshing} className="admin-button">{isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}새로고침</button>
+            <button type="button" onClick={resetForm} className="admin-button admin-button-primary"><Plus className="h-4 w-4" />새 템플릿</button>
           </div>
         </div>
 
@@ -521,63 +512,62 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
               </SortableContext>
             </DndContext>
           ) : (
-            <div className="rounded-[12px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">등록된 시험 템플릿이 없습니다. 새 템플릿을 추가해 주세요.</div>
+            <div className="admin-help px-4 py-8 text-center">등록된 시험 템플릿이 없습니다. 새 템플릿을 추가해 주세요.</div>
           )}
         </div>
       </section>
 
-      <section className="rounded-[10px] border border-black/5 bg-white p-5 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
+      <section className="admin-section">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">템플릿 편집</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">{editingId ? "시험 템플릿 수정" : copySourceId ? "시험 템플릿 복사" : "새 시험 템플릿"}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{copySourceName ? `${copySourceName}: 원본 설정을 그대로 가져왔습니다. 필요한 항목만 수정 후 저장하면 새 템플릿으로 추가됩니다.` : editingId ? "직렬별 시험 종류와 과목 구성을 수정합니다." : "직렬별 시험 종류와 과목별 배점을 새로 등록합니다."}</p>
+            <h2 className="admin-section-title">{editingId ? "시험 템플릿 수정" : copySourceId ? "시험 템플릿 복사" : "새 시험 템플릿"}</h2>
+            <p className="admin-help mt-3 leading-6">{copySourceName ? `${copySourceName}: 원본 설정을 그대로 가져왔습니다. 필요한 항목만 수정 후 저장하면 새 템플릿으로 추가됩니다.` : editingId ? "직렬별 시험 종류와 과목 구성을 수정합니다." : "직렬별 시험 종류와 과목별 배점을 새로 등록합니다."}</p>
           </div>
-          {(editingId || copySourceId || form.name.trim()) ? <button type="button" onClick={resetForm} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">초기화</button> : null}
+          {(editingId || copySourceId || form.name.trim()) ? <button type="button" onClick={resetForm} className="admin-button">초기화</button> : null}
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
           <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-[12px] border border-slate-200 px-4 py-4"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">직렬</p><p className="mt-3 text-2xl font-bold text-slate-950">{getTrackLabel(form.studyTrack === COMMON_TRACK_VALUE ? null : form.studyTrack)}</p></div>
-            <div className="rounded-[12px] border border-slate-200 px-4 py-4"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">과목 수</p><p className="mt-3 text-2xl font-bold text-slate-950">{activeSubjectCount}개</p></div>
-            <div className="rounded-[12px] border border-slate-200 px-4 py-4"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">예상 총점</p><p className="mt-3 text-2xl font-bold text-slate-950">{totalMaxScore > 0 ? `${totalMaxScore}점` : "미설정"}</p></div>
+            <div className="rounded-lg border border-slate-200 px-4 py-4"><p className="admin-label">직렬</p><h2 className="admin-section-title">{getTrackLabel(form.studyTrack === COMMON_TRACK_VALUE ? null : form.studyTrack)}</h2></div>
+            <div className="rounded-lg border border-slate-200 px-4 py-4"><p className="admin-label">과목 수</p><h2 className="admin-section-title">{activeSubjectCount}개</h2></div>
+            <div className="rounded-lg border border-slate-200 px-4 py-4"><p className="admin-label">예상 총점</p><h2 className="admin-section-title">{totalMaxScore > 0 ? `${totalMaxScore}점` : "미설정"}</h2></div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             {[{ value: "MORNING" as const, label: "아침모의고사", description: "매일 과목별 입력, 주간 집계" }, { value: "REGULAR" as const, label: "정기모의고사", description: "회차별 한 번에 입력, 누적 관리" }].map((option) => (
-              <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-[12px] border px-4 py-4 ${form.category === option.value ? "border-amber-300 bg-amber-50" : "border-slate-200 hover:bg-slate-50"}`}>
+              <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-4 ${form.category === option.value ? "border-amber-300 bg-amber-50" : "border-slate-200 hover:bg-slate-50"}`}>
                 <input type="radio" name="exam-category" checked={form.category === option.value} onChange={() => setForm((current) => ({ ...current, category: option.value }))} className="mt-1 h-4 w-4 border-slate-300 text-[var(--division-color)]" />
-                <span><span className="block text-sm font-semibold text-slate-900">{option.label}</span><span className="mt-1 block text-xs text-slate-500">{option.description}</span></span>
+                <span><span className="block text-sm font-semibold text-slate-900">{option.label}</span><span className="admin-help mt-1 block">{option.description}</span></span>
               </label>
             ))}
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-800">시험 종류명</span><input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="(공채) 아침 모의고사" className="w-full rounded-[12px] border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[var(--division-color)]" /></label>
-            <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-800">대상 직렬</span><select value={form.studyTrack} onChange={(event) => setForm((current) => ({ ...current, studyTrack: event.target.value }))} className="w-full rounded-[12px] border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[var(--division-color)]"><option value={COMMON_TRACK_VALUE}>공통</option>{trackOptions.map((track) => <option key={track} value={track}>{track}</option>)}</select></label>
+            <label className="block"><span className="admin-label mb-2 block">시험 종류명</span><input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="(공채) 아침 모의고사" className="w-full" /></label>
+            <label className="block"><span className="admin-label mb-2 block">대상 직렬</span><select value={form.studyTrack} onChange={(event) => setForm((current) => ({ ...current, studyTrack: event.target.value }))} className="w-full"><option value={COMMON_TRACK_VALUE}>공통</option>{trackOptions.map((track) => <option key={track} value={track}>{track}</option>)}</select></label>
           </div>
 
-          <label className="flex items-center gap-3 rounded-[12px] border border-slate-200 px-4 py-3"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[var(--division-color)]" /><span className="text-sm font-medium text-slate-800">활성 상태</span></label>
+          <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-3"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[var(--division-color)]" /><span className="text-sm font-medium text-slate-800">활성 상태</span></label>
 
-          <div className="rounded-[12px] border border-slate-200">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4"><div><p className="text-lg font-bold text-slate-950">과목 구성</p><p className="mt-1 text-sm text-slate-500">과목명, 문항 수, 배점을 설정합니다.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, subjects: [...current.subjects, createSubject()] }))} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"><Plus className="h-4 w-4" />과목 추가</button></div>
+          <div className="admin-section">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4"><div><h2 className="admin-section-title">과목 구성</h2><p className="admin-help mt-1">과목명, 문항 수, 배점을 설정합니다.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, subjects: [...current.subjects, createSubject()] }))} className="admin-button"><Plus className="h-4 w-4" />과목 추가</button></div>
             <div className="space-y-3 p-4">
               {form.subjects.map((subject, index) => {
                 const maxScore = calculateMaxScore(subject.totalItems, subject.pointsPerItem);
                 return (
-                  <div key={subject.localId} className="rounded-[12px] border border-slate-200 px-4 py-4">
+                  <div key={subject.localId} className="rounded-lg border border-slate-200 px-4 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-slate-900">과목 {index + 1}</p>
                       <div className="flex items-center gap-2">
                         <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={subject.isActive} onChange={(event) => setForm((current) => ({ ...current, subjects: current.subjects.map((item) => item.localId === subject.localId ? { ...item, isActive: event.target.checked } : item) }))} className="h-4 w-4 rounded border-slate-300 text-[var(--division-color)]" />활성</label>
-                        <button type="button" onClick={() => setForm((current) => ({ ...current, subjects: current.subjects.length > 1 ? current.subjects.filter((item) => item.localId !== subject.localId) : current.subjects }))} disabled={form.subjects.length <= 1} className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-slate-200 text-rose-600 transition hover:bg-rose-50 disabled:opacity-50" aria-label="과목 삭제"><Trash2 className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => setForm((current) => ({ ...current, subjects: current.subjects.length > 1 ? current.subjects.filter((item) => item.localId !== subject.localId) : current.subjects }))} disabled={form.subjects.length <= 1} className="admin-button admin-button-compact admin-button-danger-outline w-11 px-0" aria-label="과목 삭제"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
-                      <input value={subject.name} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, name: event.target.value }))} placeholder="과목명" className="w-full rounded-[12px] border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[var(--division-color)]" />
-                      <input inputMode="numeric" value={subject.totalItems} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, totalItems: event.target.value }))} placeholder="문항 수" className="w-full rounded-[12px] border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[var(--division-color)]" />
-                      <input inputMode="decimal" value={subject.pointsPerItem} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, pointsPerItem: event.target.value }))} placeholder="배점" className="w-full rounded-[12px] border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[var(--division-color)]" />
-                      <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900">예상 점수 {maxScore === null ? "-" : `${maxScore}점`}</div>
+                      <input value={subject.name} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, name: event.target.value }))} placeholder="과목명" className="w-full" />
+                      <input inputMode="numeric" value={subject.totalItems} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, totalItems: event.target.value }))} placeholder="문항 수" className="w-full" />
+                      <input inputMode="decimal" value={subject.pointsPerItem} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, pointsPerItem: event.target.value }))} placeholder="배점" className="w-full" />
+                      <p className="admin-help self-center">예상 점수 {maxScore === null ? "-" : `${maxScore}점`}</p>
                     </div>
                   </div>
                 );
@@ -585,7 +575,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3"><button type="button" onClick={resetForm} className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">취소</button><button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-full bg-[var(--division-color)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">{isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editingId ? "시험 템플릿 저장" : copySourceId ? "복사본 저장" : "시험 템플릿 추가"}</button></div>
+          <div className="flex flex-wrap items-center justify-end gap-3"><button type="button" onClick={resetForm} className="admin-button">취소</button><button type="submit" disabled={isSaving} className="admin-button admin-button-primary">{isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editingId ? "시험 템플릿 저장" : copySourceId ? "복사본 저장" : "시험 템플릿 추가"}</button></div>
         </form>
       </section>
       </div>

@@ -21,6 +21,7 @@ import {
 } from "@/lib/session-tokens";
 import { findStudentSessionById } from "@/lib/services/student.service";
 import { withConfiguredCookieDomain } from "@/lib/cookie-domain";
+import { logServerError } from "@/lib/server-log";
 
 export type AdminSessionRole = SessionAdminRole;
 
@@ -158,7 +159,8 @@ export const getCurrentStudentSession = cache(async function getCurrentStudentSe
     }
 
     return session;
-  } catch {
+  } catch (error) {
+    logServerError("auth:student-session", error);
     return null;
   }
 });

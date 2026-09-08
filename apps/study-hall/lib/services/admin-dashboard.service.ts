@@ -69,6 +69,7 @@ export type AdminDashboardData = {
     seatLabel: string | null;
     netPoints: number;
     warningStage: string;
+    warningStageLabel?: string;
   }>;
   attentionStudents: Array<{
     studentId: string;
@@ -478,10 +479,10 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   );
   const riskStudents = warningManagementEnabled
     ? students
-        .filter((student) => toDemeritPoints(student.netPoints) >= settings.warnLevel1)
+        .filter((student) => (student.demeritPoints ?? toDemeritPoints(student.netPoints)) >= settings.warnLevel1)
         .sort(
           (left, right) =>
-            toDemeritPoints(right.netPoints) - toDemeritPoints(left.netPoints),
+            (right.demeritPoints ?? toDemeritPoints(right.netPoints)) - (left.demeritPoints ?? toDemeritPoints(left.netPoints)),
         )
         .map((student) => ({
           id: student.id,
@@ -489,8 +490,9 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
           studentNumber: student.studentNumber,
           phone: student.phone,
           seatLabel: student.seatLabel,
-          netPoints: toDemeritPoints(student.netPoints),
+          netPoints: (student.demeritPoints ?? toDemeritPoints(student.netPoints)),
           warningStage: student.warningStage,
+          warningStageLabel: student.warningStageLabel,
         }))
     : [];
 
@@ -602,7 +604,7 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   const interviewNeededStudents = interviewManagementEnabled
     ? students
         .filter(
-          (s) => s.status === "ACTIVE" && toDemeritPoints(s.netPoints) >= settings.warnInterview,
+          (s) => s.status === "ACTIVE" && (s.demeritPoints ?? toDemeritPoints(s.netPoints)) >= (s.demeritPoints !== undefined ? settings.warnLevel2 : settings.warnInterview),
         )
         .filter((s) => {
           const lastDate = latestInterviewByStudent.get(s.id) ?? null;
@@ -615,7 +617,7 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
           studentNumber: s.studentNumber,
           seatLabel: s.seatLabel,
           phone: s.phone,
-          netPoints: toDemeritPoints(s.netPoints),
+          netPoints: (s.demeritPoints ?? toDemeritPoints(s.netPoints)),
           warningStage: s.warningStage,
           lastInterviewDate: latestInterviewByStudent.get(s.id) ?? null,
         }))

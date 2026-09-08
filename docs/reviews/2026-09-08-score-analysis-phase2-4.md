@@ -47,3 +47,8 @@ Regular and morning analysis remain separate; no pass prediction is implemented.
 Validation: typecheck 0, lint 0, 542/542 tests; integration PASS at `.local/test-c5343499/integration.log`. Added boundary, tenant, zero-score, record-preservation and missing-month rendering coverage. Browser confirmed six rows for March-August 2026 and 6/6 covered months for the selected demo student. At 390/768/1280 widths, document overflow is absent; wide tables scroll within the report.
 
 Local-only demo was regenerated after tests: 12 synthetic students, six monthly regular sessions and 48 morning subject sessions (54 total). The isolated mock preview remains on port 17093 with the individual regular report open. No production migration, deployment or original-checkout merge was performed.
+## A4 individual report output (2026-09-09)
+
+Regular and morning personal reports now offer A4 print/PDF preview in a separate local window. Only the selected report is cloned; all details are expanded, charts are serialized with computed colors and rendered as scalable SVG images, and print waits for image/font readiness. A4 portrait, 12mm margins, repeated table headers and intact rows/charts support multiple pages. No backend or permission changes.
+
+Validation: TypeScript and lint passed; existing 542 tests passed. Chromium generated actual PDFs from both report buttons: regular 8 pages; morning 89 pages with all 40 exams and full grading tables included. All pages have A4 media boxes and extracted text stays inside content bounds. Screenshots inspected first pages and regular charts. Physical printer output is not verified. Local PDF samples are under apps/study-hall/.local; no production deployment.

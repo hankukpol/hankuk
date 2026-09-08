@@ -2,6 +2,7 @@
 
 import type { RegularStudentReport as Report } from "@/lib/exam-analysis-types";
 import { ExamScoreChart } from "@/components/exams/ExamScoreChart";
+import { ReportPrintButton } from "./ReportPrintButton";
 import { ItemAnalysisTable } from "./ItemAnalysisTable";
 import { SubjectRadar } from "./charts/SubjectRadar";
 import { DistributionBars } from "./charts/DistributionBars";
@@ -15,6 +16,7 @@ export function RegularStudentReport({ report, mode }: { report: Report; mode: "
   const hasTrend = report.hasPreviousExam !== false && new Set(trend.map((result) => result.examDate!.slice(0, 10))).size >= 2;
   const rank = (entry: { rank: number | null; count: number } | null) => entry ? `${value(entry.rank, "등")} (n=${entry.count})` : "지역 정보 없음";
   return <div className="admin-flat-page">
+    <ReportPrintButton />
     <header><h2 className="admin-section-title">{session.examTypeName} {session.examDate.slice(0, 10)} 분석</h2><p className="admin-help">시험일 {session.examDate.slice(0, 10)}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
     {history && <section className="admin-section"><h2 className="admin-section-title">최근 6개월 개인 성적</h2>
       <p className="admin-help">선택한 시험일 기준 {history.from} ~ {history.to} · {history.coveredMonths}/6개월 기록 · {history.rows.length}회 응시. 과거 기록은 계속 보관됩니다.</p>

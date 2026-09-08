@@ -1,6 +1,7 @@
 "use client";
 
 import type { MorningStudentReport as Report } from "@/lib/morning-exam-analysis-types";
+import { ReportPrintButton } from "./ReportPrintButton";
 import { ItemAnalysisTable } from "./ItemAnalysisTable";
 import { TrendLines } from "./charts/TrendLines";
 
@@ -12,6 +13,7 @@ export function MorningStudentReport({ report, mode }: { report: Report; mode: "
   const lowParticipation = summary.attendanceRatePercent != null && summary.attendanceRatePercent < settings.morning.attendanceRatePercent;
   const subjectName = (id: string) => report.subjectDefinitions.find((subject) => subject.id === id)?.name ?? "과목 정보 없음";
   return <div className="admin-flat-page">
+    <ReportPrintButton />
     <header><h2 className="admin-section-title">{report.examType.name} 개인 분석</h2><p className="admin-help">{report.range.from} ~ {report.range.to}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
     <div className="admin-metric-strip">{[
       ["기간 평균", value(summary.average, "점")], ["외부 평균 대비", value(summary.externalGap, "점")], ["반 평균 대비", value(summary.internalGap, "점")],

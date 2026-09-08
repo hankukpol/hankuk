@@ -22,7 +22,7 @@ function ReviewMethod() {
 
 export function RegularLearningSummary({ report }: { report: RegularStudentReport }) {
   const plan = regularLearningPlan(report);
-  return <section className="admin-section admin-flat-page" data-learning-summary>
+  return <section className="admin-section admin-flat-page" data-learning-summary id="personal-diagnosis">
     <h2 className="admin-section-title">개인 학습 진단 · 다음 시험 준비</h2>
     <p className="admin-help">등록된 과목 만점과 실제 응시 과목을 기준으로 분석합니다. 쉬운 문항 오답 수, 잃은 점수 순으로 복습할 과목을 안내합니다. 예상 상승 점수나 합격 가능성을 뜻하지 않습니다.</p>
     <p className="admin-notice">최근 6개월 중 같은 만점·같은 응시 과목으로 전과목 응시한 {plan.compatibleCount}회 평균 {number(plan.average)}점.
@@ -40,7 +40,7 @@ export function RegularLearningSummary({ report }: { report: RegularStudentRepor
 
 export function MorningLearningSummary({ report }: { report: MorningStudentReport }) {
   const plan = morningLearningPlan(report);
-  return <section className="admin-section admin-flat-page" data-learning-summary>
+  return <section className="admin-section admin-flat-page" data-learning-summary id="personal-diagnosis">
     <h2 className="admin-section-title">진도 학습 진단 · 다음 복습 과제</h2>
     <p className="admin-help">과목별 시험 범위가 달라 전체 평균만으로 학습 상태를 판단하지 않습니다. 실제 입력된 단원 라벨과 문항 정오를 근거로 복습 과제를 제시합니다.</p>
     {!plan.length && <p className="admin-empty-state">응시 기록이 없어 진도 학습 진단을 만들 수 없습니다.</p>}

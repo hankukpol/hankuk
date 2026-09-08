@@ -23,7 +23,7 @@ export function MorningStudentReport({ report, mode }: { report: Report; mode: "
     ].map(([label, score]) => <div className="admin-metric-box" key={label}><p className="admin-metric-box-label">{label}</p><p className="admin-metric-box-value">{score}</p></div>)}</div>
     <p className="admin-help">기간 내 응시 {summary.attended}회 / 예정 {summary.expected}회. 평균 대비는 내 평균에서 비교 평균을 뺀 값입니다.</p>
     {lowParticipation && <p className="admin-notice">응시율 {value(summary.attendanceRatePercent, "%")}라 추세를 판단하지 않습니다. 설정된 기준은 {value(settings.morning.attendanceRatePercent, "%")}입니다.</p>}
-    <section className="admin-section admin-flat-page"><h2 className="admin-section-title">과목별 추세</h2>
+    <section id="personal-trend" className="admin-section admin-flat-page"><h2 className="admin-section-title">과목별 추세</h2>
       <p className="admin-help">이동평균은 최근 {settings.morning.movingAverageSessions}회, 추세는 최근 {settings.morning.trendWindowSessions}회 응시 기준입니다. 미응시는 0점으로 채우지 않습니다.</p>
       {!report.subjects.length && <p className="admin-empty-state">선택한 기간에 응시한 과목이 없습니다.</p>}
       {report.subjects.map((subject) => {
@@ -38,10 +38,10 @@ export function MorningStudentReport({ report, mode }: { report: Report; mode: "
         </section>;
       })}
     </section>
-    <section className="admin-section"><h2 className="admin-section-title">단원별 취약</h2><p className="admin-help">반 평균보다 낮은 단원부터 확인합니다. 격차는 내 평균 − 반 평균입니다.</p>
+    <section className="admin-section"><h2 id="personal-subjects" className="admin-section-title">단원별 취약</h2><p className="admin-help">반 평균보다 낮은 단원부터 확인합니다. 격차는 내 평균 − 반 평균입니다.</p>
       {!report.topics.length ? <p className="admin-empty-state">진도 라벨이 입력된 시험이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["단원", "과목", "응시", "내 평균", "반 평균", "격차"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{[...report.topics].sort((left, right) => (left.gap ?? Infinity) - (right.gap ?? Infinity)).map((topic) => <tr key={`${topic.subjectId}:${topic.topic}`}><td className="admin-table-name">{topic.topic}</td><td>{subjectName(topic.subjectId)}</td><td>{topic.count}회</td><td>{value(topic.myAvg)}</td><td>{value(topic.internalAvg)}</td><td>{value(topic.gap)}</td></tr>)}</tbody></table></div>}
     </section>
-    <section className="admin-section"><h2 className="admin-section-title">날짜별 문항 분석</h2>
+    <section className="admin-section"><h2 id="personal-items" className="admin-section-title">날짜별 문항 분석</h2>
       {!report.dailyItems.length ? <p className="admin-empty-state">선택한 기간에 가져온 문항 응답이 없습니다. 기존 성적 기록은 아래에서 확인할 수 있습니다.</p> : [...report.dailyItems].sort((left, right) => right.date.localeCompare(left.date) || left.subjectId.localeCompare(right.subjectId)).map((day) => <details className="admin-section" key={`${day.date}:${day.subjectId}`}><summary className="admin-button">{day.date} {day.subjectName}{day.topic ? ` · ${day.topic}` : ""}</summary>
         <p className="admin-help">외부 석차 {value(day.external.rank, "등")} (n={day.external.count}) · 상위 {value(day.external.topPercent, "%")} · 백분위 {value(day.external.percentile)}</p>
         <ItemAnalysisTable items={day.diagnostics} subjects={report.subjectDefinitions} />

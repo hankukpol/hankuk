@@ -14,11 +14,12 @@ type Props = {
   divisionSlug: string;
   category: ExamImportSelection["category"];
   examTypes: ExamTypeItem[];
+  initialSelection?: Record<string,string>;
 };
 
-export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) {
+export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSelection = {} }: Props) {
   const idPrefix = useId();
-  const [active, setActive] = useState<"input" | "import" | "analysis">("input");
+  const [active, setActive] = useState<"input" | "import" | "analysis">(initialSelection.view === "analysis" ? "analysis" : "input");
   const [scoreVersion, setScoreVersion] = useState(0);
   const [lastImport, setLastImport] = useState<ExamImportResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,8 +84,8 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
         )}
       </AdminTabPanel>
       <AdminTabPanel id="analysis" activeId={active} idPrefix={idPrefix}>
-        {active === "analysis" && category === "MORNING" && <MorningCohortAnalysis key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "MORNING")} />}
-        {active === "analysis" && category === "REGULAR" && <RegularCohortAnalysis key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "REGULAR")} />}
+        {active === "analysis" && category === "MORNING" && <MorningCohortAnalysis initialSelection={initialSelection} key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "MORNING")} />}
+        {active === "analysis" && category === "REGULAR" && <RegularCohortAnalysis initialSelection={initialSelection} key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "REGULAR")} />}
       </AdminTabPanel>
     </div>
   );

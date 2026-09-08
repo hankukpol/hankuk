@@ -355,7 +355,7 @@ export function RefundModal({
 
           {hasCardCancel ? (
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-slate-500">카드 취소 승인번호</span>
+              <span className="text-xs font-semibold text-slate-500">카드 취소 승인번호 (필수)</span>
               <input
                 value={cancelReceiptNo}
                 onChange={(event) => setCancelReceiptNo(event.target.value)}
@@ -401,6 +401,7 @@ export function RefundModal({
         </fieldset>
 
         <div className="admin-dialog-footer">
+          {hasCardCancel && !cancelReceiptNo.trim() && <p role="status" className="admin-material-help mr-auto">카드 취소 승인번호를 입력해야 환불을 저장할 수 있습니다.</p>}
           <button
             type="button"
             onClick={onClose}

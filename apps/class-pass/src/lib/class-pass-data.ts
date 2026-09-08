@@ -533,7 +533,7 @@ export async function listCourseEnrollmentsPaged(
     limit?: number
     offset?: number
     search?: string
-    status?: 'all' | 'active' | 'refunded' | 'suspended' | 'cancelled'
+    status?: 'all' | 'active' | 'refunded' | 'suspended' | 'cancelled' | 'archived'
     noLimit?: boolean
   },
 ): Promise<{
@@ -554,6 +554,8 @@ export async function listCourseEnrollmentsPaged(
       .from('enrollments')
       .select('*,students(*)')
       .eq('course_id', courseId)
+
+    query = status === 'archived' ? query.not('archived_at', 'is', null) : query.is('archived_at', null)
 
     if (status === 'active') {
       query = query.eq('status', 'active').is('suspended_at', null)
@@ -615,6 +617,8 @@ export async function listCourseEnrollmentsPaged(
     .select('*', { count: 'exact', head: true })
     .eq('course_id', courseId)
 
+  countQuery = status === 'archived' ? countQuery.not('archived_at', 'is', null) : countQuery.is('archived_at', null)
+
   if (status === 'active') {
     countQuery = countQuery.eq('status', 'active').is('suspended_at', null)
   } else if (status === 'refunded' || status === 'cancelled') {
@@ -631,9 +635,9 @@ export async function listCourseEnrollmentsPaged(
     fetchDataRows(),
     countQuery,
     db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'active').is('suspended_at', null),
-    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'refunded'),
+    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'refunded').is('archived_at', null),
     db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'active').not('suspended_at', 'is', null),
-    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'cancelled'),
+    db.from('enrollments').select('*', { count: 'exact', head: true }).eq('course_id', courseId).eq('status', 'cancelled').is('archived_at', null),
   ])
 
   if (countResult.error) {

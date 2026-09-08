@@ -17,7 +17,14 @@ test('row actions retain their student target and disabled device conditions ins
   const rows = [1,2].map(id => ({ id, course_id:8, name:`학생${id}`, phone:'010-0000-0000', exam_number:`M${id}`, status:'active', custom_data:{}, created_at:'2026-09-05T00:00:00Z', attendance_device:{status:'unregistered', registered_count:0} } as Enrollment))
   const calls: Array<[string,number]> = []
   const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => Response.json({memos:[{enrollment_id:2,body:'상담 후 다음 주 확인',revision:1,created_at:'2026-09-05T00:00:00Z',updated_at:'2026-09-05T00:00:00Z'}]})
+  const previewReads: string[] = []
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/admin-action')) {
+      previewReads.push(String(url))
+      return Response.json({preview:{enrollmentId:2,courseId:8,courseName:'검증 강좌',name:'학생2',examNumber:'M2',status:'active',archived:false,paymentCount:1,paymentAmount:60000,canPurge:true,revision:'a'.repeat(32)}})
+    }
+    return Response.json({memos:[{enrollment_id:2,body:'상담 후 다음 주 확인',revision:1,created_at:'2026-09-05T00:00:00Z',updated_at:'2026-09-05T00:00:00Z'}]})
+  }
   const handler = (name:string) => (e:Enrollment) => calls.push([name,e.id])
   try {
     await act(async()=>root.render(createElement(StudentsManageTable, {
@@ -46,7 +53,11 @@ test('row actions retain their student target and disabled device conditions ins
     await act(async()=>reset.click())
     await act(async()=>items.find(b=>b.textContent?.trim()==='정지')!.click())
     await act(async()=>button('더보기▾').click())
-    await act(async()=>Array.from(document.querySelectorAll('[role="menuitem"]')).find(b=>b.textContent?.trim()==='삭제')!.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})))
-    assert.deepEqual(calls,[['detail',2],['edit',2],['suspend',2],['delete',2]])
+    await act(async()=>Array.from(document.querySelectorAll('[role="menuitem"]')).find(b=>b.textContent?.trim()==='오등록 완전 삭제')!.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})))
+    assert.deepEqual(calls,[['detail',2],['edit',2],['suspend',2]])
+    assert.deepEqual(previewReads,['/api/enrollments/2/admin-action'])
+    const dialog = document.querySelector('[role="dialog"]')!
+    assert.match(dialog.textContent!, /M2 학생2/)
+    assert.equal(Array.from(dialog.querySelectorAll('button')).find(b=>b.textContent==='오등록 완전 삭제')!.disabled,true)
   } finally { await act(async()=>root.unmount());globalThis.fetch=originalFetch;dom.window.close() }
 })

@@ -89,7 +89,7 @@ test('roster offers all lifecycle filters on compact screens and an explicit det
     await act(async () => root.render(createElement(StudentsManageTable, { ...props, onStatusFilterChange: value => { selected = value } })))
     const select = document.querySelector('select[aria-label="수강생 상태 필터"]') as HTMLSelectElement
     assert.ok(select)
-    assert.deepEqual(Array.from(select.options).map(option => option.value), ['all', 'active', 'refunded', 'cancelled', 'suspended'])
+    assert.deepEqual(Array.from(select.options).map(option => option.value), ['all', 'active', 'refunded', 'cancelled', 'suspended', 'archived'])
     await act(async () => { select.value = 'cancelled'; select.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
     assert.equal(selected, 'cancelled')
     const toggle = document.querySelector('button[aria-label="상세 열 표시"]') as HTMLButtonElement

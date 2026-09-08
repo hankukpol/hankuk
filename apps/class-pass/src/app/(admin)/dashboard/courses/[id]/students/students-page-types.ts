@@ -8,7 +8,7 @@ export type StudentsPageData = {
   seriesOptions: BranchSeriesOption[]
 }
 
-export type EnrollmentManageStatusFilter = 'all' | 'active' | 'refunded' | 'suspended' | 'cancelled'
+export type EnrollmentManageStatusFilter = 'all' | 'active' | 'refunded' | 'suspended' | 'cancelled' | 'archived'
 
 export type TabMode = 'manage' | 'receipts' | 'textbook-assign' | 'textbook-receipts'
 export type MatrixMode = Exclude<TabMode, 'manage'>

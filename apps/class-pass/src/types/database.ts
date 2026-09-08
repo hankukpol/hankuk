@@ -149,6 +149,7 @@ export interface Enrollment {
   refunded_at: string | null
   ended_at?: string | null
   ended_reason?: string | null
+  archived_at?: string | null
   suspended_at: string | null
   suspension_reason: string | null
   suspended_by: string | null

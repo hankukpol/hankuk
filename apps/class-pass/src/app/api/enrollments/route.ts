@@ -294,8 +294,8 @@ export async function GET(req: NextRequest) {
     const offset = parsePositiveInt(req.nextUrl.searchParams.get('offset')) ?? 0
     const search = req.nextUrl.searchParams.get('search')?.trim() || undefined
     const statusParam = req.nextUrl.searchParams.get('status') ?? undefined
-    const status = (['active', 'refunded', 'suspended', 'cancelled', 'all'] as const).includes(statusParam as 'active')
-      ? statusParam as 'active' | 'refunded' | 'suspended' | 'cancelled' | 'all'
+    const status = (['active', 'refunded', 'suspended', 'cancelled', 'all', 'archived'] as const).includes(statusParam as 'active')
+      ? statusParam as 'active' | 'refunded' | 'suspended' | 'cancelled' | 'all' | 'archived'
       : undefined
     const noLimit = req.nextUrl.searchParams.get('noLimit') === '1'
 

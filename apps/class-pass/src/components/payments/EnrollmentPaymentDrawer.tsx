@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion'
 import { Plus, ReceiptText, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { ConfirmationModal } from '@/components/admin/confirmation-modal'
+import { EnrollmentAdminActionDialog } from '@/components/admin/EnrollmentAdminActionDialog'
 import { AdminPortal } from '@/components/admin/AdminPortal'
 import { useModalDialog } from '@/components/admin/useModalDialog'
 import { ReceiptNoticeModal } from '@/components/payments/ReceiptNoticeModal'
@@ -150,6 +151,7 @@ export function EnrollmentPaymentDrawer({
   const [voidTarget, setVoidTarget] = useState<EnrollmentPayment | null>(null)
   const [cancelEnrollmentPrompt, setCancelEnrollmentPrompt] = useState<EnrollmentCancellationPrompt | null>(null)
   const [terminationReason, setTerminationReason] = useState('')
+  const [resumeOpen, setResumeOpen] = useState(false)
   const [locallyEndedEnrollmentId, setLocallyEndedEnrollmentId] = useState<number | null>(null)
   const [notice, setNotice] = useState<DrawerNotice | null>(null)
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null)
@@ -161,6 +163,7 @@ export function EnrollmentPaymentDrawer({
     || correctionTarget
     || voidTarget
     || cancelEnrollmentPrompt
+    || resumeOpen
     || notice
     || receiptNotice,
   )
@@ -232,6 +235,7 @@ export function EnrollmentPaymentDrawer({
     setCorrectionTarget(null)
     setVoidTarget(null)
     setCancelEnrollmentPrompt(null)
+    setResumeOpen(false)
     setNotice(null)
     void loadPayments()
   }, [enrollmentId, loadPayments, open])
@@ -842,6 +846,8 @@ export function EnrollmentPaymentDrawer({
                   <p className="mt-0.5 text-xs text-slate-500">{canDisplayPayments ? `전체 ${payments.length}건 · 합계 ${formatWon(summary.gross)}` : '결제 내역 확인 중'}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                {enrollmentEnded && !enrollment.archived_at && <button type="button" className="admin-button"
+                  disabled={submitting || !paymentsReady} onClick={() => setResumeOpen(true)}>수강 재개</button>}
                 <button
                   type="button"
                   disabled={enrollmentEnded || submitting || !paymentsReady}
@@ -1169,6 +1175,7 @@ export function EnrollmentPaymentDrawer({
       />
 
       <ReceiptNoticeModal receiptNo={receiptNotice} onClose={() => setReceiptNotice(null)} />
+      {resumeOpen && enrollment && <EnrollmentAdminActionDialog enrollmentId={enrollment.id} action="resume" onClose={() => setResumeOpen(false)} />}
     </>
   )
 }

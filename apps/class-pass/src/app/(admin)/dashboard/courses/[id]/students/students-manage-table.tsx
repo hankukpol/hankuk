@@ -21,6 +21,7 @@ const STATUS_FILTER_OPTIONS: Array<{ value: EnrollmentManageStatusFilter; label:
   { value: 'refunded', label: '환불완료' },
   { value: 'cancelled', label: '수강종료' },
   { value: 'suspended', label: '정지' },
+  { value: 'archived', label: '숨긴 명단' },
 ]
 
 function isEnrollmentSuspended(enrollment: Pick<Enrollment, 'status' | 'suspended_at'>) {

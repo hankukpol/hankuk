@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { AssistantChromeMetrics } from "@/components/chat/AssistantChromeMetrics";
+import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import { StaffChatWatcher } from "@/components/chat/StaffChatWatcher";
 import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
@@ -38,6 +38,13 @@ export default async function AssistantLayout({ children, params }: AssistantLay
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <StaffChatDock
+            divisionSlug={params.division}
+            divisionName={division?.name ?? params.division}
+            viewerId={session.id}
+            viewerRole={session.role}
+            enabled={chatEnabled}
+          />
           <AppSwitchMenu role="assistant" divisionSlug={params.division} />
           <form action="/api/auth/logout" method="post" className="shrink-0">
             <button
@@ -55,12 +62,11 @@ export default async function AssistantLayout({ children, params }: AssistantLay
       <AssistantBottomNav
         divisionSlug={params.division}
         phoneSubmissionsEnabled={featureSettings.featureFlags.phoneSubmissions}
-        staffChatEnabled={chatEnabled}
       />
 
-      <AssistantChromeMetrics />
       <StaffChatWatcher
         divisionSlug={params.division}
+        divisionId={division?.id ?? ""}
         divisionName={division?.name ?? params.division}
         viewerId={session.id}
         enabled={chatEnabled}

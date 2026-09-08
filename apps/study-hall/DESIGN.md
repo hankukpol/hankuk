@@ -293,6 +293,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 조건 버튼은 **모두 폭 128px, 최소 높이 44px**, padding 8px 12px, gap 4px, 8px 모서리, `flex-shrink: 0`.
 - 기본 흰색·line 테두리·secondary 글자. 선택은 accent 테두리/글자 + `accent-soft` 배경, `aria-pressed` 또는 `data-active`.
 - 화면이 좁으면 버튼 폭을 글자 길이에 맞춰 줄이지 않고 **줄바꿈**한다. 768px 미만 그룹 기준 폭 260px(128px 두 개 + 4px), `max-width: 100%`.
+- **자습실 이름처럼 길이를 미리 알 수 없는 데이터 라벨에는 `.admin-choice-button-auto`를 함께 준다.** 128px 고정 폭에 넣으면 이름이 두 줄로 쪼개진다. 이 변형은 내용에 맞춰 128~260px로 늘어나고 넘치면 말줄임한다. 한 줄 유지(`white-space: nowrap`)는 §5.12 버튼 규격의 `white-space: normal`을 되돌려야 하므로 정규화 레이어에서 `.admin-shell .admin-choice-button-auto`로 다시 지정한다.
 - **한 줄에 안 들어가는 선택지에는 `.admin-choice-button`을 쓰지 않는다.** 128px 고정 폭이라 제목이 글자 단위로 쪼개진다. 제목·보조설명이 여러 줄인 목록 선택은 `.admin-choice-card`(전체 폭, 세로 배치, 왼쪽 정렬, 선택 시 accent 테두리 + `accent-soft` 배경)를 쓰고 제목은 `.admin-choice-card-title`로 둔다. `button` 안에는 `div`·`p`를 넣을 수 없으므로 자식은 `span`으로 쓴다.
 - 이동만 하는 목록(설정 허브 등)은 선택 버튼이 아니라 `.admin-panel` + `.admin-panel-row.admin-panel-row-link` 평면 목록이다. **카드 격자를 메뉴 템플릿으로 쓰지 않는다**(§5.3).
 **버튼은 세 가지 위계뿐이다.** 화면마다 손으로 색과 여백을 정하면 전부 같은 회색 버튼이 되어 무엇을 눌러야 할지 사라진다.
@@ -357,7 +358,7 @@ tbody tr:last-child td { border-bottom: 0; }
 
 **표에는 페이지 나누기가 없다.** 명단·내역은 전체를 한 번에 표시한다.
 
-예외는 **직원 채팅의 과거 메시지**뿐이다. 대화는 끝없이 쌓이므로 최근 50건만 먼저 보내고 나머지는 `.admin-list-load-more`로 거슬러 올라간다. 목록 **위쪽**에 두고(과거는 위에 있다), 아래 `line-soft` 1px, padding 16px 20px, 버튼은 보조 `.admin-button`이다.
+예외는 **직원 채팅의 과거 메시지**뿐이다. 대화는 끝없이 쌓이므로 최근 50건만 먼저 보내고 나머지는 `.admin-chat-dock-more`로 거슬러 올라간다. 목록 **위쪽**에 두고(과거는 위에 있다) 버튼은 `.admin-button.admin-button-compact`를 쓴다.
 
 나중에 표에 페이지 나누기를 넣는다면 회색 카드 띠가 아니라 평면 footer로 만든다: 표 다음 `margin-top` 16px, 위 `line-soft` 1px, padding 16px 0, 글자 13px secondary, 왼쪽 조회 수·표시 범위, 오른쪽 이전/현재/다음, 컨트롤 최소 높이 44px·8px 모서리. 그때 이 절과 `globals.css`를 함께 갱신한다.
 
@@ -420,22 +421,25 @@ tbody tr:last-child td { border-bottom: 0; }
 
 ---
 
-### 5.13 직원 채팅
+### 5.13 직원 채팅 도크
 
 관리자와 조교가 함께 쓰는 지점 단위 단체방이다. 학생 화면에는 없다.
 
-- **말풍선을 만들지 않는다.** 메시지는 `.admin-panel` 안의 `.admin-panel-row` 목록이다. 좌우로 나누어 정렬하거나 색면을 채우지 않는다. 보낸 사람은 `data-own` 속성으로만 구분한다.
-- 한 행의 구성: `.admin-chat-meta`(이름 `.admin-chat-author` + 역할 `.admin-badge` + 시각, 13px muted) → `.admin-chat-body`(15px, `white-space: pre-wrap`, `overflow-wrap: anywhere`).
-- 삭제된 메시지는 지우지 않고 자리에 남긴다. 본문 대신 `.admin-help`로 `삭제된 메시지`만 표시하고, 서버는 본문을 아예 내려보내지 않는다.
-- 작성창 `.admin-chat-composer`는 `position: sticky`다. **중첩 `100dvh` 스크롤 컨테이너를 만들지 않는다** — 중첩 스크롤과 iOS 키보드, `dvh`가 겹치면 이 UI가 깨진다. 문서 스크롤을 그대로 쓴다.
-- 배경은 반드시 불투명(`--admin-surface`)이고 위쪽 `line` 1px을 둔다. 아래로 지나가는 메시지가 비치면 안 된다.
-- textarea는 44px 한 줄에서 시작해 160px까지 자란다. `resize: none`. 이 규칙은 §5.12 정규화 레이어의 `textarea { min-height: 112px }`보다 **특정도가 높아야** 이기므로 `.admin-shell .admin-chat-composer textarea`로 쓴다.
-- 조교 화면은 하단 탐색이 고정이라 `.admin-chat-composer-assistant`가 `bottom: var(--assistant-bottom-nav-h)`만큼 띄운다. 그 값은 `AssistantChromeMetrics`가 `ResizeObserver`로 실측해 넣는다. **높이를 하드코딩하지 않는다** — 헤더는 지점명 길이에 따라 커진다.
-- **한글 입력**: Enter 전송은 `!event.shiftKey && !event.nativeEvent.isComposing`일 때만이다. `isComposing` 가드가 없으면 전송할 때마다 마지막 자모가 삼켜진다.
-- 안읽음 배지 `.admin-nav-badge`는 검은 레일·하단 탐색 전용이다. `.admin-badge`는 밝은 배경 전용이라 검은 레일에서 읽히지 않는다. 100 이상은 `99+`로 접는다.
-- 최신으로 따라가는 스크롤은 **이미 하단 120px 안에 있을 때만** 한다. 과거를 읽는 중인 사용자를 끌어내리지 않는다.
+**별도 페이지를 두지 않는다.** 헤더의 채팅 아이콘으로 여는 오른쪽 도킹 패널이며, 레이아웃에 상주하므로 어느 화면에서든 열린다. 사이드바·하단 탐색에 메뉴 항목을 만들지 않는다.
 
-관련 파일: [StaffChatRoom.tsx](components/chat/StaffChatRoom.tsx), [StaffChatWatcher.tsx](components/chat/StaffChatWatcher.tsx), [chat-meta.ts](lib/chat-meta.ts)
+- **모달이 아니다.** 어두운 오버레이, 포커스 트랩, 본문 스크롤 잠금을 두지 않는다. 열어 둔 채로 뒤 화면을 계속 쓸 수 있어야 한다. 닫기는 X 버튼과 Escape뿐이다.
+- 패널은 **`.admin-shell` 직속으로 포털**한다. 트리거가 놓인 헤더가 `z-index`로 쌓임 맥락을 만들기 때문에 그 안에 두면 하단 탐색(z-40)이 패널 위로 그려진다. `body`가 아니라 `.admin-shell`로 보내야 §5.12 정규화 레이어가 그대로 적용된다.
+- 768px 이상은 오른쪽 400px 세로 전체(`.admin-chat-dock`), 미만은 전체 화면 시트다. 시트가 하단 탐색을 덮으므로 작성창과 탐색이 겹칠 일이 없다.
+- 트리거 `.admin-chat-trigger`는 44×44, 안읽음은 `.admin-chat-trigger-badge`로 우상단에 붙이고 100 이상은 `99+`로 접는다. 검은 헤더 위에서는 테두리·글자를 헤더에 맞춘다.
+- 구조는 **머리 / 스크롤 본문 / 작성창** 3단 flex다. 스크롤 영역은 `.admin-chat-dock-body` **하나뿐**이며 문서 스크롤과 겹치지 않는다.
+- 메시지는 `.admin-chat-bubble`(1px line, 8px 모서리, 최대 `min(85%, 520px)`, `white-space: pre-wrap`). **내가 보낸 것만 오른쪽 정렬 + `accent-soft` 배경**으로 구분하고, 그 외에는 색으로 사람을 구분하지 않는다.
+- 날짜가 바뀌는 첫 메시지에만 `.admin-chat-day` 구분선을 넣는다.
+- 삭제된 메시지는 지우지 않고 자리에 남긴다. 점선 테두리 `.admin-chat-bubble-deleted`로 `삭제된 메시지`만 표시하고, 서버는 본문을 아예 내려보내지 않는다.
+- textarea는 44px 한 줄에서 시작해 120px까지 자란다(`resize: none`). §5.12의 `textarea { min-height: 112px }`보다 **특정도가 높아야** 이긴다.
+- **한글 입력**: Enter 전송은 `!event.shiftKey && !event.nativeEvent.isComposing`일 때만이다. `isComposing` 가드가 없으면 전송할 때마다 마지막 자모가 삼켜진다.
+- 새 메시지로 따라가는 스크롤은 **이미 하단 120px 안에 있을 때만** 한다. 과거를 읽는 중인 사용자를 끌어내리지 않는다. `이전 메시지 더 보기`로 위를 채운 뒤에는 늘어난 높이만큼 `scrollTop`을 밀어 읽던 위치를 지킨다.
+
+관련 파일: [StaffChatDock.tsx](components/chat/StaffChatDock.tsx), [StaffChatRoom.tsx](components/chat/StaffChatRoom.tsx), [StaffChatWatcher.tsx](components/chat/StaffChatWatcher.tsx), [chat-meta.ts](lib/chat-meta.ts)
 
 ## 6. 모션
 

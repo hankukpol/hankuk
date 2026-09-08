@@ -21,8 +21,7 @@ type StaffChatRoomProps = {
   initialMessages: ChatMessageItem[];
   initialHasMoreBefore: boolean;
   initialSyncedAt: string | null;
-  variant: "admin" | "assistant";
-  /** 레이아웃 감시자가 새 신호를 받을 때마다 올린다. 값이 바뀌면 증분 동기화한다. */
+  /** 도크 감시자가 새 신호를 받을 때마다 올린다. 값이 바뀌면 증분 동기화한다. */
   signalAt?: number;
   connectionMode?: "realtime" | "polling" | "off";
 };
@@ -36,6 +35,7 @@ const ROLE_LABEL: Record<ChatAuthorRole, string> = {
 const PENDING_PREFIX = "pending-";
 const SCROLL_STICKY_THRESHOLD_PX = 120;
 const READ_DEBOUNCE_MS = 1000;
+const COMPOSER_MAX_HEIGHT_PX = 120;
 
 function formatTime(iso: string) {
   const date = new Date(iso);
@@ -44,11 +44,21 @@ function formatTime(iso: string) {
     return "";
   }
 
+  return new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function formatDay(iso: string) {
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
   return new Intl.DateTimeFormat("ko-KR", {
-    month: "numeric",
+    year: "numeric",
+    month: "long",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    weekday: "short",
   }).format(date);
 }
 
@@ -59,7 +69,6 @@ export function StaffChatRoom({
   initialMessages,
   initialHasMoreBefore,
   initialSyncedAt,
-  variant,
   signalAt = 0,
   connectionMode = "off",
 }: StaffChatRoomProps) {
@@ -72,6 +81,7 @@ export function StaffChatRoom({
 
   const syncedAtRef = useRef<string | null>(initialSyncedAt);
   const mountedRef = useRef(true);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const readTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, confirmDialog } = useConfirmDialog();
@@ -90,7 +100,6 @@ export function StaffChatRoom({
     };
   }, []);
 
-  // 권한 상태는 클라이언트에서만 알 수 있으므로 마운트 후에 읽는다.
   useEffect(() => {
     setPermission(getBrowserNotificationPermission());
   }, []);
@@ -104,7 +113,7 @@ export function StaffChatRoom({
       body: JSON.stringify({}),
       cache: "no-store",
     }).catch(() => {
-      // 읽음 처리 실패는 사용자에게 알릴 일이 아니다. 다음 기회에 다시 보낸다.
+      // 읽음 처리 실패는 알릴 일이 아니다. 다음 기회에 다시 보낸다.
     });
   }, [basePath]);
 
@@ -154,11 +163,10 @@ export function StaffChatRoom({
       applyIncoming(payload.chatMessages ?? []);
       scheduleMarkRead();
     } catch {
-      // 동기화 실패는 조용히 넘긴다. 다음 신호나 폴링이 다시 시도한다.
+      // 다음 신호나 폴링이 다시 시도한다.
     }
   }, [applyIncoming, basePath, scheduleMarkRead]);
 
-  // 감시자 신호마다 증분 동기화
   useEffect(() => {
     if (signalAt === 0) {
       return;
@@ -167,7 +175,6 @@ export function StaffChatRoom({
     void syncSince();
   }, [signalAt, syncSince]);
 
-  // 마운트 직후와 창이 다시 포커스될 때 읽음 처리
   useEffect(() => {
     markRead();
 
@@ -183,19 +190,29 @@ export function StaffChatRoom({
     };
   }, [markRead, syncSince]);
 
-  // 이미 하단을 보고 있을 때만 최신으로 따라간다. 과거를 읽는 중이면 끌어내리지 않는다.
+  // 열자마자 맨 아래에서 시작한다.
+  useEffect(() => {
+    const body = bodyRef.current;
+
+    if (body) {
+      body.scrollTop = body.scrollHeight;
+    }
+  }, []);
+
+  // 새 메시지가 와도 과거를 읽는 중이면 끌어내리지 않는다.
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
   useEffect(() => {
-    if (!lastMessageId) {
+    const body = bodyRef.current;
+
+    if (!body || !lastMessageId) {
       return;
     }
 
-    const distanceFromBottom =
-      document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+    const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
 
     if (distanceFromBottom <= SCROLL_STICKY_THRESHOLD_PX) {
-      window.scrollTo({ top: document.documentElement.scrollHeight });
+      body.scrollTop = body.scrollHeight;
     }
   }, [lastMessageId]);
 
@@ -207,6 +224,8 @@ export function StaffChatRoom({
     }
 
     setIsLoadingOlder(true);
+    const body = bodyRef.current;
+    const previousHeight = body?.scrollHeight ?? 0;
 
     try {
       const response = await fetch(`${basePath}/messages?before=${encodeURIComponent(oldest.id)}`, {
@@ -228,6 +247,13 @@ export function StaffChatRoom({
 
       setMessages((current) => mergeChatMessages(current, payload.chatMessages ?? []));
       setHasMoreBefore(Boolean(payload.hasMoreBefore));
+
+      // 위에 내용이 붙은 만큼 스크롤을 밀어 읽던 위치를 지킨다.
+      requestAnimationFrame(() => {
+        if (body) {
+          body.scrollTop += body.scrollHeight - previousHeight;
+        }
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "이전 메시지를 불러오지 못했습니다.");
     } finally {
@@ -236,6 +262,14 @@ export function StaffChatRoom({
       }
     }
   }, [basePath, isLoadingOlder, messages]);
+
+  const resetComposerHeight = useCallback(() => {
+    const node = composerRef.current;
+
+    if (node) {
+      node.style.height = "auto";
+    }
+  }, []);
 
   const handleSend = useCallback(async () => {
     const body = draft.trim();
@@ -261,6 +295,7 @@ export function StaffChatRoom({
     };
 
     setDraft("");
+    resetComposerHeight();
     setIsSending(true);
     setMessages((current) => [...current, optimistic]);
 
@@ -306,7 +341,7 @@ export function StaffChatRoom({
         setIsSending(false);
       }
     }
-  }, [basePath, draft, isSending, viewerId, viewerRole]);
+  }, [basePath, draft, isSending, resetComposerHeight, viewerId, viewerRole]);
 
   const handleDelete = useCallback(
     async (message: ChatMessageItem) => {
@@ -367,39 +402,57 @@ export function StaffChatRoom({
     [handleSend],
   );
 
-  const visibleCount = useMemo(
-    () => messages.filter((message) => !message.isDeleted).length,
-    [messages],
-  );
+  const handleDraftChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(event.target.value.slice(0, CHAT_MESSAGE_MAX_LENGTH));
+
+    const node = event.target;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, COMPOSER_MAX_HEIGHT_PX)}px`;
+  }, []);
+
+  /** 날짜가 바뀌는 첫 메시지에만 구분선을 붙인다. */
+  const dayBreaks = useMemo(() => {
+    const breaks = new Set<string>();
+    let previousDay = "";
+
+    for (const message of messages) {
+      const day = message.createdAt.slice(0, 10);
+
+      if (day !== previousDay) {
+        breaks.add(message.id);
+        previousDay = day;
+      }
+    }
+
+    return breaks;
+  }, [messages]);
 
   return (
     <>
-      {permission === "default" ? (
-        <div className="admin-notice flex flex-wrap items-center justify-between gap-3">
-          <span>다른 화면을 보고 있어도 새 메시지를 알려드립니다.</span>
-          <button type="button" className="admin-button" onClick={handleEnableNotifications}>
-            브라우저 알림 허용
-          </button>
-        </div>
-      ) : null}
-
-      {connectionMode === "polling" ? (
-        <div className="admin-notice admin-notice-warning">
-          실시간 연결이 끊겨 주기적으로 새 메시지를 확인하고 있습니다. 도착이 몇 초 늦을 수 있습니다.
-        </div>
-      ) : null}
-
-      <section className="admin-panel">
-        <div className="admin-panel-header">
-          <h2 className="admin-section-title">전체 대화</h2>
-          <span className="admin-tab-count">{visibleCount}건</span>
-        </div>
-
-        {hasMoreBefore ? (
-          <div className="admin-list-load-more">
+      <div className="admin-chat-dock-body" ref={bodyRef}>
+        {permission === "default" ? (
+          <div className="admin-notice admin-chat-dock-notice">
+            <span>다른 화면을 보고 있어도 새 메시지를 알려드립니다.</span>
             <button
               type="button"
-              className="admin-button"
+              className="admin-button admin-button-compact"
+              onClick={handleEnableNotifications}
+            >
+              알림 허용
+            </button>
+          </div>
+        ) : null}
+
+        {connectionMode === "polling" ? (
+          /* 포털을 거쳐 들어오면 실시간이 원래 없다. 고장이 아니므로 경고색을 쓰지 않는다. */
+          <p className="admin-help admin-chat-dock-status">새 메시지를 15초마다 확인합니다.</p>
+        ) : null}
+
+        {hasMoreBefore ? (
+          <div className="admin-chat-dock-more">
+            <button
+              type="button"
+              className="admin-button admin-button-compact"
               onClick={handleLoadOlder}
               disabled={isLoadingOlder}
             >
@@ -420,44 +473,46 @@ export function StaffChatRoom({
               canDeleteChatMessage({ id: viewerId, role: viewerRole }, message);
 
             return (
-              <article key={message.id} className="admin-panel-row" data-own={isOwn}>
-                <div className="min-w-0 flex-1">
+              <div key={message.id}>
+                {dayBreaks.has(message.id) ? (
+                  <p className="admin-chat-day">{formatDay(message.createdAt)}</p>
+                ) : null}
+
+                <article className="admin-chat-message" data-own={isOwn}>
                   <p className="admin-chat-meta">
                     <span className="admin-chat-author">{message.authorName}</span>
-                    {message.authorRole ? (
+                    {message.authorRole && !isOwn ? (
                       <span className="admin-badge">{ROLE_LABEL[message.authorRole]}</span>
                     ) : null}
-                    <span>{formatTime(message.createdAt)}</span>
-                    {isPending ? <span>보내는 중…</span> : null}
+                    <span>{isPending ? "보내는 중…" : formatTime(message.createdAt)}</span>
+                    {canDelete ? (
+                      <button
+                        type="button"
+                        className="admin-chat-delete"
+                        onClick={() => void handleDelete(message)}
+                      >
+                        삭제
+                      </button>
+                    ) : null}
                   </p>
 
                   {message.isDeleted ? (
-                    <p className="admin-help">삭제된 메시지</p>
+                    <p className="admin-chat-bubble admin-chat-bubble-deleted">삭제된 메시지</p>
                   ) : (
-                    <p className="admin-chat-body">{message.body}</p>
+                    <p className="admin-chat-bubble">{message.body}</p>
                   )}
-                </div>
-
-                {canDelete ? (
-                  <button
-                    type="button"
-                    className="admin-button admin-button-compact"
-                    onClick={() => void handleDelete(message)}
-                  >
-                    삭제
-                  </button>
-                ) : null}
-              </article>
+                </article>
+              </div>
             );
           })
         )}
-      </section>
+      </div>
 
-      <div className={`admin-chat-composer${variant === "assistant" ? " admin-chat-composer-assistant" : ""}`}>
+      <div className="admin-chat-dock-composer">
         <textarea
           ref={composerRef}
           value={draft}
-          onChange={(event) => setDraft(event.target.value.slice(0, CHAT_MESSAGE_MAX_LENGTH))}
+          onChange={handleDraftChange}
           onKeyDown={handleKeyDown}
           placeholder="메시지를 입력하세요"
           title="Enter 로 보내고 Shift+Enter 로 줄을 바꿉니다."
@@ -470,7 +525,7 @@ export function StaffChatRoom({
           onClick={() => void handleSend()}
           disabled={isSending || draft.trim().length === 0}
         >
-          {isSending ? "보내는 중…" : "보내기"}
+          보내기
         </button>
       </div>
 

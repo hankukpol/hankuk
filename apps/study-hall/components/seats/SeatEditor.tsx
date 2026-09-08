@@ -937,7 +937,7 @@ export function SeatEditor({
                 <span>
                   <span className="admin-label block">운영 상태</span>
                   <span className="admin-help block">
-                    비활성 자습실은 좌석도에만 보이고 신규 배정은 막습니다.
+                    비활성 자습실은 좌석 현황·출석부에서 숨겨집니다. 배정된 학생이 남아 있으면 계속 보입니다.
                   </span>
                 </span>
                 <input
@@ -1022,7 +1022,7 @@ export function SeatEditor({
             <span>
               <span className="admin-label block">운영 상태</span>
               <span className="admin-help block">
-                비활성 자습실은 목록에는 남지만 신규 배정은 막습니다.
+                비활성 자습실은 좌석 현황·출석부에서 숨겨집니다. 배정된 학생이 남아 있으면 계속 보입니다.
               </span>
             </span>
             <input

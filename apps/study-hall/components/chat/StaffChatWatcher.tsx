@@ -1,12 +1,14 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 
 import { playNotificationBeep, showBrowserNotification } from "@/lib/browser-notify";
 import { nextPollIntervalMs, shouldNotifyForMessage } from "@/lib/chat-meta";
+import { subscribeToChatSignal } from "@/lib/supabase/realtime";
 import {
   bumpChatSignal,
+  isChatDockOpen,
+  requestOpenChat,
   setChatConnectionMode,
   setChatLatestMessageId,
   setChatUnreadCount,
@@ -14,6 +16,7 @@ import {
 
 type StaffChatWatcherProps = {
   divisionSlug: string;
+  divisionId: string;
   divisionName: string;
   viewerId: string;
   enabled: boolean;
@@ -39,21 +42,19 @@ const NOTIFIED_CACHE_LIMIT = 200;
  */
 export function StaffChatWatcher({
   divisionSlug,
+  divisionId,
   divisionName,
   viewerId,
   enabled,
   initialUnreadCount,
 }: StaffChatWatcherProps) {
-  const pathname = usePathname();
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failuresRef = useRef(0);
   const notifiedRef = useRef<Set<string>>(new Set());
   const isFirstPollRef = useRef(true);
-  const pathnameRef = useRef(pathname);
-
-  pathnameRef.current = pathname;
-
+  const modeRef = useRef<"realtime" | "polling">("polling");
+  const pollRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     mountedRef.current = true;
 
@@ -73,7 +74,8 @@ export function StaffChatWatcher({
     }
 
     setChatUnreadCount(initialUnreadCount);
-    setChatConnectionMode("polling");
+    // 연결 상태는 실시간 구독 결과가 나온 뒤에 정한다.
+    // 먼저 polling 으로 표시하면 첫 로드마다 안내가 깜빡였다 사라진다.
   }, [enabled, initialUnreadCount]);
 
   const remember = useCallback((messageId: string) => {
@@ -121,8 +123,6 @@ export function StaffChatWatcher({
         if (isFirstPollRef.current) {
           remember(latest.id);
         } else if (isNew) {
-          const chatPath = pathnameRef.current?.endsWith("/chat") ?? false;
-
           if (
             shouldNotifyForMessage({
               authorId: latest.authorId,
@@ -130,16 +130,16 @@ export function StaffChatWatcher({
               viewerId,
               isDeleted: false,
               isHidden: document.visibilityState === "hidden",
-              isOnChatPage: chatPath,
+              // 채팅은 별도 페이지가 아니라 도크다. 열어놓고 보는 중이면 알리지 않는다.
+              isOnChatPage: isChatDockOpen(),
               alreadyNotified: false,
             })
           ) {
             playNotificationBeep();
             showBrowserNotification(`${divisionName} 직원 채팅`, `${latest.authorName}: ${latest.preview}`, {
               tag: "staff-chat",
-              onClick: () => {
-                window.location.href = `${pathnameRef.current?.includes("/assistant") ? `/${divisionSlug}/assistant` : `/${divisionSlug}/admin`}/chat`;
-              },
+              // 이동하지 않고 그 자리에서 도크를 연다.
+              onClick: requestOpenChat,
             });
           }
 
@@ -153,6 +153,33 @@ export function StaffChatWatcher({
       failuresRef.current += 1;
     }
   }, [divisionName, divisionSlug, remember, viewerId]);
+
+  // 렌더 중에 ref 를 건드리지 않는다.
+  useEffect(() => {
+    pollRef.current = poll;
+  }, [poll]);
+
+  // 실시간 구독. 붙으면 폴링은 안전망으로 물러나고, 실패하면 폴링이 그대로 주 경로가 된다.
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const unsubscribe = subscribeToChatSignal(divisionId, {
+      onSignal: () => {
+        void pollRef.current();
+      },
+      onStatus: (status) => {
+        modeRef.current = status === "connected" ? "realtime" : "polling";
+        setChatConnectionMode(modeRef.current);
+      },
+    });
+
+    return () => {
+      unsubscribe();
+      modeRef.current = "polling";
+    };
+  }, [divisionId, enabled]);
 
   // 단일 타이머. 간격은 (연결 상태, 탭 표시 여부, 연속 실패)로 정한다.
   useEffect(() => {
@@ -168,7 +195,7 @@ export function StaffChatWatcher({
       }
 
       const visibility = document.visibilityState === "hidden" ? "hidden" : "visible";
-      const delay = nextPollIntervalMs("polling", visibility, failuresRef.current);
+      const delay = nextPollIntervalMs(modeRef.current, visibility, failuresRef.current);
 
       if (delay === null) {
         return;

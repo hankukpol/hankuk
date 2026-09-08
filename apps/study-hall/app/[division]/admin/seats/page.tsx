@@ -1,7 +1,11 @@
 import { SeatStatusBoard } from "@/components/seats/SeatStatusBoard";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
-import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
+import {
+  filterOperationalStudyRooms,
+  getSeatLayout,
+  listStudyRooms,
+} from "@/lib/services/seat.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 import { listStudents } from "@/lib/services/student.service";
 
@@ -17,13 +21,14 @@ export default async function SeatStatusPage({ params }: Props) {
     .toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
     .slice(0, 10);
 
-  const [rooms, students, todaySnapshot, featureSettings] = await Promise.all([
+  const [allRooms, students, todaySnapshot, featureSettings] = await Promise.all([
     listStudyRooms(params.division),
     listStudents(params.division),
     getAttendanceSnapshot(params.division, today),
     getDivisionFeatureSettings(params.division),
   ]);
 
+  const rooms = filterOperationalStudyRooms(allRooms);
   const layout = await getSeatLayout(params.division, rooms[0]?.id);
 
   return (

@@ -208,6 +208,16 @@ function sortRooms<T extends { displayOrder: number; name: string }>(rooms: T[])
   );
 }
 
+/**
+ * 운영 화면(좌석 현황·출석부·휴대폰)에 보일 자습실만 남긴다.
+ * 비활성 자습실은 숨기되, 아직 배정된 학생이 있으면 남긴다.
+ * 그 학생이 화면에서 조용히 사라지면 출석 확인이 누락되기 때문이다.
+ * 설정 화면은 이 필터를 쓰지 않는다. 거기서는 비활성 자습실도 관리해야 한다.
+ */
+export function filterOperationalStudyRooms(rooms: StudyRoomItem[]) {
+  return rooms.filter((room) => room.isActive || room.assignedStudentsCount > 0);
+}
+
 function sortSeats<T extends { positionY: number; positionX: number; label: string }>(seats: T[]) {
   return [...seats].sort(
     (left, right) =>

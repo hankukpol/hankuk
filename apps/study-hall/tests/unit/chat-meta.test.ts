@@ -62,8 +62,12 @@ test("notifications skip own messages, tombstones, repeats and the open chat pag
   assert.equal(shouldNotifyForMessage({ ...base, alreadyNotified: true }), false, "이미 알림");
   assert.equal(shouldNotifyForMessage({ ...base, isOnChatPage: true }), false, "채팅 화면을 보는 중");
 
-  // 채팅 화면이어도 탭이 가려져 있으면 알린다.
+  // 도크를 열어놓고 보는 중이어도 탭이 가려져 있으면 알린다.
   assert.equal(shouldNotifyForMessage({ ...base, isOnChatPage: true, isHidden: true }), true);
+
+  // 채팅은 별도 페이지가 아니라 도크다. isOnChatPage 는 "도크가 열려 있는가"를 뜻한다.
+  // 도크를 닫아둔 채 다른 메뉴를 보고 있으면 반드시 알려야 한다.
+  assert.equal(shouldNotifyForMessage({ ...base, isOnChatPage: false, isHidden: false }), true);
 
   // 작성자 계정이 삭제되어 authorId 가 null 이어도 알림은 살아 있어야 한다.
   assert.equal(shouldNotifyForMessage({ ...base, authorId: null }), true);

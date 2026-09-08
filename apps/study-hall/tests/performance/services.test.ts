@@ -8,6 +8,8 @@ import * as dateUtils from "../../lib/date-utils";
 import * as studentMeta from "../../lib/student-meta";
 import * as policyMeta from "../../lib/management-policy";
 import * as recordIndex from "../../lib/record-index";
+import * as chatMeta from "../../lib/chat-meta";
+import * as chatSchemas from "../../lib/chat-schemas";
 import { mapPolicy } from "../../scripts/restart-police-policy";
 import type { StudentListItem } from "../../lib/services/student.service";
 import type { ReportDailyPeriodRow, ReportTrendPoint } from "../../lib/services/report.service";
@@ -30,7 +32,9 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>, int
     "@/lib/student-meta": studentMeta,
     "@/lib/management-policy": policyMeta,
     "@/lib/record-index": recordIndex,
-    "@/lib/errors": { notFound: (message: string) => new Error(message), badRequest: (message: string) => new Error(message), conflict: (message: string) => new Error(message) },
+    "@/lib/chat-meta": chatMeta,
+    "@/lib/chat-schemas": chatSchemas,
+    "@/lib/errors": { notFound: (message: string) => new Error(message), badRequest: (message: string) => new Error(message), conflict: (message: string) => new Error(message), forbidden: (message: string) => new Error(message) },
     ...dependencies,
   };
   const testModule = { exports: {} };
@@ -386,4 +390,141 @@ test("mock seat editor rejects unknown IDs without mutation and retains valid ed
   const saved = await service.saveSeatEditorLayout("police", { roomId: "room", seats: [{ ...seat, label: "B" }] });
   assert.equal(saved.seats[0].id, "seat");
   assert.equal(saved.seats[0].label, "B");
+});
+
+type ChatService = typeof import("../../lib/services/chat.service");
+
+/** chat.service 의 DB 경로를 실제 코드 그대로 돌린다. mock 경로는 타지 않는다. */
+function loadChatService(prisma: unknown): ChatService {
+  return loadService<ChatService>("chat", {
+    "@/lib/mock-data": { isMockMode: () => false },
+    "@/lib/service-helpers": {
+      getPrismaClient: async () => prisma,
+      getDivisionBySlugOrThrow: async () => ({ id: "div-police" }),
+    },
+  });
+}
+
+const ACTOR_ADMIN = { id: "admin-1", role: "ADMIN" as const, name: "관리자" };
+const ACTOR_ASSISTANT = { id: "assistant-1", role: "ASSISTANT" as const, name: "조교" };
+
+test("chat unread counts messages whose author account was deleted", async () => {
+  // 회귀: NOT: { authorId } 로 쓰면 author_id 가 NULL 인 행에서
+  // NOT (NULL = x) 가 NULL 이 되어 통째로 빠진다. 퇴사자가 남긴 메시지가 영원히 안읽음에서 사라진다.
+  let countWhere: Record<string, unknown> = {};
+  const chat = loadChatService({
+    chatReadState: { findUnique: async () => ({ lastReadAt: new Date(0) }) },
+    chatMessage: {
+      count: async ({ where }: { where: Record<string, unknown> }) => {
+        countWhere = where;
+        return 0;
+      },
+      findFirst: async () => null,
+    },
+  });
+
+  await chat.getChatUnreadSummary("police", ACTOR_ADMIN);
+
+  assert.equal(countWhere.divisionId, "div-police", "직렬 필터가 빠지면 안 된다");
+  assert.equal(countWhere.NOT, undefined, "NOT 은 NULL 작성자를 삼킨다");
+  assert.deepEqual(
+    countWhere.OR,
+    [{ authorId: null }, { authorId: { not: ACTOR_ADMIN.id } }],
+    "작성자가 없는 메시지도 안읽음에 포함되어야 한다",
+  );
+});
+
+test("chat read pointer only ever moves forward", async () => {
+  // 회귀: upsert 의 update 로 바로 쓰면 오래된 메시지 id 를 보냈을 때 값이 뒤로 가고
+  // 이미 읽은 메시지가 다시 안읽음으로 살아난다.
+  const calls: Array<{ op: string; payload: Record<string, unknown> }> = [];
+  const anchor = new Date("2026-09-09T00:00:00.000Z");
+  const chat = loadChatService({
+    chatMessage: {
+      findFirst: async () => ({ createdAt: anchor }),
+      count: async () => 0,
+    },
+    chatReadState: {
+      findUnique: async () => ({ lastReadAt: anchor }),
+      upsert: async (payload: Record<string, unknown>) => {
+        calls.push({ op: "upsert", payload });
+      },
+      updateMany: async (payload: Record<string, unknown>) => {
+        calls.push({ op: "updateMany", payload });
+      },
+    },
+  });
+
+  await chat.markChatRead("police", ACTOR_ADMIN, { lastReadMessageId: "m1" });
+
+  const upsert = calls.find((call) => call.op === "upsert");
+  const updateMany = calls.find((call) => call.op === "updateMany");
+
+  assert.deepEqual(upsert?.payload.update, {}, "upsert 는 기존 값을 덮어쓰지 않는다");
+  assert.deepEqual(
+    (updateMany?.payload.where as Record<string, unknown>).lastReadAt,
+    { lt: anchor },
+    "더 오래된 값일 때만 전진시킨다",
+  );
+});
+
+test("chat delete refuses an assistant touching someone else's message without writing", async () => {
+  const writes: string[] = [];
+  const target = { id: "m1", divisionId: "div-police", authorId: "admin-1", authorName: "관리자", body: "x", createdAt: new Date(), updatedAt: new Date(), deletedAt: null, deletedById: null, author: null, deletedBy: null };
+  const chat = loadChatService({
+    chatMessage: {
+      findFirst: async () => target,
+      update: async () => {
+        writes.push("update");
+        return target;
+      },
+    },
+  });
+
+  await assert.rejects(() => chat.deleteChatMessage("police", ACTOR_ASSISTANT, "m1"));
+  assert.deepEqual(writes, [], "거부된 삭제는 쓰기를 남기지 않는다");
+});
+
+test("chat delete is idempotent and keeps the first deleter", async () => {
+  const writes: string[] = [];
+  const deletedAt = new Date("2026-09-09T00:00:00.000Z");
+  const tombstone = { id: "m1", divisionId: "div-police", authorId: "someone", authorName: "작성자", body: "숨겨져야 한다", createdAt: deletedAt, updatedAt: deletedAt, deletedAt, deletedById: "first-deleter", author: null, deletedBy: { name: "처음 지운 사람" } };
+  const chat = loadChatService({
+    chatMessage: {
+      findFirst: async () => tombstone,
+      update: async () => {
+        writes.push("update");
+        return tombstone;
+      },
+    },
+  });
+
+  const result = await chat.deleteChatMessage("police", ACTOR_ADMIN, "m1");
+
+  assert.deepEqual(writes, [], "이미 삭제된 메시지를 다시 쓰지 않는다");
+  assert.equal(result.deletedByName, "처음 지운 사람");
+  assert.equal(result.body, "", "삭제된 메시지 본문은 내려보내지 않는다");
+  assert.equal(result.isDeleted, true);
+});
+
+test("chat since-sync scopes to the division and carries tombstones", async () => {
+  // 소프트 삭제는 updatedAt 만 올린다. createdAt 기준으로 동기화하면 삭제를 영영 못 받는다.
+  let where: Record<string, unknown> = {};
+  const deletedAt = new Date("2026-09-09T01:00:00.000Z");
+  const chat = loadChatService({
+    chatMessage: {
+      findMany: async (args: { where: Record<string, unknown> }) => {
+        where = args.where;
+        return [{ id: "m1", divisionId: "div-police", authorId: null, authorName: "퇴사자", body: "삭제됨", createdAt: deletedAt, updatedAt: deletedAt, deletedAt, deletedById: null, author: null, deletedBy: null }];
+      },
+    },
+  });
+
+  const page = await chat.listChatMessages("police", ACTOR_ADMIN, { since: "2026-09-09T00:00:00.000Z" });
+
+  assert.equal(where.divisionId, "div-police", "직렬 필터가 빠지면 안 된다");
+  assert.ok(where.updatedAt, "동기화 커서는 updatedAt 이어야 한다");
+  assert.equal(where.createdAt, undefined, "createdAt 기준이면 자리표시를 놓친다");
+  assert.equal(page.chatMessages[0].isDeleted, true);
+  assert.equal(page.syncedAt, deletedAt.toISOString());
 });

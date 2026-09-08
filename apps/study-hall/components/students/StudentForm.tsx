@@ -675,7 +675,7 @@ export function StudentForm({
                     key={room.id}
                     type="button"
                     onClick={() => setSelectedRoomId(room.id)}
-                    className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
+                    className="admin-choice-button admin-choice-button-auto" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
                   >
                     {room.name}
                   </button>

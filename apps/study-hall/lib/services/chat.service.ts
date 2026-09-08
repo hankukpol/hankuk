@@ -201,8 +201,14 @@ export async function listChatMessages(
       return buildPage(changed, false);
     }
 
-    const cutoffIndex = options.before ? all.findIndex((message) => message.id === options.before) : all.length;
-    const upper = cutoffIndex === -1 ? all.length : cutoffIndex;
+    if (options.before && !all.some((message) => message.id === options.before)) {
+      // DB 경로와 같이 404 로 알린다. 조용히 마지막 페이지를 돌려주면 목록이 어긋난다.
+      throw notFound("기준 메시지를 찾을 수 없습니다.");
+    }
+
+    const upper = options.before
+      ? all.findIndex((message) => message.id === options.before)
+      : all.length;
     const start = Math.max(0, upper - limit);
 
     return buildPage(all.slice(start, upper), start > 0);
@@ -329,11 +335,7 @@ export async function createChatMessage(
     },
   });
 
-  await prisma.chatReadState.upsert({
-    where: { divisionId_adminId: { divisionId: division.id, adminId: actor.id } },
-    create: { divisionId: division.id, adminId: actor.id, lastReadAt: record.createdAt },
-    update: { lastReadAt: record.createdAt },
-  });
+  await advanceReadState(prisma, division.id, actor.id, record.createdAt);
 
   return serializeChatMessage(record, record.author, null);
 }
@@ -448,7 +450,9 @@ export async function getChatUnreadSummary(
         divisionId: division.id,
         deletedAt: null,
         createdAt: { gt: lastReadAt },
-        NOT: { authorId: actor.id },
+        // NOT: { authorId } 로 쓰면 author_id 가 NULL 인 행에서 NOT (NULL = x) 가 NULL 이 되어
+        // 통째로 빠진다. 계정이 삭제된 사람의 메시지도 안읽음으로 세어야 한다.
+        OR: [{ authorId: null }, { authorId: { not: actor.id } }],
       },
     }),
     prisma.chatMessage.findFirst({
@@ -519,13 +523,32 @@ export async function markChatRead(
     lastReadAt = anchor.createdAt;
   }
 
-  await prisma.chatReadState.upsert({
-    where: { divisionId_adminId: { divisionId: division.id, adminId: actor.id } },
-    create: { divisionId: division.id, adminId: actor.id, lastReadAt },
-    update: { lastReadAt },
-  });
+  await advanceReadState(prisma, division.id, actor.id, lastReadAt);
 
   return getChatUnreadSummary(divisionSlug, actor);
+}
+
+/**
+ * 읽은 시각을 앞으로만 전진시킨다.
+ * upsert 의 update 로 바로 쓰면 오래된 메시지 id 를 보냈을 때 값이 뒤로 가고,
+ * 이미 읽은 메시지가 다시 안읽음으로 살아난다.
+ */
+async function advanceReadState(
+  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
+  divisionId: string,
+  adminId: string,
+  lastReadAt: Date,
+) {
+  await prisma.chatReadState.upsert({
+    where: { divisionId_adminId: { divisionId, adminId } },
+    create: { divisionId, adminId, lastReadAt },
+    update: {},
+  });
+
+  await prisma.chatReadState.updateMany({
+    where: { divisionId, adminId, lastReadAt: { lt: lastReadAt } },
+    data: { lastReadAt },
+  });
 }
 
 /** mock 상태의 읽음 기록을 만들거나 앞으로만 전진시킨다. */

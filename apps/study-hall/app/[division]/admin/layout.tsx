@@ -35,10 +35,13 @@ export default async function AdminLayout({ children, params }: AdminLayoutProps
       divisionName={division.name}
       divisionColor={division.color}
       adminName={session.name}
+      viewerId={session.id}
+      viewerRole={session.role}
       featureFlags={featureSettings.featureFlags}
     >
       <StaffChatWatcher
         divisionSlug={division.slug}
+        divisionId={division.id}
         divisionName={division.name}
         viewerId={session.id}
         enabled={chatEnabled}

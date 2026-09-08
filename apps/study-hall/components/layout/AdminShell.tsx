@@ -6,6 +6,7 @@ import { LogOut, Menu, X } from "lucide-react";
 
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
+import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 
 type AdminShellProps = {
@@ -14,6 +15,8 @@ type AdminShellProps = {
   divisionName: string;
   divisionColor: string;
   adminName: string;
+  viewerId: string;
+  viewerRole: "SUPER_ADMIN" | "ADMIN" | "ASSISTANT";
   featureFlags: DivisionFeatureFlags;
 };
 
@@ -27,6 +30,8 @@ export function AdminShell({
   divisionName,
   divisionColor,
   adminName,
+  viewerId,
+  viewerRole,
   featureFlags,
 }: AdminShellProps) {
   const router = useRouter();
@@ -132,6 +137,14 @@ export function AdminShell({
         <main className="admin-main">
           <div className="admin-content-frame">
             <div className="admin-utility-row">
+              {/* 채팅 도크는 화면당 하나만 둔다. 두 벌을 렌더하면 열림 상태가 갈린다. */}
+              <StaffChatDock
+                divisionSlug={divisionSlug}
+                divisionName={divisionName}
+                viewerId={viewerId}
+                viewerRole={viewerRole}
+                enabled={featureFlags.staffChat}
+              />
               <AppSwitchMenu role="admin" divisionSlug={divisionSlug} />
             </div>
             {children}

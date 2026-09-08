@@ -468,71 +468,53 @@ body {
   }
 
   /* ------------------------------------------------------------------
-     직원 채팅 (DESIGN.md 5.13)
-     말풍선을 만들지 않는다. 메시지는 .admin-panel-row 목록이고
-     아래 규칙은 작성창과 목록 더보기만 담당한다.
+     직원 채팅 도크 (DESIGN.md 5.13)
+     별도 페이지가 아니라 헤더 아이콘으로 여는 오른쪽 도킹 패널이다.
+     모달이 아니므로 오버레이도 포커스 트랩도 두지 않는다.
      ------------------------------------------------------------------ */
 
-  .admin-chat-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    color: var(--admin-text-muted);
-    font-size: var(--admin-type-caption);
-    line-height: 1.3;
-  }
-
-  .admin-chat-author {
-    color: var(--admin-text);
-    font-weight: 600;
-  }
-
-  .admin-chat-body {
-    margin-top: 4px;
-    color: var(--admin-text);
-    font-size: var(--admin-type-body);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  .admin-chat-composer {
-    position: sticky;
-    bottom: 0;
-    z-index: 20;
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    border-top: 1px solid var(--admin-line);
-    /* 불투명해야 아래로 지나가는 메시지가 비치지 않는다. */
-    background: var(--admin-surface);
-    padding: 12px 0;
-  }
-
-  /* 조교 화면은 하단 탐색이 고정돼 있어 그만큼 띄운다. 높이는 런타임에서 잰다. */
-  .admin-chat-composer-assistant {
-    bottom: var(--assistant-bottom-nav-h, 56px);
-  }
-
-  .admin-chat-composer textarea {
-    flex: 1;
-  }
-
-  .admin-chat-composer .admin-button {
+  .admin-chat-trigger {
+    position: relative;
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
     flex-shrink: 0;
-  }
-
-  /* 목록 위쪽의 이전 페이지 불러오기 (DESIGN.md 5.9) */
-  .admin-list-load-more {
-    display: flex;
+    align-items: center;
     justify-content: center;
-    border-bottom: 1px solid var(--admin-line-soft);
-    padding: 16px 20px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+    color: var(--admin-text-secondary);
+    transition: background-color 150ms ease-out, color 150ms ease-out;
   }
 
-  /* 검은 레일·하단 탐색용 안읽음 알약. .admin-badge 는 밝은 배경 전용이라 쓸 수 없다. */
-  .admin-nav-badge {
+  .admin-chat-trigger:hover {
+    background: var(--admin-surface-soft);
+    color: var(--admin-text);
+  }
+
+  .admin-chat-trigger[aria-expanded="true"] {
+    border-color: var(--admin-accent);
+    background: var(--admin-accent-soft);
+    color: var(--admin-accent);
+  }
+
+  /* 검은 헤더 위에서는 테두리와 바탕을 헤더에 맞춘다. */
+  .admin-mobile-header .admin-chat-trigger {
+    border-color: rgb(255 255 255 / 0.25);
+    background: transparent;
+    color: var(--admin-surface);
+  }
+
+  .admin-mobile-header .admin-chat-trigger:hover {
+    background: rgb(255 255 255 / 0.12);
+    color: var(--admin-surface);
+  }
+
+  .admin-chat-trigger-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
     display: inline-flex;
     min-width: 20px;
     height: 20px;
@@ -548,16 +530,156 @@ body {
     line-height: 1;
   }
 
-  .admin-sidebar-link .admin-nav-badge {
-    margin-left: auto;
+  .admin-chat-dock {
+    position: fixed;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--admin-line);
+    background: var(--admin-surface);
+    box-shadow: var(--admin-dialog-shadow);
+    /* 모바일은 전체 화면 시트 */
+    inset: 0;
   }
 
-  .admin-nav-badge-floating {
-    position: absolute;
-    top: 2px;
-    right: 50%;
-    transform: translateX(18px);
+  .admin-chat-dock-head {
+    display: flex;
+    min-height: 56px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--admin-line);
+    padding: 12px 12px 12px 20px;
+    background: var(--admin-surface-soft);
   }
+
+  .admin-chat-dock-title {
+    color: var(--admin-text);
+    font-size: var(--admin-type-section);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  /* 하나뿐인 스크롤 영역. 문서 스크롤과 겹치지 않는다. */
+  .admin-chat-dock-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+
+  .admin-chat-dock-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .admin-chat-dock-status {
+    margin-bottom: 12px;
+    text-align: center;
+  }
+
+  .admin-chat-dock-more {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 16px;
+  }
+
+  .admin-chat-day {
+    margin: 16px 0 12px;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    text-align: center;
+  }
+
+  .admin-chat-message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  /* 내가 보낸 메시지만 오른쪽으로 붙인다. 색으로 구분하지 않는다. */
+  .admin-chat-message[data-own="true"] {
+    align-items: flex-end;
+  }
+
+  .admin-chat-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    line-height: 1.3;
+  }
+
+  .admin-chat-author {
+    color: var(--admin-text);
+    font-weight: 600;
+  }
+
+  .admin-chat-delete {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    text-decoration: underline;
+  }
+
+  .admin-chat-delete:hover {
+    color: var(--admin-danger, var(--admin-text));
+  }
+
+  .admin-chat-bubble {
+    max-width: min(85%, 520px);
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 8px 12px;
+    background: var(--admin-surface);
+    color: var(--admin-text);
+    font-size: var(--admin-type-body);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-chat-message[data-own="true"] .admin-chat-bubble {
+    border-color: var(--admin-accent-line);
+    background: var(--admin-accent-soft);
+  }
+
+  .admin-chat-bubble-deleted {
+    border-style: dashed;
+    background: var(--admin-surface-soft);
+    color: var(--admin-text-muted);
+  }
+
+  .admin-chat-dock-composer {
+    display: flex;
+    flex-shrink: 0;
+    align-items: flex-end;
+    gap: 8px;
+    border-top: 1px solid var(--admin-line);
+    padding: 12px 20px;
+    background: var(--admin-surface);
+  }
+
+  .admin-chat-dock-composer .admin-button {
+    flex-shrink: 0;
+  }
+
+  @media (min-width: 768px) {
+    /* 데스크톱은 오른쪽에 붙는 패널. 페이지는 그대로 쓸 수 있다. */
+    .admin-chat-dock {
+      inset: auto 0 0 auto;
+      width: 400px;
+      height: 100dvh;
+    }
+  }
+
 
   @media (max-width: 767px) {
     .admin-filter-bar > label {
@@ -825,6 +947,15 @@ body {
     border-color: var(--admin-accent);
     background: var(--admin-accent-soft);
     color: var(--admin-accent);
+  }
+
+  /* 자습실 이름처럼 길이를 미리 알 수 없는 데이터 라벨용.
+     128px 고정 폭에 넣으면 이름이 두 줄로 쪼개진다. 한 줄로 두고 넘치면 말줄임.
+     한 줄 유지는 아래 정규화 레이어에서 다시 지정한다(버튼 규격이 white-space 를 덮는다). */
+  .admin-choice-button-auto {
+    width: auto;
+    min-width: var(--admin-choice-width);
+    max-width: 260px;
   }
 
   /* 목록에서 하나를 고르는 전체 폭 카드.
@@ -1499,9 +1630,11 @@ body:has(.admin-shell) {
 
 /* 채팅 작성창은 한 줄에서 시작해 입력에 따라 자란다.
    위의 .admin-shell textarea(112px)보다 특정도가 높아야 이긴다. */
-.admin-shell .admin-chat-composer textarea {
+.admin-shell .admin-chat-dock-composer textarea,
+.admin-chat-dock-composer textarea {
   min-height: 44px;
-  max-height: 160px;
+  max-height: 120px;
+  flex: 1;
   resize: none;
 }
 
@@ -1580,6 +1713,14 @@ body:has(.admin-shell) {
   line-height: 1.3;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* 데이터 라벨 칩은 한 줄로 유지한다. 바로 위 버튼 규격의 white-space: normal 을 되돌린다. */
+.admin-shell .admin-choice-button-auto {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 표 안 작업 버튼은 축약 규격 */

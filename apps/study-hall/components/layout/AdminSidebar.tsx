@@ -12,7 +12,6 @@ import {
   MapPin,
   Megaphone,
   MessageSquareWarning,
-  MessagesSquare,
   Settings,
   ShieldAlert,
   Smartphone,
@@ -21,7 +20,6 @@ import {
   Users,
 } from "lucide-react";
 
-import { StaffChatUnreadBadge } from "@/components/chat/StaffChatUnreadBadge";
 import type { DivisionFeatureFlags, DivisionFeatureKey } from "@/lib/division-features";
 
 type NavItem = {
@@ -30,7 +28,6 @@ type NavItem = {
   icon: React.ElementType;
   featureKey?: DivisionFeatureKey;
   divisionOnly?: string;
-  showUnreadBadge?: boolean;
 };
 
 type NavSection = {
@@ -120,13 +117,6 @@ const navSections: NavSection[] = [
     label: "기타",
     items: [
       {
-        href: "chat",
-        label: "직원 채팅",
-        icon: MessagesSquare,
-        featureKey: "staffChat",
-        showUnreadBadge: true,
-      },
-      {
         href: "announcements",
         label: "공지 사항",
         icon: Megaphone,
@@ -212,7 +202,6 @@ export function AdminSidebar({
                 >
                   <Icon />
                   <span>{item.label}</span>
-                  {item.showUnreadBadge ? <StaffChatUnreadBadge /> : null}
                 </Link>
               );
             })}

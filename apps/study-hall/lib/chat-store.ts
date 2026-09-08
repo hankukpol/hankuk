@@ -19,6 +19,10 @@ export type ChatStoreState = {
   latestMessageId: string | null;
   /** 새 메시지 신호. 값이 바뀌면 채팅 화면이 증분 동기화한다. */
   signalAt: number;
+  /** 도크가 열려 있는지. 알림을 울릴지 판단하는 데 쓴다. */
+  isOpen: boolean;
+  /** 알림을 눌렀을 때 도크를 열어 달라는 요청. 값이 바뀌면 도크가 열린다. */
+  openRequestAt: number;
 };
 
 const listeners = new Set<() => void>();
@@ -34,6 +38,8 @@ let state: ChatStoreState = {
   mode: "off",
   latestMessageId: null,
   signalAt: 0,
+  isOpen: false,
+  openRequestAt: 0,
 };
 
 const serverSnapshot: ChatStoreState = state;
@@ -49,7 +55,9 @@ function setState(next: Partial<ChatStoreState>) {
     merged.unreadCount === state.unreadCount &&
     merged.mode === state.mode &&
     merged.latestMessageId === state.latestMessageId &&
-    merged.signalAt === state.signalAt
+    merged.signalAt === state.signalAt &&
+    merged.isOpen === state.isOpen &&
+    merged.openRequestAt === state.openRequestAt
   ) {
     return;
   }
@@ -88,6 +96,20 @@ export function setChatConnectionMode(mode: ChatConnectionMode) {
 
 export function setChatLatestMessageId(latestMessageId: string | null) {
   setState({ latestMessageId });
+}
+
+export function setChatDockOpen(isOpen: boolean) {
+  setState({ isOpen });
+}
+
+/** 도크가 열려 있는지. 렌더 밖(감시자)에서도 읽을 수 있어야 한다. */
+export function isChatDockOpen() {
+  return state.isOpen;
+}
+
+/** 브라우저 알림을 눌렀을 때 도크를 연다. */
+export function requestOpenChat() {
+  setState({ openRequestAt: Date.now() });
 }
 
 /** 새 메시지가 감지됐음을 채팅 화면에 알린다. */

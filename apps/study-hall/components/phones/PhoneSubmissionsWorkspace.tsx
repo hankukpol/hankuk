@@ -7,7 +7,11 @@ import { PhoneCheckForm } from "@/components/phones/PhoneCheckForm";
 import { PhoneWorkspaceTabs } from "@/components/phones/PhoneWorkspaceTabs";
 import { getCurrentPeriod } from "@/lib/services/period.service";
 import { getPhoneDaySnapshot, listPhoneRecords } from "@/lib/services/phone-submission.service";
-import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
+import {
+  filterOperationalStudyRooms,
+  getSeatLayout,
+  listStudyRooms,
+} from "@/lib/services/seat.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 
 function getKstToday() {
@@ -32,7 +36,7 @@ export async function PhoneSubmissionsWorkspace({
 }: PhoneSubmissionsWorkspaceProps) {
   const today = getKstToday();
 
-  const [snapshot, currentPeriod, seatRooms, initialSeatLayout, featureSettings, policy] = await Promise.all([
+  const [snapshot, currentPeriod, allSeatRooms, initialSeatLayout, featureSettings, policy] = await Promise.all([
     getPhoneDaySnapshot(divisionSlug, today),
     getCurrentPeriod(divisionSlug),
     listStudyRooms(divisionSlug),
@@ -40,6 +44,9 @@ export async function PhoneSubmissionsWorkspace({
     getDivisionFeatureSettings(divisionSlug),
     getManagementPolicy(divisionSlug),
   ]);
+
+  // 비활성 자습실은 운영 화면에서 숨긴다. 배정된 학생이 남아 있으면 그대로 보여준다.
+  const seatRooms = filterOperationalStudyRooms(allSeatRooms);
 
   const [students, periods] = policy && mode === "admin" ? await Promise.all([listStudents(divisionSlug), getPeriods(divisionSlug)]) : [[], []];
   const approval = policy && mode === "admin" ? <PhoneLoanApproval divisionSlug={divisionSlug} policy={policy} students={students.filter((s) => s.status === "ACTIVE" || s.status === "ON_LEAVE")} periods={periods} /> : undefined;

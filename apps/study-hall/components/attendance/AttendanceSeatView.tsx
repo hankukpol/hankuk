@@ -203,9 +203,9 @@ export function AttendanceSeatView({
               type="button"
               onClick={() => handleRoomChange(room.id)}
               disabled={loadingRoomId !== null}
-              className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
+              className="admin-choice-button admin-choice-button-auto" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
             >
-              {room.name}
+              {room.isActive ? room.name : `${room.name} (비활성)`}
               {loadingRoomId === room.id && (
                 <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-slate-400" />
               )}

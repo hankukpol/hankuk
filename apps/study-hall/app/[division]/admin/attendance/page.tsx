@@ -11,7 +11,11 @@ import {
   type AttendanceSnapshot,
 } from "@/lib/services/attendance.service";
 import { getCurrentPeriod } from "@/lib/services/period.service";
-import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
+import {
+  filterOperationalStudyRooms,
+  getSeatLayout,
+  listStudyRooms,
+} from "@/lib/services/seat.service";
 
 function getTodayInKst() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -44,7 +48,7 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
   await redirectIfDivisionFeatureDisabled(params.division, "attendanceManagement");
 
   const today = getTodayInKst();
-  const [snapshot, stats, currentPeriod, seatRooms, initialSeatLayout, policy, featureSettings] = await Promise.all([
+  const [snapshot, stats, currentPeriod, allSeatRooms, initialSeatLayout, policy, featureSettings] = await Promise.all([
     getAttendanceSnapshot(params.division, today),
     getAttendanceStats(params.division, today, today),
     getCurrentPeriod(params.division),
@@ -53,6 +57,9 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
     getManagementPolicy(params.division),
     getDivisionFeatureSettings(params.division),
   ]);
+
+  // 비활성 자습실은 운영 화면에서 숨긴다. 배정된 학생이 남아 있으면 그대로 보여준다.
+  const seatRooms = filterOperationalStudyRooms(allSeatRooms);
 
   const mobilePeriodId = currentPeriod?.id ?? snapshot.periods[0]?.id ?? null;
   const initialMode = getInitialModeFromUserAgent(headers().get("user-agent"));

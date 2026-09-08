@@ -2,6 +2,7 @@
 
 import type { RegularStudentReport as Report } from "@/lib/exam-analysis-types";
 import { ExamScoreChart } from "@/components/exams/ExamScoreChart";
+import { RegularLearningSummary } from "./LearningActionSummary";
 import { ReportPrintButton } from "./ReportPrintButton";
 import { ItemAnalysisTable } from "./ItemAnalysisTable";
 import { SubjectRadar } from "./charts/SubjectRadar";
@@ -18,6 +19,7 @@ export function RegularStudentReport({ report, mode }: { report: Report; mode: "
   return <div className="admin-flat-page">
     <ReportPrintButton />
     <header><h2 className="admin-section-title">{session.examTypeName} {session.examDate.slice(0, 10)} 분석</h2><p className="admin-help">시험일 {session.examDate.slice(0, 10)}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
+    <RegularLearningSummary report={report} />
     {history && <section className="admin-section"><h2 className="admin-section-title">최근 6개월 개인 성적</h2>
       <p className="admin-help">선택한 시험일 기준 {history.from} ~ {history.to} · {history.coveredMonths}/6개월 기록 · {history.rows.length}회 응시. 과거 기록은 계속 보관됩니다.</p>
       {history.coveredMonths < 6 && <p className="admin-empty-state">6개월 중 {history.coveredMonths}개월의 성적만 있습니다. 기록이 없는 달은 0점으로 계산하지 않습니다.</p>}

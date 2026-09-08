@@ -31,7 +31,7 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name === "@/components/exams/ExamScoreChart") return { ExamScoreChart: () => React.createElement("p", null, "성적 추이 차트") };
       if (name === "@/components/ui/SlideOver") return { SlideOver: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? children : null };
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
-      return load(`${local}.tsx`, overrides, globals);
+      return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals);
     },
   });
   return loaded.exports;

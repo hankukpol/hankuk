@@ -28,7 +28,7 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name === "react/jsx-runtime") return jsx;
       if (name === "recharts") return new Proxy({}, { get: () => ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) });
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
-      return load(`${local}.tsx`, overrides, globals);
+      return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals);
     },
   });
   return loaded.exports;

@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 export function ReportPrintButton() {
   const anchor = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  function openPrint() {
+  function openPrint(summaryOnly = false) {
     const source = anchor.current?.parentElement;
     if (!source) return;
     const popup = window.open("", "_blank", "width=960,height=900");
@@ -62,6 +62,11 @@ export function ReportPrintButton() {
       };
       actions.append(help, button);
       const copy = source.cloneNode(true) as HTMLElement;
+      if (summaryOnly) {
+        Array.from(copy.children).forEach(child => {
+          if (child.tagName !== "HEADER" && !child.hasAttribute("data-learning-summary")) child.remove();
+        });
+      }
       copy.querySelectorAll("[data-report-print], script").forEach(node => node.remove());
       copy.querySelectorAll("details").forEach(node => { node.open = true; });
       const originals = source.querySelectorAll('svg.recharts-surface[role="application"]');
@@ -105,7 +110,8 @@ export function ReportPrintButton() {
     }
   }
   return <div ref={anchor} data-report-print>
-    <button type="button" className="admin-button-secondary" onClick={openPrint}>A4 인쇄 / PDF 저장</button>
+    <button type="button" className="admin-button-secondary" onClick={() => openPrint()}>A4 인쇄 / PDF 저장</button>
+    <button type="button" className="admin-button-secondary" onClick={() => openPrint(true)}>학습 진단만 인쇄 / PDF 저장</button>
     {error && <p role="alert" className="admin-help">{error}</p>}
   </div>;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import type { MorningStudentReport as Report } from "@/lib/morning-exam-analysis-types";
+import { MorningLearningSummary } from "./LearningActionSummary";
 import { ReportPrintButton } from "./ReportPrintButton";
 import { ItemAnalysisTable } from "./ItemAnalysisTable";
 import { TrendLines } from "./charts/TrendLines";
@@ -15,6 +16,7 @@ export function MorningStudentReport({ report, mode }: { report: Report; mode: "
   return <div className="admin-flat-page">
     <ReportPrintButton />
     <header><h2 className="admin-section-title">{report.examType.name} 개인 분석</h2><p className="admin-help">{report.range.from} ~ {report.range.to}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
+    <MorningLearningSummary report={report} />
     <div className="admin-metric-strip">{[
       ["기간 평균", value(summary.average, "점")], ["외부 평균 대비", value(summary.externalGap, "점")], ["반 평균 대비", value(summary.internalGap, "점")],
       ["이번 주 반 석차", value(summary.thisWeekRank, "등")], ["직전 주 대비", delta(summary.rankDelta)], ["응시율", value(summary.attendanceRatePercent, "%")],

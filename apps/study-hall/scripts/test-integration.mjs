@@ -64,6 +64,7 @@ try {
   await run(["--import", "tsx", "--test", "tests/integration/http-contracts.test.ts"], { TEST_BASE_URL: baseUrl });
   await run(["--import", "tsx", "--test", "tests/integration/exam-import-http.test.ts"], { TEST_BASE_URL: baseUrl });
   await run(["--import", "tsx", "--test", "tests/integration/exam-analysis-http.test.ts"], { TEST_BASE_URL: baseUrl });
+  await run(["--import", "tsx", "--test", "tests/integration/exam-analysis-export-http.test.ts"], { TEST_BASE_URL: baseUrl });
   console.log(`[integration] PASS; evidence: ${path.join(runtime, "integration.log")}`);
 } catch (error) {
   console.error(error.message);

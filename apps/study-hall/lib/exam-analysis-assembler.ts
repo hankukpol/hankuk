@@ -109,7 +109,7 @@ function prepare(bundle: RegularRawBundle) {
   return { session, publicSession, hasPreviousExam: Boolean(previous), subjects, participants, previousParticipants, previousRanks, students, ranks, responses, diagnosticItems, hist, externalSubjects, regions, subjectValues, targetFor, flagsFor };
 }
 
-export function assembleRegularCohort(bundle: RegularRawBundle): RegularCohortAnalysis {
+export function assembleRegularCohort(bundle: RegularRawBundle, wrongTopLimit: 10 | 20 = 10): RegularCohortAnalysis {
   const p = prepare(bundle), totals = p.participants.map(row => row.totalScore), average = mean(totals);
   const exactMean = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
   const internalSubjects = Object.fromEntries(p.subjects.map(s => [s.id, mean(p.subjectValues(s.id))]));
@@ -129,7 +129,7 @@ export function assembleRegularCohort(bundle: RegularRawBundle): RegularCohortAn
       weakSubjects: p.subjects.map(s => ({ subjectId: s.id, name: s.name, gapVsExternal: internalSubjects[s.id] !== null && externalSubjects[s.id] !== null ? one(internalSubjects[s.id]! - externalSubjects[s.id]!) : null,
         weakCount: p.subjectValues(s.id).filter(n => s.fullScore > 0 && n / s.fullScore * 100 < bundle.settings.common.weakSubjectRatePercent).length })) },
     classWrongTop: p.diagnosticItems.filter((row): row is typeof row & { internalCorrectRatePct: number } => row.internalCorrectRatePct !== null)
-      .sort((a, b) => a.internalCorrectRatePct - b.internalCorrectRatePct || a.position - b.position).slice(0, 10)
+      .sort((a, b) => a.internalCorrectRatePct - b.internalCorrectRatePct || a.position - b.position).slice(0, wrongTopLimit === 20 ? 20 : 10)
       .map(row => ({ ...row, subjectName: p.subjects.find(s => s.id === row.subjectId)?.name ?? "", gap: one(row.internalCorrectRatePct - row.externalCorrectRatePct) })),
     ranking, declines: p.hasPreviousExam ? ranking.filter(row => row.flags.length).map(row => ({ studentId: row.studentId, name: row.name, flags: row.flags })) : [],
     partials: ranking.filter(row => row.isPartial).map(row => ({ studentId: row.studentId, name: row.name,

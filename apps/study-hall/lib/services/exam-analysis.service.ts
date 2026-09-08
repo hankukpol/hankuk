@@ -67,9 +67,9 @@ export async function listRegularSessions(divisionSlug: string, examTypeId: stri
   if (isMockMode()) return translate(async () => assembleRegularSessions(await loadMock(divisionSlug, examTypeId), examTypeId, studentId));
   return translate(async () => assembleRegularSessions(await loadDb(divisionSlug, examTypeId), examTypeId, studentId));
 }
-export async function getRegularCohortAnalysis(divisionSlug: string, examTypeId: string, examDate: string): Promise<RegularCohortAnalysis> {
-  if (isMockMode()) return translate(async () => assembleRegularCohort(await loadRegularBundle(divisionSlug, examTypeId, examDate)));
-  return translate(async () => assembleRegularCohort(await loadRegularBundle(divisionSlug, examTypeId, examDate)));
+export async function getRegularCohortAnalysis(divisionSlug: string, examTypeId: string, examDate: string, wrongTopLimit: 10 | 20 = 10): Promise<RegularCohortAnalysis> {
+  if (isMockMode()) return translate(async () => assembleRegularCohort(await loadRegularBundle(divisionSlug, examTypeId, examDate), wrongTopLimit));
+  return translate(async () => assembleRegularCohort(await loadRegularBundle(divisionSlug, examTypeId, examDate), wrongTopLimit));
 }
 async function studentReport(divisionSlug: string, examTypeId: string, examDate: string, studentId: string, viewer: Viewer): Promise<RegularStudentReport> {
   return translate(async () => {

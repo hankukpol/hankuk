@@ -18,11 +18,24 @@ Subject-specific morning analysis uses attended-session windows, same-date peer 
 
 Validation: typecheck 0, lint 0, 510/510 tests, integration PASS (`.local/test-1f7c1aec/integration.log`). Reviewer reproduced and rechecked two corrected regressions: graded-count rank denominator and prior-window alternate choice. Settings 20→15→20 changes class-gap detection immediately. Browser cohort and personal drawer at 390/768/1280: nested borders 0, Pretendard only, offScale [], no document overflow. One imported session shows explicit insufficient-sample explanations.
 
-## Phase 4 — pending
+## Phase 4 — complete
+
+The reporting page now downloads administrator-only regular and morning analysis workbooks. Both contain three sheets. Regular exports include ranking, subject averages and wrong-answer TOP20; the screen retains TOP10. Morning exports use student/subject summaries, date/subject averages and topic averages without per-student service calls. The existing report service is untouched; an owned export service and guarded route provide the workbook. Date-backed legacy score labels in the report UI now display a date instead of an eight-digit round.
+
+Validation: typecheck 0, lint 0, 540/540 tests. Initial full integration passed (`.local/test-60d3b475/integration.log`), including actual downloaded workbook reopening, three sheets, administrator names and the TOP20 row count. Final integration PASS (`.local/test-f8684d74/integration.log`) includes the last display-only date-label correction. Workbook unit tests also preserve leading-zero identifiers, literal formula-like text, numeric zeros and blank cells.
+
+Browser: regular and morning download controls at 390/768/1280 have nested borders 0, Pretendard only, offScale [], and no document overflow. Both buttons report successful download. Student morning and regular pages were checked at the same widths with their entire grading tables expanded (20 and 100 taken items). The first-session report explains missing trends and previous comparisons.
+
+## Local handoff
+
+All commits are on the isolated `codex/study-hall-score-phase1` branch; the concurrently edited original checkout has not been merged or overwritten. Local preview uses port 17093 with mock data and unreachable database credentials. It is not production persistence evidence.
+
+Before the first production import, use the administrator settings checklist in the Phase 1 report: correct regular points, configure the alternate group, consolidate the morning type, and align five-digit student numbers. These operating settings are not embedded in migrations.
 
 Concurrency boundary: attendance, interview, warnings, chat, dashboards and the concurrently modified report service are not opened or edited. Export logic will use a separate owned service. ReportsDashboard wiring is permitted only if it remains untouched by the other session.
 
 ## Verification limits
 
 Morning original XLS files remain unavailable at the documented paths. Synthetic fixtures do not establish real-source morning compatibility. Production migration and persistence remain unverified.
+
 

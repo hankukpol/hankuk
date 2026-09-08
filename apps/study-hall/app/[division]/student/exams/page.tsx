@@ -5,6 +5,7 @@ import { ChartNoAxesColumn } from "lucide-react";
 import { ExamScoreChartLoader } from "@/components/exams/ExamScoreChartLoader";
 import { ExamTabLayout } from "@/components/exams/ExamTabLayout";
 import { MorningExamStudentView } from "@/components/exams/MorningExamStudentView";
+import { RegularStudentReport } from "@/components/exams/analysis/RegularStudentReport";
 import { StudentPortalFrame } from "@/components/student-view/StudentPortalFrame";
 import {
   PortalEmptyState,
@@ -16,12 +17,15 @@ import {
 import { requireDivisionStudentAccess } from "@/lib/auth";
 import { isNotFoundError } from "@/lib/errors";
 import { listExamTypes, listStudentExamResults } from "@/lib/services/exam.service";
+import { getRegularStudentReport, listRegularSessions } from "@/lib/services/exam-analysis.service";
 import { listStudentMorningExamWeeks } from "@/lib/services/morning-exam.service";
 import { listScoreTargets } from "@/lib/services/score-target.service";
 import { getDivisionFeatureSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
+import type { RegularStudentReport as RegularReport } from "@/lib/exam-analysis-types";
 
 type StudentExamsPageProps = {
+  searchParams?: { analysisSession?: string | string[] };
   params: {
     division: string;
   };
@@ -46,7 +50,7 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleDateString("ko-KR");
 }
 
-export default async function StudentExamsPage({ params }: StudentExamsPageProps) {
+export default async function StudentExamsPage({ params, searchParams }: StudentExamsPageProps) {
   const session = await requireDivisionStudentAccess(params.division);
 
   try {
@@ -72,7 +76,27 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
     const regularExams = exams.filter((exam) => {
       const examType = allExamTypes.find((t) => t.id === exam.examTypeId);
       return !examType || examType.category === "REGULAR";
-    });
+    }).sort((left, right) => (right.examDate ?? "").localeCompare(left.examDate ?? ""));
+
+    const analysisSessions = (await Promise.all(allExamTypes.filter((type) => type.category === "REGULAR").map(async (type) => {
+      const sessions = await listRegularSessions(params.division, type.id, session.studentId);
+      return sessions.map((entry) => ({ ...entry, examTypeId: type.id, examTypeName: type.name, key: `${type.id}:${entry.examDate}` }));
+    }))).flat().sort((left, right) => right.examDate.localeCompare(left.examDate) || left.examTypeId.localeCompare(right.examTypeId));
+    const requestedSession = typeof searchParams?.analysisSession === "string" ? searchParams.analysisSession : undefined;
+    const selectedSession = analysisSessions.find((entry) => entry.key === requestedSession) ?? analysisSessions[0];
+    let regularReport: RegularReport | null = null;
+    if (selectedSession) {
+      try {
+        regularReport = await getRegularStudentReport(
+          params.division, selectedSession.examTypeId, selectedSession.examDate, session.studentId,
+          { role: "STUDENT", studentId: session.studentId },
+        );
+      } catch (error) {
+        // A session can be replaced after listing. Keep legacy records available;
+        // authentication and unexpected errors must still reach the page handler.
+        if (!isNotFoundError(error)) throw error;
+      }
+    }
 
     const morningContent = (
       <MorningExamStudentView weeks={morningWeeks} />
@@ -80,9 +104,22 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
 
     const regularContent = (
       <div className="space-y-5">
+        <section className="admin-flat-page">
+          <h2 className="admin-section-title">정기 성적 분석</h2>
+          {selectedSession ? <>
+            <form className="admin-filter-bar" action={`/${params.division}/student/exams`} method="get">
+              <label className="admin-label" htmlFor="student-analysis-session">분석 시험일</label>
+              <select id="student-analysis-session" name="analysisSession" defaultValue={selectedSession.key}>
+                {analysisSessions.map((entry) => <option key={entry.key} value={entry.key}>{entry.examTypeName} {entry.examDate.slice(0, 10)}</option>)}
+              </select>
+              <button type="submit" className="admin-button admin-button-primary">분석 조회</button>
+            </form>
+            {regularReport ? <RegularStudentReport report={regularReport} mode="student" /> : <p className="admin-empty-state">선택한 시험일의 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
+          </> : <p className="admin-empty-state">가져온 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
+        </section>
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <PortalMetricCard
-            label="응시 회차"
+            label="응시 횟수"
             value={`${regularExams.length}회`}
             caption="정기모의고사 전체"
           />
@@ -108,8 +145,8 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
 
         <section className={portalSectionClass}>
           <PortalSectionHeader
-            title="회차별 성적 기록"
-            description="정기모의고사 회차별 총점, 석차, 과목 점수를 확인합니다."
+            title="날짜별 성적 기록"
+            description="정기모의고사 날짜별 총점, 석차, 과목 점수를 확인합니다."
             icon={<ChartNoAxesColumn className="h-5 w-5" />}
           />
 
@@ -123,7 +160,7 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
                         {exam.examTypeName}
                       </p>
                       <h3 className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                        {exam.examRound}회차
+                        {exam.examDate ? formatDate(exam.examDate) : "시험일 미등록"}
                       </h3>
                       <p className="mt-1.5 text-[13px] text-admin-text-muted">
                         시험일 {formatDate(exam.examDate)}
@@ -177,7 +214,7 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
             <div className="mt-4">
               <PortalEmptyState
                 title="정기모의고사 기록이 없습니다."
-                description="시험 결과가 등록되면 회차별 성적 카드가 이 영역에 표시됩니다."
+                description="시험 결과가 등록되면 날짜별 성적 카드가 이 영역에 표시됩니다."
               />
             </div>
           )}
@@ -185,7 +222,7 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
       </div>
     );
 
-    const defaultTab = hasMorningTypes && morningWeeks.length > 0 ? "morning" : "regular";
+    const defaultTab = requestedSession ? "regular" : hasMorningTypes && morningWeeks.length > 0 ? "morning" : "regular";
 
     return (
       <StudentPortalFrame
@@ -197,10 +234,11 @@ export default async function StudentExamsPage({ params }: StudentExamsPageProps
         pointsEnabled={settings.featureFlags.pointManagement}
         examsEnabled={settings.featureFlags.examManagement}
         title="성적 상세"
-        description="아침모의고사 주차별 성적과 정기모의고사 회차별 성적을 확인할 수 있습니다."
+        description="아침모의고사 주차별 성적과 정기모의고사 날짜별 성적을 확인할 수 있습니다."
       >
         {hasMorningTypes || hasRegularTypes ? (
           <ExamTabLayout
+            key={requestedSession ?? "default"}
             morningContent={morningContent}
             regularContent={regularContent}
             defaultTab={defaultTab}

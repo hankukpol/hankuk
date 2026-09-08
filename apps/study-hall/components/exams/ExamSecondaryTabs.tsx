@@ -5,6 +5,7 @@ import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { ExamImportWizard } from "@/components/exams/import/ExamImportWizard";
 import { ExamScoreManager } from "@/components/exams/ExamScoreManager";
 import { MorningExamScoreManager } from "@/components/exams/MorningExamScoreManager";
+import { RegularCohortAnalysis } from "@/components/exams/analysis/RegularCohortAnalysis";
 import type { ExamImportResult, ExamImportSelection } from "@/lib/exam-import-types";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 
@@ -32,7 +33,7 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
         items={[
           { id: "input", label: "입력", disabled: busy },
           { id: "import", label: "가져오기" },
-          { id: "analysis", label: "분석", disabled: true },
+          { id: "analysis", label: "분석", disabled: busy || category !== "REGULAR" },
         ]}
       />
       <AdminTabPanel id="input" activeId={active} idPrefix={idPrefix}>
@@ -73,12 +74,15 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
               setScoreVersion((version) => version + 1);
             }}
             onShowScores={() => setActive("input")}
-            onDeleted={() => { setLastImport(null); setScoreVersion((version) => version + 1); }}
+            onDeleted={() => {
+              setLastImport(null);
+              setScoreVersion((version) => version + 1);
+            }}
           />
         )}
       </AdminTabPanel>
       <AdminTabPanel id="analysis" activeId={active} idPrefix={idPrefix}>
-        <p className="admin-help">분석 기능은 준비 중입니다.</p>
+        {active === "analysis" && category === "REGULAR" && <RegularCohortAnalysis key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "REGULAR")} />}
       </AdminTabPanel>
     </div>
   );

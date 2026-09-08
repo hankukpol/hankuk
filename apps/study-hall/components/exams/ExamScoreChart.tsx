@@ -20,23 +20,26 @@ import {
 } from "@/components/student-view/StudentPortalUi";
 import type { StudentExamResultItem } from "@/lib/services/exam.service";
 
+type ChartResult = Omit<StudentExamResultItem, "examRound"> & { examRound?: number };
+
 type ExamScoreChartProps = {
-  results: StudentExamResultItem[];
+  results: ChartResult[];
   variant?: "admin" | "portal";
 };
 
 const COLORS = Array.from({ length: 6 }, (_, index) => `var(--admin-chart-${index + 1})`);
 
-function buildChartLabel(result: StudentExamResultItem) {
+function buildChartLabel(result: ChartResult) {
   const dateLabel = result.examDate
     ? new Intl.DateTimeFormat("ko-KR", {
         timeZone: "Asia/Seoul",
+        year: "numeric",
         month: "numeric",
         day: "numeric",
       }).format(new Date(result.examDate))
     : "";
 
-  return dateLabel ? `${result.examRound}회차 (${dateLabel})` : `${result.examRound}회차`;
+  return dateLabel || (result.examRound != null ? `${result.examRound}회차` : "시험일 없음");
 }
 
 export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartProps) {
@@ -46,7 +49,7 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
       {
         examTypeId: string;
         examTypeName: string;
-        results: StudentExamResultItem[];
+        results: ChartResult[];
       }
     >();
 
@@ -68,8 +71,8 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
     return Array.from(map.values()).map((group) => ({
       ...group,
       results: [...group.results].sort((left, right) => {
-        const leftKey = `${left.examDate ?? ""}-${String(left.examRound).padStart(3, "0")}`;
-        const rightKey = `${right.examDate ?? ""}-${String(right.examRound).padStart(3, "0")}`;
+        const leftKey = `${left.examDate ?? ""}-${String(left.examRound ?? 0).padStart(3, "0")}`;
+        const rightKey = `${right.examDate ?? ""}-${String(right.examRound ?? 0).padStart(3, "0")}`;
         return leftKey.localeCompare(rightKey);
       }),
     }));

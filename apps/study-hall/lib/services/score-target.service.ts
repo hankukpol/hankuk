@@ -1,4 +1,5 @@
 import { isMockMode } from "@/lib/mock-data";
+import { revalidateTag } from "next/cache";
 import { badRequest, notFound } from "@/lib/errors";
 import {
   readMockState,
@@ -367,6 +368,7 @@ export async function upsertScoreTarget(
     },
   });
 
+  revalidateTag(`exam-analysis:${divisionSlug}`);
   return (await listScoreTargets(divisionSlug, studentId)).find((item) => item.id === target.id) ?? null;
 }
 
@@ -417,4 +419,5 @@ export async function deleteScoreTarget(
       id: target.id,
     },
   });
+  revalidateTag(`exam-analysis:${divisionSlug}`);
 }

@@ -92,6 +92,13 @@ test("poll interval backs off when hidden, failing, or already realtime", () => 
 
   assert.equal(nextPollIntervalMs("polling", "visible", 2), 15_000);
   assert.equal(nextPollIntervalMs("polling", "visible", 3), 60_000);
+
+  // 채팅창을 열고 대화하는 동안은 좁힌다. 실시간이 없어도 주고받는 느낌이 나야 한다.
+  assert.equal(nextPollIntervalMs("polling", "visible", 0, true), 4_000);
+  // 열어둔 채 다른 탭으로 가면 다시 느슨하게.
+  assert.equal(nextPollIntervalMs("polling", "hidden", 0, true), 60_000);
+  // 연달아 실패하는 중이면 열려 있어도 물러선다.
+  assert.equal(nextPollIntervalMs("polling", "visible", 3, true), 60_000);
 });
 
 test("notification preview collapses whitespace and truncates", () => {

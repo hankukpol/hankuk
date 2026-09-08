@@ -81,6 +81,8 @@ export function formatUnreadBadge(count: number) {
 }
 
 const REALTIME_SAFETY_NET_MS = 300_000;
+/** 채팅창을 열고 대화하는 동안. 실시간이 없어도 주고받는 느낌이 나야 한다. */
+const POLLING_ACTIVE_MS = 4_000;
 const POLLING_VISIBLE_MS = 15_000;
 const POLLING_HIDDEN_MS = 60_000;
 const POLLING_BACKOFF_MS = 60_000;
@@ -89,11 +91,13 @@ const POLLING_FAILURE_THRESHOLD = 3;
 /**
  * 다음 폴링까지의 간격.
  * 실시간이 붙어 있으면 놓친 메시지를 줍기 위한 안전망만 돌린다.
+ * 붙지 않았을 때는 지금 무엇을 하고 있는지에 따라 세 단계로 나눈다.
  */
 export function nextPollIntervalMs(
   mode: ChatConnectionMode,
   visibility: ChatVisibility,
   consecutiveFailures = 0,
+  isChatOpen = false,
 ): number | null {
   if (mode === "off") {
     return null;
@@ -107,7 +111,11 @@ export function nextPollIntervalMs(
     return POLLING_BACKOFF_MS;
   }
 
-  return visibility === "hidden" ? POLLING_HIDDEN_MS : POLLING_VISIBLE_MS;
+  if (visibility === "hidden") {
+    return POLLING_HIDDEN_MS;
+  }
+
+  return isChatOpen ? POLLING_ACTIVE_MS : POLLING_VISIBLE_MS;
 }
 
 /** 알림 본문에 넣을 미리보기. */

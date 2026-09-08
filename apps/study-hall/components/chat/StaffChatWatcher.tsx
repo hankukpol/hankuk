@@ -12,6 +12,7 @@ import {
   setChatConnectionMode,
   setChatLatestMessageId,
   setChatUnreadCount,
+  useChatStore,
 } from "@/lib/chat-store";
 
 type StaffChatWatcherProps = {
@@ -48,6 +49,8 @@ export function StaffChatWatcher({
   enabled,
   initialUnreadCount,
 }: StaffChatWatcherProps) {
+  // 도크가 열리고 닫힐 때 폴링 주기를 즉시 바꿔야 하므로 구독한다.
+  const { isOpen } = useChatStore();
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failuresRef = useRef(0);
@@ -195,7 +198,8 @@ export function StaffChatWatcher({
       }
 
       const visibility = document.visibilityState === "hidden" ? "hidden" : "visible";
-      const delay = nextPollIntervalMs(modeRef.current, visibility, failuresRef.current);
+      // 채팅창을 열고 있는 동안은 4초로 좁혀 대화가 끊기지 않게 한다.
+      const delay = nextPollIntervalMs(modeRef.current, visibility, failuresRef.current, isChatDockOpen());
 
       if (delay === null) {
         return;
@@ -236,7 +240,8 @@ export function StaffChatWatcher({
       window.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("online", runNow);
     };
-  }, [enabled, poll]);
+    // isOpen 이 바뀌면 루프를 다시 걸어 새 주기가 곧바로 적용된다.
+  }, [enabled, isOpen, poll]);
 
   return null;
 }

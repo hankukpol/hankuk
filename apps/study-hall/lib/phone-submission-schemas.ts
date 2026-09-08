@@ -16,7 +16,8 @@ export const phoneSubmissionBatchSchema = z.object({
       z.object({
         studentId: z.string().min(1),
         status: phoneSubmissionStatusInputSchema,
-        rentalNote: z.string().max(200).optional(),
+        rentalNote: z.string().max(10000).optional(),
+        loanApproval: z.object({ until: z.string().datetime({ offset: true }), place: z.string().trim().min(1).max(80), purpose: z.string().trim().min(1).max(200) }).optional(),
       }),
     )
     .min(1, "학생 정보가 없습니다.")

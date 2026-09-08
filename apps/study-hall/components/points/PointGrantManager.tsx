@@ -155,7 +155,7 @@ export const PointGrantManager = memo(function PointGrantManager({
 
   const rankedStudents = useMemo(() => {
     const sorted = [...rankStudents].sort((a, b) =>
-      rankingOrder === "top" ? b.netPoints - a.netPoints : a.netPoints - b.netPoints,
+      (rankingOrder === "top" ? b.netPoints - a.netPoints : a.netPoints - b.netPoints) || (b.unusedHolidayCount ?? 0) - (a.unusedHolidayCount ?? 0) || a.studentNumber.localeCompare(b.studentNumber),
     );
     return sorted.slice(0, 20);
   }, [rankStudents, rankingOrder]);
@@ -583,7 +583,7 @@ export const PointGrantManager = memo(function PointGrantManager({
               </div>
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">순위</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950">상벌점 순위</h3>
+                <h3 className="mt-1 text-2xl font-bold text-slate-950">{activeStudents.some((s) => s.meritPoints !== undefined) ? "상점 순위 · 동점은 휴일권 미사용 우선" : "상벌점 순위"}</h3>
                 <p className="mt-1 text-xs text-slate-400">
                   {appliedRange.dateFrom} ~ {appliedRange.dateTo}
                 </p>
@@ -743,7 +743,7 @@ export const PointGrantManager = memo(function PointGrantManager({
           <div className="space-y-4">
             <div className="grid overflow-hidden rounded-[10px] border border-slate-200 sm:grid-cols-4">
               {[
-                { label: "현재 점수", value: `${historyRecords.length > 0 ? historyTotals.netPoints : historyStudent.netPoints}점` },
+                { label: activeStudents.some((s) => s.meritPoints !== undefined) ? "상점·벌점 별도 집계" : "현재 점수", value: activeStudents.some((s) => s.meritPoints !== undefined) ? "상계 없음" : `${historyRecords.length > 0 ? historyTotals.netPoints : historyStudent.netPoints}점` },
                 { label: "상점 합계", value: `+${historyTotals.rewardPoints}점` },
                 { label: "벌점 합계", value: `-${historyTotals.demeritPoints}점` },
                 { label: "조회 기록", value: `${historyRecords.length}건` },

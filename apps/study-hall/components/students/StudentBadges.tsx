@@ -15,12 +15,12 @@ export function StudentStatusBadge({ status }: { status: string }) {
   );
 }
 
-export function WarningStageBadge({ stage }: { stage: string }) {
+export function WarningStageBadge({ stage, label }: { stage: string; label?: string }) {
   return (
     <span
       className={`inline-flex items-center rounded-[10px] border px-2.5 py-1.5 text-xs font-semibold ${getWarningStageClasses(stage)}`}
     >
-      {getWarningStageLabel(stage)}
+      {label ?? getWarningStageLabel(stage)}
     </span>
   );
 }

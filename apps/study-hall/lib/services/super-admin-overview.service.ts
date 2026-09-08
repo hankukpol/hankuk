@@ -11,6 +11,7 @@ import {
   getDivisionSettings,
 } from "@/lib/services/settings.service";
 import { listStudents } from "@/lib/services/student.service";
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { toDemeritPoints } from "@/lib/student-meta";
 import {
   listManagedAdminAssignments,
@@ -92,7 +93,7 @@ async function getMockDivisionOverviewMetrics(slug: string, today: string) {
         id: student.id,
         status: student.status as OverviewStudentMetric["status"],
         courseEndDate: student.courseEndDate,
-        netPoints: toDemeritPoints(student.netPoints),
+        netPoints: (student.demeritPoints ?? toDemeritPoints(student.netPoints)),
       })) satisfies OverviewStudentMetric[],
     attendance: snapshot
       ? {
@@ -177,7 +178,7 @@ async function getDivisionSummary(
   today: string,
 ): Promise<DivisionOverviewMetrics> {
   const [metrics, settings] = await Promise.all([
-    isMockMode()
+    (isMockMode() || !!(await getManagementPolicy(division.slug)))
       ? getMockDivisionOverviewMetrics(division.slug, today)
       : getDbDivisionOverviewMetrics(division.id, today),
     getDivisionSettings(division.slug),

@@ -1,3 +1,5 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isPolicyEffective, isControlledPeriod, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
 
 import {
@@ -226,6 +228,7 @@ function serializePeriods(
 }
 
 type AttendanceContext = {
+  policy: ManagementPolicy | null;
   students: Awaited<ReturnType<typeof getDivisionStudents>>;
   periods: Awaited<ReturnType<typeof getPeriods>>;
 };
@@ -291,15 +294,13 @@ async function getSeatedStudents(divisionSlug: string) {
 }
 
 async function getAttendanceContext(divisionSlug: string): Promise<AttendanceContext> {
-  const [students, periods] = await Promise.all([
+  const [students, periods, policy] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
 
-  return {
-    students,
-    periods,
-  };
+  return { students, periods, policy };
 }
 
 function buildAttendanceSnapshot(
@@ -308,9 +309,11 @@ function buildAttendanceSnapshot(
   records: AttendanceSnapshot["records"],
   periodId?: string,
 ): AttendanceSnapshot {
-  const periods = periodId
-    ? context.periods.filter((period) => period.id === periodId)
+  const policy = context.policy;
+  const available = isPolicyEffective(policy, date)
+    ? context.periods.filter((p) => policy.attendancePeriodIds.includes(p.id)).map((p) => ({ ...p, isMandatory: isControlledPeriod(policy, p.id, date) }))
     : context.periods;
+  const periods = periodId ? available.filter((period) => period.id === periodId) : available;
 
   return {
     date,
@@ -1073,6 +1076,10 @@ export async function syncAttendanceDerivedPoints(
   actorId: string,
 ) {
   const normalizedDate = normalizeDate(date);
+  const policy = await getManagementPolicy(divisionSlug);
+  // v3.1: assistant attendance produces candidates; explicit manager confirmation commits them.
+  // No daily generic attendance reward exists in this policy.
+  if (isPolicyEffective(policy, normalizedDate)) return;
 
   try {
     await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actorId);
@@ -1099,12 +1106,14 @@ export async function upsertAttendanceBatch(
   const normalizedDate = normalizeDate(input.date);
   await ensureAssistantAllowed(divisionSlug, actor, normalizedDate);
 
-  const [students, periods] = await Promise.all([
+  const [students, periods, policy] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
 
   const period = periods.find((item) => item.id === input.periodId);
+  if (isPolicyEffective(policy, normalizedDate) && !policy.attendancePeriodIds.includes(input.periodId)) throw badRequest("관리반 출석은 1~5교시에서 기록합니다. 아침모의고사는 별도 시험 기록을 사용해 주세요.");
   if (!period) {
     throw notFound("교시 정보를 찾을 수 없습니다.");
   }
@@ -1292,9 +1301,10 @@ export async function applyRecurringAttendance(
     throw badRequest("결석 또는 사유결석은 사유를 입력해야 합니다.");
   }
 
-  const [students, periods] = await Promise.all([
+  const [students, periods, policy] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
+    getManagementPolicy(divisionSlug),
   ]);
   const targetStudent = students.find((student) => student.id === input.studentId);
 
@@ -1312,6 +1322,7 @@ export async function applyRecurringAttendance(
   const [fromPeriodIndex, toPeriodIndex] =
     startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
   const targetPeriods = periods.slice(fromPeriodIndex, toPeriodIndex + 1);
+  if (isPolicyEffective(policy, normalizedTo) && targetPeriods.some((p) => !policy.attendancePeriodIds.includes(p.id))) throw badRequest("새 관리규정 적용 기간의 출석은 1~5교시에서 기록해 주세요.");
 
   if (targetPeriods.length === 0) {
     throw badRequest("적용할 교시를 찾을 수 없습니다.");
@@ -1608,6 +1619,11 @@ export async function getAttendanceStats(
     }));
   }
 
+  const policy = context.policy;
+  const expectedCell = (periodId: string, date: string, studentId: string) => isPolicyEffective(policy, date)
+    ? isControlledPeriod(policy, periodId, date, studentId)
+    : !!periods.find((p) => p.id === periodId && p.isActive && p.isMandatory);
+  records = records.filter((r) => !isPolicyEffective(policy, r.date) || expectedCell(r.periodId, r.date, r.studentId));
   const totals = createEmptyCounts();
   const periodSummaries = periods.map((period) => ({
     periodId: period.id,
@@ -1650,7 +1666,8 @@ export async function getAttendanceStats(
   }
 
   for (const summary of periodSummaries) {
-    const expectedPerPeriod = summary.isMandatory ? students.length * dates.length : 0;
+    const policyRange = dates.some((d) => isPolicyEffective(policy, d));
+    const expectedPerPeriod = policyRange ? dates.reduce((sum, d) => sum + students.filter((s) => expectedCell(summary.periodId, d, s.id)).length, 0) : summary.isMandatory ? students.length * dates.length : 0;
     const processed = Object.entries(summary.counts)
       .filter(([key]) => key !== "unprocessed")
       .reduce((sum, [, value]) => sum + value, 0);
@@ -1661,7 +1678,7 @@ export async function getAttendanceStats(
       summary.counts.tardy +
       summary.counts.holiday +
       summary.counts.half_holiday;
-    const expected = summary.isMandatory
+    const expected = (summary.isMandatory || policyRange)
       ? expectedPerPeriod - summary.counts.not_applicable
       : processed;
 
@@ -1670,7 +1687,7 @@ export async function getAttendanceStats(
 
   // 출석률 = (출석 + 지각) / 전체학생 × 100  (학생 기준)
   const cameStudents = totals.present + totals.tardy;
-  const expectedStudentDates = students.length * dates.length;
+  const expectedStudentDates = dates.reduce((sum, date) => sum + (isPolicyEffective(policy, date) ? students.filter((s) => periods.some((p) => expectedCell(p.id, date, s.id))).length : students.length), 0);
   const attendanceRate =
     expectedStudentDates > 0 ? Number(((cameStudents / expectedStudentDates) * 100).toFixed(1)) : 0;
 

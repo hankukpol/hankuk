@@ -1,3 +1,5 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isPolicyEffective, kstDate } from "@/lib/management-policy";
 import { cache } from "react";
 import { Prisma } from "@prisma/client";
 
@@ -618,6 +620,11 @@ export async function createLeavePermission(
   input: LeavePermissionSchemaInput,
 ) {
   const reason = normalizeOptionalText(input.reason);
+  const policy = await getManagementPolicy(divisionSlug);
+  if (isPolicyEffective(policy, input.date) && policy.holidayPriorNotice && input.type === "HOLIDAY" && input.date <= kstDate() && !reason) {
+    throw badRequest("휴일권은 전일까지 통보해야 합니다. 당일·사후 승인이라면 질병·사고 등 예외 인정 사유를 기록해 주세요.");
+  }
+  if (isPolicyEffective(policy, input.date) && input.type === "HEALTH" && !reason) throw badRequest("질병·건강 인정사유와 확인 내용을 기록해 주세요.");
   const status = getLeaveStatus(input.type, input.date);
   const settings = await getDivisionSettings(divisionSlug);
 
@@ -660,7 +667,7 @@ export async function createLeavePermission(
           saved.date.startsWith(monthPrefix) &&
           !isInactiveLeaveStatus(saved.status),
       ).length;
-      assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+      if (!(isPolicyEffective(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const nextRecord: MockLeavePermissionRecord = {
         id: `mock-leave-${divisionSlug}-${Date.now()}`,
@@ -758,7 +765,7 @@ export async function createLeavePermission(
           },
         },
       });
-      assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+      if (!(isPolicyEffective(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const created = await tx.leavePermission.create({
         data: {

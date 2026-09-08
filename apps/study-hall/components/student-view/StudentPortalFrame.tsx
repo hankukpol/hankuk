@@ -21,6 +21,7 @@ type StudentPortalFrameProps = {
   };
   student: StudentDetail;
   current:
+    | "management-policy"
     | "dashboard"
     | "attendance"
     | "points"
@@ -97,7 +98,7 @@ export function StudentPortalFrame({
               </div>
               <div className="flex flex-col items-center">
                 <p className="text-[11px] font-medium text-white/50">상벌점</p>
-                <p className="mt-0.5 text-[15px] font-bold text-white">{student.netPoints}점</p>
+                <p className="mt-0.5 text-[15px] font-bold text-white">{student.meritPoints !== undefined ? <><span className="block">상점 {student.meritPoints}점</span><span className="block">벌점 {student.demeritPoints ?? 0}점</span></> : `${student.netPoints}점`}</p>
               </div>
               <div className="flex flex-col items-end">
                 <p className="text-[11px] font-medium text-white/50">직렬</p>
@@ -108,12 +109,12 @@ export function StudentPortalFrame({
             {/* Badges */}
             <div className="mt-3.5 flex flex-wrap gap-1.5">
                <StudentStatusBadge status={student.status} />
-               <WarningStageBadge stage={student.warningStage} />
+               <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
             </div>
           </div>
         </section>
 
-        <StudentPortalTabs
+        <StudentPortalTabs policyEnabled={student.meritPoints !== undefined}
           divisionSlug={division.slug}
           current={current}
           attendanceEnabled={attendanceEnabled}

@@ -109,6 +109,7 @@ export function StudentListManager({
   today,
   initialSearchParams = {},
 }: StudentListManagerProps) {
+  const warningLabels = initialStudents[0]?.warningStageLabels;
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(() => initialSearchParams.q ?? "");
@@ -165,7 +166,7 @@ export function StudentListManager({
           return left.name.localeCompare(right.name, "ko");
         case "netPoints":
           return (
-            toDemeritPoints(right.netPoints) - toDemeritPoints(left.netPoints) ||
+            (right.demeritPoints ?? toDemeritPoints(right.netPoints)) - (left.demeritPoints ?? toDemeritPoints(left.netPoints)) ||
             left.name.localeCompare(right.name, "ko")
           );
         case "createdAt":
@@ -451,7 +452,7 @@ export function StudentListManager({
               <option value="ALL">상태 전체</option>
               {STUDENT_STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {warningLabels?.[option.value] ?? option.label}
                 </option>
               ))}
             </select>
@@ -467,7 +468,7 @@ export function StudentListManager({
               <option value="ALL">경고 단계 전체</option>
               {WARNING_STAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {warningLabels?.[option.value] ?? option.label}
                 </option>
               ))}
             </select>
@@ -483,7 +484,7 @@ export function StudentListManager({
             >
               {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {warningLabels?.[option.value] ?? option.label}
                 </option>
               ))}
             </select>
@@ -520,7 +521,7 @@ export function StudentListManager({
                       : "border border-slate-200-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {option.label}
+                  {warningLabels?.[option.value] ?? option.label}
                 </button>
               ))}
             </div>
@@ -595,7 +596,7 @@ export function StudentListManager({
               ) : null}
               {warningFilter !== "ALL" ? (
                 <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                  {getWarningStageLabel(warningFilter)}
+                  {warningLabels?.[warningFilter] ?? getWarningStageLabel(warningFilter)}
                 </span>
               ) : null}
               {trackFilter !== "ALL" ? (
@@ -660,10 +661,10 @@ export function StudentListManager({
                       <StudentStatusBadge status={student.status} />
                     </td>
                     <td className="px-4 py-4 font-semibold text-slate-950">
-                      {toDemeritPoints(student.netPoints)}점
+                      {(student.demeritPoints ?? toDemeritPoints(student.netPoints))}점
                     </td>
                     <td className="px-4 py-4">
-                      <WarningStageBadge stage={student.warningStage} />
+                      <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                     </td>
                     <td className="px-4 py-4 text-slate-600">{formatDate(student.createdAt)}</td>
                     <td className="px-4 py-4 text-right">
@@ -702,7 +703,7 @@ export function StudentListManager({
                     <p className="text-sm text-slate-500">{student.studentNumber}</p>
                     <h3 className="mt-1 text-xl font-bold text-slate-950">{student.name}</h3>
                   </div>
-                  <WarningStageBadge stage={student.warningStage} />
+                  <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -715,7 +716,7 @@ export function StudentListManager({
                     좌석 {student.seatDisplay || "미배정"}
                   </span>
                   <span className="rounded-full border border-slate-200-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-                    벌점 {toDemeritPoints(student.netPoints)}점
+                    벌점 {(student.demeritPoints ?? toDemeritPoints(student.netPoints))}점
                   </span>
                 </div>
 
@@ -814,7 +815,7 @@ export function StudentListManager({
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <StudentStatusBadge status={deleteTarget.status} />
-                <WarningStageBadge stage={deleteTarget.warningStage} />
+                <WarningStageBadge stage={deleteTarget.warningStage} label={deleteTarget.warningStageLabel} />
               </div>
             </div>
 

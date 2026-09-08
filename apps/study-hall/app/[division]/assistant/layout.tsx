@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import type { ReactNode } from "react";
 
 import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
@@ -20,6 +22,7 @@ export default async function AssistantLayout({ children, params }: AssistantLay
     getDivisionFeatureSettings(params.division),
   ]);
 
+  const policy = await getManagementPolicy(params.division);
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef3f8_100%)] text-slate-900">
       <header className="sticky top-0 z-40 border-b border-black/5 bg-[rgb(238_243_248/0.9)] backdrop-blur">
@@ -50,7 +53,7 @@ export default async function AssistantLayout({ children, params }: AssistantLay
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 pb-24 pt-4">{children}</main>
+      <main className="mx-auto max-w-4xl px-4 pb-24 pt-4">{policy && <Link className="mb-4 block text-sm font-semibold underline" href={`/${params.division}/assistant/management-policy`}>관리규정·시간표</Link>}{children}</main>
 
       <AssistantBottomNav
         divisionSlug={params.division}

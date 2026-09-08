@@ -1,3 +1,4 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { RulesSettingsManager } from "@/components/settings/RulesSettingsManager";
 import { listPointRules } from "@/lib/services/point.service";
 import { getDivisionRuleSettings } from "@/lib/services/settings.service";
@@ -15,6 +16,7 @@ export default async function RulesSettingsPage({ params }: RulesSettingsPagePro
     listPointRules(params.division, { activeOnly: true }),
   ]);
 
+  const policy = await getManagementPolicy(params.division);
   return (
     <div className="space-y-6">
       <section className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(18,32,56,0.08)]">
@@ -31,7 +33,7 @@ export default async function RulesSettingsPage({ params }: RulesSettingsPagePro
       <RulesSettingsManager
         divisionSlug={params.division}
         initialSettings={settings}
-        pointRules={pointRules}
+        pointRules={pointRules} policy={policy}
       />
     </div>
   );

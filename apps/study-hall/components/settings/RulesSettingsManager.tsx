@@ -6,12 +6,15 @@ import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import type { PointRuleItem } from "@/lib/services/point.service";
+import type { ManagementPolicy } from "@/lib/management-policy";
+import Link from "next/link";
 import type { DivisionRuleSettings } from "@/lib/services/settings.service";
 
 type RulesSettingsManagerProps = {
   divisionSlug: string;
   initialSettings: DivisionRuleSettings;
   pointRules: PointRuleItem[];
+  policy?: ManagementPolicy | null;
 };
 
 type FormState = {
@@ -72,6 +75,7 @@ export function RulesSettingsManager({
   divisionSlug,
   initialSettings,
   pointRules,
+  policy,
 }: RulesSettingsManagerProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
@@ -166,6 +170,7 @@ export function RulesSettingsManager({
 
   return (
     <>
+      {policy && <section className="rounded-lg border border-slate-200 bg-white p-4"><h2 className="font-semibold">{policy.version} 적용 중</h2><p>월 상점·벌점은 상계하지 않으며 출결 벌점은 관리자 확인 후 확정합니다. 일반 개근 상점·교시별 결석 자동 부과는 적용하지 않습니다.</p><Link className="underline" href={`/${divisionSlug}/admin/settings/management-policy`}>시간표·관리규정·선택자습 신청</Link></section>}
       <div className="grid gap-6 xl:grid-cols-[0.94fr_1.06fr]">
         <section className="space-y-4">
         <article className="rounded-[10px] border border-slate-200-black/5 bg-white p-6 shadow-[0_16px_40px_rgba(18,32,56,0.06)]">
@@ -297,7 +302,7 @@ export function RulesSettingsManager({
                   type="number"
                   min={0}
                   max={180}
-                  value={form.tardyMinutes}
+                  disabled={!!policy} value={form.tardyMinutes}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, tardyMinutes: event.target.value }))
                   }
@@ -366,7 +371,7 @@ export function RulesSettingsManager({
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-slate-700">결석 자동 부여 규칙</span>
                 <select
-                  value={form.absentPointRuleId}
+                  disabled={!!policy} value={form.absentPointRuleId}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, absentPointRuleId: event.target.value }))
                   }
@@ -390,7 +395,7 @@ export function RulesSettingsManager({
             </p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">1차 경고 기준 벌점</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">{policy?.warningLabels.WARNING_1 ?? "1차 경고"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -403,7 +408,7 @@ export function RulesSettingsManager({
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">2차 경고 기준 벌점</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">{policy?.warningLabels.WARNING_2 ?? "2차 경고"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -416,7 +421,7 @@ export function RulesSettingsManager({
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">면담 대상 기준 벌점</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">{policy?.warningLabels.INTERVIEW ?? "면담 대상"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -429,7 +434,7 @@ export function RulesSettingsManager({
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">퇴실 대상 기준 벌점</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">{policy?.warningLabels.WITHDRAWAL ?? "퇴실 대상"} 기준 벌점</span>
                 <input
                   type="number"
                   min={0}
@@ -478,7 +483,7 @@ export function RulesSettingsManager({
                 <input
                   type="number"
                   min={0}
-                  value={form.healthLimit}
+                  disabled={!!policy} value={form.healthLimit}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, healthLimit: event.target.value }))
                   }
@@ -528,7 +533,7 @@ export function RulesSettingsManager({
                 </span>
                 <input
                   type="checkbox"
-                  checked={form.perfectAttendancePtsEnabled}
+                  disabled={!!policy} checked={form.perfectAttendancePtsEnabled}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,

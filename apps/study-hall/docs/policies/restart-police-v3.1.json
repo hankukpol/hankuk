@@ -1,0 +1,464 @@
+{
+  "scope": "police",
+  "sourceHashes": {
+    "student": "744e17bbadfc961f32563f0bea0bd1fe89d0604c082ec3ff063cbe4ffd165d10",
+    "admin": "3c1db5079c63ddedbec906189f5ee1e426803afc2ef93e5f05a86fc2342b3b93",
+    "assistant": "997b32a7982ba672098230ed7efb226f1140285ca23a038f3bfc82f6d7322a67"
+  },
+  "policy": {
+    "version": "RESTART-3.1",
+    "effectiveFrom": "2026-09-08",
+    "source": "RESTART_관리반_학생규정집_및_준수동의서_v3.1.hwpx",
+    "attendancePeriodIds": [
+      "cmnbhq0sf0006vp9g4ffihy2w",
+      "cmnbhq0ud0008vp9g9kt0pern",
+      "cmnbhq0xk000cvp9g3exoc2cl",
+      "cmnbhq0z3000evp9gghvbkal2",
+      "cmnbhq10n000gvp9gu4hl5xlp"
+    ],
+    "controlledPeriods": [
+      {
+        "periodId": "cmnbhq0sf0006vp9g4ffihy2w",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "optional": false
+      },
+      {
+        "periodId": "cmnbhq0ud0008vp9g9kt0pern",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "optional": false
+      },
+      {
+        "periodId": "cmnbhq0xk000cvp9g3exoc2cl",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "optional": false
+      },
+      {
+        "periodId": "cmnbhq0z3000evp9gghvbkal2",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "optional": false
+      },
+      {
+        "periodId": "cmnbhq10n000gvp9gu4hl5xlp",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "optional": true
+      }
+    ],
+    "optionalEnrollments": [],
+    "morningExam": {
+      "periodId": "cmnbhq0vx000avp9g26nxun4h",
+      "weekdays": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "closingTime": "22:00",
+    "monthlyPoints": true,
+    "separateMeritDemerit": true,
+    "managerConfirmsAttendance": true,
+    "fullDayAbsenceRuleId": "restart-v31-police-full-day-absence",
+    "partialAbsenceRuleId": null,
+    "tardyRuleId": "restart-v31-police-late-arrival",
+    "lateArrivalPolicy": "after_start",
+    "phone": {
+      "shortLoanMinutes": 10,
+      "resubmitBeforeMinutes": 10,
+      "repeatDays": 7,
+      "repeatCount": 3,
+      "allowBulkRental": false
+    },
+    "earlyExit": {
+      "ruleId": "restart-v31-police-early-exit",
+      "windowDays": 7,
+      "interviewCount": 2,
+      "missionCount": 3,
+      "missionDays": 7
+    },
+    "unauthorizedEntry": {
+      "ruleId": "restart-v31-police-unauthorized-entry",
+      "monthlyReviewCount": 2
+    },
+    "patrolsPerPeriod": 3,
+    "dailyGoalCount": 3,
+    "appealDays": 3,
+    "holidayPriorNotice": true,
+    "warningLabels": {
+      "NORMAL": "정상",
+      "WARNING_1": "관리주의",
+      "WARNING_2": "정식 면담·7일 개선미션",
+      "INTERVIEW": "최종경고·개선확약",
+      "WITHDRAWAL": "이용종료 검토"
+    },
+    "guidance": [
+      {
+        "title": "출석·통제",
+        "text": "월~토 1~4교시 의무, 평일 5교시는 신청자만 시간통제. 토요일 5~6교시·일요일 전 교시는 자율이며 시간통제 벌점과 휴대폰 의무제출을 적용하지 않습니다. 출석은 1~5교시 기준으로 기록합니다."
+      },
+      {
+        "title": "지각·대기석",
+        "text": "교시 시작 후 도착하면 지각으로 기록합니다. 휴대폰 제출 후 5층 지정 대기·자습석에서 공부하고 다음 휴식시간에 본 자습실에 입실합니다. 교시 중 즉시 입실은 허용하지 않습니다."
+      },
+      {
+        "title": "예정퇴실·긴급사유",
+        "text": "현장강의·체력·병원 등 예정퇴실은 교시 전에 신고하고 본 자습실 미입실 상태로 대기석에서 공부합니다. 긴급 화장실·건강 문제는 시간·사유를 기록하고 인정 시 벌점 없이 퇴실하되 복귀는 다음 휴식시간입니다."
+      },
+      {
+        "title": "중복부과",
+        "text": "동일 행위에는 가장 중한 항목 하나만 적용합니다. 건물 밖 무단이탈에 중도퇴실을 더하지 않습니다. 관리일 전체 무단결석에는 교시별 결석을 더하지 않습니다. 별개의 독립 행위만 각각 부과합니다."
+      },
+      {
+        "title": "휴대폰 제출",
+        "text": "실사용폰을 5층 조교에게 제출합니다. 일반 15분 휴식에는 반출하지 않습니다. 점심·저녁 사용 후 다음 통제교시 10분 전 재제출하며, 승인 외출 시 실제 건물 퇴실 직전 수령·관리시간 복귀 즉시 재제출합니다."
+      },
+      {
+        "title": "휴대폰 예외",
+        "text": "본인인증·결제·긴급연락은 사유·반출·반납 시각을 기록하고 5층 지정공간에서 최대 10분 사용합니다. 초과 용무·휴대폰 전용 학습앱은 관리자 사전승인(시간·장소·목적)이 필요합니다. 본 자습실 반입과 1~5교시 장시간 대여는 금지합니다. 최근 7일 예외 3회 이상은 관리자 검토입니다."
+      },
+      {
+        "title": "순찰·졸음",
+        "text": "시간통제 교시당 비정시 순찰 3회. 졸음은 당일 1차 깨움, 2차 스탠딩·환기·대기석 이동, 3차 -1점입니다. 조교 지시에 따른 이동은 중도퇴실로 보지 않습니다."
+      },
+      {
+        "title": "전자기기·학습환경",
+        "text": "태블릿·노트북은 학습 목적으로만 사용합니다. 비학습 사용 -2점, 대화·소음·냄새는 1차 시정 후 반복 -2점, 지정석 임의변경은 원위치 후 반복 -1점입니다."
+      },
+      {
+        "title": "학습실행",
+        "text": "평일 08:30~09:00 아침모의고사 의무. 정기모의고사 의무 응시·OMR 제출. 당일 목표 3개를 작성하고 퇴실 전 완료·부분완료·미완료를 체크합니다. 목표 미완료 자체는 벌점이 아닙니다."
+      },
+      {
+        "title": "인정사유·휴일권",
+        "text": "휴일권 월 2회, 원칙적으로 전일까지 통보. 당일 통보는 질병·사고 등 불가피한 사유를 관리자에게 확인받습니다. 병원·약국, 현장강의, 체력시험 준비, 타 학원 시험·검정제·자격증, 예비군, 경조사, 원거리 교통·불가항력은 확인 가능한 자료와 사전일정·관리자 판단으로 인정합니다."
+      },
+      {
+        "title": "월별 상·벌점",
+        "text": "상점과 벌점은 별도 집계하며 상계하지 않습니다. 매월 말 집계가 종료되고 다음 달 새로 집계합니다. 원기록·개선미션·최종경고·즉시 퇴실심의 이력은 삭제하지 않습니다. 월 상점 상위 3명 보상은 별도 공지, 동점은 휴일권 미사용자 우선입니다."
+      },
+      {
+        "title": "단계별 개입",
+        "text": "월 벌점 10점 관리주의, 20점 정식면담·7일 개선미션, 25점 최종경고·개선확약, 30점 이용종료 원칙(기록·증빙 오류만 재검토). 최근 7일 무사유 중도퇴실 2회 면담, 3회 7일 개선미션. 승인일정·긴급사유는 반복 횟수 제외."
+      },
+      {
+        "title": "즉시 퇴실심의",
+        "text": "공기계 대체·실사용폰 은닉·제출 조작, 출결·증빙 고의 조작, 월 무단입실 2회 이상, 정당한 지시 반복 거부, 폭력·절도·위협·욕설, 면담 후에도 개선되지 않는 중대한 학습방해는 점수와 관계없이 관리자 심의로 처리합니다. 자동 퇴실시키지 않습니다."
+      },
+      {
+        "title": "확정·이의",
+        "text": "조교는 사실·시간·학생 설명과 벌점후보를 기록하고 관리자가 확정·보류·취소합니다. 위반 안내일 포함 3일 이내 이의신청을 받습니다. 응급·안전사고는 안전 확보가 우선이며 환불은 기존 학원 규정에 따릅니다."
+      }
+    ],
+    "breaks": [
+      {
+        "name": "휴식",
+        "startTime": "09:00",
+        "endTime": "09:15"
+      },
+      {
+        "name": "휴식",
+        "startTime": "10:45",
+        "endTime": "11:00"
+      },
+      {
+        "name": "점심",
+        "startTime": "12:30",
+        "endTime": "13:45"
+      },
+      {
+        "name": "휴식",
+        "startTime": "15:15",
+        "endTime": "15:30"
+      },
+      {
+        "name": "저녁",
+        "startTime": "17:00",
+        "endTime": "18:15"
+      },
+      {
+        "name": "휴식",
+        "startTime": "19:55",
+        "endTime": "20:10"
+      }
+    ]
+  },
+  "rules": [
+    {
+      "id": "restart-v31-police-full-day-absence",
+      "key": "full-day-absence",
+      "category": "출결",
+      "name": "관리일 전체 무단결석",
+      "points": -5,
+      "description": "사전 승인 없는 관리일 전체 무단결석. 교시별 결석과 중복 금지.",
+      "displayOrder": 0
+    },
+    {
+      "id": "restart-v31-police-late-arrival",
+      "key": "late-arrival",
+      "category": "출결",
+      "name": "시간통제 교시 시작 후 도착",
+      "points": -2,
+      "description": "본 자습실 즉시 입실 불가, 5층 대기석에서 다음 휴식시간까지 학습.",
+      "displayOrder": 1
+    },
+    {
+      "id": "restart-v31-police-early-exit",
+      "key": "early-exit",
+      "category": "입퇴실",
+      "name": "사유 없는 중도퇴실",
+      "points": -1,
+      "description": "매회. 최근 7일 2회 면담, 3회 7일 개선미션. 승인 일정·인정 긴급사유 제외.",
+      "displayOrder": 2
+    },
+    {
+      "id": "restart-v31-police-unauthorized-departure",
+      "key": "unauthorized-departure",
+      "category": "입퇴실",
+      "name": "승인 없는 건물 밖 무단이탈",
+      "points": -3,
+      "description": "동일 행위 중도퇴실 -1 중복 금지. 관리자 즉시 보고.",
+      "displayOrder": 3
+    },
+    {
+      "id": "restart-v31-police-unauthorized-entry",
+      "key": "unauthorized-entry",
+      "category": "입퇴실",
+      "name": "교시 중 무단입실·출입통제 불응",
+      "points": -2,
+      "description": "동일 월 2회 이상 즉시 퇴실심의.",
+      "displayOrder": 4
+    },
+    {
+      "id": "restart-v31-police-phone-missing",
+      "key": "phone-missing",
+      "category": "휴대폰",
+      "name": "휴대폰 미제출·본 자습실 무단소지",
+      "points": -3,
+      "description": "실사용 휴대폰 제출. 단순 재제출 지연 -1 항목은 학생규정에 없어 별도 부과하지 않음.",
+      "displayOrder": 5
+    },
+    {
+      "id": "restart-v31-police-phone-misuse",
+      "key": "phone-misuse",
+      "category": "휴대폰",
+      "name": "승인 목적 외 사용·승인시간 초과",
+      "points": -2,
+      "description": "단기 예외 10분, 초과는 관리자 사전승인.",
+      "displayOrder": 6
+    },
+    {
+      "id": "restart-v31-police-device-misuse",
+      "key": "device-misuse",
+      "category": "전자기기",
+      "name": "태블릿·노트북 비학습 사용",
+      "points": -2,
+      "description": "SNS·커뮤니티·쇼핑·게임·메신저·일반 영상 등.",
+      "displayOrder": 7
+    },
+    {
+      "id": "restart-v31-police-sleep-third",
+      "key": "sleep-third",
+      "category": "학습태도",
+      "name": "당일 졸음·수면 3차 조치",
+      "points": -1,
+      "description": "1차 깨움·2차 스탠딩/환기 후 당일 3차에만 적용.",
+      "displayOrder": 8
+    },
+    {
+      "id": "restart-v31-police-disturbance-repeat",
+      "key": "disturbance-repeat",
+      "category": "학습환경",
+      "name": "대화·소음·냄새 시정 후 반복",
+      "points": -2,
+      "description": "동일 행위 1차 시정 후 반복된 경우.",
+      "displayOrder": 9
+    },
+    {
+      "id": "restart-v31-police-seat-repeat",
+      "key": "seat-repeat",
+      "category": "학습환경",
+      "name": "지정석 임의변경 반복",
+      "points": -1,
+      "description": "원위치 조치 후 반복 시 적용.",
+      "displayOrder": 10
+    },
+    {
+      "id": "restart-v31-police-morning-absence",
+      "key": "morning-absence",
+      "category": "의무사항",
+      "name": "아침모의고사 무단 미참여",
+      "points": -1,
+      "description": "평일 의무. 인정사유 제외.",
+      "displayOrder": 11
+    },
+    {
+      "id": "restart-v31-police-regular-absence",
+      "key": "regular-absence",
+      "category": "의무사항",
+      "name": "정기모의고사 무단 미응시",
+      "points": -3,
+      "description": "의무 참여·OMR 제출. 운영자 확인: 학생규정집 벌점표 기준.",
+      "displayOrder": 12
+    },
+    {
+      "id": "restart-v31-police-regular-first",
+      "key": "regular-first",
+      "category": "시험",
+      "name": "정기모의고사 전체 1등",
+      "points": 3,
+      "description": "월 상점 별도 집계.",
+      "displayOrder": 13
+    },
+    {
+      "id": "restart-v31-police-regular-second",
+      "key": "regular-second",
+      "category": "시험",
+      "name": "정기모의고사 전체 2등",
+      "points": 2,
+      "description": "월 상점 별도 집계.",
+      "displayOrder": 14
+    },
+    {
+      "id": "restart-v31-police-regular-third",
+      "key": "regular-third",
+      "category": "시험",
+      "name": "정기모의고사 전체 3등",
+      "points": 1,
+      "description": "월 상점 별도 집계.",
+      "displayOrder": 15
+    },
+    {
+      "id": "restart-v31-police-morning-first",
+      "key": "morning-first",
+      "category": "시험",
+      "name": "아침모의고사 전체 1등",
+      "points": 3,
+      "description": "월 상점 별도 집계.",
+      "displayOrder": 16
+    },
+    {
+      "id": "restart-v31-police-morning-perfect",
+      "key": "morning-perfect",
+      "category": "시험",
+      "name": "아침모의고사 한 달 개근",
+      "points": 3,
+      "description": "일일 일반 출석 개근과 구분. 해당 월 결과 확인 후 지급.",
+      "displayOrder": 17
+    },
+    {
+      "id": "restart-v31-police-holiday-unused",
+      "key": "holiday-unused",
+      "category": "출결",
+      "name": "휴일권 미사용(개당)",
+      "points": 2,
+      "description": "월 2회 중 미사용 개수당 +2. 외출/휴가 월 정산과 이중 지급하지 않음.",
+      "displayOrder": 18
+    }
+  ],
+  "periods": [
+    {
+      "name": "0교시",
+      "startTime": "06:00",
+      "endTime": "08:00",
+      "isMandatory": false,
+      "label": "자율자습",
+      "displayOrder": 0
+    },
+    {
+      "name": "아침모의고사",
+      "startTime": "08:30",
+      "endTime": "09:00",
+      "isMandatory": false,
+      "label": "평일 의무 · 주말 자율",
+      "displayOrder": 1
+    },
+    {
+      "name": "1교시",
+      "startTime": "09:15",
+      "endTime": "10:45",
+      "isMandatory": true,
+      "label": "월~토 시간통제",
+      "displayOrder": 2
+    },
+    {
+      "name": "2교시",
+      "startTime": "11:00",
+      "endTime": "12:30",
+      "isMandatory": true,
+      "label": "월~토 시간통제",
+      "displayOrder": 3
+    },
+    {
+      "name": "3교시",
+      "startTime": "13:45",
+      "endTime": "15:15",
+      "isMandatory": true,
+      "label": "월~토 시간통제",
+      "displayOrder": 4
+    },
+    {
+      "name": "4교시",
+      "startTime": "15:30",
+      "endTime": "17:00",
+      "isMandatory": true,
+      "label": "월~토 시간통제",
+      "displayOrder": 5
+    },
+    {
+      "name": "5교시",
+      "startTime": "18:15",
+      "endTime": "19:55",
+      "isMandatory": false,
+      "label": "평일 신청자 시간통제 · 주말 자율",
+      "displayOrder": 6
+    },
+    {
+      "name": "6교시",
+      "startTime": "20:10",
+      "endTime": "21:50",
+      "isMandatory": false,
+      "label": "자율자습",
+      "displayOrder": 7
+    }
+  ],
+  "decision": {
+    "basis": "student_penalty_table",
+    "confirmedOn": "2026-09-08",
+    "lateArrivalPoints": -2,
+    "regularExamAbsencePoints": -3
+  }
+}

@@ -81,3 +81,21 @@ body {
     @apply bg-gray-50;
   }
 } 
+
+/* Tokens used only by the new RESTART management-rule screens. */
+:root {
+  --admin-surface: #ffffff;
+  --admin-line-soft: #e8e8ec;
+  --admin-line: #d6d6dc;
+  --admin-text: #0a0a0a;
+  --admin-text-muted: #6b6b6b;
+  --admin-radius: 8px;
+  --admin-control-height: 44px;
+  --admin-control-padding-x: 16px;
+  --admin-control-padding-y: 8px;
+  --admin-dialog-padding: 24px;
+  --admin-type-title: 20px;
+  --admin-type-section: 16px;
+  --admin-type-body: 15px;
+  --admin-type-caption: 13px;
+}

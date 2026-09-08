@@ -182,7 +182,7 @@ export function StudentDetailView({
     { stage: "WITHDRAWAL", label: "퇴실 대상", threshold: warningThresholds.warnWithdraw },
   ];
 
-  const currentDemeritPoints = toDemeritPoints(initialStudent.netPoints);
+  const currentDemeritPoints = (initialStudent.demeritPoints ?? toDemeritPoints(initialStudent.netPoints));
 
   useEffect(() => {
     if (!availableTabs.some((tab) => tab.id === activeTab)) {
@@ -200,6 +200,7 @@ export function StudentDetailView({
   }, [initialStudent.memo, initialStudent.updatedAt, isEditingMemo]);
 
   async function handleWarnAdjust() {
+    if (initialStudent.demeritPoints !== undefined) { toast.error("상점으로 벌점을 차감할 수 없습니다. 잘못된 원기록을 수정해 주세요."); return; }
     const target = warnTargets.find((t) => t.stage === selectedWarnTarget);
     if (!target) return;
     const delta = target.threshold - currentDemeritPoints;
@@ -394,11 +395,11 @@ export function StudentDetailView({
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <StudentStatusBadge status={initialStudent.status} />
-              <WarningStageBadge stage={initialStudent.warningStage} />
+              <WarningStageBadge stage={initialStudent.warningStage} label={initialStudent.warningStageLabel} />
               {initialStudent.tuitionExempt ? (
                 <TuitionExemptBadge reason={initialStudent.tuitionExemptReason} />
               ) : null}
-              {canEdit && warningManagementEnabled && pointManagementEnabled && (
+              {canEdit && warningManagementEnabled && pointManagementEnabled && initialStudent.demeritPoints === undefined && (
                 <button
                   type="button"
                   onClick={() => {
@@ -703,7 +704,7 @@ export function StudentDetailView({
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <StudentStatusBadge status={initialStudent.status} />
-                <WarningStageBadge stage={initialStudent.warningStage} />
+                <WarningStageBadge stage={initialStudent.warningStage} label={initialStudent.warningStageLabel} />
               </div>
             </div>
 

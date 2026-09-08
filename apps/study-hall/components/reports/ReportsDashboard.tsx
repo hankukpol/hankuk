@@ -468,7 +468,7 @@ export function ReportsDashboard({
                         {flags.pointManagement ? (
                           <>
                             <th className="px-3 py-3 font-medium">점수 변동</th>
-                            <th className="px-3 py-3 font-medium">누적 점수</th>
+                            <th className="px-3 py-3 font-medium">{data.studentRows.some((r) => r.meritPoints !== undefined) ? "상점·벌점" : "누적 점수"}</th>
                           </>
                         ) : null}
                         {flags.warningManagement ? (
@@ -519,12 +519,12 @@ export function ReportsDashboard({
                                     {formatPointDelta(row.pointDelta)}
                                   </span>
                                 </td>
-                                <td className="px-3 py-4">{row.netPoints}점</td>
+                                <td className="px-3 py-4">{row.meritPoints !== undefined ? `상점 ${row.meritPoints} / 벌점 ${row.demeritPoints ?? 0}` : `${row.netPoints}점`}</td>
                               </>
                             ) : null}
                             {flags.warningManagement ? (
                               <td className="px-3 py-4 text-slate-600">
-                                {getWarningStageLabel(row.warningStage)}
+                                {row.warningStageLabel ?? getWarningStageLabel(row.warningStage)}
                               </td>
                             ) : null}
                             {flags.examManagement ? (

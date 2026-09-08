@@ -1070,7 +1070,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                             </span>
                           )}
                           <span className="text-xs text-slate-400">{student.studentNumber}</span>
-                          <WarningStageBadge stage={student.warningStage} />
+                          <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                         </div>
                         <p className="mt-0.5 text-xs text-slate-500">
                           벌점 {student.netPoints}p · {student.seatLabel || "좌석 미배정"}

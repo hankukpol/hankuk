@@ -5,12 +5,14 @@ import { portalCardClass } from "@/components/student-view/StudentPortalUi";
 type StudentPortalTabsProps = {
   divisionSlug: string;
   current:
+    | "management-policy"
     | "dashboard"
     | "announcements"
     | "attendance"
     | "study-ranking"
     | "points"
     | "exams";
+  policyEnabled?: boolean;
   attendanceEnabled?: boolean;
   announcementsEnabled?: boolean;
   pointsEnabled?: boolean;
@@ -18,6 +20,7 @@ type StudentPortalTabsProps = {
 };
 
 const items = [
+  { key: "management-policy", label: "관리규정", href: "management-policy" },
   { key: "dashboard", label: "대시보드", href: "" },
   { key: "announcements", label: "공지사항", href: "announcements" },
   { key: "attendance", label: "출석 상세", href: "attendance" },
@@ -29,12 +32,14 @@ const items = [
 export function StudentPortalTabs({
   divisionSlug,
   current,
+  policyEnabled = false,
   attendanceEnabled = true,
   announcementsEnabled = true,
   pointsEnabled = true,
   examsEnabled = true,
 }: StudentPortalTabsProps) {
   const visibleItems = items.filter((item) => {
+    if (item.key === "management-policy") return policyEnabled;
     if (item.key === "attendance") return attendanceEnabled;
     if (item.key === "announcements") return announcementsEnabled;
     if (item.key === "points") return pointsEnabled;

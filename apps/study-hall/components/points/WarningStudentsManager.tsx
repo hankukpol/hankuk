@@ -163,7 +163,7 @@ export function WarningStudentsManager({
                 {filteredStudents.map((student) => (
                   <tr key={student.id}>
                     <td className="px-4 py-4">
-                      <WarningStageBadge stage={student.warningStage} />
+                      <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                     </td>
                     <td className="px-4 py-4 font-medium text-slate-950">{student.name}</td>
                     <td className="px-4 py-4 text-slate-600">{student.studentNumber}</td>

@@ -1,3 +1,5 @@
+import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { isPolicyEffective, isControlledPeriod } from "@/lib/management-policy";
 import { unstable_cache } from "next/cache";
 
 import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
@@ -85,7 +87,10 @@ export type ReportStudentRow = {
   unprocessedCount: number;
   pointDelta: number;
   netPoints: number;
+  meritPoints?: number;
+  demeritPoints?: number;
   warningStage: string;
+  warningStageLabel?: string;
   latestExamLabel: string | null;
   latestExamTotal: number | null;
   latestExamRank: number | null;
@@ -410,6 +415,7 @@ function buildStudentRows(
   attendanceRecords: RawAttendanceRecord[],
   pointRecords: PointRecordItem[],
   examSummaryMap: Map<string, Awaited<ReturnType<typeof getLatestExamSummaryForStudent>>>,
+  expectedCell?: (periodId: string, date: string, studentId: string) => boolean,
 ) {
   const recordMap = new Map<string, RawAttendanceRecord[]>();
 
@@ -438,6 +444,7 @@ function buildStudentRows(
         const byPeriodId = new Map(dayRecords.map((record) => [record.periodId, record]));
 
         for (const period of mandatoryPeriods) {
+          if (expectedCell && !expectedCell(period.id, date, student.id)) continue;
           const record = byPeriodId.get(period.id);
 
           if (!record) {
@@ -472,7 +479,10 @@ function buildStudentRows(
         unprocessedCount: counts.unprocessed,
         pointDelta: pointDeltaByStudent.get(student.id) ?? 0,
         netPoints: student.netPoints,
+        meritPoints: student.meritPoints,
+        demeritPoints: student.demeritPoints,
         warningStage: student.warningStage,
+        warningStageLabel: student.warningStageLabel,
         latestExamLabel: examSummary
           ? `${examSummary.examTypeName} ${examSummary.examRound}회`
           : null,
@@ -526,6 +536,7 @@ function buildDailyPeriodRows(
   }>,
   activeStudentCount: number,
   attendanceRecords: RawAttendanceRecord[],
+  expectedByPeriod?: Map<string, number>,
 ) {
   return periods
     .filter((period) => period.isActive)
@@ -548,9 +559,9 @@ function buildDailyPeriodRows(
         counts.holiday +
         counts.halfHoliday +
         counts.notApplicable;
-      counts.unprocessed = Math.max(activeStudentCount - processed, 0);
+      counts.unprocessed = Math.max((expectedByPeriod?.get(period.id) ?? activeStudentCount) - processed, 0);
 
-      const expected = Math.max(activeStudentCount - counts.notApplicable, 0);
+      const expected = Math.max((expectedByPeriod?.get(period.id) ?? activeStudentCount) - counts.notApplicable, 0);
 
       return {
         periodId: period.id,
@@ -577,6 +588,7 @@ function buildTrendForDates(
   mandatoryPeriods: Array<{ id: string }>,
   activeStudentCount: number,
   attendanceRecords: RawAttendanceRecord[],
+  expectedByDate?: Map<string, number>,
 ) {
   return dates.map((date) => {
     const counts = createStatusCounts();
@@ -591,7 +603,7 @@ function buildTrendForDates(
     }
 
     const expected =
-      activeStudentCount * mandatoryPeriods.length - counts.notApplicable;
+      (expectedByDate?.get(date) ?? activeStudentCount * mandatoryPeriods.length) - counts.notApplicable;
 
     return {
       label: new Intl.DateTimeFormat("ko-KR", {
@@ -917,11 +929,12 @@ async function getReportDataUncached(
   divisionSlug: string,
   selection: ReportSelection,
 ): Promise<ReportData> {
+  const policy = await getManagementPolicy(divisionSlug);
   const featureFlags = (await getDivisionFeatureSettings(divisionSlug)).featureFlags;
   const range = buildReportRange(selection);
   const [division, students, periods, attendanceRecords, pointRecords] = await Promise.all([
     getDivisionTheme(divisionSlug),
-    listStudents(divisionSlug),
+    listStudents(divisionSlug, policy ? { pointDateFrom: range.dateFrom, pointDateTo: range.dateTo } : undefined),
     getPeriods(divisionSlug),
     featureFlags.attendanceManagement
       ? listAttendanceRangeRecords(divisionSlug, range.dateFrom, range.dateTo)
@@ -945,21 +958,27 @@ async function getReportDataUncached(
   ]);
   const studentRows = buildStudentRows(
     activeStudents,
-    mandatoryPeriods,
+    policy ? periods.filter((p) => p.isActive) : mandatoryPeriods,
     dates,
     attendanceRecords,
     pointRecords,
     examSummaryMap,
+    policy ? (periodId, date, studentId) => isPolicyEffective(policy, date) ? isControlledPeriod(policy, periodId, date, studentId) : mandatoryPeriods.some((p) => p.id === periodId) : undefined,
   );
+  const expectedCell = (periodId: string, date: string, studentId: string) => isPolicyEffective(policy, date)
+    ? isControlledPeriod(policy, periodId, date, studentId) : mandatoryPeriods.some((p) => p.id === periodId);
+  const policyRecords = policy ? attendanceRecords.filter((r) => expectedCell(r.periodId, r.date, r.studentId)) : attendanceRecords;
+  const expectedByPeriod = policy ? new Map(periods.map((p) => [p.id, activeStudents.filter((s) => expectedCell(p.id, range.dateTo, s.id)).length])) : undefined;
+  const expectedByDate = policy ? new Map(dates.map((date) => [date, periods.reduce((sum, p) => sum + activeStudents.filter((s) => expectedCell(p.id, date, s.id)).length, 0)])) : undefined;
   const dailyPeriodRows = featureFlags.attendanceManagement
-    ? buildDailyPeriodRows(range.dateTo, periods, activeStudents.length, attendanceRecords)
+    ? buildDailyPeriodRows(range.dateTo, periods, activeStudents.length, policyRecords, expectedByPeriod)
     : [];
   const trend =
     !featureFlags.attendanceManagement
       ? []
       : selection.period === "daily"
       ? buildTrendForPeriodRows(dailyPeriodRows)
-      : buildTrendForDates(dates, mandatoryPeriods, activeStudents.length, attendanceRecords);
+      : buildTrendForDates(dates, policy ? periods : mandatoryPeriods, activeStudents.length, policyRecords, expectedByDate);
   const titles = buildTitles(selection, range);
 
   return {

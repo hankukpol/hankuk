@@ -1,0 +1,18 @@
+/* Only the new management-rule screens use these classes. */
+.restart-policy { display: grid; gap: var(--admin-dialog-padding); min-width: 0; color: var(--admin-text); font-size: var(--admin-type-body); line-height: 1.6; }
+.restart-policy .admin-section { display: grid; gap: var(--admin-control-padding-x); min-width: 0; padding-bottom: var(--admin-dialog-padding); border-bottom: 1px solid var(--admin-line-soft); }
+.restart-policy .admin-page-title { font-size: var(--admin-type-title); font-weight: 700; }
+.restart-policy .admin-section-title { font-size: var(--admin-type-section); font-weight: 600; }
+.restart-policy .admin-help, .restart-policy .admin-page-description { color: var(--admin-text-muted); font-size: var(--admin-type-caption); }
+.restart-policy .admin-field { display: grid; gap: var(--admin-control-padding-y); max-width: 100%; }
+.restart-policy .admin-label { font-size: var(--admin-type-caption); font-weight: 600; }
+.restart-policy input, .restart-policy select { min-height: var(--admin-control-height); max-width: 100%; border: 1px solid var(--admin-line); border-radius: var(--admin-radius); padding: var(--admin-control-padding-y) var(--admin-control-padding-x); background: var(--admin-surface); color: var(--admin-text); }
+.restart-policy .admin-button { min-height: var(--admin-control-height); border: 1px solid var(--admin-line); border-radius: var(--admin-radius); padding: var(--admin-control-padding-y) var(--admin-control-padding-x); background: var(--admin-surface); font-weight: 600; cursor: pointer; }
+.restart-policy .admin-button-primary { background: var(--division-color); color: var(--division-on-accent); border-color: var(--division-color); }
+.restart-policy button:disabled { opacity: .5; cursor: wait; }
+.restart-policy :focus-visible { outline: 2px solid var(--division-color); outline-offset: 2px; }
+.restart-policy .admin-table-frame { overflow-x: auto; max-width: 100%; }
+.restart-policy table { width: 100%; min-width: 36rem; }
+.restart-policy th, .restart-policy td { vertical-align: top; text-align: left; padding: var(--admin-control-padding-y) var(--admin-control-padding-x); }
+.restart-policy th, .restart-policy td:not(.admin-table-name) { white-space: nowrap; }
+.restart-policy td.admin-table-name { min-width: 12rem; white-space: normal; word-break: keep-all; }

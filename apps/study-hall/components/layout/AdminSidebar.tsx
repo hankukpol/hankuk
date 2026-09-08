@@ -28,6 +28,7 @@ type NavItem = {
   label: string;
   icon: React.ElementType;
   featureKey?: DivisionFeatureKey;
+  divisionOnly?: string;
 };
 
 type NavSection = {
@@ -128,6 +129,7 @@ const navSections: NavSection[] = [
         icon: FileSpreadsheet,
         featureKey: "reporting",
       },
+      { href: "settings/management-policy", label: "관리규정", icon: BookOpenCheck, divisionOnly: "police" },
       { href: "settings", label: "\uC124\uC815", icon: Settings },
     ],
   },
@@ -157,7 +159,7 @@ export function AdminSidebar({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !item.featureKey || featureFlags[item.featureKey],
+        (item) => (!item.divisionOnly || item.divisionOnly === divisionSlug) && (!item.featureKey || featureFlags[item.featureKey]),
       ),
     }))
     .filter((section) => section.items.length > 0);

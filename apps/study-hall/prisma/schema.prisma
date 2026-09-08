@@ -498,6 +498,7 @@ model DivisionSettings {
   studyTracks                 Json     @default("[]") @map("study_tracks")
   pointCategories             Json     @default("[]") @map("point_categories")
   featureFlags                Json     @default("{}") @map("feature_flags")
+  managementPolicy            Json?    @map("management_policy")
   perfectAttendancePtsEnabled Boolean  @default(false) @map("perfect_attendance_pts_enabled")
   perfectAttendancePts        Int      @default(0) @map("perfect_attendance_pts")
   expirationWarningDays       Int      @default(14) @map("expiration_warning_days")

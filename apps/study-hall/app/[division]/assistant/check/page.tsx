@@ -1,7 +1,7 @@
 import { MobileCheckForm } from "@/components/attendance/MobileCheckForm";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
-import { getCurrentPeriod, getPeriods } from "@/lib/services/period.service";
+import { getCurrentPeriod } from "@/lib/services/period.service";
 
 function getTodayInKst() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -27,9 +27,10 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
   );
 
   const today = getTodayInKst();
-  const periods = await getPeriods(params.division);
+  const initialSnapshot = await getAttendanceSnapshot(params.division, today);
+  const periods = initialSnapshot.periods;
   const currentPeriod = await getCurrentPeriod(params.division);
-  const periodId = currentPeriod?.id ?? periods[0]?.id ?? null;
+  const periodId = periods.find((p) => p.id === currentPeriod?.id)?.id ?? periods[0]?.id ?? null;
   const snapshot = periodId
     ? await getAttendanceSnapshot(params.division, today, periodId)
     : { students: [], records: [] };

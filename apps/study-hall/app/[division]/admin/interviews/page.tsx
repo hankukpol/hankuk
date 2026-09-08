@@ -41,7 +41,7 @@ export default async function AdminInterviewsPage({ params }: AdminInterviewsPag
         divisionSlug={params.division}
         students={students}
         initialInterviews={interviews}
-        warnInterview={settings.warnInterview}
+        warnInterview={students.some((s) => s.demeritPoints !== undefined) ? settings.warnLevel2 : settings.warnInterview}
       />
     </div>
   );

@@ -213,8 +213,8 @@ export function StudentDashboard({ data }: StudentDashboardProps) {
         />
         <PortalMetricCard
           label="현재 경고 단계"
-          value={getWarningStageLabel(data.student.warningStage)}
-          caption={`누적 벌점 ${toDemeritPoints(data.student.netPoints)}점 기준`}
+          value={data.student.warningStageLabel ?? getWarningStageLabel(data.student.warningStage)}
+          caption={`${data.student.demeritPoints !== undefined ? "이번 달" : "누적"} 벌점 ${(data.student.demeritPoints ?? toDemeritPoints(data.student.netPoints))}점 기준`}
           valueToneClassName="text-rose-600"
         />
       </section>

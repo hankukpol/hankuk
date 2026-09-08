@@ -1,17 +1,5 @@
 import Link from "next/link";
-import {
-  AlarmClock,
-  ArrowRight,
-  CalendarDays,
-  CalendarRange,
-  CreditCard,
-  GraduationCap,
-  LayoutTemplate,
-  MapPinned,
-  Settings2,
-  Star,
-  UserCog,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import type { DivisionFeatureKey } from "@/lib/division-features";
 import { getDivisionBySlug } from "@/lib/services/division.service";
@@ -32,7 +20,6 @@ type SettingsSection = {
   href: string;
   label: string;
   description: string;
-  icon: React.ElementType;
   featureKey?: DivisionFeatureKey;
 };
 
@@ -42,35 +29,30 @@ const sections: SettingsSection[] = [
     href: "settings/general",
     label: "기본 정보",
     description: "지점명, 전체 명칭, 색상, 운영 요일, 직렬 목록을 관리합니다.",
-    icon: LayoutTemplate,
   },
   {
     key: "features",
     href: "settings/features",
     label: "기능 설정",
     description: "지점별로 공지, 상벌점, 시험 등 주요 기능의 사용 여부를 조정합니다.",
-    icon: Settings2,
   },
   {
     key: "periods",
     href: "settings/periods",
     label: "교시 설정",
     description: "교시 시간표와 필수 여부를 지점 단위로 설정합니다.",
-    icon: CalendarRange,
   },
   {
     key: "rules",
     href: "settings/rules",
     label: "운영 규칙",
     description: "지각 기준, 경고 한계, 휴가 시도, 조교 수정 범위를 관리합니다.",
-    icon: AlarmClock,
   },
   {
     key: "tuition",
     href: "settings/tuition",
     label: "등록 기간 / 금액",
     description: "기간별 등록 플랜과 적용 금액을 지점에서 직접 설정합니다.",
-    icon: CreditCard,
     featureKey: "paymentManagement",
   },
   {
@@ -78,7 +60,6 @@ const sections: SettingsSection[] = [
     href: "settings/seats",
     label: "자습실 / 좌석",
     description: "자습실 구성, 좌석 배치, 학생 좌석 이동을 관리합니다.",
-    icon: MapPinned,
     featureKey: "seatManagement",
   },
   {
@@ -86,7 +67,6 @@ const sections: SettingsSection[] = [
     href: "settings/exams",
     label: "시험 설정",
     description: "시험 유형과 직렬별 과목 구성을 지점 단위로 관리합니다.",
-    icon: GraduationCap,
     featureKey: "examManagement",
   },
   {
@@ -94,7 +74,6 @@ const sections: SettingsSection[] = [
     href: "settings/exam-schedules",
     label: "시험 일정",
     description: "실제 시험 일정을 등록하고 학생 화면의 D-Day 노출을 제어합니다.",
-    icon: CalendarDays,
     featureKey: "examScheduleManagement",
   },
   {
@@ -102,7 +81,6 @@ const sections: SettingsSection[] = [
     href: "points/rules",
     label: "상벌점 규칙",
     description: "점수 규칙 목록과 자동 벌점 운영 기준을 설정합니다.",
-    icon: Star,
     featureKey: "pointManagement",
   },
   {
@@ -110,7 +88,6 @@ const sections: SettingsSection[] = [
     href: "staff",
     label: "직원 관리",
     description: "지점 관리자와 조교 계정을 추가, 수정, 비활성화하고 비밀번호를 재설정합니다.",
-    icon: UserCog,
     featureKey: "staffManagement",
   },
 ];
@@ -172,26 +149,29 @@ export default async function SettingsHubPage({ params }: SettingsHubPageProps) 
         </div>
       </dl>
 
-      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {visibleSections.map((section) => {
+      {/* DESIGN.md 5.2·5.3 — 카드 격자를 페이지 템플릿으로 쓰지 않는다. 평면 목록으로 둔다. */}
+      <section className="admin-section">
+        <h2 className="admin-section-title">전체 메뉴</h2>
+        <p className="admin-help mt-2">
+          비활성 기능의 설정 항목은 목록에 나타나지 않습니다.
+        </p>
 
-          return (
+        <div className="admin-panel mt-4">
+          {visibleSections.map((section) => (
             <Link
               key={section.key}
               href={`/${params.division}/admin/${section.href}`}
               prefetch={false}
-              className="group rounded-lg border border-admin-line bg-white p-5 transition hover:bg-admin-surface-soft"
+              className="admin-panel-row admin-panel-row-link"
             >
-              <h2 className="admin-section-title">{section.label}</h2>
-              <p className="admin-help mt-3 leading-6">{section.description}</p>
-
-              <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-900">
-                바로 이동
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-              </div>
+              <span className="min-w-0">
+                <span className="admin-panel-row-link-label">{section.label}</span>
+                <span className="admin-help mt-1 block">{section.description}</span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
             </Link>
-          );
-        })}
+          ))}
+        </div>
       </section>
     </div>
   );

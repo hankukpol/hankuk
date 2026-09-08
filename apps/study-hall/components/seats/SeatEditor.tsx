@@ -841,24 +841,17 @@ export function SeatEditor({
                 key={room.id}
                 type="button"
                 onClick={() => setSelectedRoomId(room.id)}
-                className="admin-choice-button" data-active={selectedRoomId === room.id} aria-pressed={selectedRoomId === room.id}
+                className="admin-choice-card"
+                data-active={selectedRoomId === room.id}
+                aria-pressed={selectedRoomId === room.id}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-base font-bold">{room.name}</p>
-                    <p className={`mt-1 text-sm ${selectedRoomId === room.id ? "text-white/70" : "text-slate-500"}`}>
-                      {room.columns}열 · {room.rows}행 · 좌석 {room.seatsCount}개
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-lg px-3 py-1 text-xs font-semibold ${ room.isActive ? selectedRoomId === room.id ? "bg-white/15 text-white" : "bg-white border border-slate-200 text-emerald-700" : selectedRoomId === room.id ? "bg-white/10 text-white/80" : "bg-slate-200 text-slate-600" }`}
-                  >
-                    {room.isActive ? "운영 중" : "비활성"}
-                  </span>
-                </div>
-                <div className={`mt-3 text-xs ${selectedRoomId === room.id ? "text-white/70" : "text-slate-500"}`}>
-                  배정 학생 {room.assignedStudentsCount}명
-                </div>
+                <span className="flex items-center justify-between gap-3">
+                  <span className="admin-choice-card-title">{room.name}</span>
+                  <span className="admin-badge">{room.isActive ? "운영 중" : "비활성"}</span>
+                </span>
+                <span className="admin-help">
+                  {room.columns}열 · {room.rows}행 · 좌석 {room.seatsCount}개 · 배정 {room.assignedStudentsCount}명
+                </span>
               </button>
             ))}
           </div>

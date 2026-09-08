@@ -210,6 +210,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - `.admin-shell`은 `min-height: 100dvh`, 흰색 작업 화면이다.
 - 데스크톱 사이드바는 **1024px 이상**에서 256px 폭. rail 배경이 문서 끝까지 이어지고 내부 메뉴는 `sticky top: 0`, `height: 100dvh`이다.
 - 메뉴 목록만 세로 스크롤한다. 아래 로그아웃에 접근할 수 있어야 한다.
+- 그 스크롤바는 감춘다(`scrollbar-width: none`, `::-webkit-scrollbar { width: 0 }`). 검은 레일 위에서 시각적 잡음이 되기 때문이며, 휠·키보드·터치 스크롤은 그대로 동작해야 한다.
 - 메뉴 글자 15px/600, 아이콘 Lucide 20px, 최소 높이 44px, 항목 gap 4px, **활성은 왼쪽 4px accent + `#222` 배경**.
 - 1024px 미만은 검은 상단 헤더의 `관리자 메뉴` 버튼으로 전체 메뉴를 펼친다. 선택 후 접히고 Escape로 닫힌다. 상단 최소 64px, 메뉴 링크 최소 44px.
 - 본문 최대 폭 1440px, 가운데 배치. 본문 padding은 위 24px / 아래 48px / 좌우 16px → 768px부터 24px → 1024px부터 32px.
@@ -292,6 +293,8 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 조건 버튼은 **모두 폭 128px, 최소 높이 44px**, padding 8px 12px, gap 4px, 8px 모서리, `flex-shrink: 0`.
 - 기본 흰색·line 테두리·secondary 글자. 선택은 accent 테두리/글자 + `accent-soft` 배경, `aria-pressed` 또는 `data-active`.
 - 화면이 좁으면 버튼 폭을 글자 길이에 맞춰 줄이지 않고 **줄바꿈**한다. 768px 미만 그룹 기준 폭 260px(128px 두 개 + 4px), `max-width: 100%`.
+- **한 줄에 안 들어가는 선택지에는 `.admin-choice-button`을 쓰지 않는다.** 128px 고정 폭이라 제목이 글자 단위로 쪼개진다. 제목·보조설명이 여러 줄인 목록 선택은 `.admin-choice-card`(전체 폭, 세로 배치, 왼쪽 정렬, 선택 시 accent 테두리 + `accent-soft` 배경)를 쓰고 제목은 `.admin-choice-card-title`로 둔다. `button` 안에는 `div`·`p`를 넣을 수 없으므로 자식은 `span`으로 쓴다.
+- 이동만 하는 목록(설정 허브 등)은 선택 버튼이 아니라 `.admin-panel` + `.admin-panel-row.admin-panel-row-link` 평면 목록이다. **카드 격자를 메뉴 템플릿으로 쓰지 않는다**(§5.3).
 **버튼은 세 가지 위계뿐이다.** 화면마다 손으로 색과 여백을 정하면 전부 같은 회색 버튼이 되어 무엇을 눌러야 할지 사라진다.
 
 | 위계 | 클래스 | 모양 | 쓰는 곳 |

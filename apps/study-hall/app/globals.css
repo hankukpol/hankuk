@@ -296,6 +296,14 @@ body {
     gap: 4px;
     overflow-y: auto;
     padding: 16px 12px;
+    /* 검은 레일 위 스크롤바는 시각적 잡음이라 감춘다. 휠·키보드·터치 스크롤은 그대로 동작한다. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .admin-sidebar-nav::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 
   .admin-sidebar-group {
@@ -727,6 +735,44 @@ body {
     color: var(--admin-accent);
   }
 
+  /* 목록에서 하나를 고르는 전체 폭 카드.
+     칩(.admin-choice-button)은 한 줄짜리 고정 폭이고, 이쪽은 제목·보조설명 여러 줄을 담는다.
+     button 안에는 div 를 넣을 수 없으므로 자식은 span 으로 쓴다. */
+  .admin-choice-card {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 6px;
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    padding: 12px;
+    background: var(--admin-surface);
+    color: var(--admin-text-secondary);
+    text-align: left;
+    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+  }
+
+  .admin-choice-card:hover:not(:disabled) {
+    background: var(--admin-surface-soft);
+  }
+
+  .admin-choice-card[aria-pressed="true"],
+  .admin-choice-card[data-active="true"] {
+    border-color: var(--admin-accent);
+    background: var(--admin-accent-soft);
+  }
+
+  .admin-choice-card-title {
+    color: var(--admin-text);
+    font-size: var(--admin-type-body);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .admin-choice-card[data-active="true"] .admin-choice-card-title {
+    color: var(--admin-accent);
+  }
+
   /* ------------------------------------------------------------------
      폼
      ------------------------------------------------------------------ */
@@ -1103,6 +1149,25 @@ body {
 
   .admin-panel-row:last-child {
     border-bottom: 0;
+  }
+
+  /* 이동만 하는 목록 행(설정 허브 등). 카드 격자 대신 평면 목록을 쓴다. */
+  .admin-panel-row-link {
+    justify-content: space-between;
+    color: var(--admin-text-muted);
+    transition: background-color 150ms ease-out;
+  }
+
+  .admin-panel-row-link:hover {
+    background: var(--admin-surface-soft);
+  }
+
+  .admin-panel-row-link-label {
+    display: block;
+    color: var(--admin-text);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   .admin-metric-strip {

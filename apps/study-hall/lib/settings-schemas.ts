@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { examAnalysisSettingsSchema } from "@/lib/exam-analysis-settings";
 
 import { DEFAULT_DIVISION_FEATURE_FLAGS } from "@/lib/division-features";
 
@@ -102,6 +103,7 @@ export const featureSettingsSchema = z.object({
 
 export const rulesSettingsSchema = z
   .object({
+    examAnalysis: examAnalysisSettingsSchema.optional(),
     tardyMinutes: z.coerce.number().int().min(0, "지각 기준은 0분 이상이어야 합니다.").max(180),
     assistantPastEditAllowed: z.boolean().default(false),
     assistantPastEditDays: z.coerce.number().int().min(0, "허용 일수는 0 이상이어야 합니다.").max(30),

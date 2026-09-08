@@ -27,6 +27,7 @@ export type ExamSubjectItem = {
   examTypeId: string;
   name: string;
   totalItems: number | null;
+  alternateGroup?: string | null;
   pointsPerItem: number | null;
   maxScore: number | null;
   displayOrder: number;
@@ -89,6 +90,7 @@ export type StudentExamResultItem = {
     subjectId: string;
     name: string;
     totalItems: number | null;
+    alternateGroup?: string | null;
     pointsPerItem: number | null;
     maxScore: number | null;
     score: number | null;
@@ -151,6 +153,7 @@ function toSubjectItem(subject: {
   examTypeId: string;
   name: string;
   totalItems: number | null;
+  alternateGroup?: string | null;
   pointsPerItem?: number | null;
   displayOrder: number;
   isActive: boolean;
@@ -160,6 +163,7 @@ function toSubjectItem(subject: {
     examTypeId: subject.examTypeId,
     name: subject.name,
     totalItems: subject.totalItems,
+    alternateGroup: normalizeOptionalText(subject.alternateGroup),
     pointsPerItem: subject.pointsPerItem ?? null,
     maxScore: calculateSubjectMaxScore(subject.totalItems, subject.pointsPerItem ?? null),
     displayOrder: subject.displayOrder,
@@ -182,6 +186,7 @@ function toExamTypeItem(examType: {
     examTypeId: string;
     name: string;
     totalItems: number | null;
+    alternateGroup?: string | null;
     pointsPerItem?: number | null;
     displayOrder: number;
     isActive: boolean;
@@ -399,6 +404,7 @@ function buildSubjectPayload(
       name: normalizeText(subject.name),
       totalItems: normalizeTotalItems(subject.totalItems),
       pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+      alternateGroup: normalizeOptionalText(subject.alternateGroup),
       displayOrder: index,
       isActive: subject.isActive ?? true,
       createdAt: existing?.createdAt ?? now,
@@ -604,6 +610,7 @@ export async function createExamType(divisionSlug: string, input: ExamTypeSchema
           name: normalizeText(subject.name),
           totalItems: normalizeTotalItems(subject.totalItems),
           pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+          alternateGroup: normalizeOptionalText(subject.alternateGroup),
           isActive: subject.isActive ?? true,
           displayOrder: index,
         })),
@@ -707,6 +714,7 @@ export async function updateExamType(
             name: normalizeText(subject.name),
             totalItems: normalizeTotalItems(subject.totalItems),
             pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+            alternateGroup: normalizeOptionalText(subject.alternateGroup),
             isActive: subject.isActive ?? true,
             displayOrder: index,
           },
@@ -718,6 +726,7 @@ export async function updateExamType(
             name: normalizeText(subject.name),
             totalItems: normalizeTotalItems(subject.totalItems),
             pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+            alternateGroup: normalizeOptionalText(subject.alternateGroup),
             isActive: subject.isActive ?? true,
             displayOrder: index,
           },
@@ -1225,6 +1234,7 @@ export async function listStudentExamResults(
             subjectId: subject.id,
             name: subject.name,
             totalItems: subject.totalItems,
+            alternateGroup: normalizeOptionalText(subject.alternateGroup),
             pointsPerItem: subject.pointsPerItem ?? null,
             maxScore: calculateSubjectMaxScore(subject.totalItems, subject.pointsPerItem ?? null),
             score: typeof score.scores[subject.id] === "number" ? score.scores[subject.id] : null,
@@ -1295,6 +1305,7 @@ export async function listStudentExamResults(
           subjectId: subject.id,
           name: subject.name,
           totalItems: subject.totalItems,
+          alternateGroup: normalizeOptionalText(subject.alternateGroup),
           pointsPerItem: subject.pointsPerItem ?? null,
           maxScore: calculateSubjectMaxScore(subject.totalItems, subject.pointsPerItem ?? null),
           score: typeof rawScores[subject.id] === "number" ? (rawScores[subject.id] as number) : null,

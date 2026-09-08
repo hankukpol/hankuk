@@ -12,6 +12,7 @@ import type { ExamScoreSheet, ExamTypeItem } from "@/lib/services/exam.service";
 type ExamScoreManagerProps = {
   divisionSlug: string;
   initialExamTypes: ExamTypeItem[];
+  initialSelection?: { examTypeId: string; examRound: number; examDate: string };
 };
 
 type ScoreSheetRow = ExamScoreSheet["rows"][number];
@@ -148,12 +149,13 @@ function triggerDownload(url: string) {
 export function ExamScoreManager({
   divisionSlug,
   initialExamTypes,
+  initialSelection,
 }: ExamScoreManagerProps) {
   const [examTypes] = useState(initialExamTypes);
-  const [selectedExamTypeId, setSelectedExamTypeId] = useState(initialExamTypes[0]?.id ?? "");
-  const [examRoundInput, setExamRoundInput] = useState("1");
-  const [appliedExamRound, setAppliedExamRound] = useState("1");
-  const [examDate, setExamDate] = useState(getKstToday());
+  const [selectedExamTypeId, setSelectedExamTypeId] = useState(initialSelection?.examTypeId ?? initialExamTypes[0]?.id ?? "");
+  const [examRoundInput, setExamRoundInput] = useState(String(initialSelection?.examRound ?? 1));
+  const [appliedExamRound, setAppliedExamRound] = useState(String(initialSelection?.examRound ?? 1));
+  const [examDate, setExamDate] = useState(initialSelection?.examDate ?? getKstToday());
   const [sheet, setSheet] = useState<ExamScoreSheet | null>(null);
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [pasteText, setPasteText] = useState("");
@@ -598,7 +600,7 @@ export function ExamScoreManager({
             <div className="admin-section">
               <h2 className="admin-section-title">붙여넣기 입력</h2>
               <p className="admin-help mt-2 leading-5">
-                <code>수험번호 + 과목 점수</code> 또는 <code>과목 점수만</code> 탭으로 구분해
+                <span className="font-semibold">수험번호 + 과목 점수</span> 또는 <span className="font-semibold">과목 점수만</span> 탭으로 구분해
                 붙여넣을 수 있습니다.
               </p>
               <textarea

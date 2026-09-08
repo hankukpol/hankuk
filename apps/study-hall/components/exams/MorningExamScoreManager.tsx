@@ -17,6 +17,7 @@ import type { MorningExamDailySheet, MorningExamWeeklySummary } from "@/lib/serv
 type MorningExamScoreManagerProps = {
   divisionSlug: string;
   morningExamTypes: ExamTypeItem[];
+  initialSelection?: { examTypeId: string; subjectId?: string; examDate: string };
 };
 
 type EditableRow = {
@@ -76,11 +77,12 @@ function triggerDownload(url: string) {
 export function MorningExamScoreManager({
   divisionSlug,
   morningExamTypes,
+  initialSelection,
 }: MorningExamScoreManagerProps) {
   const [viewTab, setViewTab] = useState<"daily" | "weekly">("daily");
-  const [selectedExamTypeId, setSelectedExamTypeId] = useState(morningExamTypes[0]?.id ?? "");
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
-  const [examDate, setExamDate] = useState(getKstToday());
+  const [selectedExamTypeId, setSelectedExamTypeId] = useState(initialSelection?.examTypeId ?? morningExamTypes[0]?.id ?? "");
+  const [selectedSubjectId, setSelectedSubjectId] = useState(initialSelection?.subjectId ?? "");
+  const [examDate, setExamDate] = useState(initialSelection?.examDate ?? getKstToday());
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [isLoadingSheet, setIsLoadingSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

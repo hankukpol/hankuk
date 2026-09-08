@@ -5,6 +5,7 @@ const EXAM_SCORE_ROWS_MAX = 500;
 const examSubjectSchema = z.object({
   id: z.string().min(1).optional(),
   name: z.string().trim().min(1, "과목명을 입력해주세요."),
+  alternateGroup: z.string().trim().max(80, "택1 그룹은 80자 이하여야 합니다.").nullable().optional(),
   totalItems: z
     .number()
     .int("문항 수는 정수여야 합니다.")

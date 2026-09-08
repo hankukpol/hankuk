@@ -9,6 +9,7 @@ import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { getGroupedFullScore } from "@/lib/exam-full-score";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 
 type Props = {
@@ -25,6 +26,7 @@ type SubjectFormItem = {
   name: string;
   totalItems: string;
   pointsPerItem: string;
+  alternateGroup: string;
   isActive: boolean;
 };
 
@@ -39,7 +41,7 @@ type FormState = {
 const COMMON_TRACK_VALUE = "__COMMON__";
 
 function createSubject(localId = `subject-${Date.now()}`): SubjectFormItem {
-  return { localId, name: "", totalItems: "20", pointsPerItem: "5", isActive: true };
+  return { localId, alternateGroup: "", name: "", totalItems: "20", pointsPerItem: "5", isActive: true };
 }
 
 function createDefaultForm(): FormState {
@@ -65,6 +67,7 @@ function toFormState(examType: ExamTypeItem): FormState {
           name: subject.name,
           totalItems: subject.totalItems?.toString() ?? "",
           pointsPerItem: subject.pointsPerItem?.toString() ?? "",
+          alternateGroup: subject.alternateGroup ?? "",
           isActive: subject.isActive,
         }))
       : [createSubject()],
@@ -84,6 +87,7 @@ function toCopyFormState(examType: ExamTypeItem): FormState {
           name: subject.name,
           totalItems: subject.totalItems?.toString() ?? "",
           pointsPerItem: subject.pointsPerItem?.toString() ?? "",
+          alternateGroup: subject.alternateGroup ?? "",
           isActive: subject.isActive,
         }))
       : [createSubject(`copy-${seed}-0`)],
@@ -101,6 +105,7 @@ function buildRequestBody(form: FormState) {
       name: subject.name,
       totalItems: subject.totalItems.trim() ? Number(subject.totalItems.trim()) : null,
       pointsPerItem: subject.pointsPerItem.trim() ? Number(subject.pointsPerItem.trim()) : null,
+      alternateGroup: subject.alternateGroup.trim() || null,
       isActive: subject.isActive,
     })),
   };
@@ -122,7 +127,7 @@ function calculateMaxScore(totalItems: string, pointsPerItem: string) {
 
 function summarizeExamType(examType: ExamTypeItem) {
   const activeSubjects = examType.subjects.filter((subject) => subject.isActive);
-  const totalMaxScore = activeSubjects.reduce((sum, subject) => sum + (subject.maxScore ?? 0), 0);
+  const totalMaxScore = getGroupedFullScore(activeSubjects);
   return {
     subjectNames: activeSubjects.map((subject) => subject.name).join(", ") || "활성 과목이 없습니다.",
     activeSubjectCount: activeSubjects.length,
@@ -319,7 +324,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   );
   const copySourceName = orderedExamTypes.find((item) => item.id === copySourceId)?.name ?? null;
   const activeSubjectCount = form.subjects.filter((subject) => subject.isActive).length;
-  const totalMaxScore = form.subjects.reduce((sum, subject) => subject.isActive ? sum + (calculateMaxScore(subject.totalItems, subject.pointsPerItem) ?? 0) : sum, 0);
+  const totalMaxScore = getGroupedFullScore(buildRequestBody(form).subjects);
 
   if (!isReady) {
     return <ExamTypeManagerSkeleton />;
@@ -550,7 +555,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-3"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[var(--division-color)]" /><span className="text-sm font-medium text-slate-800">활성 상태</span></label>
 
           <div className="admin-section">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4"><div><h2 className="admin-section-title">과목 구성</h2><p className="admin-help mt-1">과목명, 문항 수, 배점을 설정합니다.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, subjects: [...current.subjects, createSubject()] }))} className="admin-button"><Plus className="h-4 w-4" />과목 추가</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4"><div><h2 className="admin-section-title">과목 구성</h2><p className="admin-help mt-1">과목명, 문항 수, 배점을 설정합니다. 같은 택1 그룹은 가장 큰 만점 하나만 총점에 더합니다.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, subjects: [...current.subjects, createSubject()] }))} className="admin-button"><Plus className="h-4 w-4" />과목 추가</button></div>
             <div className="space-y-3 p-4">
               {form.subjects.map((subject, index) => {
                 const maxScore = calculateMaxScore(subject.totalItems, subject.pointsPerItem);
@@ -569,6 +574,13 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
                       <input inputMode="decimal" value={subject.pointsPerItem} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, pointsPerItem: event.target.value }))} placeholder="배점" className="w-full" />
                       <p className="admin-help self-center">예상 점수 {maxScore === null ? "-" : `${maxScore}점`}</p>
                     </div>
+                    <label className="mt-4 block">
+                      <span className="admin-label mb-2 block">택1 그룹</span>
+                      <input className="w-full" maxLength={80} value={subject.alternateGroup}
+                        onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, alternateGroup: event.target.value }))}
+                        placeholder="택1 과목끼리 같은 그룹명 입력" />
+                      <span className="admin-help mt-2 block">필수 과목은 비워 두세요.</span>
+                    </label>
                   </div>
                 );
               })}

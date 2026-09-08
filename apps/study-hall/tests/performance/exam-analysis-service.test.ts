@@ -61,7 +61,7 @@ test("regular service mock and scoped DB paths assemble identical cohort, sessio
   assert.equal(mock.calls.length, 0); assert.equal(mock.cacheCalls.length, 0);
 });
 
-test("DB queries enforce tenant and current/previous session bounds; cache stores raw source and refreshes settings", async () => {
+test("DB queries enforce tenant and six-month session bounds; cache stores raw source and refreshes settings", async () => {
   const h = harness(false);
   const first = await h.service.getRegularCohortAnalysis("police", "e", "2026-09-08");
   assert.ok(first.ranking[0].flags.some(f => f.kind === "totalDrop"));
@@ -77,7 +77,7 @@ test("DB queries enforce tenant and current/previous session bounds; cache store
     else if (call.model === "scoreTarget") { assert.deepEqual(w.examType, { divisionId: "d" }); assert.equal((w.student as { divisionId: string }).divisionId, "d"); }
     else assert.equal(w.divisionId, "d", call.model);
     if (call.model === "examItemResponse" || call.model === "examSessionItem") assert.equal(w.sessionId, "current");
-    if (call.model === "examSessionParticipant") assert.deepEqual(w.sessionId, { in: ["current", "previous"] });
+    if (call.model === "examSessionParticipant") assert.deepEqual(w.sessionId, { in: ["current", "previous", "ancient"] });
     if (call.model === "examItemResponse" || call.model === "examSessionParticipant") assert.ok(!("student" in w), "Phase1 models have no Prisma Student relation");
     if (call.model === "examSession") {
       const select = call.args.select!;

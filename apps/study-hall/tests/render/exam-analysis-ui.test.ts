@@ -321,3 +321,14 @@ test("cohort selector defaults to newest exam date even when sessions arrive old
   assert.ok(html.indexOf('value="2026-09-08"') < html.indexOf('value="2026-08-08"'));
   assert.ok(requested.some((url) => url.endsWith("examTypeId=type&examDate=2026-09-08")));
 });
+
+test('personal report exposes six monthly slots and explains missing months', () => {
+ const Component=load('components/exams/analysis/RegularStudentReport.tsx').RegularStudentReport;
+ const history={from:'2026-04-01',to:'2026-09-08',months:['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09'],coveredMonths:1,rows:[{date:'2026-09-08',total:0,fullScore:100,subjectScores:{subject:0},internalRank:1,externalRank:2,externalCount:8,externalTopPercent:25,isPartial:false}]};
+ const html=renderToStaticMarkup(React.createElement(Component,{report:{...report,history},mode:'student'}));
+ assert.ok(html.includes('최근 6개월 개인 성적'));
+ assert.ok(html.includes('1/6개월 기록'));
+ assert.equal((html.match(/성적 기록 없음/g)||[]).length,5);
+ assert.ok(html.includes('0 / 100'));
+ assert.ok(html.includes('25%'));
+});

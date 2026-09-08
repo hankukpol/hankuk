@@ -25,6 +25,7 @@ export type RegularCohortAnalysis = {
 };
 
 export type RegularStudentReport = {
+  history?: { from: string; to: string; months: string[]; coveredMonths: number; rows: Array<{ date: string; total: number; fullScore: number; subjectScores: Record<string, number>; internalRank: number; externalRank: number | null; externalCount: number; externalTopPercent: number | null; isPartial: boolean }> };
   hasPreviousExam?: boolean;
   // All session subjects provide choose-one metadata for competitors; stats/items contain only taken subjects.
   session: AnalysisSession; subjects: AnalysisSubject[];

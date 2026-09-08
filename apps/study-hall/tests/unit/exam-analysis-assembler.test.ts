@@ -159,7 +159,7 @@ test("date identity selects latest strictly earlier regular date regardless of s
     { ...base, id: "subject-session", examDate: "2026-09-07", primarySubjectId: "a" },
   );
   bundle.sessions.reverse();
-  assert.deepEqual(selectRegularSessionIds(bundle, "e", "2026-09-08"), { currentId: "now", participantSessionIds: ["now", "near"] });
+  assert.deepEqual(selectRegularSessionIds(bundle, "e", "2026-09-08"), { currentId: "now", participantSessionIds: ["now", "near", "old"] });
   assert.deepEqual(selectRegularSessionIds(bundle, "e", "2026-08-01"), { currentId: "old", participantSessionIds: ["old"] });
   assert.throws(() => selectRegularSessionIds(bundle, "e", "2026-09-07"), /찾을 수 없습니다/);
   assert.throws(() => selectRegularSessionIds(bundle, "e", "3"), /찾을 수 없습니다/);
@@ -186,4 +186,19 @@ test("outward external and regional subject averages round to one decimal withou
     assert.equal(report.stats.subjects[0].regionAvg, expected);
     assert.deepEqual(bundle, before);
   }
+});
+
+test('personal six-month history excludes future, old and foreign records without deleting history', () => {
+ const b=fixture();
+ for (const [id,examDate] of [['early','2026-04-01'],['too-old','2026-03-31'],['future','2026-09-09']] as const) {
+  b.sessions.push({...b.sessions[0],id,examDate}); b.participants.push({...b.participants[0],sessionId:id,totalScore:0});
+ }
+ const report=assembleRegularStudentReport(b,'s1',{role:'STUDENT',studentId:'s1'});
+ assert.equal(report.history?.from,'2026-04-01');
+ assert.deepEqual(report.history?.rows.map(r=>r.date),['2026-04-01','2026-08-01','2026-09-08']);
+ assert.equal(report.history?.coveredMonths,3); assert.equal(report.history?.rows[0].total,0);
+ assert.equal(report.history?.months.length,6);
+ assert.ok(!JSON.stringify(report.history).includes('실명둘'));
+ assert.ok(b.sessions.some(s=>s.id==='too-old'));
+ assert.ok(selectRegularSessionIds(b,'e','2026-09-08').participantSessionIds.includes('early'));
 });

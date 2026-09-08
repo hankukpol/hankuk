@@ -57,7 +57,25 @@ export function selectRegularSessionIds(source: Pick<RegularRawSource, "division
   const current = sessions.find(row => date(row.examDate) === examDate);
   if (!current) throw new AnalysisAssemblyError("해당 날짜에 가져온 시험을 찾을 수 없습니다.", 404);
   const previous = sessions.find(row => date(row.examDate) < examDate);
-  return { currentId: current.id, participantSessionIds: [current.id, ...(previous ? [previous.id] : [])] };
+  const { from } = regularHistoryRange(examDate);
+  return { currentId: current.id, participantSessionIds: Array.from(new Set([current.id, ...(previous ? [previous.id] : []), ...sessions.filter(row => date(row.examDate) >= from && date(row.examDate) <= examDate).map(row => row.id)])) };
+}
+export function regularHistoryRange(to: string) {
+  const [year, month] = to.split("-").map(Number);
+  const months = Array.from({ length: 6 }, (_, index) => new Date(Date.UTC(year, month - 6 + index, 1)).toISOString().slice(0, 7));
+  return { from: `${months[0]}-01`, to, months };
+}
+export function assembleRegularHistory(bundle: RegularRawBundle, studentId: string): NonNullable<RegularStudentReport["history"]> {
+  const range = regularHistoryRange(bundle.examDate);
+  const students = new Set(bundle.students.filter(s => s.divisionId === bundle.divisionId).map(s => s.id));
+  const rows = bundle.sessions.filter(s => s.divisionId === bundle.divisionId && s.examTypeId === bundle.examTypeId && s.primarySubjectId === null && date(s.examDate) >= range.from && date(s.examDate) <= range.to).flatMap(session => {
+    const participants = bundle.participants.filter(p => p.divisionId === bundle.divisionId && p.sessionId === session.id && students.has(p.studentId));
+    const me = participants.find(p => p.studentId === studentId);
+    if (!me) return [];
+    const external = rank(histogram(object(session.externalStats).distribution), me.totalScore);
+    return [{ date: date(session.examDate), total: me.totalScore, fullScore: session.fullScore, subjectScores: { ...me.subjectScores }, internalRank: 1 + participants.filter(p => p.totalScore > me.totalScore).length, externalRank: external.rank, externalCount: external.count, externalTopPercent: external.topPercent, isPartial: me.isPartial }];
+  }).sort((a, b) => a.date.localeCompare(b.date));
+  return { ...range, coveredMonths: new Set(rows.map(r => r.date.slice(0, 7))).size, rows };
 }
 export function assembleRegularSessions(source: RegularRawSource, examTypeId: string, studentId?: string) {
   const { sessions } = sessionsFor(source, examTypeId);
@@ -157,6 +175,7 @@ export function assembleRegularStudentReport(bundle: RegularRawBundle, studentId
   const ordered = [...p.participants].sort((a, b) => b.totalScore - a.totalScore || a.studentId.localeCompare(b.studentId));
   const index = ordered.findIndex(row => row.studentId === studentId), targetScore = p.targetFor(studentId);
   return { session: p.publicSession, subjects: p.subjects, hasPreviousExam: p.hasPreviousExam,
+    history: assembleRegularHistory(bundle, studentId),
     student: { id: student.id, name: viewer.role === "STUDENT" ? null : student.name, studentNumber: viewer.role === "STUDENT" ? mask(student.studentNumber) : student.studentNumber, region: me.region },
     myScore: { total: me.totalScore, subjectScores: { ...me.subjectScores }, isPartial: me.isPartial },
     ranks: { external: rank(p.hist, me.totalScore), region: regional && me.region !== null ? { code: me.region, ...rank(histogram(regional.distribution), me.totalScore) } : null,

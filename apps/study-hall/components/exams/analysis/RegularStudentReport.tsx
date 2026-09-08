@@ -10,11 +10,22 @@ const value = (number: number | null | undefined, suffix = "") => number == null
 
 export function RegularStudentReport({ report, mode }: { report: Report; mode: "admin" | "student" }) {
   const { session, ranks, stats } = report;
-  const trend = report.trend.filter((result) => result.examTypeId === session.examTypeId && result.examDate);
+  const history = report.history;
+  const trend = report.trend.filter((result) => result.examTypeId === session.examTypeId && result.examDate && result.examDate.slice(0, 10) <= session.examDate.slice(0, 10) && (!history || result.examDate.slice(0, 10) >= history.from));
   const hasTrend = report.hasPreviousExam !== false && new Set(trend.map((result) => result.examDate!.slice(0, 10))).size >= 2;
   const rank = (entry: { rank: number | null; count: number } | null) => entry ? `${value(entry.rank, "등")} (n=${entry.count})` : "지역 정보 없음";
   return <div className="admin-flat-page">
     <header><h2 className="admin-section-title">{session.examTypeName} {session.examDate.slice(0, 10)} 분석</h2><p className="admin-help">시험일 {session.examDate.slice(0, 10)}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
+    {history && <section className="admin-section"><h2 className="admin-section-title">최근 6개월 개인 성적</h2>
+      <p className="admin-help">선택한 시험일 기준 {history.from} ~ {history.to} · {history.coveredMonths}/6개월 기록 · {history.rows.length}회 응시. 과거 기록은 계속 보관됩니다.</p>
+      {history.coveredMonths < 6 && <p className="admin-empty-state">6개월 중 {history.coveredMonths}개월의 성적만 있습니다. 기록이 없는 달은 0점으로 계산하지 않습니다.</p>}
+      <div className="admin-table-frame"><table><thead><tr><th scope="col">시험일 / 월</th><th scope="col">총점 / 만점</th>{report.subjects.map(s => <th scope="col" key={s.id}>{s.name}</th>)}<th scope="col">반 석차</th><th scope="col">외부 석차</th><th scope="col">외부 상위%</th><th scope="col">응시 상태</th></tr></thead><tbody>{history.months.flatMap(month => {
+        const rows = history.rows.filter(r => r.date.startsWith(month));
+        if (!rows.length) return [<tr key={month}><th scope="row">{month}</th><td colSpan={report.subjects.length + 5}>성적 기록 없음</td></tr>];
+        return rows.map(row => <tr key={row.date}><th scope="row">{row.date}</th><td>{row.total} / {row.fullScore}</td>{report.subjects.map(s => <td key={s.id}>{value(row.subjectScores[s.id])}</td>)}<td>{row.internalRank}등</td><td>{value(row.externalRank, "등")} (n={row.externalCount})</td><td>{value(row.externalTopPercent, "%")}</td><td>{row.isPartial ? "일부 미응시" : "응시"}</td></tr>);
+      })}</tbody></table></div>
+      <p className="admin-help">시험별 난이도와 응시 집단이 다를 수 있으므로 점수와 외부 상위%를 함께 확인하세요. 합격예측은 제공하지 않습니다.</p>
+    </section>}
     {report.myScore.isPartial && <p className="admin-notice admin-notice-warning">일부 과목 미응시 결과입니다. 응시한 과목의 점수만 포함합니다.</p>}
     <div className="admin-metric-strip">{[
       ["총점", `${report.myScore.total} / ${session.fullScore}`],

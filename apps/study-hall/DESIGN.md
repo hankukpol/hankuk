@@ -353,11 +353,13 @@ tbody tr:last-child td { border-bottom: 0; }
 
 - 모바일 명단은 기존 카드 레이아웃을 유지할 수 있다. 데스크톱 표 정렬을 강제로 이식하지 않는다.
 
-### 5.9 표 하단 페이지 영역
+### 5.9 표 하단 페이지 영역과 더 불러오기
 
-**현재 이 앱에는 표 페이지 나누기 기능이 없다.** 명단·내역은 전체를 한 번에 표시한다. 클래스도 두지 않았다.
+**표에는 페이지 나누기가 없다.** 명단·내역은 전체를 한 번에 표시한다.
 
-나중에 페이지 나누기를 넣는다면 회색 카드 띠가 아니라 평면 footer로 만든다: 표 다음 `margin-top` 16px, 위 `line-soft` 1px, padding 16px 0, 글자 13px secondary, 왼쪽 조회 수·표시 범위, 오른쪽 이전/현재/다음, 컨트롤 최소 높이 44px·8px 모서리. 그때 이 절과 `globals.css`를 함께 갱신한다.
+예외는 **직원 채팅의 과거 메시지**뿐이다. 대화는 끝없이 쌓이므로 최근 50건만 먼저 보내고 나머지는 `.admin-list-load-more`로 거슬러 올라간다. 목록 **위쪽**에 두고(과거는 위에 있다), 아래 `line-soft` 1px, padding 16px 20px, 버튼은 보조 `.admin-button`이다.
+
+나중에 표에 페이지 나누기를 넣는다면 회색 카드 띠가 아니라 평면 footer로 만든다: 표 다음 `margin-top` 16px, 위 `line-soft` 1px, padding 16px 0, 글자 13px secondary, 왼쪽 조회 수·표시 범위, 오른쪽 이전/현재/다음, 컨트롤 최소 높이 44px·8px 모서리. 그때 이 절과 `globals.css`를 함께 갱신한다.
 
 ### 5.10 중앙 모달·슬라이드 모달
 
@@ -417,6 +419,23 @@ tbody tr:last-child td { border-bottom: 0; }
 특정도 때문에 화면별 유틸이 져야 할 때만 `.admin-shell x` 형태로 쓰고, 유틸이 이겨야 하는 기본값(입력 padding 등)은 `:where()`로 특정도 0에 둔다.
 
 ---
+
+### 5.13 직원 채팅
+
+관리자와 조교가 함께 쓰는 지점 단위 단체방이다. 학생 화면에는 없다.
+
+- **말풍선을 만들지 않는다.** 메시지는 `.admin-panel` 안의 `.admin-panel-row` 목록이다. 좌우로 나누어 정렬하거나 색면을 채우지 않는다. 보낸 사람은 `data-own` 속성으로만 구분한다.
+- 한 행의 구성: `.admin-chat-meta`(이름 `.admin-chat-author` + 역할 `.admin-badge` + 시각, 13px muted) → `.admin-chat-body`(15px, `white-space: pre-wrap`, `overflow-wrap: anywhere`).
+- 삭제된 메시지는 지우지 않고 자리에 남긴다. 본문 대신 `.admin-help`로 `삭제된 메시지`만 표시하고, 서버는 본문을 아예 내려보내지 않는다.
+- 작성창 `.admin-chat-composer`는 `position: sticky`다. **중첩 `100dvh` 스크롤 컨테이너를 만들지 않는다** — 중첩 스크롤과 iOS 키보드, `dvh`가 겹치면 이 UI가 깨진다. 문서 스크롤을 그대로 쓴다.
+- 배경은 반드시 불투명(`--admin-surface`)이고 위쪽 `line` 1px을 둔다. 아래로 지나가는 메시지가 비치면 안 된다.
+- textarea는 44px 한 줄에서 시작해 160px까지 자란다. `resize: none`. 이 규칙은 §5.12 정규화 레이어의 `textarea { min-height: 112px }`보다 **특정도가 높아야** 이기므로 `.admin-shell .admin-chat-composer textarea`로 쓴다.
+- 조교 화면은 하단 탐색이 고정이라 `.admin-chat-composer-assistant`가 `bottom: var(--assistant-bottom-nav-h)`만큼 띄운다. 그 값은 `AssistantChromeMetrics`가 `ResizeObserver`로 실측해 넣는다. **높이를 하드코딩하지 않는다** — 헤더는 지점명 길이에 따라 커진다.
+- **한글 입력**: Enter 전송은 `!event.shiftKey && !event.nativeEvent.isComposing`일 때만이다. `isComposing` 가드가 없으면 전송할 때마다 마지막 자모가 삼켜진다.
+- 안읽음 배지 `.admin-nav-badge`는 검은 레일·하단 탐색 전용이다. `.admin-badge`는 밝은 배경 전용이라 검은 레일에서 읽히지 않는다. 100 이상은 `99+`로 접는다.
+- 최신으로 따라가는 스크롤은 **이미 하단 120px 안에 있을 때만** 한다. 과거를 읽는 중인 사용자를 끌어내리지 않는다.
+
+관련 파일: [StaffChatRoom.tsx](components/chat/StaffChatRoom.tsx), [StaffChatWatcher.tsx](components/chat/StaffChatWatcher.tsx), [chat-meta.ts](lib/chat-meta.ts)
 
 ## 6. 모션
 

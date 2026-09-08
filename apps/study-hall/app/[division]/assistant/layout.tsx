@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 
+import { AssistantChromeMetrics } from "@/components/chat/AssistantChromeMetrics";
+import { StaffChatWatcher } from "@/components/chat/StaffChatWatcher";
 import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 import { requireDivisionAssistantAccess } from "@/lib/auth";
+import { getChatUnreadSummary } from "@/lib/services/chat.service";
 import { getDivisionBySlug } from "@/lib/services/division.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 
@@ -19,6 +22,9 @@ export default async function AssistantLayout({ children, params }: AssistantLay
     getDivisionBySlug(params.division),
     getDivisionFeatureSettings(params.division),
   ]);
+
+  const chatEnabled = featureSettings.featureFlags.staffChat;
+  const unread = chatEnabled ? await getChatUnreadSummary(params.division, session) : null;
 
   return (
     <div className="admin-shell flex-col">
@@ -49,6 +55,16 @@ export default async function AssistantLayout({ children, params }: AssistantLay
       <AssistantBottomNav
         divisionSlug={params.division}
         phoneSubmissionsEnabled={featureSettings.featureFlags.phoneSubmissions}
+        staffChatEnabled={chatEnabled}
+      />
+
+      <AssistantChromeMetrics />
+      <StaffChatWatcher
+        divisionSlug={params.division}
+        divisionName={division?.name ?? params.division}
+        viewerId={session.id}
+        enabled={chatEnabled}
+        initialUnreadCount={unread?.unreadCount ?? 0}
       />
     </div>
   );

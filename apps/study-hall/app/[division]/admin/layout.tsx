@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 
+import { StaffChatWatcher } from "@/components/chat/StaffChatWatcher";
 import { AdminShell } from "@/components/layout/AdminShell";
 import { requireDivisionAdminAccess } from "@/lib/auth";
+import { getChatUnreadSummary } from "@/lib/services/chat.service";
 import { getDivisionBySlug } from "@/lib/services/division.service";
 import { getDivisionFeatureSettings } from "@/lib/services/settings.service";
 
@@ -23,6 +25,10 @@ export default async function AdminLayout({ children, params }: AdminLayoutProps
     return children;
   }
 
+  // 감시자가 레이아웃에 있어야 어느 화면에서든 새 메시지를 알 수 있다.
+  const chatEnabled = featureSettings.featureFlags.staffChat;
+  const unread = chatEnabled ? await getChatUnreadSummary(params.division, session) : null;
+
   return (
     <AdminShell
       divisionSlug={division.slug}
@@ -31,6 +37,13 @@ export default async function AdminLayout({ children, params }: AdminLayoutProps
       adminName={session.name}
       featureFlags={featureSettings.featureFlags}
     >
+      <StaffChatWatcher
+        divisionSlug={division.slug}
+        divisionName={division.name}
+        viewerId={session.id}
+        enabled={chatEnabled}
+        initialUnreadCount={unread?.unreadCount ?? 0}
+      />
       {children}
     </AdminShell>
   );

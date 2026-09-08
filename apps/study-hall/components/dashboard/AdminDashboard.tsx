@@ -26,6 +26,12 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import {
+  playNotificationBeep,
+  requestBrowserNotificationPermission,
+  showBrowserNotification,
+  type NotificationPermissionState,
+} from "@/lib/browser-notify";
 import { toast } from "@/lib/sonner";
 
 import { WarningStageBadge } from "@/components/students/StudentBadges";
@@ -118,7 +124,6 @@ type PeriodInfo =
   | { type: "END" }
   | { type: "BEFORE"; nextPeriodName: string; remainingMin: number; remainingSec: number };
 
-type NotificationPermissionState = NotificationPermission | "unsupported";
 
 function getCurrentPeriodInfo(
   schedules: AdminDashboardData["periodSchedules"],
@@ -173,47 +178,6 @@ function getCurrentPeriodInfo(
   return { type: "END" };
 }
 
-let sharedAudioContext: AudioContext | null = null;
-
-function playBeep() {
-  try {
-    if (!sharedAudioContext) {
-      sharedAudioContext = new AudioContext();
-    }
-    const ctx = sharedAudioContext;
-    if (ctx.state === "suspended") {
-      void ctx.resume();
-    }
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.5);
-  } catch {
-    // 브라우저 미지원 시 무시
-  }
-}
-
-function showBrowserNotification(message: string) {
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  new Notification("시간통제 자습반", { body: message });
-}
-
-async function requestBrowserNotificationPermission(): Promise<NotificationPermissionState> {
-  if (!("Notification" in window)) {
-    return "unsupported";
-  }
-
-  if (Notification.permission === "granted") {
-    return "granted";
-  }
-
-  return Notification.requestPermission();
-}
 
 function getPeriodStateKey(info: PeriodInfo) {
   switch (info.type) {
@@ -306,8 +270,8 @@ function PeriodTimerWidget({
       const message = getPeriodTransitionMessage(info);
 
       if (message) {
-        playBeep();
-        showBrowserNotification(message);
+        playNotificationBeep();
+        showBrowserNotification("시간통제 자습반", message);
       }
     }
 

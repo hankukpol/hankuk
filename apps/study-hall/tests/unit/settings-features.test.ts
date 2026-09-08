@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { generalSettingsSchema, operatingDaysSchema, studyTracksSchema, divisionFeatureFlagsSchema, featureSettingsSchema, rulesSettingsSchema, normalizeOperatingDays, normalizeStudyTracks } from "../../lib/settings-schemas";
-import { normalizeDivisionFeatureFlags, DEFAULT_DIVISION_FEATURE_FLAGS } from "../../lib/division-features";
+import { normalizeDivisionFeatureFlags, DEFAULT_DIVISION_FEATURE_FLAGS, DIVISION_FEATURES } from "../../lib/division-features";
 import { rejectsAt } from "./schema-assertions";
 
 const days = { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: false };
@@ -92,4 +92,20 @@ test("feature settings validate booleans strictly and strip unknown settings", (
   assert.deepEqual(featureSettingsSchema.parse({ featureFlags: {} }), { featureFlags: DEFAULT_DIVISION_FEATURE_FLAGS });
   rejectsAt(featureSettingsSchema, {}, "featureFlags");
   for (const value of [null, "false", 0]) rejectsAt(divisionFeatureFlagsSchema, { paymentManagement: value }, "paymentManagement");
+});
+
+test("every division feature key is persistable through the settings schema", () => {
+  // divisionFeatureFlagsSchema 는 손으로 나열되어 있어 자동 파생되지 않는다.
+  // 한 줄이라도 빠지면 그 기능은 저장 자체가 되지 않으므로 여기서 막는다.
+  const allFalse = Object.fromEntries(DIVISION_FEATURES.map((feature) => [feature.key, false]));
+  const parsed = divisionFeatureFlagsSchema.parse(allFalse);
+
+  assert.deepEqual(
+    Object.keys(parsed).sort(),
+    DIVISION_FEATURES.map((feature) => feature.key).sort(),
+  );
+
+  for (const { key } of DIVISION_FEATURES) {
+    assert.equal(parsed[key as keyof typeof parsed], false, key);
+  }
 });

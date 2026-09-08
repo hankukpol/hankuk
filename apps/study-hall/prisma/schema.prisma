@@ -72,14 +72,14 @@ enum PhoneSubmissionStatus {
 }
 
 model Division {
-  id                String            @id @default(cuid())
+  id                String             @id @default(cuid())
   name              String
-  slug              String            @unique
-  fullName          String            @map("full_name")
+  slug              String             @unique
+  fullName          String             @map("full_name")
   color             String
-  isActive          Boolean           @default(true) @map("is_active")
-  displayOrder      Int               @default(0) @map("display_order")
-  createdAt         DateTime          @default(now()) @map("created_at")
+  isActive          Boolean            @default(true) @map("is_active")
+  displayOrder      Int                @default(0) @map("display_order")
+  createdAt         DateTime           @default(now()) @map("created_at")
   students          Student[]
   periods           Period[]
   pointRules        PointRule[]
@@ -94,6 +94,8 @@ model Division {
   examSchedules     ExamSchedule[]
   phoneSubmissions  PhoneSubmission[]
   paymentOperations PaymentOperation[]
+  chatMessages      ChatMessage[]
+  chatReadStates    ChatReadState[]
 
   @@map("divisions")
 }
@@ -255,20 +257,20 @@ model Interview {
 }
 
 model Payment {
-  id            String          @id @default(cuid())
-  studentId     String          @map("student_id")
-  paymentTypeId String          @map("payment_type_id")
-  amount        Int
-  paymentDate   DateTime        @map("payment_date") @db.Date
-  method        String?
-  paymentGroupId String?        @map("payment_group_id")
-  originalPaymentId String?     @map("original_payment_id")
-  notes         String?
-  recordedById  String          @map("recorded_by_id")
-  createdAt     DateTime        @default(now()) @map("created_at")
-  student       Student         @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  paymentType   PaymentCategory @relation(fields: [paymentTypeId], references: [id], onDelete: Restrict)
-  recordedBy    Admin           @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  id                String          @id @default(cuid())
+  studentId         String          @map("student_id")
+  paymentTypeId     String          @map("payment_type_id")
+  amount            Int
+  paymentDate       DateTime        @map("payment_date") @db.Date
+  method            String?
+  paymentGroupId    String?         @map("payment_group_id")
+  originalPaymentId String?         @map("original_payment_id")
+  notes             String?
+  recordedById      String          @map("recorded_by_id")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  paymentType       PaymentCategory @relation(fields: [paymentTypeId], references: [id], onDelete: Restrict)
+  recordedBy        Admin           @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
   @@index([studentId, paymentDate])
   @@index([paymentTypeId])
@@ -527,6 +529,9 @@ model Admin {
   announcementsCreated      Announcement[]     @relation("AnnouncementCreatedBy")
   examSchedulesCreated      ExamSchedule[]     @relation("ExamScheduleCreatedBy")
   phoneSubmissionsRecorded  PhoneSubmission[]  @relation("PhoneSubmissionRecordedBy")
+  chatMessagesAuthored      ChatMessage[]      @relation("ChatMessageAuthor")
+  chatMessagesDeleted       ChatMessage[]      @relation("ChatMessageDeletedBy")
+  chatReadStates            ChatReadState[]    @relation("ChatReadStateAdmin")
 
   @@index([divisionId])
   @@map("admins")
@@ -589,4 +594,45 @@ model PhoneSubmission {
   @@unique([studentId, date, periodId])
   @@index([divisionId, date])
   @@map("phone_submissions")
+}
+
+/// 지점 단위 직원 단체 채팅. 지점당 방이 하나이므로 방 테이블을 따로 두지 않고
+/// division_id 를 방 식별자로 쓴다.
+model ChatMessage {
+  id          String    @id @default(cuid())
+  divisionId  String    @map("division_id")
+  // 직원 계정이 영구 삭제되어도 대화 기록은 남아야 하므로 nullable + SetNull.
+  // 표시 이름은 작성 시점 스냅샷을 함께 보관한다.
+  authorId    String?   @map("author_id")
+  authorName  String    @map("author_name")
+  body        String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+  division    Division  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  author      Admin?    @relation("ChatMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  deletedBy   Admin?    @relation("ChatMessageDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  @@index([divisionId, createdAt])
+  // 증분 동기화 커서. 소프트 삭제는 updatedAt 만 올리므로 createdAt 기준으로는 삭제를 놓친다.
+  @@index([divisionId, updatedAt])
+  @@index([authorId])
+  @@map("chat_messages")
+}
+
+/// 지점별·직원별 마지막 읽은 시각. SUPER_ADMIN 은 division_id 가 없고 여러 지점을 오가므로
+/// admins 컬럼 하나로는 표현할 수 없어 (division, admin) 복합키로 둔다.
+model ChatReadState {
+  id         String   @id @default(cuid())
+  divisionId String   @map("division_id")
+  adminId    String   @map("admin_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  division   Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  admin      Admin    @relation("ChatReadStateAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@unique([divisionId, adminId])
+  @@index([adminId])
+  @@map("chat_read_states")
 }

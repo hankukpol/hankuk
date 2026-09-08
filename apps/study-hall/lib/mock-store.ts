@@ -327,6 +327,26 @@ export type MockPhoneSubmissionRecord = {
   updatedAt: string;
 };
 
+export type MockChatMessageRecord = {
+  id: string;
+  divisionId: string;
+  authorId: string | null;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deletedById: string | null;
+};
+
+export type MockChatReadStateRecord = {
+  id: string;
+  divisionId: string;
+  adminId: string;
+  lastReadAt: string;
+  updatedAt: string;
+};
+
 type MockState = {
   deletedDivisionSlugs: string[];
   divisions: MockDivisionRecord[];
@@ -352,6 +372,8 @@ type MockState = {
   scoreTargetsByDivision: Record<string, MockScoreTargetRecord[]>;
   examSchedulesByDivision: Record<string, MockExamScheduleRecord[]>;
   phoneSubmissionsByDivision: Record<string, MockPhoneSubmissionRecord[]>;
+  chatMessagesByDivision: Record<string, MockChatMessageRecord[]>;
+  chatReadStatesByDivision: Record<string, MockChatReadStateRecord[]>;
 };
 
 const mockDirectory = path.join(process.cwd(), ".local");
@@ -553,6 +575,8 @@ function getDivisionSlugs(state?: Partial<MockState>) {
       ...Object.keys(state?.scoreTargetsByDivision ?? {}),
       ...Object.keys(state?.examSchedulesByDivision ?? {}),
       ...Object.keys(state?.phoneSubmissionsByDivision ?? {}),
+      ...Object.keys(state?.chatMessagesByDivision ?? {}),
+      ...Object.keys(state?.chatReadStatesByDivision ?? {}),
     ]),
   ).filter((slug) => !deletedDivisionSlugSet.has(slug));
 }
@@ -1444,6 +1468,13 @@ function createInitialState(): MockState {
   const phoneSubmissionsByDivision = Object.fromEntries(
     divisions.map((division) => [division.slug, [] as MockPhoneSubmissionRecord[]]),
   );
+  // 채팅은 시드하지 않는다. 통합 테스트의 결정성을 위해 빈 상태로 시작한다.
+  const chatMessagesByDivision = Object.fromEntries(
+    divisions.map((division) => [division.slug, [] as MockChatMessageRecord[]]),
+  );
+  const chatReadStatesByDivision = Object.fromEntries(
+    divisions.map((division) => [division.slug, [] as MockChatReadStateRecord[]]),
+  );
 
   return {
     deletedDivisionSlugs: [],
@@ -1472,6 +1503,8 @@ function createInitialState(): MockState {
     scoreTargetsByDivision,
     examSchedulesByDivision,
     phoneSubmissionsByDivision,
+    chatMessagesByDivision,
+    chatReadStatesByDivision,
   };
 }
 
@@ -1791,6 +1824,31 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     ]),
   );
 
+  const chatSlugs = getDivisionSlugs({ ...state, divisions: normalizedDivisions, deletedDivisionSlugs });
+
+  const chatMessagesByDivision = Object.fromEntries(
+    chatSlugs.map((divisionSlug) => [
+      divisionSlug,
+      Array.isArray(state.chatMessagesByDivision?.[divisionSlug])
+        ? state.chatMessagesByDivision[divisionSlug].map((record) => ({
+            ...record,
+            authorId: record.authorId ?? null,
+            deletedAt: record.deletedAt ?? null,
+            deletedById: record.deletedById ?? null,
+          }))
+        : [],
+    ]),
+  );
+
+  const chatReadStatesByDivision = Object.fromEntries(
+    chatSlugs.map((divisionSlug) => [
+      divisionSlug,
+      Array.isArray(state.chatReadStatesByDivision?.[divisionSlug])
+        ? state.chatReadStatesByDivision[divisionSlug]
+        : [],
+    ]),
+  );
+
   return {
     deletedDivisionSlugs,
     divisions: normalizedDivisions,
@@ -1825,6 +1883,8 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     scoreTargetsByDivision,
     examSchedulesByDivision,
     phoneSubmissionsByDivision,
+    chatMessagesByDivision,
+    chatReadStatesByDivision,
   } satisfies MockState;
 }
 

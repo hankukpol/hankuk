@@ -69,6 +69,11 @@ export const DIVISION_FEATURES = [
     label: "직원 관리",
     description: "관리자와 조교 계정을 지점 단위로 관리합니다.",
   },
+  {
+    key: "staffChat",
+    label: "직원 채팅",
+    description: "관리자와 조교가 지점 단위 단체 채팅방을 사용합니다.",
+  },
 ] as const;
 
 export type DivisionFeatureKey = (typeof DIVISION_FEATURES)[number]["key"];

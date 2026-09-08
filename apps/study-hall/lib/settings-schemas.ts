@@ -93,6 +93,7 @@ export const divisionFeatureFlagsSchema = z.object({
   paymentManagement: z.boolean().default(DEFAULT_DIVISION_FEATURE_FLAGS.paymentManagement),
   reporting: z.boolean().default(DEFAULT_DIVISION_FEATURE_FLAGS.reporting),
   staffManagement: z.boolean().default(DEFAULT_DIVISION_FEATURE_FLAGS.staffManagement),
+  staffChat: z.boolean().default(DEFAULT_DIVISION_FEATURE_FLAGS.staffChat),
 });
 
 export const featureSettingsSchema = z.object({

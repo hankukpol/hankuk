@@ -34,7 +34,6 @@ apps/interview-mate
 apps/interview-pass
 apps/police-exam-bank
 apps/portal
-apps/study-hall
 
 # Root-only development and infrastructure material.
 # Leading slash is required: a bare name matches at every depth, so plain

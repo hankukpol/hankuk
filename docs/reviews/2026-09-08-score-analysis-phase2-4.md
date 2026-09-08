@@ -12,7 +12,11 @@ The reference algorithm's fixed descriptive bands follow handoff §5.1. Configur
 
 Validation: typecheck 0, lint 0, unit 459/459, integration PASS (`.local/test-92de0cad/integration.log`). Tests cover mock/DB equality, scope, student masking and authorization. Browser cohort and personal drawer at 390/768/1280: nested borders 0, Pretendard only, offScale [], no document overflow. Anonymous regular fixture: 5 internal participants, 12 external, 250 full marks; first-exam comparison cells display dashes and an explanation.
 
-## Phase 3 — pending
+## Phase 3 — complete
+
+Subject-specific morning analysis uses attended-session windows, same-date peer comparisons and fresh configurable thresholds. Low attendance suppresses decline judgment. Historical alternate choice evidence is scoped to tenant/type and excludes future records; no unchosen sibling is counted as absence. Cumulative comparisons use paired weeks only. Students receive full grading and external ranks with server-side identity masking. Cohort, student, topic, weekly rank and empty-state views are connected.
+
+Validation: typecheck 0, lint 0, 510/510 tests, integration PASS (`.local/test-1f7c1aec/integration.log`). Reviewer reproduced and rechecked two corrected regressions: graded-count rank denominator and prior-window alternate choice. Settings 20→15→20 changes class-gap detection immediately. Browser cohort and personal drawer at 390/768/1280: nested borders 0, Pretendard only, offScale [], no document overflow. One imported session shows explicit insufficient-sample explanations.
 
 ## Phase 4 — pending
 
@@ -21,3 +25,4 @@ Concurrency boundary: attendance, interview, warnings, chat, dashboards and the 
 ## Verification limits
 
 Morning original XLS files remain unavailable at the documented paths. Synthetic fixtures do not establish real-source morning compatibility. Production migration and persistence remain unverified.
+

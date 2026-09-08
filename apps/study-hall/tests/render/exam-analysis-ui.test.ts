@@ -8,6 +8,7 @@ import * as React from "react";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RegularStudentReport } from "../../lib/exam-analysis-types";
+import * as morningSchemas from "../../lib/morning-exam-analysis-schemas";
 
 const root = path.resolve(__dirname, "../..");
 // Render actual report/table markup; replace chart geometry and unrelated portal
@@ -22,6 +23,10 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name in overrides) return overrides[name];
       if (name === "react") return React;
       if (name === "react/jsx-runtime") return jsx;
+      if (name === "@/lib/morning-exam-analysis-schemas") return morningSchemas;
+      if (name === "@/lib/services/morning-exam-analysis.service") return { getMorningStudentReport: async () => null };
+      if (name.endsWith("/MorningCohortAnalysis")) return { MorningCohortAnalysis: () => null };
+      if (name.endsWith("/MorningStudentReport")) return { MorningStudentReport: () => null };
       if (name === "recharts") return new Proxy({}, { get: () => ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) });
       if (name === "@/components/exams/ExamScoreChart") return { ExamScoreChart: () => React.createElement("p", null, "성적 추이 차트") };
       if (name === "@/components/ui/SlideOver") return { SlideOver: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? children : null };
@@ -139,7 +144,7 @@ test("cohort report: low-N warning, unavailable external averages and empty matc
   assert.match(ranked, /<td>선택 안 함<\/td><td>0<\/td><td>미응시<\/td>/);
 });
 
-test("secondary tabs: only regular analysis is enabled and import busy state still guards navigation", () => {
+test("secondary tabs: both analyses are enabled and import busy state still guards navigation", () => {
   const source = fs.readFileSync(path.join(root, "components/exams/ExamSecondaryTabs.tsx"), "utf8");
   let items: { id: string; disabled?: boolean }[] = [];
   const empty = () => null;
@@ -151,9 +156,9 @@ test("secondary tabs: only regular analysis is enabled and import busy state sti
   }).ExamSecondaryTabs;
   for (const category of ["REGULAR", "MORNING"]) {
     renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", category, examTypes: [] }));
-    assert.equal(items.find((item) => item.id === "analysis")?.disabled, category !== "REGULAR");
+    assert.equal(items.find((item) => item.id === "analysis")?.disabled, false);
   }
-  assert.match(source, /disabled: busy \|\| category !== "REGULAR"/);
+  assert.match(source, /disabled: busy/);
 });
 
 test("student SSR: requests own viewer, rejects unknown session selection and preserves morning and legacy results", async () => {

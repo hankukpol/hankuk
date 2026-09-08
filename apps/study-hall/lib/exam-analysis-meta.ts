@@ -179,3 +179,105 @@ export function computeFullScore(subjects: readonly FullScoreSubject[]): number 
   }
   return total + Array.from(groups.values()).reduce((sum, score) => sum + score, 0);
 }
+
+/** One subject, one point per attended date. Missing/non-finite scores are not attempts. */
+export type SessionPoint = { date: string; score: number };
+
+function orderedMorningPoints(series: SessionPoint[]): SessionPoint[] {
+  return series.filter(point => Number.isFinite(point.score)).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function requireSessionWindow(windowSessions: number): void {
+  if (!Number.isInteger(windowSessions) || windowSessions < 1) {
+    throw new RangeError("응시 회차 창은 1 이상의 정수여야 합니다.");
+  }
+}
+
+const morningMean = (series: SessionPoint[]): number =>
+  series.reduce((sum, point) => sum + point.score, 0) / series.length;
+
+/** Empty input produces no chart points; short windows use the available attempts. */
+export function movingAverage(series: SessionPoint[], windowSessions: number): Array<{ date: string; value: number }> {
+  requireSessionWindow(windowSessions);
+  const points = orderedMorningPoints(series);
+  return points.map((point, index) => ({
+    date: point.date, value: morningMean(points.slice(Math.max(0, index + 1 - windowSessions), index + 1)),
+  }));
+}
+
+/** Least-squares slope in points per attempt, independent of calendar gaps. */
+export function trendSlope(series: SessionPoint[], windowSessions: number): number | null {
+  requireSessionWindow(windowSessions);
+  const points = orderedMorningPoints(series).slice(-windowSessions);
+  if (points.length < 2) return null;
+  const xMean = (points.length - 1) / 2, yMean = morningMean(points);
+  let numerator = 0, denominator = 0;
+  points.forEach((point, index) => {
+    numerator += (index - xMean) * (point.score - yMean);
+    denominator += (index - xMean) ** 2;
+  });
+  return numerator / denominator;
+}
+
+/** Population standard deviation, without rounding before subsequent calculations. */
+export function consistency(series: SessionPoint[]): number | null {
+  const points = orderedMorningPoints(series);
+  if (!points.length) return null;
+  const average = morningMean(points);
+  return Math.sqrt(points.reduce((sum, point) => sum + (point.score - average) ** 2, 0) / points.length);
+}
+
+export function detectMorningDecline(input: {
+  series: SessionPoint[];
+  classSeries: SessionPoint[];
+  expectedSessions: number;
+  fullScore: number;
+  settings: ExamAnalysisSettings;
+}): Array<{ kind: "lowAttendance" | "consecutiveDrops" | "classGap" | "ownAverageDrop"; detail: string }> {
+  const points = orderedMorningPoints(input.series), settings = input.settings.morning;
+  const flags: ReturnType<typeof detectMorningDecline> = [];
+  // No scheduled sessions means no attendance denominator and no decline assessment.
+  if (!Number.isFinite(input.expectedSessions) || input.expectedSessions <= 0) return flags;
+  const rate = points.length / input.expectedSessions * 100;
+  if (rate < settings.attendanceRatePercent) return [{
+    kind: "lowAttendance", detail: `응시율이 ${roundOne(rate)}%로 기준 ${settings.attendanceRatePercent}% 미만이라 추세를 판단하지 않습니다.`,
+  }];
+  if (!points.length) return flags;
+
+  const recentDrops = points.slice(-(settings.consecutiveDrops + 1));
+  if (recentDrops.length === settings.consecutiveDrops + 1
+    && recentDrops.every((point, index) => index === 0 || point.score < recentDrops[index - 1].score)) {
+    flags.push({ kind: "consecutiveDrops", detail: `최근 ${settings.consecutiveDrops}회 연속으로 점수가 하락했습니다.` });
+  }
+
+  // Percentage point gaps cannot be assessed without a valid subject full score.
+  if (!Number.isFinite(input.fullScore) || input.fullScore <= 0) return flags;
+  const recent = points.slice(-settings.movingAverageSessions);
+  const classByDate = new Map(orderedMorningPoints(input.classSeries).map(point => [point.date, point]));
+  const aligned = recent.flatMap(point => {
+    const peer = classByDate.get(point.date);
+    return peer ? [peer] : [];
+  });
+  // Never substitute another date or compare averages with different denominators.
+  if (aligned.length === recent.length) {
+    const gap = morningMean(aligned) - morningMean(recent);
+    if (gap >= input.fullScore * settings.classGapPercent / 100) {
+      flags.push({ kind: "classGap", detail: `최근 ${recent.length}회 평균이 같은 응시일의 반 평균보다 ${roundOne(gap)}점 낮습니다.` });
+    }
+  }
+
+  const recentThree = points.slice(-3);
+  const previous = points.slice(Math.max(0, points.length - 3 - settings.trendWindowSessions), Math.max(0, points.length - 3));
+  if (recentThree.length === 3 && previous.length >= 3) {
+    const drop = morningMean(previous) - morningMean(recentThree);
+    if (drop >= input.fullScore * settings.ownAverageDropPercent / 100) {
+      flags.push({ kind: "ownAverageDrop", detail: `최근 3회 평균이 이전 ${previous.length}회 평균보다 ${roundOne(drop)}점 하락했습니다.` });
+    }
+  }
+  return flags;
+}
+
+/** Handoff structural rule: identify by item count, never operational subject names. */
+export function findCumulativeSubject<T extends { totalItems?: number | null }>(subjects: readonly T[]): T | null {
+  return subjects.find(subject => Number.isFinite(subject.totalItems) && (subject.totalItems ?? 0) >= 100) ?? null;
+}

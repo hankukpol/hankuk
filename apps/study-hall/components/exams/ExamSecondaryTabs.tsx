@@ -5,6 +5,7 @@ import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { ExamImportWizard } from "@/components/exams/import/ExamImportWizard";
 import { ExamScoreManager } from "@/components/exams/ExamScoreManager";
 import { MorningExamScoreManager } from "@/components/exams/MorningExamScoreManager";
+import { MorningCohortAnalysis } from "@/components/exams/analysis/MorningCohortAnalysis";
 import { RegularCohortAnalysis } from "@/components/exams/analysis/RegularCohortAnalysis";
 import type { ExamImportResult, ExamImportSelection } from "@/lib/exam-import-types";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
@@ -33,7 +34,7 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
         items={[
           { id: "input", label: "입력", disabled: busy },
           { id: "import", label: "가져오기" },
-          { id: "analysis", label: "분석", disabled: busy || category !== "REGULAR" },
+          { id: "analysis", label: "분석", disabled: busy },
         ]}
       />
       <AdminTabPanel id="input" activeId={active} idPrefix={idPrefix}>
@@ -82,6 +83,7 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes }: Props) 
         )}
       </AdminTabPanel>
       <AdminTabPanel id="analysis" activeId={active} idPrefix={idPrefix}>
+        {active === "analysis" && category === "MORNING" && <MorningCohortAnalysis key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "MORNING")} />}
         {active === "analysis" && category === "REGULAR" && <RegularCohortAnalysis key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "REGULAR")} />}
       </AdminTabPanel>
     </div>

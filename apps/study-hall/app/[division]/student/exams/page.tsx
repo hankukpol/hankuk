@@ -5,6 +5,7 @@ import { ChartNoAxesColumn } from "lucide-react";
 import { ExamScoreChartLoader } from "@/components/exams/ExamScoreChartLoader";
 import { ExamTabLayout } from "@/components/exams/ExamTabLayout";
 import { MorningExamStudentView } from "@/components/exams/MorningExamStudentView";
+import { MorningStudentReport } from "@/components/exams/analysis/MorningStudentReport";
 import { RegularStudentReport } from "@/components/exams/analysis/RegularStudentReport";
 import { StudentPortalFrame } from "@/components/student-view/StudentPortalFrame";
 import {
@@ -22,10 +23,13 @@ import { listStudentMorningExamWeeks } from "@/lib/services/morning-exam.service
 import { listScoreTargets } from "@/lib/services/score-target.service";
 import { getDivisionFeatureSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
+import { getMorningStudentReport } from "@/lib/services/morning-exam-analysis.service";
+import { defaultMorningAnalysisRange, morningAnalysisRangeSchema } from "@/lib/morning-exam-analysis-schemas";
+import type { MorningStudentReport as MorningReport } from "@/lib/morning-exam-analysis-types";
 import type { RegularStudentReport as RegularReport } from "@/lib/exam-analysis-types";
 
 type StudentExamsPageProps = {
-  searchParams?: { analysisSession?: string | string[] };
+  searchParams?: { analysisSession?: string | string[]; morningType?: string | string[]; morningFrom?: string | string[]; morningTo?: string | string[] };
   params: {
     division: string;
   };
@@ -98,8 +102,47 @@ export default async function StudentExamsPage({ params, searchParams }: Student
       }
     }
 
+    const morningTypes = allExamTypes.filter((type) => type.category === "MORNING");
+    const requestedMorningType = typeof searchParams?.morningType === "string" ? searchParams.morningType : undefined;
+    const selectedMorningType = morningTypes.find((type) => type.id === requestedMorningType) ?? morningTypes.find((type) => type.isActive) ?? morningTypes[0];
+    const defaultRange = defaultMorningAnalysisRange();
+    const rangeResult = morningAnalysisRangeSchema.safeParse({
+      from: searchParams?.morningFrom ?? defaultRange.from,
+      to: searchParams?.morningTo ?? defaultRange.to,
+    });
+    const morningRange = rangeResult.success ? rangeResult.data : defaultRange;
+    let morningReport: MorningReport | null = null;
+    if (selectedMorningType && rangeResult.success) {
+      try {
+        morningReport = await getMorningStudentReport(
+          params.division, selectedMorningType.id, session.studentId, morningRange,
+          { role: "STUDENT", studentId: session.studentId },
+        );
+      } catch (error) {
+        // Missing imported participation must not hide manual scores or cause a 404.
+        if (!isNotFoundError(error)) throw error;
+      }
+    }
     const morningContent = (
-      <MorningExamStudentView weeks={morningWeeks} />
+      <div className="admin-flat-page">
+        <section className="admin-flat-page">
+          <h2 className="admin-section-title">아침 성적 분석</h2>
+          {selectedMorningType ? <>
+            <form className="admin-filter-bar" action={`/${params.division}/student/exams`} method="get">
+              <label className="admin-label" htmlFor="student-morning-type">시험 종류</label>
+              <select id="student-morning-type" name="morningType" defaultValue={selectedMorningType.id}>{morningTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select>
+              <label className="admin-label" htmlFor="student-morning-from">시작일</label>
+              <input id="student-morning-from" name="morningFrom" type="date" required defaultValue={morningRange.from} max={morningRange.to} />
+              <label className="admin-label" htmlFor="student-morning-to">종료일</label>
+              <input id="student-morning-to" name="morningTo" type="date" required defaultValue={morningRange.to} />
+              <button type="submit" className="admin-button admin-button-primary">아침 분석 조회</button>
+            </form>
+            <p className="admin-help">기본 조회 기간은 오늘을 포함한 최근 84일입니다. 분석은 과목별 응시 횟수를 기준으로 합니다.</p>
+            {!rangeResult.success ? <p role="alert" className="admin-notice admin-notice-danger">날짜를 확인해 주세요. 시작일부터 종료일까지 날짜 차이 92일 이내로 선택해 주세요.</p> : morningReport ? <MorningStudentReport report={morningReport} mode="student" /> : <p className="admin-empty-state">선택한 기간에 가져온 아침 문항 분석 자료가 없습니다. 기존 성적 기록은 아래에서 확인할 수 있습니다.</p>}
+          </> : <p className="admin-empty-state">분석할 아침 시험 종류가 없습니다.</p>}
+        </section>
+        <MorningExamStudentView weeks={morningWeeks} />
+      </div>
     );
 
     const regularContent = (
@@ -222,7 +265,8 @@ export default async function StudentExamsPage({ params, searchParams }: Student
       </div>
     );
 
-    const defaultTab = requestedSession ? "regular" : hasMorningTypes && morningWeeks.length > 0 ? "morning" : "regular";
+    const morningRequested = searchParams?.morningType !== undefined || searchParams?.morningFrom !== undefined || searchParams?.morningTo !== undefined;
+    const defaultTab = morningRequested ? "morning" : requestedSession ? "regular" : hasMorningTypes && morningWeeks.length > 0 ? "morning" : "regular";
 
     return (
       <StudentPortalFrame
@@ -236,9 +280,9 @@ export default async function StudentExamsPage({ params, searchParams }: Student
         title="성적 상세"
         description="아침모의고사 주차별 성적과 정기모의고사 날짜별 성적을 확인할 수 있습니다."
       >
-        {hasMorningTypes || hasRegularTypes ? (
+        {hasMorningTypes || hasRegularTypes || morningWeeks.length > 0 || regularExams.length > 0 || selectedMorningType || selectedSession ? (
           <ExamTabLayout
-            key={requestedSession ?? "default"}
+            key={morningRequested ? `morning:${selectedMorningType?.id}:${morningRange.from}:${morningRange.to}` : requestedSession ?? "default"}
             morningContent={morningContent}
             regularContent={regularContent}
             defaultTab={defaultTab}

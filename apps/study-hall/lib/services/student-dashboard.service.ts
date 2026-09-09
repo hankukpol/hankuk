@@ -9,7 +9,11 @@ import { type PointRecordItem, listPointRecords } from "@/lib/services/point.ser
 import { getPeriods } from "@/lib/services/period.service";
 import { getDivisionSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail, type StudentDetail } from "@/lib/services/student.service";
-import { getWarningStageLabel, toDemeritPoints } from "@/lib/student-meta";
+import {
+  getNextWarningStage,
+  toDemeritPoints,
+  type NextWarningStage,
+} from "@/lib/student-meta";
 import { getStudentMonthlyStudyMinutes } from "@/lib/services/study-time.service";
 
 type AttendanceStatus =
@@ -85,11 +89,7 @@ export type StudentDashboardData = {
     expirationWarningDays: number;
   } | null;
   /** 다음 경고 단계까지 남은 벌점. 최고 단계에 도달했으면 null. */
-  nextWarningStage: {
-    label: string;
-    threshold: number;
-    pointsRemaining: number;
-  } | null;
+  nextWarningStage: NextWarningStage | null;
 };
 
 type StudentAttendanceRecord = {
@@ -497,36 +497,3 @@ export async function getStudentDashboardData(
   };
 }
 
-/**
- * 지금 점수에서 다음 단계까지 몇 점 남았는지.
- * 현재 단계만 보여주면 억제 효과의 절반이 빠지므로 남은 점수를 함께 알린다.
- */
-function getNextWarningStage(
-  demeritPoints: number,
-  thresholds: {
-    warnLevel1: number;
-    warnLevel2: number;
-    warnInterview: number;
-    warnWithdraw: number;
-  },
-  stageLabels?: Record<string, string>,
-) {
-  const stages = [
-    { stage: "WARNING_1" as const, threshold: thresholds.warnLevel1 },
-    { stage: "WARNING_2" as const, threshold: thresholds.warnLevel2 },
-    { stage: "INTERVIEW" as const, threshold: thresholds.warnInterview },
-    { stage: "WITHDRAWAL" as const, threshold: thresholds.warnWithdraw },
-  ];
-
-  const next = stages.find((entry) => demeritPoints < entry.threshold);
-
-  if (!next) {
-    return null;
-  }
-
-  return {
-    label: stageLabels?.[next.stage] ?? getWarningStageLabel(next.stage),
-    threshold: next.threshold,
-    pointsRemaining: next.threshold - demeritPoints,
-  };
-}

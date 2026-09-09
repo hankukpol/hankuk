@@ -70,6 +70,46 @@ export function getWarningStageLabel(stage: string | null | undefined) {
   return WARNING_STAGE_OPTIONS.find((option) => option.value === stage)?.label ?? "정상";
 }
 
+export type NextWarningStage = {
+  stage: WarningStageValue;
+  /** 관리규정이 단계 이름을 덮어쓸 수 있어 라벨을 함께 돌려준다. */
+  label: string;
+  threshold: number;
+  pointsRemaining: number;
+};
+
+/**
+ * 지금 점수에서 다음 경고 단계까지 몇 점 남았는지. 최고 단계에 도달했으면 null.
+ *
+ * 현재 단계만 보여주면 억제 효과의 절반이 빠진다. 임계값은 화면에서 다시 비교하지 않고
+ * `division_settings` 에서 읽은 값을 그대로 넘겨 이 한 곳에서만 계산한다.
+ */
+export function getNextWarningStage(
+  demeritPoints: number,
+  thresholds: WarningThresholds,
+  stageLabels?: Record<string, string>,
+): NextWarningStage | null {
+  const stages = [
+    { stage: "WARNING_1", threshold: thresholds.warnLevel1 },
+    { stage: "WARNING_2", threshold: thresholds.warnLevel2 },
+    { stage: "INTERVIEW", threshold: thresholds.warnInterview },
+    { stage: "WITHDRAWAL", threshold: thresholds.warnWithdraw },
+  ] as const satisfies ReadonlyArray<{ stage: WarningStageValue; threshold: number }>;
+
+  const next = stages.find((entry) => demeritPoints < entry.threshold);
+
+  if (!next) {
+    return null;
+  }
+
+  return {
+    stage: next.stage,
+    label: stageLabels?.[next.stage] ?? getWarningStageLabel(next.stage),
+    threshold: next.threshold,
+    pointsRemaining: next.threshold - demeritPoints,
+  };
+}
+
 /** 상자 없이 글자색만 쓸 때. 배지가 필요한 곳은 getStudentStatusClasses 를 쓴다. */
 export function getStudentStatusToneClass(status: string | null | undefined) {
   switch (status) {

@@ -931,7 +931,11 @@ body {
     background: var(--admin-surface-muted);
   }
 
+  /* 비활성은 위계와 상관없이 하나의 모양으로 모인다 (DESIGN.md 5.6).
+     테두리를 함께 되돌리지 않으면 primary/danger 는 회색 면에 강조색 윤곽만 남아
+     칠하다 만 버튼처럼 보인다. */
   .admin-button:disabled {
+    border-color: var(--admin-line-soft);
     background: var(--admin-surface-muted);
     color: var(--admin-text-disabled);
     cursor: not-allowed;
@@ -1861,10 +1865,6 @@ body:has(.admin-shell) {
   font-size: var(--admin-type-caption);
   white-space: nowrap;
   overflow-wrap: normal;
-}
-
-.admin-shell .admin-button:disabled {
-  opacity: 0.5;
 }
 
 /* --- 표 --- */

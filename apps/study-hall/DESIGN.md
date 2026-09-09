@@ -311,6 +311,8 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 - `admin-button-primary`는 accent 채움 + `--admin-on-accent` 글자, hover는 `accent-hover`. 기본형은 흰색 + line, hover soft.
 - 위험 작업은 `admin-button-danger`(채움) 또는 `admin-button-danger-outline`.
 - 버튼의 pending/disabled와 의미 있는 경고색을 보존한다. 저장 중 중복 제출을 막는 기존 guard를 유지한다.
+- **비활성 버튼은 위계와 상관없이 한 모양으로 모인다.** `muted` 배경 · `text-disabled` 글자 · `line-soft` 테두리다. 테두리를 함께 되돌리지 않으면 primary·danger 는 회색 면에 강조색 윤곽만 남아 칠하다 만 버튼처럼 보인다. `opacity`로 전체를 흐리지 않는다. 토큰 색이 이미 비활성을 말하는데 그 위에 반투명을 겹치면 글자가 두 번 옅어져 읽히지 않는다.
+- 실행 버튼에 붙는 안내는 버튼 줄과 8px로 묶는다. 섹션 기본 간격(16px) 사이에 홀로 두면 위 폼에 걸린 말인지 아래 실행에 걸린 말인지 알 수 없다.
 
 ### 5.7 폼·검색·상태 안내
 

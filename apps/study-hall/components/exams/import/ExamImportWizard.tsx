@@ -221,12 +221,15 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
             </label>
           )}
         </fieldset>
-        <p className="admin-help">{category === "MORNING" ? "파일·시험 종류·진도를" : "파일이나 시험 종류를"} 변경하면 미리보기를 다시 실행해 주세요.</p>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={`admin-button${preview ? "" : " admin-button-primary"}`} disabled={busy || !canPreview} onClick={() => void submit("preview")}>
-            {pending === "preview" ? "미리보기 확인 중…" : preview ? "미리보기 다시 실행" : "미리보기"}
-          </button>
-          <button type="button" className="admin-button" disabled={pending === "confirm" || historyBusy} onClick={reset}>초기화</button>
+        {/* 안내는 이 실행에 붙는 말이다. 위아래 16px 사이에 홀로 두면 어디에 걸린 말인지 흐려진다. */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={`admin-button${preview ? "" : " admin-button-primary"}`} disabled={busy || !canPreview} onClick={() => void submit("preview")}>
+              {pending === "preview" ? "미리보기 확인 중…" : preview ? "미리보기 다시 실행" : "미리보기"}
+            </button>
+            <button type="button" className="admin-button" disabled={pending === "confirm" || historyBusy} onClick={reset}>초기화</button>
+          </div>
+          <p className="admin-help">{category === "MORNING" ? "파일·시험 종류·진도를" : "파일이나 시험 종류를"} 변경하면 미리보기를 다시 실행해 주세요.</p>
         </div>
       </section>
       {error && <p role="alert" className="admin-notice admin-notice-danger break-words">{error}</p>}

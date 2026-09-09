@@ -73,7 +73,7 @@ export function StudentPortalFrame({
             {/* DESIGN.md 8절 — 신원 요약은 테두리 상자가 아니라 얇은 선으로만 나눈다. */}
             <dl className="admin-portal-summary admin-portal-summary-3">
               <div>
-                <dt>학번</dt>
+                <dt>수험번호</dt>
                 <dd>{student.studentNumber}</dd>
               </div>
               <div>

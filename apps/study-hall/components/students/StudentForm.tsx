@@ -404,11 +404,14 @@ export function StudentForm({
               value={studentNumber}
               onChange={(event) => setStudentNumber(event.target.value)}
               className="w-full"
-              placeholder="예: P-2026-001"
+              placeholder="예: 20550"
               autoComplete="off"
               disabled={!canEdit || isSaving}
               required
             />
+            {/* 성적 가져오기가 5자리만 매칭한다. 다른 자릿수를 넣으면 저장은 되고
+                성적만 안 붙어, 사용자가 원인을 찾기 어렵다. 그래서 미리 알린다. */}
+            <span className="admin-help mt-2 block">성적 파일의 수험번호와 같아야 합니다. 숫자 5자리가 아니면 성적이 자동으로 매칭되지 않습니다.</span>
           </label>
 
           <label className="block">

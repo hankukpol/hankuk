@@ -39,7 +39,7 @@ export function StudyRankingTable({
             <th className="admin-table-name">순위</th>
             <th className="admin-table-name">이름</th>
             {showStudentNumber ? (
-              <th className="admin-table-name">학번</th>
+              <th className="admin-table-name">수험번호</th>
             ) : null}
             <th className="admin-table-amount">월 누적 학습시간</th>
             <th className="admin-table-amount">학습일</th>

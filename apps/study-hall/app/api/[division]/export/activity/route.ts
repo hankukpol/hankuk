@@ -46,7 +46,7 @@ export async function GET(
       { header: "시각", key: "occurredAt", width: 24 },
       { header: "유형", key: "actionLabel", width: 18 },
       { header: "처리자", key: "actorName", width: 18 },
-      { header: "학번", key: "studentNumber", width: 18 },
+      { header: "수험번호", key: "studentNumber", width: 18 },
       { header: "학생명", key: "studentName", width: 18 },
       { header: "내용", key: "detail", width: 60 },
     ];

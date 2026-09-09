@@ -52,7 +52,7 @@ export async function GET(
 
     worksheet.columns = [
       { header: "날짜", key: "date", width: 14 },
-      { header: "학번", key: "studentNumber", width: 14 },
+      { header: "수험번호", key: "studentNumber", width: 14 },
       { header: "이름", key: "studentName", width: 14 },
       { header: "구분", key: "categoryLabel", width: 12 },
       { header: "규칙", key: "ruleName", width: 20 },

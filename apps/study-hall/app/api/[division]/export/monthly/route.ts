@@ -47,7 +47,7 @@ export async function GET(
     const showExamColumn = report.featureFlags.examManagement;
 
     worksheet.columns = [
-      { header: "학번", key: "studentNumber", width: 14 },
+      { header: "수험번호", key: "studentNumber", width: 14 },
       { header: "이름", key: "studentName", width: 14 },
       ...(showSeatColumn ? [{ header: "좌석", key: "seatLabel", width: 12 }] : []),
       ...(showAttendanceColumns

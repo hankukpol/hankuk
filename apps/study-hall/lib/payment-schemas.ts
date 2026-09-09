@@ -62,7 +62,7 @@ export const enrollPaymentSchema = z
   .object({
     student: z.object({
       name: z.string().trim().min(1, "학생 이름을 입력해 주세요.").max(50, "학생 이름은 50자 이하여야 합니다."),
-      studentNumber: z.string().trim().min(1, "학번을 입력해 주세요.").max(50, "학번은 50자 이하여야 합니다."),
+      studentNumber: z.string().trim().min(1, "수험번호를 입력해 주세요.").max(50, "수험번호는 50자 이하여야 합니다."),
       phone: z.string().trim().max(20, "연락처는 20자 이하여야 합니다.").nullable().optional(),
       memo: z.string().trim().max(2000, "메모는 2000자 이하여야 합니다.").nullable().optional(),
     }),

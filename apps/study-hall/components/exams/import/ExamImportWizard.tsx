@@ -189,7 +189,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
             <li>시험 설정의 과목별 문항 수와 배점이 가져올 파일과 일치하는지 확인합니다.</li>
             <li>서로 선택하는 과목은 같은 택1 그룹으로 지정합니다.</li>
             <li>같은 시험지를 사용하는 아침 시험 종류는 하나로 통합하고, 필요한 과목을 등록한 뒤 중복 종류는 비활성화합니다.</li>
-            <li>학생 학번을 채점 시스템의 수험번호 5자리와 일치시킵니다.</li>
+            <li>학생 명단의 수험번호를 채점 시스템과 같은 5자리 숫자로 맞춥니다. 다르면 그 학생의 성적은 가져오지 않습니다.</li>
           </ol>
           </div>
         </details>
@@ -295,7 +295,7 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
           ["만점", `${preview.fullScore}점`],
         ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="admin-label">{label}</dt><dd className="break-words">{value}</dd></div>)}
       </dl>
-      {preview.errors.length > 0 && <ul className="admin-notice admin-notice-danger space-y-2" role="alert">{preview.errors.map((message, i) => <li key={i} className="break-words">{message}</li>)}</ul>}
+      {preview.errors.length > 0 && <ul className={`admin-notice admin-notice-danger space-y-2${preview.errors.length > 1 ? " list-disc pl-8" : ""}`} role="alert">{preview.errors.map((message, i) => <li key={i} className="break-words">{message}</li>)}</ul>}
     </section>
     <section className="admin-section">
       <h2 className="admin-section-title">블록과 과목 매핑</h2>

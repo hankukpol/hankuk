@@ -64,16 +64,16 @@ export function StudentLoginForm({
       <div className="w-full max-w-[480px] rounded-lg border border-admin-line p-6">
         <h1 className="admin-page-title">학생 로그인</h1>
         <p className="admin-page-description">
-          {divisionName} 학생은 학번과 이름만 입력하면 바로 로그인할 수 있습니다.
+          {divisionName} 학생은 수험번호와 이름만 입력하면 바로 로그인할 수 있습니다.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <label className="admin-field">
-            <span className="admin-label">학번</span>
+            <span className="admin-label">수험번호</span>
             <input
               value={studentNumber}
               onChange={(event) => setStudentNumber(event.target.value)}
-              placeholder="학번 입력"
+              placeholder="수험번호 입력"
               autoComplete="username"
               required
             />

@@ -147,7 +147,7 @@ export function PhoneCheckTable({
               학생
             </th>
             <th className="min-w-[120px] admin-table-name">
-              학번
+              수험번호
             </th>
             <th className="min-w-[120px] admin-table-name">
               직렬

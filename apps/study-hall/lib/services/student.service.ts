@@ -1176,7 +1176,7 @@ async function getStudentDetailLegacy(divisionSlug: string, studentId: string) {
     const raw = compatibleRows[0];
 
     if (!raw) {
-      throw notFound("?숈깮 ?뺣낫瑜?李얠쓣 ???놁뒿?덈떎.");
+      throw notFound("학생 정보를 찾을 수 없습니다.");
     }
 
     const netPoints = toNetPoints(pointAggregate._sum.points ?? 0);

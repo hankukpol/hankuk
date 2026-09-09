@@ -194,31 +194,40 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
           </div>
         </details>
         {examTypes.length === 0 && <p className="admin-notice admin-notice-warning">활성 시험 종류가 없습니다. 시험 설정에서 시험 종류와 과목을 등록한 후 이용해 주세요.</p>}
-        <fieldset disabled={busy} className="grid min-w-0 gap-4 md:grid-cols-2">
+        {/* 항목마다 라벨 열을 세우고 행 사이에 선을 둔다. 무엇을 몇 개 채워야 하는지 한눈에 보인다. */}
+        <fieldset disabled={busy} className="admin-panel">
           <legend className="sr-only">가져올 파일과 시험 정보</legend>
-          <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-score`}>
-            <span className="admin-label">채점표</span>
-            <input ref={scoreInput} id={`${id}-score`} type="file" accept=".xls" className="w-full min-w-0" onChange={(event) => chooseFile("scoreFile", event)} />
-            <span className="admin-help">.xls · 최대 5MB</span>
-          </label>
-          <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-analysis`}>
-            <span className="admin-label">문항분석표</span>
-            <input ref={analysisInput} id={`${id}-analysis`} type="file" accept=".xls" className="w-full min-w-0" onChange={(event) => chooseFile("analysisFile", event)} />
-            <span className="admin-help">.xls · 최대 5MB</span>
-          </label>
-          <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-type`}>
-            <span className="admin-label">시험 종류</span>
-            <select id={`${id}-type`} value={examTypeId} onChange={(event) => { invalidate(); setExamTypeId(event.target.value); }}>
-              <option value="">파일에서 자동 선택</option>
-              {examTypes.map((examType) => <option key={examType.id} value={examType.id}>{examType.name}</option>)}
-            </select>
-          </label>
+          <div className="admin-form-row">
+            <label className="admin-label admin-form-row-label" htmlFor={`${id}-score`}>채점표</label>
+            <div className="admin-form-row-control">
+              <input ref={scoreInput} id={`${id}-score`} type="file" accept=".xls" aria-describedby={`${id}-score-help`} onChange={(event) => chooseFile("scoreFile", event)} />
+              <p id={`${id}-score-help`} className="admin-help mt-2">.xls · 최대 5MB</p>
+            </div>
+          </div>
+          <div className="admin-form-row">
+            <label className="admin-label admin-form-row-label" htmlFor={`${id}-analysis`}>문항분석표</label>
+            <div className="admin-form-row-control">
+              <input ref={analysisInput} id={`${id}-analysis`} type="file" accept=".xls" aria-describedby={`${id}-analysis-help`} onChange={(event) => chooseFile("analysisFile", event)} />
+              <p id={`${id}-analysis-help`} className="admin-help mt-2">.xls · 최대 5MB</p>
+            </div>
+          </div>
+          <div className="admin-form-row">
+            <label className="admin-label admin-form-row-label" htmlFor={`${id}-type`}>시험 종류</label>
+            <div className="admin-form-row-control">
+              <select id={`${id}-type`} value={examTypeId} onChange={(event) => { invalidate(); setExamTypeId(event.target.value); }}>
+                <option value="">파일에서 자동 선택</option>
+                {examTypes.map((examType) => <option key={examType.id} value={examType.id}>{examType.name}</option>)}
+              </select>
+            </div>
+          </div>
           {category === "MORNING" && (
-            <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-topic`}>
-              <span className="admin-label">진도 라벨 (필수)</span>
-              <input id={`${id}-topic`} type="text" required maxLength={200} value={topic} placeholder="예: 총론 3강" aria-describedby={`${id}-topic-help`} onChange={(event) => { invalidate(); setTopic(event.target.value); }} />
-              <span id={`${id}-topic-help`} className="admin-help">매 가져오기마다 이번 시험의 진도를 입력해 주세요.</span>
-            </label>
+            <div className="admin-form-row">
+              <label className="admin-label admin-form-row-label" htmlFor={`${id}-topic`}>진도 라벨 (필수)</label>
+              <div className="admin-form-row-control">
+                <input id={`${id}-topic`} type="text" required maxLength={200} value={topic} placeholder="예: 총론 3강" aria-describedby={`${id}-topic-help`} onChange={(event) => { invalidate(); setTopic(event.target.value); }} />
+                <p id={`${id}-topic-help`} className="admin-help mt-2">매 가져오기마다 이번 시험의 진도를 입력해 주세요.</p>
+              </div>
+            </div>
           )}
         </fieldset>
         {/* 안내는 이 실행에 붙는 말이다. 위아래 16px 사이에 홀로 두면 어디에 걸린 말인지 흐려진다. */}

@@ -125,11 +125,13 @@ test("cohort has 84-day defaults and distinguishes insufficient samples from no 
       return React.useState(seeded);
     } },
   }).MorningCohortAnalysis;
-  const html = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }] }));
-  for (const text of ["최근 84일", "6회부터 추세", "판정에 필요한 응시 회차가 부족합니다", "진도 라벨이 입력된 시험이 없습니다"]) assert.ok(html.includes(text), text);
-  assert.ok(!html.includes("감지된 과목별 하락 신호가 없습니다"));
+  const html = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "cohort" }));
+  const studentsHtml = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "students" }));
+  for (const text of ["최근 84일", "6회부터 추세", "진도 라벨이 입력된 시험이 없습니다"]) assert.ok(html.includes(text), text);
+  assert.ok(studentsHtml.includes("판정에 필요한 응시 회차가 부족합니다"), "판정에 필요한 응시 회차가 부족합니다");
+  assert.ok(!studentsHtml.includes("감지된 과목별 하락 신호가 없습니다"));
   analysis.insufficientSample = false;
-  const ready = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }] }));
+  const ready = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "students" }));
   assert.ok(ready.includes("감지된 과목별 하락 신호가 없습니다"));
   analysis.insufficientSample = true;
 });
@@ -147,9 +149,9 @@ test("both analysis tabs are enabled and busy import still blocks leaving", () =
   }).ExamSecondaryTabs;
   for (const category of ["REGULAR", "MORNING"]) {
     renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", category, examTypes: [] }));
-    assert.equal(items.find((item) => item.id === "analysis")?.disabled, false);
+    for (const id of ["cohort", "students"]) assert.equal(items.find((item) => item.id === id)?.disabled, false);
   }
-  assert.match(fs.readFileSync(path.join(root, "components/exams/ExamSecondaryTabs.tsx"), "utf8"), /id: "analysis", label: "분석", disabled: busy/);
+  assert.match(fs.readFileSync(path.join(root, "components/exams/ExamSecondaryTabs.tsx"), "utf8"), /id: "cohort", label: "반 분석", disabled: busy/);
 });
 
 

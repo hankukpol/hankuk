@@ -35,7 +35,9 @@ function RequestStatus({ error, retry }: { error?: string; retry: () => void }) 
 }
 
 
-export function MorningCohortAnalysis({ divisionSlug, examTypes, initialSelection = {} }: { divisionSlug: string; examTypes: ExamTypeItem[]; initialSelection?:Record<string,string> }) {
+type CohortView = "cohort" | "students";
+
+export function MorningCohortAnalysis({ divisionSlug, examTypes, initialSelection = {}, view }: { divisionSlug: string; examTypes: ExamTypeItem[]; initialSelection?:Record<string,string>; view: CohortView }) {
   const id = useId();
   const types = examTypes.filter((type) => type.category === "MORNING");
   const [selectedId, setSelectedId] = useState(initialSelection.examTypeId || types[0]?.id || "");
@@ -59,12 +61,12 @@ export function MorningCohortAnalysis({ divisionSlug, examTypes, initialSelectio
     </form>
     {error && <p role="alert" className="admin-notice admin-notice-danger">{error}</p>}
     <p className="admin-help">조회 기간 {range.from} ~ {range.to}. 기본 기간은 오늘을 포함한 최근 84일입니다. 이동평균과 추세는 날짜 간격이 아닌 과목별 응시 횟수를 기준으로 계산합니다.</p>
-    <CohortReport key={`${divisionSlug}:${query}`} base={`/api/${encodeURIComponent(divisionSlug)}/morning-exams/analysis`} query={query} />
+    <CohortReport key={`${divisionSlug}:${query}`} base={`/api/${encodeURIComponent(divisionSlug)}/morning-exams/analysis`} query={query} view={view} />
   </div>;
 }
 
 
-function CohortReport({ base, query }: { base: string; query: string }) {
+function CohortReport({ base, query, view }: { base: string; query: string; view: CohortView }) {
   const request = useAnalysisRequest<{ analysis: Analysis }>(`${base}?${query}`);
 
   const setStudent = (selected: {id:string;name:string} | null) => { if(selected) window.location.assign(base.replace('/api/', '/').replace('/morning-exams/analysis','/admin/exams').replace('/exams/analysis','/admin/exams') + '/students/' + encodeURIComponent(selected.id) + '?kind=morning&' + query); };
@@ -74,23 +76,26 @@ function CohortReport({ base, query }: { base: string; query: string }) {
   return <div className="admin-flat-page">
     <h2 className="admin-section-title">{analysis.examType.name} 반 분석</h2>
     <p className="admin-help">가져온 시험 {analysis.sessionCount}건 · 이동평균 최근 {minimum}회 · 추세 최근 {analysis.settings.morning.trendWindowSessions}회 응시 기준</p>
-    <section className="admin-section"><h3 className="admin-section-title">날짜·과목별 비교</h3><SubjectHeatmap heatmap={analysis.heatmap} subjects={analysis.subjects} /></section>
-    <section className="admin-section"><h3 className="admin-section-title">과목별 반 추세</h3>
+    {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">날짜·과목별 비교</h3><SubjectHeatmap heatmap={analysis.heatmap} subjects={analysis.subjects} /></section>}
+    {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">과목별 반 추세</h3>
+      <p className="admin-help">과목 이름을 눌러 추세 그래프를 펼칩니다.</p>
       {!analysis.subjectTrends.length && <p className="admin-empty-state">선택한 기간에 과목별 시험 기록이 없습니다.</p>}
       {analysis.subjectTrends.map((subject) => {
         const attended = subject.series.filter((point) => point.internalAvg != null).length;
-        return <section className="admin-section" key={subject.subjectId}><h4 className="admin-section-title">{subject.name}</h4>{attended < minimum ? <p className="admin-empty-state">이 과목은 반 응시 자료가 아직 {attended}회입니다. {minimum}회부터 추세를 표시합니다.</p> : <TrendLines label={`${subject.name} 반 평균과 외부 평균`} columns={[{ key: "internal", label: "반 평균" }, { key: "external", label: "외부 평균" }]} rows={subject.series.map((point) => ({ date: point.date, values: { internal: point.internalAvg, external: point.externalAvg } }))} />}</section>;
+        return <details className="admin-section" key={subject.subjectId}><summary className="admin-button">{subject.name} · 응시 {attended}회</summary>{attended < minimum ? <p className="admin-empty-state">이 과목은 반 응시 자료가 아직 {attended}회입니다. {minimum}회부터 추세를 표시합니다.</p> : <TrendLines label={`${subject.name} 반 평균과 외부 평균`} columns={[{ key: "internal", label: "반 평균" }, { key: "external", label: "외부 평균" }]} rows={subject.series.map((point) => ({ date: point.date, values: { internal: point.internalAvg, external: point.externalAvg } }))} />}</details>;
       })}
-    </section>
-    <section className="admin-section"><h3 className="admin-section-title">날짜별 반 오답 TOP5</h3>
+    </section>}
+    {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">날짜별 반 오답 TOP5</h3>
+      <p className="admin-help">시험일이 쌓이면 목록이 길어지므로 접어 둡니다. 날짜 목록을 펼쳐 확인하세요.</p>
+      <details className="admin-section"><summary className="admin-button">시험일 {analysis.dailyWrongTop.length}건 보기</summary>
       {!analysis.dailyWrongTop.length ? <p className="admin-empty-state">매칭된 학생의 문항 응답이 없습니다.</p> : [...analysis.dailyWrongTop].sort((left, right) => right.date.localeCompare(left.date) || left.subjectId.localeCompare(right.subjectId)).map((day) => <details className="admin-section" key={`${day.date}:${day.subjectId}`}><summary className="admin-button">{day.date} {day.subjectName}</summary>{!day.items.length ? <p className="admin-empty-state">매칭된 학생이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["번호", "정답", "반 정답률", "외부 정답률"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{day.items.map((item) => <tr key={item.itemNo}><td>{item.itemNo}</td><td>{item.answerKey}</td><td>{number(item.internalCorrectRatePct, "%")}</td><td>{number(item.externalCorrectRatePct, "%")}</td></tr>)}</tbody></table></div>}</details>)}
-    </section>
-    <section className="admin-section"><h3 className="admin-section-title">과목별 하락 감지</h3>
+    </details></section>}
+    {view === "students" && <section className="admin-section"><h3 className="admin-section-title">과목별 하락 감지</h3>
       {analysis.insufficientSample && <p className="admin-empty-state">판정에 필요한 응시 회차가 부족합니다.</p>}
-      {analysis.declines.length ? <div className="admin-table-frame"><table><thead><tr><th scope="col">이름</th><th scope="col">과목</th><th scope="col">사유</th></tr></thead><tbody>{analysis.declines.map((row) => <tr key={`${row.studentId}:${row.subjectId}`} onClick={() => setStudent({ id: row.studentId, name: row.name })}><td className="admin-table-name"><button type="button" className="admin-button admin-button-compact" onClick={event => { event.stopPropagation(); setStudent({ id: row.studentId, name: row.name }); }}>{row.name}</button></td><td>{row.subjectName}</td><td>{row.flags.map((flag) => flag.detail).join(" · ")}</td></tr>)}</tbody></table></div> : !analysis.insufficientSample && <p className="admin-help">감지된 과목별 하락 신호가 없습니다.</p>}
-    </section>
-    <section className="admin-section"><h3 className="admin-section-title">응시율 확인 대상</h3><p className="admin-help">설정된 응시율 기준 {analysis.settings.morning.attendanceRatePercent}% 미만인 학생입니다.</p>{!analysis.lowAttendance.length ? <p className="admin-help">응시율 확인 대상이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["이름", "응시", "예정", "응시율"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{analysis.lowAttendance.map((row) => <tr key={row.studentId}><td className="admin-table-name"><button type="button" className="admin-button admin-button-compact" onClick={event => { event.stopPropagation(); setStudent({ id: row.studentId, name: row.name }); }}>{row.name}</button></td><td>{row.attended}회</td><td>{row.expected}회</td><td>{number(row.ratePercent, "%")}</td></tr>)}</tbody></table></div>}</section>
-    <section className="admin-section"><h3 className="admin-section-title">학생·과목별 응시 현황</h3>{!analysis.studentSubjects.length ? <p className="admin-empty-state">매칭된 학생이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["이름", "과목", "응시 / 예정", "응시율", "판정 상태"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{analysis.studentSubjects.map((row) => <tr key={`${row.studentId}:${row.subjectId}`}><td className="admin-table-name"><button type="button" className="admin-button admin-button-compact" onClick={event => { event.stopPropagation(); setStudent({ id: row.studentId, name: row.name }); }}>{row.name}</button></td><td>{row.subjectName}</td><td>{row.attended} / {row.expected}회</td><td>{number(row.attendanceRatePercent, "%")}</td><td>{row.attendanceRatePercent != null && row.attendanceRatePercent < analysis.settings.morning.attendanceRatePercent ? "응시율 부족" : row.insufficientSample ? `${row.requiredSessions}회부터 판정` : "판정 가능"}</td></tr>)}</tbody></table></div>}</section>
-    <section className="admin-section"><h3 className="admin-section-title">단원별 반 평균</h3>{!analysis.topics.length ? <p className="admin-empty-state">진도 라벨이 입력된 시험이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["단원", "과목", "시험 수", "반 평균", "외부 평균"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{analysis.topics.map((topic) => <tr key={`${topic.subjectId}:${topic.topic}`}><td className="admin-table-name">{topic.topic}</td><td>{topic.subjectName}</td><td>{topic.count}회</td><td>{number(topic.internalAvg)}</td><td>{number(topic.externalAvg)}</td></tr>)}</tbody></table></div>}</section>
+      {analysis.declines.length ? <div className="admin-table-frame"><table><thead><tr><th scope="col">이름</th><th scope="col">과목</th><th scope="col">사유</th></tr></thead><tbody>{analysis.declines.map((row) => <tr key={`${row.studentId}:${row.subjectId}`} onClick={() => setStudent({ id: row.studentId, name: row.name })}><td className="admin-table-name"><button type="button" className="admin-table-link" onClick={() => setStudent({ id: row.studentId, name: row.name })}>{row.name}</button></td><td>{row.subjectName}</td><td>{row.flags.map((flag) => flag.detail).join(" · ")}</td></tr>)}</tbody></table></div> : !analysis.insufficientSample && <p className="admin-help">감지된 과목별 하락 신호가 없습니다.</p>}
+    </section>}
+    {view === "students" && <section className="admin-section"><h3 className="admin-section-title">응시율 확인 대상</h3><p className="admin-help">설정된 응시율 기준 {analysis.settings.morning.attendanceRatePercent}% 미만인 학생입니다.</p>{!analysis.lowAttendance.length ? <p className="admin-help">응시율 확인 대상이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["이름", "응시", "예정", "응시율"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{analysis.lowAttendance.map((row) => <tr key={row.studentId}><td className="admin-table-name"><button type="button" className="admin-table-link" onClick={() => setStudent({ id: row.studentId, name: row.name })}>{row.name}</button></td><td>{row.attended}회</td><td>{row.expected}회</td><td>{number(row.ratePercent, "%")}</td></tr>)}</tbody></table></div>}</section>}
+    {view === "students" && <section className="admin-section"><h3 className="admin-section-title">학생·과목별 응시 현황</h3>{!analysis.studentSubjects.length ? <p className="admin-empty-state">매칭된 학생이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["이름", "과목", "응시 / 예정", "응시율", "판정 상태"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{analysis.studentSubjects.map((row) => <tr key={`${row.studentId}:${row.subjectId}`}><td className="admin-table-name"><button type="button" className="admin-table-link" onClick={() => setStudent({ id: row.studentId, name: row.name })}>{row.name}</button></td><td>{row.subjectName}</td><td>{row.attended} / {row.expected}회</td><td>{number(row.attendanceRatePercent, "%")}</td><td>{row.attendanceRatePercent != null && row.attendanceRatePercent < analysis.settings.morning.attendanceRatePercent ? "응시율 부족" : row.insufficientSample ? `${row.requiredSessions}회부터 판정` : "판정 가능"}</td></tr>)}</tbody></table></div>}</section>}
+    {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">단원별 반 평균</h3>{!analysis.topics.length ? <p className="admin-empty-state">진도 라벨이 입력된 시험이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["단원", "과목", "시험 수", "반 평균", "외부 평균"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{analysis.topics.map((topic) => <tr key={`${topic.subjectId}:${topic.topic}`}><td className="admin-table-name">{topic.topic}</td><td>{topic.subjectName}</td><td>{topic.count}회</td><td>{number(topic.internalAvg)}</td><td>{number(topic.externalAvg)}</td></tr>)}</tbody></table></div>}</section>}
   </div>;
 }

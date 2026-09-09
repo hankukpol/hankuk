@@ -1801,6 +1801,28 @@ body:has(.admin-shell) {
   background: transparent;
 }
 
+/* 표 안에서 상세로 이동하는 이름·제목. 셀 안에 버튼 상자를 만들지 않는다.
+   .admin-button 규격(테두리·44/36px·라운드)을 되돌려 글자만 남긴다. */
+.admin-shell .admin-table-link {
+  display: inline;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+  color: var(--admin-accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: inherit;
+  text-underline-offset: 2px;
+  white-space: inherit;
+}
+
+.admin-shell .admin-table-link:is(:hover, :focus-visible):not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
 /* 셀 안의 flex 자식까지 같은 방향으로 맞춘다. */
 .admin-shell thead th :is(button, .flex, .inline-flex) {
   justify-content: center;

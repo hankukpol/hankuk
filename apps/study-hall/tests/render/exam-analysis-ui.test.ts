@@ -151,12 +151,15 @@ test("cohort report: low-N warning, unavailable external averages and empty matc
       return React.useState(seeded);
     } },
   }).RegularCohortAnalysis;
-  const html = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "type", name: "정기 시험" }] }));
-  for (const text of ["반 내 지표는 참고용입니다(응시 8명)", "집계 불가", "반 오답률 TOP10", "반 석차표", "이 시험에 매칭된 반 학생이 없습니다", "학습 확인 대상", "일부 미응시 학생"]) assert.ok(html.includes(text), text);
+  const render = (view: "cohort" | "students") => renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "type", name: "정기 시험" }], view }));
+  const cohortHtml = render("cohort");
+  const html = render("students");
+  for (const text of ["반 내 지표는 참고용입니다(응시 8명)", "집계 불가", "반 오답률 TOP10"]) assert.ok(cohortHtml.includes(text), text);
+  for (const text of ["반 석차표", "이 시험에 매칭된 반 학생이 없습니다", "학습 확인 대상", "일부 미응시 학생"]) assert.ok(html.includes(text), text);
   assert.ok(html.includes("비교할 직전 시험이 없습니다."));
   assert.ok(!html.includes("학습 확인 신호가 없습니다."));
   analysis.hasPreviousExam = true;
-  const prior = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "type", name: "정기 시험" }] }));
+  const prior = render("students");
   assert.ok(prior.includes("학습 확인 신호가 없습니다."));
   assert.ok(!prior.includes("비교할 직전 시험이 없습니다."));
   analysis.subjects = [
@@ -165,7 +168,7 @@ test("cohort report: low-N warning, unavailable external averages and empty matc
     { ...report.subjects[0], id: "required", name: "필수 과목", alternateGroup: null },
   ];
   analysis.ranking = [{ studentId: "student", name: "학생", internalRank: 1, totalScore: 0, subjectScores: { alternate: 0 }, externalTopPercent: null, delta: null, flags: [], isPartial: true }];
-  const ranked = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "type", name: "정기 시험" }] }));
+  const ranked = render("students");
   assert.ok(ranked.includes("<td>—</td><td>—</td>"));
   assert.ok(!ranked.includes("이직전"));
   assert.match(ranked, /<td>선택 안 함<\/td><td>0<\/td><td>미응시<\/td>/);
@@ -183,7 +186,7 @@ test("secondary tabs: both analyses are enabled and import busy state still guar
   }).ExamSecondaryTabs;
   for (const category of ["REGULAR", "MORNING"]) {
     renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", category, examTypes: [] }));
-    assert.equal(items.find((item) => item.id === "analysis")?.disabled, false);
+    for (const id of ["cohort", "students"]) assert.equal(items.find((item) => item.id === id)?.disabled, false);
   }
   assert.match(source, /disabled: busy/);
 });

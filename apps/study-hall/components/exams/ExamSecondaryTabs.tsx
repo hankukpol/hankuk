@@ -19,7 +19,13 @@ type Props = {
 
 export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSelection = {} }: Props) {
   const idPrefix = useId();
-  const [active, setActive] = useState<"input" | "import" | "analysis">(initialSelection.view === "analysis" ? "analysis" : "input");
+  // 분석은 반 단위와 학생 단위로 나눈다. 한 화면에 13개 섹션을 쌓지 않기 위한 분리이며
+  // DESIGN.md 5.5 가 3차 탭 줄을 금지하므로 2차 탭을 넓히는 방식으로 처리한다.
+  const [active, setActive] = useState<"input" | "import" | "cohort" | "students">(
+    initialSelection.view === "students" ? "students" : initialSelection.view === "analysis" ? "cohort" : "input",
+  );
+  const analysisView: "cohort" | "students" = active === "students" ? "students" : "cohort";
+  const showAnalysis = active === "cohort" || active === "students";
   const [scoreVersion, setScoreVersion] = useState(0);
   const [lastImport, setLastImport] = useState<ExamImportResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,7 +41,8 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSe
         items={[
           { id: "input", label: "입력", disabled: busy },
           { id: "import", label: "가져오기" },
-          { id: "analysis", label: "분석", disabled: busy },
+          { id: "cohort", label: "반 분석", disabled: busy },
+          { id: "students", label: "학생별", disabled: busy },
         ]}
       />
       <AdminTabPanel id="input" activeId={active} idPrefix={idPrefix}>
@@ -83,10 +90,17 @@ export function ExamSecondaryTabs({ divisionSlug, category, examTypes, initialSe
           />
         )}
       </AdminTabPanel>
-      <AdminTabPanel id="analysis" activeId={active} idPrefix={idPrefix}>
-        {active === "analysis" && category === "MORNING" && <MorningCohortAnalysis initialSelection={initialSelection} key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "MORNING")} />}
-        {active === "analysis" && category === "REGULAR" && <RegularCohortAnalysis initialSelection={initialSelection} key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "REGULAR")} />}
-      </AdminTabPanel>
+      {/* 반 분석과 학생별은 같은 조회 결과를 나눠 보여준다. 한 인스턴스를 유지해
+          탭을 오갈 때 분석을 다시 불러오지 않는다. */}
+      <div
+        role="tabpanel"
+        id={`${idPrefix}-panel-${analysisView}`}
+        aria-labelledby={`${idPrefix}-${analysisView}`}
+        hidden={!showAnalysis}
+      >
+        {showAnalysis && category === "MORNING" && <MorningCohortAnalysis view={analysisView} initialSelection={initialSelection} key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "MORNING")} />}
+        {showAnalysis && category === "REGULAR" && <RegularCohortAnalysis view={analysisView} initialSelection={initialSelection} key={scoreVersion} divisionSlug={divisionSlug} examTypes={examTypes.filter((type) => type.category === "REGULAR")} />}
+      </div>
     </div>
   );
 }

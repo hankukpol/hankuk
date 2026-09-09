@@ -4,11 +4,17 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as XLSX from 'xlsx';
 import { parseExamImportPair, mapErrataBlocksToSubjects, ExamImportParseError, EXAM_IMPORT_LIMITS } from '../../lib/exam-import-parser';
+import { getExamImportParseReason } from '../../lib/exam-import-meta';
 const fixture=(name:string)=>readFileSync(path.join(process.cwd(),'tests/fixtures/exam-import',name+'.xls'));
 const regular=()=>[fixture('regular-score'),fixture('regular-moon')] as const;
 const parse=()=>parseExamImportPair(...regular());
 function mutate(buffer:Buffer, edit:(wb:XLSX.WorkBook)=>void):Buffer {const wb=XLSX.read(buffer,{type:'buffer'}); edit(wb);return XLSX.write(wb,{type:'buffer',bookType:'xlsx'});}
-function rejects(score:Buffer,moon:Buffer,code:string){assert.throws(()=>parseExamImportPair(score,moon),(e:unknown)=>e instanceof ExamImportParseError&&e.code===code&&e.message==='시험 파일의 형식 또는 용량을 확인해 주세요.');}
+// 메시지는 이유를 말하되 파일 안의 값(이름·생년월일 등)은 절대 담지 않는다.
+function rejects(score:Buffer,moon:Buffer,code:string){assert.throws(()=>parseExamImportPair(score,moon),(e:unknown)=>{
+ assert.ok(e instanceof ExamImportParseError);assert.equal(e.code,code);
+ assert.equal(e.message,getExamImportParseReason(code,e.detail));
+ assert.ok(!/PRIVATE|SENTINEL|1999-12-31/.test(e.message),`메시지에 원본 값이 샜다: ${e.message}`);
+ return true;});}
 test('regular has 12 anonymous students and exact key mapping despite reversed Moon subjects',()=>{
  const p=parse(); assert.equal(p.score.length,12);assert.equal(p.moon.length,120);assert.equal(p.meta.examDate,'2026-08-15');
  assert.deepEqual(mapErrataBlocksToSubjects(p.errata[0].blocks,p.moon).map(b=>b.subjectName),['헌법','범죄학','형사법','경찰학']);
@@ -50,3 +56,33 @@ test('blank trailing rows ignored while nonempty padding and cohort mismatch fai
  rejects(s,mutate(m,w=>{w.Sheets.Moon.I1={t:'s',v:'9 명'};}),'COHORT_MISMATCH');
 });
 test('Moon choice rates are percentages and source row addresses stay one-based',()=>{const p=parse();assert.equal(p.score[0].sourceRow,2);assert.equal(p.errata[1].sourceRow,5);assert.equal(p.moon[0].correctRatePct,67.8);assert.equal(p.moon[0].choiceRates['2'],67.8);});
+
+// OMR 템플릿이 실제 출제 문항보다 길면 뒤쪽 블록이 통째로 비고 채점 표시만 남는다.
+// 이 학원 아침 모의고사는 매번 그렇게 나온다(30문항 템플릿, 20문항 출제).
+// 정답이 0개인 블록은 버리고, 정답이 일부라도 있는 블록의 여백은 계속 거부한다.
+function paddedPair(keys:(string|null)[]):readonly [Buffer,Buffer] {
+ const book=(sheets:Record<string,unknown[][]>)=>{const wb=XLSX.utils.book_new();for(const [name,rows] of Object.entries(sheets))XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),name);return XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;};
+ const moon=[['시험일자','2026-08-15'],['응시인원','2 명'],[],['문항번호','정답','과목명','정답률(%)','1','2','3','4','기타','최다오답선택지'],
+  ...[1,2,3].map(n=>[n,String(n),'과목A','50','25','25','25','25','0','1'])];
+ const score=[['수험번호','지원지역','과목A'],['90001','서울','5'],['90002','서울','5']];
+ // 헤더가 1,2,3 · 1,2 이므로 블록 두 개(3문항 + 2문항)다. 두 번째가 여백 블록이다.
+ const errata:unknown[][]=[['수험번호','1','2','3','1','2']];
+ for(const id of ['90001','90002']){
+  errata.push([id,'1','2','3',...keys]);
+  errata.push([null,'1','2','3',null,null]);
+  errata.push([null,'O','O','O','X','X']);
+ }
+ return [book({Score:score,Errata:errata}),book({Moon:moon})] as const;
+}
+test('a trailing block with no answer key at all is dropped, not rejected',()=>{
+ const p=parseExamImportPair(...paddedPair([null,null]));
+ assert.equal(p.errata.length,2);
+ // 여백 블록은 사라지고 실제 출제된 3문항 블록만 남는다.
+ assert.deepEqual(p.errata.map(s=>s.blocks.map(b=>b.answerKeys.length)),[[3],[3]]);
+ assert.deepEqual(p.errata[0].blocks[0].marks,['O','O','O']);
+ assert.deepEqual(mapErrataBlocksToSubjects(p.errata[0].blocks,p.moon).map(b=>b.subjectName),['과목A']);
+});
+test('a trailing block with a partial answer key still fails, so absent items are never scored',()=>{
+ // 정답이 1번에만 있고 2번 채점 표시가 남아 있으면 없는 문항을 오답으로 지어내게 된다.
+ rejects(...paddedPair(['1',null]),'BLOCK_PADDING');
+});

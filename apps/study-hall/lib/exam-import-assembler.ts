@@ -169,26 +169,44 @@ export function assembleExamImport(
         subject.isActive && normalized(subject.name) === normalized(name),
     ),
   );
-  if (
-    subjects.some(
-      (subject) =>
-        !subject ||
-        !subject.totalItems ||
+  // 관리자는 이 문장을 들고 설정 화면을 고쳐야 한다. 어느 과목이 왜 걸렸는지까지 말한다.
+  const missing = names.filter((_name, index) => !subjects[index]);
+  const incomplete = names.filter((_name, index) => {
+    const subject = subjects[index];
+    return (
+      subject &&
+      (!subject.totalItems ||
         !subject.pointsPerItem ||
-        !Number.isFinite(subject.pointsPerItem),
-    )
-  ) {
-    preview.errors.push("시험 설정의 과목·문항 수·문항당 배점을 확인해주세요.");
+        !Number.isFinite(subject.pointsPerItem))
+    );
+  });
+  if (missing.length) {
+    preview.errors.push(
+      `파일에 있는 과목이 시험 설정에 없습니다: ${missing.join(", ")}. ` +
+        `시험 종류에 이 과목을 활성 상태로 추가해주세요.`,
+    );
+  }
+  if (incomplete.length) {
+    preview.errors.push(
+      `시험 설정에 문항 수 또는 문항당 배점이 비어 있는 과목이 있습니다: ${incomplete.join(", ")}.`,
+    );
+  }
+  if (missing.length || incomplete.length) return result;
+  const active = subjects as ImportSubject[];
+  const activeCount = examType.subjects.filter(
+    (subject) => subject.isActive,
+  ).length;
+  if (selection.category === "MORNING" && active.length !== 1) {
+    preview.errors.push(
+      `아침 시험은 과목 하나짜리 파일이어야 하는데 파일에 ${active.length}과목이 있습니다: ${names.join(", ")}.`,
+    );
     return result;
   }
-  const active = subjects as ImportSubject[];
-  if (
-    (selection.category === "MORNING" && active.length !== 1) ||
-    (selection.category === "REGULAR" &&
-      active.length !==
-        examType.subjects.filter((subject) => subject.isActive).length)
-  ) {
-    preview.errors.push("시험 종류의 활성 과목과 파일의 과목 구성이 다릅니다.");
+  if (selection.category === "REGULAR" && active.length !== activeCount) {
+    preview.errors.push(
+      `시험 종류의 활성 과목 ${activeCount}개와 파일의 ${active.length}과목이 다릅니다. ` +
+        `파일 과목: ${names.join(", ")}. 선택과목이 있으면 모두 활성으로 두고 같은 택1 그룹으로 묶어주세요.`,
+    );
     return result;
   }
   if (
@@ -199,12 +217,13 @@ export function assembleExamImport(
     return result;
   }
   for (const subject of active) {
-    if (
-      parsed.moon.filter(
-        (item) => normalized(item.subjectName) === normalized(subject.name),
-      ).length !== subject.totalItems
-    )
-      preview.errors.push(`${subject.name}: 설정과 파일의 문항 수가 다릅니다.`);
+    const fileItems = parsed.moon.filter(
+      (item) => normalized(item.subjectName) === normalized(subject.name),
+    ).length;
+    if (fileItems !== subject.totalItems)
+      preview.errors.push(
+        `${subject.name}: 설정은 ${subject.totalItems}문항인데 파일은 ${fileItems}문항입니다.`,
+      );
   }
   if (preview.errors.length) return result;
   result.primarySubjectId =
@@ -612,7 +631,43 @@ export function assembleExamImport(
     );
   if (!result.participants.length)
     preview.errors.push("저장할 자습반 학생 응답이 없습니다.");
+  // 재현 불일치는 목록으로만 보여주면 원인을 알 수 없다. 거의 항상 설정 문제이므로
+  // 어느 과목이 몇 건인지와, 배점이 일정하게 어긋난 경우 맞춰야 할 배점까지 말한다.
+  for (const { subjectName, rows } of groupMismatchesBySubject(
+    preview.reproduction.mismatches,
+  )) {
+    const subject = active.find((item) => item.name === subjectName);
+    const ratios = rows
+      .filter((row) => row.expected != null && row.actual)
+      .map((row) => Number(((row.expected as number) / row.actual).toFixed(6)));
+    const sameRatio =
+      ratios.length > 0 && ratios.every((ratio) => ratio === ratios[0]);
+    const implied =
+      sameRatio && subject?.pointsPerItem
+        ? ratios[0] * subject.pointsPerItem
+        : null;
+    preview.errors.push(
+      `${subjectName}: 채점표 점수와 문항별 재계산 점수가 ${rows.length}건 다릅니다.` +
+        (implied
+          ? ` 문항당 배점을 ${subject!.pointsPerItem}점에서 ${Number(implied.toFixed(4))}점으로 바꾸면 맞습니다.`
+          : rows.every((row) => !row.actual)
+            ? " 이 과목에 응답한 학생이 없는데 채점표에는 점수가 있습니다. 선택과목이면 같은 택1 그룹으로 묶어주세요."
+            : " 문항당 배점과 과목 매핑을 확인해주세요."),
+    );
+  }
   preview.canConfirm =
     !preview.errors.length && !preview.reproduction.mismatches.length;
   return result;
+}
+
+type ReproductionMismatch = ExamImportPreview["reproduction"]["mismatches"][number];
+
+function groupMismatchesBySubject(mismatches: ReproductionMismatch[]) {
+  const grouped: Array<{ subjectName: string; rows: ReproductionMismatch[] }> = [];
+  for (const mismatch of mismatches) {
+    const bucket = grouped.find((row) => row.subjectName === mismatch.subjectName);
+    if (bucket) bucket.rows.push(mismatch);
+    else grouped.push({ subjectName: mismatch.subjectName, rows: [mismatch] });
+  }
+  return grouped;
 }

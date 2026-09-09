@@ -1,6 +1,8 @@
 // Server-side only: never import this module into a client component.
 import * as XLSX from "xlsx";
 
+import { getExamImportParseReason } from "@/lib/exam-import-meta";
+
 export interface RawScoreRow { studentNumber: string; sourceRow: number; region: string | null; scores: Record<string, number | null> }
 export interface RawErrataBlock { blockIndex: number; itemNumbers: number[]; answerKeys: string[]; answers: (string | null)[]; marks: ("O" | "X")[] }
 export interface RawErrataStudent { studentNumber: string; sourceRow: number; blocks: RawErrataBlock[] }
@@ -8,9 +10,12 @@ export interface RawMoonItem { subjectName: string; itemNo: number; answerKey: s
 export interface ParsedExamImport { score: RawScoreRow[]; errata: RawErrataStudent[]; moon: RawMoonItem[]; meta: { examDate: string; cohortSize: number; subjectNames: string[] } }
 export const EXAM_IMPORT_LIMITS = { fileBytes: 5 * 1024 * 1024, rows: 15001, columns: 512, students: 5000, items: 500 } as const;
 export class ExamImportParseError extends Error {
-  constructor(public readonly code: string) { super("시험 파일의 형식 또는 용량을 확인해 주세요."); this.name = "ExamImportParseError"; }
+  // detail 에는 개수·행번호·시트 이름만 담는다. 파일 안의 값은 메시지에 넣지 않는다.
+  constructor(public readonly code: string, public readonly detail?: string) {
+    super(getExamImportParseReason(code, detail)); this.name = "ExamImportParseError";
+  }
 }
-const fail = (code: string): never => { throw new ExamImportParseError(code); };
+const fail = (code: string, detail?: string): never => { throw new ExamImportParseError(code, detail); };
 const str = (v: unknown): string => v == null ? "" : String(v).trim();
 const key = (v: unknown): string => { const s = str(v).replace(/\s/g, ""); if (!/^\d+(,\d+)*$/.test(s) || s.length > 40) fail("INVALID_ANSWER"); return s; };
 const label = (v: unknown): string => { const s = str(v); if (!s || s.length > 100 || ["__proto__", "constructor", "prototype"].includes(s)) fail("INVALID_HEADER"); return s; };
@@ -27,7 +32,7 @@ function workbook(buffer: Buffer): XLSX.WorkBook {
   catch { return fail("WORKBOOK_READ"); }
 }
 function rows(wb: XLSX.WorkBook, name: string): unknown[][] {
-  const ws = wb.Sheets[name]; if (!ws || !ws["!ref"]) fail("MISSING_SHEET");
+  const ws = wb.Sheets[name]; if (!ws || !ws["!ref"]) fail("MISSING_SHEET", `${name} 시트 없음`);
   const range = XLSX.utils.decode_range(ws["!fullref"] || ws["!ref"]!);
   if (range.e.r >= EXAM_IMPORT_LIMITS.rows || range.e.c >= EXAM_IMPORT_LIMITS.columns) fail("SHEET_SIZE");
   for (const [address, cell] of Object.entries(ws)) if (!address.startsWith("!") && cell && typeof cell === "object" && "f" in cell) fail("FORMULA_CELL");
@@ -35,11 +40,11 @@ function rows(wb: XLSX.WorkBook, name: string): unknown[][] {
 }
 function header(data: unknown[][], names: string[]): number {
   const index = data.slice(0, 20).findIndex(row => names.every(name => row.some(v => str(v) === name)));
-  if (index < 0) fail("MISSING_HEADER"); return index;
+  if (index < 0) fail("MISSING_HEADER", `찾는 열: ${names.join(", ")}`); return index;
 }
 function col(row: unknown[], name: string): number {
   const indexes = row.flatMap((v, i) => str(v) === name ? [i] : []);
-  if (indexes.length !== 1) fail("DUPLICATE_OR_MISSING_HEADER"); return indexes[0];
+  if (indexes.length !== 1) fail("DUPLICATE_OR_MISSING_HEADER", `${name} 열 ${indexes.length}개`); return indexes[0];
 }
 function studentNumber(v: unknown): string {
   const s = str(v); if (s && !/^\d{1,20}$/.test(s)) fail("INVALID_IDENTIFIER"); return s;
@@ -70,9 +75,9 @@ export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer): Pa
       for (const choice of ["1","2","3","4","기타"]) { const ci = col(h,choice); const n = number(row[ci],true); if (n != null) choiceRates[choice === "기타" ? "etc" : choice] = n; }
       moon.push({ subjectName,itemNo: itemNo!,answerKey:key(row[ai]),correctRatePct:number(row[rate],true),choiceRates,mostCommonWrong:str(row[wrong]) ? key(row[wrong]) : null });
     }
-    if (!moon.length || moon.length > EXAM_IMPORT_LIMITS.items) fail("ITEM_COUNT");
+    if (!moon.length || moon.length > EXAM_IMPORT_LIMITS.items) fail("ITEM_COUNT", `문항 ${moon.length}개, 최대 ${EXAM_IMPORT_LIMITS.items}개`);
     const subjectNames = Array.from(new Set(moon.map(item=>item.subjectName)));
-    for (const name of subjectNames) { const items = moon.filter(item=>item.subjectName === name).sort((a,b)=>a.itemNo-b.itemNo); if (items.some((item,i)=>item.itemNo !== i+1)) fail("ITEM_SEQUENCE"); }
+    for (const name of subjectNames) { const items = moon.filter(item=>item.subjectName === name).sort((a,b)=>a.itemNo-b.itemNo); if (items.some((item,i)=>item.itemNo !== i+1)) fail("ITEM_SEQUENCE", `${name} 과목, 문항 ${items.length}개`); }
     const metadata = (name: string): unknown => { for (const row of md.slice(0,mh)) { const i=row.findIndex(v=>str(v)===name); if(i>=0) return row[i+1]; } return fail("MISSING_METADATA"); };
     const examDate = str(metadata("시험일자")); if (!/^\d{4}-\d{2}-\d{2}$/.test(examDate) || !Number.isFinite(Date.parse(examDate)) || new Date(examDate).toISOString().slice(0,10)!==examDate) fail("EXAM_DATE");
     const cohortSize = number(str(metadata("응시인원")).replace(/\s*명$/, "")); if (cohortSize == null || !Number.isInteger(cohortSize) || cohortSize<1 || cohortSize>EXAM_IMPORT_LIMITS.students) fail("COHORT_SIZE");
@@ -92,7 +97,12 @@ export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer): Pa
       if(!ed[r+1] || !ed[r+2]) fail("INCOMPLETE_STUDENT_BLOCK");
       const blocks:RawErrataBlock[]=columns.map((cs,blockIndex)=>{
         const active=cs.filter(c=>str(ed[r][c]));
-        if(active.some((c,i)=>c!==cs[i]) || cs.slice(active.length).some(c=>str(ed[r+1][c])||str(ed[r+2][c]))) fail("BLOCK_PADDING");
+        // 정답이 하나도 없는 블록은 아래 filter 가 통째로 버린다. OMR 템플릿이 실제
+        // 출제 문항보다 길면 뒤쪽 블록이 통째로 비고 채점 표시만 남는데, 채점할 정답이
+        // 없으니 만들어낼 데이터도 없다. 문항분석표 쪽도 정답 없는 행을 같은 이유로 건너뛴다.
+        // 정답이 일부라도 있는 블록의 여백은 계속 거부한다 — 그건 정답 없는 문항을
+        // 오답으로 지어내는 경우다.
+        if(active.length && (active.some((c,i)=>c!==cs[i]) || cs.slice(active.length).some(c=>str(ed[r+1][c])||str(ed[r+2][c])))) fail("BLOCK_PADDING", `오답표 ${r+1}행, ${blockIndex+1}번째 문항 묶음: 정답 ${active.length}개 / 문항 열 ${cs.length}개`);
         const marks=active.map(c=>{const s=str(ed[r+2][c]).toUpperCase(); if(s!=="O"&&s!=="X") fail("INVALID_MARK"); return s as "O"|"X";});
         return {blockIndex,itemNumbers:active.map((_,i)=>i+1),answerKeys:active.map(c=>key(ed[r][c])),answers:active.map(c=>str(ed[r+1][c])?key(ed[r+1][c]):null),marks};
       }).filter(b=>b.answerKeys.length);
@@ -101,8 +111,8 @@ export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer): Pa
       if(str(ed[r+1][en]) || str(ed[r+2][en])) fail("IDENTIFIER_PLACEMENT");
       errata.push({studentNumber:studentNumber(ed[r][en]),sourceRow:r+1,blocks});
     }
-    if(!score.length || !errata.length || score.length>EXAM_IMPORT_LIMITS.students || errata.length>EXAM_IMPORT_LIMITS.students) fail("STUDENT_COUNT");
-    if(score.length!==cohortSize || errata.length!==cohortSize) fail("COHORT_MISMATCH");
+    if(!score.length || !errata.length || score.length>EXAM_IMPORT_LIMITS.students || errata.length>EXAM_IMPORT_LIMITS.students) fail("STUDENT_COUNT", `채점표 ${score.length}명 · 오답표 ${errata.length}명`);
+    if(score.length!==cohortSize || errata.length!==cohortSize) fail("COHORT_MISMATCH", `응시인원 ${cohortSize}명 · 채점표 ${score.length}명 · 오답표 ${errata.length}명`);
     mapErrataBlocksToSubjects(errata[0].blocks,moon);
     return {score,errata,moon,meta:{examDate,cohortSize: cohortSize!,subjectNames}};
   } catch(error) { if(error instanceof ExamImportParseError) throw error; return fail("INVALID_WORKBOOK"); }

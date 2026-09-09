@@ -258,6 +258,8 @@ function derivedRecords(session: MockExamSessionRecord, assembly: ImportAssembly
     }),
   }));
 }
+// updatedAt 은 두 테이블 모두에 있어야 한다. 가져온 성적을 지울 때
+// planExamImportDeletion 이 이 값을 "사람이 손대지 않았다"는 증거로 쓴다.
 function dbDerivedBase(row: DerivedScore) {
   return {
     id: row.id, studentId: row.studentId, examTypeId: row.examTypeId,

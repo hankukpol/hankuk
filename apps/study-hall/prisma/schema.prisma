@@ -454,6 +454,9 @@ model ExamScore {
   notes        String?
   recordedById String    @map("recorded_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")
+  // 가져온 성적을 지울 때 planExamImportDeletion 이 이 값을 "사람이 손대지 않았다"는
+  // 증거로 쓴다. MorningExamScore 와 같은 규칙이어야 한다.
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   student      Student   @relation(fields: [studentId], references: [id], onDelete: Restrict)
   examType     ExamType  @relation(fields: [examTypeId], references: [id], onDelete: Cascade)
   recordedBy   Admin     @relation("ExamRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)

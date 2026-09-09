@@ -144,6 +144,15 @@ export type AdminDashboardData = {
     warningStage: string;
     lastInterviewDate: string | null;
   }>;
+  /** 후속 확인 예정일이 오늘까지 도래한 진행 중 면담. */
+  followUpInterviews: Array<{
+    id: string;
+    studentId: string;
+    studentName: string;
+    studentNumber: string;
+    followUpDate: string;
+    reason: string;
+  }>;
   expirationWarningDays: number;
 };
 
@@ -243,7 +252,9 @@ function buildRateSummary(
 
   for (const period of mandatoryPeriods) {
     const counts = countRecords(recordsByPeriod.get(period.id) ?? []);
-    attendedCount += counts.present + counts.tardy + counts.holiday + counts.halfHoliday;
+    // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
+    attendedCount +=
+      counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday;
     expectedCount += Math.max(activeStudentCount - counts.notApplicable, 0);
   }
 
@@ -276,7 +287,9 @@ function buildPeriodRows(
         counts.notApplicable;
       counts.unprocessed = Math.max(activeStudentCount - processed, 0);
 
-      const attended = counts.present + counts.tardy + counts.holiday + counts.halfHoliday;
+      // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
+      const attended =
+        counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday;
       const expected = Math.max(activeStudentCount - counts.notApplicable, 0);
       const attendanceRate = expected > 0 ? Number(((attended / expected) * 100).toFixed(1)) : 0;
 
@@ -411,7 +424,7 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
   const examScheduleManagementEnabled = settings.featureFlags.examScheduleManagement;
   const paymentManagementEnabled = settings.featureFlags.paymentManagement;
 
-  const [students, snapshots, recentPoints, thisMonthPayments, todayLeaves, interviewGroups, examSchedules, repeatedTardy, repeatedAbsent] = await Promise.all([
+  const [students, snapshots, recentPoints, thisMonthPayments, todayLeaves, interviewGroups, followUpInterviews, examSchedules, repeatedTardy, repeatedAbsent] = await Promise.all([
     listStudents(divisionSlug),
     attendanceManagementEnabled
       ? getAttendanceSnapshots(divisionSlug, snapshotDates)
@@ -430,6 +443,11 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
           () => [] as RecentInterviewGroup[],
         )
       : Promise.resolve([] as RecentInterviewGroup[]),
+    interviewManagementEnabled
+      ? listInterviews(divisionSlug, { followUpDue: true }).catch(
+          () => [] as Awaited<ReturnType<typeof listInterviews>>,
+        )
+      : Promise.resolve([] as Awaited<ReturnType<typeof listInterviews>>),
     examScheduleManagementEnabled
       ? listExamSchedules(divisionSlug, { onlyActive: true }).catch(() => [] as Awaited<ReturnType<typeof listExamSchedules>>)
       : Promise.resolve([] as Awaited<ReturnType<typeof listExamSchedules>>),
@@ -674,6 +692,14 @@ async function getAdminDashboardDataUncached(divisionSlug: string): Promise<Admi
     upcomingExamSchedules: examScheduleManagementEnabled ? examSchedules ?? [] : [],
     todayLeaveStudents,
     interviewNeededStudents,
+    followUpInterviews: followUpInterviews.map((interview) => ({
+      id: interview.id,
+      studentId: interview.studentId,
+      studentName: interview.studentName,
+      studentNumber: interview.studentNumber,
+      followUpDate: interview.followUpDate ?? "",
+      reason: interview.reason,
+    })),
     expirationWarningDays: settings.expirationWarningDays,
   };
 }

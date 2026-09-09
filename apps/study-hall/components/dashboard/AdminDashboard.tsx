@@ -17,6 +17,7 @@ import {
   BookOpenCheck,
   CalendarClock,
   CalendarX,
+  ClipboardCheck,
   Copy,
   CreditCard,
   LoaderCircle,
@@ -522,6 +523,8 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
     const attentionLead = data.attentionStudents[0];
     const riskLead = data.riskStudents[0];
     const expiringLead = data.expiringStudents[0];
+    const followUps = data.followUpInterviews ?? [];
+    const followUpLead = followUps[0];
 
     return [
       {
@@ -580,6 +583,25 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
             : "bg-slate-100 text-slate-600",
         borderClass: data.summary.riskStudentCount > 0 ? "border-rose-100" : "border-admin-line",
         featureKey: "warningManagement",
+      },
+      {
+        title: "면담 후속 확인",
+        value: `${followUps.length}건`,
+        description:
+          followUps.length > 0
+            ? `${followUpLead?.studentName}${followUps.length > 1 ? ` 외 ${followUps.length - 1}건` : ""}의 후속 확인 예정일이 지났습니다.`
+            : "확인해야 할 후속 조치가 없습니다.",
+        note: "면담 시 남긴 후속 확인 예정일 기준",
+        href: `/${divisionSlug}/admin/interviews`,
+        cta: "면담 기록으로 이동",
+        icon: ClipboardCheck,
+        iconClass: "bg-slate-100 text-slate-600",
+        badgeClass:
+          followUps.length > 0
+            ? "bg-amber-50 text-amber-700"
+            : "bg-slate-100 text-slate-600",
+        borderClass: followUps.length > 0 ? "border-amber-100" : "border-admin-line",
+        featureKey: "interviewManagement",
       },
       {
         title: "수강 만료 임박",

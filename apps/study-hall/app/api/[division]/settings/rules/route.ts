@@ -47,7 +47,11 @@ export async function PATCH(
   }
 
   try {
-    const settings = await updateDivisionRuleSettings(params.division, parsed.data);
+    const settings = await updateDivisionRuleSettings(
+      params.division,
+      parsed.data,
+      auth.session,
+    );
     return NextResponse.json({ settings });
   } catch (error) {
     return toApiErrorResponse(error, "운영 규칙 저장에 실패했습니다.", 400);

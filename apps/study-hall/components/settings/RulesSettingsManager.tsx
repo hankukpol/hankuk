@@ -1,12 +1,14 @@
 "use client";
 
-import { AlertTriangle, LoaderCircle, RefreshCcw, Save } from "lucide-react";
+import { AlertTriangle, Calculator, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
-import type { PointRuleItem } from "@/lib/services/point.service";
+import { SettingsHistoryList } from "@/components/settings/SettingsHistoryList";
+import type { PointRuleItem, WarningStageDistribution } from "@/lib/services/point.service";
 import type { DivisionRuleSettings } from "@/lib/services/settings.service";
+import type { SettingsHistoryItem } from "@/lib/services/settings-history.service";
 import type { ManagementPolicy } from "@/lib/management-policy";
 import Link from "next/link";
 
@@ -15,6 +17,9 @@ type RulesSettingsManagerProps = {
   initialSettings: DivisionRuleSettings;
   pointRules: PointRuleItem[];
   policy?: ManagementPolicy | null;
+  initialHistory: SettingsHistoryItem[];
+  aggregationLabel: string;
+  aggregationDescription: string;
 };
 
 type FormState = {
@@ -76,12 +81,64 @@ export function RulesSettingsManager({
   initialSettings,
   pointRules,
   policy,
+  initialHistory,
+  aggregationLabel,
+  aggregationDescription,
 }: RulesSettingsManagerProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
+  const [history, setHistory] = useState(initialHistory);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [preview, setPreview] = useState<WarningStageDistribution | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
+
+  async function refreshHistory() {
+    try {
+      const response = await fetch(`/api/${divisionSlug}/settings/rules/history?limit=10`, {
+        cache: "no-store",
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        setHistory(data.history);
+      }
+    } catch {
+      // 이력은 부가 정보다. 실패해도 저장 흐름을 막지 않는다.
+    }
+  }
+
+  async function runPreview() {
+    setIsPreviewing(true);
+
+    try {
+      const response = await fetch(`/api/${divisionSlug}/settings/rules/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          warnLevel1: form.warnLevel1,
+          warnLevel2: form.warnLevel2,
+          warnInterview: form.warnInterview,
+          warnWithdraw: form.warnWithdraw,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "영향 미리보기를 계산하지 못했습니다.");
+      }
+
+      setPreview(data.preview);
+    } catch (error) {
+      setPreview(null);
+      toast.error(
+        error instanceof Error ? error.message : "영향 미리보기를 계산하지 못했습니다.",
+      );
+    } finally {
+      setIsPreviewing(false);
+    }
+  }
 
   async function refreshSettings(showToast = false) {
     setIsRefreshing(true);
@@ -151,6 +208,8 @@ export function RulesSettingsManager({
 
       setSettings(data.settings);
       setForm(toFormState(data.settings));
+      setPreview(null);
+      await refreshHistory();
       toast.success("운영 규칙을 저장했습니다.");
       showActionComplete({
         title: "운영 규칙 저장 완료",
@@ -170,6 +229,13 @@ export function RulesSettingsManager({
 
   return (
     <>
+      <section className="admin-section">
+        <h2 className="admin-section-title">벌점 집계 기준</h2>
+        <p className="mt-2 text-sm text-slate-700">
+          현재 경고 단계는 <strong>{aggregationLabel}</strong> 벌점으로 계산됩니다.
+        </p>
+        <p className="admin-help mt-1">{aggregationDescription}</p>
+      </section>
       {policy && <section className="admin-section"><h2 className="admin-section-title">{policy.version} 적용 중</h2><p>월 상점·벌점은 상계하지 않습니다. 지각은 교시 시작 후부터 기록하고, 출결 벌점은 관리자 확인 후 확정합니다. 일일 일반 개근 상점은 적용하지 않습니다. 건강 인정사유는 확인 내용을 기록하여 승인하며 횟수 제한으로 차단하지 않습니다.</p><Link className="admin-button" href={`/${divisionSlug}/admin/settings/periods#optional-study`}>교시 설정·선택자습 신청</Link></section>}
       <div className="grid gap-6 xl:grid-cols-[0.94fr_1.06fr]">
         <section className="space-y-4">
@@ -444,6 +510,66 @@ export function RulesSettingsManager({
                 />
               </label>
             </div>
+
+            <div className="mt-5 border-t border-admin-line-soft pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="admin-help">
+                  저장하기 전에 이 기준이면 대상자가 몇 명이 되는지 확인할 수 있습니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void runPreview()}
+                  disabled={isPreviewing}
+                  className="admin-button"
+                >
+                  {isPreviewing ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Calculator className="h-4 w-4" />
+                  )}
+                  영향 확인
+                </button>
+              </div>
+
+              {preview ? (
+                <div className="admin-table-frame mt-4 overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="text-left text-slate-500">
+                        <th>단계</th>
+                        <th>현재 기준</th>
+                        <th>입력 기준</th>
+                        <th>변화</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.stages.map((stage) => {
+                        const delta = stage.next - stage.current;
+
+                        return (
+                          <tr key={stage.stage}>
+                            <td>{stage.label}</td>
+                            <td className="tabular-nums">{stage.current}명</td>
+                            <td className="tabular-nums font-semibold">{stage.next}명</td>
+                            <td
+                              className={`tabular-nums ${delta === 0 ? "text-slate-500" : delta > 0 ? "text-admin-danger" : "text-emerald-600"}`}
+                            >
+                              {delta === 0 ? "변화 없음" : delta > 0 ? `+${delta}명` : `${delta}명`}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr>
+                        <td className="font-semibold">경고 대상 합계</td>
+                        <td className="tabular-nums">{preview.currentTotal}명</td>
+                        <td className="tabular-nums font-semibold">{preview.nextTotal}명</td>
+                        <td className="admin-help">운영 학생 {preview.totalStudents}명 기준</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="admin-section">
@@ -653,6 +779,7 @@ export function RulesSettingsManager({
         </form>
         </section>
       </div>
+      <SettingsHistoryList history={history} />
       {actionCompleteModal}
     </>
   );

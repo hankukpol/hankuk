@@ -20,7 +20,11 @@ import {
   normalizeOptionalText,
 } from "@/lib/service-helpers";
 import { getPeriods } from "@/lib/services/period.service";
-import { getWarningStage, getWarningStageLabel } from "@/lib/student-meta";
+import {
+  getWarningStage,
+  getWarningStageLabel,
+  type WarningStageValue,
+} from "@/lib/student-meta";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { listStudents, type StudentListItem } from "@/lib/services/student.service";
 
@@ -1800,22 +1804,44 @@ export async function deletePointRecord(divisionSlug: string, recordId: string, 
   return true;
 }
 
-export async function listWarningStudents(divisionSlug: string) {
-  const settings = await getDivisionSettings(divisionSlug);
+type WarningDemeritEntry = {
+  student: StudentListItem;
+  demeritPoints: number;
+};
+
+type WarningDemeritCollection = {
+  entries: WarningDemeritEntry[];
+  /** 관리규정이 켜져 있으면 단계 이름을 규정 문구로 덮어쓴다. */
+  warningLabels: Record<string, string> | null;
+};
+
+/**
+ * 운영 중(재원·휴원) 학생 전원의 경고용 벌점을 임계값과 무관하게 모은다.
+ *
+ * 경고 대상자 목록과 "기준을 바꾸면 몇 명이 되는지" 미리보기가 같은 숫자를
+ * 보도록 집계를 한 곳에 둔다. 임계값 필터는 호출한 쪽에서 건다.
+ */
+async function collectWarningDemeritPoints(
+  divisionSlug: string,
+): Promise<WarningDemeritCollection> {
   const students = await listStudents(divisionSlug);
   const policy = await getManagementPolicy(divisionSlug);
-  if (isPolicyEffective(policy, kstDate()) && policy.monthlyPoints) {
-    return students.filter((s) => (s.status === "ACTIVE" || s.status === "ON_LEAVE") && (s.demeritPoints ?? 0) >= settings.warnLevel1)
-      .sort((a, b) => (b.demeritPoints ?? 0) - (a.demeritPoints ?? 0) || a.name.localeCompare(b.name, "ko"))
-      .map((s) => ({ ...s, netPoints: s.demeritPoints ?? 0,
-        warningStageLabel: policy.warningLabels[s.warningStage] ?? getWarningStageLabel(s.warningStage) }));
-  }
-  const activeStudentIds = new Set(
-    students
-      .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")
-      .map((student) => student.id),
+  const operatingStudents = students.filter(
+    (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
   );
+
+  if (isPolicyEffective(policy, kstDate()) && policy.monthlyPoints) {
+    return {
+      entries: operatingStudents.map((student) => ({
+        student,
+        demeritPoints: student.demeritPoints ?? 0,
+      })),
+      warningLabels: policy.warningLabels,
+    };
+  }
+
   const studentById = new Map(students.map((student) => [student.id, student]));
+  const activeStudentIds = new Set(operatingStudents.map((student) => student.id));
   const demeritPointsByStudentId = new Map<string, number>();
 
   if (isMockMode()) {
@@ -1870,16 +1896,21 @@ export async function listWarningStudents(divisionSlug: string) {
     }
   }
 
-  return students
-    .map((student) => ({
+  return {
+    entries: operatingStudents.map((student) => ({
       student,
       demeritPoints: demeritPointsByStudentId.get(student.id) ?? 0,
-    }))
-    .filter(
-      ({ student, demeritPoints }) =>
-        (student.status === "ACTIVE" || student.status === "ON_LEAVE") &&
-        demeritPoints >= settings.warnLevel1,
-    )
+    })),
+    warningLabels: null,
+  };
+}
+
+export async function listWarningStudents(divisionSlug: string) {
+  const settings = await getDivisionSettings(divisionSlug);
+  const { entries, warningLabels } = await collectWarningDemeritPoints(divisionSlug);
+
+  return entries
+    .filter(({ demeritPoints }) => demeritPoints >= settings.warnLevel1)
     .sort(
       (left, right) =>
         right.demeritPoints - left.demeritPoints ||
@@ -1892,7 +1923,74 @@ export async function listWarningStudents(divisionSlug: string) {
         ...student,
         netPoints: demeritPoints,
         warningStage,
-        warningStageLabel: getWarningStageLabel(warningStage),
+        warningStageLabel:
+          warningLabels?.[warningStage] ?? getWarningStageLabel(warningStage),
       };
     }) satisfies WarningStudentItem[];
+}
+
+export type WarningThresholdInput = {
+  warnLevel1: number;
+  warnLevel2: number;
+  warnInterview: number;
+  warnWithdraw: number;
+};
+
+export type WarningStageDistribution = {
+  totalStudents: number;
+  stages: Array<{
+    stage: WarningStageValue;
+    label: string;
+    current: number;
+    next: number;
+  }>;
+  currentTotal: number;
+  nextTotal: number;
+};
+
+const PREVIEW_STAGE_ORDER = [
+  "WARNING_1",
+  "WARNING_2",
+  "INTERVIEW",
+  "WITHDRAWAL",
+] as const satisfies ReadonlyArray<WarningStageValue>;
+
+/**
+ * 지금 기준과 입력한 기준으로 경고 대상 인원이 어떻게 달라지는지 계산한다.
+ * 저장 전에 결과를 볼 수 있어야 기준을 잘못 올려 대상자가 사라지는 일을 막는다.
+ */
+export async function previewWarningThresholds(
+  divisionSlug: string,
+  thresholds: WarningThresholdInput,
+): Promise<WarningStageDistribution> {
+  const settings = await getDivisionSettings(divisionSlug);
+  const { entries, warningLabels } = await collectWarningDemeritPoints(divisionSlug);
+
+  const countByStage = (stageThresholds: WarningThresholdInput) => {
+    const counts = new Map<WarningStageValue, number>();
+
+    for (const { demeritPoints } of entries) {
+      const stage = getWarningStage(demeritPoints, stageThresholds);
+      counts.set(stage, (counts.get(stage) ?? 0) + 1);
+    }
+
+    return counts;
+  };
+
+  const currentCounts = countByStage(settings);
+  const nextCounts = countByStage(thresholds);
+
+  const stages = PREVIEW_STAGE_ORDER.map((stage) => ({
+    stage,
+    label: warningLabels?.[stage] ?? getWarningStageLabel(stage),
+    current: currentCounts.get(stage) ?? 0,
+    next: nextCounts.get(stage) ?? 0,
+  }));
+
+  return {
+    totalStudents: entries.length,
+    stages,
+    currentTotal: stages.reduce((total, entry) => total + entry.current, 0),
+    nextTotal: stages.reduce((total, entry) => total + entry.next, 0),
+  };
 }

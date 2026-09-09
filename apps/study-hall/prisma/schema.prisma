@@ -52,6 +52,18 @@ enum ResultType {
   WITHDRAWAL
 }
 
+enum InterviewStatus {
+  OPEN
+  CLOSED
+}
+
+enum WarningNoticeChannel {
+  SMS
+  PHONE
+  IN_PERSON
+  OTHER
+}
+
 enum ExamScheduleType {
   WRITTEN
   PHYSICAL
@@ -96,6 +108,8 @@ model Division {
   paymentOperations PaymentOperation[]
   chatMessages      ChatMessage[]
   chatReadStates    ChatReadState[]
+  warningNotices    WarningNotice[]
+  settingsHistory   DivisionSettingsHistory[]
 
   @@map("divisions")
 }
@@ -134,6 +148,7 @@ model Student {
   scoreTargets        ScoreTarget[]
   phoneSubmissions    PhoneSubmission[]
   paymentOperations   PaymentOperation[]
+  warningNotices      WarningNotice[]
 
   @@unique([divisionId, studentNumber])
   @@index([divisionId])
@@ -238,22 +253,78 @@ model LeavePermission {
 }
 
 model Interview {
-  id          String     @id @default(cuid())
-  studentId   String     @map("student_id")
-  date        DateTime
-  trigger     String?
-  reason      String
-  content     String?
-  result      String?
-  resultType  ResultType @map("result_type")
-  createdById String     @map("created_by_id")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  student     Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  createdBy   Admin      @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  id                String          @id @default(cuid())
+  studentId         String          @map("student_id")
+  date              DateTime
+  trigger           String?
+  reason            String
+  content           String?
+  result            String?
+  resultType        ResultType      @map("result_type")
+  // 후속 확인 예정일. 지나도 status 가 OPEN 이면 대시보드 "오늘 처리할 일"에 뜬다.
+  followUpDate      DateTime?       @map("follow_up_date") @db.Date
+  status            InterviewStatus @default(OPEN)
+  guardianContacted Boolean         @default(false) @map("guardian_contacted")
+  closedAt          DateTime?       @map("closed_at")
+  closedById        String?         @map("closed_by_id")
+  createdById       String          @map("created_by_id")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  createdBy         Admin           @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  // 종결한 직원 계정이 삭제돼도 면담 기록 자체는 남아야 한다.
+  closedBy          Admin?          @relation("InterviewClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
 
   @@index([studentId, date])
   @@index([createdById])
+  // 후속 확인 대기 목록 조회 전용.
+  @@index([status, followUpDate])
   @@map("interviews")
+}
+
+// 경고 안내를 "실제로 했다"는 사실의 기록.
+// 기준(division_settings)이 나중에 바뀌어도 당시 판단 근거가 남도록
+// 점수·임계값·집계 방식을 안내 시점 스냅샷으로 함께 고정한다.
+model WarningNotice {
+  id                String               @id @default(cuid())
+  divisionId        String               @map("division_id")
+  studentId         String               @map("student_id")
+  stage             ResultType
+  demeritPoints     Int                  @map("demerit_points")
+  // { warnLevel1, warnLevel2, warnInterview, warnWithdraw } 안내 시점 값.
+  thresholdSnapshot Json                 @map("threshold_snapshot")
+  // "MONTHLY" | "COURSE" — 당시 벌점 집계 방식.
+  aggregationMode   String               @map("aggregation_mode")
+  channel           WarningNoticeChannel
+  noticeBody        String?              @map("notice_body")
+  memo              String?
+  noticedAt         DateTime             @default(now()) @map("noticed_at")
+  noticedById       String?              @map("noticed_by_id")
+  noticedByName     String               @map("noticed_by_name")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  division          Division             @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  student           Student              @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  noticedBy         Admin?               @relation("WarningNoticeNoticedBy", fields: [noticedById], references: [id], onDelete: SetNull)
+
+  // 같은 단계를 여러 번 안내할 수 있으므로 유니크 제약은 두지 않는다.
+  @@index([studentId, stage, noticedAt])
+  @@index([divisionId, noticedAt])
+  @@map("warning_notices")
+}
+
+// 운영 규칙 변경 이력. changes 는 [{ field, label, before, after }] 배열.
+model DivisionSettingsHistory {
+  id            String   @id @default(cuid())
+  divisionId    String   @map("division_id")
+  section       String   @default("RULES")
+  changes       Json
+  changedById   String?  @map("changed_by_id")
+  changedByName String   @map("changed_by_name")
+  changedAt     DateTime @default(now()) @map("changed_at")
+  division      Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  changedBy     Admin?   @relation("DivisionSettingsChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([divisionId, changedAt])
+  @@map("division_settings_history")
 }
 
 model Payment {
@@ -523,6 +594,7 @@ model Admin {
   pointRecords              PointRecord[]      @relation("PointRecordedBy")
   leaveApprovals            LeavePermission[]  @relation("LeaveApprovedBy")
   interviewsCreated         Interview[]        @relation("InterviewCreatedBy")
+  interviewsClosed          Interview[]        @relation("InterviewClosedBy")
   paymentsRecorded          Payment[]          @relation("PaymentRecordedBy")
   examScoresRecorded        ExamScore[]        @relation("ExamRecordedBy")
   morningExamScoresRecorded MorningExamScore[] @relation("MorningExamRecordedBy")
@@ -532,6 +604,8 @@ model Admin {
   chatMessagesAuthored      ChatMessage[]      @relation("ChatMessageAuthor")
   chatMessagesDeleted       ChatMessage[]      @relation("ChatMessageDeletedBy")
   chatReadStates            ChatReadState[]    @relation("ChatReadStateAdmin")
+  warningNoticesSent        WarningNotice[]    @relation("WarningNoticeNoticedBy")
+  settingsChanges           DivisionSettingsHistory[] @relation("DivisionSettingsChangedBy")
 
   @@index([divisionId])
   @@map("admins")

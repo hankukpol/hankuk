@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { DialogActions } from "@/components/ui/DialogActions";
 
-import { LoaderCircle, Plus, RefreshCcw, Save } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Plus, RefreshCcw, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -12,21 +12,35 @@ import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 import { StudentSearchCombobox } from "@/components/ui/StudentSearchCombobox";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { WarningStageBadge } from "@/components/students/StudentBadges";
+import { InterviewContextPanel } from "@/components/interviews/InterviewContextPanel";
 import { toDemeritPoints } from "@/lib/student-meta";
 import {
   getInterviewResultTypeClasses,
   getInterviewResultTypeLabel,
+  getInterviewStatusClasses,
+  getInterviewStatusLabel,
   INTERVIEW_RESULT_TYPE_OPTIONS,
+  isFollowUpDue,
   type InterviewResultTypeValue,
 } from "@/lib/interview-meta";
 import type { InterviewItem } from "@/lib/services/interview.service";
+import type { InterviewContextSummary } from "@/lib/services/interview-context.service";
 import type { StudentListItem } from "@/lib/services/student.service";
+
+type InterviewPrefill = {
+  studentId: string;
+  trigger: string;
+  reason: string;
+};
 
 type InterviewManagerProps = {
   divisionSlug: string;
   students: StudentListItem[];
   initialInterviews: InterviewItem[];
+  initialFollowUps: InterviewItem[];
   warnInterview: number;
+  /** 경고 대상자 화면에서 "면담 기록"으로 넘어온 경우 폼을 미리 채운다. */
+  prefill?: InterviewPrefill | null;
 };
 
 type FormState = {
@@ -37,6 +51,8 @@ type FormState = {
   content: string;
   result: string;
   resultType: InterviewResultTypeValue;
+  followUpDate: string;
+  guardianContacted: boolean;
 };
 
 function getKstToday() {
@@ -52,15 +68,17 @@ function getCurrentMonth() {
   return getKstToday().slice(0, 7);
 }
 
-function toFormState(studentId?: string): FormState {
+function toFormState(studentId?: string, prefill?: InterviewPrefill | null): FormState {
   return {
     studentId: studentId ?? "",
     date: getKstToday(),
-    trigger: "",
-    reason: "",
+    trigger: prefill?.trigger ?? "",
+    reason: prefill?.reason ?? "",
     content: "",
     result: "",
     resultType: "INTERVIEW",
+    followUpDate: "",
+    guardianContacted: false,
   };
 }
 
@@ -76,23 +94,35 @@ export function InterviewManager({
   divisionSlug,
   students,
   initialInterviews,
+  initialFollowUps,
   warnInterview,
+  prefill,
 }: InterviewManagerProps) {
   const dialogFormId = useId();
   const initialMonth = getCurrentMonth();
+  const today = getKstToday();
   const activeStudents = useMemo(
     () => students.filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE"),
     [students],
   );
   const defaultStudentId = activeStudents[0]?.id ?? "";
   const [interviews, setInterviews] = useState(initialInterviews);
-  const [viewTab, setViewTab] = useState<"history" | "recommended">("history");
-  const [form, setForm] = useState<FormState>(toFormState(defaultStudentId));
+  const [followUps, setFollowUps] = useState(initialFollowUps);
+  const [viewTab, setViewTab] = useState<"history" | "followUp" | "recommended">(
+    prefill ? "history" : initialFollowUps.length ? "followUp" : "history",
+  );
+  const [form, setForm] = useState<FormState>(
+    toFormState(prefill?.studentId ?? defaultStudentId, prefill),
+  );
   const [filterStudentId, setFilterStudentId] = useState("");
   const [filterMonth, setFilterMonth] = useState(initialMonth);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(Boolean(prefill));
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const [context, setContext] = useState<InterviewContextSummary | null>(null);
+  const [isContextLoading, setIsContextLoading] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
   const hasMounted = useRef(false);
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
@@ -117,16 +147,27 @@ export function InterviewManager({
   const refreshInterviews = useCallback(async (showToast = false, month = filterMonth) => {
     setIsRefreshing(true);
     try {
-      const params = new URLSearchParams();
-      params.set("month", month);
-      const response = await fetch(`/api/${divisionSlug}/interviews?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "면담 기록을 불러오지 못했습니다.");
+      const [historyResponse, followUpResponse] = await Promise.all([
+        fetch(`/api/${divisionSlug}/interviews?month=${encodeURIComponent(month)}`, {
+          cache: "no-store",
+        }),
+        fetch(`/api/${divisionSlug}/interviews?followUpDue=1`, { cache: "no-store" }),
+      ]);
+      const [historyData, followUpData] = await Promise.all([
+        historyResponse.json(),
+        followUpResponse.json(),
+      ]);
+
+      if (!historyResponse.ok) {
+        throw new Error(historyData.error ?? "면담 기록을 불러오지 못했습니다.");
       }
-      setInterviews(data.interviews);
+
+      if (!followUpResponse.ok) {
+        throw new Error(followUpData.error ?? "후속 확인 목록을 불러오지 못했습니다.");
+      }
+
+      setInterviews(historyData.interviews);
+      setFollowUps(followUpData.interviews);
       if (showToast) {
         toast.success("면담 기록을 새로 불러왔습니다.");
       }
@@ -146,6 +187,45 @@ export function InterviewManager({
     void refreshInterviews(false, filterMonth);
   }, [filterMonth, refreshInterviews]);
 
+  // 폼이 열려 있는 동안 선택된 학생의 최근 30일 요약을 자동으로 가져온다.
+  useEffect(() => {
+    if (!isEditorOpen || !form.studentId) {
+      setContext(null);
+      setContextError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsContextLoading(true);
+    setContextError(null);
+
+    fetch(`/api/${divisionSlug}/interviews/context?studentId=${encodeURIComponent(form.studentId)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? "면담 준비 정보를 불러오지 못했습니다.");
+        }
+        setContext(data.context);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setContext(null);
+        setContextError(
+          error instanceof Error ? error.message : "면담 준비 정보를 불러오지 못했습니다.",
+        );
+      })
+      .finally(() => {
+        setIsContextLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [divisionSlug, form.studentId, isEditorOpen]);
+
   function openCreatePanel(studentId?: string) {
     setForm(toFormState(studentId ?? defaultStudentId));
     setIsEditorOpen(true);
@@ -154,6 +234,30 @@ export function InterviewManager({
   function closeEditor() {
     setIsEditorOpen(false);
     setForm(toFormState(form.studentId || defaultStudentId));
+  }
+
+  async function closeInterview(interview: InterviewItem) {
+    setClosingId(interview.id);
+
+    try {
+      const response = await fetch(`/api/${divisionSlug}/interviews/${interview.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CLOSED" }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "면담 종결에 실패했습니다.");
+      }
+
+      toast.success(`${interview.studentName} 면담을 종결했습니다.`);
+      await refreshInterviews();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "면담 종결에 실패했습니다.");
+    } finally {
+      setClosingId(null);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -172,6 +276,10 @@ export function InterviewManager({
           content: form.content || null,
           result: form.result || null,
           resultType: form.resultType,
+          followUpDate: form.followUpDate || null,
+          guardianContacted: form.guardianContacted,
+          // 후속 확인일을 남기지 않았다면 더 볼 것이 없으므로 바로 종결한다.
+          status: form.followUpDate ? "OPEN" : "CLOSED",
         }),
       });
       const data = await response.json();
@@ -184,7 +292,9 @@ export function InterviewManager({
       showActionComplete({
         title: "면담 기록 저장 완료",
         description: `${formatDate(form.date)} 면담 기록이 저장되었습니다.`,
-        notice: "저장된 면담 내용은 권장 학생 목록과 면담 이력 화면에 바로 반영됩니다.",
+        notice: form.followUpDate
+          ? `후속 확인 예정일 ${formatDate(form.followUpDate)}이 되면 대시보드 "오늘 처리할 일"에 표시됩니다.`
+          : "후속 확인 예정일이 없어 종결 상태로 저장되었습니다.",
       });
       const createdMonth = form.date.slice(0, 7);
       if (createdMonth !== filterMonth) {
@@ -200,12 +310,62 @@ export function InterviewManager({
     }
   }
 
+  function renderInterviewCard(interview: InterviewItem) {
+    const overdue = isFollowUpDue(interview, today);
+
+    return (
+      <article key={interview.id} className="admin-record-card">
+        <div className="admin-workspace-toolbar">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="admin-section-title">{interview.studentName}</h3>
+            <span className={`admin-badge ${getInterviewResultTypeClasses(interview.resultType)}`}>{getInterviewResultTypeLabel(interview.resultType)}</span>
+            <span className={`admin-badge ${getInterviewStatusClasses(interview.status)}`}>{getInterviewStatusLabel(interview.status)}</span>
+            {interview.guardianContacted ? (
+              <span className="admin-badge border-sky-200 bg-sky-50 text-sky-700">보호자 연락 완료</span>
+            ) : null}
+            <span className="admin-help">{interview.studentNumber}</span>
+          </div>
+          <p className="text-sm font-semibold tabular-nums">{formatDate(interview.date)}</p>
+        </div>
+        <dl className="admin-record-details">
+          <div><dt className="admin-label">면담 사유</dt><dd>{interview.reason}</dd></div>
+          <div><dt className="admin-label">면담 내용</dt><dd>{interview.content || "기록 없음"}</dd></div>
+          <div><dt className="admin-label">결과 · 후속 조치</dt><dd>{interview.result || "기록 없음"}</dd></div>
+        </dl>
+        <div className="admin-workspace-toolbar mt-4 border-t border-admin-line-soft pt-4">
+          <p className={`text-sm ${overdue ? "font-semibold text-admin-danger" : "admin-help"}`}>
+            {interview.followUpDate
+              ? `후속 확인 ${formatDate(interview.followUpDate)}${overdue ? " · 확인 필요" : ""}`
+              : "후속 확인 예정 없음"}
+          </p>
+          {interview.status === "OPEN" ? (
+            <button
+              type="button"
+              onClick={() => void closeInterview(interview)}
+              disabled={closingId === interview.id}
+              className="admin-button"
+            >
+              {closingId === interview.id ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              면담 종결
+            </button>
+          ) : null}
+        </div>
+        <p className="admin-help mt-4">{interview.trigger || "수동 등록"} · 기록 시각 {formatDateTime(interview.createdAt)}</p>
+      </article>
+    );
+  }
+
   return (
     <>
       <div className="admin-flat-page">
         <AdminTabs
           items={[
             { id: "history", label: "면담 이력" },
+            { id: "followUp", label: <>후속 확인 <span className="tabular-nums">({followUps.length})</span></> },
             { id: "recommended", label: <>면담 권장 대상 <span className="tabular-nums">({recommendedStudents.length})</span></> },
           ]}
           activeId={viewTab}
@@ -241,28 +401,27 @@ export function InterviewManager({
             <p className="admin-help">{filterMonth} 전체 {interviews.length}건</p>
           </div>
           <div className="space-y-4">
-            {historyRows.map((interview) => (
-              <article key={interview.id} className="admin-record-card">
-                <div className="admin-workspace-toolbar">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="admin-section-title">{interview.studentName}</h3>
-                    <span className={`admin-badge ${getInterviewResultTypeClasses(interview.resultType)}`}>{getInterviewResultTypeLabel(interview.resultType)}</span>
-                    <span className="admin-help">{interview.studentNumber}</span>
-                  </div>
-                  <p className="text-sm font-semibold tabular-nums">{formatDate(interview.date)}</p>
-                </div>
-                <dl className="admin-record-details">
-                  <div><dt className="admin-label">면담 사유</dt><dd>{interview.reason}</dd></div>
-                  <div><dt className="admin-label">면담 내용</dt><dd>{interview.content || "기록 없음"}</dd></div>
-                  <div><dt className="admin-label">결과 · 후속 조치</dt><dd>{interview.result || "기록 없음"}</dd></div>
-                </dl>
-                <p className="admin-help mt-4">{interview.trigger || "수동 등록"} · 기록 시각 {formatDateTime(interview.createdAt)}</p>
-              </article>
-            ))}
+            {historyRows.map(renderInterviewCard)}
             {!historyRows.length ? (
               <div className="admin-empty-state">
                 <p className="font-semibold">조회 조건에 맞는 면담 기록이 없습니다.</p>
                 <p className="admin-help mt-2">{filterMonth} · {activeStudents.find((student) => student.id === filterStudentId)?.name || "전체 학생"}</p>
+              </div>
+            ) : null}
+          </div>
+        </AdminTabPanel>
+
+        <AdminTabPanel id="followUp" activeId={viewTab} idPrefix="interview-view" className="space-y-4">
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">후속 확인 대기 <span className="text-admin-danger">{followUps.length}건</span></h2>
+            <p className="admin-help">후속 확인 예정일이 오늘({formatDate(today)})까지 도래한 진행 중 면담</p>
+          </div>
+          <div className="space-y-4">
+            {followUps.map(renderInterviewCard)}
+            {!followUps.length ? (
+              <div className="admin-empty-state">
+                <p className="font-semibold">확인해야 할 후속 조치가 없습니다.</p>
+                <p className="admin-help mt-2">면담 저장 시 후속 확인 예정일을 남기면 그날 여기에 표시됩니다.</p>
               </div>
             ) : null}
           </div>
@@ -351,15 +510,11 @@ export function InterviewManager({
             </div>
 
             {selectedStudent ? (
-              <div className="admin-notice mt-4">
-                <p className="font-semibold text-slate-900">
-                  {selectedStudent.name}
-                  <span className="admin-help ml-2">{selectedStudent.studentNumber}</span>
-                </p>
-                <p className="mt-1">
-                  벌점 {(selectedStudent.demeritPoints ?? toDemeritPoints(selectedStudent.netPoints))}점 · 경고 단계 {selectedStudent.warningStageLabel ?? selectedStudent.warningStage}
-                </p>
-              </div>
+              <InterviewContextPanel
+                context={context}
+                isLoading={isContextLoading}
+                error={contextError}
+              />
             ) : null}
           </section>
 
@@ -409,8 +564,52 @@ export function InterviewManager({
                   value={form.result}
                   onChange={(event) => setForm((current) => ({ ...current, result: event.target.value }))}
                   className="min-h-[110px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
-                  placeholder="합의 내용, 추가 확인 일정, 보호자 연락 여부 등을 기록합니다."
+                  placeholder="합의 내용과 다음에 확인할 것을 기록합니다."
                 />
+              </label>
+            </div>
+          </section>
+
+          <section className="admin-section">
+            <div className="flex items-center gap-3">
+              <div>
+                <h2 className="admin-section-title">후속 확인</h2>
+                <p className="admin-help">
+                  예정일을 남기면 그날 대시보드와 후속 확인 탭에 자동으로 올라옵니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="admin-label mb-2 block">후속 확인 예정일</span>
+                <input
+                  type="date"
+                  value={form.followUpDate}
+                  min={form.date}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, followUpDate: event.target.value }))
+                  }
+                  className="w-full"
+                />
+                <span className="admin-help mt-2 block">
+                  비워 두면 종결 상태로 저장됩니다.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 pt-8">
+                <input
+                  type="checkbox"
+                  checked={form.guardianContacted}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, guardianContacted: event.target.checked }))
+                  }
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="text-sm font-medium text-slate-900">보호자 연락 완료</span>
+                  <span className="admin-help mt-1 block">보호자에게 이미 알린 경우 체크합니다.</span>
+                </span>
               </label>
             </div>
           </section>

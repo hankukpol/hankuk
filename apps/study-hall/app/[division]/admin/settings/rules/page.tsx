@@ -2,6 +2,8 @@ import { RulesSettingsManager } from "@/components/settings/RulesSettingsManager
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { listPointRules } from "@/lib/services/point.service";
 import { getDivisionRuleSettings } from "@/lib/services/settings.service";
+import { listDivisionSettingsHistory } from "@/lib/services/settings-history.service";
+import { getPointAggregationInfo } from "@/lib/point-aggregation-mode";
 
 type RulesSettingsPageProps = {
   params: {
@@ -11,11 +13,13 @@ type RulesSettingsPageProps = {
 
 
 export default async function RulesSettingsPage({ params }: RulesSettingsPageProps) {
-  const [settings, pointRules] = await Promise.all([
+  const [settings, pointRules, history] = await Promise.all([
     getDivisionRuleSettings(params.division),
     listPointRules(params.division, { activeOnly: true }),
+    listDivisionSettingsHistory(params.division, { limit: 10 }),
   ]);
   const policy = await getManagementPolicy(params.division);
+  const aggregation = getPointAggregationInfo(policy);
 
   return (
     <div className="admin-flat-page">
@@ -32,6 +36,9 @@ export default async function RulesSettingsPage({ params }: RulesSettingsPagePro
         initialSettings={settings}
         pointRules={pointRules}
         policy={policy}
+        initialHistory={history}
+        aggregationLabel={aggregation.label}
+        aggregationDescription={aggregation.description}
       />
     </div>
   );

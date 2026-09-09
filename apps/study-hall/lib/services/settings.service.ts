@@ -810,15 +810,23 @@ function normalizeAttendancePointRuleSettings(
   };
 }
 
+export type RuleSettingsActor = {
+  id: string;
+  name: string;
+};
+
 export async function updateDivisionRuleSettings(
   divisionSlug: string,
   input: RulesSettingsInput,
+  actor?: RuleSettingsActor | null,
 ): Promise<DivisionRuleSettings> {
   validateWarningThresholdOrder(input);
   const attendancePointRuleSettings = normalizeAttendancePointRuleSettings(input);
+  // 저장 전 값을 떠 둔다. 저장 후에 읽으면 무엇이 바뀌었는지 알 수 없다.
+  const previousSettings = await getDivisionRuleSettings(divisionSlug).catch(() => null);
 
   if (isMockMode()) {
-    return updateMockState(async (state) => {
+    const nextSettings = await updateMockState(async (state) => {
       const division =
         state.divisions.find((item) => item.slug === divisionSlug) ?? getMockDivisionBySlug(divisionSlug);
 
@@ -878,6 +886,9 @@ export async function updateDivisionRuleSettings(
         serializeSettingsRecord(state.divisionSettingsByDivision[divisionSlug]),
       );
     });
+
+    await recordRuleSettingsChange(divisionSlug, actor, previousSettings, nextSettings);
+    return nextSettings;
   }
 
   const prisma = await getPrismaClient();
@@ -988,7 +999,31 @@ export async function updateDivisionRuleSettings(
   revalidateDivisionRuntimePaths(divisionSlug);
   revalidateSuperAdminOverviewData();
   revalidateDivisionReportData(divisionSlug);
-  return getDivisionRuleSettings(divisionSlug);
+
+  const nextSettings = await getDivisionRuleSettings(divisionSlug);
+  await recordRuleSettingsChange(divisionSlug, actor, previousSettings, nextSettings);
+  return nextSettings;
+}
+
+async function recordRuleSettingsChange(
+  divisionSlug: string,
+  actor: RuleSettingsActor | null | undefined,
+  previousSettings: DivisionRuleSettings | null,
+  nextSettings: DivisionRuleSettings,
+) {
+  if (!previousSettings) {
+    return;
+  }
+
+  const { diffRuleSettings, recordDivisionSettingsChange } = await import(
+    "@/lib/services/settings-history.service"
+  );
+
+  await recordDivisionSettingsChange(
+    divisionSlug,
+    actor ?? null,
+    diffRuleSettings(previousSettings, nextSettings),
+  );
 }
 
 export async function updateDivisionFeatureSettings(

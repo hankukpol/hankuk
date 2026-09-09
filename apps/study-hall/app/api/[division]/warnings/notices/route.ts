@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
-import { interviewSchema } from "@/lib/interview-schemas";
-import { createInterview, listInterviews } from "@/lib/services/interview.service";
+import { warningNoticeSchema } from "@/lib/warning-notice-schemas";
+import {
+  createWarningNotice,
+  listWarningNotices,
+} from "@/lib/services/warning-notice.service";
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +21,7 @@ export async function GET(
 
   const featureDisabledError = await getDivisionFeatureDisabledError(
     params.division,
-    "interviewManagement",
+    "warningManagement",
   );
 
   if (featureDisabledError) {
@@ -26,17 +29,12 @@ export async function GET(
   }
 
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const statusParam = searchParams.get("status");
-    const interviews = await listInterviews(params.division, {
-      studentId: searchParams.get("studentId") || undefined,
-      month: searchParams.get("month") || undefined,
-      status: statusParam === "OPEN" || statusParam === "CLOSED" ? statusParam : undefined,
-      followUpDue: searchParams.get("followUpDue") === "1",
+    const notices = await listWarningNotices(params.division, {
+      studentId: request.nextUrl.searchParams.get("studentId") || undefined,
     });
-    return NextResponse.json({ interviews }, { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=30" } });
+    return NextResponse.json({ notices });
   } catch (error) {
-    return toApiErrorResponse(error, "면담 기록 처리 중 오류가 발생했습니다.");
+    return toApiErrorResponse(error, "경고 안내 이력을 불러오지 못했습니다.");
   }
 }
 
@@ -52,7 +50,7 @@ export async function POST(
 
   const featureDisabledError = await getDivisionFeatureDisabledError(
     params.division,
-    "interviewManagement",
+    "warningManagement",
   );
 
   if (featureDisabledError) {
@@ -60,19 +58,19 @@ export async function POST(
   }
 
   const body = await request.json().catch(() => null);
-  const parsed = interviewSchema.safeParse(body);
+  const parsed = warningNoticeSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: getZodErrorMessage(parsed.error, "면담 정보를 다시 확인해주세요.") },
+      { error: getZodErrorMessage(parsed.error, "안내 정보를 다시 확인해주세요.") },
       { status: 400 },
     );
   }
 
   try {
-    const interview = await createInterview(params.division, auth.session, parsed.data);
-    return NextResponse.json({ interview }, { status: 201 });
+    const notice = await createWarningNotice(params.division, auth.session, parsed.data);
+    return NextResponse.json({ notice }, { status: 201 });
   } catch (error) {
-    return toApiErrorResponse(error, "면담 기록 처리 중 오류가 발생했습니다.");
+    return toApiErrorResponse(error, "경고 안내 기록에 실패했습니다.");
   }
 }

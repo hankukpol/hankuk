@@ -5,6 +5,7 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { isExamDate } from "../../lib/exam-meta";
+import { hasStudentSearchQuery, matchesStudentSearch } from "../../lib/student-search";
 
 // Run real component initialization, effects and wrapper callbacks. Children
 // remain opaque, so this checks the selected request, not browser appearance.
@@ -37,6 +38,7 @@ function mount(name: string, props: Record<string, unknown>) {
     fetch: (url: string) => { requests.push(url); return new Promise(() => {}); },
     require: (module: string) => {
       if (module === "@/lib/exam-meta") return { isExamDate };
+      if (module === "@/lib/student-search") return { hasStudentSearchQuery, matchesStudentSearch };
       if (module === "react") return hooks;
       if (module === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "fragment" };
       if (module.endsWith("useActionCompleteModal")) return { useActionCompleteModal: () => ({}) };

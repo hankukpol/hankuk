@@ -7,6 +7,8 @@ import { toast } from "@/lib/sonner";
 import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { StudentSearchField } from "@/components/ui/StudentSearchField";
+import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 import { isExamDate } from "@/lib/exam-meta";
 import type { ExamScoreSheet, ExamTypeItem } from "@/lib/services/exam.service";
 
@@ -150,6 +152,7 @@ export function ExamScoreManager({
   const [sheet, setSheet] = useState<ExamScoreSheet | null>(null);
   const [rows, setRows] = useState<EditableRow[]>([]);
   const [pasteText, setPasteText] = useState("");
+  const [studentQuery, setStudentQuery] = useState("");
   const [savedSnapshot, setSavedSnapshot] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -166,6 +169,10 @@ export function ExamScoreManager({
     [examDateInput],
   );
   const currentSnapshot = useMemo(() => buildSnapshot(rows, examDate), [examDate, rows]);
+  const visibleRows = useMemo(
+    () => rows.filter((row) => matchesStudentSearch({ name: row.studentName, studentNumber: row.studentNumber }, studentQuery)),
+    [rows, studentQuery],
+  );
   const hasUnsavedChanges =
     Boolean(sheet) && savedSnapshot.length > 0 && currentSnapshot !== savedSnapshot;
   const hasPendingDateChange =
@@ -637,6 +644,15 @@ export function ExamScoreManager({
                 {" · "}현재 시험일 <strong>{sheet.examDate}</strong>
               </div>
 
+              <div className="admin-filter-bar mt-4">
+                <StudentSearchField
+                  label="성적 시트 학생 검색"
+                  value={studentQuery}
+                  onChange={setStudentQuery}
+                  hint={hasStudentSearchQuery(studentQuery) ? `${visibleRows.length}명 표시 (전체 ${rows.length}명)` : undefined}
+                />
+              </div>
+
               <div className="admin-table-frame mt-6 overflow-x-auto">
                 <table className="min-w-[1160px]">
                   <thead>
@@ -657,7 +673,7 @@ export function ExamScoreManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row) => {
+                    {visibleRows.map((row) => {
                       const previewTotal = sumRowScores(row.scores);
 
                       return (
@@ -720,6 +736,13 @@ export function ExamScoreManager({
                         </tr>
                       );
                     })}
+                    {visibleRows.length === 0 && rows.length > 0 ? (
+                      <tr>
+                        <td colSpan={sheet.subjects.length + 5} className="admin-empty-state">
+                          검색과 일치하는 학생이 없습니다.
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>

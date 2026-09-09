@@ -49,6 +49,8 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
     require(name: string) {
       if (name in overrides) return overrides[name];
       if (name === "react") return React;
+      // 아이콘은 화면 검증 대상이 아니다. 개별 override 가 없으면 빈 요소로 대체한다.
+      if (name === "lucide-react") return new Proxy({}, { get: () => () => null });
       if (name === "react/jsx-runtime") return jsx;
       if (name === "@/lib/morning-exam-analysis-schemas") return morningSchemas;
       if (name === "@/lib/services/morning-exam-analysis.service") return { getMorningStudentReport: async () => null };

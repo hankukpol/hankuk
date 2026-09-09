@@ -5,6 +5,7 @@ import type { RegularStudentReport as RegularReport, RegularCohortAnalysis } fro
 import type { MorningStudentReport as MorningReport, MorningCohortAnalysis } from '@/lib/morning-exam-analysis-types';
 import { defaultMorningAnalysisRange } from '@/lib/morning-exam-analysis-schemas';
 import { AdminTabs } from '@/components/ui/AdminTabs';
+import { StudentSearchCombobox } from '@/components/ui/StudentSearchCombobox';
 import { RegularStudentReport, type ReportSection } from './RegularStudentReport';
 import { ReportPrintButton } from './ReportPrintButton';
 import { MorningStudentReport } from './MorningStudentReport';
@@ -28,7 +29,7 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
  const [range, setRange] = useState({...defaultMorningAnalysisRange(), ...(initial.from && initial.to ? {from:initial.from,to:initial.to} : {})});
  const [section, setSection] = useState<ReportSection>('diagnosis');
  const [attempt,setAttempt]=useState(0);
- const [data,setData]=useState<{key:string; regular?:RegularReport; morning?:MorningReport; students:{id:string;name:string}[]; dates:string[]; error?:string}>();
+ const [data,setData]=useState<{key:string; regular?:RegularReport; morning?:MorningReport; students:{id:string;name:string;studentNumber:string}[]; dates:string[]; error?:string}>();
  const types=examTypes.filter(type=>type.category === (kind === 'regular' ? 'REGULAR':'MORNING'));
  const selected=types.find(type=>type.id===typeId) || types[0];
  const key=JSON.stringify([kind,selected?.id,date,range,studentId,attempt]);
@@ -42,7 +43,7 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
    if(kind==='regular') { const list=await read(`${base}/sessions?${new URLSearchParams({examTypeId:selected.id})}`);dates=list.sessions.map((s:{examDate:string})=>s.examDate); }
    const query=new URLSearchParams({examTypeId:selected.id,...(kind==='regular'?{examDate:dates.includes(date)?date:dates[0]||date}:range)});
    const [result,cohort]=await Promise.all([read(`${base}/student/${encodeURIComponent(studentId)}?${query}`),read(`${base}?${query}`)]);
-   const students=kind==='regular'?(cohort.analysis as RegularCohortAnalysis).ranking.map(row=>({id:row.studentId,name:row.name})):(cohort.analysis as MorningCohortAnalysis).studentSubjects.map(row=>({id:row.studentId,name:row.name}));
+   const students=kind==='regular'?(cohort.analysis as RegularCohortAnalysis).ranking.map(row=>({id:row.studentId,name:row.name,studentNumber:row.studentNumber})):(cohort.analysis as MorningCohortAnalysis).studentSubjects.map(row=>({id:row.studentId,name:row.name,studentNumber:row.studentNumber}));
    if(!controller.signal.aborted)setData({key,regular:kind==='regular'?result.report:undefined,morning:kind==='morning'?result.report:undefined,students:Array.from(new Map(students.map(row=>[row.id,row])).values()),dates});
   }catch{if(!controller.signal.aborted)setData({key,students:[],dates,error:'선택한 학생의 분석 자료를 불러오지 못했습니다. 시험 기록과 조회 기간을 확인해주세요.'});}})();
   return()=>controller.abort();
@@ -50,10 +51,14 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
  const current=data?.key===key?data:undefined;
  const report=current?.regular || current?.morning;
  const root=`/${encodeURIComponent(division)}/admin/exams`;
+ const cohortStudents=current?.students||[];
+ const studentOptions=report && !cohortStudents.some(student=>student.id===report.student.id)
+  ? [{id:report.student.id,name:report.student.name||'현재 학생',studentNumber:report.student.studentNumber},...cohortStudents]
+  : cohortStudents;
  const returnQuery=new URLSearchParams({tab:kind,view:'analysis',examTypeId:selected?.id||'',...(kind==='regular'?{examDate:current?.regular?.session.examDate||date}:range)});
  const navigateStudent=(id:string)=>{const query=new URLSearchParams({kind,examTypeId:selected?.id||'',examDate:current?.regular?.session.examDate||date,...range});window.location.assign(`${root}/students/${encodeURIComponent(id)}?${query}`);};
  return <div className="admin-flat-page">
-  <a className="admin-button" href={`${root}?${returnQuery}`}>← 성적 목록으로</a>
+  <a className="admin-button self-start" href={`${root}?${returnQuery}`}>← 성적 목록으로</a>
   <div className="admin-workspace-toolbar">
    <h1 className="admin-page-title">{report?.student.name || '학생'} 개인 성적 분석</h1>
    {report && <ReportPrintButton />}
@@ -61,7 +66,7 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
   <AdminTabs label="분석할 시험 구분" idPrefix={KIND_TAB_PREFIX} activeId={kind} onChange={next=>{setKind(next);setTypeId('');setDate('');}} items={[{id:'regular',label:'정기 모의고사'},{id:'morning',label:'아침 모의고사'}]}/>
   <AdminTabs variant="secondary" label="개인 분석 항목" idPrefix={SECTION_TAB_PREFIX} activeId={section} onChange={setSection} items={SECTION_TABS}/>
   <div className="admin-filter-bar">
-   <label className="admin-label">학생 선택<select value={studentId} onChange={event=>navigateStudent(event.target.value)}><option value={studentId}>{report?.student.name||'현재 학생'}</option>{current?.students.filter(student=>student.id!==studentId).map(student=><option key={student.id} value={student.id}>{student.name}</option>)}</select></label>
+   <label className="admin-label">학생 검색<StudentSearchCombobox students={studentOptions} value={studentId} onChange={id=>{if(id&&id!==studentId)navigateStudent(id);}} placeholder="이름 또는 수험번호 검색" className="w-full sm:w-72"/></label>
    <label className="admin-label">시험 종류<select value={selected?.id||''} onChange={event=>{setTypeId(event.target.value);setDate('');}}>{types.map(type=><option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
    {kind==='regular'?<label className="admin-label">시험 날짜<select value={current?.regular?.session.examDate||date} onChange={event=>setDate(event.target.value)}>{current?.dates.map(value=><option key={value} value={value}>{value.slice(0,10)}</option>)}</select></label>:<><label className="admin-label">시작일<input type="date" value={range.from} onChange={event=>setRange({...range,from:event.target.value})}/></label><label className="admin-label">종료일<input type="date" value={range.to} onChange={event=>setRange({...range,to:event.target.value})}/></label></>}
   </div>

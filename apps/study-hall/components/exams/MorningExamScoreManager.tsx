@@ -13,6 +13,8 @@ import {
 } from "@/lib/csv";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 import type { MorningExamDailySheet, MorningExamWeeklySummary } from "@/lib/services/morning-exam.service";
+import { StudentSearchField } from "@/components/ui/StudentSearchField";
+import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 
 type MorningExamScoreManagerProps = {
   divisionSlug: string;
@@ -84,6 +86,7 @@ export function MorningExamScoreManager({
   const [selectedSubjectId, setSelectedSubjectId] = useState(initialSelection?.subjectId ?? "");
   const [examDate, setExamDate] = useState(initialSelection?.examDate ?? getKstToday());
   const [rows, setRows] = useState<EditableRow[]>([]);
+  const [studentQuery, setStudentQuery] = useState("");
   const [isLoadingSheet, setIsLoadingSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [weeklySummary, setWeeklySummary] = useState<MorningExamWeeklySummary | null>(null);
@@ -107,6 +110,26 @@ export function MorningExamScoreManager({
       setSelectedSubjectId(activeSubjects[0].id);
     }
   }, [activeSubjects, selectedSubjectId]);
+
+  const searching = hasStudentSearchQuery(studentQuery);
+  const visibleRows = useMemo(
+    () => rows.filter((row) => matchesStudentSearch({ name: row.studentName, studentNumber: row.studentNumber }, studentQuery)),
+    [rows, studentQuery],
+  );
+  const numberByStudentId = useMemo(
+    () => new Map(rows.map((row) => [row.studentId, row.studentNumber])),
+    [rows],
+  );
+  // 주간 표에는 수험번호 칸이 없다. 일일 시트에서 모아 둔 번호로 함께 찾는다.
+  const visibleRankings = useMemo(
+    () => (weeklySummary?.rankings ?? []).filter((ranking) =>
+      matchesStudentSearch(
+        { name: ranking.studentName, studentNumber: numberByStudentId.get(ranking.studentId) ?? null },
+        studentQuery,
+      ),
+    ),
+    [weeklySummary, numberByStudentId, studentQuery],
+  );
 
   const selectedSubject = useMemo(
     () => activeSubjects.find((s) => s.id === selectedSubjectId),
@@ -435,6 +458,15 @@ export function MorningExamScoreManager({
           </div>
         ) : (
           <>
+            <div className="admin-filter-bar mt-4">
+              <StudentSearchField
+                label="일일 성적 입력 학생 검색"
+                value={studentQuery}
+                onChange={setStudentQuery}
+                hint={searching ? `${visibleRows.length}명 표시 (전체 ${rows.length}명)` : undefined}
+              />
+            </div>
+
             <div className="admin-table-frame mt-4 overflow-x-auto">
               <table className="min-w-[600px]">
                 <thead>
@@ -448,7 +480,7 @@ export function MorningExamScoreManager({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {visibleRows.map((row) => (
                     <tr key={row.studentId} className="align-top">
                       <td>{row.studentNumber}</td>
                       <td>{row.studentName}</td>
@@ -475,6 +507,13 @@ export function MorningExamScoreManager({
                       </td>
                     </tr>
                   ))}
+                  {visibleRows.length === 0 && rows.length > 0 ? (
+                    <tr>
+                      <td colSpan={4} className="admin-empty-state">
+                        검색과 일치하는 학생이 없습니다.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -554,6 +593,15 @@ export function MorningExamScoreManager({
               ({weeklySummary.weekDateRange.start} ~ {weeklySummary.weekDateRange.end})
             </p>
 
+            <div className="admin-filter-bar mt-3">
+              <StudentSearchField
+                label="주간 성적 현황 학생 검색"
+                value={studentQuery}
+                onChange={setStudentQuery}
+                hint={searching ? `${visibleRankings.length}명 표시 (전체 ${weeklySummary.rankings.length}명)` : undefined}
+              />
+            </div>
+
             <div className="admin-table-frame mt-3 overflow-x-auto">
               <table className="min-w-[800px]">
                 <thead>
@@ -571,7 +619,7 @@ export function MorningExamScoreManager({
                   </tr>
                 </thead>
                 <tbody>
-                  {weeklySummary.rankings.map((ranking) => (
+                  {visibleRankings.map((ranking) => (
                     <tr key={ranking.studentId} className="align-top">
                       <td>
                         {ranking.studentName}
@@ -595,6 +643,13 @@ export function MorningExamScoreManager({
                       </td>
                     </tr>
                   ))}
+                  {visibleRankings.length === 0 && weeklySummary.rankings.length > 0 ? (
+                    <tr>
+                      <td colSpan={weeklySummary.dailyEntries.length + 4} className="admin-empty-state">
+                        검색과 일치하는 학생이 없습니다.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>

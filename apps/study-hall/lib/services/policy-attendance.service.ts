@@ -30,8 +30,37 @@ export async function previewPolicyAttendance(divisionSlug: string, date: string
   return buildPolicyAttendanceCandidates(policy, periods, records, rules, date).filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && !r.notes?.startsWith(`[자동][출결벌점][${date}]`)));
 }
 
-/** Only a manager can commit candidates. Historical raw attendance is never rewritten. */
-export async function confirmPolicyAttendance(divisionSlug: string, date: string, actorId: string) {
+/**
+ * 출석을 저장한 직후 시스템이 부르는 자동 반영.
+ *
+ * 조용히 넘기는 두 경우가 있다. 규정 적용 전 날짜는 이 계산의 대상이 아니고,
+ * 미래 날짜는 반복 적용이 한 달치를 미리 써 두기 때문이다 — 그때 벌점을 붙이면
+ * 아직 오지 않은 날의 지각이 생긴다. 그 날이 오면 그 날 저장이 다시 계산한다.
+ */
+export async function applyPolicyAttendancePoints(divisionSlug: string, date: string, actorId: string) {
+  if (date > kstDate()) return { confirmedCount: 0 };
+  const policy = await getManagementPolicy(divisionSlug);
+  if (!isPolicyEffective(policy, date)) return { confirmedCount: 0 };
+  return confirmPolicyAttendance(divisionSlug, date, actorId, { requireManager: false });
+}
+
+/**
+ * 출결 벌점을 다시 계산해 그 날짜에 반영한다. 원본 출결은 건드리지 않는다.
+ *
+ * `requireManager` 가 참이면 관리자 화면의 확정 버튼이고, 거짓이면 출석 저장 직후
+ * 시스템이 부르는 자동 반영이다. 자동 쪽은 사람이 누른 것이 아니므로 관리자 확인을
+ * 요구하지 않는다 — 조교가 지각·결석을 기록하면 그 자리에서 벌점이 붙는다.
+ *
+ * 어느 쪽이든 계산과 중복 처리는 같다. 자동 기록은 `[자동][출결벌점][날짜]` 로
+ * 자기를 밝히고, 다시 계산할 때 값이 같은 것은 그대로 두고 사라진 것만 지운다.
+ * 관리자가 손으로 넣은 같은 규칙의 기록은 후보에서 빠지므로 이중으로 부과되지 않는다.
+ */
+export async function confirmPolicyAttendance(
+  divisionSlug: string,
+  date: string,
+  actorId: string,
+  { requireManager = true }: { requireManager?: boolean } = {},
+) {
   normalizeYmdDate(date);
   if (date > kstDate()) throw badRequest("미래 날짜의 벌점은 확정할 수 없습니다.");
   const policy = await getManagementPolicy(divisionSlug);
@@ -39,7 +68,7 @@ export async function confirmPolicyAttendance(divisionSlug: string, date: string
   const prefix = `[자동][출결벌점][${date}]`;
   const result = isMockMode() ? await updateMockState((state) => {
     const actor = state.admins.find((a) => a.id === actorId && a.isActive && (a.role === "SUPER_ADMIN" || (a.role === "ADMIN" && a.divisionSlug === divisionSlug)));
-    if (!actor) throw badRequest("관리자만 출결 벌점을 확정할 수 있습니다.");
+    if (requireManager && !actor) throw badRequest("관리자만 출결 벌점을 확정할 수 있습니다.");
     let candidates = buildPolicyAttendanceCandidates(policy, state.periodsByDivision[divisionSlug] ?? [], (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date), state.pointRulesByDivision[divisionSlug] ?? [], date);
     const existing = state.pointRecordsByDivision[divisionSlug] ?? [];
     candidates = candidates.filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && r.date.slice(0, 10) === date && !r.notes?.startsWith(prefix)));
@@ -51,7 +80,9 @@ export async function confirmPolicyAttendance(divisionSlug: string, date: string
     return { confirmedCount: next.length };
   }) : await (await getPrismaClient()).$transaction(async (tx) => {
     const division = await tx.division.findUniqueOrThrow({ where: { slug: divisionSlug }, select: { id: true } });
-    const actor = await tx.admin.findFirst({ where: { id: actorId, isActive: true, OR: [{ role: "SUPER_ADMIN" }, { role: "ADMIN", divisionId: division.id }] } });
+    const actor = requireManager
+      ? await tx.admin.findFirst({ where: { id: actorId, isActive: true, OR: [{ role: "SUPER_ADMIN" }, { role: "ADMIN", divisionId: division.id }] } })
+      : true;
     if (!actor) throw badRequest("관리자만 출결 벌점을 확정할 수 있습니다.");
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`policy-attendance:${division.id}:${date}`}))`;
     const day = new Date(`${date}T00:00:00Z`);

@@ -1086,9 +1086,27 @@ export async function syncAttendanceDerivedPoints(
 ) {
   const normalizedDate = normalizeDate(date);
   const policy = await getManagementPolicy(divisionSlug);
-  // v3.1: assistant attendance produces candidates; explicit manager confirmation commits them.
-  // No daily generic attendance reward exists in this policy.
-  if (isPolicyEffective(policy, normalizedDate)) return;
+  // 규정 적용 기간에는 규정이 정한 계산으로 벌점을 그 자리에서 붙인다. 조교가 지각·결석을
+  // 기록하는 것이 곧 벌점이 생기는 시점이다. 관리자 화면의 확정 버튼은 남아 있고, 같은
+  // 계산을 다시 돌려 검토·정정하는 용도가 된다.
+  //
+  // 아래 옛 경로(division_settings 의 tardy/absent 규칙)로 내려보내면 안 된다. 규정과 기준이
+  // 다르고, 운영에서는 지각 규칙만 연결돼 있어 결석이 조용히 빠진다.
+  //
+  // 벌점 반영이 실패해도 출결 저장은 이미 끝나 있다. 조교가 기록한 사실이 벌점 계산 때문에
+  // 사라지는 것이 더 나쁘므로 여기서 삼킨다. 다음 저장이나 관리자 확정이 다시 계산한다.
+  if (isPolicyEffective(policy, normalizedDate)) {
+    try {
+      // 서비스 간 호출은 이 저장소 관례대로 동적 import 로 둔다. 테스트 하네스가
+      // 정적 의존을 격리 위반으로 막고, point.service 도 같은 방식을 쓴다.
+      const { applyPolicyAttendancePoints } = await import("@/lib/services/policy-attendance.service");
+      await applyPolicyAttendancePoints(divisionSlug, normalizedDate, actorId);
+    } catch (error) {
+      logServerError("PolicyAttendancePoints", error);
+    }
+    return;
+  }
+  // 규정 적용 전 날짜는 예전 경로를 그대로 쓴다.
 
   try {
     await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actorId);

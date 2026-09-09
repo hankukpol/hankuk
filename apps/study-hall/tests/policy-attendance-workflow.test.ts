@@ -70,8 +70,10 @@ function fixture() {
   };
   const management = loadService<PolicyService>("management-policy", dependencies);
   dependencies["@/lib/services/management-policy.service"] = management;
-  const attendance = loadService<AttendanceService>("attendance", dependencies);
+  // 출석 저장이 벌점 반영을 직접 부르므로, 출결 서비스보다 먼저 세워 의존성에 넣는다.
   const penalties = loadService<PolicyAttendanceService>("policy-attendance", dependencies);
+  dependencies["@/lib/services/policy-attendance.service"] = penalties;
+  const attendance = loadService<AttendanceService>("attendance", dependencies);
   function record(periodId: string, status: MockAttendanceRecord["status"], studentId = "p1", day = date) {
     const value: MockAttendanceRecord = { id: randomUUID(), studentId, periodId, date: day, status, reason: null, checkInTime: null, recordedById: assistant.id, createdAt: `${day}T00:00:00Z`, updatedAt: `${day}T00:00:00Z` };
     state.attendanceByDivision.police.push(value);
@@ -93,7 +95,7 @@ test("all eight periods retain the published timetable; attendance records expos
   }
 });
 
-test("assistant records facts without charging; manager confirmation is idempotent and correctable", async (t) => {
+test("조교의 출결 기록이 곧 벌점이 되고, 출결을 정정하면 자동 벌점도 함께 정정된다", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T22:00:00+09:00`) });
   const f = fixture();
   const untouched: MockPointRecordRecord = { id: "old", studentId: "p1", ruleId: null, points: 3, date: "2026-08-31T00:00:00Z", notes: "기존 상점", recordedById: admin.id, createdAt: "2026-08-31T00:00:00Z" };
@@ -103,20 +105,33 @@ test("assistant records facts without charging; manager confirmation is idempote
   for (const periodId of ["09:15", "11:00", "13:45", "15:30"]) {
     await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId, records: [{ studentId: "p1", status: "ABSENT", reason: "무단결석" }] });
   }
-  assert.deepEqual(f.state.pointRecordsByDivision.police, [untouched]);
+
+  // 저장이 곧 부과다. 전일결석 -5 가 그 자리에서 붙고, 관리자가 손으로 넣은 상점은 그대로다.
+  const auto = () => f.state.pointRecordsByDivision.police.filter(r => r.notes?.startsWith("[자동][출결벌점]"));
+  assert.deepEqual(auto().map(r => r.points), [-5]);
+  assert.deepEqual(f.state.pointRecordsByDivision.police.filter(r => !r.notes?.startsWith("[자동]")), [untouched]);
+  // 자동 기록은 누가 기록해서 생긴 것인지 남긴다.
+  assert.equal(auto()[0].recordedById, assistant.id);
+
+  // 같은 교시를 다시 저장해도 벌점이 늘지 않는다.
+  await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId: "15:30", records: [{ studentId: "p1", status: "ABSENT", reason: "무단결석" }] });
+  assert.equal(f.state.pointRecordsByDivision.police.length, 2);
+
   const beforePreview = JSON.stringify(f.state);
   assert.deepEqual((await f.penalties.previewPolicyAttendance("police", date)).map(c => c.points), [-5]);
   assert.equal(JSON.stringify(f.state), beforePreview, "preview must not write");
+
+  // 수동 확정 버튼은 여전히 관리자만 누를 수 있다.
   for (const actorId of [assistant.id, "fire-admin", "inactive"]) {
     await assert.rejects(f.penalties.confirmPolicyAttendance("police", date, actorId), /관리자만/);
   }
-  assert.equal((await f.penalties.confirmPolicyAttendance("police", date, admin.id)).confirmedCount, 1);
+  // 관리자 확정은 같은 계산이므로 이미 붙은 기록을 그대로 둔다.
   const first = JSON.stringify(f.state.pointRecordsByDivision.police);
-  await f.penalties.confirmPolicyAttendance("police", date, "super");
-  assert.equal(JSON.stringify(f.state.pointRecordsByDivision.police), first, "keep IDs, creation times and original confirming actor");
-  await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId: "09:15", records: [{ studentId: "p1", status: "EXCUSED", reason: "승인된 병원 일정" }] });
-  assert.equal(JSON.stringify(f.state.pointRecordsByDivision.police), first, "assistant correction cannot itself revoke an admin-confirmed point");
   await f.penalties.confirmPolicyAttendance("police", date, admin.id);
+  assert.equal(JSON.stringify(f.state.pointRecordsByDivision.police), first, "keep IDs and creation times");
+
+  // 출결을 인정으로 정정하면 자동 벌점도 사라진다. 손으로 넣은 기록은 건드리지 않는다.
+  await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId: "09:15", records: [{ studentId: "p1", status: "EXCUSED", reason: "승인된 병원 일정" }] });
   assert.deepEqual(f.state.pointRecordsByDivision.police, [untouched]);
   assert.equal(JSON.stringify(f.state.pointRecordsByDivision.fire), fireBefore);
 });
@@ -309,9 +324,9 @@ test("late candidate uses the configured -2 immediately after start without the 
   t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T09:15:01+09:00`) });
   const f = fixture();
   await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId: "09:15", records: [{ studentId: "p1", status: "TARDY" }] });
-  const candidates = await f.penalties.previewPolicyAttendance("police", date);
-  assert.deepEqual(candidates.map(c => c.points), [-2]);
-  assert.deepEqual(f.state.pointRecordsByDivision.police, []);
+  // 저장이 곧 부과다. 확정 화면은 같은 계산을 다시 보여주는 검토 도구로 남는다.
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(r => r.points), [-2]);
+  assert.deepEqual((await f.penalties.previewPolicyAttendance("police", date)).map(c => c.points), [-2]);
 });
 
 test("Sunday and non-enrolled fifth-period attendance are recorded without controlled attendance expectations", async () => {

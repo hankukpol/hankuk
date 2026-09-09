@@ -1803,6 +1803,12 @@ body:has(.admin-shell) {
 
 /* 표 안에서 상세로 이동하는 이름·제목. 셀 안에 버튼 상자를 만들지 않는다.
    .admin-button 규격(테두리·44/36px·라운드)을 되돌려 글자만 남긴다. */
+/* 인쇄물에서만 쓰는 기입란. 화면에서는 밑줄만 남아 읽을 것이 없다.
+   인쇄 창은 자체 스타일시트를 쓰므로 이 규칙이 따라가지 않는다. */
+.admin-shell .admin-print-only {
+  display: none;
+}
+
 .admin-shell .admin-table-link {
   display: inline;
   min-height: 0;

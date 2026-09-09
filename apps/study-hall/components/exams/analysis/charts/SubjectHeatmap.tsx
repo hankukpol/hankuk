@@ -11,7 +11,7 @@ export function SubjectHeatmap({ heatmap, subjects }: Props) {
   const cells = new Map(heatmap.map((row) => [`${row.subjectId}:${row.date}`, row]));
   const comparison = (row: Props["heatmap"][number]) => row.internalAvg == null || row.externalAvg == null ? "비교 불가" : row.internalAvg === row.externalAvg ? "외부와 같음" : row.internalAvg > row.externalAvg ? "외부보다 높음" : "외부보다 낮음";
   return <div className="space-y-4">
-    <p className="admin-help">반 평균을 외부 평균과 비교합니다. 시험이 없는 날짜와 매칭 응답이 없는 시험은 0점으로 표시하지 않습니다.</p>
+    <p className="admin-help">반 평균을 외부 평균과 비교합니다.</p>
     <div className="hidden md:block"><div className="admin-table-frame"><table><caption className="admin-help">날짜·과목별 반 평균</caption><thead><tr><th scope="col">과목</th>{dates.map((date) => <th scope="col" key={date}>{date}</th>)}</tr></thead><tbody>
       {subjects.map((subject) => <tr key={subject.id}><th scope="row" className="admin-table-name">{subject.name}</th>{dates.map((date) => {
         const row = cells.get(`${subject.id}:${date}`);

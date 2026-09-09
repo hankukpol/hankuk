@@ -60,7 +60,7 @@ export function MorningCohortAnalysis({ divisionSlug, examTypes, initialSelectio
       <button className="admin-button admin-button-primary" type="submit">분석 조회</button>
     </form>
     {error && <p role="alert" className="admin-notice admin-notice-danger">{error}</p>}
-    <p className="admin-help">조회 기간 {range.from} ~ {range.to}. 기본 기간은 오늘을 포함한 최근 84일입니다. 이동평균과 추세는 날짜 간격이 아닌 과목별 응시 횟수를 기준으로 계산합니다.</p>
+    <p className="admin-help">조회 기간 {range.from} ~ {range.to}. 기본 기간은 오늘을 포함한 최근 84일입니다.</p>
     <CohortReport key={`${divisionSlug}:${query}`} base={`/api/${encodeURIComponent(divisionSlug)}/morning-exams/analysis`} query={query} view={view} />
   </div>;
 }
@@ -78,7 +78,6 @@ function CohortReport({ base, query, view }: { base: string; query: string; view
     <p className="admin-help">가져온 시험 {analysis.sessionCount}건 · 이동평균 최근 {minimum}회 · 추세 최근 {analysis.settings.morning.trendWindowSessions}회 응시 기준</p>
     {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">날짜·과목별 비교</h3><SubjectHeatmap heatmap={analysis.heatmap} subjects={analysis.subjects} /></section>}
     {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">과목별 반 추세</h3>
-      <p className="admin-help">과목 이름을 눌러 추세 그래프를 펼칩니다.</p>
       {!analysis.subjectTrends.length && <p className="admin-empty-state">선택한 기간에 과목별 시험 기록이 없습니다.</p>}
       {analysis.subjectTrends.map((subject) => {
         const attended = subject.series.filter((point) => point.internalAvg != null).length;
@@ -86,7 +85,6 @@ function CohortReport({ base, query, view }: { base: string; query: string; view
       })}
     </section>}
     {view === "cohort" && <section className="admin-section"><h3 className="admin-section-title">날짜별 반 오답 TOP5</h3>
-      <p className="admin-help">시험일이 쌓이면 목록이 길어지므로 접어 둡니다. 날짜 목록을 펼쳐 확인하세요.</p>
       <details className="admin-section"><summary className="admin-button">시험일 {analysis.dailyWrongTop.length}건 보기</summary>
       {!analysis.dailyWrongTop.length ? <p className="admin-empty-state">매칭된 학생의 문항 응답이 없습니다.</p> : [...analysis.dailyWrongTop].sort((left, right) => right.date.localeCompare(left.date) || left.subjectId.localeCompare(right.subjectId)).map((day) => <details className="admin-section" key={`${day.date}:${day.subjectId}`}><summary className="admin-button">{day.date} {day.subjectName}</summary>{!day.items.length ? <p className="admin-empty-state">매칭된 학생이 없습니다.</p> : <div className="admin-table-frame"><table><thead><tr>{["번호", "정답", "반 정답률", "외부 정답률"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{day.items.map((item) => <tr key={item.itemNo}><td>{item.itemNo}</td><td>{item.answerKey}</td><td>{number(item.internalCorrectRatePct, "%")}</td><td>{number(item.externalCorrectRatePct, "%")}</td></tr>)}</tbody></table></div>}</details>)}
     </details></section>}

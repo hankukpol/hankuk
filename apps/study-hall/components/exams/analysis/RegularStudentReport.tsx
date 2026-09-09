@@ -31,7 +31,7 @@ export function RegularStudentReport({ report, mode, section }: { report: Report
         if (!rows.length) return [<tr key={month}><th scope="row">{month}</th><td colSpan={report.subjects.length + 5}>성적 기록 없음</td></tr>];
         return rows.map(row => <tr key={row.date}><th scope="row">{row.date}</th><td>{value(row.total)} / {value(row.fullScore)}</td>{report.subjects.map(s => <td key={s.id}>{value(row.subjectScores[s.id])}</td>)}<td>{row.internalRank}등</td><td>{value(row.externalRank, "등")} (n={row.externalCount})</td><td>{value(row.externalTopPercent, "%")}</td><td>{row.isPartial ? "일부 미응시" : "응시"}</td></tr>);
       })}</tbody></table></div>
-      <p className="admin-help">시험별 난이도와 응시 집단이 다를 수 있으므로 점수와 외부 상위%를 함께 확인하세요. 합격예측은 제공하지 않습니다.</p>
+      <p className="admin-help">시험마다 난이도와 응시 집단이 다르므로 점수와 외부 상위%를 함께 확인하세요.</p>
     </section>}
     {report.myScore.isPartial && <p className="admin-notice admin-notice-warning">일부 과목 미응시 결과입니다. 응시한 과목의 점수만 포함합니다.</p>}
     <div className="admin-metric-strip">{[
@@ -41,7 +41,7 @@ export function RegularStudentReport({ report, mode, section }: { report: Report
     ].map(([label, score]) => <div className="admin-metric-box" key={label}><p className="admin-metric-box-label">{label}</p><p className="admin-metric-box-value">{score}</p></div>)}</div>
     {ranks.internal.count < 10 && <p className="admin-help">반 내 지표는 참고용입니다(응시 {ranks.internal.count}명)</p>}
     {show("subjects") && <section id="personal-subjects" className="admin-section"><h2 className="admin-section-title">과목별 비교</h2>
-      <p className="admin-help">성취율은 과목 만점 대비 점수입니다. 상위%는 작을수록, 백분위는 클수록 상위입니다. 집계 불가는 비교 자료가 충분하지 않은 항목입니다.</p>
+      <p className="admin-help">성취율은 과목 만점 대비 점수입니다. 상위%는 작을수록, 백분위는 클수록 상위입니다.</p>
       <div className="admin-table-frame"><table><thead><tr>{["과목", "내 점수", "만점", "외부 평균", "지역 평균", "반 평균", "상위 10% 평균", "상위 30% 평균", "성취율", "판정", "판정 기준"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{stats.subjects.map((subject) => <tr key={subject.subjectId}><td className="admin-table-name">{subject.name}</td><td>{value(subject.my)}</td><td>{value(subject.fullScore)}</td><td>{value(subject.externalAvg)}</td><td>{value(subject.regionAvg)}</td><td>{value(subject.internalAvg)}</td><td>{value(subject.top10Avg)}</td><td>{value(subject.top30Avg)}</td><td>{value(subject.scoreRate, "%")}</td><td>{subject.grade ?? "집계 불가"}</td><td>{subject.gradeBasis === "scoreRate" ? "성취율" : subject.gradeBasis === "percentile" ? "외부 상위%" : "집계 불가"}</td></tr>)}</tbody>
       </table></div>

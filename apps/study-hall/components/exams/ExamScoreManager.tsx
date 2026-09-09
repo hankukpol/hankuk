@@ -613,8 +613,7 @@ export function ExamScoreManager({
                 {selectedExamType?.name || "시험"} {appliedExamDate} 성적 시트
               </h3>
               <p className="admin-help mt-2 leading-6">
-                선택한 템플릿의 대상 직렬 학생만 표시됩니다. 총점은 입력값 기준으로 즉시
-                계산됩니다.
+                선택한 템플릿의 대상 직렬 학생만 표시됩니다.
               </p>
             </div>
 

@@ -182,7 +182,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
       <section className="admin-section">
         <h2 className="admin-section-title">채점 파일 가져오기</h2>
         <p className="admin-help">같은 시험의 채점표와 문항분석표를 선택하세요. 파일별 최대 5MB이며, 미리보기 후 확정해야 성적에 반영됩니다.</p>
-        <p className="admin-help">시험은 파일의 시험일자로 구분합니다. 아침 시험은 통합된 시험 종류에서 파일의 과목을 찾습니다.</p>
+        <p className="admin-help">시험은 파일의 시험일자로 구분합니다.</p>
         <details>
           <summary className="admin-button">첫 가져오기 전 준비사항</summary>
           <ol className="admin-help list-decimal space-y-2 pl-5">

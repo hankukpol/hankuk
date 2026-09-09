@@ -379,7 +379,7 @@ export function MorningExamScoreManager({
 
         <div className="mt-4">
           <details open className="group">
-            <summary className="cursor-pointer text-sm font-medium text-slate-600 hover:text-slate-900">
+            <summary className="admin-label cursor-pointer">
               엑셀에서 붙여넣기 / CSV 업로드
             </summary>
             <div className="mt-3 space-y-3">
@@ -413,7 +413,7 @@ export function MorningExamScoreManager({
                   CSV 양식 다운로드
                 </button>
 
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <label className="admin-button cursor-pointer">
                   <Upload className="h-4 w-4" />
                   CSV 업로드
                   <input
@@ -431,14 +431,14 @@ export function MorningExamScoreManager({
 
         {isLoadingSheet ? (
           <div className="mt-6 flex items-center justify-center py-12">
-            <LoaderCircle className="h-6 w-6 animate-spin text-slate-400" />
+            <LoaderCircle className="h-6 w-6 animate-spin text-admin-text-muted" />
           </div>
         ) : (
           <>
             <div className="admin-table-frame mt-4 overflow-x-auto">
               <table className="min-w-[600px]">
                 <thead>
-                  <tr className="text-left text-slate-500">
+                  <tr>
                     <th>수험번호</th>
                     <th>이름</th>
                     <th>
@@ -545,7 +545,7 @@ export function MorningExamScoreManager({
 
         {isLoadingWeekly ? (
           <div className="mt-6 flex items-center justify-center py-12">
-            <LoaderCircle className="h-6 w-6 animate-spin text-slate-400" />
+            <LoaderCircle className="h-6 w-6 animate-spin text-admin-text-muted" />
           </div>
         ) : weeklySummary ? (
           <div className="mt-4">
@@ -557,7 +557,7 @@ export function MorningExamScoreManager({
             <div className="admin-table-frame mt-3 overflow-x-auto">
               <table className="min-w-[800px]">
                 <thead>
-                  <tr className="text-left text-slate-500">
+                  <tr>
                     <th>이름</th>
                     {weeklySummary.dailyEntries.map((entry) => (
                       <th key={entry.date} className="px-3 py-3 text-center font-medium">
@@ -579,10 +579,7 @@ export function MorningExamScoreManager({
                       {weeklySummary.dailyEntries.map((entry) => {
                         const ds = ranking.dailyScores[entry.date];
                         return (
-                          <td
-                            key={entry.date}
-                            className="px-3 py-2 text-center text-slate-700"
-                          >
+                          <td key={entry.date}>
                             {ds?.score !== null && ds?.score !== undefined ? ds.score : "-"}
                           </td>
                         );

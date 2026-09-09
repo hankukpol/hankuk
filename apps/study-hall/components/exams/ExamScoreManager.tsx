@@ -620,10 +620,10 @@ export function ExamScoreManager({
 
             {selectedExamType ? (
               <div className="flex flex-wrap gap-2">
-                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
+                <span className="admin-badge">
                   직렬 {formatTrackLabel(selectedExamType.studyTrack)}
                 </span>
-                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
+                <span className="admin-badge">
                   과목 {selectedExamType.subjects.filter((subject) => subject.isActive).length}개
                 </span>
               </div>
@@ -633,25 +633,22 @@ export function ExamScoreManager({
           {sheet ? (
             <>
               <div className="admin-notice mt-5">
-                대상 직렬{" "}
-                <span className="font-semibold text-slate-900">{formatTrackLabel(sheet.studyTrack)}</span>
-                <span className="mx-2 text-slate-300">|</span>
-                대상 학생 <span className="font-semibold text-slate-900">{rows.length}명</span>
-                <span className="mx-2 text-slate-300">|</span>
-                현재 시험일 <span className="font-semibold text-slate-900">{sheet.examDate}</span>
+                대상 직렬 <strong>{formatTrackLabel(sheet.studyTrack)}</strong>
+                {" · "}대상 학생 <strong>{rows.length}명</strong>
+                {" · "}현재 시험일 <strong>{sheet.examDate}</strong>
               </div>
 
               <div className="admin-table-frame mt-6 overflow-x-auto">
                 <table className="min-w-[1160px]">
                   <thead>
-                    <tr className="text-left text-slate-500">
+                    <tr>
                       <th>수험번호</th>
                       <th>이름</th>
                       {sheet.subjects.map((subject) => (
-                        <th key={subject.id} className="px-3 py-3 font-medium">
+                        <th key={subject.id}>
                           <div>
                             <p>{subject.name}</p>
-                            <p className="mt-1 text-[13px] text-slate-400">{getSubjectMeta(subject)}</p>
+                            <p className="admin-help mt-1">{getSubjectMeta(subject)}</p>
                           </div>
                         </th>
                       ))}

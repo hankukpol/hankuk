@@ -146,8 +146,8 @@ function ExamTypeManagerSkeleton() {
             <div className="h-4 w-80 rounded bg-slate-100" />
           </div>
           <div className="flex gap-2">
-            <div className="h-10 w-24 rounded-full bg-slate-100" />
-            <div className="h-10 w-28 rounded-full bg-slate-100" />
+            <div className="h-10 w-24 rounded-lg bg-slate-100" />
+            <div className="h-10 w-28 rounded-lg bg-slate-100" />
           </div>
         </div>
         <div className="mt-5 space-y-3">
@@ -159,8 +159,8 @@ function ExamTypeManagerSkeleton() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="h-5 w-36 rounded bg-slate-100" />
-                      <div className="h-5 w-12 rounded-full bg-slate-100" />
-                      <div className="h-5 w-16 rounded-full bg-slate-100" />
+                      <div className="h-5 w-12 rounded-lg bg-slate-100" />
+                      <div className="h-5 w-16 rounded-lg bg-slate-100" />
                     </div>
                     <div className="flex gap-2">
                       <div className="h-10 w-10 rounded-lg bg-slate-100" />
@@ -207,7 +207,7 @@ function ExamTypeManagerSkeleton() {
                 <div className="h-5 w-20 rounded bg-slate-100" />
                 <div className="h-4 w-48 rounded bg-slate-100" />
               </div>
-              <div className="h-10 w-24 rounded-full bg-slate-100" />
+              <div className="h-10 w-24 rounded-lg bg-slate-100" />
             </div>
             <div className="mt-4 space-y-3">
               {Array.from({ length: 2 }).map((_, index) => (
@@ -279,7 +279,9 @@ function SortableExamTypeCard({
                 <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>직렬 {getTrackLabel(examType.studyTrack)}</span>
                 {isCopySource ? <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-admin-accent text-white"}`}>복사 기준</span> : null}
                 <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>순서 {examType.displayOrder + 1}</span>
-                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : examType.isActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{examType.isActive ? "활성" : "비활성"}</span>
+                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : examType.isActive
+                      ? "bg-[var(--admin-success-soft)] text-[var(--admin-success)]"
+                      : "bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]"}`}>{examType.isActive ? "활성" : "비활성"}</span>
               </span>
               <span className={`mt-2 block text-sm ${isSelected ? "text-white/75" : "text-slate-500"}`}>{summary.subjectNames}</span>
               <span className={`mt-1 block text-xs ${isSelected ? "text-white/70" : "text-slate-400"}`}>
@@ -540,7 +542,9 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
 
           <div className="grid gap-3 md:grid-cols-2">
             {[{ value: "MORNING" as const, label: "아침모의고사", description: "매일 과목별 입력, 주간 집계" }, { value: "REGULAR" as const, label: "정기모의고사", description: "회차별 한 번에 입력, 누적 관리" }].map((option) => (
-              <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-4 ${form.category === option.value ? "border-amber-300 bg-amber-50" : "border-slate-200 hover:bg-slate-50"}`}>
+              <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-4 ${form.category === option.value
+                  ? "border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]"
+                  : "border-[var(--admin-line)] hover:bg-[var(--admin-surface-soft)]"}`}>
                 <input type="radio" name="exam-category" checked={form.category === option.value} onChange={() => setForm((current) => ({ ...current, category: option.value }))} className="mt-1 h-4 w-4 border-slate-300 text-[var(--division-color)]" />
                 <span><span className="block text-sm font-semibold text-slate-900">{option.label}</span><span className="admin-help mt-1 block">{option.description}</span></span>
               </label>

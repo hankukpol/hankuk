@@ -330,9 +330,12 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 | 이름·강좌명 셀 | 왼쪽, `.admin-table-name` |
 | 금액 셀 | 오른쪽, `.admin-table-amount` |
 | 나머지 기본 데이터·배지·행 작업 | 가운데 |
+| 행 머리글 `th[scope="row"]` | 왼쪽, 흰 배경, 본문 굵기 (`.admin-table-name`과 같게) |
 | 표·스크롤 프레임 | 직각, 내부에서만 가로 스크롤(`.admin-table-frame`) |
 
 표는 `width: 100%`, 셀 padding 12px, 헤더 `accent-tint`/600, 행 hover `accent-soft`, 본문 13px, `tabular-nums`, 셀 `white-space: nowrap`.
+
+`th`의 `accent-tint` 배경과 가운데 정렬은 **표 머리글(`thead`)의 규격**이다. 과목명·날짜처럼 각 행을 가리키는 이름 열을 `th[scope="row"]`로 두면 접근성에는 맞지만 첫 열 전체가 머리글 색으로 칠해져 다른 표와 어긋난다. 정규화 레이어의 `.admin-shell tbody th`가 이 배경·굵기·정렬을 이름 열 규격으로 되돌리므로, **행 머리글은 `th[scope="row"]` 그대로 두고 별도 유틸을 붙이지 않는다.**
 
 **선 긋는 방식이 중요하다.** 바깥 테두리는 `table`이 1px `admin-grid`로 한 번만 그리고, 셀은 **오른쪽과 아래만** 그린다. 마지막 열의 오른쪽과 마지막 행의 아래는 지운다. 셀마다 사방 테두리를 주면 표 외곽에서 선이 겹쳐 2px로 보인다.
 

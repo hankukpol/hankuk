@@ -109,9 +109,9 @@ export function ReportPrintButton() {
       setError("인쇄 화면을 준비하지 못했습니다. 잠시 후 다시 시도해주세요.");
     }
   }
-  return <div ref={anchor} data-report-print>
-    <button type="button" className="admin-button-secondary" onClick={() => openPrint()}>A4 인쇄 / PDF 저장</button>
-    <button type="button" className="admin-button-secondary" onClick={() => openPrint(true)}>학습 진단만 인쇄 / PDF 저장</button>
+  return <div ref={anchor} data-report-print className="flex flex-wrap items-center gap-2">
+    <button type="button" className="admin-button" onClick={() => openPrint()}>A4 인쇄 / PDF 저장</button>
+    <button type="button" className="admin-button" onClick={() => openPrint(true)}>학습 진단만 인쇄 / PDF 저장</button>
     {error && <p role="alert" className="admin-help">{error}</p>}
   </div>;
 }

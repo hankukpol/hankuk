@@ -75,7 +75,7 @@ function CohortReport({ base, query }: { base: string; query: string }) {
     <h2 className="admin-section-title">{analysis.examType.name} 반 분석</h2>
     <p className="admin-help">가져온 시험 {analysis.sessionCount}건 · 이동평균 최근 {minimum}회 · 추세 최근 {analysis.settings.morning.trendWindowSessions}회 응시 기준</p>
     <section className="admin-section"><h3 className="admin-section-title">날짜·과목별 비교</h3><SubjectHeatmap heatmap={analysis.heatmap} subjects={analysis.subjects} /></section>
-    <section className="admin-section admin-flat-page"><h3 className="admin-section-title">과목별 반 추세</h3>
+    <section className="admin-section"><h3 className="admin-section-title">과목별 반 추세</h3>
       {!analysis.subjectTrends.length && <p className="admin-empty-state">선택한 기간에 과목별 시험 기록이 없습니다.</p>}
       {analysis.subjectTrends.map((subject) => {
         const attended = subject.series.filter((point) => point.internalAvg != null).length;

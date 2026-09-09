@@ -99,7 +99,7 @@ export function ExamImportHistory({ divisionSlug, examTypeId, refreshKey = 0, di
   }
 
   const current = listing.url === url ? listing : { url };
-  return <section className="admin-section space-y-4" aria-busy={deletingId !== null || (!current.rows && !current.error)}>
+  return <section className="admin-section" aria-busy={deletingId !== null || (!current.rows && !current.error)}>
     <div className="admin-workspace-toolbar">
       <div><h2 className="admin-section-title">가져오기 이력</h2><p className="admin-help">{examTypeId ? "선택한 시험 종류의 이력입니다." : "전체 시험 종류의 이력입니다."} 가져온 시각은 한국 시간 기준입니다.</p></div>
       <button type="button" className="admin-button" disabled={disabled || deletingId !== null} onClick={() => setReload((version) => version + 1)}>이력 새로고침</button>

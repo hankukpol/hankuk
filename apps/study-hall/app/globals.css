@@ -1789,6 +1789,18 @@ body:has(.admin-shell) {
   background-color: var(--admin-accent-soft);
 }
 
+/* 행 머리글(th[scope="row"])은 표 머리글이 아니라 이름 열이다.
+   기본 th 규칙의 accent-tint 배경·가운데 정렬을 되돌려 .admin-table-name 과 같게 만든다. */
+.admin-shell tbody th {
+  background: var(--admin-surface);
+  font-weight: 400;
+  text-align: left;
+}
+
+.admin-shell tbody tr:hover th {
+  background: transparent;
+}
+
 /* 셀 안의 flex 자식까지 같은 방향으로 맞춘다. */
 .admin-shell thead th :is(button, .flex, .inline-flex) {
   justify-content: center;

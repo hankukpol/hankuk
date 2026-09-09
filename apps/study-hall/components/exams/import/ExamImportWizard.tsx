@@ -179,7 +179,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
 
   return (
     <div className="admin-flat-page" aria-busy={busy}>
-      <section className="admin-section space-y-4">
+      <section className="admin-section">
         <h2 className="admin-section-title">채점 파일 가져오기</h2>
         <p className="admin-help">같은 시험의 채점표와 문항분석표를 선택하세요. 파일별 최대 5MB이며, 미리보기 후 확정해야 성적에 반영됩니다.</p>
         <p className="admin-help">시험은 파일의 시험일자로 구분합니다. 아침 시험은 통합된 시험 종류에서 파일의 과목을 찾습니다.</p>
@@ -229,14 +229,14 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
       {error && <p role="alert" className="admin-notice admin-notice-danger break-words">{error}</p>}
       {pending && <p role="status" className="admin-help">{pending === "preview" ? "두 파일의 문항과 점수를 대조하고 있습니다." : "파일을 다시 검증하고 성적을 저장하고 있습니다. 완료될 때까지 기다려 주세요."}</p>}
       {result && (
-        <section className="admin-section space-y-4">
+        <section className="admin-section">
           <p role="status" className="admin-notice admin-notice-success">{result.examDate} 성적 {result.importedCount}명 가져오기를 완료했습니다.</p>
           {onShowScores && <button type="button" className="admin-button" onClick={onShowScores}>입력 화면에서 성적 확인</button>}
         </section>
       )}
       {preview && <>
         <PreviewDetails preview={preview} />
-        <section className="admin-section space-y-4">
+        <section className="admin-section">
           {preview.existing && (
             <div className="admin-notice admin-notice-warning space-y-2">
               <p>같은 시험의 가져오기 기록이 있습니다. 확정하면 기존 기록과 성적을 덮어씁니다.</p>
@@ -267,7 +267,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
 
 function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
   return <>
-    <section className="admin-section space-y-4">
+    <section className="admin-section">
       <h2 className="admin-section-title">시험 정보 미리보기</h2>
       <dl className="grid gap-4 md:grid-cols-2">
         {[
@@ -282,7 +282,7 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
       </dl>
       {preview.errors.length > 0 && <ul className="admin-notice admin-notice-danger space-y-2" role="alert">{preview.errors.map((message, i) => <li key={i} className="break-words">{message}</li>)}</ul>}
     </section>
-    <section className="admin-section space-y-4">
+    <section className="admin-section">
       <h2 className="admin-section-title">블록과 과목 매핑</h2>
       <div className="admin-table-frame" role="region" aria-label="블록과 과목 매핑 결과" tabIndex={0}>
         <table><thead><tr><th scope="col">블록</th><th scope="col">과목</th><th scope="col">문항 수</th></tr></thead>
@@ -291,7 +291,7 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
       </div>
       {preview.mappings.length === 0 && <p className="admin-help">매핑 결과가 없습니다.</p>}
     </section>
-    <section className="admin-section space-y-4">
+    <section className="admin-section">
       <h2 className="admin-section-title">점수 재현 검증</h2>
       <p className={`admin-notice ${preview.reproduction.mismatches.length ? "admin-notice-danger" : "admin-notice-success"}`}>
         일치 {preview.reproduction.matchedCount}명 / 불일치 {preview.reproduction.mismatches.length}건
@@ -303,9 +303,9 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
         </table>
       </div>}
     </section>
-    <section className="admin-section space-y-4">
+    <section className="admin-section">
       <h2 className="admin-section-title">학생 매칭</h2>
-      <p>자동 매칭 {preview.matching.matched}명 / 미매칭 {preview.matching.unmatched}명 / 형식 오류 {preview.matching.invalid}건</p>
+      <p className="admin-help">자동 매칭 {preview.matching.matched}명 / 미매칭 {preview.matching.unmatched}명 / 형식 오류 {preview.matching.invalid}건</p>
       <p className="admin-help">미매칭 응시자는 자습반 학생 성적으로 저장되지 않습니다.</p>
       {preview.invalidRows.length > 0 ? <div className="admin-table-frame" role="region" aria-label="형식 오류 목록" tabIndex={0}>
         <table><thead><tr><th scope="col">원본 행</th><th scope="col">형식 오류 사유</th></tr></thead>
@@ -313,7 +313,7 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
         </table>
       </div> : <p className="admin-help">형식 오류가 없습니다.</p>}
     </section>
-    <section className="admin-section space-y-4">
+    <section className="admin-section">
       <h2 className="admin-section-title">일부 미응시·결시 목록</h2>
       {preview.partialRows.length > 0 ? <div className="admin-table-frame" role="region" aria-label="일부 미응시 및 결시 목록" tabIndex={0}>
         <table><thead><tr><th scope="col">원본 행</th><th scope="col">학생</th><th scope="col">상태</th><th scope="col">응시 과목</th></tr></thead>

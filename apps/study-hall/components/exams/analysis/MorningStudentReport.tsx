@@ -23,13 +23,13 @@ export function MorningStudentReport({ report, mode }: { report: Report; mode: "
     ].map(([label, score]) => <div className="admin-metric-box" key={label}><p className="admin-metric-box-label">{label}</p><p className="admin-metric-box-value">{score}</p></div>)}</div>
     <p className="admin-help">기간 내 응시 {summary.attended}회 / 예정 {summary.expected}회. 평균 대비는 내 평균에서 비교 평균을 뺀 값입니다.</p>
     {lowParticipation && <p className="admin-notice">응시율 {value(summary.attendanceRatePercent, "%")}라 추세를 판단하지 않습니다. 설정된 기준은 {value(settings.morning.attendanceRatePercent, "%")}입니다.</p>}
-    <section id="personal-trend" className="admin-section admin-flat-page"><h2 className="admin-section-title">과목별 추세</h2>
+    <section id="personal-trend" className="admin-section"><h2 className="admin-section-title">과목별 추세</h2>
       <p className="admin-help">이동평균은 최근 {settings.morning.movingAverageSessions}회, 추세는 최근 {settings.morning.trendWindowSessions}회 응시 기준입니다. 미응시는 0점으로 채우지 않습니다.</p>
       {!report.subjects.length && <p className="admin-empty-state">선택한 기간에 응시한 과목이 없습니다.</p>}
       {report.subjects.map((subject) => {
         const lowSubject = subject.attendanceRatePercent != null && subject.attendanceRatePercent < settings.morning.attendanceRatePercent;
         const withheld = lowParticipation || lowSubject;
-        return <section className="admin-section space-y-4" key={subject.subjectId}>
+        return <section className="admin-section" key={subject.subjectId}>
           <h3 className="admin-section-title">{subject.name}</h3>
           <p className="admin-help">응시 {subject.attended}회 / 예정 {subject.expected}회 · 응시율 {value(subject.attendanceRatePercent, "%")}</p>
           {withheld ? <p className="admin-notice">이 과목은 응시율이 기준에 미달하여 추세와 하락을 판단하지 않습니다.</p> : subject.insufficientSample ? <p className="admin-empty-state">이 과목은 아직 {subject.attended}회만 응시했습니다. {subject.requiredSessions}회부터 추세를 표시합니다.</p> : <TrendLines label={`${subject.name} 점수와 이동평균`} columns={[{ key: "score", label: "내 점수" }, { key: "ma", label: `내 최근 ${settings.morning.movingAverageSessions}회 이동평균` }, { key: "classMa", label: "반 이동평균" }]} rows={subject.series.map((point) => ({ date: point.date, values: { score: point.score, ma: point.ma, classMa: point.classMa } }))} />}

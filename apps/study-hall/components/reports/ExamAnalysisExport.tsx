@@ -123,5 +123,5 @@ function ExportSelection({ base, kind }: { base: string; kind: Kind }) {
 export function ExamAnalysisExport({ divisionSlug }: { divisionSlug: string }) {
   const id = useId();
   const [kind, setKind] = useState<Kind>("regular");
-  return <section className="admin-section admin-flat-page"><h2 className="admin-section-title">성적 분석 내보내기</h2><p className="admin-help">정기는 시험 날짜별, 아침은 조회 기간별 분석을 엑셀로 내려받습니다.</p><div className="admin-filter-bar"><label className="admin-label" htmlFor={id}>분석 구분</label><select id={id} value={kind} onChange={(event) => setKind(event.target.value as Kind)}><option value="regular">정기 모의고사</option><option value="morning">아침 모의고사</option></select></div><ExportSelection key={`${divisionSlug}:${kind}`} base={`/api/${encodeURIComponent(divisionSlug)}`} kind={kind} /></section>;
+  return <section className="admin-section"><h2 className="admin-section-title">성적 분석 내보내기</h2><p className="admin-help">정기는 시험 날짜별, 아침은 조회 기간별 분석을 엑셀로 내려받습니다.</p><div className="admin-filter-bar"><label className="admin-label" htmlFor={id}>분석 구분</label><select id={id} value={kind} onChange={(event) => setKind(event.target.value as Kind)}><option value="regular">정기 모의고사</option><option value="morning">아침 모의고사</option></select></div><ExportSelection key={`${divisionSlug}:${kind}`} base={`/api/${encodeURIComponent(divisionSlug)}`} kind={kind} /></section>;
 }

@@ -22,7 +22,7 @@ function ReviewMethod() {
 
 export function RegularLearningSummary({ report }: { report: RegularStudentReport }) {
   const plan = regularLearningPlan(report);
-  return <section className="admin-section admin-flat-page" data-learning-summary id="personal-diagnosis">
+  return <section className="admin-section" data-learning-summary id="personal-diagnosis">
     <h2 className="admin-section-title">개인 학습 진단 · 다음 시험 준비</h2>
     <p className="admin-help">등록된 과목 만점과 실제 응시 과목을 기준으로 분석합니다. 쉬운 문항 오답 수, 잃은 점수 순으로 복습할 과목을 안내합니다. 예상 상승 점수나 합격 가능성을 뜻하지 않습니다.</p>
     <p className="admin-notice">최근 6개월 중 같은 만점·같은 응시 과목으로 전과목 응시한 {plan.compatibleCount}회 평균 {number(plan.average)}점.
@@ -40,13 +40,13 @@ export function RegularLearningSummary({ report }: { report: RegularStudentRepor
 
 export function MorningLearningSummary({ report }: { report: MorningStudentReport }) {
   const plan = morningLearningPlan(report);
-  return <section className="admin-section admin-flat-page" data-learning-summary id="personal-diagnosis">
+  return <section className="admin-section" data-learning-summary id="personal-diagnosis">
     <h2 className="admin-section-title">진도 학습 진단 · 다음 복습 과제</h2>
     <p className="admin-help">과목별 시험 범위가 달라 전체 평균만으로 학습 상태를 판단하지 않습니다. 실제 입력된 단원 라벨과 문항 정오를 근거로 복습 과제를 제시합니다.</p>
     {!plan.length && <p className="admin-empty-state">응시 기록이 없어 진도 학습 진단을 만들 수 없습니다.</p>}
     {plan.map(subject => <section className="admin-section" key={subject.subjectId}>
       <h3 className="admin-section-title">{subject.name}</h3>
-      <p>응시 {subject.attended}/{subject.expected}회 · 쉬운 문항 오답 {subject.easyWrongCount}개 · 무응답 {subject.unansweredCount}개</p>
+      <p className="admin-help">응시 {subject.attended}/{subject.expected}회 · 쉬운 문항 오답 {subject.easyWrongCount}개 · 무응답 {subject.unansweredCount}개</p>
       {subject.withheld ? <p className="admin-notice">응시율 또는 비교 기록이 부족해 추세 판정을 보류합니다. 아래는 실제 응시한 문항의 복습 목록입니다.</p> : <p className="admin-help">과목별 이동평균과 추세는 전체 리포트의 상세 분석에서 확인하세요.</p>}
       <p className="admin-help">{subject.topics.length ? '반 평균보다 낮았던 단원 (격차가 큰 순): ' + subject.topics.map(topic => `${topic.topic} ${number(topic.gap)}점, ${topic.count}회`).join(' / ') : '반 평균보다 낮은 단원이 없거나 단원 비교 자료가 없습니다.'} 단원별 비교는 입력된 라벨 기준이며, 한 번의 결과만으로 지속적 약점이라고 확정하지 않습니다.</p>
       <div className="admin-table-frame"><table><thead><tr><th>시험일</th><th>진도</th><th>쉬운 문항 오답</th><th>무응답</th></tr></thead><tbody>{subject.tasks.filter(task => task.easyWrong.length || task.unanswered.length).map(task => <tr key={task.date}><th scope="row">{task.date}</th><td>{task.topic || '진도 라벨 없음'}</td><td>{items(task.easyWrong)}</td><td>{items(task.unanswered)}</td></tr>)}</tbody></table></div>

@@ -11,6 +11,11 @@ import {
   parseDelimitedLine,
   readTextFileWithEncoding,
 } from "@/lib/csv";
+import {
+  describeExamScoreApply,
+  parseExamScoreRows,
+  type ParseExamScoreResult,
+} from "@/lib/exam-score-import";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 import type { MorningExamDailySheet, MorningExamWeeklySummary } from "@/lib/services/morning-exam.service";
 
@@ -87,6 +92,11 @@ export function MorningExamScoreManager({
   const [weeklySummary, setWeeklySummary] = useState<MorningExamWeeklySummary | null>(null);
   const [isLoadingWeekly, setIsLoadingWeekly] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [importReport, setImportReport] = useState<{
+    matchedCount: number;
+    unmatchedStudentNumbers: string[];
+    usedHeader: boolean;
+  } | null>(null);
   const pasteRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,6 +132,8 @@ export function MorningExamScoreManager({
       const data: MorningExamDailySheet = await response.json();
       if (!response.ok) throw new Error((data as unknown as { error: string }).error);
       setRows(sheetToRows(data));
+      // 다른 날짜·과목을 불러오면 이전 붙여넣기 결과는 더 이상 의미가 없다.
+      setImportReport(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "성적 시트를 불러오지 못했습니다.");
     } finally {
@@ -176,34 +188,58 @@ export function MorningExamScoreManager({
     );
   }
 
+  /** 붙여넣기와 CSV가 같은 파서·같은 매칭 보고를 쓰도록 한 곳에 모았다. */
+  function applyParsedScoreRows(parsed: ParseExamScoreResult, sourceLabel: string) {
+    if (parsed.rows.length === 0) {
+      setImportReport(null);
+      toast.error("읽을 수 있는 성적 행이 없습니다. 수험번호와 점수가 각각 다른 칸에 있는지 확인해 주세요.");
+      return;
+    }
+
+    const updatedRows = [...rows];
+    const unmatchedStudentNumbers: string[] = [];
+    let matchedCount = 0;
+
+    for (const row of parsed.rows) {
+      const idx = updatedRows.findIndex((r) => r.studentNumber === row.studentNumber);
+
+      if (idx < 0) {
+        unmatchedStudentNumbers.push(row.studentNumber);
+        continue;
+      }
+
+      updatedRows[idx] = {
+        ...updatedRows[idx],
+        score: row.score,
+        notes: row.notes || updatedRows[idx].notes,
+      };
+      matchedCount += 1;
+    }
+
+    setRows(updatedRows);
+
+    const report = { matchedCount, unmatchedStudentNumbers, usedHeader: parsed.usedHeader };
+    setImportReport(report);
+
+    const message = `${sourceLabel} ${describeExamScoreApply(report)}`;
+    if (matchedCount === 0) {
+      toast.error(message);
+    } else {
+      toast.success(message);
+    }
+  }
+
   function handlePaste() {
     const text = pasteRef.current?.value ?? "";
     if (!text.trim()) return;
 
-    const lines = text.trim().split("\n");
-    const updatedRows = [...rows];
+    const lines = text
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.split("\t"));
+    applyParsedScoreRows(parseExamScoreRows(lines), "붙여넣기에서");
 
-    for (const line of lines) {
-      const cols = line.split("\t");
-      if (cols.length < 1) continue;
-
-      const studentNumber = cols[0]?.trim();
-      const scoreValue = cols.length >= 3 ? cols[2]?.trim() : cols.length >= 2 ? cols[1]?.trim() : "";
-      const notesValue = cols.length >= 4 ? cols[3]?.trim() : "";
-
-      const idx = updatedRows.findIndex((r) => r.studentNumber === studentNumber);
-      if (idx >= 0) {
-        updatedRows[idx] = {
-          ...updatedRows[idx],
-          score: scoreValue ?? updatedRows[idx].score,
-          notes: notesValue || updatedRows[idx].notes,
-        };
-      }
-    }
-
-    setRows(updatedRows);
     if (pasteRef.current) pasteRef.current.value = "";
-    toast.success("붙여넣기 데이터를 반영했습니다.");
   }
 
   function handleCsvUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -215,40 +251,11 @@ export function MorningExamScoreManager({
       if (!text) return;
 
       const delimiter = inferDelimitedFileDelimiter(text);
-      const lines = text.trim().split(/\r?\n/);
-      const updatedRows = [...rows];
-      let matchCount = 0;
-
-      for (const line of lines) {
-        const cols = parseDelimitedLine(line, delimiter);
-        if (cols.length < 2) continue;
-
-        const studentNumber = cols[0]?.trim();
-        if (
-          !studentNumber ||
-          studentNumber === "수험번호" ||
-          studentNumber.toLowerCase().startsWith("sep=")
-        ) {
-          continue;
-        }
-
-        const hasNameColumn = cols.length >= 4;
-        const scoreValue = hasNameColumn ? cols[2]?.trim() : cols[1]?.trim();
-        const notesValue = hasNameColumn ? cols[3]?.trim() : cols[2]?.trim() ?? "";
-
-        const idx = updatedRows.findIndex((r) => r.studentNumber === studentNumber);
-        if (idx >= 0) {
-          updatedRows[idx] = {
-            ...updatedRows[idx],
-            score: scoreValue ?? updatedRows[idx].score,
-            notes: notesValue || updatedRows[idx].notes,
-          };
-          matchCount += 1;
-        }
-      }
-
-      setRows(updatedRows);
-      toast.success(`CSV 파일에서 ${matchCount}명의 성적을 반영했습니다.`);
+      const lines = text
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => parseDelimitedLine(line, delimiter));
+      applyParsedScoreRows(parseExamScoreRows(lines), "CSV 파일에서");
     })().catch((error) => {
       toast.error(error instanceof Error ? error.message : "CSV 파일을 읽지 못했습니다.");
     });
@@ -383,8 +390,8 @@ export function MorningExamScoreManager({
             <div className="mt-3 space-y-3">
               <div>
                 <p className="admin-help">
-                  엑셀에서 &quot;수험번호 / 이름 / 점수 / 비고&quot; 순서로 복사한 뒤 아래 영역에 붙여넣으세요.
-                  수험번호로 학생을 매칭합니다.
+                  머리글(수험번호·객관식 등)까지 함께 복사하면 열 위치를 자동으로 찾으므로 채점표를 그대로 붙여넣어도 됩니다.
+                  머리글이 없으면 &quot;수험번호 / 이름 / 점수 / 비고&quot; 순서로 읽습니다. 수험번호로 학생을 매칭합니다.
                 </p>
                 <textarea
                   ref={pasteRef}
@@ -423,6 +430,34 @@ export function MorningExamScoreManager({
                   />
                 </label>
               </div>
+
+              {importReport ? (
+                <div className="space-y-2">
+                  <p
+                    className={`admin-notice font-medium ${
+                      importReport.matchedCount === 0
+                        ? "admin-notice-warning"
+                        : "admin-notice-success"
+                    }`}
+                  >
+                    {describeExamScoreApply(importReport)}
+                    {importReport.usedHeader ? " (머리글에서 열 위치를 읽었습니다.)" : ""}
+                  </p>
+                  {importReport.unmatchedStudentNumbers.length > 0 ? (
+                    <details className="rounded-lg border border-slate-200 bg-white p-3">
+                      <summary className="cursor-pointer text-sm font-medium text-slate-700">
+                        명단에 없는 수험번호 {importReport.unmatchedStudentNumbers.length}건
+                      </summary>
+                      <p className="admin-help mt-2 break-words font-mono">
+                        {importReport.unmatchedStudentNumbers.join(", ")}
+                      </p>
+                      <p className="admin-help mt-2">
+                        자습반 대상 학생이라면 학생 명단에서 먼저 등록해 주세요.
+                      </p>
+                    </details>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </details>
         </div>

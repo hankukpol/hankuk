@@ -37,6 +37,33 @@ export const studentUpsertSchema = z
     }
   });
 
+export const studentBulkCreateSchema = z.object({
+  /** 등록하는 학생 전원에게 같은 직렬을 적용한다. 시험 템플릿이 직렬로 대상자를 고른다. */
+  studyTrack: z
+    .string()
+    .trim()
+    .max(100, "직렬은 100자 이하여야 합니다.")
+    .nullable()
+    .optional(),
+  rows: z
+    .array(
+      z.object({
+        studentNumber: z
+          .string()
+          .trim()
+          .min(1, "수험번호를 입력해 주세요.")
+          .max(50, "수험번호는 50자 이하여야 합니다."),
+        name: z
+          .string()
+          .trim()
+          .min(1, "학생 이름을 입력해 주세요.")
+          .max(50, "학생 이름은 50자 이하여야 합니다."),
+      }),
+    )
+    .min(1, "등록할 학생을 한 명 이상 선택해 주세요.")
+    .max(500, "한 번에 등록할 수 있는 인원은 500명까지입니다."),
+});
+
 export const studentWithdrawSchema = z.object({
   withdrawnNote: z.string().trim().min(1, "퇴실 사유를 입력해 주세요."),
 });

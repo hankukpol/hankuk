@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { studentUpsertSchema, studentWithdrawSchema, studentMemoSchema } from "../../lib/student-schemas";
+import { studentUpsertSchema, studentWithdrawSchema, studentMemoSchema, studentBulkCreateSchema } from "../../lib/student-schemas";
 import { staffCreateSchema, staffUpdateSchema, staffPasswordResetSchema } from "../../lib/division-staff-schemas";
 import { adminAccountCreateSchema, adminAccountUpdateSchema, adminPasswordResetSchema, divisionCreateSchema, divisionUpdateSchema } from "../../lib/super-admin-schemas";
 import { rejectsAt } from "./schema-assertions";
@@ -107,4 +107,34 @@ test("division creation accepts runtime tenant slugs, hex colors and default ord
 test("division updates preserve disabled state and do not change a slug", () => {
   assert.deepEqual(divisionUpdateSchema.parse({ ...division, isActive: false, displayOrder: 4, slug: "injected" }), { ...division, isActive: false, displayOrder: 4 });
   for (const displayOrder of [-1, 0.5, "1"]) rejectsAt(divisionUpdateSchema, { ...division, displayOrder }, "displayOrder");
+});
+
+test("student bulk creation trims rows, requires both fields and caps the batch size", () => {
+  assert.deepEqual(
+    studentBulkCreateSchema.parse({ rows: [{ studentNumber: " 20550 ", name: " 박성빈 " }] }),
+    { rows: [{ studentNumber: "20550", name: "박성빈" }] },
+  );
+  rejectsAt(studentBulkCreateSchema, { rows: [] }, "rows");
+  rejectsAt(studentBulkCreateSchema, { rows: [{ studentNumber: "20550", name: " " }] }, "rows.0.name");
+  rejectsAt(studentBulkCreateSchema, { rows: [{ studentNumber: "", name: "박성빈" }] }, "rows.0.studentNumber");
+  rejectsAt(
+    studentBulkCreateSchema,
+    { rows: Array.from({ length: 501 }, (_, i) => ({ studentNumber: String(i), name: "학생" })) },
+    "rows",
+  );
+  assert.equal(
+    studentBulkCreateSchema.safeParse({
+      rows: Array.from({ length: 500 }, (_, i) => ({ studentNumber: String(i), name: "학생" })),
+    }).success,
+    true,
+  );
+});
+
+test("student bulk creation carries an optional shared study track", () => {
+  assert.deepEqual(
+    studentBulkCreateSchema.parse({ studyTrack: " 경찰 ", rows: [{ studentNumber: "20550", name: "박성빈" }] }),
+    { studyTrack: "경찰", rows: [{ studentNumber: "20550", name: "박성빈" }] },
+  );
+  assert.equal(studentBulkCreateSchema.parse({ studyTrack: null, rows: [{ studentNumber: "1", name: "가" }] }).studyTrack, null);
+  rejectsAt(studentBulkCreateSchema, { studyTrack: "가".repeat(101), rows: [{ studentNumber: "1", name: "가" }] }, "studyTrack");
 });

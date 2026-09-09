@@ -1287,7 +1287,15 @@ async function getStudentDetailLegacy(divisionSlug: string, studentId: string) {
   }
 }
 
-export async function createStudent(divisionSlug: string, input: StudentUpsertInput) {
+/**
+ * 학생 1명을 생성하고 id만 돌려준다.
+ * 일괄 등록은 학생마다 상세 조회를 다시 하지 않도록 이 함수를 직접 사용한다.
+ */
+async function createStudentRecord(
+  divisionSlug: string,
+  input: StudentUpsertInput,
+  options?: { skipRevalidate?: boolean },
+): Promise<{ id: string }> {
   const name = normalizeText(input.name);
   const studentNumber = normalizeText(input.studentNumber);
   const studyTrack = normalizeOptionalText(input.studyTrack);
@@ -1321,7 +1329,8 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
       const now = new Date().toISOString();
       const normalizedCourseStartDate = ensureCourseStartDate(courseStartDate, now);
       const student: MockStudentRecord = {
-        id: `mock-student-${divisionSlug}-${Date.now()}`,
+        // 일괄 등록은 같은 밀리초에 여러 명을 만들므로 무작위 접미사로 ID 충돌을 막는다.
+        id: `mock-student-${divisionSlug}-${Date.now()}-${randomUUID().slice(0, 8)}`,
         divisionId: divisionId ?? `div-${divisionSlug}`,
         divisionSlug,
         name,
@@ -1347,7 +1356,7 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
       state.studentsByDivision[divisionSlug] = [...divisionStudents, student] as MockStudentRecord[];
       return student.id;
     });
-    return getStudentDetail(divisionSlug, studentId);
+    return { id: studentId };
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
@@ -1455,8 +1464,112 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
       return { id: legacyStudentId };
     },
   });
-  revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
-  return getStudentDetail(divisionSlug, student.id);
+  if (!options?.skipRevalidate) {
+    revalidateDivisionOperationalViews(divisionSlug, { studentId: student.id });
+  }
+
+  return { id: student.id };
+}
+
+export async function createStudent(divisionSlug: string, input: StudentUpsertInput) {
+  const { id } = await createStudentRecord(divisionSlug, input);
+  return getStudentDetail(divisionSlug, id);
+}
+
+export type BulkStudentInputRow = {
+  studentNumber: string;
+  name: string;
+};
+
+export type BulkStudentResultItem = {
+  rowNumber: number;
+  studentNumber: string;
+  name: string;
+  result: "CREATED" | "DUPLICATE" | "FAILED";
+  message: string | null;
+};
+
+export type BulkStudentResult = {
+  createdCount: number;
+  duplicateCount: number;
+  failedCount: number;
+  items: BulkStudentResultItem[];
+};
+
+/** 한 번에 등록할 수 있는 최대 인원. */
+export const BULK_STUDENT_LIMIT = 500;
+
+/**
+ * 수험번호+이름 목록을 한 번에 등록한다.
+ * 이미 등록된 수험번호는 건너뛰고(DUPLICATE), 실패한 행도 나머지 등록을 막지 않는다.
+ * studyTrack은 등록하는 전원에게 같은 값으로 적용된다. 시험 템플릿이 직렬로
+ * 응시 대상자를 고르므로, 이 값이 비면 성적 입력 화면에 학생이 뜨지 않을 수 있다.
+ */
+export async function createStudentsBulk(
+  divisionSlug: string,
+  rows: BulkStudentInputRow[],
+  studyTrack?: string | null,
+): Promise<BulkStudentResult> {
+  if (rows.length === 0) {
+    throw badRequest("등록할 학생이 없습니다.");
+  }
+
+  if (rows.length > BULK_STUDENT_LIMIT) {
+    throw badRequest(`한 번에 등록할 수 있는 인원은 ${BULK_STUDENT_LIMIT}명까지입니다.`);
+  }
+
+  const existing = await listStudents(divisionSlug);
+  const takenNumbers = new Set(existing.map((student) => student.studentNumber));
+  const items: BulkStudentResultItem[] = [];
+  let createdCount = 0;
+  let duplicateCount = 0;
+  let failedCount = 0;
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const studentNumber = normalizeText(row.studentNumber);
+    const name = normalizeText(row.name);
+    const rowNumber = index + 1;
+
+    // 이미 등록된 번호와 이번 요청 안에서 중복된 번호를 같은 방식으로 건너뛴다.
+    if (takenNumbers.has(studentNumber)) {
+      duplicateCount += 1;
+      items.push({
+        rowNumber,
+        studentNumber,
+        name,
+        result: "DUPLICATE",
+        message: "이미 등록된 수험번호입니다.",
+      });
+      continue;
+    }
+
+    try {
+      await createStudentRecord(
+        divisionSlug,
+        { name, studentNumber, studyTrack: studyTrack ?? null },
+        { skipRevalidate: true },
+      );
+      takenNumbers.add(studentNumber);
+      createdCount += 1;
+      items.push({ rowNumber, studentNumber, name, result: "CREATED", message: null });
+    } catch (error) {
+      failedCount += 1;
+      items.push({
+        rowNumber,
+        studentNumber,
+        name,
+        result: "FAILED",
+        message: error instanceof Error ? error.message : "등록에 실패했습니다.",
+      });
+    }
+  }
+
+  if (createdCount > 0) {
+    revalidateDivisionOperationalViews(divisionSlug);
+  }
+
+  return { createdCount, duplicateCount, failedCount, items };
 }
 
 export async function updateStudent(

@@ -24,6 +24,7 @@ import {
   Search,
   ShieldAlert,
   Trash2,
+  Upload,
   Users,
   X,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import {
 import type { SeatOptionItem } from "@/lib/services/seat.service";
 import type { StudentListItem } from "@/lib/services/student.service";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
+import { getKstTodayYmd } from "@/lib/date-utils";
 
 type StudentListManagerProps = {
   divisionSlug: string;
@@ -80,6 +82,21 @@ const LazyStudentForm = dynamic(
     loading: () => (
       <div className="admin-notice">
         학생 등록 폼을 불러오는 중입니다.
+      </div>
+    ),
+  },
+);
+
+const LazyStudentBulkImportPanel = dynamic(
+  () =>
+    import("@/components/students/StudentBulkImportPanel").then(
+      (mod) => mod.StudentBulkImportPanel,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="admin-notice">
+        일괄 등록 화면을 불러오는 중입니다.
       </div>
     ),
   },
@@ -134,6 +151,7 @@ export function StudentListManager({
     getValidQueryValue(initialSearchParams.sort ?? null, sortFilterValues, "studentNumber"),
   );
   const [isCreateOpen, setIsCreateOpen] = useState(initialCreateOpen);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StudentListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
@@ -144,7 +162,7 @@ export function StudentListManager({
   );
 
   // 서버에서 전달된 today가 없으면 클라이언트에서 한 번만 계산 (hydration 이후)
-  const [stableToday] = useState(() => today ?? new Date().toISOString().slice(0, 10));
+  const [stableToday] = useState(() => today ?? getKstTodayYmd());
 
   const filteredStudents = useMemo(() => {
     const todayMs = new Date(stableToday + "T00:00:00Z").getTime();
@@ -284,6 +302,10 @@ export function StudentListManager({
     updatePanelQuery(false);
   }
 
+  function closeBulkImportPanel() {
+    setIsBulkImportOpen(false);
+  }
+
   async function handleDeleteStudent(event: FormEvent) {
     event.preventDefault();
     if (!deleteTarget) return;
@@ -403,14 +425,24 @@ export function StudentListManager({
               </button>
 
               {canManage ? (
-                <button
-                  type="button"
-                  onClick={openCreatePanel}
-                  className="admin-button admin-button-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                  학생 등록
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkImportOpen(true)}
+                    className="admin-button"
+                  >
+                    <Upload className="h-4 w-4" />
+                    일괄 등록
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCreatePanel}
+                    className="admin-button admin-button-primary"
+                  >
+                    <Plus className="h-4 w-4" />
+                    학생 등록
+                  </button>
+                </>
               ) : null}
             </div>
           </div>
@@ -756,6 +788,24 @@ export function StudentListManager({
             onSuccess={() => {
               closeCreatePanel();
             }}
+          />
+        </SlideOver>
+      ) : null}
+
+      {canManage ? (
+        <SlideOver
+          open={isBulkImportOpen}
+          onClose={closeBulkImportPanel}
+          badge="학생 등록"
+          title="학생 일괄 등록"
+          description="엑셀에서 수험번호와 이름을 붙여넣고, 자습반 대상자만 골라 한 번에 등록합니다."
+        >
+          <LazyStudentBulkImportPanel
+            divisionSlug={divisionSlug}
+            existingStudentNumbers={initialStudents.map((student) => student.studentNumber)}
+            studyTrackOptions={studyTrackOptions}
+            onClose={closeBulkImportPanel}
+            onImported={() => router.refresh()}
           />
         </SlideOver>
       ) : null}

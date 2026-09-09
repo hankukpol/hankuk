@@ -19,7 +19,7 @@ export function RegularStudentReport({ report, mode, section }: { report: Report
   const trend = report.trend.filter((result) => result.examTypeId === session.examTypeId && result.examDate && result.examDate.slice(0, 10) <= session.examDate.slice(0, 10) && (!history || result.examDate.slice(0, 10) >= history.from));
   const hasTrend = report.hasPreviousExam !== false && new Set(trend.map((result) => result.examDate!.slice(0, 10))).size >= 2;
   const rank = (entry: { rank: number | null; count: number } | null) => entry ? `${value(entry.rank, "등")} (n=${entry.count})` : "지역 정보 없음";
-  return <div className="admin-flat-page">
+  return <div className="admin-flat-page" data-report-root>
     {!section && <ReportPrintButton />}
     <header>{!section && <h2 className="admin-section-title">{session.examTypeName} {session.examDate.slice(0, 10)} 분석</h2>}<p className="admin-help">시험일 {session.examDate.slice(0, 10)}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
     {show("diagnosis") && <RegularLearningSummary report={report} />}

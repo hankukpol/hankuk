@@ -7,7 +7,13 @@ export function ReportPrintButton() {
   const anchor = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   function openPrint(summaryOnly = false) {
-    const source = anchor.current?.parentElement;
+    // 리포트는 data-report-root 로 자기를 밝힌다.
+    // 예전에는 parentElement 를 리포트로 가정했는데, 개인 분석 화면이 이 버튼을
+    // 제목 줄 툴바로 옮기면서 그 가정이 깨져 툴바만 인쇄됐다(표·차트 0개).
+    const source =
+      anchor.current?.closest("[data-report-root]") ??
+      document.querySelector("[data-report-root]") ??
+      anchor.current?.parentElement;
     if (!source) return;
     const popup = window.open("", "_blank", "width=960,height=900");
     if (!popup) { setError("팝업이 차단되었습니다. 이 사이트의 팝업을 허용한 뒤 다시 눌러주세요."); return; }

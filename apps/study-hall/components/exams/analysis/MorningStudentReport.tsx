@@ -15,7 +15,7 @@ export function MorningStudentReport({ report, mode, section }: { report: Report
   const { summary, settings } = report;
   const lowParticipation = summary.attendanceRatePercent != null && summary.attendanceRatePercent < settings.morning.attendanceRatePercent;
   const subjectName = (id: string) => report.subjectDefinitions.find((subject) => subject.id === id)?.name ?? "과목 정보 없음";
-  return <div className="admin-flat-page">
+  return <div className="admin-flat-page" data-report-root>
     {!section && <ReportPrintButton />}
     <header>{!section && <h2 className="admin-section-title">{report.examType.name} 개인 분석</h2>}<p className="admin-help">{report.range.from} ~ {report.range.to}{mode === "admin" && report.student.name ? ` · ${report.student.name}` : ""}</p></header>
     {show("diagnosis") && <MorningLearningSummary report={report} />}

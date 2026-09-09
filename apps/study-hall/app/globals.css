@@ -472,6 +472,82 @@ body {
     overflow-wrap: anywhere;
   }
 
+  /* 접이식 영역 (DESIGN.md 5.7)
+     여는 손잡이는 실행 버튼이 아니다. .admin-button 을 summary 에 씌우면 화면마다
+     누를 것이 두 배로 늘어 무엇이 작업인지 흐려진다. 화살표가 붙은 전체 폭 줄로 둔다. */
+  .admin-disclosure {
+    border: 1px solid var(--admin-line);
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface);
+  }
+
+  .admin-disclosure > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--admin-control-height);
+    border-radius: calc(var(--admin-radius) - 1px);
+    padding: 0 16px;
+    color: var(--admin-text);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+    list-style: none;
+    cursor: pointer;
+    transition: background 150ms ease-out;
+  }
+
+  .admin-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* 삼각형은 닫힘/열림을 한눈에 준다. 아이콘 라이브러리를 끌어오지 않는다. */
+  .admin-disclosure > summary::before {
+    content: "";
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid var(--admin-text-muted);
+    transition: transform 150ms ease-out;
+  }
+
+  .admin-disclosure[open] > summary {
+    border-bottom: 1px solid var(--admin-line-soft);
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  .admin-disclosure[open] > summary::before {
+    transform: rotate(90deg);
+  }
+
+  .admin-disclosure > summary:hover {
+    background: var(--admin-surface-soft);
+  }
+
+  .admin-disclosure-body {
+    padding: 16px;
+  }
+
+  /* 접이식 안의 접이식은 상자를 하나 더 만들지 않는다 (5.2 카드 안 카드 금지).
+     줄로만 나뉘는 목록이 되어야 날짜별 기록이 층층이 겹쳐 보이지 않는다. */
+  .admin-disclosure .admin-disclosure {
+    border: 0;
+    border-top: 1px solid var(--admin-line-soft);
+    border-radius: 0;
+    background: none;
+  }
+
+  .admin-disclosure .admin-disclosure > summary {
+    border-radius: 0;
+  }
+
+  .admin-disclosure-body > .admin-disclosure:first-child {
+    border-top: 0;
+  }
+
   .admin-empty-state {
     padding: 32px 24px;
     background: var(--admin-surface-soft);
@@ -889,7 +965,11 @@ body {
     background: var(--admin-surface-muted);
   }
 
+  /* 비활성은 위계와 상관없이 하나의 모양으로 모인다 (DESIGN.md 5.6).
+     테두리를 함께 되돌리지 않으면 primary/danger 는 회색 면에 강조색 윤곽만 남아
+     칠하다 만 버튼처럼 보인다. */
   .admin-button:disabled {
+    border-color: var(--admin-line-soft);
     background: var(--admin-surface-muted);
     color: var(--admin-text-disabled);
     cursor: not-allowed;
@@ -1429,6 +1509,49 @@ body {
     line-height: 1.3;
   }
 
+  /* 표처럼 읽히는 폼 (DESIGN.md 5.7)
+     항목이 서넛만 되어도 라벨 위·입력 아래로만 쌓으면 어디까지가 한 항목인지
+     선이 없어 밋밋해진다. 라벨 열을 고정 폭으로 세워 항목을 세로로 맞추고,
+     행 사이 line-soft 로 경계를 준다. 바깥 테두리는 .admin-panel 이 그린다. */
+  .admin-form-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    border-bottom: 1px solid var(--admin-line-soft);
+    padding: 12px 20px;
+  }
+
+  .admin-form-row:last-of-type {
+    border-bottom: 0;
+  }
+
+  .admin-form-row-label {
+    flex: 0 0 160px;
+    /* 44px 컨트롤의 첫 줄에 라벨을 맞춘다. */
+    padding-top: 13px;
+  }
+
+  .admin-form-row-control {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* 좁은 화면에서 160px 라벨 열을 유지하면 입력이 반쪽이 된다.
+     기본 규칙과 특이도가 같으므로 반드시 그 뒤에 둔다. 앞에 두면 gap·padding 이
+     기본값에 되덮여 방향만 바뀐 채로 남는다. */
+  @media (max-width: 767px) {
+    .admin-form-row {
+      flex-direction: column;
+      gap: 8px;
+      padding-inline: 16px;
+    }
+
+    .admin-form-row-label {
+      flex: none;
+      padding-top: 0;
+    }
+  }
+
   .admin-metric-strip {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1585,6 +1708,52 @@ textarea {
   resize: vertical;
 }
 
+/* 파일 선택은 위 기본값에서 제외돼 브라우저 기본 모양 그대로 남아 있었다.
+   바깥 상자는 다른 입력과 같게 두고, 안쪽 기본 버튼만 보조 버튼 규격으로 맞춘다.
+   선택자 특이도는 위 기본값과 같게 유지해 화면별 Tailwind 유틸이 계속 이긴다. */
+input:where([type="file"]) {
+  width: 100%;
+  min-height: var(--admin-control-height);
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  /* 안쪽 버튼 32px + 위아래 5px = 다른 입력과 같은 44px */
+  padding: 5px 12px;
+  background: var(--admin-surface);
+  color: var(--admin-text-secondary);
+  font-size: var(--admin-type-body);
+  line-height: 32px;
+  transition: border-color 150ms ease-out;
+}
+
+input:where([type="file"])::file-selector-button {
+  height: 32px;
+  margin-inline-end: 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  padding: 0 12px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.admin-shell input[type="file"]::file-selector-button:hover {
+  background: var(--admin-surface-soft);
+}
+
+.admin-shell input[type="file"]:focus-visible {
+  border-color: var(--admin-accent);
+}
+
+.admin-shell input[type="file"]:disabled::file-selector-button {
+  border-color: var(--admin-line-soft);
+  color: var(--admin-text-disabled);
+  cursor: not-allowed;
+}
+
 .admin-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
 .admin-shell select:focus,
 .admin-shell textarea:focus {
@@ -1601,6 +1770,14 @@ textarea {
 
 :where(.admin-shell) ::placeholder {
   color: var(--admin-text-disabled);
+}
+
+/* 검색 입력의 브라우저 기본 지우기 표시를 없앤다. 같은 자리에 우리 지우기 버튼이 있어
+   그대로 두면 X 가 두 개로 보인다. */
+.admin-shell input[type="search"]::-webkit-search-cancel-button,
+.admin-shell input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .admin-shell input[type="checkbox"],
@@ -1963,10 +2140,6 @@ body:has(.admin-shell) {
   overflow-wrap: normal;
 }
 
-.admin-shell .admin-button:disabled {
-  opacity: 0.5;
-}
-
 /* --- 표 --- */
 
 .admin-shell table {
@@ -2032,6 +2205,46 @@ body:has(.admin-shell) {
 
 .admin-shell tbody tr:hover {
   background-color: var(--admin-accent-soft);
+}
+
+/* 행 머리글(th[scope="row"])은 표 머리글이 아니라 이름 열이다.
+   기본 th 규칙의 accent-tint 배경·가운데 정렬을 되돌려 .admin-table-name 과 같게 만든다. */
+.admin-shell tbody th {
+  background: var(--admin-surface);
+  font-weight: 400;
+  text-align: left;
+}
+
+.admin-shell tbody tr:hover th {
+  background: transparent;
+}
+
+/* 표 안에서 상세로 이동하는 이름·제목. 셀 안에 버튼 상자를 만들지 않는다.
+   .admin-button 규격(테두리·44/36px·라운드)을 되돌려 글자만 남긴다. */
+/* 인쇄물에서만 쓰는 기입란. 화면에서는 밑줄만 남아 읽을 것이 없다.
+   인쇄 창은 자체 스타일시트를 쓰므로 이 규칙이 따라가지 않는다. */
+.admin-shell .admin-print-only {
+  display: none;
+}
+
+.admin-shell .admin-table-link {
+  display: inline;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+  color: var(--admin-accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: inherit;
+  text-underline-offset: 2px;
+  white-space: inherit;
+}
+
+.admin-shell .admin-table-link:is(:hover, :focus-visible):not(:disabled) {
+  background: none;
+  text-decoration: underline;
 }
 
 /* 셀 안의 flex 자식까지 같은 방향으로 맞춘다. */

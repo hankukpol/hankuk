@@ -425,6 +425,7 @@ model ExamType {
 }
 
 model ExamSubject {
+  alternateGroup String? @map("alternate_group")
   id            String             @id @default(cuid())
   examTypeId    String             @map("exam_type_id")
   name          String
@@ -547,6 +548,7 @@ model Seat {
 }
 
 model DivisionSettings {
+  examAnalysis Json @default("{}") @map("exam_analysis")
   id                          String   @id @default(cuid())
   divisionId                  String   @unique @map("division_id")
   warnLevel1                  Int      @default(10) @map("warn_level1")
@@ -709,4 +711,85 @@ model ChatReadState {
   @@unique([divisionId, adminId])
   @@index([adminId])
   @@map("chat_read_states")
+}
+
+
+/// Scalar foreign keys are enforced by the Phase 1 SQL migration; Student stays unchanged.
+model ExamSession {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  examTypeId String @map("exam_type_id")
+  identityKey String @map("identity_key")
+  primarySubjectId String? @map("primary_subject_id")
+  examDate DateTime @map("exam_date") @db.Date
+  topic String?
+  itemCount Int @map("item_count")
+  fullScore Float @map("full_score")
+  externalCohortSize Int @map("external_cohort_size")
+  externalStats Json @map("external_stats")
+  sourceFileName String @map("source_file_name")
+  importedById String @map("imported_by_id")
+  importedAt DateTime @default(now()) @map("imported_at")
+
+  @@unique([divisionId, examTypeId, identityKey], map: "exam_sessions_identity_key")
+  @@unique([examTypeId, examDate, primarySubjectId], map: "exam_sessions_date_subject_key")
+  @@unique([id, divisionId], map: "exam_sessions_id_division_key")
+  @@index([divisionId, examDate])
+  @@map("exam_sessions")
+}
+
+model ExamSessionItem {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  sessionId String @map("session_id")
+  subjectId String @map("subject_id")
+  itemNo Int @map("item_no")
+  position Int
+  answerKey String @map("answer_key")
+  points Float
+  correctRatePct Float @map("correct_rate_pct")
+  choiceRates Json @map("choice_rates")
+  mostCommonWrong String? @map("most_common_wrong")
+
+  @@unique([sessionId, subjectId, itemNo])
+  @@unique([sessionId, divisionId, subjectId, itemNo], map: "exam_session_items_scope_key")
+  @@index([divisionId, sessionId])
+  @@map("exam_session_items")
+}
+
+model ExamSessionParticipant {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  sessionId String @map("session_id")
+  studentId String @map("student_id")
+  region String?
+  externalRank Int? @map("external_rank")
+  externalPercentile Float? @map("external_percentile")
+  regionalRank Int? @map("regional_rank")
+  subjectScores Json @map("subject_scores")
+  totalScore Float @map("total_score")
+  isPartial Boolean @default(false) @map("is_partial")
+  derivedScoreId String? @map("derived_score_id")
+  derivedScoreSnapshot Json? @map("derived_score_snapshot")
+
+  @@unique([sessionId, studentId])
+  @@unique([sessionId, divisionId, studentId], map: "exam_session_participants_scope_key")
+  @@index([divisionId, studentId])
+  @@map("exam_session_participants")
+}
+
+model ExamItemResponse {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  sessionId String @map("session_id")
+  studentId String @map("student_id")
+  subjectId String @map("subject_id")
+  itemNo Int @map("item_no")
+  answer String?
+  isCorrect Boolean @map("is_correct")
+
+  @@unique([sessionId, studentId, subjectId, itemNo])
+  @@index([studentId, sessionId])
+  @@index([divisionId, sessionId])
+  @@map("exam_item_responses")
 }

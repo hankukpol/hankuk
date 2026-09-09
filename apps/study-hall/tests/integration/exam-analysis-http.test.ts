@@ -1,0 +1,90 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readMockState } from "../../lib/mock-store";
+
+const base = process.env.TEST_BASE_URL;
+if (!base || !/^http:\/\/127\.0\.0\.1:\d+$/.test(base) || process.env.MOCK_MODE !== "true") throw new Error("Isolated local mock runtime required");
+const cookieFrom = (response: Response) => response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+function assertPrivate(response: Response) {
+  const directives = new Set(response.headers.get("cache-control")?.split(",").map(value => value.trim()));
+  assert.ok(directives.has("private") && directives.has("no-store"));
+  assert.ok(!directives.has("public"));
+}
+async function login(email: string) {
+  const response = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({email,password:"fixture-password"}) });
+  assert.equal(response.status,200); return cookieFrom(response);
+}
+test("regular analysis uses imported results, masks student reports and rejects IDOR", async () => {
+  const admin = await login("admin-police@mock.local");
+  const state = await readMockState();
+  const [student,other] = state.studentsByDivision.police;
+  const query = "examTypeId=import-http-regular&examDate=2026-08-15";
+  const get = (path: string, cookie = admin) => fetch(`${base}/api/police/exams/analysis${path}`, {headers:{cookie}});
+  const sessions = await get("/sessions?examTypeId=import-http-regular");
+  assert.equal(sessions.status,200); assertPrivate(sessions);
+  assert.equal((await sessions.json()).sessions.length,1);
+  const response = await get(`?${query}`);
+  assert.equal(response.status,200);
+  const {analysis} = await response.json();
+  assert.equal(analysis.session.fullScore,250); assert.equal(analysis.internal.count,5);
+  assert.equal(analysis.internal.isReliable,false); assert.equal(analysis.ranking.length,5);
+  assert.equal((await get("?examTypeId=import-http-regular&examDate=0")).status,400);
+  assert.equal((await get("?examTypeId=missing&examDate=2026-08-15")).status,404);
+  const studentLogin = await fetch(`${base}/api/auth/student-login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({division:"police",studentNumber:student.studentNumber,name:student.name})});
+  assert.equal(studentLogin.status,200); const studentCookie=cookieFrom(studentLogin);
+  const own=await get(`/student/${student.id}?${query}`,studentCookie);
+  assert.equal(own.status,200); assertPrivate(own);
+  const {report}=await own.json();
+  assert.equal(report.student.name,null); assert.match(report.student.studentNumber,/^\d{2}\*+$/);
+  for(const competitor of report.competitors) assert.match(competitor.studentNumber,/^\d{2}\*+$/);
+  assert.equal(JSON.stringify(report).includes(other.name),false);
+  assert.equal((await get(`/student/${other.id}?${query}`,studentCookie)).status,403);
+  assert.equal((await get(`?${query}`,studentCookie)).status,401);
+  const assistant=await login("assistant-police@mock.local");
+  assert.equal((await get(`?${query}`,assistant)).status,403);
+  assert.equal((await get(`/student/${student.id}?${query}`,assistant)).status,403);
+});
+
+test("morning analysis exposes own full grading and denies assistants, foreign students and invalid ranges", async () => {
+  const admin = await login("admin-police@mock.local");
+  const state = await readMockState();
+  const [student, other] = state.studentsByDivision.police;
+  const query = "examTypeId=import-http-morning&from=2026-07-01&to=2026-09-08";
+  const get = (path: string, cookie = admin) => fetch(`${base}/api/police/morning-exams/analysis${path}`, { headers: { cookie } });
+  const cohort = await get(`?${query}`);
+  assert.equal(cohort.status, 200); assertPrivate(cohort);
+  const { analysis } = await cohort.json();
+  assert.equal(analysis.sessionCount, 1);
+  assert.equal(analysis.heatmap.length, 1);
+  assert.equal(analysis.heatmap[0].count, 5);
+  assert.equal(analysis.heatmap[0].topic, "단원 테스트");
+  assert.equal((await get("?examTypeId=import-http-morning&from=2026-01-01&to=2026-09-08")).status, 400);
+  assert.equal((await get("?examTypeId=import-http-morning&from=2026-02-30&to=2026-03-01")).status, 400);
+  const empty = await get("?examTypeId=import-http-morning&from=2026-01-01&to=2026-01-02");
+  assert.equal(empty.status, 200);
+  assert.equal((await empty.json()).analysis.sessionCount, 0);
+  const loginResponse = await fetch(`${base}/api/auth/student-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ division: "police", studentNumber: student.studentNumber, name: student.name }) });
+  assert.equal(loginResponse.status, 200);
+  const cookie = cookieFrom(loginResponse);
+  const own = await get(`/student/${student.id}?${query}`, cookie);
+  assert.equal(own.status, 200); assertPrivate(own);
+  const { report } = await own.json();
+  assert.equal(report.student.name, null);
+  assert.match(report.student.studentNumber, /^\d{2}\*+$/);
+  assert.equal(JSON.stringify(report).includes(other.name), false);
+  assert.equal(report.dailyItems.length, 1);
+  assert.equal(report.dailyItems[0].diagnostics.list.length, 20);
+  assert.ok(report.dailyItems[0].external.rank > 0);
+  assert.ok(report.dailyItems[0].external.topPercent > 0);
+  assert.equal(report.subjects[0].insufficientSample, true);
+  assert.equal(report.subjects[0].slope, null);
+  const studentPage = await fetch(`${base}/police/student/exams`, { headers: { cookie } });
+  assert.equal(studentPage.status, 200);
+  const html = await studentPage.text();
+  assert.equal(html.includes(other.name), false);
+  assert.equal((await get(`/student/${other.id}?${query}`, cookie)).status, 403);
+  assert.equal((await get(`?${query}`, cookie)).status, 401);
+  const assistant = await login("assistant-police@mock.local");
+  assert.equal((await get(`?${query}`, assistant)).status, 403);
+  assert.equal((await get(`/student/${student.id}?${query}`, assistant)).status, 403);
+});

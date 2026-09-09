@@ -333,6 +333,8 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 - `admin-button-primary`는 accent 채움 + `--admin-on-accent` 글자, hover는 `accent-hover`. 기본형은 흰색 + line, hover soft.
 - 위험 작업은 `admin-button-danger`(채움) 또는 `admin-button-danger-outline`.
 - 버튼의 pending/disabled와 의미 있는 경고색을 보존한다. 저장 중 중복 제출을 막는 기존 guard를 유지한다.
+- **비활성 버튼은 위계와 상관없이 한 모양으로 모인다.** `muted` 배경 · `text-disabled` 글자 · `line-soft` 테두리다. 테두리를 함께 되돌리지 않으면 primary·danger 는 회색 면에 강조색 윤곽만 남아 칠하다 만 버튼처럼 보인다. `opacity`로 전체를 흐리지 않는다. 토큰 색이 이미 비활성을 말하는데 그 위에 반투명을 겹치면 글자가 두 번 옅어져 읽히지 않는다.
+- 실행 버튼에 붙는 안내는 버튼 줄과 8px로 묶는다. 섹션 기본 간격(16px) 사이에 홀로 두면 위 폼에 걸린 말인지 아래 실행에 걸린 말인지 알 수 없다.
 
 ### 5.7 폼·검색·상태 안내
 
@@ -342,7 +344,15 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 - **텍스트 입력 포커스는 기존 테두리가 accent로 바뀌는 방식**이다. 떠 있는 shadow ring을 만들지 않는다. 버튼·링크·native 입력의 키보드 outline은 제거하지 않는다.
 - 입력 기본값은 태그 선택자와 `:where()`를 조합한다. Preflight의 0px 여백을 덮되, 검색 아이콘 여백(`pl-11`) 같은 화면별 Tailwind 유틸이 항상 이긴다.
 - native checkbox/radio는 20px 크기로 고유 형상을 유지하고 `accent-color`를 쓴다.
+- **파일 선택도 다른 입력과 같은 상자다.** 정규화 레이어의 입력 기본값에서 `[type="file"]`을 빼면 브라우저 기본 컨트롤이 그대로 남아 화면 하나만 미완성으로 보인다. 바깥 상자는 44px·1px line·8px 모서리로 두고, 안쪽 기본 버튼은 `::file-selector-button`을 32px 보조 버튼 모양으로 맞춘다. 허용 확장자와 용량 한도는 그 칸 아래 `.admin-help` 한 줄로 적는다.
+- **항목이 서넛 이상인 폼은 표처럼 세운다.** 라벨 위·입력 아래로만 쌓으면 어디까지가 한 항목인지 알 수 없어 밋밋해진다. `.admin-panel`이 바깥 테두리를 그리고, 항목마다 `.admin-form-row`(라벨 열 `.admin-form-row-label` 160px 고정 + 입력 열 `.admin-form-row-control` 가변, 행 사이 1px `line-soft`, 마지막 행은 선 없음)를 둔다. 라벨 첫 줄은 44px 컨트롤에 맞춘다. 768px 미만은 라벨이 위로 올라가고 간격이 8px가 된다.
+- 이 반응형 규칙은 **기본 규칙보다 뒤에** 둔다. 특이도가 같아 앞에 두면 `gap`과 `padding`이 기본값에 되덮여 방향만 바뀐 채로 남는다.
+- 라벨과 입력이 좌우로 갈라지므로 보조 설명은 `aria-describedby`로 입력에 묶는다.
+- **접이식 영역은 `.admin-disclosure`다.** `summary`에 `.admin-button`을 씌우면 여는 손잡이가 실행 버튼처럼 보여 화면의 주 작업이 무엇인지 흐려진다(§5.6). 손잡이는 화살표가 붙은 44px 전체 폭 줄로 두고, 열렸을 때만 아래 1px `line-soft`를 그린다. 내용은 `.admin-disclosure-body`(padding 16px)에 담는다.
+- 접이식 안의 접이식은 상자를 하나 더 만들지 않는다(§5.2 카드 안 카드 금지). 테두리·모서리·배경을 지우고 항목 사이 1px `line-soft`만 남겨 줄로 나뉜 목록이 되게 한다.
 - 로딩, 오류/재시도, 데이터 없음, 조건 검색 결과 없음, 저장 중을 구분한다. 전체 집계와 필터 후 결과 건수를 혼동하지 않는다.
+- **학생 검색은 두 가지 중 하나를 쓴다.** 표를 걸러내는 자리에는 `StudentSearchField`(최대 320px, 왼쪽 돋보기, 오른쪽 지우기, 검색 중일 때 결과 건수를 옆에 적는다), 한 명을 골라 다른 화면으로 넘기는 자리에는 `StudentSearchCombobox`를 쓴다. 새 검색 입력을 화면마다 다시 만들지 않는다.
+- `input[type="search"]`의 브라우저 기본 지우기 표시는 정규화 레이어에서 없앤다. 우리 지우기 버튼과 같은 자리에 겹쳐 X 가 두 개로 보인다.
 
 ### 5.8 표
 
@@ -352,9 +362,14 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 | 이름·강좌명 셀 | 왼쪽, `.admin-table-name` |
 | 금액 셀 | 오른쪽, `.admin-table-amount` |
 | 나머지 기본 데이터·배지·행 작업 | 가운데 |
+| 행 머리글 `th[scope="row"]` | 왼쪽, 흰 배경, 본문 굵기 (`.admin-table-name`과 같게) |
 | 표·스크롤 프레임 | 직각, 내부에서만 가로 스크롤(`.admin-table-frame`) |
 
 표는 `width: 100%`, 셀 padding 12px, 헤더 `accent-tint`/600, 행 hover `accent-soft`, 본문 13px, `tabular-nums`, 셀 `white-space: nowrap`.
+
+표 안에서 상세 화면으로 이동하는 이름·제목은 **`.admin-table-link`**(accent 글자, hover 밑줄)를 쓴다. `.admin-button`을 셀에 넣으면 이름마다 테두리 상자가 생겨 표가 버튼 격자처럼 보인다. 행 전체에 `onClick`을 걸지 않는다. 키보드로 도달할 수 없고 어디를 눌러야 하는지 알 수 없다.
+
+`th`의 `accent-tint` 배경과 가운데 정렬은 **표 머리글(`thead`)의 규격**이다. 과목명·날짜처럼 각 행을 가리키는 이름 열을 `th[scope="row"]`로 두면 접근성에는 맞지만 첫 열 전체가 머리글 색으로 칠해져 다른 표와 어긋난다. 정규화 레이어의 `.admin-shell tbody th`가 이 배경·굵기·정렬을 이름 열 규격으로 되돌리므로, **행 머리글은 `th[scope="row"]` 그대로 두고 별도 유틸을 붙이지 않는다.**
 
 **선 긋는 방식이 중요하다.** 셀이 **사방을 모두** 1px `admin-grid`로 그리고, `table` 자체에는 테두리를 두지 않는다. `border-collapse: collapse`가 맞닿은 선을 하나로 합치므로 격자 안쪽도 바깥쪽도 1px로 유지된다. **표와 셀에 동시에 테두리를 주면 같은 자리에 선이 두 번 놓인다.**
 
@@ -630,3 +645,11 @@ pnpm run build
 여러 로컬 서버를 함께 실행하면 `NEXT_DIST_DIR`로 빌드 디렉터리를 분리한다. 다른 서버의 `.next`를 정리하지 않도록 별도 디렉터리에서는 `pnpm exec next build`로 빌드한다. 이는 로컬 검증용이며 기본 배포 경로는 바꾸지 않는다.
 
 정적 검사나 과거 스크린샷만으로 현재 모든 화면을 확인했다고 주장하지 않는다.
+
+### 개인 성적 A4 출력 규격
+
+개인 리포트만 별도 창에 복사하며 기존 화면의 계산과 권한은 변경하지 않는다. A4 세로 210×297mm, 여백 12mm, 내용 폭 186mm. 인쇄 전용 글꼴은 Arial/Malgun Gothic, 본문 10pt, 표 8pt, 제목 14pt/11pt로 한다. 표 선은 기존 grid 색, 머리글은 surface-muted, 본문은 text 색이다. 셀 여백 1.5mm/1mm, 섹션 간격 4mm. 표 머리글 반복, 행 중간 분할 방지, 접힌 채점표 전체 포함. 화면용 크기와 별도로 종이 출력에만 적용한다. 브라우저 인쇄에서 PDF 저장 또는 프린터를 선택한다.
+
+### 학생 개인 성적 전용 페이지
+
+관리자 성적 분석의 학생 선택은 `/[division]/admin/exams/students/[studentId]`로 이동한다. 우측 드로어를 사용하지 않고 관리자 본문 전체 폭을 사용한다. 상단에 목록 복귀, 학생 이름, 정기/아침 구분, 학생·시험·날짜(기간) 선택, 섹션 바로가기를 둔다. 기존 `admin-flat-page`, `admin-tabs`, `admin-filter-bar`, `admin-button` 규격을 재사용한다. 섹션 바로가기는 문서 내 탐색이며 내용을 숨기지 않아 전체 인쇄와 차트 크기를 유지한다. 목록 복귀 링크는 원래 시험 종류·날짜·기간과 분석 탭을 전달한다.

@@ -21,10 +21,10 @@
     "test:all": "node scripts/run-tests.mjs && node scripts/test-integration.mjs"
   },
   "dependencies": {
-    "@hankuk/config": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@hankuk/config": "workspace:*",
     "@prisma/client": "^6.19.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.100.1",
@@ -39,6 +39,7 @@
     "react-dom": "^18",
     "recharts": "^3.8.0",
     "sonner": "^2.0.7",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.3.6"
   },
   "devDependencies": {

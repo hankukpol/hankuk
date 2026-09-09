@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Calculator, LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useState } from "react";
+import { normalizeExamAnalysisSettings, type ExamAnalysisSettings } from "@/lib/exam-analysis-settings";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
@@ -23,6 +24,7 @@ type RulesSettingsManagerProps = {
 };
 
 type FormState = {
+  examAnalysis: ExamAnalysisSettings;
   tardyMinutes: string;
   assistantPastEditAllowed: boolean;
   assistantPastEditDays: string;
@@ -48,6 +50,7 @@ type FormState = {
 
 function toFormState(settings: DivisionRuleSettings): FormState {
   return {
+    examAnalysis: normalizeExamAnalysisSettings(settings.examAnalysis),
     tardyMinutes: String(settings.tardyMinutes),
     assistantPastEditAllowed: settings.assistantPastEditAllowed,
     assistantPastEditDays: String(settings.assistantPastEditDays),
@@ -177,6 +180,7 @@ export function RulesSettingsManager({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          examAnalysis: form.examAnalysis,
           tardyMinutes: form.tardyMinutes,
           assistantPastEditAllowed: form.assistantPastEditAllowed,
           assistantPastEditDays: form.assistantPastEditAllowed ? form.assistantPastEditDays : "0",
@@ -767,6 +771,137 @@ export function RulesSettingsManager({
               </label>
             </div>
           </div>
+
+          <section className="admin-section">
+            <h3 className="admin-section-title">성적 분석 기준</h3>
+            <p className="admin-help mt-2">점수 차이는 만점 대비 비율입니다. 분석 기능에서 사용할 기준을 저장합니다.</p>
+            <h4 className="admin-label mt-4">아침 모의고사</h4>
+            <div className="mt-2 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="admin-label mb-2 block">연속 하락 횟수 (회)</span>
+                <input className="w-full" type="number" required min={2} max={10} step={1}
+                  value={Number.isFinite(form.examAnalysis.morning.consecutiveDrops) ? form.examAnalysis.morning.consecutiveDrops : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    morning: { ...current.examAnalysis.morning, consecutiveDrops: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">점수가 연속으로 내려간 횟수가 이 기준 이상이면 하락 신호로 표시합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">반 평균 대비 격차 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.morning.classGapPercent) ? form.examAnalysis.morning.classGapPercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    morning: { ...current.examAnalysis.morning, classGapPercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">반 평균보다 낮은 점수 차이를 만점 대비 비율로 판단합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">본인 평균 대비 하락 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.morning.ownAverageDropPercent) ? form.examAnalysis.morning.ownAverageDropPercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    morning: { ...current.examAnalysis.morning, ownAverageDropPercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">최근 평균이 이전 평균보다 낮아진 정도를 만점 대비 비율로 판단합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">이동평균 응시 횟수 (회)</span>
+                <input className="w-full" type="number" required min={2} max={20} step={1}
+                  value={Number.isFinite(form.examAnalysis.morning.movingAverageSessions) ? form.examAnalysis.morning.movingAverageSessions : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    morning: { ...current.examAnalysis.morning, movingAverageSessions: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">같은 과목에 최근 응시한 횟수만큼 평균을 냅니다. 미응시는 제외합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">추세 응시 횟수 (회)</span>
+                <input className="w-full" type="number" required min={3} max={40} step={1}
+                  value={Number.isFinite(form.examAnalysis.morning.trendWindowSessions) ? form.examAnalysis.morning.trendWindowSessions : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    morning: { ...current.examAnalysis.morning, trendWindowSessions: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">같은 과목의 추세를 분석할 응시 횟수이며 이동평균 응시 횟수 이상으로 설정합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">추세 해석 최소 응시율 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.morning.attendanceRatePercent) ? form.examAnalysis.morning.attendanceRatePercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    morning: { ...current.examAnalysis.morning, attendanceRatePercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">이 응시율에 미달하면 성적 추세 해석을 보류합니다.</span>
+              </label>
+            </div>
+            <h4 className="admin-label mt-4">정기 모의고사</h4>
+            <div className="mt-2 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="admin-label mb-2 block">총점 하락 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.regular.totalDropPercent) ? form.examAnalysis.regular.totalDropPercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    regular: { ...current.examAnalysis.regular, totalDropPercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">이전 회차보다 총점이 내려간 정도를 만점 대비 비율로 판단합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">반 인원 대비 석차 하락 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.regular.rankDropPercent) ? form.examAnalysis.regular.rankDropPercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    regular: { ...current.examAnalysis.regular, rankDropPercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">반 전체 인원 대비 석차 하락 폭이 이 비율 이상이면 표시합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">목표 대비 미달 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.regular.targetGapPercent) ? form.examAnalysis.regular.targetGapPercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    regular: { ...current.examAnalysis.regular, targetGapPercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">목표 점수에 못 미치는 차이를 만점 대비 비율로 판단합니다.</span>
+              </label>
+            </div>
+            <h4 className="admin-label mt-4">공통 문항·과목 기준</h4>
+            <div className="mt-2 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="admin-label mb-2 block">취약 과목 성취율 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.common.weakSubjectRatePercent) ? form.examAnalysis.common.weakSubjectRatePercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    common: { ...current.examAnalysis.common, weakSubjectRatePercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">과목 만점 대비 성취율이 이 기준 미만이면 취약 과목으로 표시합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">과목 불균형 표준편차</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.common.balanceStdDev) ? form.examAnalysis.common.balanceStdDev : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    common: { ...current.examAnalysis.common, balanceStdDev: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">과목별 정규화 점수의 표준편차가 이 기준 이상이면 불균형으로 판단합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">쉬운 문항 정답률 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.common.easyMissedRatePercent) ? form.examAnalysis.common.easyMissedRatePercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    common: { ...current.examAnalysis.common, easyMissedRatePercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">정답률이 이 기준 이상인 문항을 틀리면 쉬운 문항 오답으로 표시합니다.</span>
+              </label>
+              <label className="block">
+                <span className="admin-label mb-2 block">고난도 문항 정답률 (%)</span>
+                <input className="w-full" type="number" required min={0} max={100} step={0.1}
+                  value={Number.isFinite(form.examAnalysis.common.killerRatePercent) ? form.examAnalysis.common.killerRatePercent : ""}
+                  onChange={(event) => setForm((current) => ({ ...current, examAnalysis: { ...current.examAnalysis,
+                    common: { ...current.examAnalysis.common, killerRatePercent: event.target.value === "" ? Number.NaN : Number(event.target.value) },
+                  } }))} />
+                <span className="admin-help mt-2 block">정답률이 이 기준 이하인 문항을 고난도 문항으로 분류합니다.</span>
+              </label>
+            </div>
+          </section>
 
           <button
             type="submit"

@@ -1,3 +1,5 @@
+import { examScoresSaveSchema, selectExamDateRecords } from "@/lib/exam-meta";
+import { getLegacyExamDateKey } from "@/lib/exam-session-identity";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import { notFound } from "@/lib/errors";
 import {
@@ -27,6 +29,7 @@ export type ExamSubjectItem = {
   examTypeId: string;
   name: string;
   totalItems: number | null;
+  alternateGroup?: string | null;
   pointsPerItem: number | null;
   maxScore: number | null;
   displayOrder: number;
@@ -89,6 +92,7 @@ export type StudentExamResultItem = {
     subjectId: string;
     name: string;
     totalItems: number | null;
+    alternateGroup?: string | null;
     pointsPerItem: number | null;
     maxScore: number | null;
     score: number | null;
@@ -151,6 +155,7 @@ function toSubjectItem(subject: {
   examTypeId: string;
   name: string;
   totalItems: number | null;
+  alternateGroup?: string | null;
   pointsPerItem?: number | null;
   displayOrder: number;
   isActive: boolean;
@@ -160,6 +165,7 @@ function toSubjectItem(subject: {
     examTypeId: subject.examTypeId,
     name: subject.name,
     totalItems: subject.totalItems,
+    alternateGroup: normalizeOptionalText(subject.alternateGroup),
     pointsPerItem: subject.pointsPerItem ?? null,
     maxScore: calculateSubjectMaxScore(subject.totalItems, subject.pointsPerItem ?? null),
     displayOrder: subject.displayOrder,
@@ -182,6 +188,7 @@ function toExamTypeItem(examType: {
     examTypeId: string;
     name: string;
     totalItems: number | null;
+    alternateGroup?: string | null;
     pointsPerItem?: number | null;
     displayOrder: number;
     isActive: boolean;
@@ -399,6 +406,7 @@ function buildSubjectPayload(
       name: normalizeText(subject.name),
       totalItems: normalizeTotalItems(subject.totalItems),
       pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+      alternateGroup: normalizeOptionalText(subject.alternateGroup),
       displayOrder: index,
       isActive: subject.isActive ?? true,
       createdAt: existing?.createdAt ?? now,
@@ -604,6 +612,7 @@ export async function createExamType(divisionSlug: string, input: ExamTypeSchema
           name: normalizeText(subject.name),
           totalItems: normalizeTotalItems(subject.totalItems),
           pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+          alternateGroup: normalizeOptionalText(subject.alternateGroup),
           isActive: subject.isActive ?? true,
           displayOrder: index,
         })),
@@ -707,6 +716,7 @@ export async function updateExamType(
             name: normalizeText(subject.name),
             totalItems: normalizeTotalItems(subject.totalItems),
             pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+            alternateGroup: normalizeOptionalText(subject.alternateGroup),
             isActive: subject.isActive ?? true,
             displayOrder: index,
           },
@@ -718,6 +728,7 @@ export async function updateExamType(
             name: normalizeText(subject.name),
             totalItems: normalizeTotalItems(subject.totalItems),
             pointsPerItem: normalizePointsPerItem(subject.pointsPerItem),
+            alternateGroup: normalizeOptionalText(subject.alternateGroup),
             isActive: subject.isActive ?? true,
             displayOrder: index,
           },
@@ -822,8 +833,10 @@ export async function deleteExamType(divisionSlug: string, examTypeId: string) {
 export async function getExamScoreSheet(
   divisionSlug: string,
   examTypeId: string,
-  examRound: number,
+  selection: number | string,
 ) {
+  const examDate = typeof selection === "string" ? selection : null;
+  const examRound = examDate ? getLegacyExamDateKey(examDate) : selection as number;
   const examType = await getExamTypeOrThrow(divisionSlug, examTypeId);
   const subjects = sortSubjects(examType.subjects).filter((subject) => subject.isActive);
   const students = (await listStudents(divisionSlug)).filter((student) =>
@@ -833,16 +846,16 @@ export async function getExamScoreSheet(
   if (isMockMode()) {
     const state = await readMockState();
     const records = (state.examScoresByDivision[divisionSlug] ?? []).filter(
-      (score) => score.examTypeId === examTypeId && score.examRound === examRound,
+      (score) => score.examTypeId === examTypeId && (examDate ? score.examDate === examDate : score.examRound === examRound),
     );
-    const recordMap = new Map(records.map((record) => [record.studentId, record]));
+    const recordMap = examDate ? selectExamDateRecords(records, examDate) : new Map(records.map((record) => [record.studentId, record]));
 
     return {
       examTypeId: examType.id,
       examTypeName: examType.name,
       studyTrack: examType.studyTrack,
       examRound,
-      examDate: records[0]?.examDate ?? null,
+      examDate: examDate ?? records[0]?.examDate ?? null,
       subjects,
       rows: students.map((student) => {
         const record = recordMap.get(student.id);
@@ -866,7 +879,7 @@ export async function getExamScoreSheet(
   const records = await prisma.examScore.findMany({
     where: {
       examTypeId,
-      examRound,
+      ...(examDate ? { examDate: toUtcDate(examDate) } : { examRound }),
       student: {
         division: {
           slug: divisionSlug,
@@ -875,6 +888,7 @@ export async function getExamScoreSheet(
     },
     select: {
       studentId: true,
+      examRound: true,
       examDate: true,
       scores: true,
       totalScore: true,
@@ -882,14 +896,14 @@ export async function getExamScoreSheet(
       notes: true,
     },
   });
-  const recordMap = new Map(records.map((record) => [record.studentId, record]));
+  const recordMap = examDate ? selectExamDateRecords(records, examDate) : new Map(records.map((record) => [record.studentId, record]));
 
   return {
     examTypeId: examType.id,
     examTypeName: examType.name,
     studyTrack: examType.studyTrack,
     examRound,
-    examDate: toDateString(records[0]?.examDate ?? null),
+    examDate: examDate ?? toDateString(records[0]?.examDate ?? null),
     subjects,
     rows: students.map((student) => {
       const record = recordMap.get(student.id);
@@ -923,8 +937,11 @@ export async function getExamScoreSheet(
 export async function saveExamScores(
   divisionSlug: string,
   actor: ExamActor,
-  input: ExamScoresBatchSchemaInput,
+  rawInput: Omit<ExamScoresBatchSchemaInput, "examRound"> & { examRound?: number },
 ) {
+  const parsed = examScoresSaveSchema.parse(rawInput);
+  const dateSelection = parsed.examRound === undefined ? parsed.examDate! : null;
+  const input = { ...parsed, examRound: parsed.examRound ?? getLegacyExamDateKey(parsed.examDate!) };
   const examType = await getExamTypeOrThrow(divisionSlug, input.examTypeId);
   const subjects = sortSubjects(examType.subjects).filter((subject) => subject.isActive);
   const students = (await listStudents(divisionSlug)).filter((student) =>
@@ -953,11 +970,12 @@ export async function saveExamScores(
   if (isMockMode()) {
     await updateMockState((state) => {
       const current = state.examScoresByDivision[divisionSlug] ?? [];
+      const dateRecords = dateSelection ? selectExamDateRecords(current.filter((score) => score.examTypeId === input.examTypeId && score.examDate === dateSelection), dateSelection) : null;
       const untouched = current.filter(
-        (score) => !(score.examTypeId === input.examTypeId && score.examRound === input.examRound),
+        (score) => !(score.examTypeId === input.examTypeId && preparedRows.some((row) => row.studentId === score.studentId) && score.examRound === (dateRecords?.get(score.studentId)?.examRound ?? input.examRound)),
       );
       const nextScores = preparedRows.map((row) => {
-        const existing = current.find(
+        const existing = dateRecords?.get(row.studentId) ?? current.find(
           (score) =>
             score.examTypeId === input.examTypeId &&
             score.examRound === input.examRound &&
@@ -968,7 +986,7 @@ export async function saveExamScores(
           id: existing?.id ?? `mock-exam-score-${divisionSlug}-${input.examTypeId}-${input.examRound}-${row.studentId}`,
           studentId: row.studentId,
           examTypeId: input.examTypeId,
-          examRound: input.examRound,
+          examRound: existing?.examRound ?? input.examRound,
           examDate: normalizeExamDate(input.examDate),
           scores: row.scores,
           totalScore: row.totalScore,
@@ -982,7 +1000,7 @@ export async function saveExamScores(
 
       state.examScoresByDivision[divisionSlug] = [...untouched, ...nextScores];
     });
-    return getExamScoreSheet(divisionSlug, input.examTypeId, input.examRound);
+    return getExamScoreSheet(divisionSlug, input.examTypeId, dateSelection ?? input.examRound);
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
@@ -1005,6 +1023,12 @@ export async function saveExamScores(
     throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
+  const existingDateRecords = dateSelection ? await prisma.examScore.findMany({
+    where: { examTypeId: input.examTypeId, examDate: toUtcDate(dateSelection), student: { divisionId: division.id }, studentId: { in: studentIds } },
+    select: { studentId: true, examRound: true },
+  }) : [];
+  const dateRecords = dateSelection ? selectExamDateRecords(existingDateRecords, dateSelection) : null;
+
   await prisma.$transaction(
     preparedRows.map((row) =>
       prisma.examScore.upsert({
@@ -1012,7 +1036,7 @@ export async function saveExamScores(
           studentId_examTypeId_examRound: {
             studentId: row.studentId,
             examTypeId: input.examTypeId,
-            examRound: input.examRound,
+            examRound: dateRecords?.get(row.studentId)?.examRound ?? input.examRound,
           },
         },
         update: {
@@ -1038,7 +1062,7 @@ export async function saveExamScores(
     ),
   );
 
-  return getExamScoreSheet(divisionSlug, input.examTypeId, input.examRound);
+  return getExamScoreSheet(divisionSlug, input.examTypeId, dateSelection ?? input.examRound);
 }
 
 export async function getLatestExamSummaryForStudent(
@@ -1225,6 +1249,7 @@ export async function listStudentExamResults(
             subjectId: subject.id,
             name: subject.name,
             totalItems: subject.totalItems,
+            alternateGroup: normalizeOptionalText(subject.alternateGroup),
             pointsPerItem: subject.pointsPerItem ?? null,
             maxScore: calculateSubjectMaxScore(subject.totalItems, subject.pointsPerItem ?? null),
             score: typeof score.scores[subject.id] === "number" ? score.scores[subject.id] : null,
@@ -1295,6 +1320,7 @@ export async function listStudentExamResults(
           subjectId: subject.id,
           name: subject.name,
           totalItems: subject.totalItems,
+          alternateGroup: normalizeOptionalText(subject.alternateGroup),
           pointsPerItem: subject.pointsPerItem ?? null,
           maxScore: calculateSubjectMaxScore(subject.totalItems, subject.pointsPerItem ?? null),
           score: typeof rawScores[subject.id] === "number" ? (rawScores[subject.id] as number) : null,

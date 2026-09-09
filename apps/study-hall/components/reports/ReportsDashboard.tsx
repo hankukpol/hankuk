@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { Download, LoaderCircle, RefreshCcw } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
+import { ExamAnalysisExport } from "@/components/reports/ExamAnalysisExport";
+import { formatExamDateLabel } from "@/lib/exam-date-label";
 import { AdminTabs } from "@/components/ui/AdminTabs";
 
 import { getWarningStageLabel } from "@/lib/student-meta";
@@ -295,6 +297,8 @@ export function ReportsDashboard({
               </div>
             </form>
 
+            {flags.examManagement && <ExamAnalysisExport key={divisionSlug} divisionSlug={divisionSlug} />}
+
             <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
               <p className="font-semibold text-slate-900">{data.title}</p>
               <p className="mt-1">{data.subtitle}</p>
@@ -505,7 +509,7 @@ export function ReportsDashboard({
                             {flags.examManagement ? (
                               <td>
                                 {row.latestExamLabel
-                                  ? `${row.latestExamLabel} / ${row.latestExamTotal ?? "-"}`
+                                  ? `${formatExamDateLabel(row.latestExamLabel)} / ${row.latestExamTotal ?? "-"}`
                                   : "-"}
                               </td>
                             ) : null}

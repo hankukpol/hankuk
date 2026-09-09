@@ -1,5 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { normalizeExamAnalysisSettings, type ExamAnalysisSettings } from "@/lib/exam-analysis-settings";
+import type { ImportAssembly, ImportItem } from "@/lib/exam-import-assembler";
 
 import {
   getMockDivisionBySlug,
@@ -63,6 +65,7 @@ export type MockDivisionRecord = {
 };
 
 export type MockDivisionSettingsRecord = Omit<MockDivisionSettings, "updatedAt"> & {
+  examAnalysis?: ExamAnalysisSettings;
   updatedAt: string;
 };
 
@@ -272,6 +275,7 @@ export type MockAnnouncementRecord = {
 };
 
 export type MockExamSubjectRecord = {
+  alternateGroup?: string | null;
   id: string;
   examTypeId: string;
   name: string;
@@ -388,7 +392,21 @@ export type MockChatReadStateRecord = {
   updatedAt: string;
 };
 
+export type MockExamSessionRecord = {
+  id: string; divisionId: string; examTypeId: string; identityKey: string;
+  primarySubjectId: string | null; examDate: string;
+  topic: string | null; itemCount: number; fullScore: number; externalCohortSize: number;
+  externalStats: ImportAssembly["externalStats"]; sourceFileName: string; importedById: string; importedAt: string;
+};
+export type MockExamSessionItemRecord = ImportItem & { id: string; divisionId: string; sessionId: string };
+export type MockExamSessionParticipantRecord = Omit<ImportAssembly["participants"][number], "responses"> & { id: string; divisionId: string; sessionId: string; derivedScoreId?: string | null; derivedScoreSnapshot?: Record<string, unknown> | null };
+export type MockExamItemResponseRecord = ImportAssembly["participants"][number]["responses"][number] & { id: string; divisionId: string; sessionId: string; studentId: string };
+
 type MockState = {
+  examItemResponsesByDivision: Record<string, MockExamItemResponseRecord[]>;
+  examSessionParticipantsByDivision: Record<string, MockExamSessionParticipantRecord[]>;
+  examSessionItemsByDivision: Record<string, MockExamSessionItemRecord[]>;
+  examSessionsByDivision: Record<string, MockExamSessionRecord[]>;
   deletedDivisionSlugs: string[];
   divisions: MockDivisionRecord[];
   divisionSettingsByDivision: Record<string, MockDivisionSettingsRecord>;
@@ -1173,6 +1191,7 @@ function normalizeMockExamSubjectRecord(
     examTypeId,
     name: typeof subject.name === "string" ? subject.name : `과목 ${index + 1}`,
     totalItems: typeof subject.totalItems === "number" ? subject.totalItems : null,
+    alternateGroup: typeof subject.alternateGroup === "string" ? subject.alternateGroup.trim() || null : null,
     pointsPerItem: typeof subject.pointsPerItem === "number" ? subject.pointsPerItem : null,
     displayOrder: typeof subject.displayOrder === "number" ? subject.displayOrder : index,
     isActive: typeof subject.isActive === "boolean" ? subject.isActive : true,
@@ -1550,6 +1569,10 @@ function createInitialState(): MockState {
   );
 
   return {
+    examSessionsByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamSessionRecord[]])),
+    examSessionItemsByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamSessionItemRecord[]])),
+    examSessionParticipantsByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamSessionParticipantRecord[]])),
+    examItemResponsesByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamItemResponseRecord[]])),
     deletedDivisionSlugs: [],
     divisions,
     divisionSettingsByDivision,
@@ -1626,6 +1649,7 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
           ? {
               ...createDefaultDivisionSettingsRecord(division),
               ...state.divisionSettingsByDivision[divisionSlug],
+              examAnalysis: normalizeExamAnalysisSettings(state.divisionSettingsByDivision[divisionSlug].examAnalysis),
               divisionId: division.id,
             }
           : division
@@ -1988,6 +2012,10 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     phoneSubmissionsByDivision,
     chatMessagesByDivision,
     chatReadStatesByDivision,
+    examSessionsByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.examSessionsByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
+    examSessionItemsByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.examSessionItemsByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
+    examSessionParticipantsByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.examSessionParticipantsByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
+    examItemResponsesByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.examItemResponsesByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
   } satisfies MockState;
 }
 

@@ -18,10 +18,13 @@ import {
 } from "@/lib/exam-score-import";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 import type { MorningExamDailySheet, MorningExamWeeklySummary } from "@/lib/services/morning-exam.service";
+import { StudentSearchField } from "@/components/ui/StudentSearchField";
+import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 
 type MorningExamScoreManagerProps = {
   divisionSlug: string;
   morningExamTypes: ExamTypeItem[];
+  initialSelection?: { examTypeId: string; subjectId?: string; examDate: string };
 };
 
 type EditableRow = {
@@ -81,12 +84,14 @@ function triggerDownload(url: string) {
 export function MorningExamScoreManager({
   divisionSlug,
   morningExamTypes,
+  initialSelection,
 }: MorningExamScoreManagerProps) {
   const [viewTab, setViewTab] = useState<"daily" | "weekly">("daily");
-  const [selectedExamTypeId, setSelectedExamTypeId] = useState(morningExamTypes[0]?.id ?? "");
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
-  const [examDate, setExamDate] = useState(getKstToday());
+  const [selectedExamTypeId, setSelectedExamTypeId] = useState(initialSelection?.examTypeId ?? morningExamTypes[0]?.id ?? "");
+  const [selectedSubjectId, setSelectedSubjectId] = useState(initialSelection?.subjectId ?? "");
+  const [examDate, setExamDate] = useState(initialSelection?.examDate ?? getKstToday());
   const [rows, setRows] = useState<EditableRow[]>([]);
+  const [studentQuery, setStudentQuery] = useState("");
   const [isLoadingSheet, setIsLoadingSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [weeklySummary, setWeeklySummary] = useState<MorningExamWeeklySummary | null>(null);
@@ -115,6 +120,26 @@ export function MorningExamScoreManager({
       setSelectedSubjectId(activeSubjects[0].id);
     }
   }, [activeSubjects, selectedSubjectId]);
+
+  const searching = hasStudentSearchQuery(studentQuery);
+  const visibleRows = useMemo(
+    () => rows.filter((row) => matchesStudentSearch({ name: row.studentName, studentNumber: row.studentNumber }, studentQuery)),
+    [rows, studentQuery],
+  );
+  const numberByStudentId = useMemo(
+    () => new Map(rows.map((row) => [row.studentId, row.studentNumber])),
+    [rows],
+  );
+  // 주간 표에는 수험번호 칸이 없다. 일일 시트에서 모아 둔 번호로 함께 찾는다.
+  const visibleRankings = useMemo(
+    () => (weeklySummary?.rankings ?? []).filter((ranking) =>
+      matchesStudentSearch(
+        { name: ranking.studentName, studentNumber: numberByStudentId.get(ranking.studentId) ?? null },
+        studentQuery,
+      ),
+    ),
+    [weeklySummary, numberByStudentId, studentQuery],
+  );
 
   const selectedSubject = useMemo(
     () => activeSubjects.find((s) => s.id === selectedSubjectId),
@@ -332,7 +357,7 @@ export function MorningExamScoreManager({
       />
         <div className="admin-filter-bar">
           <label className="block">
-            <span className="admin-help mb-1 block">시험 템플릿</span>
+            <span className="admin-label mb-2 block">시험 템플릿</span>
             <select
               value={selectedExamTypeId}
               onChange={(e) => {
@@ -350,7 +375,7 @@ export function MorningExamScoreManager({
           </label>
 
           {viewTab === "daily" ? <label className="block">
-            <span className="admin-help mb-1 block">과목 선택</span>
+            <span className="admin-label mb-2 block">과목 선택</span>
             <select
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
@@ -365,7 +390,7 @@ export function MorningExamScoreManager({
           </label> : null}
 
           <label className="block">
-            <span className="admin-help mb-1 block">{viewTab === "daily" ? "시험일" : "기준일"}</span>
+            <span className="admin-label mb-2 block">{viewTab === "daily" ? "시험일" : "기준일"}</span>
             <input
               type="date"
               value={examDate}
@@ -383,11 +408,9 @@ export function MorningExamScoreManager({
         <h2 className="admin-section-title">일일 성적 입력</h2>
 
         <div className="mt-4">
-          <details open className="group">
-            <summary className="cursor-pointer text-sm font-medium text-slate-600 hover:text-slate-900">
-              엑셀에서 붙여넣기 / CSV 업로드
-            </summary>
-            <div className="mt-3 space-y-3">
+          <details className="admin-disclosure">
+            <summary>엑셀에서 붙여넣기 / CSV 업로드</summary>
+            <div className="admin-disclosure-body space-y-3">
               <div>
                 <p className="admin-help">
                   머리글(수험번호·객관식 등)까지 함께 복사하면 열 위치를 자동으로 찾으므로 채점표를 그대로 붙여넣어도 됩니다.
@@ -396,7 +419,7 @@ export function MorningExamScoreManager({
                 <textarea
                   ref={pasteRef}
                   rows={4}
-                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 font-mono text-sm"
+                  className="mt-2 font-mono"
                   placeholder={"P-001\t홍길동\t85\t\nP-002\t김철수\t92\t잘함"}
                 />
                 <button
@@ -418,7 +441,7 @@ export function MorningExamScoreManager({
                   CSV 양식 다운로드
                 </button>
 
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <label className="admin-button cursor-pointer">
                   <Upload className="h-4 w-4" />
                   CSV 업로드
                   <input
@@ -464,14 +487,23 @@ export function MorningExamScoreManager({
 
         {isLoadingSheet ? (
           <div className="mt-6 flex items-center justify-center py-12">
-            <LoaderCircle className="h-6 w-6 animate-spin text-slate-400" />
+            <LoaderCircle className="h-6 w-6 animate-spin text-admin-text-muted" />
           </div>
         ) : (
           <>
+            <div className="admin-filter-bar mt-4">
+              <StudentSearchField
+                label="일일 성적 입력 학생 검색"
+                value={studentQuery}
+                onChange={setStudentQuery}
+                hint={searching ? `${visibleRows.length}명 표시 (전체 ${rows.length}명)` : undefined}
+              />
+            </div>
+
             <div className="admin-table-frame mt-4 overflow-x-auto">
               <table className="min-w-[600px]">
                 <thead>
-                  <tr className="text-left text-slate-500">
+                  <tr>
                     <th>수험번호</th>
                     <th>이름</th>
                     <th>
@@ -481,10 +513,10 @@ export function MorningExamScoreManager({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {visibleRows.map((row) => (
                     <tr key={row.studentId} className="align-top">
                       <td>{row.studentNumber}</td>
-                      <td>{row.studentName}</td>
+                      <td className="admin-table-name">{row.studentName}</td>
                       <td>
                         <input
                           type="text"
@@ -492,7 +524,7 @@ export function MorningExamScoreManager({
                           aria-label={`${row.studentName} 점수`}
                           value={row.score}
                           onChange={(e) => handleRowScoreChange(row.studentId, e.target.value)}
-                          className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                          className="w-24 text-center"
                           placeholder="-"
                         />
                       </td>
@@ -502,12 +534,19 @@ export function MorningExamScoreManager({
                           aria-label={`${row.studentName} 비고`}
                           value={row.notes}
                           onChange={(e) => handleRowNotesChange(row.studentId, e.target.value)}
-                          className="w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                          className="w-32"
                           placeholder=""
                         />
                       </td>
                     </tr>
                   ))}
+                  {visibleRows.length === 0 && rows.length > 0 ? (
+                    <tr>
+                      <td colSpan={4} className="admin-empty-state">
+                        검색과 일치하는 학생이 없습니다.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -578,7 +617,7 @@ export function MorningExamScoreManager({
 
         {isLoadingWeekly ? (
           <div className="mt-6 flex items-center justify-center py-12">
-            <LoaderCircle className="h-6 w-6 animate-spin text-slate-400" />
+            <LoaderCircle className="h-6 w-6 animate-spin text-admin-text-muted" />
           </div>
         ) : weeklySummary ? (
           <div className="mt-4">
@@ -587,10 +626,19 @@ export function MorningExamScoreManager({
               ({weeklySummary.weekDateRange.start} ~ {weeklySummary.weekDateRange.end})
             </p>
 
+            <div className="admin-filter-bar mt-3">
+              <StudentSearchField
+                label="주간 성적 현황 학생 검색"
+                value={studentQuery}
+                onChange={setStudentQuery}
+                hint={searching ? `${visibleRankings.length}명 표시 (전체 ${weeklySummary.rankings.length}명)` : undefined}
+              />
+            </div>
+
             <div className="admin-table-frame mt-3 overflow-x-auto">
               <table className="min-w-[800px]">
                 <thead>
-                  <tr className="text-left text-slate-500">
+                  <tr>
                     <th>이름</th>
                     {weeklySummary.dailyEntries.map((entry) => (
                       <th key={entry.date} className="px-3 py-3 text-center font-medium">
@@ -604,18 +652,13 @@ export function MorningExamScoreManager({
                   </tr>
                 </thead>
                 <tbody>
-                  {weeklySummary.rankings.map((ranking) => (
+                  {visibleRankings.map((ranking) => (
                     <tr key={ranking.studentId} className="align-top">
-                      <td>
-                        {ranking.studentName}
-                      </td>
+                      <td className="admin-table-name">{ranking.studentName}</td>
                       {weeklySummary.dailyEntries.map((entry) => {
                         const ds = ranking.dailyScores[entry.date];
                         return (
-                          <td
-                            key={entry.date}
-                            className="px-3 py-2 text-center text-slate-700"
-                          >
+                          <td key={entry.date}>
                             {ds?.score !== null && ds?.score !== undefined ? ds.score : "-"}
                           </td>
                         );
@@ -631,6 +674,13 @@ export function MorningExamScoreManager({
                       </td>
                     </tr>
                   ))}
+                  {visibleRankings.length === 0 && weeklySummary.rankings.length > 0 ? (
+                    <tr>
+                      <td colSpan={weeklySummary.dailyEntries.length + 4} className="admin-empty-state">
+                        검색과 일치하는 학생이 없습니다.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>

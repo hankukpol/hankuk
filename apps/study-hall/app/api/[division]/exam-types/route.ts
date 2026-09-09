@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
@@ -64,6 +65,7 @@ export async function POST(
 
   try {
     const examType = await createExamType(params.division, parsed.data);
+    revalidateTag(`exam-analysis:${params.division}`);
     return NextResponse.json({ examType }, { status: 201 });
   } catch (error) {
     return toApiErrorResponse(error, "시험 템플릿 처리 중 오류가 발생했습니다.");

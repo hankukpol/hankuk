@@ -9,6 +9,7 @@ export function revalidateDivisionOperationalViews(
   divisionSlug: string,
   options?: OperationalRevalidationOptions,
 ) {
+  revalidateTag(`exam-analysis:${divisionSlug}`);
   revalidateTag("admin-dashboard");
   revalidateTag("report-data");
   revalidateTag("super-admin-overview");

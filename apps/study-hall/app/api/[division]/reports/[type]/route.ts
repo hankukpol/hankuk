@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
+import { handleExamAnalysisExport } from "@/lib/exam-analysis-export-route";
 import { normalizeYmMonth, normalizeYmdDate } from "@/lib/date-utils";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import {
@@ -36,6 +37,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { division: string; type: string } },
 ) {
+  if (params.type === "exam-analysis") return handleExamAnalysisExport(request, params.division);
   const auth = await requireApiAuth(params.division, ["ADMIN", "SUPER_ADMIN"]);
 
   if (!auth.ok) {

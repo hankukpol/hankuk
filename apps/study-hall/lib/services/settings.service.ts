@@ -1,3 +1,4 @@
+import { examAnalysisSettingsSchema, normalizeExamAnalysisSettings, type ExamAnalysisSettings } from "@/lib/exam-analysis-settings";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 
 import {
@@ -38,6 +39,7 @@ async function getPrismaClient() {
 }
 
 type RawDbDivisionSettingsRecord = {
+  examAnalysis?: unknown;
   divisionId: string;
   warnLevel1: number;
   warnLevel2: number;
@@ -70,6 +72,7 @@ type RawDbDivisionSettingsRecord = {
 type RawDivisionSettingsRecord = RawDbDivisionSettingsRecord | MockDivisionSettingsRecord;
 
 type LegacyDivisionSettingsRow = {
+  examAnalysis?: unknown;
   divisionId: string;
   warnLevel1?: number | null;
   warnLevel2?: number | null;
@@ -170,6 +173,7 @@ const LEGACY_RULE_SELECT_COLUMNS = [
 ] as const;
 
 const LEGACY_DIVISION_SETTINGS_OPTIONAL_SELECT_COLUMNS = [
+  { column: "exam_analysis", alias: "examAnalysis" },
   { column: "operating_days", alias: "operatingDays" },
   { column: "study_tracks", alias: "studyTracks" },
   { column: "point_categories", alias: "pointCategories" },
@@ -184,6 +188,7 @@ export type WarningTemplateKey =
   | "warnMsgWithdraw";
 
 export type DivisionSettingsRecord = {
+  examAnalysis: ExamAnalysisSettings;
   divisionId: string;
   warnLevel1: number;
   warnLevel2: number;
@@ -334,6 +339,7 @@ function getLegacyRuleColumnValues(
   attendancePointRuleSettings: ReturnType<typeof normalizeAttendancePointRuleSettings>,
 ) {
   return [
+    ...(input.examAnalysis === undefined ? [] : [{ column: "exam_analysis", value: JSON.stringify(input.examAnalysis) }]),
     { column: "warn_level1", value: input.warnLevel1 },
     { column: "warn_level2", value: input.warnLevel2 },
     { column: "warn_interview", value: input.warnInterview },
@@ -362,6 +368,7 @@ function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSet
   const templates = getDefaultWarningTemplates();
 
   return {
+    examAnalysis: normalizeExamAnalysisSettings((record as { examAnalysis?: unknown }).examAnalysis),
     divisionId: record.divisionId,
     warnLevel1: record.warnLevel1,
     warnLevel2: record.warnLevel2,
@@ -395,6 +402,7 @@ function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSet
 
 function serializeLegacySettingsRecord(record: LegacyDivisionSettingsRow): DivisionSettingsRecord {
   return serializeSettingsRecord({
+    examAnalysis: normalizeExamAnalysisSettings((record as { examAnalysis?: unknown }).examAnalysis),
     divisionId: record.divisionId,
     warnLevel1: record.warnLevel1 ?? DEFAULT_RULE_VALUES.warnLevel1,
     warnLevel2: record.warnLevel2 ?? DEFAULT_RULE_VALUES.warnLevel2,
@@ -469,7 +477,7 @@ async function upsertLegacyDivisionRuleSettings(
   }
 
   const insertColumns = ["division_id", ...ruleColumnValues.map(({ column }) => column)];
-  const placeholders = insertColumns.map((_, index) => `$${index + 1}`).join(", ");
+  const placeholders = insertColumns.map((column, index) => `$${index + 1}${column === "exam_analysis" ? "::jsonb" : ""}`).join(", ");
   const updateAssignments = [
     ...ruleColumnValues.map(({ column }) => `"${column}" = EXCLUDED."${column}"`),
     availableColumns.has("updated_at") ? `"updated_at" = CURRENT_TIMESTAMP` : null,
@@ -512,6 +520,7 @@ function getDivisionRuleSettingsFromRecord(
   settings: DivisionSettingsRecord,
 ): DivisionRuleSettings {
   return {
+    examAnalysis: settings.examAnalysis,
     warnLevel1: settings.warnLevel1,
     warnLevel2: settings.warnLevel2,
     warnInterview: settings.warnInterview,
@@ -722,6 +731,54 @@ export async function getDivisionRuleSettings(
   return getDivisionRuleSettingsFromRecord(await getDivisionSettings(divisionSlug));
 }
 
+/** Both loaders use the existing settings normalization. */
+export async function getExamAnalysisSettings(
+  divisionSlug: string,
+): Promise<ExamAnalysisSettings> {
+  if (isMockMode()) {
+    const { settings } = await ensureMockDivisionSettings(divisionSlug);
+    return settings.examAnalysis;
+  }
+  return (await getDivisionRuleSettings(divisionSlug)).examAnalysis;
+}
+
+/** Replace only analysis settings; never replay a stale snapshot of other rules. */
+export async function updateExamAnalysisSettings(
+  divisionSlug: string,
+  input: ExamAnalysisSettings,
+): Promise<ExamAnalysisSettings> {
+  const examAnalysis = examAnalysisSettingsSchema.parse(input);
+  if (isMockMode()) {
+    return updateMockState((state) => {
+      const division = state.divisions.find((item) => item.slug === divisionSlug)
+        ?? getMockDivisionBySlug(divisionSlug);
+      if (!division) throw notFound(DIVISION_NOT_FOUND_ERROR);
+      const current = state.divisionSettingsByDivision[divisionSlug]
+        ?? createMockDefaultSettingsRecord(division.id);
+      state.divisionSettingsByDivision[divisionSlug] = {
+        ...current, examAnalysis, updatedAt: new Date().toISOString(),
+      };
+      return normalizeExamAnalysisSettings(examAnalysis);
+    });
+  }
+
+  const prisma = await getPrismaClient();
+  const division = await prisma.division.findUnique({
+    where: { slug: divisionSlug }, select: { id: true },
+  });
+  if (!division) throw notFound(DIVISION_NOT_FOUND_ERROR);
+  // A narrow update also preserves rule changes committed while resolving the division.
+  // Missing schema must fail rather than silently discard an analysis settings write.
+  const saved = await prisma.divisionSettings.upsert({
+    where: { divisionId: division.id },
+    update: { examAnalysis },
+    create: { ...createDbDefaultSettingsCreateInput(division.id), examAnalysis },
+    select: { examAnalysis: true },
+  });
+  revalidateDivisionRuleSettings(divisionSlug);
+  return normalizeExamAnalysisSettings(saved.examAnalysis);
+}
+
 export async function getDivisionGeneralSettings(
   divisionSlug: string,
 ): Promise<DivisionGeneralSettings> {
@@ -815,12 +872,22 @@ export type RuleSettingsActor = {
   name: string;
 };
 
+function revalidateDivisionRuleSettings(divisionSlug: string) {
+  revalidateTag(`exam-analysis:${divisionSlug}`);
+  revalidateTag(`division-settings:${divisionSlug}`);
+  revalidateTag("admin-dashboard");
+  revalidateDivisionRuntimePaths(divisionSlug);
+  revalidateSuperAdminOverviewData();
+  revalidateDivisionReportData(divisionSlug);
+}
+
 export async function updateDivisionRuleSettings(
   divisionSlug: string,
   input: RulesSettingsInput,
   actor?: RuleSettingsActor | null,
 ): Promise<DivisionRuleSettings> {
   validateWarningThresholdOrder(input);
+  const analysisUpdate = input.examAnalysis === undefined ? {} : { examAnalysis: examAnalysisSettingsSchema.parse(input.examAnalysis) };
   const attendancePointRuleSettings = normalizeAttendancePointRuleSettings(input);
   // 저장 전 값을 떠 둔다. 저장 후에 읽으면 무엇이 바뀌었는지 알 수 없다.
   const previousSettings = await getDivisionRuleSettings(divisionSlug).catch(() => null);
@@ -858,6 +925,7 @@ export async function updateDivisionRuleSettings(
 
       state.divisionSettingsByDivision[divisionSlug] = {
         ...current,
+        ...analysisUpdate,
         warnLevel1: input.warnLevel1,
         warnLevel2: input.warnLevel2,
         warnInterview: input.warnInterview,
@@ -922,6 +990,7 @@ export async function updateDivisionRuleSettings(
     await prisma.divisionSettings.upsert({
       where: { divisionId: division.id },
       update: {
+        ...analysisUpdate,
         warnLevel1: input.warnLevel1,
         warnLevel2: input.warnLevel2,
         warnInterview: input.warnInterview,
@@ -946,6 +1015,7 @@ export async function updateDivisionRuleSettings(
       },
       create: {
         ...createDbDefaultSettingsCreateInput(division.id),
+        ...analysisUpdate,
         warnLevel1: input.warnLevel1,
         warnLevel2: input.warnLevel2,
         warnInterview: input.warnInterview,
@@ -994,11 +1064,7 @@ export async function updateDivisionRuleSettings(
     );
   }
 
-  revalidateTag(`division-settings:${divisionSlug}`);
-  revalidateTag("admin-dashboard");
-  revalidateDivisionRuntimePaths(divisionSlug);
-  revalidateSuperAdminOverviewData();
-  revalidateDivisionReportData(divisionSlug);
+  revalidateDivisionRuleSettings(divisionSlug);
 
   const nextSettings = await getDivisionRuleSettings(divisionSlug);
   await recordRuleSettingsChange(divisionSlug, actor, previousSettings, nextSettings);

@@ -135,98 +135,39 @@ function summarizeExamType(examType: ExamTypeItem) {
   };
 }
 
+/* 자리표시자는 실제 상자를 그대로 흉내 내지 않는다 (DESIGN.md 5.7).
+   목록 줄과 폼 줄의 자리만 잡아 두면 로딩 중에만 다른 구조가 보이는 일이 없다. */
 function ExamTypeManagerSkeleton() {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-      <section className="admin-section">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-2">
-            <div className="h-4 w-20 rounded bg-slate-100" />
-            <div className="h-8 w-44 rounded bg-slate-100" />
-            <div className="h-4 w-80 rounded bg-slate-100" />
-          </div>
+      <section className="admin-section" aria-hidden="true">
+        <div className="admin-workspace-toolbar">
+          <div className="admin-skeleton h-6 w-40" />
           <div className="flex gap-2">
-            <div className="h-10 w-24 rounded-lg bg-slate-100" />
-            <div className="h-10 w-28 rounded-lg bg-slate-100" />
+            <div className="admin-skeleton h-11 w-28" />
+            <div className="admin-skeleton h-11 w-28" />
           </div>
         </div>
-        <div className="mt-5 space-y-3">
+        <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="admin-section">
-              <div className="flex items-start gap-3">
-                <div className="mt-1 h-10 w-10 rounded-lg bg-slate-100" />
-                <div className="min-w-0 flex-1 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="h-5 w-36 rounded bg-slate-100" />
-                      <div className="h-5 w-12 rounded-lg bg-slate-100" />
-                      <div className="h-5 w-16 rounded-lg bg-slate-100" />
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="h-10 w-10 rounded-lg bg-slate-100" />
-                      <div className="h-10 w-24 rounded-lg bg-slate-100" />
-                      <div className="h-10 w-10 rounded-lg bg-slate-100" />
-                    </div>
-                  </div>
-                  <div className="h-4 w-72 rounded bg-slate-100" />
-                  <div className="h-4 w-40 rounded bg-slate-100" />
-                </div>
-              </div>
-            </div>
+            <div key={index} className="admin-skeleton h-[92px] w-full" />
           ))}
         </div>
       </section>
 
-      <section className="admin-section">
-        <div className="space-y-2">
-          <div className="h-4 w-20 rounded bg-slate-100" />
-          <div className="h-8 w-36 rounded bg-slate-100" />
-          <div className="h-4 w-96 rounded bg-slate-100" />
-        </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+      <section className="admin-section" aria-hidden="true">
+        <div className="admin-skeleton h-6 w-32" />
+        <div className="admin-metric-strip">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="rounded-lg border border-slate-200 px-4 py-4">
-              <div className="h-4 w-16 rounded bg-slate-100" />
-              <div className="mt-3 h-8 w-20 rounded bg-slate-100" />
-            </div>
+            <div key={index} className="admin-skeleton h-[76px]" />
           ))}
         </div>
-        <div className="mt-5 space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="h-24 rounded-lg border border-slate-200 bg-slate-50" />
-            <div className="h-24 rounded-lg border border-slate-200 bg-slate-50" />
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="h-20 rounded-lg border border-slate-200 bg-slate-50" />
-            <div className="h-20 rounded-lg border border-slate-200 bg-slate-50" />
-          </div>
-          <div className="h-14 rounded-lg border border-slate-200 bg-slate-50" />
-          <div className="rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="space-y-2">
-                <div className="h-5 w-20 rounded bg-slate-100" />
-                <div className="h-4 w-48 rounded bg-slate-100" />
-              </div>
-              <div className="h-10 w-24 rounded-lg bg-slate-100" />
-            </div>
-            <div className="mt-4 space-y-3">
-              {Array.from({ length: 2 }).map((_, index) => (
-                <div key={index} className="rounded-lg border border-slate-200 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="h-4 w-12 rounded bg-slate-100" />
-                    <div className="h-9 w-9 rounded-lg bg-slate-100" />
-                  </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
-                    <div className="h-12 rounded-lg bg-slate-100" />
-                    <div className="h-12 rounded-lg bg-slate-100" />
-                    <div className="h-12 rounded-lg bg-slate-100" />
-                    <div className="h-12 rounded-lg bg-slate-100" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="admin-skeleton h-[72px]" />
+          ))}
         </div>
+        <div className="admin-skeleton h-[240px] w-full" />
       </section>
     </div>
   );
@@ -252,16 +193,23 @@ function SortableExamTypeCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: examType.id });
   const summary = summarizeExamType(examType);
 
+  /* DESIGN.md 5.6 — 제목·보조설명이 여러 줄인 목록 선택은 .admin-choice-card 다.
+     선택을 직렬색 전면 반전으로 표시하면 카드 안 글자·배지 색을 전부 다시 정해야 하고,
+     선택된 줄만 다른 화면처럼 보인다. accent 테두리 + accent-soft 배경으로 둔다.
+     카드 안에 드래그·수정·복사·삭제 버튼이 들어가므로 카드 자체는 button 이 아니라
+     data-active 를 갖는 컨테이너이고, 선택은 제목 버튼의 aria-pressed 가 알린다. */
   return (
     <article
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-lg border px-4 py-4 transition ${ isDragging ? "border-slate-400 bg-slate-100" : isSelected ? "border-[var(--division-color)] bg-[var(--division-color)] text-white" : "border-slate-200 bg-white text-slate-950" }`}
+      className="admin-choice-card"
+      data-active={isSelected}
+      data-dragging={isDragging}
     >
       <div className="flex items-start gap-3">
         <button
           type="button"
-          className={`mt-1 inline-flex h-10 w-10 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg border transition active:cursor-grabbing ${ isSelected ? "border-white/20 bg-white/10 text-white hover:bg-white/15" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100" }`}
+          className="admin-button admin-icon-button shrink-0 cursor-grab touch-none active:cursor-grabbing"
           aria-label="시험 템플릿 순서 이동"
           title="시험 템플릿 순서 이동"
           {...attributes}
@@ -270,31 +218,47 @@ function SortableExamTypeCard({
           <GripVertical className="h-4 w-4" />
         </button>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-4">
-            <button type="button" onClick={() => onSelect(examType)} className="min-w-0 flex-1 text-left">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="text-base font-bold">{examType.name}</span>
-                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>{getCategoryLabel(examType.category)}</span>
-                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>직렬 {getTrackLabel(examType.studyTrack)}</span>
-                {isCopySource ? <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-admin-accent text-white"}`}>복사 기준</span> : null}
-                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>순서 {examType.displayOrder + 1}</span>
-                <span className={`rounded-lg px-2 py-1 text-xs font-medium ${isSelected ? "bg-white/20 text-white" : examType.isActive
-                      ? "bg-[var(--admin-success-soft)] text-[var(--admin-success)]"
-                      : "bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]"}`}>{examType.isActive ? "활성" : "비활성"}</span>
-              </span>
-              <span className={`mt-2 block text-sm ${isSelected ? "text-white/75" : "text-slate-500"}`}>{summary.subjectNames}</span>
-              <span className={`mt-1 block text-xs ${isSelected ? "text-white/70" : "text-slate-400"}`}>
-                과목 수 {summary.activeSubjectCount}개{summary.totalMaxScore ? ` · 예상 총점 ${summary.totalMaxScore}점` : ""}
-              </span>
-            </button>
+        <button
+          type="button"
+          aria-pressed={isSelected}
+          onClick={() => onSelect(examType)}
+          className="min-w-0 flex-1 text-left"
+        >
+          <span className="admin-choice-card-title block">{examType.name}</span>
 
-            <div className="flex shrink-0 items-center gap-2">
-              <button type="button" onClick={() => onSelect(examType)} className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-white"}`} aria-label="시험 템플릿 수정"><Pencil className="h-4 w-4" /></button>
-              <button type="button" onClick={() => onCopy(examType)} className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}><Copy className="h-4 w-4" />시험 템플릿 복사</button>
-              <button type="button" onClick={() => onDelete(examType.id)} disabled={isDeleting} className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isSelected ? "border-white/20 text-white hover:bg-white/10" : "border-slate-200 text-rose-600 hover:bg-white"} disabled:opacity-60`} aria-label="시험 템플릿 삭제">{isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
-            </div>
-          </div>
+          <span className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="admin-badge">{getCategoryLabel(examType.category)}</span>
+            <span className="admin-badge">직렬 {getTrackLabel(examType.studyTrack)}</span>
+            {isCopySource ? (
+              <span className="admin-badge border-[var(--admin-accent-line)] bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">복사 기준</span>
+            ) : null}
+            <span className="admin-badge">순서 {examType.displayOrder + 1}</span>
+            <span
+              className={`admin-badge ${examType.isActive
+                ? "border-[var(--admin-success-line)] bg-[var(--admin-success-soft)] text-[var(--admin-success)]"
+                : "border-[var(--admin-danger-line)] bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]"}`}
+            >
+              {examType.isActive ? "활성" : "비활성"}
+            </span>
+          </span>
+
+          <span className="admin-help mt-2 block">{summary.subjectNames}</span>
+          <span className="admin-help mt-1 block">
+            과목 수 {summary.activeSubjectCount}개{summary.totalMaxScore ? ` · 예상 총점 ${summary.totalMaxScore}점` : ""}
+          </span>
+        </button>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={() => onSelect(examType)} className="admin-button admin-icon-button" aria-label="시험 템플릿 수정" title="시험 템플릿 수정">
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => onCopy(examType)} className="admin-button">
+            <Copy className="h-4 w-4" />
+            복사
+          </button>
+          <button type="button" onClick={() => onDelete(examType.id)} disabled={isDeleting} className="admin-button admin-button-danger-outline admin-icon-button" aria-label="시험 템플릿 삭제" title="시험 템플릿 삭제">
+            {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          </button>
         </div>
       </div>
     </article>
@@ -489,18 +453,16 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
     <>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
       <section className="admin-section">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="admin-section-title">시험 템플릿 목록</h2>
-            <p className="admin-help mt-2 leading-6">드래그로 템플릿 순서를 바꾸고, 복사, 수정, 활성 상태를 함께 관리할 수 있습니다.</p>
-          </div>
+        <div className="admin-workspace-toolbar">
+          <h2 className="admin-section-title">시험 템플릿 목록</h2>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => void refreshExamTypes(true)} disabled={isRefreshing} className="admin-button">{isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}새로고침</button>
             <button type="button" onClick={resetForm} className="admin-button admin-button-primary"><Plus className="h-4 w-4" />새 템플릿</button>
           </div>
         </div>
+        <p className="admin-help">드래그로 순서를 바꾸고, 이름을 눌러 수정할 템플릿을 고릅니다.</p>
 
-        <div className="mt-5 space-y-3">
+        <div className="space-y-3">
           {orderedExamTypes.length > 0 ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={orderedExamTypes.map((examType) => examType.id)} strategy={verticalListSortingStrategy}>
@@ -519,7 +481,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
               </SortableContext>
             </DndContext>
           ) : (
-            <div className="admin-help px-4 py-8 text-center">등록된 시험 템플릿이 없습니다. 새 템플릿을 추가해 주세요.</div>
+            <p className="admin-empty-state">등록된 시험 템플릿이 없습니다. 새 템플릿을 추가해 주세요.</p>
           )}
         </div>
       </section>
@@ -534,19 +496,22 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 px-4 py-4"><p className="admin-label">직렬</p><h2 className="admin-section-title">{getTrackLabel(form.studyTrack === COMMON_TRACK_VALUE ? null : form.studyTrack)}</h2></div>
-            <div className="rounded-lg border border-slate-200 px-4 py-4"><p className="admin-label">과목 수</p><h2 className="admin-section-title">{activeSubjectCount}개</h2></div>
-            <div className="rounded-lg border border-slate-200 px-4 py-4"><p className="admin-label">예상 총점</p><h2 className="admin-section-title">{totalMaxScore > 0 ? `${totalMaxScore}점` : "미설정"}</h2></div>
+          <div className="admin-metric-strip">
+            <div className="admin-metric-box"><p className="admin-metric-box-label">직렬</p><p className="admin-metric-box-value">{getTrackLabel(form.studyTrack === COMMON_TRACK_VALUE ? null : form.studyTrack)}</p></div>
+            <div className="admin-metric-box"><p className="admin-metric-box-label">과목 수</p><p className="admin-metric-box-value">{activeSubjectCount}개</p></div>
+            <div className="admin-metric-box"><p className="admin-metric-box-label">예상 총점</p><p className="admin-metric-box-value">{totalMaxScore > 0 ? `${totalMaxScore}점` : "미설정"}</p></div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             {[{ value: "MORNING" as const, label: "아침모의고사", description: "매일 과목별 입력, 주간 집계" }, { value: "REGULAR" as const, label: "정기모의고사", description: "회차별 한 번에 입력, 누적 관리" }].map((option) => (
-              <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-4 ${form.category === option.value
-                  ? "border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]"
-                  : "border-[var(--admin-line)] hover:bg-[var(--admin-surface-soft)]"}`}>
-                <input type="radio" name="exam-category" checked={form.category === option.value} onChange={() => setForm((current) => ({ ...current, category: option.value }))} className="mt-1 h-4 w-4 border-slate-300 text-[var(--division-color)]" />
-                <span><span className="block text-sm font-semibold text-slate-900">{option.label}</span><span className="admin-help mt-1 block">{option.description}</span></span>
+              <label key={option.value} className="admin-choice-card cursor-pointer" data-active={form.category === option.value}>
+                <span className="flex items-start gap-3">
+                  <input type="radio" name="exam-category" checked={form.category === option.value} onChange={() => setForm((current) => ({ ...current, category: option.value }))} className="mt-0.5" />
+                  <span className="min-w-0">
+                    <span className="admin-choice-card-title block">{option.label}</span>
+                    <span className="admin-help mt-1 block">{option.description}</span>
+                  </span>
+                </span>
               </label>
             ))}
           </div>
@@ -556,31 +521,42 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
             <label className="block"><span className="admin-label mb-2 block">대상 직렬</span><select value={form.studyTrack} onChange={(event) => setForm((current) => ({ ...current, studyTrack: event.target.value }))} className="w-full"><option value={COMMON_TRACK_VALUE}>공통</option>{trackOptions.map((track) => <option key={track} value={track}>{track}</option>)}</select></label>
           </div>
 
-          <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-3"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-[var(--division-color)]" /><span className="text-sm font-medium text-slate-800">활성 상태</span></label>
+          <label className="admin-panel-row"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} /><span className="admin-label">활성 상태</span></label>
 
-          <div className="admin-section">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4"><div><h2 className="admin-section-title">과목 구성</h2><p className="admin-help mt-1">과목명, 문항 수, 배점을 설정합니다. 같은 택1 그룹은 가장 큰 만점 하나만 총점에 더합니다.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, subjects: [...current.subjects, createSubject()] }))} className="admin-button"><Plus className="h-4 w-4" />과목 추가</button></div>
-            <div className="space-y-3 p-4">
+          {/* DESIGN.md 5.3 — 제목줄과 본문이 나뉘는 묶음은 .admin-panel 이다.
+              .admin-section 에 직접 헤더 선을 그으면 화면마다 다른 패널이 생긴다. */}
+          <div className="admin-panel">
+            <div className="admin-panel-header"><div><h3 className="admin-section-title">과목 구성</h3><p className="admin-help mt-1">같은 택1 그룹은 가장 큰 만점 하나만 총점에 더합니다.</p></div><button type="button" onClick={() => setForm((current) => ({ ...current, subjects: [...current.subjects, createSubject()] }))} className="admin-button"><Plus className="h-4 w-4" />과목 추가</button></div>
+            <div className="divide-y divide-[var(--admin-line-soft)]">
               {form.subjects.map((subject, index) => {
                 const maxScore = calculateMaxScore(subject.totalItems, subject.pointsPerItem);
                 return (
-                  <div key={subject.localId} className="rounded-lg border border-slate-200 px-4 py-4">
+                  <div key={subject.localId} className="space-y-3 px-5 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-900">과목 {index + 1}</p>
+                      <p className="admin-label">과목 {index + 1}</p>
                       <div className="flex items-center gap-2">
-                        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={subject.isActive} onChange={(event) => setForm((current) => ({ ...current, subjects: current.subjects.map((item) => item.localId === subject.localId ? { ...item, isActive: event.target.checked } : item) }))} className="h-4 w-4 rounded border-slate-300 text-[var(--division-color)]" />활성</label>
+                        <label className="admin-label flex items-center gap-2"><input type="checkbox" checked={subject.isActive} onChange={(event) => setForm((current) => ({ ...current, subjects: current.subjects.map((item) => item.localId === subject.localId ? { ...item, isActive: event.target.checked } : item) }))} />활성</label>
                         <button type="button" onClick={() => setForm((current) => ({ ...current, subjects: current.subjects.length > 1 ? current.subjects.filter((item) => item.localId !== subject.localId) : current.subjects }))} disabled={form.subjects.length <= 1} className="admin-button admin-button-compact admin-button-danger-outline w-11 px-0" aria-label="과목 삭제"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
-                      <input value={subject.name} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, name: event.target.value }))} placeholder="과목명" className="w-full" />
-                      <input inputMode="numeric" value={subject.totalItems} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, totalItems: event.target.value }))} placeholder="문항 수" className="w-full" />
-                      <input inputMode="decimal" value={subject.pointsPerItem} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, pointsPerItem: event.target.value }))} placeholder="배점" className="w-full" />
-                      <p className="admin-help self-center">예상 점수 {maxScore === null ? "-" : `${maxScore}점`}</p>
+                    {/* 5.7 — placeholder 는 값을 넣으면 사라진다. 칸 이름은 라벨로 둔다. */}
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
+                      <label className="admin-label">과목명
+                        <input value={subject.name} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, name: event.target.value }))} placeholder="예: 헌법" />
+                      </label>
+                      <label className="admin-label">문항 수
+                        <input inputMode="numeric" value={subject.totalItems} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, totalItems: event.target.value }))} />
+                      </label>
+                      <label className="admin-label">문항당 배점
+                        <input inputMode="decimal" value={subject.pointsPerItem} onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, pointsPerItem: event.target.value }))} />
+                      </label>
+                      <div>
+                        <span className="admin-label">예상 만점</span>
+                        <p className="mt-2 font-semibold">{maxScore === null ? "-" : `${maxScore}점`}</p>
+                      </div>
                     </div>
-                    <label className="mt-4 block">
-                      <span className="admin-label mb-2 block">택1 그룹</span>
-                      <input className="w-full" maxLength={80} value={subject.alternateGroup}
+                    <label className="admin-label block">택1 그룹
+                      <input maxLength={80} value={subject.alternateGroup}
                         onChange={(event) => updateSubject(subject.localId, (current) => ({ ...current, alternateGroup: event.target.value }))}
                         placeholder="택1 과목끼리 같은 그룹명 입력" />
                       <span className="admin-help mt-2 block">필수 과목은 비워 두세요.</span>

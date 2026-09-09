@@ -548,6 +548,26 @@ body {
     border-top: 0;
   }
 
+  /* 로딩 자리표시자 (DESIGN.md 5.7)
+     화면마다 bg-slate-100 같은 토큰 밖 색을 쓰면 테마·직렬색과 어긋난 회색이 남는다.
+     맥박은 아래 prefers-reduced-motion 블록이 함께 멈춘다. */
+  .admin-skeleton {
+    border-radius: var(--admin-radius);
+    background: var(--admin-surface-muted);
+    animation: admin-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes admin-skeleton-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.55;
+    }
+  }
+
   .admin-empty-state {
     padding: 32px 24px;
     background: var(--admin-surface-soft);

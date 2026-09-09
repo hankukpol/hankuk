@@ -20,14 +20,12 @@ export default async function ExamSettingsPage({ params }: ExamSettingsPageProps
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-section">
-        <h1 className="admin-page-title">시험 템플릿 설정</h1>
-        <p className="admin-page-description">
-          지점별 운영 방식에 맞게 시험 종류를 만들고, 직렬별로 과목명, 과목 수, 문항 수,
-          배점까지 따로 관리합니다. 여기서 설정한 템플릿은 성적 입력 화면과 학생 조회 화면에
-          그대로 반영됩니다.
-        </p>
-      </section>
+      {/* DESIGN.md 5.2 — 페이지 제목은 평면 페이지 직속이다. 제목만 담은 섹션을 따로 두지 않는다. */}
+      <h1 className="admin-page-title">시험 템플릿 설정</h1>
+      <p className="admin-page-description">
+        직렬별로 시험 종류와 과목·문항 수·배점을 관리합니다. 여기서 정한 템플릿이 성적 입력
+        화면과 학생 조회 화면에 그대로 쓰입니다.
+      </p>
 
       <ExamTypeManager
         divisionSlug={params.division}

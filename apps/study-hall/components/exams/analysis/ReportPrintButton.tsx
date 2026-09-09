@@ -5,8 +5,11 @@ import { useRef, useState } from "react";
 /** Copies only the selected report; no API or student data is sent elsewhere. */
 export function ReportPrintButton() {
   const anchor = useRef<HTMLDivElement>(null);
+  const preparing = useRef(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState("");
-  function openPrint(summaryOnly = false) {
+  async function openPrint(summaryOnly = false) {
+    if (preparing.current) return;
     // 리포트는 data-report-root 로 자기를 밝힌다.
     // 예전에는 parentElement 를 리포트로 가정했는데, 개인 분석 화면이 이 버튼을
     // 제목 줄 툴바로 옮기면서 그 가정이 깨져 툴바만 인쇄됐다(표·차트 0개).
@@ -17,7 +20,22 @@ export function ReportPrintButton() {
     if (!source) return;
     const popup = window.open("", "_blank", "width=960,height=900");
     if (!popup) { setError("팝업이 차단되었습니다. 이 사이트의 팝업을 허용한 뒤 다시 눌러주세요."); return; }
+    preparing.current = true;
+    setIsPreparing(true);
+    popup.document.body.textContent = "인쇄 자료를 준비하고 있습니다.";
+    const panels = Array.from(source.querySelectorAll<HTMLElement>("[data-report-panel]"));
+    const hidden = panels.map(panel => panel.hidden);
+    const disclosures = Array.from(source.querySelectorAll<HTMLDetailsElement>("details"));
+    const open = disclosures.map(detail => detail.open);
+    const previousVisibility = (source as HTMLElement).style.visibility;
+    const scroll = { left: window.scrollX, top: window.scrollY };
     try {
+      // 숨긴 탭도 내보낸다. 차트가 실제 폭을 측정한 뒤 복사하고 화면 상태는 복구한다.
+      (source as HTMLElement).style.visibility = "hidden";
+      panels.forEach(panel => { panel.hidden = false; });
+      disclosures.forEach(detail => { detail.open = true; });
+      source.getBoundingClientRect();
+      await new Promise(resolve => window.setTimeout(resolve, 1800));
       const doc = popup.document;
       doc.documentElement.lang = "ko";
       doc.title = source.querySelector("header")?.textContent?.trim() || "개인 성적 분석";
@@ -68,12 +86,13 @@ export function ReportPrintButton() {
       };
       actions.append(help, button);
       const copy = source.cloneNode(true) as HTMLElement;
+      copy.style.visibility = previousVisibility;
       if (summaryOnly) {
-        Array.from(copy.children).forEach(child => {
-          if (child.tagName !== "HEADER" && !child.hasAttribute("data-learning-summary")) child.remove();
-        });
+        const content = Array.from(copy.querySelectorAll("header, [data-learning-summary]"));
+        copy.replaceChildren(...content);
       }
-      copy.querySelectorAll("[data-report-print], script").forEach(node => node.remove());
+      copy.querySelectorAll("[data-report-print], [data-report-navigation], script").forEach(node => node.remove());
+      copy.querySelectorAll<HTMLElement>("[data-report-panel]").forEach(node => { node.hidden = false; });
       copy.querySelectorAll("details").forEach(node => { node.open = true; });
       const originals = source.querySelectorAll('svg.recharts-surface[role="application"]');
       copy.querySelectorAll('svg.recharts-surface[role="application"]').forEach((node, index) => {
@@ -106,18 +125,25 @@ export function ReportPrintButton() {
         }
         chart.replaceWith(figure);
       });
-      doc.body.append(actions, copy);
+      doc.body.replaceChildren(actions, copy);
       popup.opener = null;
       popup.focus();
       setError("");
     } catch {
       popup.close();
       setError("인쇄 화면을 준비하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      panels.forEach((panel, index) => { panel.hidden = hidden[index]; });
+      disclosures.forEach((detail, index) => { detail.open = open[index]; });
+      (source as HTMLElement).style.visibility = previousVisibility;
+      window.scrollTo({ ...scroll, behavior: "instant" });
+      preparing.current = false;
+      setIsPreparing(false);
     }
   }
   return <div ref={anchor} data-report-print className="flex flex-wrap items-center gap-2">
-    <button type="button" className="admin-button" onClick={() => openPrint()}>A4 인쇄 / PDF 저장</button>
-    <button type="button" className="admin-button" onClick={() => openPrint(true)}>학습 진단만 인쇄 / PDF 저장</button>
+    <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint()}>A4 인쇄 / PDF 저장</button>
+    <button type="button" disabled={isPreparing} className="admin-button" onClick={() => openPrint(true)}>학습 진단만 인쇄 / PDF 저장</button>
     {error && <p role="alert" className="admin-help">{error}</p>}
   </div>;
 }

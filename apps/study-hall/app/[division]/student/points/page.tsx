@@ -73,7 +73,6 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
         pointsEnabled={settings.featureFlags.pointManagement}
         examsEnabled={settings.featureFlags.examManagement}
         title="상벌점 상세"
-        description="학생 본인에게 등록된 가점과 벌점 기록을 시간순으로 압축해 확인할 수 있습니다."
       >
         <section className={portalMetricGrid3Class}>
           <PortalMetricCard
@@ -99,7 +98,6 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
         <section>
           <PortalSectionHeader
             title="전체 상벌점 기록"
-            description="최근순으로 정렬되며, 항목과 기록 메모를 한 화면에서 빠르게 확인할 수 있습니다."
             icon={<ShieldAlert className="h-5 w-5" />}
           />
 

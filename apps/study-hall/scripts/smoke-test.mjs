@@ -230,8 +230,14 @@ async function main() {
     );
     expect(studentFixture, "student fixture missing");
     const studentJar = await loginStudent("police", studentFixture.studentNumber, studentFixture.name);
-    await expectStatus("student dashboard", await request("/police/student", { jar: studentJar }), 200);
+    const studentEntry = await request("/police/student", { jar: studentJar });
+    await expectStatus("student entry redirects", studentEntry, 307);
+    expect(
+      studentEntry.headers.get("location")?.endsWith("/police/student/attendance"),
+      `student entry: expected a redirect to the attendance screen, got ${studentEntry.headers.get("location")}`,
+    );
     await expectStatus("student attendance page", await request("/police/student/attendance", { jar: studentJar }), 200);
+    await expectStatus("student study ranking page", await request("/police/student/study-ranking", { jar: studentJar }), 200);
     await expectStatus("student exams page", await request("/police/student/exams", { jar: studentJar }), 200);
     await expectStatus("student points page", await request("/police/student/points", { jar: studentJar }), 200);
 
@@ -240,13 +246,23 @@ async function main() {
 
     const policeStudents = fixtureState.studentsByDivision.police;
     const policeSeats = fixtureState.seatsByDivision.police;
-    const occupiedSeat = policeSeats.find((seat) =>
-      policeStudents.some((student) => student.seatId === seat.id),
+    const occupies = (student, seat) => student.seatId === seat.id || (student.seatId == null && student.seatLabel === seat.label);
+    let occupiedSeat = policeSeats.find((seat) =>
+      policeStudents.some((student) => occupies(student, seat)),
     );
+    // Fresh fixtures may have no assignments; establish the conflict-test precondition.
+    if (!occupiedSeat) {
+      occupiedSeat = policeSeats.find((seat) => seat.isActive);
+      expect(occupiedSeat, "Need an active seat in police fixtures.");
+      await expectStatus("seed occupied seat", await request(`/api/police/seats/${occupiedSeat.id}/assign`, {
+        method: "PATCH", jar: policeJar, body: { studentId: studentFixture.id },
+      }), 200);
+      studentFixture.seatId = occupiedSeat.id;
+    }
     const freeSeats = policeSeats.filter(
       (seat) =>
         seat.isActive &&
-        !policeStudents.some((student) => student.seatId === seat.id),
+        !policeStudents.some((student) => occupies(student, seat)),
     );
     expect(occupiedSeat, "No occupied seat found in police fixtures.");
     expect(freeSeats.length >= 2, "Need at least two free seats in police fixtures.");

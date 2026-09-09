@@ -81,11 +81,15 @@ export function assembleRegularSessions(source: RegularRawSource, examTypeId: st
   const { sessions } = sessionsFor(source, examTypeId);
   const students = new Set(source.students.filter(row => row.divisionId === source.divisionId).map(row => row.id));
   const counts = new Map<string, Set<string>>();
+  const externalRanks = new Map<string, number | null>();
+  const importedScores = new Map<string, { id: string; total: number; subjects: Record<string, number> }>();
   for (const row of source.participants) if (row.divisionId === source.divisionId && students.has(row.studentId)) {
+    if (studentId !== undefined && row.studentId === studentId) externalRanks.set(row.sessionId, row.externalRank ?? null);
+    if (studentId !== undefined && row.studentId === studentId && row.derivedScoreId) importedScores.set(row.sessionId, { id: row.derivedScoreId, total: row.totalScore, subjects: scores(row.subjectScores) });
     const set = counts.get(row.sessionId) ?? new Set<string>(); set.add(row.studentId); counts.set(row.sessionId, set);
   }
   return sessions.filter(row => studentId === undefined || counts.get(row.id)?.has(studentId))
-    .map(row => ({ examDate: date(row.examDate), sessionId: row.id, participantCount: counts.get(row.id)?.size ?? 0 }));
+    .map(row => ({ examDate: date(row.examDate), sessionId: row.id, participantCount: counts.get(row.id)?.size ?? 0, ...(studentId !== undefined ? { externalRank: externalRanks.get(row.id) ?? null, importedScore: importedScores.get(row.id) ?? null } : {}) }));
 }
 function prepare(bundle: RegularRawBundle) {
   const { type, sessions } = sessionsFor(bundle, bundle.examTypeId);

@@ -40,6 +40,7 @@ export const EXAM_IMPORT_PARSE_REASONS: Record<string, string> = {
   INCONSISTENT_KEYS: "학생마다 정답이 다릅니다. 오답표의 정답 줄은 모든 학생이 같아야 합니다.",
   IDENTIFIER_PLACEMENT: "수험번호가 학생의 첫 줄이 아닌 곳에 적혀 있습니다. 세 줄 중 첫 줄에만 두세요.",
   INVALID_IDENTIFIER: "수험번호에 숫자가 아닌 값이 있습니다.",
+  STUDENT_IDENTITY_MISMATCH: "이 수험번호로 등록된 학생과 파일에 적힌 이름이 다릅니다. 학생 명단의 수험번호가 맞는지 확인해 주세요.",
   REGION: "지원지역이 너무 깁니다.",
 
   // --- 두 파일 대조 ------------------------------------------------------

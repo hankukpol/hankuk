@@ -37,7 +37,7 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-section">
+      <section className="admin-section max-md:sr-only">
         <h1 className="admin-page-title">출석 체크</h1>
         <p className="admin-page-description">
           교시를 고르고 학생별 출결을 지정한 뒤 저장합니다.

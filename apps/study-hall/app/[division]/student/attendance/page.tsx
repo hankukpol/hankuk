@@ -47,7 +47,6 @@ export default async function StudentAttendancePage({
         pointsEnabled={data.featureFlags.pointManagement}
         examsEnabled={data.featureFlags.examManagement}
         title="출석 상세"
-        description="날짜 기준 주간 출석표와 주간 출석 요약을 확인할 수 있습니다."
       >
         <section className={portalMetricGridClass}>
           <PortalMetricCard
@@ -66,7 +65,6 @@ export default async function StudentAttendancePage({
         <section className="min-w-0">
           <PortalSectionHeader
             title="날짜별 주간 출석표"
-            description="한 주의 교시별 출석을 한 화면에서 확인할 수 있습니다."
             icon={<ClipboardList className="h-5 w-5" />}
             action={
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] font-semibold sm:justify-end">

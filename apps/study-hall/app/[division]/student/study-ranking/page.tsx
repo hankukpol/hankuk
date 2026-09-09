@@ -38,7 +38,6 @@ export default async function StudentStudyRankingPage({
         pointsEnabled={settings.featureFlags.pointManagement}
         examsEnabled={settings.featureFlags.examManagement}
         title="학습 랭킹"
-        description="월별 익명 학습시간 랭킹과 내 순위를 확인합니다."
       >
         <StudentStudyRankingPanel
           divisionSlug={params.division}

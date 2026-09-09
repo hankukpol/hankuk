@@ -67,9 +67,9 @@ function authorize(actor: ImportActor, divisionId: string) {
   )
     throw forbidden("성적 가져오기 권한이 없습니다.");
 }
-function parse(files: ExamImportFiles) {
+function parse(files: ExamImportFiles, students: ImportStudent[]) {
   try {
-    return parseExamImportPair(files.scoreBuffer, files.analysisBuffer);
+    return parseExamImportPair(files.scoreBuffer, files.analysisBuffer, students);
   } catch (error) {
     if (error instanceof ExamImportParseError) throw badRequest(error.message);
     throw badRequest(
@@ -177,9 +177,9 @@ export async function previewExamImport(
   if (isMockMode()) return previewMock(slug, actor, files, selection);
   const division = await getDivisionBySlugOrThrow(slug);
   authorize(actor, division.id);
-  const parsed = parse(files);
   const prisma = await getPrismaClient();
-  return assemble(await loadDb(prisma, division.id), parsed, selection).preview;
+  const source = await loadDb(prisma, division.id);
+  return assemble(source, parse(files, source.students), selection).preview;
 }
 async function previewMock(
   slug: string,
@@ -190,7 +190,7 @@ async function previewMock(
   const { readMockState } = await import("@/lib/mock-store");
   const source = loadMock(await readMockState(), slug);
   authorize(actor, source.divisionId);
-  return assemble(source, parse(files), selection).preview;
+  return assemble(source, parse(files, source.students), selection).preview;
 }
 function validateConfirmation(
   assembly: ImportAssembly,
@@ -302,14 +302,13 @@ export async function confirmExamImport(
   }
   const division = await getDivisionBySlugOrThrow(slug);
   authorize(actor, division.id);
-  const parsed = parse(files);
   const prisma = await getPrismaClient();
   const result = await prisma.$transaction(
     async (tx) => {
       // Serialize import/replacement on this tenant's exam type, including first-time imports.
       await tx.$queryRaw`SELECT id FROM study_hall.exam_types WHERE id = ${selection.examTypeId ?? ""} AND division_id = ${division.id} FOR UPDATE`;
       const source = await loadDb(tx, division.id);
-      const assembly = assemble(source, parsed, selection);
+      const assembly = assemble(source, parse(files, source.students), selection);
       validateConfirmation(assembly, selection);
       const session = sessionRecord(source, assembly, actor, selection);
       const derived = derivedRecords(session, assembly, actor);
@@ -392,11 +391,10 @@ async function confirmMock(
   selection: ExamImportSelection,
 ) {
   const { updateMockState } = await import("@/lib/mock-store");
-  const parsed = parse(files);
   return updateMockState((state) => {
     const source = loadMock(state, slug);
     authorize(actor, source.divisionId);
-    const assembly = assemble(source, parsed, selection);
+    const assembly = assemble(source, parse(files, source.students), selection);
     validateConfirmation(assembly, selection);
     const session = sessionRecord(source, assembly, actor, selection);
     const derived = derivedRecords(session, assembly, actor);

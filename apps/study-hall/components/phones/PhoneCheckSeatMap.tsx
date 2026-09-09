@@ -189,10 +189,10 @@ export function PhoneCheckSeatMap({
       </div>
 
       {/* 좌석 그리드 */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto phone-seat-scroll">
         <div
           className="grid gap-3"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(88px, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(140px, 1fr))` }}
         >
           {Array.from({ length: rows }).flatMap((_, rowIdx) =>
             Array.from({ length: columns }).map((__, colIdx) => {
@@ -248,11 +248,11 @@ export function PhoneCheckSeatMap({
                   onClick={() => {
                     if (student) setModalStudentId(student.id);
                   }}
-                  className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
+                  className={`phone-seat-card relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
                 >
                   {/* 상단: 좌석번호 + 상태 배지 */}
-                  <div className="flex items-start justify-between gap-1">
-                    <span className="text-xs font-semibold">{seat.label}</span>
+                  <div className="flex flex-wrap items-start gap-1">
+                    <span className="w-full whitespace-nowrap text-[13px] font-semibold">{seat.label}</span>
                     {student && (
                       <span
                         className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}

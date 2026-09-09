@@ -135,28 +135,6 @@ export default async function AssistantPage({ params }: AssistantPageProps) {
           </p>
         </article>
       </section>
-
-      <section className="admin-section">
-        <h2 className="admin-section-title">현장 입력 안내</h2>
-        {/* 가로로 나란히 놓는 요약은 .admin-section 형제로 두지 않는다 (DESIGN.md 5.2). */}
-        {/* DESIGN.md 3절 — 본문보다 작은 제목을 만들지 않는다.
-            라벨(13px/600)과 본문(15px)의 짝으로 둔다. */}
-        <dl className="mt-3 grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0">
-            <dt className="admin-label">미처리 필터</dt>
-            <dd className="mt-1">
-              아직 입력하지 않은 학생만 걸러서 빠르게 확인할 수 있습니다.
-            </dd>
-          </div>
-
-          <div className="min-w-0">
-            <dt className="admin-label">스와이프 입력</dt>
-            <dd className="mt-1">
-              명단 행을 오른쪽으로 밀면 출석, 왼쪽으로 밀면 결석으로 즉시 처리됩니다.
-            </dd>
-          </div>
-        </dl>
-      </section>
     </div>
   );
 }

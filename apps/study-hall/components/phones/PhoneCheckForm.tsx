@@ -1055,7 +1055,7 @@ export function PhoneCheckForm({
           }`;
 
   return (
-    <div className="space-y-4">
+    <div className="admin-check-workspace space-y-4">
       <UnsavedChangesGuard isDirty={isDirty} />
       {/* 좁은 화면에서 조회 조건을 여는 버튼. 768px 이상은 아래 블록이 늘 펼쳐져 있다. */}
       <button
@@ -1126,7 +1126,7 @@ export function PhoneCheckForm({
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-admin-text-muted transition hover:text-admin-text"
+              className="absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center text-admin-text-muted transition hover:text-admin-text"
               aria-label="검색어 지우기"
             >
               <X className="h-4 w-4" />
@@ -1259,7 +1259,7 @@ export function PhoneCheckForm({
                   type="button"
                   onClick={() => savePeriod(activePeriodId)}
                   disabled={savingPeriodId === activePeriodId || isLoading}
-                  className="admin-button admin-button-primary"
+                  className="admin-button admin-button-primary max-md:hidden"
                 >
                   <Save className="h-4 w-4" />
                   {savingPeriodId === activePeriodId ? "저장 중..." : "저장"}
@@ -1367,7 +1367,7 @@ export function PhoneCheckForm({
                     return (
                       <div
                         key={student.id}
-                        className={`rounded-lg border p-3 transition ${cardBg}`}
+                        className={`admin-record-card rounded-lg border p-3 transition ${cardBg}`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="min-w-0 flex-1">
@@ -1445,6 +1445,15 @@ export function PhoneCheckForm({
             </div>
           )}
         </>
+      )}
+      {activePeriod && (
+        <div className="admin-check-savebar md:hidden">
+          <span className="admin-help">{activePeriod.periodName} · 미체크 {activePeriodStats.uncheckedCount}명</span>
+          <button type="button" onClick={() => savePeriod(activePeriodId)} disabled={savingPeriodId === activePeriodId || isLoading} className="admin-button admin-button-primary">
+            <Save className="h-4 w-4" />
+            {savingPeriodId === activePeriodId ? "저장 중..." : "저장"}
+          </button>
+        </div>
       )}
       <SlideOver
         open={bulkRentalDraft !== null}

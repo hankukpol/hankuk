@@ -121,25 +121,30 @@ test("item diagnosis preserves inputs and marks, matches composite keys, separat
   const result = itemDiagnostics([...items].reverse(), responses, DEFAULT_EXAM_ANALYSIS_SETTINGS.common);
   const typed: ItemDiagnosticRow = result.list[2];
   assert.deepEqual(typed, { ...items[2], answer: "2,4", isCorrect: true, difficulty: "어려움" });
-  assert.deepEqual(result.summary, { total: 7, correct: 1, wrong: 4, unanswered: 2,
-    myCorrectRate: 14.3, killerTotal: 2, killerCorrect: 1, killerConquerRate: 50 });
-  assert.deepEqual(result.easyMissed.map((row) => row.externalCorrectRatePct), [95, 90, 80, 70]);
+  assert.deepEqual(result.summary, { total: 6, correct: 1, wrong: 4, unanswered: 1,
+    myCorrectRate: 16.7, killerTotal: 2, killerCorrect: 1, killerConquerRate: 50 });
+  assert.deepEqual(result.easyMissed.map((row) => row.externalCorrectRatePct), [95, 80, 70]);
   assert.deepEqual(result.killerTop5.map((row) => row.externalCorrectRatePct), [20, 40, 55, 70, 80]);
   assert.deepEqual({ items, responses }, before);
   const changed = itemDiagnostics(items, responses, { ...DEFAULT_EXAM_ANALYSIS_SETTINGS.common, easyMissedRatePercent: 90, killerRatePercent: 20 });
   assert.equal(changed.summary.killerTotal, 1);
   assert.equal(changed.list[0].difficulty, "보통");
-  assert.equal(changed.easyMissed.length, 2);
+  assert.equal(changed.easyMissed.length, 1);
 });
 
-test("empty diagnostics have zero denominators and easy list is not truncated", () => {
+test("empty and missing-response diagnostics have zero response counts", () => {
   assert.deepEqual(itemDiagnostics([], [], DEFAULT_EXAM_ANALYSIS_SETTINGS.common).summary, {
     total: 0, correct: 0, wrong: 0, unanswered: 0, myCorrectRate: 0,
     killerTotal: 0, killerCorrect: 0, killerConquerRate: 0,
   });
   const items = Array.from({ length: 6 }, (_, position) => ({ subjectId: "a", itemNo: position + 1,
     position, answerKey: "1", externalCorrectRatePct: 90, internalCorrectRatePct: null }));
-  assert.equal(itemDiagnostics(items, [], DEFAULT_EXAM_ANALYSIS_SETTINGS.common).easyMissed.length, 6);
+  const missing = itemDiagnostics(items, [], DEFAULT_EXAM_ANALYSIS_SETTINGS.common);
+  assert.deepEqual(missing.summary, {
+    total: 0, correct: 0, wrong: 0, unanswered: 0, myCorrectRate: 0,
+    killerTotal: 0, killerCorrect: 0, killerConquerRate: 0,
+  });
+  assert.equal(missing.easyMissed.length, 0);
 });
 
 test("regular flags use inclusive thresholds, strict weakness, and rank ceiling", () => {

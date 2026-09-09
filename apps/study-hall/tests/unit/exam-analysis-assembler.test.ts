@@ -202,3 +202,19 @@ test('personal six-month history excludes future, old and foreign records withou
  assert.ok(b.sessions.some(s=>s.id==='too-old'));
  assert.ok(selectRegularSessionIds(b,'e','2026-09-08').participantSessionIds.includes('early'));
 });
+
+test("student history external rank is owned, division scoped, and distinct from class rank", () => {
+ const bundle=fixture();
+ bundle.participants[0].externalRank=57;
+ bundle.participants[0].derivedScoreId="owned-derived";
+ bundle.participants.push({...bundle.participants[0],divisionId:"other",externalRank:999});
+ const rows=assembleRegularSessions(bundle,"e","s1");
+ assert.equal(rows.find(row=>row.sessionId==="now")?.externalRank,57);
+ assert.equal(rows.find(row=>row.sessionId==="now")?.importedScore?.id,"owned-derived");
+ assert.deepEqual(rows.find(row=>row.sessionId==="now")?.importedScore?.subjects,bundle.participants[0].subjectScores);
+ assert.equal(assembleRegularSessions(bundle,"e")[0].externalRank,undefined);
+ assert.equal(assembleRegularSessions(bundle,"e")[0].importedScore,undefined);
+ bundle.participants[0].externalRank=null;
+ assert.equal(assembleRegularSessions(bundle,"e","s1").find(row=>row.sessionId==="now")?.externalRank,null);
+ assert.deepEqual(assembleRegularSessions(bundle,"e","missing"),[]);
+});

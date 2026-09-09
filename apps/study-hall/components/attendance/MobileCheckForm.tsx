@@ -219,12 +219,11 @@ export function MobileCheckForm({
   const progressPercentage = students.length > 0 ? Math.round((summary.checkedCount / students.length) * 100) : 0;
 
   useEffect(() => {
-    const header = document.querySelector("header");
-    if (!header) return;
-    const update = () => setHeaderHeight(header.getBoundingClientRect().height);
+    const headers = Array.from(document.querySelectorAll<HTMLElement>(".admin-mobile-topbar, header.admin-mobile-header"));
+    const update = () => setHeaderHeight(Math.max(0, ...headers.map((header) => header.getBoundingClientRect().height)));
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(header);
+    headers.forEach((header) => observer.observe(header));
     return () => observer.disconnect();
   }, []);
 
@@ -488,13 +487,15 @@ export function MobileCheckForm({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="sticky z-30 -mx-1 bg-admin-surface px-1 pb-3" style={{ top: `${headerHeight}px` }}>
-        <section className="overflow-hidden rounded-lg border border-admin-line bg-white">
+    <div className="admin-check-workspace space-y-3">
+      <div className="sticky z-20 -mx-1 bg-admin-surface px-1 pb-3" style={{ top: `${headerHeight}px` }}>
+        <section className="admin-check-summary overflow-hidden rounded-lg border border-admin-line bg-white">
           {/* 항상 표시되는 컴팩트 헤더 바 */}
           <button
             type="button"
             onClick={() => setIsSummaryCollapsed((current) => !current)}
+            aria-expanded={!isSummaryCollapsed}
+            aria-controls="attendance-check-options"
             className="flex w-full items-center gap-3 px-4 py-3 text-left"
           >
             <div className="min-w-0 flex-1">
@@ -527,7 +528,8 @@ export function MobileCheckForm({
 
           {/* 펼쳐지는 상세 정보 + 컨트롤 */}
           <div
-            className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ${ isSummaryCollapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100" }`}
+            id="attendance-check-options"
+            hidden={isSummaryCollapsed}
           >
             <div className="min-h-0 overflow-hidden">
               <div className="border-t border-slate-100 px-4 pt-3 pb-2">
@@ -638,7 +640,7 @@ export function MobileCheckForm({
                     type="button"
                     onClick={handleSave}
                     disabled={isSaving || isLoading}
-                    className="admin-button admin-button-primary ml-auto"
+                    className="admin-button admin-button-primary ml-auto max-md:hidden"
                   >
                     {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     저장
@@ -830,6 +832,14 @@ export function MobileCheckForm({
           </table>
         </div>
       </section>
+
+      <div className="admin-check-savebar md:hidden">
+        <span className="admin-help">{selectedPeriod?.name ?? "교시 선택"} · 미처리 {summary.uncheckedCount}명</span>
+        <button type="button" onClick={handleSave} disabled={isSaving || isLoading} className="admin-button admin-button-primary">
+          {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {isSaving ? "저장 중..." : "저장"}
+        </button>
+      </div>
 
       <ActionCompleteModal
         open={saveSuccessModal !== null}

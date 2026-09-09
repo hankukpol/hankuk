@@ -9,6 +9,11 @@ export type ItemDiagnosticRow = {
   externalCorrectRatePct: number; internalCorrectRatePct: number | null;
   answer: string | null; isCorrect: boolean; difficulty: "쉬움" | "보통" | "어려움";
 };
+export type ItemResponseCorrectness = {
+  subjectId: string;
+  itemNo: number;
+  correctness: boolean | null;
+};
 
 const roundOne = (value: number): number => Number(value.toFixed(1));
 
@@ -101,6 +106,7 @@ export function itemDiagnostics(
   settings: ExamAnalysisSettings["common"],
 ): {
   list: ItemDiagnosticRow[];
+  responseCorrectness?: ItemResponseCorrectness[];
   summary: { total: number; correct: number; wrong: number; unanswered: number; myCorrectRate: number;
     killerTotal: number; killerCorrect: number; killerConquerRate: number };
   easyMissed: ItemDiagnosticRow[]; killerTop5: ItemDiagnosticRow[];
@@ -113,18 +119,25 @@ export function itemDiagnostics(
       difficulty: item.externalCorrectRatePct >= settings.easyMissedRatePercent ? "쉬움"
         : item.externalCorrectRatePct <= settings.killerRatePercent ? "어려움" : "보통" };
   });
-  const correct = list.filter((row) => row.isCorrect).length;
-  // Preserve the imported correctness mark; unmarked blanks/missing responses are a separate bucket.
-  const unanswered = list.filter((row) => !row.isCorrect && !row.answer?.trim()).length;
-  const killers = list.filter((row) => row.externalCorrectRatePct <= settings.killerRatePercent);
+  const recorded = list.filter((row) => responses.has(responseKey(row)));
+  const correct = recorded.filter((row) => row.isCorrect).length;
+  const responseCorrectness = list.map((row) => ({
+    subjectId: row.subjectId,
+    itemNo: row.itemNo,
+    correctness: responses.get(responseKey(row))?.isCorrect ?? null,
+  }));
+  // Only imported response rows contribute to response counts. A recorded blank remains unanswered.
+  const unanswered = recorded.filter((row) => !row.isCorrect && !row.answer?.trim()).length;
+  const killers = recorded.filter((row) => row.externalCorrectRatePct <= settings.killerRatePercent);
   const killerCorrect = killers.filter((row) => row.isCorrect).length;
   return {
-    list,
-    summary: { total: list.length, correct, wrong: list.length - correct - unanswered, unanswered,
-      myCorrectRate: list.length ? roundOne(correct / list.length * 100) : 0,
+    list, responseCorrectness,
+    summary: { total: recorded.length, correct, wrong: recorded.length - correct - unanswered, unanswered,
+      myCorrectRate: recorded.length ? roundOne(correct / recorded.length * 100) : 0,
       killerTotal: killers.length, killerCorrect,
       killerConquerRate: killers.length ? roundOne(killerCorrect / killers.length * 100) : 0 },
-    easyMissed: list.filter((row) => !row.isCorrect && row.externalCorrectRatePct >= settings.easyMissedRatePercent)
+    easyMissed: list.filter((row) => responses.get(responseKey(row))?.isCorrect === false
+      && row.externalCorrectRatePct >= settings.easyMissedRatePercent)
       .sort((a, b) => b.externalCorrectRatePct - a.externalCorrectRatePct),
     killerTop5: [...list].sort((a, b) => a.externalCorrectRatePct - b.externalCorrectRatePct).slice(0, 5),
   };

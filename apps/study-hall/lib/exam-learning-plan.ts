@@ -1,20 +1,28 @@
 import type { RegularStudentReport } from './exam-analysis-types';
 import type { MorningStudentReport } from './morning-exam-analysis-types';
-import type { ItemDiagnosticRow } from './exam-analysis-meta';
+import type { ItemDiagnosticRow, ItemResponseCorrectness } from './exam-analysis-meta';
 
-export function reviewBuckets(items: ItemDiagnosticRow[]) {
+const responseKey = (row: { subjectId: string; itemNo: number }) => JSON.stringify([row.subjectId, row.itemNo]);
+
+export function reviewBuckets(items: ItemDiagnosticRow[], responseCorrectness?: ItemResponseCorrectness[]) {
   // Correctness is the imported O/X, not a new comparison of answer strings.
+  const correctness = responseCorrectness
+    ? new Map(responseCorrectness.map(row => [responseKey(row), row.correctness]))
+    : null;
+  const wrong = items.filter(item => correctness
+    ? correctness.get(responseKey(item)) === false
+    : !item.isCorrect);
   return {
-    easyWrong: items.filter(item => !item.isCorrect && Boolean(item.answer?.trim()) && item.difficulty === '쉬움'),
-    unanswered: items.filter(item => !item.isCorrect && !item.answer?.trim()),
-    otherWrong: items.filter(item => !item.isCorrect && Boolean(item.answer?.trim()) && item.difficulty !== '쉬움'),
+    easyWrong: wrong.filter(item => Boolean(item.answer?.trim()) && item.difficulty === '쉬움'),
+    unanswered: wrong.filter(item => !item.answer?.trim()),
+    otherWrong: wrong.filter(item => Boolean(item.answer?.trim()) && item.difficulty !== '쉬움'),
   };
 }
 
 export function regularLearningPlan(report: RegularStudentReport) {
   const priorities = report.stats.subjects.map(subject => {
     const items = report.items.list.filter(item => item.subjectId === subject.subjectId);
-    const buckets = reviewBuckets(items);
+    const buckets = reviewBuckets(items, report.items.responseCorrectness);
     return { ...subject, ...buckets, lostPoints: Math.max(0, subject.fullScore - subject.my),
       examWeight: report.session.fullScore > 0 ? subject.fullScore / report.session.fullScore * 100 : null,
       gap: subject.externalAvg == null ? null : subject.my - subject.externalAvg };
@@ -35,7 +43,13 @@ export function regularLearningPlan(report: RegularStudentReport) {
 export function morningLearningPlan(report: MorningStudentReport) {
   return report.subjects.map(subject => {
     const exams = report.dailyItems.filter(day => day.subjectId === subject.subjectId);
-    const tasks = exams.map(day => ({ date: day.date, topic: day.topic, ...reviewBuckets(day.diagnostics.list) }));
+    const tasks = exams.flatMap(day => {
+      const evidence = day.diagnostics.responseCorrectness;
+      const hasRecordedResponse = evidence === undefined || evidence.some(row => row.correctness !== null);
+      return hasRecordedResponse
+        ? [{ date: day.date, topic: day.topic, ...reviewBuckets(day.diagnostics.list, evidence) }]
+        : [];
+    });
     const topics = report.topics.filter(topic => topic.subjectId === subject.subjectId && topic.gap != null && topic.gap < 0)
       .sort((a, b) => a.gap! - b.gap! || a.topic.localeCompare(b.topic));
     const withheld = subject.insufficientSample || subject.attendanceRatePercent == null

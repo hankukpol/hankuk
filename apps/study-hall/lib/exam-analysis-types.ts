@@ -10,7 +10,7 @@ export type AnalysisSession = { id: string; examTypeId: string; examTypeName: st
 export type AnalysisDistribution = ReturnType<typeof buildDistributionBins>;
 export type AnalysisSummary = { average: number | null; top10Avg: number | null; top30Avg: number | null; max: number | null; min: number | null };
 export type AnalysisRank = { rank: number | null; count: number; topPercent: number | null; percentile: number | null };
-export type RegularSessionListItem = { examDate: string; sessionId: string; participantCount: number };
+export type RegularSessionListItem = { examDate: string; sessionId: string; participantCount: number; externalRank?: number | null; importedScore?: { id: string; total: number; subjects: Record<string, number> } | null };
 
 export type RegularCohortAnalysis = {
   hasPreviousExam?: boolean;
@@ -45,7 +45,7 @@ export type RegularStudentReport = {
 };
 
 export type AnalysisSessionRow = { id: string; divisionId: string; examTypeId: string; examDate: string | Date; primarySubjectId: string | null; topic: string | null; fullScore: number; itemCount: number; externalCohortSize: number; externalStats: ImportAssembly["externalStats"] | unknown };
-export type AnalysisParticipantRow = Omit<ImportParticipant, "responses"> & { divisionId: string; sessionId: string };
+export type AnalysisParticipantRow = Omit<ImportParticipant, "responses"> & { divisionId: string; sessionId: string; derivedScoreId?: string | null };
 export type AnalysisItemRow = ImportItem & { divisionId: string; sessionId: string };
 export type AnalysisResponseRow = ImportParticipant["responses"][number] & { divisionId: string; sessionId: string; studentId: string };
 /** Cache only these raw rows. Selection, previous-date resolution and privacy live in the assembler. */

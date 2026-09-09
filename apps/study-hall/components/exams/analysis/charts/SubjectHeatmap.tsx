@@ -16,7 +16,7 @@ export function SubjectHeatmap({ heatmap, subjects }: Props) {
       {subjects.map((subject) => <tr key={subject.id}><th scope="row" className="admin-table-name">{subject.name}</th>{dates.map((date) => {
         const row = cells.get(`${subject.id}:${date}`);
         const color = !row || row.internalAvg == null || row.externalAvg == null || row.internalAvg === row.externalAvg ? "var(--admin-text)" : row.internalAvg > row.externalAvg ? "var(--admin-chart-2)" : "var(--admin-chart-3)";
-        return <td key={date} style={{ color }}>{row ? <>{score(row.internalAvg)}<br />{comparison(row)}<br />n={row.count}</> : "시험 없음"}</td>;
+        return <td key={date} style={{ color }}>{row ? <>{score(row.internalAvg)}<br />{comparison(row)}<br />{row.count}명</> : "시험 없음"}</td>;
       })}</tr>)}
     </tbody></table></div></div>
     <div className="md:hidden"><div className="admin-table-frame"><table><caption className="admin-help">날짜·과목별 비교 수치</caption><thead><tr>{["시험일", "과목", "반 평균", "외부 평균", "비교", "반 응시", "진도"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>

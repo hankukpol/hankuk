@@ -69,7 +69,7 @@ export async function PhoneSubmissionsWorkspace({
 
   return (
     <div className="admin-flat-page">
-      <section className="admin-section">
+      <section className={`admin-section${mode === "assistant" ? " max-md:sr-only" : ""}`}>
         <h1 className="admin-page-title">
           {mode === "assistant" ? "휴대폰 체크" : "휴대폰 관리"}
         </h1>

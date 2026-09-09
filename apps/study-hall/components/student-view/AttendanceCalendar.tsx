@@ -94,7 +94,7 @@ function getCompactPeriodLabel(periodName: string) {
   const matched = periodName.match(/(\d+)교시?/);
 
   if (matched) {
-    return `${matched[1]}교`;
+    return `${matched[1]}교시`;
   }
 
   return periodName.length > 4 ? periodName.slice(0, 4) : periodName;
@@ -103,16 +103,14 @@ function getCompactPeriodLabel(periodName: string) {
 export function AttendanceCalendar({
   weeklyAttendance,
   maxDates,
-  showFootnote = true,
 }: AttendanceCalendarProps) {
   const allDateRows = buildDateRows(weeklyAttendance);
   const visibleDateRows = getVisibleDateRows(allDateRows, maxDates);
-  const isPreview = visibleDateRows.length < allDateRows.length;
   return (
     <div className="w-full min-w-0">
       {/* 모바일은 행과 열을 뒤집는다. 날짜를 열로 두면 교시 9개가 열이 되어
           13px 이상을 지키면서는 390px 안에 들어오지 않는다 (DESIGN.md 8절). */}
-      <div className="admin-table-frame md:hidden">
+      <div className="admin-table-frame student-attendance-mobile md:hidden">
         <table className="admin-portal-grid-table">
           <thead>
             <tr>
@@ -232,13 +230,7 @@ export function AttendanceCalendar({
         </table>
       </div>
 
-      {showFootnote ? (
-        <p className="admin-notice mt-2.5">
-          {isPreview
-            ? "대시보드에서는 일부 날짜만 먼저 보여주고, 전체 표는 출석 상세에서 확인할 수 있습니다."
-            : "모바일에서는 교시를 행으로, 날짜를 열로 정리해 한 화면에서 확인할 수 있습니다."}
-        </p>
-      ) : null}
+
     </div>
   );
 }

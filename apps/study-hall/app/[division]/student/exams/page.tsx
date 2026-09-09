@@ -6,6 +6,7 @@ import { ExamScoreChartLoader } from "@/components/exams/ExamScoreChartLoader";
 import { ExamTabLayout } from "@/components/exams/ExamTabLayout";
 import { MorningExamStudentView } from "@/components/exams/MorningExamStudentView";
 import { MorningStudentReport } from "@/components/exams/analysis/MorningStudentReport";
+import { externalRankForRecord } from "@/lib/exam-record-rank";
 import { RegularStudentReport } from "@/components/exams/analysis/RegularStudentReport";
 import { StudentPortalFrame } from "@/components/student-view/StudentPortalFrame";
 import {
@@ -94,6 +95,8 @@ export default async function StudentExamsPage({ params, searchParams }: Student
       const sessions = await listRegularSessions(params.division, type.id, session.studentId);
       return sessions.map((entry) => ({ ...entry, examTypeId: type.id, examTypeName: type.name, key: `${type.id}:${entry.examDate}` }));
     }))).flat().sort((left, right) => right.examDate.localeCompare(left.examDate) || left.examTypeId.localeCompare(right.examTypeId));
+    const analysisByExam = new Map(analysisSessions.map(entry => [entry.key, entry]));
+    const externalRanksByRecord = new Map(regularExams.map(exam => [exam.id, externalRankForRecord(exam, analysisByExam.get(`${exam.examTypeId}:${exam.examDate}`))]));
     const requestedSession = typeof searchParams?.analysisSession === "string" ? searchParams.analysisSession : undefined;
     const selectedSession = analysisSessions.find((entry) => entry.key === requestedSession) ?? analysisSessions[0];
     let regularReport: RegularReport | null = null;
@@ -145,29 +148,14 @@ export default async function StudentExamsPage({ params, searchParams }: Student
               <input id="student-morning-to" name="morningTo" type="date" required defaultValue={morningRange.to} />
               <button type="submit" className="admin-button admin-button-primary">아침 분석 조회</button>
             </form>
-            <p className="admin-help">기본 조회 기간은 오늘을 포함한 최근 84일입니다. 분석은 과목별 응시 횟수를 기준으로 합니다.</p>
-            {!rangeResult.success ? <p role="alert" className="admin-notice admin-notice-danger">날짜를 확인해 주세요. 시작일부터 종료일까지 날짜 차이 92일 이내로 선택해 주세요.</p> : morningReport ? <MorningStudentReport report={morningReport} mode="student" /> : <p className="admin-empty-state">선택한 기간에 가져온 아침 문항 분석 자료가 없습니다. 기존 성적 기록은 아래에서 확인할 수 있습니다.</p>}
+            {!rangeResult.success ? <p role="alert" className="admin-notice admin-notice-danger">날짜를 확인해 주세요. 시작일부터 종료일까지 날짜 차이 92일 이내로 선택해 주세요.</p> : morningReport ? <MorningStudentReport report={morningReport} mode="student" records={<MorningExamStudentView weeks={morningWeeks} />} /> : <p className="admin-empty-state">선택한 기간에 가져온 아침 문항 분석 자료가 없습니다. 기존 성적 기록은 아래에서 확인할 수 있습니다.</p>}
           </> : <p className="admin-empty-state">분석할 아침 시험 종류가 없습니다.</p>}
         </section>
-        <MorningExamStudentView weeks={morningWeeks} />
+        {!morningReport && <MorningExamStudentView weeks={morningWeeks} />}
       </div>
     );
 
-    const regularContent = (
-      <div className="space-y-5">
-        <section className="admin-flat-page">
-          <h2 className="admin-section-title">정기 성적 분석</h2>
-          {selectedSession ? <>
-            <form className="admin-filter-bar" action={`/${params.division}/student/exams`} method="get">
-              <label className="admin-label" htmlFor="student-analysis-session">분석 시험일</label>
-              <select id="student-analysis-session" name="analysisSession" defaultValue={selectedSession.key}>
-                {analysisSessions.map((entry) => <option key={entry.key} value={entry.key}>{entry.examTypeName} {entry.examDate.slice(0, 10)}</option>)}
-              </select>
-              <button type="submit" className="admin-button admin-button-primary">분석 조회</button>
-            </form>
-            {regularReport ? <RegularStudentReport report={regularReport} mode="student" /> : <p className="admin-empty-state">선택한 시험일의 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
-          </> : <p className="admin-empty-state">가져온 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
-        </section>
+    const regularRecords = <div className="admin-flat-page">
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <PortalMetricCard
             label="응시 횟수"
@@ -198,7 +186,6 @@ export default async function StudentExamsPage({ params, searchParams }: Student
         <section>
           <PortalSectionHeader
             title="날짜별 성적 기록"
-            description="정기모의고사 날짜별 총점, 석차, 과목 점수를 확인합니다."
             icon={<ChartNoAxesColumn className="h-5 w-5" />}
           />
 
@@ -210,6 +197,7 @@ export default async function StudentExamsPage({ params, searchParams }: Student
                     <th scope="col">시험일</th>
                     <th scope="col">시험 종류</th>
                     <th scope="col">총점</th>
+                    <th scope="col">전체 응시자 석차</th>
                     <th scope="col">반 석차</th>
                     {subjectColumns.map((subject) => (
                       <th scope="col" key={subject.subjectId}>{subject.name}</th>
@@ -223,6 +211,7 @@ export default async function StudentExamsPage({ params, searchParams }: Student
                       <td>{formatDate(exam.examDate)}</td>
                       <td className="admin-table-name">{exam.examTypeName}</td>
                       <td className="admin-table-amount">{exam.totalScore ?? "-"}</td>
+                      <td>{externalRanksByRecord.get(exam.id) != null ? `${externalRanksByRecord.get(exam.id)}등` : "자료 없음"}</td>
                       <td>{exam.rankInClass ? `${exam.rankInClass}등` : "-"}</td>
                       {subjectColumns.map((column) => {
                         const subject = exam.subjects.find(
@@ -250,6 +239,24 @@ export default async function StudentExamsPage({ params, searchParams }: Student
             </div>
           )}
         </section>
+    </div>;
+
+    const regularContent = (
+      <div className="space-y-5">
+        <section className="admin-flat-page">
+          <h2 className="admin-section-title">정기 성적 분석</h2>
+          {selectedSession ? <>
+            <form className="admin-filter-bar" action={`/${params.division}/student/exams`} method="get">
+              <label className="admin-label" htmlFor="student-analysis-session">분석 시험일</label>
+              <select id="student-analysis-session" name="analysisSession" defaultValue={selectedSession.key}>
+                {analysisSessions.map((entry) => <option key={entry.key} value={entry.key}>{entry.examTypeName} {entry.examDate.slice(0, 10)}</option>)}
+              </select>
+              <button type="submit" className="admin-button admin-button-primary">분석 조회</button>
+            </form>
+            {regularReport ? <RegularStudentReport report={regularReport} mode="student" records={regularRecords} /> : <p className="admin-empty-state">선택한 시험일의 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
+          </> : <p className="admin-empty-state">가져온 문항 분석 자료가 없습니다. 아래에서 기존 성적 기록을 확인할 수 있습니다.</p>}
+        </section>
+        {!regularReport && regularRecords}
       </div>
     );
 
@@ -265,7 +272,6 @@ export default async function StudentExamsPage({ params, searchParams }: Student
         pointsEnabled={settings.featureFlags.pointManagement}
         examsEnabled={settings.featureFlags.examManagement}
         title="성적 상세"
-        description="아침모의고사 주차별 성적과 정기모의고사 날짜별 성적을 확인할 수 있습니다."
       >
         {hasMorningTypes || hasRegularTypes || morningWeeks.length > 0 || regularExams.length > 0 || selectedMorningType || selectedSession ? (
           <ExamTabLayout

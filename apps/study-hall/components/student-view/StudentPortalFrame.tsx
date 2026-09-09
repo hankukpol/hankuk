@@ -20,7 +20,7 @@ type StudentPortalFrameProps = {
   student: StudentDetail;
   current: "attendance" | "points" | "exams" | "study-ranking";
   title: string;
-  description: string;
+  description?: string;
   attendanceEnabled?: boolean;
   pointsEnabled?: boolean;
   examsEnabled?: boolean;
@@ -70,49 +70,51 @@ export function StudentPortalFrame({
               <p className="admin-help mt-1.5">{description}</p>
             </div>
 
-            {/* DESIGN.md 8절 — 신원 요약은 테두리 상자가 아니라 얇은 선으로만 나눈다. */}
-            <dl className="admin-portal-summary admin-portal-summary-3">
-              <div>
-                <dt>수험번호</dt>
-                <dd>{student.studentNumber}</dd>
-              </div>
-              <div>
-                <dt>좌석</dt>
-                <dd>{student.seatLabel || "미배정"}</dd>
-              </div>
-              <div>
-                <dt>상벌점</dt>
-                <dd>
-                  {student.meritPoints !== undefined
-                    ? `상점 ${student.meritPoints} · 벌점 ${student.demeritPoints ?? 0}`
-                    : `${student.netPoints}점`}
-                </dd>
-              </div>
-              <div>
-                <dt>직렬</dt>
-                <dd>{student.studyTrack || "미지정"}</dd>
-              </div>
-              <div>
-                <dt>상태</dt>
-                <dd className={getStudentStatusToneClass(student.status)}>
-                  {getStudentStatusLabel(student.status)}
-                </dd>
-              </div>
-              <div>
-                <dt>경고 단계</dt>
-                <dd className={getWarningStageToneClass(student.warningStage)}>
-                  {student.warningStageLabel ?? getWarningStageLabel(student.warningStage)}
-                </dd>
-              </div>
-            </dl>
+            <div className="admin-portal-overview">
+              <StudentPortalTabs
+                divisionSlug={division.slug}
+                current={current}
+                attendanceEnabled={attendanceEnabled}
+                pointsEnabled={pointsEnabled}
+                examsEnabled={examsEnabled}
+              />
+              {/* 모바일은 메뉴 다음에 신원 요약을 둔다. 데스크톱 순서는 유지한다. */}
+              <dl className="admin-portal-summary admin-portal-summary-3">
+                <div>
+                  <dt>수험번호</dt>
+                  <dd>{student.studentNumber}</dd>
+                </div>
+                <div>
+                  <dt>좌석</dt>
+                  <dd>{student.seatLabel || "미배정"}</dd>
+                </div>
+                <div>
+                  <dt>상벌점</dt>
+                  <dd>
+                    {student.meritPoints !== undefined
+                      ? `상점 ${student.meritPoints} · 벌점 ${student.demeritPoints ?? 0}`
+                      : `${student.netPoints}점`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>직렬</dt>
+                  <dd>{student.studyTrack || "미지정"}</dd>
+                </div>
+                <div>
+                  <dt>상태</dt>
+                  <dd className={getStudentStatusToneClass(student.status)}>
+                    {getStudentStatusLabel(student.status)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>경고 단계</dt>
+                  <dd className={getWarningStageToneClass(student.warningStage)}>
+                    {student.warningStageLabel ?? getWarningStageLabel(student.warningStage)}
+                  </dd>
+                </div>
+              </dl>
 
-            <StudentPortalTabs
-              divisionSlug={division.slug}
-              current={current}
-              attendanceEnabled={attendanceEnabled}
-              pointsEnabled={pointsEnabled}
-              examsEnabled={examsEnabled}
-            />
+            </div>
 
             {children}
           </div>

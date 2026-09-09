@@ -46,7 +46,7 @@ export function AdminTabs<T extends string>({
   useEffect(() => {
     const list = listRef.current;
     const active = list?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!list || !active || (variant !== "primary" && !scrollable)) return;
+    if (!list || !active || (variant !== "primary" && !scrollable && !window.matchMedia("(max-width: 767px)").matches)) return;
     const frame = list.getBoundingClientRect();
     const tab = active.getBoundingClientRect();
 

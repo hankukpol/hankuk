@@ -400,7 +400,7 @@ export function StudentDetailView({
 
   return (
     <div className="admin-flat-page">
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <section className="admin-student-detail-summary overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="grid gap-5 px-6 py-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
           <div>
             <h1 className="admin-page-title">

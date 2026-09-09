@@ -9,6 +9,16 @@ import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RegularStudentReport } from "../../lib/exam-analysis-types";
 import * as morningSchemas from "../../lib/morning-exam-analysis-schemas";
+import { itemDiagnostics } from "../../lib/exam-analysis-meta";
+import { DEFAULT_EXAM_ANALYSIS_SETTINGS } from "../../lib/exam-analysis-settings";
+
+test("grading table distinguishes missing responses from explicit unanswered marks", () => {
+  const items = itemDiagnostics([1, 2].map(itemNo => ({ subjectId: "a", itemNo, position: itemNo, answerKey: "1", externalCorrectRatePct: 80, internalCorrectRatePct: 50 })), [{ subjectId: "a", itemNo: 2, answer: null, isCorrect: false }], DEFAULT_EXAM_ANALYSIS_SETTINGS.common);
+  const Component = load("components/exams/analysis/ItemAnalysisTable.tsx").ItemAnalysisTable;
+  const html = renderToStaticMarkup(React.createElement(Component, { items, subjects: [{ id: "a", name: "과목" }] }));
+  assert.ok(html.includes('<td>1</td><td>1</td><td>자료 없음</td><td>자료 없음</td>'));
+  assert.ok(html.includes('<td>2</td><td>1</td><td>무응답</td><td>X</td>'));
+});
 
 const root = path.resolve(__dirname, "../..");
 test("student analysis return link preserves current category and filters instead of entry filters", () => {
@@ -40,9 +50,30 @@ test("student analysis return link preserves current category and filters instea
 });
 // Render actual report/table markup; replace chart geometry and unrelated portal
 // services only. These checks do not claim browser layout verification.
-function load(file: string, overrides: Record<string, unknown> = {}, globals: Record<string, unknown> = {}): Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+/**
+ * 한 번의 load() 호출 트리 안에서 모듈을 재사용한다.
+ *
+ * 캐시가 없으면 CommonJS 와 달리 같은 모듈이 경로 수만큼 다시 transpile 되고
+ * 매번 새 VM 컨텍스트(realm)를 만든다. 이 파일의 학생 화면 테스트에서는
+ * 고유 모듈 27개가 394번 로드됐다. realm 이 쌓이면 단언이 실패했을 때
+ * node:assert 가 표현식을 복원하려고 스택을 심볼화하는 비용이 폭증해,
+ * 실패 메시지도 못 보여준 채 몇 분씩 매달린다.
+ */
+type LoadCache = { done: Map<string, Record<string, any>>; loading: Map<string, Record<string, any>> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+function load(file: string, overrides: Record<string, unknown> = {}, globals: Record<string, unknown> = {}, cache: LoadCache = { done: new Map(), loading: new Map() }): Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
   const filename = path.resolve(root, file);
+
+  const cached = cache.done.get(filename);
+  if (cached) return cached;
+
+  // 순환 import 는 아직 채워지는 중인 exports 를 그대로 돌려준다(CommonJS 와 같다).
+  // 가드가 없으면 무한 재귀로 스택이 터진다.
+  const partial = cache.loading.get(filename);
+  if (partial) return partial;
+
   const loaded = { exports: {} };
+  cache.loading.set(filename, loaded.exports);
   const source = fs.readFileSync(filename, "utf8");
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText, {
     module: loaded, exports: loaded.exports, URLSearchParams, AbortController, ...globals,
@@ -60,9 +91,11 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name === "@/components/exams/ExamScoreChart") return { ExamScoreChart: () => React.createElement("p", null, "성적 추이 차트") };
       if (name === "@/components/ui/SlideOver") return { SlideOver: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? children : null };
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
-      return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals);
+      return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals, cache);
     },
   });
+  cache.loading.delete(filename);
+  cache.done.set(filename, loaded.exports);
   return loaded.exports;
 }
 
@@ -327,7 +360,8 @@ test("student report exposes external rank and top percentage and full marking w
     items: { ...report.items, list: [item] },
     competitors: [{ ...report.competitors[0], name: "다른학생실명" }],
   } }));
-  for (const text of ["3등 (n=12)", "25%", "전체 채점표 (1문항)", "3,4", "2,4", "80%", "<td>X</td>"]) assert.ok(html.includes(text), text);
+  for (const text of ["3등", "25%", "전체 채점표 (1문항)", "3,4", "2,4", "80%", "<td>X</td>"]) assert.ok(html.includes(text), text);
+  assert.ok(!html.includes("(n="));
   for (const text of ["관리자에게만 표시", "다른학생실명", "90123"]) assert.ok(!html.includes(text), text);
 });
 

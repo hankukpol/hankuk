@@ -14,9 +14,25 @@ import type { MorningStudentReport, MorningCohortAnalysis } from "../../lib/morn
 const root = path.resolve(__dirname, "../..");
 // Actual UI markup with geometry and unrelated portal services stubbed.
 // This is behavioural render coverage, not browser layout evidence.
-function load(file: string, overrides: Record<string, unknown> = {}, globals: Record<string, unknown> = {}): Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+/**
+ * exam-analysis-ui.test.ts 와 같은 이유로 모듈을 재사용한다.
+ * 캐시가 없으면 같은 모듈이 경로 수만큼 새 VM 컨텍스트에서 다시 실행되고,
+ * 단언이 실패했을 때 스택 심볼화 비용이 폭증해 메시지 없이 매달린다.
+ */
+type LoadCache = { done: Map<string, Record<string, any>>; loading: Map<string, Record<string, any>> }; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+function load(file: string, overrides: Record<string, unknown> = {}, globals: Record<string, unknown> = {}, cache: LoadCache = { done: new Map(), loading: new Map() }): Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
   const filename = path.resolve(root, file);
+
+  const cached = cache.done.get(filename);
+  if (cached) return cached;
+
+  // 순환 import 는 채워지는 중인 exports 를 돌려준다(CommonJS 와 같다).
+  const partial = cache.loading.get(filename);
+  if (partial) return partial;
+
   const loaded = { exports: {} };
+  cache.loading.set(filename, loaded.exports);
   const compiled = ts.transpileModule(fs.readFileSync(filename, "utf8"), { fileName: filename, reportDiagnostics: true, compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } });
   assert.equal(compiled.diagnostics?.length ?? 0, 0, JSON.stringify(compiled.diagnostics?.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, " "))));
   vm.runInNewContext(compiled.outputText, {
@@ -30,9 +46,11 @@ function load(file: string, overrides: Record<string, unknown> = {}, globals: Re
       if (name === "react/jsx-runtime") return jsx;
       if (name === "recharts") return new Proxy({}, { get: () => ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) });
       const local = name.startsWith("@/") ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
-      return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals);
+      return load(fs.existsSync(path.resolve(root, `${local}.tsx`)) ? `${local}.tsx` : `${local}.ts`, overrides, globals, cache);
     },
   });
+  cache.loading.delete(filename);
+  cache.done.set(filename, loaded.exports);
   return loaded.exports;
 }
 
@@ -58,7 +76,7 @@ test("heatmap mobile table and desktop matrix explain missing exams, zero and un
     { date: "2026-09-08", subjectId: "a", internalAvg: 0, externalAvg: 50, count: 1, topic: "총론" },
     { date: "2026-09-01", subjectId: "b", internalAvg: null, externalAvg: 50, count: 0, topic: null },
   ] }));
-  for (const text of ["md:hidden", "hidden md:block", "시험 없음", "0점", "집계 불가", "외부보다 낮음", "비교 불가", "총론", "진도 미등록", "n=0"]) assert.ok(html.includes(text), text);
+  for (const text of ["md:hidden", "hidden md:block", "시험 없음", "0점", "집계 불가", "외부보다 낮음", "비교 불가", "총론", "진도 미등록", "0명"]) assert.ok(html.includes(text), text);
 });
 
 
@@ -74,7 +92,7 @@ const report: MorningStudentReport = {
 test("first-month report uses configured attended-session counts and shows every unavailable section", () => {
   const Component = load("components/exams/analysis/MorningStudentReport.tsx").MorningStudentReport;
   const html = renderToStaticMarkup(React.createElement(Component, { report, mode: "student" }));
-  for (const text of ["최근 6회", "최근 12회", "아직 1회만 응시했습니다. 6회부터", "판정에 필요한 응시 회차가 부족합니다", "진도 라벨이 입력된 시험이 없습니다", "가져온 문항 응답이 없습니다", "같은 주의 누적 시험과 진도 시험", "주간 석차 기록이 없습니다", "판정 보류"]) assert.ok(html.includes(text), text);
+  for (const text of ["아직 1회만 응시했습니다. 6회부터", "판정에 필요한 응시 회차가 부족합니다", "문항별 응답 자료가 없습니다", "같은 주의 누적 시험과 진도 시험", "주간 석차 기록이 없습니다", "판정 보류"]) assert.ok(html.includes(text), text);
   assert.ok(!html.includes("관리자전용이름"));
   assert.ok(!html.includes("7일 이동평균"));
   assert.ok(!html.includes("감지된 하락 신호가 없습니다"));
@@ -86,17 +104,17 @@ test("low participation suppresses decline claims and chart interpretation but p
   const Component = load("components/exams/analysis/MorningStudentReport.tsx").MorningStudentReport;
   const data = { ...report, summary: { ...report.summary, attendanceRatePercent: 50 }, subjects: [{ ...report.subjects[0], insufficientSample: false, flags: [{ kind: "consecutiveDrops", detail: "표시하면안되는하락사유" }] }] };
   const html = renderToStaticMarkup(React.createElement(Component, { report: data, mode: "student" }));
-  assert.ok(html.includes("응시율 50%라 추세를 판단하지 않습니다"));
-  assert.ok(html.includes("설정된 기준은 70%"));
+  assert.ok(html.includes("추세와 하락을 판단하지 않습니다"));
+  assert.ok(!html.includes("설정된 기준은 70%"));
   assert.ok(!html.includes("표시하면안되는하락사유"));
   assert.ok(!html.includes("점수와 이동평균"));
   assert.ok(html.includes("<td>50</td>"));
   const subjectLow = renderToStaticMarkup(React.createElement(Component, { report: { ...data, summary: report.summary, subjects: [{ ...data.subjects[0], attendanceRatePercent: 30 }] }, mode: "student" }));
-  assert.ok(subjectLow.includes("이 과목은 응시율이 기준에 미달"));
+  assert.ok(subjectLow.includes("이 과목의 응시 기록이 부족"));
   assert.ok(!subjectLow.includes("표시하면안되는하락사유"));
 });
 
-test("student full grading and external rank stay in daily details, topics sort by weakness and names stay hidden", () => {
+test("student full grading and external rank stay in daily details without inferred weak topics or names", () => {
   const Component = load("components/exams/analysis/MorningStudentReport.tsx").MorningStudentReport;
   const item = { subjectId: "a", itemNo: 1, position: 0, answerKey: "3,4", answer: "2,4", isCorrect: false, externalCorrectRatePct: 80, internalCorrectRatePct: 50, difficulty: "쉬움" as const };
   const diagnostics = { list: [item], easyMissed: [item], killerTop5: [item], summary: { total: 1, correct: 0, wrong: 1, unanswered: 0, myCorrectRate: 0, killerTotal: 0, killerCorrect: 0, killerConquerRate: 0 } };
@@ -106,9 +124,11 @@ test("student full grading and external rank stay in daily details, topics sort 
     topics: [{ topic: "강점단원", subjectId: "a", count: 1, myAvg: 90, internalAvg: 80, gap: 10 }, { topic: "취약단원", subjectId: "a", count: 2, myAvg: 50, internalAvg: 80, gap: -30 }],
     dailyItems: [{ ...day, date: "2026-09-01" }, day], weeklyRanks: [{ weekYear: 2026, weekNumber: 36, rank: 3, count: 20 }],
   }, mode: "student" }));
-  for (const text of ["외부 석차 3등 (n=20)", "상위 15%", "전체 채점표 (1문항)", "3,4", "2,4", "80%", "<td>X</td>", "직전 주 기록이 없어"]) assert.ok(html.includes(text), text);
-  assert.ok(html.indexOf("취약단원") < html.indexOf("강점단원"));
-  assert.ok(html.indexOf("2026-09-08 과목 A") < html.indexOf("2026-09-01 과목 A"));
+  for (const text of ["외부 석차 3등", "상위 15%", "전체 채점표 (1문항)", "3,4", "2,4", "80%", "<td>X</td>", "직전 주 기록이 없어"]) assert.ok(html.includes(text), text);
+  assert.ok(!html.includes("(n="));
+  assert.ok(!html.includes("취약단원") && !html.includes("강점단원"));
+  const itemSection = html.slice(html.indexOf('id="personal-items"'));
+  assert.ok(itemSection.indexOf("2026-09-08") >= 0 && itemSection.indexOf("2026-09-08") < itemSection.indexOf("2026-09-01"));
   assert.ok(!/<details[^>]*\bopen/.test(html));
   assert.ok(!html.includes("관리자전용이름"));
 });

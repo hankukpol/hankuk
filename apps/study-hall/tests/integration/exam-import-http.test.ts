@@ -67,6 +67,7 @@ test("file import HTTP flow persists both legacy score paths and rejects foreign
     state.examTypesByDivision.police = state.examTypesByDivision.police.filter((row) => !row.id.startsWith("import-http-"));
     state.studentsByDivision.police.slice(0, 5).forEach((student, index) => {
       student.studentNumber = String(90001 + index);
+      student.name = `학생${String(index + 1).padStart(2, "0")}`;
     });
     const previous = new Set(state.examSessionsByDivision.police.filter((row) => row.examTypeId.startsWith("import-http-")).map((row) => row.id));
     state.examSessionsByDivision.police = state.examSessionsByDivision.police.filter((row) => !previous.has(row.id));
@@ -136,6 +137,17 @@ test("file import HTTP flow persists both legacy score paths and rejects foreign
     assert.equal(preview.matching.matched, 5);
     assert.equal(preview.reproduction.mismatches.length, 0);
     assert.equal(preview.existing, false);
+    // Re-check the current roster at confirmation, not only at preview time.
+    await updateMockState(state => { state.studentsByDivision.police[0].name = "번호재사용검증"; });
+    try {
+      assert.equal((await send("/preview")).status, 400);
+      const rejected = await send("");
+      assert.equal(rejected.status, 400);
+      assert.ok(!(await rejected.text()).includes("번호재사용검증"));
+      assert.equal((await readMockState()).examSessionsByDivision.police.filter(row => row.examTypeId === id).length, 0);
+    } finally {
+      await updateMockState(state => { state.studentsByDivision.police[0].name = "학생01"; });
+    }
     const confirmed = await send("");
     assert.equal(confirmed.status, 201, await confirmed.clone().text());
     const { result } = await confirmed.json();

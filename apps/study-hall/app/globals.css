@@ -2908,28 +2908,42 @@ body:has(.admin-shell) {
   }
   /* --- 홈 바로가기: 768px 미만에서 카드가 아니라 행이다 (§2.4·§3).
          223px 카드가 다섯 개 쌓이면 1100px 이 바로가기 하나로 나간다.
-         데스크톱 격자 카드는 그대로 두고 모바일에서만 편다. --- */
+         데스크톱 격자 카드는 그대로 두고 모바일에서만 편다.
+
+         두 줄로 편다: 제목 / 기준(note).
+         note 는 숫자의 기준이다 — "최근 7일 기준" 없이 "3명"만 남으면 무엇의 3명인지 모른다.
+         접는 것은 설명과 CTA 뿐이다. 화살표는 행 전체가 링크라 없어도 눌리는 곳을 안다. --- */
   .admin-action-card {
     display: grid;
     min-height: 48px;
     grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
     align-items: center;
-    gap: 12px;
+    gap: 2px 12px;
     border-width: 0 0 1px 0;
     border-radius: 0;
-    padding: 12px 16px;
+    padding: 10px 16px;
   }
 
-  /* 아이콘 상자는 줄이고, 설명·CTA 는 접는다. 행에서 읽어야 하는 것은 제목과 값이다. */
+  /* 아이콘·배지를 격자에 직접 올린다. 감싼 div 는 자리만 차지한다. */
+  .admin-action-card > div:first-child {
+    display: contents;
+  }
+
   .admin-action-card > div:first-child > :first-child {
     width: 32px;
     min-width: 32px;
     height: 32px;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
     border-radius: var(--admin-radius-mobile);
   }
 
-  .admin-action-card > div:first-child {
-    display: contents;
+  .admin-action-card > div:first-child > :last-child {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
   }
 
   .admin-action-card > p:first-of-type {
@@ -2940,8 +2954,21 @@ body:has(.admin-shell) {
     font-weight: 600;
   }
 
-  .admin-action-card > p:nth-of-type(2),
+  /* 설명은 접는다. 제목과 기준만으로 무엇을 누르는지 알 수 있다. */
+  .admin-action-card > p:nth-of-type(2) {
+    display: none;
+  }
+
   .admin-action-card > div:last-child {
+    display: block;
+    margin: 0;
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  /* 마지막 칸이 CTA 다. 기준(note)만 남긴다. */
+  .admin-action-card > div:last-child > :last-child {
     display: none;
   }
 

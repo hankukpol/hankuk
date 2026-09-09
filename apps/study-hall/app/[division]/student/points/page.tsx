@@ -12,9 +12,9 @@ import {
 } from "@/components/student-view/StudentPortalUi";
 import { requireDivisionStudentAccess } from "@/lib/auth";
 import { isNotFoundError } from "@/lib/errors";
-import { toDemeritPoints } from "@/lib/student-meta";
+import { getNextWarningStage, toDemeritPoints } from "@/lib/student-meta";
 import { listPointRecords } from "@/lib/services/point.service";
-import { getDivisionFeatureSettings, getDivisionTheme } from "@/lib/services/settings.service";
+import { getDivisionFeatureSettings, getDivisionRuleSettings, getDivisionTheme } from "@/lib/services/settings.service";
 import { getStudentDetail } from "@/lib/services/student.service";
 
 type StudentPointsPageProps = {
@@ -37,10 +37,11 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
   const session = await requireDivisionStudentAccess(params.division);
 
   try {
-    const [division, student, settings] = await Promise.all([
+    const [division, student, settings, rules] = await Promise.all([
       getDivisionTheme(params.division),
       getStudentDetail(params.division, session.studentId),
       getDivisionFeatureSettings(params.division),
+      getDivisionRuleSettings(params.division),
     ]);
 
     if (!settings.featureFlags.pointManagement) {
@@ -54,6 +55,14 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
 
     const rewardCount = metricRecords.filter((record) => record.points > 0).length;
     const penaltyCount = metricRecords.filter((record) => record.points < 0).length;
+
+    // 학생에게 필요한 건 지금 몇 점인지보다 다음 단계까지 몇 점 남았는지다.
+    // 최고 단계에 닿으면 남은 점수가 없으므로 기존 기준 문구로 돌아간다.
+    const nextStage = getNextWarningStage(demeritPoints, rules, student.warningStageLabels);
+    const demeritCaption = [
+      student.meritPoints !== undefined ? "이번 달 벌점, 상점과 별도 집계" : null,
+      nextStage ? `${nextStage.label}까지 ${nextStage.pointsRemaining}점` : "경고 단계 반영 기준",
+    ].filter(Boolean).join(" · ");
 
     return (
       <StudentPortalFrame
@@ -70,7 +79,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
           <PortalMetricCard
             label="현재 벌점"
             value={`${demeritPoints}점`}
-            caption={student.meritPoints !== undefined ? "이번 달 벌점, 상점과 별도 집계" : "경고 단계 반영 기준"}
+            caption={demeritCaption}
           />
           <PortalMetricCard
             label={student.meritPoints !== undefined ? "이번 달 상점" : "가점 기록"}

@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { LogOut, Menu, X } from "lucide-react";
 
-import { AdminSidebar, getShellMenuLabel, type ShellRole } from "@/components/layout/AdminSidebar";
+import { AdminSidebar, getShellMenuLabel, getShellScreenLabel, type ShellRole } from "@/components/layout/AdminSidebar";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
@@ -38,7 +38,9 @@ export function AdminShell({
   role = "admin",
 }: AdminShellProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const menuLabel = getShellMenuLabel(role);
+  const screenLabel = getShellScreenLabel(role, divisionSlug, pathname ?? "");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -84,7 +86,8 @@ export function AdminShell({
 
       <div className="admin-workspace">
         {/* 1024px 미만 상단 헤더 */}
-        <header className="admin-mobile-header lg:hidden">
+        {/* 검은 64px 헤더는 768~1023px 에만. 768 미만은 아래 52px 바가 헤더다 (MOBILE_DESIGN.md 2.1). */}
+        <header className="admin-mobile-header hidden md:flex lg:hidden">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -142,8 +145,21 @@ export function AdminShell({
 
         <main className="admin-main">
           <div className="admin-content-frame">
-            <div className="admin-utility-row">
-              {/* 채팅 도크는 화면당 하나만 둔다. 두 벌을 렌더하면 열림 상태가 갈린다. */}
+            {/* 768px 미만에서 이 행이 그대로 52px 상단 바가 된다 (MOBILE_DESIGN.md 2.1).
+                채팅 도크를 옮기지 않고 같은 요소를 다시 꾸미는 이유는 도크가 화면당 하나여야 하기 때문이다.
+                두 벌을 렌더하면 열림 상태가 갈린다. */}
+            <div className="admin-utility-row admin-mobile-topbar">
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen((open) => !open)}
+                className="admin-mobile-topbar-menu md:hidden"
+                aria-expanded={isMenuOpen}
+                aria-controls="admin-mobile-navigation"
+                aria-label={menuLabel}
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <p className="admin-mobile-topbar-title md:hidden">{screenLabel ?? divisionName}</p>
               <StaffChatDock
                 divisionSlug={divisionSlug}
                 divisionName={divisionName}

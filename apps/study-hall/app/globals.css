@@ -2629,13 +2629,18 @@ body:has(.admin-shell) {
       input:not([type="checkbox"], [type="radio"]),
       select,
       textarea,
-      .admin-notice
+      .admin-notice,
+      .admin-chat-trigger,
+      .admin-action-menu-trigger,
+      .admin-disclosure
     ) {
     border-radius: var(--admin-radius-mobile);
   }
 
-  /* --- 상단 바 (§2.1). 마크업은 2단계에서 붙는다.
-         규격을 먼저 두어 붙는 즉시 동작하게 한다. --- */
+  /* --- 상단 바 (§2.1)
+         .admin-utility-row 가 이 클래스를 함께 갖는다. 채팅 도크를 옮기지 않고
+         같은 요소를 다시 꾸미는 것이라, 도크 인스턴스가 화면당 하나로 유지된다.
+         .admin-main 의 좌우 16 · 위 20 padding 밖으로 끌어내 화면 폭을 다 쓴다. --- */
   .admin-mobile-topbar {
     position: sticky;
     top: 0;
@@ -2643,10 +2648,30 @@ body:has(.admin-shell) {
     display: flex;
     min-height: 52px;
     align-items: center;
+    justify-content: flex-start;
     gap: 8px;
+    margin: -20px -16px 20px;
     border-bottom: 1px solid var(--admin-line-soft);
     padding: 4px 8px;
     background: var(--admin-surface);
+  }
+
+  .admin-mobile-topbar-menu {
+    display: inline-flex;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--admin-radius-mobile);
+    background: none;
+    color: var(--admin-text);
+  }
+
+  .admin-mobile-topbar-menu:hover {
+    background: var(--admin-surface-soft);
   }
 
   /* 제목은 가운데. 두 줄이 되면 말줄임이 아니라 줄바꿈이고 바가 늘어난다 (§3 제목 truncate 금지). */
@@ -2700,9 +2725,10 @@ body:has(.admin-shell) {
     font-weight: 700;
   }
 
-  /* --- 2차 탭: 한 단계 줄인다 (§2.2) --- */
+  /* --- 2차 탭: 한 단계 줄인다 (§2.2) ---
+     44px 아래로는 내리지 않는다. 벤치마크는 43px 이지만 터치 규격이 우선이다(DESIGN.md 8절). */
   .admin-subtab {
-    min-height: 43px;
+    min-height: 44px;
     padding: 10px 12px;
     font-size: 14px;
     font-weight: 700;
@@ -2872,6 +2898,14 @@ body:has(.admin-shell) {
     padding: 10px 8px;
   }
 
+
+  /* 본문 페이지 제목은 모바일에서 한 단계 줄인다.
+     상단 바는 메뉴에서 온 화면 이름이라 "모의학생05 개인 성적 분석" 같은
+     구체적 제목은 본문에만 있다. 지우면 그 정보가 사라진다. */
+  /* 1950행의 `.admin-shell :is(.admin-page-title, ...)` 가 (0,2,0) 이라 같은 특이도로 받는다. */
+  .admin-shell :is(.admin-page-title) {
+    font-size: var(--admin-type-section);
+  }
   /* --- 페이지 설명은 숨긴다 (§2.1).
          설명이 꼭 필요하면 첫 섹션 상단에 .admin-help 한 줄로 둔다. --- */
   .admin-page-description {

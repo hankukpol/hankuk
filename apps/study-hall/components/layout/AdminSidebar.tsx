@@ -168,6 +168,33 @@ export function getShellMenuLabel(role: ShellRole) {
   return shellNav[role].menuLabel;
 }
 
+/**
+ * 모바일 상단 바에 넣을 현재 화면 이름 (MOBILE_DESIGN.md 2.1).
+ * 메뉴 목록이 이미 화면 이름의 원본이므로 화면마다 제목을 다시 넘기게 하지 않는다.
+ * 활성 판정은 사이드바와 같은 규칙이라 메뉴에서 강조되는 항목과 늘 일치한다.
+ */
+export function getShellScreenLabel(role: ShellRole, divisionSlug: string, pathname: string) {
+  const { sections, basePath } = shellNav[role];
+  let matched: { label: string; length: number } | null = null;
+
+  for (const section of sections) {
+    for (const item of section.items) {
+      const href = `/${divisionSlug}/${basePath}${item.href ? `/${item.href}` : ""}`;
+      const isActive =
+        item.href === ""
+          ? pathname === href
+          : pathname === href || pathname.startsWith(`${href}/`);
+
+      // 더 긴 경로가 이긴다. `/admin` 과 `/admin/exams` 가 함께 맞으면 뒤가 화면 이름이다.
+      if (isActive && (!matched || href.length > matched.length)) {
+        matched = { label: item.label, length: href.length };
+      }
+    }
+  }
+
+  return matched?.label ?? null;
+}
+
 type AdminSidebarProps = {
   divisionSlug: string;
   divisionName: string;

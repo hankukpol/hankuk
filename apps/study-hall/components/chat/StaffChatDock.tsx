@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 
 import { StaffChatRoom } from "@/components/chat/StaffChatRoom";
 import { formatUnreadBadge } from "@/lib/chat-meta";
-import { setChatDockOpen, useChatStore } from "@/lib/chat-store";
+import { chatStoreKey, getChatStore, useChatStore } from "@/lib/chat-store";
 import type { ChatAuthorRole, ChatMessageItem } from "@/lib/services/chat.service";
 
 type StaffChatDockProps = {
@@ -30,7 +30,11 @@ type LoadedRoom = {
  * 페이지를 가리는 오버레이를 두지 않는다 — 열어 둔 채로 다른 작업을 계속할 수 있어야 한다.
  * 그래서 포커스 트랩과 스크롤 잠금도 걸지 않는다(모달이 아니다).
  */
-export function StaffChatDock({
+export function StaffChatDock(props: StaffChatDockProps) {
+  return <ChatDockSession key={`${chatStoreKey(props.divisionSlug, props.viewerId)}:${props.enabled}`} {...props} />;
+}
+
+function ChatDockSession({
   divisionSlug,
   divisionName,
   viewerId,
@@ -42,7 +46,11 @@ export function StaffChatDock({
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const { unreadCount, signalAt, mode, openRequestAt } = useChatStore();
+  const storeKey = chatStoreKey(divisionSlug, viewerId);
+  const store = getChatStore(storeKey);
+  const { unreadCount, signalAt, mode, openRequestAt } = useChatStore(storeKey);
+  const loadRevision = useRef(0);
+  const consumedOpenRequest = useRef(openRequestAt);
   const mountedRef = useRef(true);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   // 패널은 .admin-shell 직속으로 포털한다.
@@ -56,10 +64,12 @@ export function StaffChatDock({
 
     return () => {
       mountedRef.current = false;
+      loadRevision.current += 1;
     };
   }, []);
 
   const load = useCallback(async () => {
+    const revision = ++loadRevision.current;
     setIsLoading(true);
     setLoadError(null);
 
@@ -74,15 +84,15 @@ export function StaffChatDock({
 
       const payload = (await response.json()) as LoadedRoom;
 
-      if (mountedRef.current) {
+      if (mountedRef.current && revision === loadRevision.current) {
         setRoom(payload);
       }
     } catch (error) {
-      if (mountedRef.current) {
+      if (mountedRef.current && revision === loadRevision.current) {
         setLoadError(error instanceof Error ? error.message : "채팅을 불러오지 못했습니다.");
       }
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && revision === loadRevision.current) {
         setIsLoading(false);
       }
     }
@@ -91,20 +101,24 @@ export function StaffChatDock({
   const open = useCallback(() => {
     setIsOpen(true);
 
-    // 처음 열 때만 받아온다. 이후 갱신은 방 안에서 증분 동기화가 맡는다.
-    if (!room && !isLoading) {
+    // Closing unmounts the room; reopen with a fresh snapshot instead of stale cached props.
+    if (!isLoading) {
       void load();
     }
-  }, [isLoading, load, room]);
+  }, [isLoading, load]);
 
   const close = useCallback(() => {
     setIsOpen(false);
+    loadRevision.current += 1;
+    setIsLoading(false);
+    setRoom(null);
     triggerRef.current?.focus();
   }, []);
 
   // 알림을 눌렀을 때 그 자리에서 열린다.
   useEffect(() => {
-    if (openRequestAt > 0) {
+    if (openRequestAt > consumedOpenRequest.current) {
+      consumedOpenRequest.current = openRequestAt;
       open();
     }
     // open 은 room/isLoading 에 따라 새로 만들어지므로 의존성에 넣지 않는다.
@@ -114,12 +128,12 @@ export function StaffChatDock({
 
   // 감시자가 알림을 울릴지 판단할 때 이 값을 본다.
   useEffect(() => {
-    setChatDockOpen(isOpen);
+    store.set({ isOpen: isOpen && room !== null && !isLoading && !loadError });
 
     return () => {
-      setChatDockOpen(false);
+      store.set({ isOpen: false });
     };
-  }, [isOpen]);
+  }, [isOpen, isLoading, loadError, room, store]);
 
   // Escape 로 닫는다. 모달이 아니므로 그 외 키는 가로채지 않는다.
   useEffect(() => {

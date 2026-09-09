@@ -145,3 +145,43 @@ export function canDeleteChatMessage(actor: ChatDeleteActor, message: { authorId
 
   return message.authorId !== null && message.authorId === actor.id;
 }
+
+/** Coalesce concurrent signals, retaining a trailing pass while I/O is in flight. */
+export function createChatSyncQueue(sync: () => Promise<void>) {
+  let running: Promise<void> | null = null;
+  let pending = false;
+  let disposed = false;
+  return {
+    run(): Promise<void> {
+      if (disposed) return Promise.resolve();
+      pending = true;
+      if (!running) {
+        running = Promise.resolve().then(async () => {
+          while (pending && !disposed) {
+            pending = false;
+            await sync();
+          }
+        }).finally(() => { running = null; });
+      }
+      return running;
+    },
+    dispose() { disposed = true; pending = false; },
+  };
+}
+
+/** Only complete delta pages advance the cursor, never send/delete responses. */
+export function advanceChatCursor(current: string | null, messages: ChatMessageLike[], complete = true) {
+  if (!complete) return current;
+  return messages.reduce<string | null>(
+    (cursor, message) => cursor === null || message.updatedAt > cursor ? message.updatedAt : cursor,
+    current,
+  );
+}
+
+export function isNewChatArrival(
+  previous: Pick<ChatMessageLike, "id" | "createdAt"> | null,
+  next: Pick<ChatMessageLike, "id" | "createdAt"> | null,
+) {
+  return next !== null && (previous === null || next.createdAt > previous.createdAt ||
+    (next.createdAt === previous.createdAt && next.id > previous.id));
+}

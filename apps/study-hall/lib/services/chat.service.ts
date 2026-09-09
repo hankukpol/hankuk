@@ -197,8 +197,15 @@ export async function listChatMessages(
 
     if (options.since) {
       const since = new Date(options.since).toISOString();
-      const changed = all.filter((message) => message.updatedAt > since).slice(0, CHAT_SYNC_MAX_LIMIT);
-      return buildPage(changed, false);
+      const changed = all.filter((message) => message.updatedAt > since).sort((left, right) =>
+        left.updatedAt < right.updatedAt ? -1 : left.updatedAt > right.updatedAt ? 1 : 0,
+      );
+      // 시간만 있는 커서는 같은 updatedAt 묶음을 나누면 나머지를 영원히 건너뛴다.
+      const boundary = changed[CHAT_SYNC_MAX_LIMIT - 1]?.updatedAt;
+      return buildPage(
+        sortByCreatedAt(boundary ? changed.filter((message) => message.updatedAt <= boundary) : changed),
+        false,
+      );
     }
 
     if (options.before && !all.some((message) => message.id === options.before)) {
@@ -225,14 +232,26 @@ export async function listChatMessages(
     const records = await prisma.chatMessage.findMany({
       where: { divisionId: division.id, updatedAt: { gt: new Date(options.since) } },
       include,
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       take: CHAT_SYNC_MAX_LIMIT,
     });
 
+    // 200건은 목표 크기다. 기존 timestamp 커서를 유지하려면 경계 시각의 동률은
+    // 전부 포함해야 한다. 화면에 반환할 때는 기존 createdAt 정렬을 유지한다.
+    const boundary = records[CHAT_SYNC_MAX_LIMIT - 1];
+    if (boundary) {
+      const tied = await prisma.chatMessage.findMany({
+        where: { divisionId: division.id, updatedAt: boundary.updatedAt, id: { gt: boundary.id } },
+        include,
+        orderBy: [{ id: "asc" }],
+      });
+      records.push(...tied);
+    }
+
     return buildPage(
-      records.map((record) =>
+      sortByCreatedAt(records.map((record) =>
         serializeChatMessage(record, record.author, record.deletedBy?.name ?? null),
-      ),
+      )),
       false,
     );
   }
@@ -256,7 +275,12 @@ export async function listChatMessages(
   const records = await prisma.chatMessage.findMany({
     where: {
       divisionId: division.id,
-      ...(createdBefore ? { createdAt: { lt: createdBefore } } : {}),
+      ...(createdBefore ? {
+        OR: [
+          { createdAt: { lt: createdBefore } },
+          { createdAt: createdBefore, id: { lt: options.before } },
+        ],
+      } : {}),
     },
     include,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -309,9 +333,6 @@ export async function createChatMessage(
         next,
       ];
 
-      // 본인이 쓴 글이 안읽음으로 잡히지 않도록 읽은 시각을 함께 전진시킨다.
-      applyMockReadState(state, divisionSlug, division.id, actor.id, now);
-
       return next;
     });
 
@@ -334,8 +355,6 @@ export async function createChatMessage(
       deletedBy: { select: { name: true } },
     },
   });
-
-  await advanceReadState(prisma, division.id, actor.id, record.createdAt);
 
   return serializeChatMessage(record, record.author, null);
 }
@@ -404,11 +423,19 @@ export async function deleteChatMessage(
     return serializeChatMessage(target, target.author, target.deletedBy?.name ?? null);
   }
 
-  const record = await prisma.chatMessage.update({
-    where: { id: target.id },
+  // 조회 이후 다른 관리자가 삭제했더라도 최초 삭제 정보는 덮어쓰지 않는다.
+  await prisma.chatMessage.updateMany({
+    where: { id: target.id, divisionId: division.id, deletedAt: null },
     data: { deletedAt: new Date(), deletedById: actor.id },
+  });
+  const record = await prisma.chatMessage.findFirst({
+    where: { id: target.id, divisionId: division.id },
     include,
   });
+
+  if (!record) {
+    throw notFound("메시지를 찾을 수 없습니다.");
+  }
 
   return serializeChatMessage(record, record.author, record.deletedBy?.name ?? null);
 }
@@ -492,6 +519,10 @@ export async function markChatRead(
       const anchor = input.lastReadMessageId
         ? records.find((record) => record.id === input.lastReadMessageId)
         : null;
+
+      if (input.lastReadMessageId && !anchor) {
+        throw notFound("기준 메시지를 찾을 수 없습니다.");
+      }
 
       applyMockReadState(
         state,

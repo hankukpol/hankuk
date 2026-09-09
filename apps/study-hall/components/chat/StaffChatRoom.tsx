@@ -8,9 +8,9 @@ import {
   requestBrowserNotificationPermission,
   type NotificationPermissionState,
 } from "@/lib/browser-notify";
-import { canDeleteChatMessage, mergeChatMessages } from "@/lib/chat-meta";
+import { advanceChatCursor, canDeleteChatMessage, createChatSyncQueue, isNewChatArrival, mergeChatMessages } from "@/lib/chat-meta";
 import { CHAT_MESSAGE_MAX_LENGTH } from "@/lib/chat-schemas";
-import { markChatReadLocally } from "@/lib/chat-store";
+import { chatStoreKey, getChatStore } from "@/lib/chat-store";
 import { toast } from "@/lib/sonner";
 import type { ChatAuthorRole, ChatMessageItem } from "@/lib/services/chat.service";
 
@@ -73,12 +73,20 @@ export function StaffChatRoom({
   connectionMode = "off",
 }: StaffChatRoomProps) {
   const [messages, setMessages] = useState<ChatMessageItem[]>(initialMessages);
+  // Read acknowledgement has its own watermark: mutation responses are not a fetched history.
+  const [readAnchor, setReadAnchor] = useState<ChatMessageItem | null>(initialMessages.at(-1) ?? null);
   const [hasMoreBefore, setHasMoreBefore] = useState(initialHasMoreBefore);
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [permission, setPermission] = useState<NotificationPermissionState>("granted");
 
+  const store = getChatStore(chatStoreKey(divisionSlug, viewerId));
+  const lifecycleRef = useRef<AbortController | null>(null);
+  const syncRef = useRef<() => void>(() => {});
+  const readInFlightRef = useRef(false);
+  const lastReadIdRef = useRef<string | null>(null);
+  const latestReceivedRef = useRef<string | null>(null);
   const syncedAtRef = useRef<string | null>(initialSyncedAt);
   const mountedRef = useRef(true);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -90,9 +98,12 @@ export function StaffChatRoom({
 
   useEffect(() => {
     mountedRef.current = true;
+    const controller = new AbortController();
+    lifecycleRef.current = controller;
 
     return () => {
       mountedRef.current = false;
+      controller.abort();
 
       if (readTimerRef.current) {
         clearTimeout(readTimerRef.current);
@@ -105,17 +116,32 @@ export function StaffChatRoom({
   }, []);
 
   const markRead = useCallback(() => {
-    markChatReadLocally();
-
-    void fetch(`${basePath}/read`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-      cache: "no-store",
-    }).catch(() => {
-      // 읽음 처리 실패는 알릴 일이 아니다. 다음 기회에 다시 보낸다.
-    });
-  }, [basePath]);
+    const id = latestReceivedRef.current;
+    const signal = lifecycleRef.current?.signal;
+    if (!id || id === lastReadIdRef.current || readInFlightRef.current ||
+      signal?.aborted || document.visibilityState !== "visible") return;
+    readInFlightRef.current = true;
+    const finish = store.beginRead();
+    void (async () => {
+      try {
+        const response = await fetch(`${basePath}/read`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lastReadMessageId: id }),
+          cache: "no-store", signal,
+        });
+        if (!response.ok) return;
+        const payload = await response.json() as { unreadCount: number };
+        if (signal?.aborted) return;
+        lastReadIdRef.current = id;
+        finish(payload.unreadCount);
+      } catch { /* A later successful sync retries the read. */ }
+      finally {
+        finish();
+        readInFlightRef.current = false;
+      }
+    })();
+  }, [basePath, store]);
 
   const scheduleMarkRead = useCallback(() => {
     if (readTimerRef.current) {
@@ -136,59 +162,66 @@ export function StaffChatRoom({
 
     setMessages((current) => mergeChatMessages(current, incoming));
 
-    for (const message of incoming) {
-      if (syncedAtRef.current === null || message.updatedAt > syncedAtRef.current) {
-        syncedAtRef.current = message.updatedAt;
-      }
-    }
   }, []);
 
-  const syncSince = useCallback(async () => {
-    const since = syncedAtRef.current;
+  useEffect(() => {
+    // Only an initial snapshot or fully drained sync is eligible, after React commits it.
+    latestReceivedRef.current = readAnchor?.id ?? null;
+    scheduleMarkRead();
+  }, [readAnchor, scheduleMarkRead]);
 
-    if (!since) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`${basePath}/messages?since=${encodeURIComponent(since)}`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok || !mountedRef.current) {
-        return;
-      }
-
-      const payload = (await response.json()) as { chatMessages?: ChatMessageItem[] };
-      applyIncoming(payload.chatMessages ?? []);
-      scheduleMarkRead();
-    } catch {
-      // 다음 신호나 폴링이 다시 시도한다.
-    }
+  useEffect(() => {
+    const signal = lifecycleRef.current?.signal;
+    let cancelled = false;
+    const queue = createChatSyncQueue(async () => {
+      try {
+        // Empty rooms still need a cursor; never use the client's clock as a server watermark.
+        let since = syncedAtRef.current ?? "1970-01-01T00:00:00.000Z";
+        let fetchedAnchor: ChatMessageItem | null = null;
+        while (!cancelled) {
+          const response = await fetch(`${basePath}/messages?since=${encodeURIComponent(since)}`, {
+            cache: "no-store", signal,
+          });
+          if (!response.ok) return;
+          const payload = await response.json() as {
+            chatMessages?: ChatMessageItem[];
+            syncedAt?: string | null;
+          };
+          if (cancelled || signal?.aborted) return;
+          const incoming = payload.chatMessages ?? [];
+          applyIncoming(incoming);
+          for (const message of incoming) {
+            if (isNewChatArrival(fetchedAnchor, message)) fetchedAnchor = message;
+          }
+          // Server returns every row tied at the page boundary, including pages over 200 rows.
+          const next = payload.syncedAt ?? advanceChatCursor(syncedAtRef.current, incoming);
+          if (next && next > since) syncedAtRef.current = next;
+          if (incoming.length === 0 || !next || next <= since) break;
+          since = next;
+        }
+        const completedAnchor = fetchedAnchor;
+        if (completedAnchor) {
+          setReadAnchor((current) => isNewChatArrival(current, completedAnchor) ? completedAnchor : current);
+        }
+        scheduleMarkRead();
+      } catch { /* Polling and queued signals retry without dropping the cursor. */ }
+    });
+    const sync = () => { void queue.run(); };
+    syncRef.current = sync;
+    const onVisible = () => { if (document.visibilityState === "visible") sync(); };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    sync();
+    return () => {
+      cancelled = true;
+      queue.dispose();
+      syncRef.current = () => {};
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [applyIncoming, basePath, scheduleMarkRead]);
 
-  useEffect(() => {
-    if (signalAt === 0) {
-      return;
-    }
-
-    void syncSince();
-  }, [signalAt, syncSince]);
-
-  useEffect(() => {
-    markRead();
-
-    const handleFocus = () => {
-      markRead();
-      void syncSince();
-    };
-
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [markRead, syncSince]);
+  useEffect(() => { syncRef.current(); }, [signalAt]);
 
   // 열자마자 맨 아래에서 시작한다.
   useEffect(() => {
@@ -223,13 +256,14 @@ export function StaffChatRoom({
       return;
     }
 
+    const signal = lifecycleRef.current?.signal;
     setIsLoadingOlder(true);
     const body = bodyRef.current;
     const previousHeight = body?.scrollHeight ?? 0;
 
     try {
       const response = await fetch(`${basePath}/messages?before=${encodeURIComponent(oldest.id)}`, {
-        cache: "no-store",
+        cache: "no-store", signal,
       });
 
       if (!response.ok) {
@@ -241,7 +275,7 @@ export function StaffChatRoom({
         hasMoreBefore?: boolean;
       };
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || signal?.aborted) {
         return;
       }
 
@@ -250,14 +284,14 @@ export function StaffChatRoom({
 
       // 위에 내용이 붙은 만큼 스크롤을 밀어 읽던 위치를 지킨다.
       requestAnimationFrame(() => {
-        if (body) {
+        if (body && !signal?.aborted) {
           body.scrollTop += body.scrollHeight - previousHeight;
         }
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "이전 메시지를 불러오지 못했습니다.");
+      if (!signal?.aborted) toast.error(error instanceof Error ? error.message : "이전 메시지를 불러오지 못했습니다.");
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && !signal?.aborted) {
         setIsLoadingOlder(false);
       }
     }
@@ -278,6 +312,7 @@ export function StaffChatRoom({
       return;
     }
 
+    const signal = lifecycleRef.current?.signal;
     const pendingId = `${PENDING_PREFIX}${Date.now()}`;
     const now = new Date().toISOString();
     const optimistic: ChatMessageItem = {
@@ -304,7 +339,7 @@ export function StaffChatRoom({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body }),
-        cache: "no-store",
+        cache: "no-store", signal,
       });
 
       const payload = (await response.json().catch(() => null)) as
@@ -315,7 +350,7 @@ export function StaffChatRoom({
         throw new Error(payload?.error ?? "메시지를 보내지 못했습니다.");
       }
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || signal?.aborted) {
         return;
       }
 
@@ -326,9 +361,9 @@ export function StaffChatRoom({
           [saved],
         ),
       );
-      syncedAtRef.current = saved.updatedAt;
+      syncRef.current();
     } catch (error) {
-      if (!mountedRef.current) {
+      if (!mountedRef.current || signal?.aborted) {
         return;
       }
 
@@ -337,7 +372,7 @@ export function StaffChatRoom({
       setDraft((current) => (current ? current : body));
       toast.error(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && !signal?.aborted) {
         setIsSending(false);
       }
     }
@@ -345,6 +380,7 @@ export function StaffChatRoom({
 
   const handleDelete = useCallback(
     async (message: ChatMessageItem) => {
+      const signal = lifecycleRef.current?.signal;
       const confirmed = await confirm({
         title: "메시지를 삭제할까요?",
         description: "삭제해도 자리에는 삭제된 메시지로 남습니다.",
@@ -352,14 +388,14 @@ export function StaffChatRoom({
         variant: "danger",
       });
 
-      if (!confirmed) {
+      if (!confirmed || signal?.aborted) {
         return;
       }
 
       try {
         const response = await fetch(`${basePath}/messages/${encodeURIComponent(message.id)}`, {
           method: "DELETE",
-          cache: "no-store",
+          cache: "no-store", signal,
         });
 
         const payload = (await response.json().catch(() => null)) as
@@ -370,11 +406,12 @@ export function StaffChatRoom({
           throw new Error(payload?.error ?? "메시지를 삭제하지 못했습니다.");
         }
 
-        if (mountedRef.current) {
+        if (mountedRef.current && !signal?.aborted) {
           applyIncoming([payload.chatMessage]);
+          syncRef.current();
         }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "메시지를 삭제하지 못했습니다.");
+        if (!signal?.aborted) toast.error(error instanceof Error ? error.message : "메시지를 삭제하지 못했습니다.");
       }
     },
     [applyIncoming, basePath, confirm],

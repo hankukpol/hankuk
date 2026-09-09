@@ -62,6 +62,7 @@ try {
   if (!ready) throw new Error("Isolated HTTP test server did not become ready.");
   console.log("[integration] HTTP authorization, division and invalid-input matrix");
   await run(["--import", "tsx", "--test", "tests/integration/http-contracts.test.ts"], { TEST_BASE_URL: baseUrl });
+  await run(["--import", "tsx", "--test", "tests/integration/chat-review.test.ts"], { TEST_BASE_URL: baseUrl });
   console.log(`[integration] PASS; evidence: ${path.join(runtime, "integration.log")}`);
 } catch (error) {
   console.error(error.message);

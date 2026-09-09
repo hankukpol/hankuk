@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 
+import { isAttendedAttendanceStatus } from "@/lib/attendance-meta";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { DEFAULT_DIVISION_FEATURE_FLAGS } from "@/lib/division-features";
 import { parseUtcDateFromYmd } from "@/lib/date-utils";
@@ -243,12 +244,7 @@ async function getDivisionSummary(
       for (const record of records) {
         if (record.status === "NOT_APPLICABLE") {
           notApplicable += 1;
-        } else if (
-          record.status === "PRESENT" ||
-          record.status === "TARDY" ||
-          record.status === "HOLIDAY" ||
-          record.status === "HALF_HOLIDAY"
-        ) {
+        } else if (isAttendedAttendanceStatus(record.status)) {
           periodAttended += 1;
           applicableCount += 1;
         } else {

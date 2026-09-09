@@ -394,7 +394,9 @@ function addAttendanceCount(
 }
 
 function toAttendanceRate(counts: ReturnType<typeof createStatusCounts>, expectedCount: number) {
-  const attended = counts.present + counts.tardy + counts.holiday + counts.halfHoliday;
+  // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
+  const attended =
+    counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday;
   return expectedCount > 0 ? Number(((attended / expectedCount) * 100).toFixed(1)) : 0;
 }
 
@@ -616,7 +618,8 @@ function buildTrendForDates(
       dateKey: date,
       attendanceRate: toAttendanceRate(counts, expected),
       tardyCount: counts.tardy,
-      absentCount: counts.absent + counts.excused,
+      // 사유결석은 인정 출석이므로 결석 추이에서 제외한다.
+      absentCount: counts.absent,
     } satisfies ReportTrendPoint;
   });
 }

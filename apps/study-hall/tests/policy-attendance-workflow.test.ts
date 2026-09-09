@@ -163,7 +163,7 @@ test("recurring correction preserves an existing tardy timestamp and leaves unkn
   t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-09T09:17:00+09:00") });
   const f = fixture();
   f.record("09:15", "TARDY").checkInTime = "2026-09-08T00:17:00.000Z";
-  await f.attendance.applyRecurringAttendance("police", admin, { studentId: "p1", dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "09:15", endPeriodId: "11:00", status: "TARDY", overwriteExisting: true });
+  await f.attendance.applyRecurringAttendance("police", admin, { studentIds: ["p1"], dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "09:15", endPeriodId: "11:00", status: "TARDY", overwriteExisting: true });
   assert.deepEqual(f.state.attendanceByDivision.police.map(r => r.checkInTime), ["2026-09-08T00:17:00.000Z", null]);
 });
 
@@ -174,7 +174,8 @@ test("policy attendance stats distinguish approved absence and missing records f
   assert.equal(stats.totals.present, 0);
   assert.equal(stats.totals.excused, 1);
   assert.equal(stats.totals.unprocessed, 1);
-  assert.equal(stats.attendanceRate, 0);
+  // 사유결석은 인정 출석이므로 출석률에 포함된다. 물리적 출석(present=0)과는 여전히 구분된다.
+  assert.equal(stats.attendanceRate, 50);
 });
 
 test("inactive policy periods cannot accept new attendance or inflate expected attendance", async (t) => {
@@ -229,12 +230,21 @@ test("DB attendance writes preserve arrival times and carry the division filter"
         assert.equal(query.where.student.divisionId, "division-police");
         writes.push(query.data);
       },
+      updateMany: async (query: {
+        where: { id: { in: string[] }; student: { divisionId: string } };
+        data: { checkInTime: Date | null };
+      }) => {
+        assert.equal(query.where.student.divisionId, "division-police");
+        for (let index = 0; index < query.where.id.in.length; index += 1) {
+          writes.push(query.data);
+        }
+      },
     },
     $transaction: async (queries: Promise<unknown>[]) => Promise.all(queries),
   };
   const service = loadService<AttendanceService>("attendance", { ...f.dependencies, "@/lib/mock-data": { isMockMode: () => false }, "@/lib/service-helpers": { getPrismaClient: async () => prisma } });
   await service.upsertAttendanceBatch("police", admin, { date, periodId: "09:15", records: [{ studentId: "p1", status: "TARDY" }] });
-  await service.applyRecurringAttendance("police", admin, { studentId: "p1", dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "09:15", endPeriodId: "09:15", status: "TARDY", overwriteExisting: true });
+  await service.applyRecurringAttendance("police", admin, { studentIds: ["p1"], dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "09:15", endPeriodId: "09:15", status: "TARDY", overwriteExisting: true });
   assert.deepEqual(writes.map(r => r.checkInTime?.toISOString()), ["2026-09-08T00:17:00.000Z", "2026-09-08T00:17:00.000Z"]);
 });
 

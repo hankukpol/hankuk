@@ -17,7 +17,10 @@ const attendanceStatusSchema = z.enum([
 ]);
 
 const recurringAttendanceSchema = z.object({
-  studentId: z.string().min(1, "학생을 선택해 주세요."),
+  studentIds: z
+    .array(z.string().min(1))
+    .min(1, "학생을 한 명 이상 선택해 주세요.")
+    .max(500, "한 번에 선택할 수 있는 학생은 500명까지입니다."),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "시작일 형식이 올바르지 않습니다."),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "종료일 형식이 올바르지 않습니다."),
   weekdays: z.array(z.number().int().min(0).max(6)).min(1, "요일을 하나 이상 선택해 주세요."),

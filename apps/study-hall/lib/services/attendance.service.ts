@@ -35,7 +35,7 @@ type AttendanceInputRecord = {
 };
 
 type RecurringAttendanceInput = {
-  studentId: string;
+  studentIds: string[];
   dateFrom: string;
   dateTo: string;
   weekdays: number[];
@@ -51,8 +51,12 @@ export type RecurringAttendanceResult = {
   updatedExistingCount: number;
   skippedExistingCount: number;
   targetDateCount: number;
+  targetStudentCount: number;
   targetCellCount: number;
 };
+
+/** 한 번의 반복 적용으로 기록할 수 있는 최대 칸 수 (학생 × 날짜 × 교시). */
+const RECURRING_ATTENDANCE_CELL_LIMIT = 10000;
 
 type AttendanceActor = {
   id: string;
@@ -1323,10 +1327,17 @@ export async function applyRecurringAttendance(
     getPeriods(divisionSlug),
     getManagementPolicy(divisionSlug),
   ]);
-  const targetStudent = students.find((student) => student.id === input.studentId);
+  const studentIds = Array.from(new Set(input.studentIds));
 
-  if (!targetStudent) {
-    throw badRequest("출석 대상 학생을 찾을 수 없습니다.");
+  if (studentIds.length === 0) {
+    throw badRequest("출석 대상 학생을 한 명 이상 선택해 주세요.");
+  }
+
+  const studentById = new Map(students.map((student) => [student.id, student]));
+  const missingStudentIds = studentIds.filter((studentId) => !studentById.has(studentId));
+
+  if (missingStudentIds.length > 0) {
+    throw badRequest("출석 대상 학생을 찾을 수 없습니다. 좌석이 배정된 학생만 반복 적용할 수 있습니다.");
   }
 
   const startIndex = periods.findIndex((period) => period.id === input.startPeriodId);
@@ -1352,7 +1363,7 @@ export async function applyRecurringAttendance(
   const targetDates = enumerateDatesInclusive(normalizedFrom, normalizedTo).filter((date) =>
     weekdays.includes(getWeekday(date)),
   );
-  const targetCellCount = targetDates.length * targetPeriods.length;
+  const targetCellCount = targetDates.length * targetPeriods.length * studentIds.length;
 
   if (targetCellCount === 0) {
     return {
@@ -1360,8 +1371,16 @@ export async function applyRecurringAttendance(
       updatedExistingCount: 0,
       skippedExistingCount: 0,
       targetDateCount: 0,
+      targetStudentCount: studentIds.length,
       targetCellCount: 0,
     };
+  }
+
+  if (targetCellCount > RECURRING_ATTENDANCE_CELL_LIMIT) {
+    throw badRequest(
+      `한 번에 적용할 수 있는 칸 수(${RECURRING_ATTENDANCE_CELL_LIMIT.toLocaleString("ko-KR")}칸)를 초과했습니다. ` +
+        `현재 ${targetCellCount.toLocaleString("ko-KR")}칸입니다. 학생 수, 기간, 교시 범위를 줄여 주세요.`,
+    );
   }
 
   await Promise.all(
@@ -1381,38 +1400,40 @@ export async function applyRecurringAttendance(
       let updatedExistingCount = 0;
       let skippedExistingCount = 0;
 
-      for (const date of targetDates) {
-        for (const period of targetPeriods) {
-          const id = buildRecordId({
-            studentId: input.studentId,
-            periodId: period.id,
-            date,
-          });
-          const existingRecord = touchedMap.get(id);
+      for (const studentId of studentIds) {
+        for (const date of targetDates) {
+          for (const period of targetPeriods) {
+            const id = buildRecordId({
+              studentId,
+              periodId: period.id,
+              date,
+            });
+            const existingRecord = touchedMap.get(id);
 
-          if (existingRecord && !overwriteExisting) {
-            skippedExistingCount += 1;
-            continue;
-          }
-          const checkInTime = resolveCheckInTime(input.status, date, period.startTime, now, existingRecord);
+            if (existingRecord && !overwriteExisting) {
+              skippedExistingCount += 1;
+              continue;
+            }
+            const checkInTime = resolveCheckInTime(input.status, date, period.startTime, now, existingRecord);
 
-          touchedMap.set(id, {
-            id,
-            studentId: input.studentId,
-            periodId: period.id,
-            date,
-            status: input.status as MockAttendanceStatus,
-            reason,
-            checkInTime: checkInTime ? checkInTime.toISOString() : null,
-            recordedById: actor.id,
-            createdAt: existingRecord?.createdAt ?? now.toISOString(),
-            updatedAt: now.toISOString(),
-          });
+            touchedMap.set(id, {
+              id,
+              studentId,
+              periodId: period.id,
+              date,
+              status: input.status as MockAttendanceStatus,
+              reason,
+              checkInTime: checkInTime ? checkInTime.toISOString() : null,
+              recordedById: actor.id,
+              createdAt: existingRecord?.createdAt ?? now.toISOString(),
+              updatedAt: now.toISOString(),
+            });
 
-          if (existingRecord) {
-            updatedExistingCount += 1;
-          } else {
-            appliedCount += 1;
+            if (existingRecord) {
+              updatedExistingCount += 1;
+            } else {
+              appliedCount += 1;
+            }
           }
         }
       }
@@ -1424,6 +1445,7 @@ export async function applyRecurringAttendance(
         updatedExistingCount,
         skippedExistingCount,
         targetDateCount: targetDates.length,
+        targetStudentCount: studentIds.length,
         targetCellCount,
       };
     });
@@ -1433,7 +1455,7 @@ export async function applyRecurringAttendance(
     }
 
     revalidateDivisionOperationalViews(divisionSlug, {
-      studentIds: [input.studentId],
+      studentIds,
     });
 
     return result;
@@ -1445,7 +1467,9 @@ export async function applyRecurringAttendance(
   const dateValues = targetDates.map((date) => parseDateKey(date));
   const existingRecords = await prisma.attendance.findMany({
     where: {
-      studentId: input.studentId,
+      studentId: {
+        in: studentIds,
+      },
       periodId: {
         in: periodIds,
       },
@@ -1471,52 +1495,68 @@ export async function applyRecurringAttendance(
       record,
     ]),
   );
-  const createData = targetDates.flatMap((date) =>
-    targetPeriods.flatMap((period) => {
-      const key = `${input.studentId}:${period.id}:${date}`;
+  const dateValueByKey = new Map(targetDates.map((date) => [date, parseDateKey(date)]));
+  const createData = studentIds.flatMap((studentId) =>
+    targetDates.flatMap((date) =>
+      targetPeriods.flatMap((period) => {
+        const key = `${studentId}:${period.id}:${date}`;
 
-      if (existingRecordByKey.has(key)) {
-        return [];
-      }
+        if (existingRecordByKey.has(key)) {
+          return [];
+        }
 
-      return [
-        {
-          studentId: input.studentId,
-          periodId: period.id,
-          date: parseDateKey(date),
-          status: input.status,
-          reason,
-          checkInTime: resolveCheckInTime(input.status, date, period.startTime, now),
-          recordedById: actor.id,
-        },
-      ];
-    }),
+        return [
+          {
+            studentId,
+            periodId: period.id,
+            date: dateValueByKey.get(date)!,
+            status: input.status,
+            reason,
+            checkInTime: resolveCheckInTime(input.status, date, period.startTime, now),
+            recordedById: actor.id,
+          },
+        ];
+      }),
+    ),
   );
   const updateData = overwriteExisting
-    ? targetDates.flatMap((date) =>
-        targetPeriods.flatMap((period) => {
-          const key = `${input.studentId}:${period.id}:${date}`;
-          const existingRecord = existingRecordByKey.get(key);
+    ? studentIds.flatMap((studentId) =>
+        targetDates.flatMap((date) =>
+          targetPeriods.flatMap((period) => {
+            const key = `${studentId}:${period.id}:${date}`;
+            const existingRecord = existingRecordByKey.get(key);
 
-          if (!existingRecord) {
-            return [];
-          }
+            if (!existingRecord) {
+              return [];
+            }
 
-          return [
-            {
-              id: existingRecord.id,
-              date,
-              status: input.status,
-              reason,
-              checkInTime: resolveCheckInTime(input.status, date, period.startTime, now, existingRecord),
-              recordedById: actor.id,
-            },
-          ];
-        }),
+            return [
+              {
+                id: existingRecord.id,
+                date,
+                checkInTime: resolveCheckInTime(input.status, date, period.startTime, now, existingRecord),
+              },
+            ];
+          }),
+        ),
       )
     : [];
 
-  if (createData.length > 0 || updateData.length > 0) {
+  // 상태·사유·기록자는 모든 갱신 대상이 동일하므로 checkInTime이 같은 것끼리 묶어
+  // updateMany로 처리한다. 학생 수가 늘어도 트랜잭션 내 쿼리 수가 폭증하지 않는다.
+  const updateGroups = new Map<string, { checkInTime: Date | null; ids: string[] }>();
+  for (const record of updateData) {
+    const groupKey = record.checkInTime ? record.checkInTime.toISOString() : "null";
+    const group = updateGroups.get(groupKey);
+
+    if (group) {
+      group.ids.push(record.id);
+    } else {
+      updateGroups.set(groupKey, { checkInTime: record.checkInTime, ids: [record.id] });
+    }
+  }
+
+  if (createData.length > 0 || updateGroups.size > 0) {
     await prisma.$transaction([
       ...(createData.length > 0
         ? [
@@ -1525,17 +1565,17 @@ export async function applyRecurringAttendance(
             }),
           ]
         : []),
-      ...updateData.map((record) =>
-        prisma.attendance.update({
+      ...Array.from(updateGroups.values()).map((group) =>
+        prisma.attendance.updateMany({
           where: {
-            id: record.id,
+            id: { in: group.ids },
             student: { divisionId: division.id },
           },
           data: {
-            status: record.status,
-            reason: record.reason,
-            checkInTime: record.checkInTime,
-            recordedById: record.recordedById,
+            status: input.status,
+            reason,
+            checkInTime: group.checkInTime,
+            recordedById: actor.id,
           },
         }),
       ),
@@ -1554,7 +1594,7 @@ export async function applyRecurringAttendance(
   }
 
   revalidateDivisionOperationalViews(divisionSlug, {
-    studentIds: [input.studentId],
+    studentIds,
   });
 
   return {
@@ -1562,6 +1602,7 @@ export async function applyRecurringAttendance(
     updatedExistingCount: updateData.length,
     skippedExistingCount: overwriteExisting ? 0 : targetCellCount - createData.length,
     targetDateCount: targetDates.length,
+    targetStudentCount: studentIds.length,
     targetCellCount,
   };
 }
@@ -1722,9 +1763,11 @@ export async function getAttendanceStats(
       .reduce((sum, [, value]) => sum + value, 0);
     summary.counts.unprocessed = Math.max(expectedPerPeriod - processed, 0);
 
+    // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
     const presentLike =
       summary.counts.present +
       summary.counts.tardy +
+      summary.counts.excused +
       summary.counts.holiday +
       summary.counts.half_holiday;
     const expected = (summary.isMandatory || policyRange)
@@ -1734,8 +1777,9 @@ export async function getAttendanceStats(
     summary.attendanceRate = expected > 0 ? Number(((presentLike / expected) * 100).toFixed(1)) : 0;
   }
 
-  // 출석률 = (출석 + 지각) / 전체학생 × 100  (학생 기준)
-  const cameStudents = totals.present + totals.tardy;
+  // 출석률 = (출석 + 지각 + 사유결석) / 전체학생 × 100  (학생 기준)
+  // 사유결석은 수업·체력 등 관리자가 승인한 인정 사유이므로 출석으로 집계한다.
+  const cameStudents = totals.present + totals.tardy + totals.excused;
   const expectedStudentDates = dates.reduce((sum, date) => sum + (isPolicyEffective(policy, date) ? students.filter((s) => periods.some((p) => expectedCell(p.id, date, s.id))).length : students.length), 0);
   const attendanceRate =
     expectedStudentDates > 0 ? Number(((cameStudents / expectedStudentDates) * 100).toFixed(1)) : 0;

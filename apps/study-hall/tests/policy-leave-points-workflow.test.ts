@@ -294,12 +294,40 @@ test("반복 인정일정은 월 경계를 넘어 사유·요일·교시를 보�
   const f = fixture(t, "2026-09-28T09:00:00+09:00");
   f.state.studentsByDivision.police[0].seatId = "fixture-seat";
   const service = f.load<typeof import("../lib/services/attendance.service")>("attendance");
-  const input = { studentId: "a", dateFrom: "2026-09-29", dateTo: "2026-10-06", weekdays: [2], startPeriodId: "09:15", endPeriodId: "11:00", status: "EXCUSED" as const, reason: "체력시험 준비 정기수업 사전 확인" };
+  const input = { studentIds: ["a"], dateFrom: "2026-09-29", dateTo: "2026-10-06", weekdays: [2], startPeriodId: "09:15", endPeriodId: "11:00", status: "EXCUSED" as const, reason: "체력시험 준비 정기수업 사전 확인" };
   await assert.rejects(service.applyRecurringAttendance("police", actor, { ...input, reason: " " }), /사유/);
   assert.equal((await service.applyRecurringAttendance("police", actor, input)).appliedCount, 4);
   assert.equal((await service.applyRecurringAttendance("police", actor, input)).skippedExistingCount, 4);
   assert.deepEqual(Array.from(new Set(f.state.attendanceByDivision.police.map((r) => r.date))), ["2026-09-29", "2026-10-06"]);
   assert.ok(f.state.attendanceByDivision.police.every((r) => r.status === "EXCUSED" && r.reason === input.reason));
+  assert.deepEqual(f.state.pointRecordsByDivision.police, []);
+  assert.deepEqual(f.state.attendanceByDivision.fire, []);
+});
+
+test("반복 인정일정은 선택한 학생 전원에게 한 번에 적용되고 좌석 없는 학생은 거부된다", async (t) => {
+  const f = fixture(t, "2026-09-28T09:00:00+09:00");
+  f.state.studentsByDivision.police.push(student("b"), student("c"));
+  for (const seated of f.state.studentsByDivision.police) seated.seatId = "fixture-seat";
+  const service = f.load<typeof import("../lib/services/attendance.service")>("attendance");
+  const input = { dateFrom: "2026-09-29", dateTo: "2026-10-06", weekdays: [2], startPeriodId: "09:15", endPeriodId: "11:00", status: "EXCUSED" as const, reason: "정규 수업 수강" };
+
+  await assert.rejects(service.applyRecurringAttendance("police", actor, { ...input, studentIds: [] }), /한 명 이상/);
+  await assert.rejects(
+    service.applyRecurringAttendance("police", actor, { ...input, studentIds: ["a", "없는학생"] }),
+    /찾을 수 없습니다/,
+  );
+
+  // 학생 3명 × 2일(화요일) × 2교시 = 12칸
+  const result = await service.applyRecurringAttendance("police", actor, { ...input, studentIds: ["a", "b", "c", "a"] });
+  assert.equal(result.targetStudentCount, 3);
+  assert.equal(result.targetCellCount, 12);
+  assert.equal(result.appliedCount, 12);
+  assert.deepEqual(
+    Array.from(new Set(f.state.attendanceByDivision.police.map((r) => r.studentId))).sort(),
+    ["a", "b", "c"],
+  );
+  assert.ok(f.state.attendanceByDivision.police.every((r) => r.status === "EXCUSED" && r.reason === input.reason));
+  // 사유결석은 벌점 대상이 아니다.
   assert.deepEqual(f.state.pointRecordsByDivision.police, []);
   assert.deepEqual(f.state.attendanceByDivision.fire, []);
 });

@@ -94,6 +94,8 @@ type BulkApplyDraft = {
   dateTo: string;
   weekdays: number[];
   overwriteExisting: boolean;
+  /** 반복 적용 대상 학생. 패널을 연 학생이 기본으로 선택된다. */
+  targetStudentIds: string[];
 };
 
 const WEEKDAY_OPTIONS = [
@@ -224,7 +226,11 @@ function getCompactStudentNumber(studentNumber: string) {
   return parts[parts.length - 1] || studentNumber;
 }
 
-function createBulkApplyDraft(periods: PeriodItem[], selectedDate: string): BulkApplyDraft {
+function createBulkApplyDraft(
+  periods: PeriodItem[],
+  selectedDate: string,
+  ownerStudentId: string,
+): BulkApplyDraft {
   const firstPeriodId = periods[0]?.id ?? "";
   const lastPeriodId = periods[periods.length - 1]?.id ?? firstPeriodId;
 
@@ -238,6 +244,7 @@ function createBulkApplyDraft(periods: PeriodItem[], selectedDate: string): Bulk
     dateTo: selectedDate,
     weekdays: selectedDate ? [getWeekdayFromDate(selectedDate)] : [1],
     overwriteExisting: false,
+    targetStudentIds: ownerStudentId ? [ownerStudentId] : [],
   };
 }
 
@@ -291,6 +298,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [stats, setStats] = useState(initialStats);
   const [bulkApplyByStudent, setBulkApplyByStudent] = useState<Record<string, BulkApplyDraft>>({});
   const [bulkApplyStudentId, setBulkApplyStudentId] = useState<string | null>(null);
+  const [bulkApplyPickerQuery, setBulkApplyPickerQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
@@ -426,16 +434,33 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     });
   }
 
-  function updatePeriodAllStudents(
+  /**
+   * 이미 기록된 칸(미리 넣어둔 사유결석·휴무 등)은 건드리지 않고 미처리 칸만 채운다.
+   * 기존 기록을 바꾸려면 해당 칸을 직접 고르거나 일괄 적용의 덮어쓰기를 사용한다.
+   */
+  function updatePeriodUncheckedStudents(
     periodId: string,
     status: AttendanceOptionValue,
     targetStudents: StudentItem[] = students,
   ) {
+    const targets = targetStudents.filter(
+      (student) => !getCellState(matrix, student.id, periodId).status,
+    );
+
+    if (targets.length === 0) {
+      toast.message("미처리 칸이 없습니다. 기존 기록은 그대로 두었습니다.");
+      return;
+    }
+
     markDirty();
     setMatrix((current) => {
       const updated = { ...current };
 
-      for (const student of targetStudents) {
+      for (const student of targets) {
+        if (current[student.id]?.[periodId]?.status) {
+          continue;
+        }
+
         updated[student.id] = {
           ...(current[student.id] ?? {}),
           [periodId]: {
@@ -447,13 +472,20 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
       return updated;
     });
+
+    const skippedCount = targetStudents.length - targets.length;
+    toast.success(
+      skippedCount > 0
+        ? `미처리 ${targets.length}칸을 채웠습니다. 기존 기록 ${skippedCount}칸은 그대로 두었습니다.`
+        : `미처리 ${targets.length}칸을 채웠습니다.`,
+    );
   }
 
   function updateBulkApplyDraft(studentId: string, value: Partial<BulkApplyDraft>) {
     setBulkApplyByStudent((current) => ({
       ...current,
       [studentId]: {
-        ...createBulkApplyDraft(periods, selectedDate),
+        ...createBulkApplyDraft(periods, selectedDate, studentId),
         ...(current[studentId] ?? {}),
         ...value,
       },
@@ -463,18 +495,45 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   function openBulkApplyModal(studentId: string) {
     setBulkApplyByStudent((current) => ({
       ...current,
-      [studentId]: current[studentId] ?? createBulkApplyDraft(periods, selectedDate),
+      [studentId]: current[studentId] ?? createBulkApplyDraft(periods, selectedDate, studentId),
     }));
+    setBulkApplyPickerQuery("");
     setBulkApplyStudentId(studentId);
   }
 
   function closeBulkApplyModal() {
+    setBulkApplyPickerQuery("");
     setBulkApplyStudentId(null);
+  }
+
+  // 연속 클릭에서 선택이 유실되지 않도록 항상 최신 state를 기준으로 토글한다.
+  function toggleBulkApplyTargetStudent(ownerStudentId: string, targetStudentId: string) {
+    setBulkApplyByStudent((current) => {
+      const draft = {
+        ...createBulkApplyDraft(periods, selectedDate, ownerStudentId),
+        ...(current[ownerStudentId] ?? {}),
+      };
+      const isSelected = draft.targetStudentIds.includes(targetStudentId);
+
+      return {
+        ...current,
+        [ownerStudentId]: {
+          ...draft,
+          targetStudentIds: isSelected
+            ? draft.targetStudentIds.filter((id) => id !== targetStudentId)
+            : [...draft.targetStudentIds, targetStudentId],
+        },
+      };
+    });
+  }
+
+  function setBulkApplyTargetStudents(ownerStudentId: string, targetStudentIds: string[]) {
+    updateBulkApplyDraft(ownerStudentId, { targetStudentIds });
   }
 
   function applyWholeDayStatusFromModal(studentId: string, status: AttendanceOptionValue) {
     const draft = {
-      ...createBulkApplyDraft(periods, selectedDate),
+      ...createBulkApplyDraft(periods, selectedDate, studentId),
       ...(bulkApplyByStudent[studentId] ?? {}),
     };
     const firstPeriodId = periods[0]?.id ?? "";
@@ -499,7 +558,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   function applyBulkRangeToStudent(studentId: string) {
     const draft = {
-      ...createBulkApplyDraft(periods, selectedDate),
+      ...createBulkApplyDraft(periods, selectedDate, studentId),
       ...(bulkApplyByStudent[studentId] ?? {}),
     };
     const startIndex = periods.findIndex((period) => period.id === draft.startPeriodId);
@@ -598,13 +657,18 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   async function applyRecurringRangeToStudent(studentId: string) {
     const draft = {
-      ...createBulkApplyDraft(periods, selectedDate),
+      ...createBulkApplyDraft(periods, selectedDate, studentId),
       ...(bulkApplyByStudent[studentId] ?? {}),
     };
     const targetPeriods = getPeriodRange(periods, draft.startPeriodId, draft.endPeriodId);
 
     if (targetPeriods.length === 0) {
       toast.error("적용할 교시를 찾지 못했습니다.");
+      return;
+    }
+
+    if (draft.targetStudentIds.length === 0) {
+      toast.error("적용할 학생을 한 명 이상 선택해 주세요.");
       return;
     }
 
@@ -640,7 +704,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          studentId,
+          studentIds: draft.targetStudentIds,
           dateFrom: draft.dateFrom,
           dateTo: draft.dateTo,
           weekdays: draft.weekdays,
@@ -657,10 +721,11 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         throw new Error(data.error ?? "반복 출석 적용에 실패했습니다.");
       }
 
+      const studentLabel = `학생 ${data.targetStudentCount ?? draft.targetStudentIds.length}명 · `;
       const resultMessage =
         data.updatedExistingCount > 0
-          ? `${data.appliedCount}칸 신규 적용, 기존 기록 ${data.updatedExistingCount}칸 덮어씀`
-          : `${data.appliedCount}칸 적용, 기존 기록 ${data.skippedExistingCount}칸 건너뜀`;
+          ? `${studentLabel}${data.appliedCount}칸 신규 적용, 기존 기록 ${data.updatedExistingCount}칸 덮어씀`
+          : `${studentLabel}${data.appliedCount}칸 적용, 기존 기록 ${data.skippedExistingCount}칸 건너뜀`;
       toast.success(resultMessage);
 
       if (isSelectedDateIncludedInRecurringDraft(draft)) {
@@ -788,7 +853,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     : null;
   const activeBulkApplyDraft = bulkApplyStudent
     ? {
-        ...createBulkApplyDraft(periods, selectedDate),
+        ...createBulkApplyDraft(periods, selectedDate, bulkApplyStudent.id),
         ...(bulkApplyByStudent[bulkApplyStudent.id] ?? {}),
       }
     : null;
@@ -804,9 +869,16 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         activeBulkApplyDraft.weekdays,
       )
     : 0;
-  const activeRecurringCellCount = activeRecurringDateCount * activeBulkTargetPeriods.length;
+  const activeRecurringStudentCount = activeBulkApplyDraft?.targetStudentIds.length ?? 0;
+  const activeRecurringCellCount =
+    activeRecurringDateCount * activeBulkTargetPeriods.length * activeRecurringStudentCount;
   const isActiveRecurringSaving =
     bulkApplyStudent !== null && recurringSavingStudentId === bulkApplyStudent.id;
+  const bulkApplyPickerStudents = hasStudentSearchQuery(bulkApplyPickerQuery)
+    ? students.filter((student) =>
+        matchesStudentSearch(student, bulkApplyPickerQuery, [student.studyRoomName]),
+      )
+    : students;
 
   return (
     <div className="admin-flat-page">
@@ -945,10 +1017,12 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                     </div>
                     <button
                       type="button"
-                      onClick={() => updatePeriodAllStudents(period.id, "PRESENT", filteredStudents)}
+                      onClick={() =>
+                        updatePeriodUncheckedStudents(period.id, "PRESENT", filteredStudents)
+                      }
                       className="admin-button mt-2"
                     >
-                      전체 출석
+                      미처리 출석
                     </button>
                   </th>
                 ))}
@@ -1031,7 +1105,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         open={bulkApplyStudent !== null && activeBulkApplyDraft !== null}
         onClose={closeBulkApplyModal}
         title={`${bulkApplyStudent?.name ?? "학생"} 출석 일괄 적용`}
-        description="당일 교시 구간 또는 기간 반복으로 같은 출석 상태와 사유를 적용합니다."
+        description="당일은 이 학생에게, 반복은 선택한 학생 전원에게 같은 출석 상태와 사유를 적용합니다."
         badge="ATTENDANCE"
 
       >
@@ -1073,6 +1147,83 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
             {activeBulkApplyDraft.mode === "recurring" && (
               <div className="space-y-3 border-t border-slate-100 pt-4">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="admin-label">
+                      적용 대상 학생
+                      <span className="ml-1.5 font-semibold text-[var(--division-color)]">
+                        {activeRecurringStudentCount}명 선택
+                      </span>
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBulkApplyTargetStudents(
+                            bulkApplyStudent.id,
+                            bulkApplyPickerStudents.map((student) => student.id),
+                          )
+                        }
+                        className="admin-button admin-button-compact"
+                      >
+                        {hasStudentSearchQuery(bulkApplyPickerQuery) ? "검색 결과 전체" : "전체 선택"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBulkApplyTargetStudents(bulkApplyStudent.id, [bulkApplyStudent.id])
+                        }
+                        className="admin-button admin-button-compact"
+                      >
+                        이 학생만
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    value={bulkApplyPickerQuery}
+                    onChange={(event) => setBulkApplyPickerQuery(event.target.value)}
+                    placeholder="이름 · 수험번호 · 좌석으로 검색"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  />
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                    {bulkApplyPickerStudents.length === 0 ? (
+                      <p className="admin-help px-3 py-6 text-center">
+                        검색 조건에 맞는 학생이 없습니다.
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {bulkApplyPickerStudents.map((student) => {
+                          const isSelected = activeBulkApplyDraft.targetStudentIds.includes(
+                            student.id,
+                          );
+
+                          return (
+                            <li key={student.id}>
+                              <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() =>
+                                    toggleBulkApplyTargetStudent(bulkApplyStudent.id, student.id)
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                <span className="font-medium text-slate-900">{student.name}</span>
+                                <span className="ml-auto text-xs text-slate-500">
+                                  {getCompactStudentNumber(student.studentNumber)}
+                                  {student.seatDisplay ? ` · ${student.seatDisplay}` : ""}
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  <p className="admin-help">
+                    좌석이 배정된 학생만 반복 적용할 수 있습니다.
+                  </p>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="admin-label">
                     시작일
@@ -1231,7 +1382,9 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
             {activeBulkApplyDraft.mode === "recurring" && (
               <div className="admin-help px-3 py-2 font-medium">
-                {activeRecurringDateCount}일 × {activeBulkTargetPeriods.length}교시 = 총 {activeRecurringCellCount}칸
+                학생 {activeRecurringStudentCount}명 × {activeRecurringDateCount}일 ×{" "}
+                {activeBulkTargetPeriods.length}교시 = 총{" "}
+                {activeRecurringCellCount.toLocaleString("ko-KR")}칸
                 <span className="ml-2 text-slate-400">
                   {activeBulkApplyDraft.overwriteExisting
                     ? "기존 기록도 변경합니다."

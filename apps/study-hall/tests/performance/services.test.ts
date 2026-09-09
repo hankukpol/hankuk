@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import ts from "typescript";
 import * as seatLayout from "../../lib/seat-layout";
@@ -116,7 +117,8 @@ function legacyCounts(records: ReportRecord[]) {
   return counts;
 }
 function legacyRate(counts: ReturnType<typeof legacyCounts>, expected: number) {
-  return expected > 0 ? Number(((counts.present + counts.tardy + counts.holiday + counts.halfHoliday) / expected * 100).toFixed(1)) : 0;
+  // 인정 출석 = ATTENDED_ATTENDANCE_STATUSES (사유결석 포함)
+  return expected > 0 ? Number(((counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday) / expected * 100).toFixed(1)) : 0;
 }
 
 test("report aggregation matches legacy scans for all statuses, missing cells and policy expectations", () => {
@@ -139,7 +141,7 @@ test("report aggregation matches legacy scans for all statuses, missing cells an
     for (const expected of [undefined, new Map(dates.map(date => [date, 0])), new Map([[dates[0], 32]])]) {
       const legacy = dates.map(date => {
         const counts = legacyCounts(records.filter(r => r.date === date && mandatory.some(p => p.id === r.periodId)));
-        return { label: new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).format(new Date(`${date}T00:00:00Z`)), dateKey: date, attendanceRate: legacyRate(counts, (expected?.get(date) ?? 20 * mandatory.length) - counts.notApplicable), tardyCount: counts.tardy, absentCount: counts.absent + counts.excused };
+        return { label: new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" }).format(new Date(`${date}T00:00:00Z`)), dateKey: date, attendanceRate: legacyRate(counts, (expected?.get(date) ?? 20 * mandatory.length) - counts.notApplicable), tardyCount: counts.tardy, absentCount: counts.absent };
       });
       assert.deepEqual(service.buildTrendForDates(dates, mandatory, 20, records, expected), legacy);
     }
@@ -527,4 +529,61 @@ test("chat since-sync scopes to the division and carries tombstones", async () =
   assert.equal(where.createdAt, undefined, "createdAt 기준이면 자리표시를 놓친다");
   assert.equal(page.chatMessages[0].isDeleted, true);
   assert.equal(page.syncedAt, deletedAt.toISOString());
+});
+
+test("bulk student registration skips taken numbers, survives failed rows and reports every row", async () => {
+  const state = {
+    studentsByDivision: {
+      police: [
+        { id: "existing", divisionId: "police", name: "기존학생", studentNumber: "20550", status: "ACTIVE", createdAt: "2026-09-01", updatedAt: "2026-09-01" },
+      ],
+      fire: [],
+    },
+    seatsByDivision: { police: [] },
+    studyRoomsByDivision: { police: [] },
+    pointRecordsByDivision: { police: [] },
+    tuitionPlansByDivision: { police: [] },
+  };
+  type StudentService = typeof import("../../lib/services/student.service");
+  const service = loadService<StudentService>("student", {
+    "@/lib/mock-data": { isMockMode: () => true, getMockDivisionBySlug: () => ({ id: "police" }) },
+    "@/lib/service-helpers": { normalizeOptionalText: (value?: string | null) => (value?.trim() ? value.trim() : null) },
+    "node:crypto": { randomUUID },
+    "@/lib/mock-store": {
+      readMockState: async () => state,
+      updateMockState: async (fn: (draft: typeof state) => unknown) => fn(state),
+    },
+    "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
+    "@/lib/services/settings.service": { getDivisionSettings: async () => ({ warnLevel1: 10, warnLevel2: 20, warnInterview: 25, warnWithdraw: 30 }) },
+    "@/lib/services/management-policy.service": { getPolicyPointTotals: async () => null, getManagementPolicy: async () => null, getPolicyHolidayUsage: async () => null },
+  });
+
+  const result = await service.createStudentsBulk("police", [
+    { studentNumber: "20550", name: "기존학생" },   // 이미 등록된 번호
+    { studentNumber: "20563", name: "이건영" },
+    { studentNumber: "21809", name: "전한나" },
+    { studentNumber: "20563", name: "중복행" },     // 같은 요청 안에서 중복
+  ], "경찰");
+
+  assert.equal(result.createdCount, 2);
+  assert.equal(result.duplicateCount, 2);
+  assert.equal(result.failedCount, 0);
+  assert.deepEqual(result.items.map((item) => item.result), ["DUPLICATE", "CREATED", "CREATED", "DUPLICATE"]);
+  assert.deepEqual(result.items.map((item) => item.rowNumber), [1, 2, 3, 4]);
+
+  const police = state.studentsByDivision.police;
+  assert.deepEqual(police.map((s) => s.studentNumber), ["20550", "20563", "21809"]);
+  assert.equal(new Set(police.map((s) => s.id)).size, police.length, "같은 밀리초에 만들어도 ID가 겹치면 안 된다");
+  assert.deepEqual(state.studentsByDivision.fire, [], "다른 직렬은 건드리지 않는다");
+  // 시험 템플릿이 직렬로 응시 대상자를 고르므로 등록 시 직렬이 반드시 붙어야 한다.
+  assert.deepEqual(
+    police.filter((s) => s.id !== "existing").map((s) => (s as { studyTrack?: string | null }).studyTrack),
+    ["경찰", "경찰"],
+  );
+
+  await assert.rejects(service.createStudentsBulk("police", []), /등록할 학생이 없습니다/);
+  await assert.rejects(
+    service.createStudentsBulk("police", Array.from({ length: 501 }, (_, i) => ({ studentNumber: `n${i}`, name: "학생" }))),
+    /500명까지/,
+  );
 });

@@ -15,7 +15,6 @@ import {
 import {
   PortalEmptyState,
   PortalSectionHeader,
-  portalCardClass,
 } from "@/components/student-view/StudentPortalUi";
 import type { StudentExamResultItem } from "@/lib/services/exam.service";
 
@@ -23,7 +22,6 @@ type ChartResult = Omit<StudentExamResultItem, "examRound"> & { examRound?: numb
 
 type ExamScoreChartProps = {
   results: ChartResult[];
-  variant?: "admin" | "portal";
 };
 
 const COLORS = Array.from({ length: 6 }, (_, index) => `var(--admin-chart-${index + 1})`);
@@ -41,7 +39,7 @@ function buildChartLabel(result: ChartResult) {
   return dateLabel || (result.examRound != null ? `${result.examRound}회차` : "시험일 없음");
 }
 
-export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartProps) {
+export function ExamScoreChart({ results }: ExamScoreChartProps) {
   const examTypeGroups = useMemo(() => {
     const map = new Map<
       string,
@@ -124,8 +122,8 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
 
       {/* DESIGN.md 5.6 — 시험 종류 고르기는 탐색이 아니라 데이터 필터이므로 조건 선택 버튼이다.
           시험 종류 이름은 길이를 미리 알 수 없어 -auto 를 함께 준다.
-          학생 포털(8절)은 카드 레이아웃을 유지하므로 기존 모양 그대로 둔다. */}
-      <div className={variant === "admin" ? "admin-choice-group mt-5" : "mt-5 flex flex-wrap gap-2"}>
+          8절에 따라 학생 화면도 같은 규격을 쓴다. 화면별로 갈라 두면 같은 컨트롤이 두 모양이 된다. */}
+      <div className="admin-choice-group mt-5">
         {examTypeGroups.map((group) => {
           const isSelected = (selectedGroup?.examTypeId ?? "") === group.examTypeId;
 
@@ -136,19 +134,7 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
               aria-pressed={isSelected}
               title={group.examTypeName}
               onClick={() => setSelectedExamTypeId(group.examTypeId)}
-              className={
-                variant === "admin"
-                  ? "admin-choice-button admin-choice-button-auto"
-                  : `rounded-lg border px-3 py-2 text-[13px] font-medium transition ${ isSelected ? "border-transparent" : "border-admin-line bg-white text-admin-text-muted hover:text-admin-text" }`
-              }
-              style={
-                variant !== "admin" && isSelected
-                  ? {
-                      backgroundColor: "var(--division-color)",
-                      color: "var(--division-on-accent)",
-                    }
-                  : undefined
-              }
+              className="admin-choice-button admin-choice-button-auto"
             >
               {group.examTypeName}
             </button>
@@ -156,7 +142,7 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
         })}
       </div>
 
-      <div className={`mt-5 ${portalCardClass} p-4`}>
+      <div className="mt-5">
         <div className="h-[320px] md:h-[360px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 12, right: 18, left: -18, bottom: 0 }}>

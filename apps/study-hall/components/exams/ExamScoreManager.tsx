@@ -557,9 +557,9 @@ export function ExamScoreManager({
         </div>
 
         {/* 아침 모의고사 입력과 같은 접이식 도구로 맞춘다. 매번 쓰는 칸이 아니라 표를 밀어내지 않는다. */}
-        <details className="admin-section">
-          <summary className="admin-label cursor-pointer">엑셀에서 붙여넣기</summary>
-          <div className="mt-3 space-y-3">
+        <details className="admin-disclosure">
+          <summary>엑셀에서 붙여넣기</summary>
+          <div className="admin-disclosure-body space-y-3">
             <p className="admin-help">
               <span className="font-semibold">수험번호 + 과목 점수</span> 또는 <span className="font-semibold">과목 점수만</span> 탭으로 구분해
               붙여넣을 수 있습니다.

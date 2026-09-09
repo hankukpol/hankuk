@@ -181,16 +181,17 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
     <div className="admin-flat-page" aria-busy={busy}>
       <section className="admin-section">
         <h2 className="admin-section-title">채점 파일 가져오기</h2>
-        <p className="admin-help">같은 시험의 채점표와 문항분석표를 선택하세요. 파일별 최대 5MB이며, 미리보기 후 확정해야 성적에 반영됩니다.</p>
-        <p className="admin-help">시험은 파일의 시험일자로 구분합니다.</p>
-        <details>
-          <summary className="admin-button">첫 가져오기 전 준비사항</summary>
+        <p className="admin-help">같은 시험의 채점표와 문항분석표를 함께 선택하세요. 시험은 파일의 시험일자로 구분하며, 미리보기로 확인한 뒤 확정해야 성적에 반영됩니다.</p>
+        <details className="admin-disclosure">
+          <summary>첫 가져오기 전 준비사항</summary>
+          <div className="admin-disclosure-body">
           <ol className="admin-help list-decimal space-y-2 pl-5">
             <li>시험 설정의 과목별 문항 수와 배점이 가져올 파일과 일치하는지 확인합니다.</li>
             <li>서로 선택하는 과목은 같은 택1 그룹으로 지정합니다.</li>
             <li>같은 시험지를 사용하는 아침 시험 종류는 하나로 통합하고, 필요한 과목을 등록한 뒤 중복 종류는 비활성화합니다.</li>
             <li>학생 학번을 채점 시스템의 수험번호 5자리와 일치시킵니다.</li>
           </ol>
+          </div>
         </details>
         {examTypes.length === 0 && <p className="admin-notice admin-notice-warning">활성 시험 종류가 없습니다. 시험 설정에서 시험 종류와 과목을 등록한 후 이용해 주세요.</p>}
         <fieldset disabled={busy} className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -198,10 +199,12 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
           <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-score`}>
             <span className="admin-label">채점표</span>
             <input ref={scoreInput} id={`${id}-score`} type="file" accept=".xls" className="w-full min-w-0" onChange={(event) => chooseFile("scoreFile", event)} />
+            <span className="admin-help">.xls · 최대 5MB</span>
           </label>
           <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-analysis`}>
             <span className="admin-label">문항분석표</span>
             <input ref={analysisInput} id={`${id}-analysis`} type="file" accept=".xls" className="w-full min-w-0" onChange={(event) => chooseFile("analysisFile", event)} />
+            <span className="admin-help">.xls · 최대 5MB</span>
           </label>
           <label className="flex min-w-0 flex-col gap-2" htmlFor={`${id}-type`}>
             <span className="admin-label">시험 종류</span>
@@ -218,7 +221,7 @@ export function ExamImportWizard({ divisionSlug, category, examTypes, onImported
             </label>
           )}
         </fieldset>
-        <p className="admin-help">파일·시험 종류·진도를 변경하면 미리보기를 다시 실행해 주세요.</p>
+        <p className="admin-help">{category === "MORNING" ? "파일·시험 종류·진도를" : "파일이나 시험 종류를"} 변경하면 미리보기를 다시 실행해 주세요.</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={`admin-button${preview ? "" : " admin-button-primary"}`} disabled={busy || !canPreview} onClick={() => void submit("preview")}>
             {pending === "preview" ? "미리보기 확인 중…" : preview ? "미리보기 다시 실행" : "미리보기"}
@@ -269,7 +272,7 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
   return <>
     <section className="admin-section">
       <h2 className="admin-section-title">시험 정보 미리보기</h2>
-      <dl className="grid gap-4 md:grid-cols-2">
+      <dl className="admin-record-details">
         {[
           ["시험일자", preview.examDate],
           ["구분", preview.category === "MORNING" ? "아침 모의고사" : "정기 모의고사"],
@@ -278,7 +281,7 @@ function PreviewDetails({ preview }: { preview: ExamImportPreview }) {
           ["응시인원", `${preview.cohortSize}명`],
           ["문항 수", `${preview.itemCount}문항`],
           ["만점", `${preview.fullScore}점`],
-        ].map(([label, value]) => <div key={label} className="space-y-2 min-w-0"><dt className="admin-label">{label}</dt><dd className="break-words">{value}</dd></div>)}
+        ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="admin-label">{label}</dt><dd className="break-words">{value}</dd></div>)}
       </dl>
       {preview.errors.length > 0 && <ul className="admin-notice admin-notice-danger space-y-2" role="alert">{preview.errors.map((message, i) => <li key={i} className="break-words">{message}</li>)}</ul>}
     </section>

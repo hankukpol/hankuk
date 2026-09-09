@@ -23,8 +23,8 @@ export function DistributionBars({ distribution }: Props) {
         </BarChart>
       </ResponsiveContainer>
     </div>
-    <details><summary className="admin-button">분포 수치 보기</summary><div className="admin-table-frame"><table><thead><tr><th scope="col">점수 구간</th><th scope="col">인원</th><th scope="col">비율</th><th scope="col">내 위치</th></tr></thead><tbody>
+    <details className="admin-disclosure"><summary>분포 수치 보기</summary><div className="admin-disclosure-body"><div className="admin-table-frame"><table><thead><tr><th scope="col">점수 구간</th><th scope="col">인원</th><th scope="col">비율</th><th scope="col">내 위치</th></tr></thead><tbody>
       {data.map((bin) => <tr key={bin.label}><td>{bin.label}</td><td>{bin.count}명</td><td>{bin.ratio}%</td><td>{bin.mine ? "내 구간" : "-"}</td></tr>)}
-    </tbody></table></div></details>
+    </tbody></table></div></div></details>
   </div>;
 }

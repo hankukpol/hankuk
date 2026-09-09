@@ -401,11 +401,9 @@ export function MorningExamScoreManager({
         <h2 className="admin-section-title">일일 성적 입력</h2>
 
         <div className="mt-4">
-          <details open className="group">
-            <summary className="admin-label cursor-pointer">
-              엑셀에서 붙여넣기 / CSV 업로드
-            </summary>
-            <div className="mt-3 space-y-3">
+          <details className="admin-disclosure">
+            <summary>엑셀에서 붙여넣기 / CSV 업로드</summary>
+            <div className="admin-disclosure-body space-y-3">
               <div>
                 <p className="admin-help">
                   엑셀에서 &quot;수험번호 / 이름 / 점수 / 비고&quot; 순서로 복사한 뒤 아래 영역에 붙여넣으세요.

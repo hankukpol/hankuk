@@ -22,6 +22,6 @@ export function ItemAnalysisTable({ items, subjects, heading = true }: Props) {
     <p className="admin-help">응시 문항 {summary.total}개, 정답률 {decimal(summary.myCorrectRate)}%. 무응답은 오답과 별도로 집계하며, 미응시 과목은 제외합니다.</p>
     <section className="admin-section"><h3 className="admin-section-title">나만 틀린 문제</h3><p className="admin-help">설정된 쉬운 문항 기준 이상인데 틀린 문제입니다.</p>{renderRows(items.easyMissed)}</section>
     <section className="admin-section"><h3 className="admin-section-title">오답률 TOP5</h3>{renderRows(items.killerTop5)}</section>
-    <details className="admin-section"><summary className="admin-button">전체 채점표 ({items.list.length}문항)</summary>{renderRows(items.list)}</details>
+    <details className="admin-disclosure"><summary>전체 채점표 ({items.list.length}문항)</summary><div className="admin-disclosure-body">{renderRows(items.list)}</div></details>
   </section>;
 }

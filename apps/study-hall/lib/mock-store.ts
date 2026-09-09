@@ -205,6 +205,10 @@ export type MockInterviewResultTypeRecord =
   | "INTERVIEW"
   | "WITHDRAWAL";
 
+export type MockInterviewStatusRecord = "OPEN" | "CLOSED";
+
+export type MockWarningNoticeChannelRecord = "SMS" | "PHONE" | "IN_PERSON" | "OTHER";
+
 export type MockInterviewRecord = {
   id: string;
   studentId: string;
@@ -214,8 +218,45 @@ export type MockInterviewRecord = {
   content: string | null;
   result: string | null;
   resultType: MockInterviewResultTypeRecord;
+  followUpDate: string | null;
+  status: MockInterviewStatusRecord;
+  guardianContacted: boolean;
+  closedAt: string | null;
+  closedById: string | null;
   createdById: string;
   createdAt: string;
+};
+
+export type MockWarningNoticeRecord = {
+  id: string;
+  divisionId: string;
+  studentId: string;
+  stage: MockInterviewResultTypeRecord;
+  demeritPoints: number;
+  thresholdSnapshot: {
+    warnLevel1: number;
+    warnLevel2: number;
+    warnInterview: number;
+    warnWithdraw: number;
+  };
+  aggregationMode: string;
+  channel: MockWarningNoticeChannelRecord;
+  noticeBody: string | null;
+  memo: string | null;
+  noticedAt: string;
+  noticedById: string | null;
+  noticedByName: string;
+  createdAt: string;
+};
+
+export type MockDivisionSettingsHistoryRecord = {
+  id: string;
+  divisionId: string;
+  section: string;
+  changes: Array<{ field: string; label: string; before: unknown; after: unknown }>;
+  changedById: string | null;
+  changedByName: string;
+  changedAt: string;
 };
 
 export type MockAnnouncementRecord = {
@@ -364,6 +405,8 @@ type MockState = {
   tuitionPlansByDivision: Record<string, MockTuitionPlanRecord[]>;
   leavePermissionsByDivision: Record<string, MockLeavePermissionRecord[]>;
   interviewsByDivision: Record<string, MockInterviewRecord[]>;
+  warningNoticesByDivision: Record<string, MockWarningNoticeRecord[]>;
+  divisionSettingsHistoryByDivision: Record<string, MockDivisionSettingsHistoryRecord[]>;
   announcementsByDivision: Record<string, MockAnnouncementRecord[]>;
   globalAnnouncements: MockAnnouncementRecord[];
   examTypesByDivision: Record<string, MockExamTypeRecord[]>;
@@ -376,7 +419,12 @@ type MockState = {
   chatReadStatesByDivision: Record<string, MockChatReadStateRecord[]>;
 };
 
-const mockDirectory = path.join(process.cwd(), ".local");
+// 테스트는 MOCK_DB_DIR 로 자기 폴더를 받아 간다.
+// 이게 없던 동안 테스트가 개발용 .local/mock-db.json 을 그대로 건드려서
+// 시연 데이터가 초기 상태로 되돌아갔다(.local/mock-db.reset-by-tests.json 이 그 흔적).
+const mockDirectory = process.env.MOCK_DB_DIR
+  ? path.resolve(process.env.MOCK_DB_DIR)
+  : path.join(process.cwd(), ".local");
 const mockStatePath = path.join(mockDirectory, "mock-db.json");
 const mockStateBackupPath = path.join(mockDirectory, "mock-db.backup.json");
 
@@ -577,6 +625,8 @@ function getDivisionSlugs(state?: Partial<MockState>) {
       ...Object.keys(state?.phoneSubmissionsByDivision ?? {}),
       ...Object.keys(state?.chatMessagesByDivision ?? {}),
       ...Object.keys(state?.chatReadStatesByDivision ?? {}),
+      ...Object.keys(state?.warningNoticesByDivision ?? {}),
+      ...Object.keys(state?.divisionSettingsHistoryByDivision ?? {}),
     ]),
   ).filter((slug) => !deletedDivisionSlugSet.has(slug));
 }
@@ -970,6 +1020,11 @@ function createInitialInterviews(divisionSlug: string) {
         content: "최근 무단결석과 지각 누적으로 학습 흐름이 흔들리고 있습니다.",
         result: "다음 주까지 출석 정상화 계획서를 제출하기로 합의했습니다.",
         resultType: "INTERVIEW",
+        followUpDate: "2026-03-25",
+        status: "OPEN",
+        guardianContacted: true,
+        closedAt: null,
+        closedById: null,
         createdById: "mock-admin-police",
         createdAt: now,
       },
@@ -982,6 +1037,11 @@ function createInitialInterviews(divisionSlug: string) {
         content: "무단결석 누적과 생활 규정 위반에 대한 최종 확인이 필요했습니다.",
         result: "2주 유예 후 출석 추이를 다시 평가하기로 했습니다.",
         resultType: "WITHDRAWAL",
+        followUpDate: null,
+        status: "CLOSED",
+        guardianContacted: false,
+        closedAt: now,
+        closedById: "mock-admin-police",
         createdById: "mock-admin-police",
         createdAt: now,
       },
@@ -1000,6 +1060,11 @@ function createInitialInterviews(divisionSlug: string) {
       content: "최근 아침 입실 시간이 들쭉날쭉해 루틴 재정비가 필요합니다.",
       result: "다음 주까지 지각 0회를 목표로 관리하기로 했습니다.",
       resultType: "WARNING_1",
+      followUpDate: "2026-03-26",
+      status: "OPEN",
+      guardianContacted: false,
+      closedAt: null,
+      closedById: null,
       createdById: "mock-admin-fire",
       createdAt: now,
     },
@@ -1449,6 +1514,14 @@ function createInitialState(): MockState {
   const interviewsByDivision = Object.fromEntries(
     divisions.map((division) => [division.slug, createInitialInterviews(division.slug)]),
   );
+  // 안내 이력과 설정 변경 이력은 시드하지 않는다. 실제 조작으로만 쌓여야
+  // "아직 안내하지 않음" 상태를 화면에서 그대로 확인할 수 있다.
+  const warningNoticesByDivision = Object.fromEntries(
+    divisions.map((division) => [division.slug, [] as MockWarningNoticeRecord[]]),
+  );
+  const divisionSettingsHistoryByDivision = Object.fromEntries(
+    divisions.map((division) => [division.slug, [] as MockDivisionSettingsHistoryRecord[]]),
+  );
   const announcementsByDivision = Object.fromEntries(
     divisions.map((division) => [division.slug, createInitialAnnouncements(division.slug, divisions)]),
   );
@@ -1493,6 +1566,8 @@ function createInitialState(): MockState {
     tuitionPlansByDivision,
     leavePermissionsByDivision,
     interviewsByDivision,
+    warningNoticesByDivision,
+    divisionSettingsHistoryByDivision,
     announcementsByDivision,
     globalAnnouncements,
     examTypesByDivision,
@@ -1719,8 +1794,34 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     getDivisionSlugs({ ...state, divisions: normalizedDivisions, deletedDivisionSlugs }).map((divisionSlug) => [
       divisionSlug,
       Array.isArray(state.interviewsByDivision?.[divisionSlug])
-        ? state.interviewsByDivision?.[divisionSlug]
+        ? state.interviewsByDivision[divisionSlug].map((interview) => ({
+            ...interview,
+            followUpDate: interview.followUpDate ?? null,
+            // 후속 확인 개념이 없던 기록은 종결로 본다. DB 마이그레이션의 백필과 같은 규칙.
+            status: interview.status ?? "CLOSED",
+            guardianContacted: interview.guardianContacted ?? false,
+            closedAt: interview.closedAt ?? null,
+            closedById: interview.closedById ?? null,
+          }))
         : createInitialInterviews(divisionSlug),
+    ]),
+  );
+
+  const warningNoticesByDivision = Object.fromEntries(
+    getDivisionSlugs({ ...state, divisions: normalizedDivisions, deletedDivisionSlugs }).map((divisionSlug) => [
+      divisionSlug,
+      Array.isArray(state.warningNoticesByDivision?.[divisionSlug])
+        ? state.warningNoticesByDivision[divisionSlug]
+        : [],
+    ]),
+  );
+
+  const divisionSettingsHistoryByDivision = Object.fromEntries(
+    getDivisionSlugs({ ...state, divisions: normalizedDivisions, deletedDivisionSlugs }).map((divisionSlug) => [
+      divisionSlug,
+      Array.isArray(state.divisionSettingsHistoryByDivision?.[divisionSlug])
+        ? state.divisionSettingsHistoryByDivision[divisionSlug]
+        : [],
     ]),
   );
 
@@ -1868,6 +1969,8 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     tuitionPlansByDivision,
     leavePermissionsByDivision,
     interviewsByDivision,
+    warningNoticesByDivision,
+    divisionSettingsHistoryByDivision,
     announcementsByDivision,
     globalAnnouncements,
     examTypesByDivision,
@@ -1935,13 +2038,23 @@ async function retryLockedFileOperation(operation: () => Promise<void>) {
   throw lastError;
 }
 
-async function persistMockState(serialized: string) {
+/**
+ * 상태를 파일에 쓴다.
+ *
+ * refreshBackup 은 "이 내용이 정상임을 아는가"를 뜻한다. 복구 경로에서 이걸 켜면
+ * 백업이 망가진 내용으로 덮여 안전망이 사라진다. 실제로 mock-db.json 이
+ * 10MB → 176KB 로 초기화된 사고가 이 경로로 났다.
+ */
+async function persistMockState(serialized: string, { refreshBackup = true } = {}) {
   // 원자적 쓰기: 임시파일에 먼저 쓴 뒤 rename으로 교체하여 부분 쓰기 방지
   const tempPath = `${mockStatePath}.${process.pid}.${Date.now()}.${Math.random()
     .toString(36)
     .slice(2)}.tmp`;
   await writeFile(tempPath, serialized, "utf8");
-  await writeFile(mockStateBackupPath, serialized, "utf8");
+
+  if (refreshBackup) {
+    await writeFile(mockStateBackupPath, serialized, "utf8");
+  }
 
   try {
     await retryLockedFileOperation(() => rename(tempPath, mockStatePath));
@@ -1960,21 +2073,31 @@ async function persistMockState(serialized: string) {
 async function ensureMockStateFile() {
   await mkdir(mockDirectory, { recursive: true });
 
+  let content: string;
+
   try {
-    const content = await readFile(mockStatePath, "utf8");
-
-    if (!content.trim()) {
-      throw new Error("empty mock state");
+    content = await readFile(mockStatePath, "utf8");
+  } catch (error) {
+    // 파일이 아직 없을 때만 씨앗을 심는다.
+    // 예전에는 모든 오류를 여기서 삼켰는데, Windows 에서 다른 요청이 잠깐 파일을
+    // 잠그기만 해도 빈 상태로 초기화되고 그 빈 상태가 백업까지 덮었다.
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      throw error;
     }
 
-    try {
-      await readFile(mockStateBackupPath, "utf8");
-    } catch {
-      await writeFile(mockStateBackupPath, content, "utf8");
-    }
+    await persistMockState(JSON.stringify(createInitialState(), null, 2));
+    return;
+  }
+
+  if (!content.trim()) {
+    await persistMockState(JSON.stringify(createInitialState(), null, 2));
+    return;
+  }
+
+  try {
+    await readFile(mockStateBackupPath, "utf8");
   } catch {
-    const serialized = JSON.stringify(createInitialState(), null, 2);
-    await persistMockState(serialized);
+    await writeFile(mockStateBackupPath, content, "utf8");
   }
 }
 
@@ -1987,11 +2110,21 @@ async function readNormalizedMockStateFile() {
     try {
       const backupContent = await readFile(mockStateBackupPath, "utf8");
       const normalized = normalizeMockState(JSON.parse(backupContent) as Partial<MockState>);
-      await persistMockState(JSON.stringify(normalized, null, 2));
+      // 백업이 곧 정본이다. 다시 쓰면 방금 살린 안전망을 자기 자신으로 덮게 된다.
+      await persistMockState(JSON.stringify(normalized, null, 2), { refreshBackup: false });
+      console.warn("[mock-store] mock-db.json 을 읽지 못해 백업에서 복구했습니다.");
       return normalized;
     } catch {
+      // 정본도 백업도 못 읽는 상황이다. 빈 상태로 되돌리되, 읽지 못한 파일은
+      // 지우지 말고 옆으로 치워 둔다. 원인을 볼 수 있어야 한다.
+      const quarantinePath = `${mockStatePath}.corrupt-${Date.now()}`;
+      await rename(mockStatePath, quarantinePath).catch(() => undefined);
+
       const normalized = normalizeMockState(createInitialState());
-      await persistMockState(JSON.stringify(normalized, null, 2));
+      await persistMockState(JSON.stringify(normalized, null, 2), { refreshBackup: false });
+      console.error(
+        `[mock-store] mock-db.json 과 백업을 모두 읽지 못해 빈 상태로 시작합니다. 원본은 ${quarantinePath} 에 남겼습니다.`,
+      );
       return normalized;
     }
   }
@@ -2000,9 +2133,9 @@ async function readNormalizedMockStateFile() {
 export async function readMockState() {
   return withMockStateLock(async () => {
     await ensureMockStateFile();
-    const normalized = await readNormalizedMockStateFile();
-    await persistMockState(JSON.stringify(normalized, null, 2));
-    return normalized;
+    // 읽기는 쓰지 않는다. 예전에는 조회 한 번마다 10MB 전체와 백업을 다시 썼고,
+    // 그만큼 부분 쓰기와 겹칠 틈이 넓어졌다.
+    return readNormalizedMockStateFile();
   });
 }
 

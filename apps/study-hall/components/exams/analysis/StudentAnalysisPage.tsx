@@ -5,18 +5,28 @@ import type { RegularStudentReport as RegularReport, RegularCohortAnalysis } fro
 import type { MorningStudentReport as MorningReport, MorningCohortAnalysis } from '@/lib/morning-exam-analysis-types';
 import { defaultMorningAnalysisRange } from '@/lib/morning-exam-analysis-schemas';
 import { AdminTabs } from '@/components/ui/AdminTabs';
-import { RegularStudentReport } from './RegularStudentReport';
+import { RegularStudentReport, type ReportSection } from './RegularStudentReport';
+import { ReportPrintButton } from './ReportPrintButton';
 import { MorningStudentReport } from './MorningStudentReport';
 
 type Selection = { kind?: string; examTypeId?: string; examDate?: string; from?: string; to?: string };
 /** DESIGN.md 5.4 — 페이지 안 탭은 role="tab"/aria-selected 를 갖는 공용 AdminTabs 를 쓴다. */
 type AnalysisKind = 'regular' | 'morning';
 const KIND_TAB_PREFIX = 'analysis-kind';
+/** 개인 리포트는 섹션이 11개까지 늘어난다. 앵커 목록 대신 2차 탭으로 나눈다. */
+const SECTION_TAB_PREFIX = 'analysis-section';
+const SECTION_TABS = [
+  { id: 'diagnosis' as const, label: '학습 진단' },
+  { id: 'trend' as const, label: '성적 추이' },
+  { id: 'subjects' as const, label: '과목·문항' },
+  { id: 'rank' as const, label: '순위·기록' },
+];
 export function StudentAnalysisPage({ division, studentId, examTypes, initial }: { division: string; studentId: string; examTypes: ExamTypeItem[]; initial: Selection }) {
  const [kind, setKind] = useState<AnalysisKind>(initial.kind === 'morning' ? 'morning' : 'regular');
  const [typeId, setTypeId] = useState(initial.examTypeId || '');
  const [date, setDate] = useState(initial.examDate || '');
  const [range, setRange] = useState({...defaultMorningAnalysisRange(), ...(initial.from && initial.to ? {from:initial.from,to:initial.to} : {})});
+ const [section, setSection] = useState<ReportSection>('diagnosis');
  const [attempt,setAttempt]=useState(0);
  const [data,setData]=useState<{key:string; regular?:RegularReport; morning?:MorningReport; students:{id:string;name:string}[]; dates:string[]; error?:string}>();
  const types=examTypes.filter(type=>type.category === (kind === 'regular' ? 'REGULAR':'MORNING'));
@@ -44,16 +54,19 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
  const navigateStudent=(id:string)=>{const query=new URLSearchParams({kind,examTypeId:selected?.id||'',examDate:current?.regular?.session.examDate||date,...range});window.location.assign(`${root}/students/${encodeURIComponent(id)}?${query}`);};
  return <div className="admin-flat-page">
   <a className="admin-button" href={`${root}?${returnQuery}`}>← 성적 목록으로</a>
-  <h1 className="admin-page-title">{report?.student.name || '학생'} 개인 성적 분석</h1>
+  <div className="admin-workspace-toolbar">
+   <h1 className="admin-page-title">{report?.student.name || '학생'} 개인 성적 분석</h1>
+   {report && <ReportPrintButton />}
+  </div>
   <AdminTabs label="분석할 시험 구분" idPrefix={KIND_TAB_PREFIX} activeId={kind} onChange={next=>{setKind(next);setTypeId('');setDate('');}} items={[{id:'regular',label:'정기 모의고사'},{id:'morning',label:'아침 모의고사'}]}/>
+  <AdminTabs variant="secondary" label="개인 분석 항목" idPrefix={SECTION_TAB_PREFIX} activeId={section} onChange={setSection} items={SECTION_TABS}/>
   <div className="admin-filter-bar">
    <label className="admin-label">학생 선택<select value={studentId} onChange={event=>navigateStudent(event.target.value)}><option value={studentId}>{report?.student.name||'현재 학생'}</option>{current?.students.filter(student=>student.id!==studentId).map(student=><option key={student.id} value={student.id}>{student.name}</option>)}</select></label>
    <label className="admin-label">시험 종류<select value={selected?.id||''} onChange={event=>{setTypeId(event.target.value);setDate('');}}>{types.map(type=><option key={type.id} value={type.id}>{type.name}</option>)}</select></label>
    {kind==='regular'?<label className="admin-label">시험 날짜<select value={current?.regular?.session.examDate||date} onChange={event=>setDate(event.target.value)}>{current?.dates.map(value=><option key={value} value={value}>{value.slice(0,10)}</option>)}</select></label>:<><label className="admin-label">시작일<input type="date" value={range.from} onChange={event=>setRange({...range,from:event.target.value})}/></label><label className="admin-label">종료일<input type="date" value={range.to} onChange={event=>setRange({...range,to:event.target.value})}/></label></>}
   </div>
-  <nav className="admin-filter-bar" aria-label="개인 분석 바로가기"><a className="admin-button" href="#personal-diagnosis">학습 진단</a><a className="admin-button" href="#personal-trend">성적 추이</a><a className="admin-button" href="#personal-subjects">과목·단원 분석</a><a className="admin-button" href="#personal-items">문항별 복습</a></nav>
-  <div role="tabpanel" id={`${KIND_TAB_PREFIX}-panel-${kind}`} aria-labelledby={`${KIND_TAB_PREFIX}-${kind}`}>
-   {!selected?<p className="admin-empty-state">등록된 시험 종류가 없습니다.</p>:current?.error?<div role="alert" className="admin-notice admin-notice-danger"><p>{current.error}</p><button type="button" className="admin-button" onClick={()=>setAttempt(value=>value+1)}>다시 시도</button></div>:!report?<p role="status" className="admin-help">개인 성적을 불러오는 중입니다.</p>:current?.regular?<RegularStudentReport report={current.regular} mode="admin"/>:current?.morning?<MorningStudentReport report={current.morning} mode="admin"/>:null}
+  <div role="tabpanel" id={`${SECTION_TAB_PREFIX}-panel-${section}`} aria-labelledby={`${SECTION_TAB_PREFIX}-${section}`}>
+   {!selected?<p className="admin-empty-state">등록된 시험 종류가 없습니다.</p>:current?.error?<div role="alert" className="admin-notice admin-notice-danger"><p>{current.error}</p><button type="button" className="admin-button" onClick={()=>setAttempt(value=>value+1)}>다시 시도</button></div>:!report?<p role="status" className="admin-help">개인 성적을 불러오는 중입니다.</p>:current?.regular?<RegularStudentReport report={current.regular} mode="admin" section={section}/>:current?.morning?<MorningStudentReport report={current.morning} mode="admin" section={section}/>:null}
   </div>
  </div>;
 }

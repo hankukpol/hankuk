@@ -4,9 +4,10 @@ import type { RegularStudentReport } from "@/lib/exam-analysis-types";
 
 const decimal = (value: number) => Number(value.toFixed(1));
 
-type Props = { items: RegularStudentReport["items"]; subjects: RegularStudentReport["subjects"] };
+/** 날짜별 목록 안에 겹쳐 놓을 때는 heading 을 끄고 상위 summary 가 이름을 맡는다. */
+type Props = { items: RegularStudentReport["items"]; subjects: RegularStudentReport["subjects"]; heading?: boolean };
 
-export function ItemAnalysisTable({ items, subjects }: Props) {
+export function ItemAnalysisTable({ items, subjects, heading = true }: Props) {
   const names = new Map(subjects.map((subject) => [subject.id, subject.name]));
   const renderRows = (rows: Props["items"]["list"]) => rows.length === 0 ? <p className="admin-help">해당 문항이 없습니다.</p> :
     <div className="admin-table-frame"><table><thead><tr>
@@ -16,7 +17,7 @@ export function ItemAnalysisTable({ items, subjects }: Props) {
     </tr>)}</tbody></table></div>;
   const summary = items.summary;
   return <section className="admin-section">
-    <h2 className="admin-section-title">문항 분석</h2>
+    {heading && <h2 className="admin-section-title">문항 분석</h2>}
     <div className="admin-metric-strip">{[["정답", `${summary.correct}개`], ["오답", `${summary.wrong}개`], ["무응답", `${summary.unanswered}개`], ["킬러 정복률", summary.killerTotal ? `${decimal(summary.killerConquerRate)}%` : "해당 문항 없음"]].map(([label, value]) => <div className="admin-metric-box" key={label}><p className="admin-metric-box-label">{label}</p><p className="admin-metric-box-value">{value}</p></div>)}</div>
     <p className="admin-help">응시 문항 {summary.total}개, 정답률 {decimal(summary.myCorrectRate)}%. 무응답은 오답과 별도로 집계하며, 미응시 과목은 제외합니다.</p>
     <section className="admin-section"><h3 className="admin-section-title">나만 틀린 문제</h3><p className="admin-help">설정된 쉬운 문항 기준 이상인데 틀린 문제입니다. 나 혼자만 틀렸다는 뜻은 아닙니다.</p>{renderRows(items.easyMissed)}</section>

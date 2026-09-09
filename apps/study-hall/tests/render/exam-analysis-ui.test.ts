@@ -11,6 +11,33 @@ import type { RegularStudentReport } from "../../lib/exam-analysis-types";
 import * as morningSchemas from "../../lib/morning-exam-analysis-schemas";
 
 const root = path.resolve(__dirname, "../..");
+test("student analysis return link preserves current category and filters instead of entry filters", () => {
+  for (const kind of ["morning", "regular"]) {
+    let cursor = 0;
+    const values = [kind, "current-type", "2026-07-15", { from: "2026-07-01", to: "2026-08-31" }];
+    const Component = load("components/exams/analysis/StudentAnalysisPage.tsx", {
+      react: { ...React, useEffect() {}, useState(initial: unknown) {
+        const index = cursor++;
+        return React.useState(index < values.length ? values[index] : initial);
+      } },
+      "@/components/ui/AdminTabs": { AdminTabs: () => null },
+      "./RegularStudentReport": { RegularStudentReport: () => null },
+    }).StudentAnalysisPage;
+    const html = renderToStaticMarkup(React.createElement(Component, {
+      division: "test", studentId: "student", examTypes: [{ id: "current-type", category: kind === "regular" ? "REGULAR" : "MORNING", name: "시험" }],
+      initial: { kind: kind === "regular" ? "morning" : "regular", examTypeId: "old-type", examDate: "2026-03-15", from: "2026-01-01", to: "2026-01-31" },
+    }));
+    const href = html.match(/href="([^"]+)"/)?.[1].replaceAll("&amp;", "&");
+    assert.ok(href);
+    const query = new URL(href, "http://localhost").searchParams;
+    assert.equal(query.get("tab"), kind);
+    assert.equal(query.get("view"), "analysis");
+    assert.equal(query.get("examTypeId"), "current-type");
+    assert.equal(query.get("examDate"), kind === "regular" ? "2026-07-15" : null);
+    assert.equal(query.get("from"), kind === "morning" ? "2026-07-01" : null);
+    assert.equal(query.get("to"), kind === "morning" ? "2026-08-31" : null);
+  }
+});
 // Render actual report/table markup; replace chart geometry and unrelated portal
 // services only. These checks do not claim browser layout verification.
 function load(file: string, overrides: Record<string, unknown> = {}, globals: Record<string, unknown> = {}): Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any

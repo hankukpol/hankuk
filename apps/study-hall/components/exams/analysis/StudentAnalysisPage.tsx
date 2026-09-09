@@ -40,7 +40,7 @@ export function StudentAnalysisPage({ division, studentId, examTypes, initial }:
  const current=data?.key===key?data:undefined;
  const report=current?.regular || current?.morning;
  const root=`/${encodeURIComponent(division)}/admin/exams`;
- const returnQuery=new URLSearchParams({...initial,tab:initial.kind==='morning'?'morning':'regular',view:'analysis'});
+ const returnQuery=new URLSearchParams({tab:kind,view:'analysis',examTypeId:selected?.id||'',...(kind==='regular'?{examDate:current?.regular?.session.examDate||date}:range)});
  const navigateStudent=(id:string)=>{const query=new URLSearchParams({kind,examTypeId:selected?.id||'',examDate:current?.regular?.session.examDate||date,...range});window.location.assign(`${root}/students/${encodeURIComponent(id)}?${query}`);};
  return <div className="admin-flat-page">
   <a className="admin-button" href={`${root}?${returnQuery}`}>← 성적 목록으로</a>

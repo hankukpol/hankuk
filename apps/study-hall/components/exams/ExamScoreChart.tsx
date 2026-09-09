@@ -16,13 +16,11 @@ import {
   PortalEmptyState,
   PortalSectionHeader,
   portalCardClass,
-  portalSectionClass,
 } from "@/components/student-view/StudentPortalUi";
 import type { StudentExamResultItem } from "@/lib/services/exam.service";
 
 type ExamScoreChartProps = {
   results: StudentExamResultItem[];
-  variant?: "admin" | "portal";
 };
 
 const COLORS = Array.from({ length: 6 }, (_, index) => `var(--admin-chart-${index + 1})`);
@@ -39,7 +37,7 @@ function buildChartLabel(result: StudentExamResultItem) {
   return dateLabel ? `${result.examRound}회차 (${dateLabel})` : `${result.examRound}회차`;
 }
 
-export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartProps) {
+export function ExamScoreChart({ results }: ExamScoreChartProps) {
   const examTypeGroups = useMemo(() => {
     const map = new Map<
       string,
@@ -114,7 +112,7 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
   }
 
   return (
-    <section className={variant === "admin" ? "admin-section" : portalSectionClass}>
+    <section className="admin-section">
       <PortalSectionHeader
         title="성적 추이 차트"
         description="시험 종류별로 과목 점수와 총점 변화를 비교할 수 있습니다."

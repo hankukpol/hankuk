@@ -41,6 +41,8 @@ const config: Config = {
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // 상태색 클래스 문자열이 lib/*-meta.ts 에서 만들어진다. 빠지면 조용히 생성되지 않는다.
+    "./lib/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
@@ -123,6 +125,17 @@ const config: Config = {
           "accent-soft": token("accent-soft"),
           "accent-tint": token("accent-tint"),
           "accent-line": token("accent-line"),
+
+          // 상태색: 업무 의미가 있어 강조색으로 치환하지 않는다 (DESIGN.md 2절)
+          danger: token("danger"),
+          "danger-soft": token("danger-soft"),
+          "danger-line": token("danger-line"),
+          warning: token("warning"),
+          "warning-soft": token("warning-soft"),
+          "warning-line": token("warning-line"),
+          success: token("success"),
+          "success-soft": token("success-soft"),
+          "success-line": token("success-line"),
         },
 
         // 기존 마크업 호환: 중립·강조 계열을 토큰으로 연결

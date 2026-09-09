@@ -31,53 +31,52 @@ export function StudyRankingTable({
   }
 
   return (
+    /* DESIGN.md 5.8 — 표를 감싼 프레임은 테두리 없이 하나만 둔다. */
     <div className="admin-table-frame">
-      <div className="admin-table-frame overflow-x-auto">
-        <table className="min-w-full">
-          <thead>
-            <tr>
-              <th className="admin-table-name">순위</th>
-              <th className="admin-table-name">이름</th>
+      <table>
+        <thead>
+          <tr>
+            <th className="admin-table-name">순위</th>
+            <th className="admin-table-name">이름</th>
+            {showStudentNumber ? (
+              <th className="admin-table-name">학번</th>
+            ) : null}
+            <th className="admin-table-amount">월 누적 학습시간</th>
+            <th className="admin-table-amount">학습일</th>
+            <th className="admin-table-amount">일평균</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.key}
+              className={row.isMe ? "bg-admin-accent-soft" : "bg-admin-surface"}
+            >
+              <td>{row.rank}등</td>
+              <td>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-admin-text">{row.name}</span>
+                  {row.isMe ? (
+                    <span className="admin-badge border-admin-accent-line bg-admin-accent-soft text-admin-accent">
+                      나
+                    </span>
+                  ) : null}
+                </div>
+              </td>
               {showStudentNumber ? (
-                <th className="admin-table-name">학번</th>
+                <td>{row.studentNumber ?? "-"}</td>
               ) : null}
-              <th className="admin-table-amount">월 누적 학습시간</th>
-              <th className="admin-table-amount">학습일</th>
-              <th className="admin-table-amount">일평균</th>
+              <td className="admin-table-amount">
+                {formatStudyMinutes(row.totalMinutes)}
+              </td>
+              <td className="admin-table-amount">{row.studyDays}일</td>
+              <td className="admin-table-amount">
+                {formatStudyMinutes(row.dailyAverageMinutes)}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.key}
-                className={row.isMe ? "bg-[rgba(37,99,235,0.06)]" : "bg-white"}
-              >
-                <td>{row.rank}등</td>
-                <td>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-900">{row.name}</span>
-                    {row.isMe ? (
-                      <span className="rounded-lg bg-blue-100 px-2 py-0.5 text-[13px] font-semibold text-blue-700">
-                        나
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-                {showStudentNumber ? (
-                  <td>{row.studentNumber ?? "-"}</td>
-                ) : null}
-                <td className="admin-table-amount">
-                  {formatStudyMinutes(row.totalMinutes)}
-                </td>
-                <td className="admin-table-amount">{row.studyDays}일</td>
-                <td className="admin-table-amount">
-                  {formatStudyMinutes(row.dailyAverageMinutes)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

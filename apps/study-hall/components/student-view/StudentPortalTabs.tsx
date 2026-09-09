@@ -1,30 +1,28 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 type StudentPortalTabsProps = {
   divisionSlug: string;
   current:
     | "management-policy"
-    | "dashboard"
-    | "announcements"
     | "attendance"
     | "study-ranking"
     | "points"
     | "exams";
   policyEnabled?: boolean;
   attendanceEnabled?: boolean;
-  announcementsEnabled?: boolean;
   pointsEnabled?: boolean;
   examsEnabled?: boolean;
 };
 
 const items = [
   { key: "management-policy", label: "관리규정", href: "management-policy" },
-  { key: "dashboard", label: "대시보드", href: "" },
-  { key: "announcements", label: "공지사항", href: "announcements" },
-  { key: "attendance", label: "출석 상세", href: "attendance" },
+  { key: "attendance", label: "출석", href: "attendance" },
   { key: "study-ranking", label: "학습 랭킹", href: "study-ranking" },
-  { key: "points", label: "상벌점 상세", href: "points" },
-  { key: "exams", label: "성적 상세", href: "exams" },
+  { key: "points", label: "상벌점", href: "points" },
+  { key: "exams", label: "성적", href: "exams" },
 ] as const;
 
 export function StudentPortalTabs({
@@ -32,22 +30,45 @@ export function StudentPortalTabs({
   current,
   policyEnabled = false,
   attendanceEnabled = true,
-  announcementsEnabled = true,
   pointsEnabled = true,
   examsEnabled = true,
 }: StudentPortalTabsProps) {
+  const navRef = useRef<HTMLElement | null>(null);
+
+  // DESIGN.md 5.4 — 긴 메뉴는 탭 영역 안에서 가로로 스크롤하되 활성 탭은 보이게 맞춘다.
+  useEffect(() => {
+    const nav = navRef.current;
+    const activeTab = nav?.querySelector<HTMLElement>('[data-active="true"]');
+
+    if (!nav || !activeTab) {
+      return;
+    }
+
+    const navBox = nav.getBoundingClientRect();
+    const tabBox = activeTab.getBoundingClientRect();
+
+    if (tabBox.left >= navBox.left && tabBox.right <= navBox.right) {
+      return;
+    }
+
+    nav.scrollTo({
+      left: nav.scrollLeft + (tabBox.left - navBox.left),
+      behavior: "auto",
+    });
+  }, [current]);
+
   const visibleItems = items.filter((item) => {
     if (item.key === "management-policy") return policyEnabled;
     if (item.key === "attendance") return attendanceEnabled;
-    if (item.key === "announcements") return announcementsEnabled;
     if (item.key === "points") return pointsEnabled;
     if (item.key === "exams") return examsEnabled;
     return true;
   });
 
   return (
-    /* DESIGN.md 5.5 — 밑줄형 텍스트 탭. 선택 항목을 박스로 채우지 않는다. */
-    <nav className="admin-subtabs flex-nowrap overflow-x-auto" aria-label="학생 메뉴">
+    /* DESIGN.md 5.4 — 화면 이동은 1차 폴더 탭이다.
+       경로를 오가므로 button/onChange 대신 Link 와 aria-current 를 쓴다. */
+    <nav ref={navRef} className="admin-tabs" aria-label="학생 메뉴">
       {visibleItems.map((item) => {
         const isActive = current === item.key;
         const href = `/${divisionSlug}/student${item.href ? `/${item.href}` : ""}`;
@@ -57,7 +78,7 @@ export function StudentPortalTabs({
             key={item.key}
             href={href}
             prefetch={false}
-            className="admin-subtab shrink-0"
+            className="admin-tab"
             data-active={isActive}
             aria-current={isActive ? "page" : undefined}
           >

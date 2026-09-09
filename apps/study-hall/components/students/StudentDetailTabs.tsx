@@ -25,6 +25,7 @@ import type { PointRecordItem, PointRuleItem } from "@/lib/services/point.servic
 import type { ScoreTargetItem } from "@/lib/services/score-target.service";
 import type { StudentDashboardData } from "@/lib/services/student-dashboard.service";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
+import { getKstTodayYmd } from "@/lib/date-utils";
 
 type StudentDetailTabId = "attendance" | "points" | "exams" | "payments" | "interviews" | "study-time";
 
@@ -241,7 +242,7 @@ export function StudentDetailTabs({
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [isRefundOpen, setIsRefundOpen] = useState(false);
   const [paymentTypeId, setPaymentTypeId] = useState("");
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(() => getKstTodayYmd());
   const [paymentAmount, setPaymentAmount] = useState(defaultPaymentAmount != null ? String(defaultPaymentAmount) : "");
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [paymentNotes, setPaymentNotes] = useState(defaultPaymentNotes ?? "");
@@ -319,7 +320,7 @@ export function StudentDetailTabs({
     if (isSubmittingPayment) return;
     setIsAddPaymentOpen(false);
     setPaymentTypeId("");
-    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setPaymentDate(getKstTodayYmd());
     setPaymentAmount(defaultPaymentAmount != null ? String(defaultPaymentAmount) : "");
     setPaymentMethod("card");
     setPaymentNotes(defaultPaymentNotes ?? "");
@@ -858,7 +859,6 @@ export function StudentDetailTabs({
         </div>
 
         <ScoreTargetPanel
-          variant="admin"
           divisionSlug={divisionSlug}
           studentId={studentId}
           initialTargets={scoreTargets}
@@ -866,7 +866,7 @@ export function StudentDetailTabs({
           canEdit={canManageScoreTargets}
         />
 
-        <ExamScoreChart results={filteredExamResults} variant="admin" />
+        <ExamScoreChart results={filteredExamResults} />
 
         {filteredExamResults.length > 0 ? (
           <div className="space-y-4">

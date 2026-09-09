@@ -35,7 +35,6 @@ export default async function StudentStudyRankingPage({
         student={student}
         current="study-ranking"
         attendanceEnabled={settings.featureFlags.attendanceManagement}
-        announcementsEnabled={settings.featureFlags.announcements}
         pointsEnabled={settings.featureFlags.pointManagement}
         examsEnabled={settings.featureFlags.examManagement}
         title="학습 랭킹"

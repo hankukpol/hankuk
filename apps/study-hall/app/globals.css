@@ -54,14 +54,23 @@
 
   /* --- 상태색: 업무 의미가 있으므로 강조색으로 치환하지 않는다 --- */
   --admin-danger: #b91c1c;
+  --admin-danger-rgb: 185 28 28;
   --admin-danger-soft: #fef2f2;
+  --admin-danger-soft-rgb: 254 242 242;
   --admin-danger-line: #f2c2c2;
+  --admin-danger-line-rgb: 242 194 194;
   --admin-warning: #8a5a00;
+  --admin-warning-rgb: 138 90 0;
   --admin-warning-soft: #fff8e6;
+  --admin-warning-soft-rgb: 255 248 230;
   --admin-warning-line: #f0dca8;
+  --admin-warning-line-rgb: 240 220 168;
   --admin-success: #1b7a1b;
+  --admin-success-rgb: 27 122 27;
   --admin-success-soft: #eef8ee;
+  --admin-success-soft-rgb: 238 248 238;
   --admin-success-line: #c5e3c5;
+  --admin-success-line-rgb: 197 227 197;
   --admin-chart-1: var(--admin-accent);
   --admin-chart-2: #0f766e;
   --admin-chart-3: #c2410c;
@@ -184,6 +193,7 @@ body {
   table {
     width: 100%;
     border-collapse: collapse;
+    border: 0;
     background: var(--admin-surface);
     font-size: var(--admin-type-caption);
     line-height: 1.3;
@@ -394,10 +404,12 @@ body {
     line-height: 1.3;
   }
 
+  /* 페이지 설명은 보조 문구(.admin-help, 13px)가 아니라 기본 본문이다.
+     13px 로 두면 제목 20px 다음 단계가 비어 계층이 끊긴다 (DESIGN.md 3절). */
   .admin-page-description {
     margin-top: 4px;
     color: var(--admin-text-muted);
-    font-size: var(--admin-type-caption);
+    font-size: var(--admin-type-body);
     line-height: 1.5;
   }
 
@@ -709,7 +721,12 @@ body {
     gap: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: thin;
+    /* 스크롤바가 탭 아래 accent 연속선을 덮어 이중선처럼 보인다. 5.1절 사이드바와 같이 감춘다. */
+    scrollbar-width: none;
+  }
+
+  .admin-tabs::-webkit-scrollbar {
+    height: 0;
   }
 
   /* 탭은 탭 바 전체 폭을 나눠 채운다. 왼쪽에 칩처럼 몰려 있으면 안 된다. */
@@ -773,6 +790,23 @@ body {
     margin-bottom: 16px;
     border-bottom: 1px solid var(--admin-line);
     background: var(--admin-surface);
+  }
+
+  /* 항목이 많아 여러 줄로 접히면 마지막 줄에 한두 개만 남아 정렬이 깨져 보인다.
+     그때는 줄바꿈 대신 한 줄로 두고 탭 영역 안에서만 가로로 민다 (DESIGN.md 5.5). */
+  .admin-subtabs-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .admin-subtabs-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .admin-subtabs-scroll > .admin-subtab {
+    flex: 0 0 auto;
   }
 
   .admin-subtab {
@@ -1016,6 +1050,8 @@ body {
   .admin-help {
     color: var(--admin-text-muted);
     font-size: var(--admin-type-caption);
+    /* 제목 안에 두어도 굵기를 물려받지 않는다. */
+    font-weight: 400;
     line-height: 1.5;
   }
 
@@ -1424,6 +1460,103 @@ body {
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
   }
+
+  /* ------------------------------------------------------------------
+     학생 포털 — DESIGN.md 8절
+     관리자 규격을 그대로 쓴다. 아래 둘만 학생 화면을 위해 추가한다.
+     1) 요약이 3개일 때 쓰는 KPI 격자 3열 변형
+     2) 기록 카드 안 항목 격자 (모바일에서도 세로 나열로 접지 않는다)
+     ------------------------------------------------------------------ */
+
+  /* 학생 포털 평면 요약 — 테두리 상자 대신 1px 선으로만 나눈다.
+     칸 사이 1px 간격에 바탕색이 비쳐 보이는 방식이라 셀마다 선을 긋지 않는다. */
+  .admin-portal-summary {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border: 1px solid var(--admin-line-soft);
+    background: var(--admin-line-soft);
+  }
+
+  .admin-portal-summary-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-portal-summary > * {
+    min-width: 0;
+    padding: 12px 16px 14px;
+    background: var(--admin-surface);
+  }
+
+  .admin-portal-summary dt,
+  .admin-portal-summary-label {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  /* 한국어는 어절 단위로 끊는다. overflow-wrap: anywhere 는 "기준" 을 "기 / 준" 으로 쪼갠다. */
+  .admin-portal-summary :is(dt, dd, p) {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  /* 지표 값: 강조한다. */
+  .admin-portal-summary-value {
+    margin: 4px 0 0;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 신원 메타데이터(학번·좌석·직렬 등): 읽히기만 하면 된다.
+     지표와 같은 20px/700 을 주면 화면에서 가장 큰 글자가 학번이 된다. */
+  .admin-portal-summary dd {
+    margin: 4px 0 0;
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 대시보드 지표는 관리자 KPI와 같은 32px 숫자를 쓴다. */
+  .admin-portal-summary-kpi .admin-portal-summary-value {
+    font-size: 32px;
+    line-height: 1.2;
+  }
+
+  .admin-portal-details {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .admin-portal-details-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-portal-details > div {
+    min-width: 0;
+  }
+
+  .admin-portal-details dt {
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-portal-details dd {
+    margin-top: 4px;
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* ==========================================================================
@@ -1486,9 +1619,24 @@ textarea {
     padding: 24px 24px 48px;
   }
 
+  /* 학생 포털 평면 요약 — 넓은 폭에서는 관리자 요약 박스와 같은 자동 열을 쓴다. */
+  .admin-portal-summary {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .admin-portal-summary-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* 지표는 관리자 KPI 와 같은 단계로 늘린다: 1280px 미만 2열. */
+  .admin-portal-summary-kpi {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-metric-strip {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
+
 }
 
 @media (min-width: 1024px) {
@@ -1501,12 +1649,34 @@ textarea {
   .admin-dashboard-metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .admin-portal-summary-kpi {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 767px) {
   .admin-choice-group {
     width: 260px;
     max-width: 100%;
+  }
+
+  /* KPI 32px 는 데스크톱 기준이다. 좁은 화면에서 숫자 넷이 화면 대부분을 차지한다. */
+  .admin-dashboard-metric-value {
+    font-size: 20px;
+  }
+
+  .admin-dashboard-metric {
+    padding: 16px;
+  }
+
+  /* 요약 3개를 한 줄에 두면 기본 여백으로는 숫자가 넘친다. */
+  .admin-portal-summary-3 > * {
+    padding: 12px 12px 14px;
+  }
+
+  .admin-portal-summary-kpi .admin-portal-summary-value {
+    font-size: 20px;
   }
 }
 
@@ -1723,6 +1893,66 @@ body:has(.admin-shell) {
   text-overflow: ellipsis;
 }
 
+/* 보조 실행을 위한 텍스트 액션 (DESIGN.md 5.6).
+   한 화면에 채움/외곽 버튼이 서너 개 서면 무엇이 주 작업인지 사라진다.
+   주 실행 하나만 버튼으로 두고 나머지는 테두리 없는 글자로 내린다.
+   터치 영역 44px 는 그대로 지킨다. */
+.admin-shell .admin-text-action {
+  min-height: var(--admin-control-height);
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--admin-accent);
+  font-size: var(--admin-type-body);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.admin-shell .admin-text-action:hover:not(:disabled) {
+  color: var(--admin-accent-hover);
+  text-decoration: underline;
+}
+
+.admin-shell .admin-text-action:disabled {
+  color: var(--admin-text-disabled);
+}
+
+/* 출결 표 안의 상태 지정 버튼 (DESIGN.md 8).
+   표 안의 글자를 상자로 감싸지 않는다. 테두리 대신 §5.5 서브탭과 같은
+   2px 밑줄로 선택을 표시하고, 터치 높이 44px만 그대로 지킨다.
+   기본 버튼 규격(15px/좌우 16px)으로는 "출석" 두 글자가 세로로 쪼개지고,
+   표 안 버튼 기본값(36px 축약)은 조교 터치 규격에 못 미친다. */
+.admin-shell .admin-status-button {
+  min-height: var(--admin-control-height);
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  font-size: var(--admin-type-caption);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+/* 선택 항목의 색은 화면 쪽 출결 상태색 유틸이 정한다.
+   여기서 color 를 잡으면 레이어 밖 규칙이라 그 유틸을 이겨버린다. */
+.admin-shell .admin-status-button[aria-pressed="false"] {
+  color: var(--admin-text-muted);
+}
+
+.admin-shell .admin-status-button[aria-pressed="false"]:hover:not(:disabled) {
+  color: var(--admin-text);
+}
+
+/* 색만으로 상태를 전달하지 않도록 선택 항목에는 밑줄을 함께 준다. */
+.admin-shell .admin-status-button[aria-pressed="true"] {
+  border-bottom-color: currentColor;
+  font-weight: 700;
+}
+
 /* 표 안 작업 버튼은 축약 규격 */
 .admin-shell table :where(button) {
   min-height: var(--admin-control-compact);
@@ -1742,31 +1972,22 @@ body:has(.admin-shell) {
 .admin-shell table {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid var(--admin-grid);
+  /* 외곽선은 셀이 그린다. 표에도 테두리를 주면 같은 자리에 선이 두 번 놓인다. */
+  border: 0;
   color: var(--admin-text);
   font-size: var(--admin-type-caption);
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
 }
 
-/* 셀은 오른쪽·아래만 그린다. 표 외곽선과 겹쳐 2px이 되지 않는다. */
+/* 셀은 사방을 모두 그린다. border-collapse 가 맞닿은 선을 하나로 합치므로
+   격자 안쪽도 바깥쪽도 1px 로 유지된다. 표 자체 테두리는 위에서 0 으로 둔다. */
 .admin-shell :is(th, td) {
   padding: 12px;
-  border-right: 1px solid var(--admin-grid);
-  border-bottom: 1px solid var(--admin-grid);
-  border-top: 0;
-  border-left: 0;
+  border: 1px solid var(--admin-grid);
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
-}
-
-.admin-shell :is(th, td):last-child {
-  border-right: 0;
-}
-
-.admin-shell tbody tr:last-child :is(th, td) {
-  border-bottom: 0;
 }
 
 .admin-shell thead,
@@ -1783,6 +2004,30 @@ body:has(.admin-shell) {
   position: sticky;
   top: 0;
   z-index: 2;
+}
+
+/* 가로로 넓은 표에서 첫 열을 붙인다 (.admin-table-sticky-col).
+   고정 열은 반드시 **불투명 배경**을 가져야 한다. 투명하면 밀려 들어온 다른 셀이
+   그 자리를 그대로 통과해 글자가 겹쳐 보인다.
+   행 hover 색이 고정 열만 비껴가지 않도록 hover 배경도 함께 따라간다. */
+.admin-shell td.admin-table-sticky-col {
+  position: sticky;
+  left: 0;
+  /* 일반 머리글(2) 위로 올라오면 안 되므로 그보다 낮게 둔다. */
+  z-index: 1;
+  background: var(--admin-surface);
+}
+
+.admin-shell tbody tr:hover td.admin-table-sticky-col {
+  background: var(--admin-accent-soft);
+}
+
+/* 가로·세로 양쪽으로 고정되는 모서리 칸이라 머리글 중 가장 위에 있어야 한다. */
+.admin-shell thead th.admin-table-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--admin-accent-tint);
 }
 
 .admin-shell tbody tr:hover {
@@ -2027,6 +2272,87 @@ body:has(.admin-shell) {
   font-size: 20px;
   font-weight: 700;
   line-height: 1.3;
+}
+
+/* --- 학생 포털 표: 사방 격자선 + 한 화면 폭 맞춤 ---
+   5.8절의 "오른쪽·아래만" 모델은 border-collapse 로 선이 합쳐지는 것을 전제로 한다.
+   학생 화면은 사방에 선을 긋되 collapse 가 인접 선을 하나로 합치므로 외곽이 2px 이 되지 않는다.
+   좁은 폭에서는 셀을 줄바꿈하고 여백을 줄여 가로 스크롤 없이 한 화면에 담는다. */
+
+.admin-portal table {
+  border: 1px solid var(--admin-grid);
+}
+
+.admin-portal :is(th, td) {
+  border: 1px solid var(--admin-grid);
+}
+
+.admin-portal :is(th, td):last-child {
+  border-right: 1px solid var(--admin-grid);
+}
+
+.admin-portal tbody tr:last-child :is(th, td) {
+  border-bottom: 1px solid var(--admin-grid);
+}
+
+@media (max-width: 767px) {
+  /* 칸이 많은 표는 줄여 넣지 않고 표 프레임 안에서 가로로 스크롤한다.
+     글자를 세로로 쪼개면 값을 읽을 수 없다. 여백만 한 단계 줄인다. */
+  .admin-portal :is(th, td) {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  /* 제목·사유처럼 긴 문장이 들어가는 칸만 줄바꿈한다.
+     이 칸까지 nowrap 이면 표 하나가 화면 몇 배로 늘어난다. */
+  .admin-portal :is(th, td).admin-table-name {
+    min-width: 140px;
+    max-width: 220px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* 출석표는 값이 짧아 한 화면에 담기므로 여백만 줄인다. */
+  .admin-portal .admin-portal-grid-table :is(th, td) {
+    padding: 8px 2px;
+  }
+
+  .admin-portal .admin-portal-grid-table :is(th, td).admin-table-name {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/* --- 학생 메뉴 폴더 탭 ---
+   항목이 넷뿐이라 가로 스크롤 없이 한 화면에 들어와야 한다.
+   5.4절의 "라벨을 줄이거나 말줄임하지 않는다"를 지키려고 자르는 대신 두 줄로 흘린다. */
+
+.admin-portal .admin-tabs {
+  overflow-x: auto;
+}
+
+.admin-portal .admin-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 8px;
+  white-space: normal;
+  word-break: keep-all;
+  text-align: center;
+}
+
+/* 오늘 열은 머리글을 강조색으로 표시한다. thead 색을 고정하는 정규화 레이어보다 강해야 한다. */
+.admin-portal thead th[data-today="true"] {
+  color: var(--admin-accent);
+}
+
+/* --- 학생 포털: 표 안의 상태를 상자로 감싸지 않는다 ---
+   업무 색(DESIGN.md 5.11)은 글자색으로 남기고 테두리·배경·여백만 지운다.
+   관리자·조교 표의 배지는 지금 모양을 유지하므로 .admin-portal 안으로만 한정한다. */
+
+.admin-portal table :is(.admin-badge, .admin-status-chip) {
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 /* --- 모서리 최종 규칙: 탐색·표·드로어는 직각 --- */

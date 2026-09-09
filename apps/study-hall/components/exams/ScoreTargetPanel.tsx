@@ -8,13 +8,11 @@ import {
   PortalEmptyState,
   PortalSectionHeader,
   portalInsetClass,
-  portalSectionClass,
 } from "@/components/student-view/StudentPortalUi";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 import type { ScoreTargetItem } from "@/lib/services/score-target.service";
 
 type ScoreTargetPanelProps = {
-  variant?: "admin" | "portal";
   divisionSlug: string;
   studentId: string;
   initialTargets: ScoreTargetItem[];
@@ -43,7 +41,6 @@ function getStatusTone(target: ScoreTargetItem) {
 }
 
 export function ScoreTargetPanel({
-  variant = "portal",
   divisionSlug,
   studentId,
   initialTargets,
@@ -151,7 +148,7 @@ export function ScoreTargetPanel({
   }
 
   return (
-    <section className={variant === "admin" ? "admin-section" : portalSectionClass}>
+    <section className="admin-section">
       <PortalSectionHeader
         title="성적 목표"
         description="시험 종류별로 목표 점수를 확인하고, 관리자 권한이 있을 때만 수정할 수 있습니다."

@@ -70,6 +70,38 @@ export function getWarningStageLabel(stage: string | null | undefined) {
   return WARNING_STAGE_OPTIONS.find((option) => option.value === stage)?.label ?? "정상";
 }
 
+/** 상자 없이 글자색만 쓸 때. 배지가 필요한 곳은 getStudentStatusClasses 를 쓴다. */
+export function getStudentStatusToneClass(status: string | null | undefined) {
+  switch (status) {
+    case "ACTIVE":
+      return "text-emerald-700";
+    case "ON_LEAVE":
+      return "text-amber-700";
+    case "WITHDRAWN":
+      return "text-rose-700";
+    case "GRADUATED":
+      return "text-sky-700";
+    default:
+      return "text-admin-text-secondary";
+  }
+}
+
+/** 상자 없이 글자색만 쓸 때. 배지가 필요한 곳은 getWarningStageClasses 를 쓴다. */
+export function getWarningStageToneClass(stage: string | null | undefined) {
+  switch (stage) {
+    case "WARNING_1":
+      return "text-yellow-700";
+    case "WARNING_2":
+      return "text-orange-700";
+    case "INTERVIEW":
+      return "text-red-700";
+    case "WITHDRAWAL":
+      return "text-rose-900";
+    default:
+      return "text-emerald-700";
+  }
+}
+
 export function getWarningStageClasses(stage: string | null | undefined) {
   switch (stage) {
     case "WARNING_1":

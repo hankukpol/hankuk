@@ -93,6 +93,10 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | `blue/indigo/sky` 50→900 | `accent-soft` → `accent-tint` → `accent-line` → `accent` → `accent-hover` |
 | `admin-*` | 토큰 직접 접근 (`bg-admin-surface-soft`, `text-admin-text-muted`, `border-admin-line` …) |
 
+**Tailwind 는 소스에 적힌 클래스 문자열만 생성한다.** 상태색 클래스를 만들어 돌려주는 `lib/*-meta.ts` 가 `content` 글로브에 들어 있어야 한다. 빠지면 그 클래스는 오류 없이 조용히 사라진다(`text-yellow-700` 이 검정으로 나오던 원인).
+
+상태색도 `admin-*` 로 직접 쓴다: `text-admin-danger`, `bg-admin-warning-soft`, `border-admin-success-line` 처럼 `danger` / `warning` / `success` 와 각 `-soft` · `-line` 이 팔레트에 연결되어 있다. **Tailwind 연결은 `--admin-<이름>-rgb` 변수를 읽으므로, 토큰을 추가할 때 hex 와 `-rgb` 를 함께 선언한다.** `-rgb` 가 없으면 클래스가 조용히 아무 스타일도 만들지 않는다.
+
 ### 라인의 역할
 
 | 요소 | 선 |
@@ -128,13 +132,16 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | 페이지·모달 제목 | `.admin-page-title`, `.admin-dialog-title`, `h1` | 20px | 700 | 1.3 |
 | 섹션 제목 | `.admin-section-title`, `h2`/`h3`/`h4` | 16px | 700 | 1.3 |
 | 기본 본문 | `body`, `--admin-type-body` | 15px | 400 | 1.5 |
+| 페이지 설명 | `.admin-page-description` | 15px | 400 | 1.5 |
 | 일반 실행 버튼 | `.admin-button` | 15px | 600 | 1.3 |
+| 보조 실행(텍스트) | `.admin-text-action` | 15px | 600 | 1.3 |
 | 입력·검색 | `input`/`select`/`textarea` | 15px | 400 | 1.5 |
 | 폼 라벨 | `.admin-label` | 13px | 600 | 1.3 |
 | 안내·보조 문구 | `.admin-help`, `--admin-type-caption` | 13px | 400 | 1.5 |
 | 폴더 탭 | `.admin-tab` | 16px | 기본 400, 선택 700 | 1.3 |
 | 서브 탭·조건 버튼 | `.admin-subtab`, `.admin-choice-button` | 15px | 600 | 1.3 |
 | 표 | `table` | 13px | 본문 400, 헤더 600 | 1.3 |
+| 표 안 상태 지정 | `.admin-status-button` | 13px | 600 | 1.3 |
 | 대시보드 KPI | `.admin-dashboard-metric-value` | 32px | 700 | 1.2 |
 | 요약 박스 값 | `.admin-metric-box-value` | 20px | 700 | 1.3 |
 
@@ -159,7 +166,17 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | 폼·묶음 라벨 | `.admin-label` | `text-sm font-medium text-slate-700` |
 | 안내·경고 상자 | `.admin-notice` (+ tone) | `rounded-lg border bg-white px-4 py-4 text-sm` |
 
+**본문보다 작은 제목을 만들지 않는다.** 안내 상자 안에서 `<strong>`으로 소제목을 만들면 13px/700 이 되어 규격에 없는 네 번째 제목 단계가 생긴다. 라벨이 필요하면 `.admin-label`(13px/600)과 본문(15px)의 짝으로 두고, 진짜 제목이면 `.admin-section-title`을 쓴다.
+
 제목은 반드시 `h1`~`h4`로 쓴다. `<p>`에 굵은 글씨를 주면 크기는 비슷해도 문서 구조와 접근성이 사라지고, 섹션에 이름이 없는 것처럼 보인다.
+
+**반대로 제목이 아닌 것을 제목 태그로 쓰지 않는다.** `0/4` 같은 진행 수치를 `h2`로 두면 문서에 `0/4`라는 이름의 섹션이 생긴다. 수치는 `.admin-metric-box-value`(20px) 또는 KPI(32px)로 둔다.
+
+**모든 페이지에는 `.admin-page-title`(20px) 하나가 있어야 한다.** 한 화면만 이것을 빠뜨리면 그 페이지의 가장 큰 글자가 16px 섹션 제목이 되어, 다른 페이지와 계층이 어긋나 보인다.
+
+**KPI 값은 수치다.** `5교시`처럼 글자를 32px 칸에 넣으면 화면이 그 한 칸에 눌린다. 상태 문구는 KPI가 아니라 캡션이나 안내 줄에 둔다.
+
+**`.admin-help`를 제목 안에 넣을 때 굵기를 확인한다.** `h2` 안의 보조 문구는 700을 물려받아 제목처럼 굵어진다. `.admin-help`는 굵기 400을 스스로 고정한다.
 
 ---
 
@@ -239,7 +256,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 대시보드 순서: 제목/작업 → 개별 KPI 카드 → 확인할 일·기능 패널 → 표.
 
 - KPI는 붙어 있는 스트립이 아니라 **16px 간격의 개별 카드**(`.admin-dashboard-metric`). 외곽 8px, 1px line, padding 20px.
-- 1280px 미만 2열, 이상 4열. KPI 숫자 32px, 단위 13px.
+- 1280px 미만 2열, 이상 4열. KPI 숫자 32px, 단위 13px. **768px 미만에서는 숫자 20px·padding 16px로 낮춘다** — 32px 숫자 넷이면 휴대폰 한 화면을 요약만으로 다 쓴다.
 - 패널(`.admin-panel`) 제목부는 padding 16px 20px, 최소 높이 56px, soft 배경과 아래 1px line.
 - 패널 내부 행(`.admin-panel-row`)은 좌우 20px, 위아래 12px, `line-soft`. 마지막 행의 아래 선은 없다.
 - 외곽만 8px로 자르고 **내부 행·헤더는 직각**. header 배경이 라운드 경계 밖으로 나가지 않게 한다.
@@ -280,11 +297,12 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 바탕 흰색/투명, 아래 line 1px, 항목 gap 4px.
 - 항목 최소 높이 44px, padding 12px 16px, 15px/600, 자연 폭.
 - 활성은 accent 글자와 **2px 직선 밑줄**(`data-active="true"` / `aria-selected` / `aria-pressed`). hover 중에도 선택 색을 유지하며 배경을 박스로 채우지 않는다.
-- 라운드는 모두 0. 좁은 화면에서 wrap하고 글자를 자르지 않는다.
+- 라운드는 모두 0. 기본은 좁은 화면에서 wrap하고 글자를 자르지 않는다.
+- **항목이 많아 여러 줄로 접히면 `.admin-subtabs-scroll`(`AdminTabs`의 `scrollable`)을 쓴다.** 마지막 줄에 한두 개만 남으면 좌측에 몰린 조각처럼 보여 정렬이 깨진 화면이 된다. 이 변형은 줄바꿈 대신 탭 영역 안에서만 가로로 밀고, 스크롤바는 감춘다. 선택 탭은 **가운데로** 보낸다 — 가장자리에 붙이면 뒤에 항목이 더 있는지 보이지 않는다. 휴대폰 체크의 9개 교시가 이 경우다.
 - 짧은 화면에 불필요한 하위 단계나 세 번째 폴더 줄을 만들지 않는다.
 - 페이지 안 탭은 `role="tablist"` / `role="tab"` / `aria-selected` 와 roving tabindex(선택 탭만 `tabIndex=0`)를 쓴다. 좌우 방향키·Home·End 이동은 [useTabListKeys.ts](lib/useTabListKeys.ts) 가 담당한다.
 
-학생 포털 메뉴와 조교 하단 탐색도 같은 밑줄 디자인을 쓴다(하단 탐색은 밑줄이 위쪽 2px).
+**학생 포털 메뉴는 1차 폴더 탭이다**(§5.4). 화면을 오가는 최상위 이동이므로 밑줄형으로 두지 않는다. 그 안에서 나뉘는 시험 종류(아침·정기 모의고사)가 이 절의 2차 밑줄 탭이다. 조교 하단 탐색도 같은 밑줄 디자인을 쓴다(하단 탐색은 밑줄이 위쪽 2px).
 
 ### 5.6 조건 선택 버튼과 일반 버튼
 
@@ -306,6 +324,10 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 | 축약 | `+ .admin-button-compact` | 36px / 13px | 표 안 행 작업 |
 
 hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 더(`surface-muted`)로만 준다. `hover:opacity-90` 처럼 전체를 흐리는 방식은 쓰지 않는다.
+
+**한 화면에 버튼 상자를 서너 개 세우지 않는다.** 채움·외곽 버튼이 나란히 서면 전부 같은 무게가 되어 무엇이 주 작업인지 사라진다. 화면(또는 한 구획)의 **주 실행 하나만 버튼으로 두고, 보조 실행은 `.admin-text-action`**(테두리·배경 없는 accent 글자, hover 밑줄, 최소 높이 44px)으로 내린다. 조교 휴대폰 체크의 `전원 반납`·`전원 미반납`·`일괄 대여`가 그 예이며 `저장`만 채움 버튼이다.
+
+**집계 수치도 배지 상자에 담지 않는다.** 다섯 개가 넘어가면 작은 상자가 두 줄로 접혀 화면이 부서져 보인다. `라벨 + 숫자`를 한 줄 문구로 두고 숫자에만 업무색과 `tabular-nums`를 준다. 배지는 상태 하나를 가리킬 때만 쓴다(§5.11).
 
 - 일반 실행 버튼(`.admin-button`)은 내용에 맞는 폭이다. 128px 동일 폭 규칙을 실행 버튼에 적용하지 않는다.
 - `admin-button-primary`는 accent 채움 + `--admin-on-accent` 글자, hover는 `accent-hover`. 기본형은 흰색 + line, hover soft.
@@ -334,25 +356,26 @@ hover는 면 한 단계(`surface-soft` / `accent-hover`), 누름은 한 단계 �
 
 표는 `width: 100%`, 셀 padding 12px, 헤더 `accent-tint`/600, 행 hover `accent-soft`, 본문 13px, `tabular-nums`, 셀 `white-space: nowrap`.
 
-**선 긋는 방식이 중요하다.** 바깥 테두리는 `table`이 1px `admin-grid`로 한 번만 그리고, 셀은 **오른쪽과 아래만** 그린다. 마지막 열의 오른쪽과 마지막 행의 아래는 지운다. 셀마다 사방 테두리를 주면 표 외곽에서 선이 겹쳐 2px로 보인다.
+**선 긋는 방식이 중요하다.** 셀이 **사방을 모두** 1px `admin-grid`로 그리고, `table` 자체에는 테두리를 두지 않는다. `border-collapse: collapse`가 맞닿은 선을 하나로 합치므로 격자 안쪽도 바깥쪽도 1px로 유지된다. **표와 셀에 동시에 테두리를 주면 같은 자리에 선이 두 번 놓인다.**
 
 ```css
-table            { border: 1px solid var(--admin-grid); border-collapse: collapse; }
-th, td           { border-right: 1px solid var(--admin-grid);
-                   border-bottom: 1px solid var(--admin-grid); }
-th:last-child,
-td:last-child    { border-right: 0; }
-tbody tr:last-child th,
-tbody tr:last-child td { border-bottom: 0; }
+table  { border: 0; border-collapse: collapse; }
+th, td { border: 1px solid var(--admin-grid); }
 ```
 
 **표를 감싼 컨테이너에 테두리를 두지 않는다.** 래퍼 선과 표 외곽선이 나란히 놓여 이중선이 된다. 가로 스크롤이 필요하면 `.admin-table-frame`(테두리 없음, 직각)으로 감싼다.
 
 머리글은 `position: sticky; top: 0`으로 붙이고 `accent-tint` 배경을 셀이 직접 칠한다.
 
+가로로 넓은 표에서 첫 열을 붙일 때는 `th`·`td` 모두에 `.admin-table-sticky-col`을 준다.
+
+- **고정 열에는 반드시 불투명 배경을 준다.** 투명하면 밀려 들어온 다른 셀이 그 자리를 그대로 통과해 글자가 겹친다.
+- **머리글의 z-index가 본문 셀보다 높아야 한다.** 고정 열의 머리글은 가로·세로 양쪽으로 붙는 모서리 칸이라 표에서 가장 위다. 순서는 일반 머리글 2 < 고정 열 본문 3 < 고정 열 머리글 4.
+- 행 hover 색이 고정 열만 비껴가지 않도록 hover 배경도 함께 지정한다.
+
 이 값들은 모두 `globals.css`가 담당한다. **개별 표에 padding·배경·글자 크기·테두리 유틸을 다시 붙이지 않는다.** 셀 안에 남은 `text-left`/`text-right` 유틸은 표 규칙이 덮으므로, 정렬은 반드시 `.admin-table-name`·`.admin-table-amount` 같은 의미 클래스로 준다. 셀 안 flex 자식의 정렬도 같은 방향으로 따라간다.
 
-- 모바일 명단은 기존 카드 레이아웃을 유지할 수 있다. 데스크톱 표 정렬을 강제로 이식하지 않는다.
+- 모바일에서도 명단은 표를 유지한다. 좁은 화면에서는 열을 숨기거나 다른 칸으로 접어 가로 스크롤을 피하고, 카드 격자로 바꾸지 않는다.
 
 ### 5.9 표 하단 페이지 영역과 더 불러오기
 
@@ -469,10 +492,40 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 
 관리자 규격을 그대로 쓰되 아래는 유지한다.
 
-- **조교**: 검은 상단 헤더 + 하단 고정 탐색. 콘텐츠 최대 폭 `max-w-4xl`. 현장에서 서서 쓰는 화면이므로 터치 영역을 44px 아래로 줄이지 않는다.
-- **학생 포털**: `StudentPortalUi`의 `portalPageClass` / `portalSectionClass` / `portalInsetClass` / `portalCardClass`가 공통 표면을 담당한다. 모바일 카드 레이아웃과 넓은 터치 영역을 유지한다. 관리자용 밀도(13px 표)를 강제 이식하지 않는다.
-- 학생 화면의 D-Day·수강 기간처럼 **긴급도를 색으로 전달하는 블록**은 상태색을 유지하되 반드시 읽을 수 있는 문구를 함께 둔다.
+- **조교**: 관리자와 **같은 셸(`AdminShell`)**을 쓴다. 1024px 이상은 256px 검은 사이드바, 미만은 상단 헤더의 `조교 메뉴` 버튼으로 펼친다. 본문 폭·여백·유틸리티 행도 §5.1과 같다. 조교 전용 하단 고정 탐색은 두지 않는다 — 관리자와 다른 껍데기를 쓰면 같은 제품으로 보이지 않는다.
+- 조교 메뉴는 `AdminSidebar`의 `role="assistant"` 목록(조교 홈·출석체크·휴대폰 체크)이다. 관리자 메뉴를 권한으로 가리지 않고 애초에 다른 목록을 둔다.
+- 현장에서 서서 쓰는 화면이므로 터치 영역을 44px 아래로 줄이지 않는다.
+- 조교 홈의 요약은 관리자 대시보드와 같은 `.admin-dashboard-metrics` 격자다(768px 미만 2열, 1280px 이상 4열). 조교 전용 요약 박스를 따로 만들지 않는다.
+- **출결 명단은 카드가 아니라 표다**(§5.8). 카드 격자는 한 학생이 한 덩어리를 차지해 화면당 인원이 줄고, 관리자 출석부(학생 × 교시 매트릭스)와도 다른 물건처럼 보인다.
+  - 열은 `좌석 · 학생 · 출결 · 기타 상태`이고, 640px 미만에서는 `기타 상태` 열을 출결 칸 아래로 접어 가로 스크롤을 없앤다.
+  - 자습실이 하나뿐인 지점에서는 좌석 라벨만 쓴다. 행마다 같은 자습실 이름을 반복하지 않는다.
+  - 스와이프 입력은 행(`tr`) 단위로 유지한다.
+- 표 안의 출석/지각/결석 버튼은 `.admin-status-button`이다. **표 안의 글자를 테두리 상자로 감싸지 않는다** — 셀마다 작은 박스가 서면 표가 다시 카드처럼 보인다. 테두리·배경 없이 글자만 두고 선택은 §5.5 서브탭과 같은 **2px 밑줄**로 표시한다(`aria-pressed`).
+  - 선택 글자색은 출결 상태색(`attend-*`)을 그대로 쓰고 밑줄은 `currentColor`로 따라간다. 색만으로 상태를 전달하지 않도록 밑줄을 함께 둔다.
+  - 높이는 44px를 유지한다. 기본 버튼의 15px·좌우 16px로는 두 글자가 세로로 쪼개지고, 표 안 버튼 기본값(36px 축약)은 조교 터치 규격에 못 미치므로 글자 13px·좌우 4px로만 줄인다.
+  - 선택 색은 화면 쪽 Tailwind 유틸이 정한다. 정규화 레이어에서 `color`를 잡으면 레이어 밖 규칙이라 그 유틸을 이겨버리므로, 비활성(`aria-pressed="false"`)에만 색을 지정한다.
+- 표 셀은 `white-space: nowrap`이라 `select`·`input` 같은 inline-block 컨트롤을 그냥 두면 한 줄에 붙어 셀을 넘친다. 세로로 쌓아야 하면 `block`을 함께 준다.
+- **행마다 늘 펼쳐 두는 컨트롤을 만들지 않는다.** 빈도가 낮은 선택지(사유결석·휴무·반휴·해당없음)는 같은 줄의 `기타` 토글 뒤에 접고, 이미 지정된 행만 펼쳐 둔다. 행마다 select 를 세워 두면 한 화면에 들어오는 학생이 절반으로 준다.
+- **`tr` 에 `transform` 을 상시로 걸지 않는다.** 표 행이 containing block 이 되어 열 정렬이 흔들린다. 스와이프처럼 실제로 움직일 때만 style 을 붙이고, 끝나면 예약된 `requestAnimationFrame` 을 **반드시 취소한다** — 취소하지 않으면 초기화 뒤에 옛 값이 다시 쓰여 행이 밀린 채 굳는다.
+- 컨트롤이 여러 단으로 쌓이는 화면(휴대폰 체크)은 **768px 미만에서 조회 조건을 접는다.** 날짜·검색·필터는 접고, 늘 봐야 하는 보기 탭·교시·집계·명단은 펼쳐 둔다. 768px 이상에서는 CSS 로 항상 펼쳐 데스크톱 동작을 바꾸지 않는다.
+- **학생 포털 화면은 넷이다**: 출석 상세·학습 랭킹·상벌점 상세·성적 상세. 대시보드와 공지사항은 두지 않는다. `/[division]/student` 는 로그인 직후 도착하는 경로이므로 라우트는 남기고 켜져 있는 첫 화면으로 넘긴다.
+- **학생 포털**: 조교와 같은 이유로 관리자와 **같은 셸(`.admin-shell`)**을 쓴다. 루트가 `.admin-shell`, 본문이 `.admin-main` + `.admin-content-frame` + `.admin-flat-page`이고, 상단은 지점명·학생명·로그아웃을 담은 검은 헤더다. 학생은 좌측 메뉴 대신 **1차 폴더 탭**(§5.4)으로 화면을 옮기고, 화면 안에서 갈리는 구분만 2차 밑줄 탭(§5.5)으로 둔다.
+- **셸 밖에 두지 않는다.** 셸 밖이면 §5.12 정규화 레이어가 걸리지 않아 입력 높이·버튼 규격·표 선 모델·모서리를 화면마다 손으로 다시 구현하게 되고, 그 순간부터 관리자와 다른 UI가 된다. 새 화면에서 가장 먼저 확인할 것은 `.admin-shell` 안에 있는지다.
+- 학생 화면도 관리자 클래스를 그대로 쓴다. 페이지 제목 `.admin-page-title`, 표 `.admin-table-frame`, 안내 `.admin-notice`, 배지 `.admin-badge`, 빈 상태 `.admin-empty-state`다. **화면 전체를 카드로 감싸지 않는다.**
+- **요약은 테두리 상자가 아니라 선으로만 나눈다.** 신원(학번·좌석·상벌점·직렬)과 지표는 `.admin-portal-summary` 격자다. 칸 사이 1px 간격에 `line-soft`가 비쳐 격자선이 되고, 표와 같이 **사방을 선으로 닫는다**(좌우가 열려 있으면 옆 표와 끝선이 어긋나 보인다). 390px 2열, 768px 이상 자동 열이며, 요약이 3개면 `-3`(항상 3열), 대시보드 지표는 `-kpi`(1280px 이상 4열, 숫자 32px)를 함께 준다. **관리자 대시보드의 `.admin-dashboard-metric` 카드를 학생 화면에 이식하지 않는다.**
+- **표는 사방에 격자선을 긋는다.** 5.8절의 "오른쪽·아래만" 모델과 달리 `.admin-portal` 안의 표는 셀 사방에 1px `admin-grid`를 준다. `border-collapse: collapse` 가 인접한 선을 하나로 합치므로 외곽이 2px 로 겹치지 않는다.
+- **칸이 많은 표는 줄여 넣지 않고 가로로 스크롤한다.** 좁은 폭에서 모든 칸을 욱여넣으면 `2026. 3. 15.` 가 네 줄로 쪼개져 값을 읽을 수 없다. 셀은 `white-space: nowrap` 을 유지해 자연 폭을 갖고, `.admin-table-frame` 안에서만 가로로 스크롤한다(문서 전체는 넘치지 않는다). 제목·사유처럼 긴 문장이 들어가는 `.admin-table-name` 칸만 줄바꿈하고 140~220px 로 묶는다 — 이 칸까지 nowrap 이면 표 하나가 화면 몇 배로 늘어난다. 표에 `min-width` 를 걸어 폭을 강제하지도 않는다.
+- **주간 출석표는 모바일에서 행과 열을 뒤집는다.** 날짜를 행으로 두면 교시 9개가 열이 되어 13px 하한을 지키면서는 390px 안에 들어오지 않는다. 교시를 행, 날짜를 열로 두면 8열이 되어 한 화면에 담긴다. 칸이 많으므로 `.admin-portal-grid-table` 로 여백을 8px 2px 까지 줄이고, 오늘 열은 강조색과 `오늘` 문구를 함께 표시한다(1절).
+- **표 안에서는 상태를 상자로 감싸지 않는다.** 출결·상벌점 점수·공지 구분처럼 셀 안에 들어가는 값은 `.admin-badge`/`.admin-status-chip` 이라도 `.admin-portal table` 안에서 테두리·배경·여백을 걷고 **업무 색을 글자색으로만 남긴다**(5.11절의 상태색은 그대로 유지된다). 표가 이미 격자선을 그으므로 칸마다 상자를 또 그리면 선이 두 겹이 된다. 범례도 같은 표기를 쓴다. 표 밖의 배지(학생 상태·경고 단계)는 배지 모양을 유지한다.
+- **목록은 폭에 상관없이 표다.** 상벌점 내역·성적 회차 모두 `.admin-table-frame` 안의 표다. 5.3절의 "768px 미만은 기록 카드" 규칙은 관리자·조교 화면에만 적용한다.
+- 기록 카드를 쓰는 곳이 남으면 카드 안 항목은 **`.admin-portal-details`** 로 2열(`-3` 변형은 3열)로 나눈다. 관리자의 `.admin-record-details`가 768px 미만에서 1열로 접히는 것과 달리 **모바일에서도 접지 않는다.**
+- 학생 메뉴는 경로를 오가므로 `AdminTabs`(button/onChange) 대신 `Link` + `aria-current="page"` 로 만든다.
+- **학생 메뉴 탭은 한 화면에 다 보인다.** 항목이 넷뿐이므로 `flex: 1 1 0` 으로 폭을 나눠 채우고, 5.4절의 "라벨을 줄이거나 말줄임하지 않는다"를 지키려고 자르는 대신 `word-break: keep-all` 로 어절 단위 두 줄까지 흘린다. 탭 바의 오버레이 스크롤바는 감춘다 — 아래 accent 연속선을 덮어 이중 굵은 선처럼 보인다(5.1절 사이드바와 같은 이유).
+- **학생 상태·경고 단계는 배지로 두지 않는다.** 버튼처럼 보이는 상자 대신 요약 격자의 항목(`상태`, `경고 단계`)으로 넣고 값에만 업무 색을 준다. 라벨이 함께 읽히므로 색에 기대지 않는다(1절).
+- 학생 화면의 D-Day·수강 기간처럼 **긴급도를 색으로 전달하는 블록**은 상태색을 유지하되 반드시 읽을 수 있는 문구를 함께 둔다. 이 블록은 `.admin-notice`와 tone 변형을 쓰고, 남은 일수는 `.admin-badge`로 따로 보여준다.
 - 좌석 지도와 QR/기능성 마커는 고유 형상을 보존한다. 일반 버튼 라운드나 탭 규칙으로 덮어쓰지 않는다.
+
+관련 파일: [StudentPortalFrame.tsx](components/student-view/StudentPortalFrame.tsx), [StudentPortalTabs.tsx](components/student-view/StudentPortalTabs.tsx), [StudentPortalUi.tsx](components/student-view/StudentPortalUi.tsx)
 
 ---
 

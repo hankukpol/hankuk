@@ -8,8 +8,7 @@ import {
   PortalEmptyState,
   PortalMetricCard,
   PortalSectionHeader,
-  portalInsetClass,
-  portalSectionClass,
+  portalMetricGrid3Class,
 } from "@/components/student-view/StudentPortalUi";
 import { requireDivisionStudentAccess } from "@/lib/auth";
 import { isNotFoundError } from "@/lib/errors";
@@ -62,13 +61,12 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
         student={student}
         current="points"
         attendanceEnabled={settings.featureFlags.attendanceManagement}
-        announcementsEnabled={settings.featureFlags.announcements}
         pointsEnabled={settings.featureFlags.pointManagement}
         examsEnabled={settings.featureFlags.examManagement}
         title="상벌점 상세"
         description="학생 본인에게 등록된 가점과 벌점 기록을 시간순으로 압축해 확인할 수 있습니다."
       >
-        <section className="grid grid-cols-2 gap-3 xl:grid-cols-3">
+        <section className={portalMetricGrid3Class}>
           <PortalMetricCard
             label="현재 벌점"
             value={`${demeritPoints}점`}
@@ -78,17 +76,18 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
             label={student.meritPoints !== undefined ? "이번 달 상점" : "가점 기록"}
             value={student.meritPoints !== undefined ? `${student.meritPoints}점` : `${rewardCount}건`}
             caption={student.meritPoints !== undefined ? "벌점과 상계하지 않습니다" : "현재 누적된 가점 건수"}
-            valueToneClassName="text-emerald-700"
+            valueToneClassName="text-admin-success"
           />
           <PortalMetricCard
             label={student.meritPoints !== undefined ? "이번 달 벌점 기록" : "벌점 기록"}
             value={`${penaltyCount}건`}
             caption={student.meritPoints !== undefined ? "이번 달 확정된 벌점 건수" : "현재 누적된 벌점 건수"}
-            valueToneClassName="text-rose-700"
+            valueToneClassName="text-admin-danger"
           />
         </section>
 
-        <section className={portalSectionClass}>
+        {/* DESIGN.md 8절 — 학생 목록은 폭에 상관없이 표다. 바깥에 카드를 덧대지 않는다. */}
+        <section>
           <PortalSectionHeader
             title="전체 상벌점 기록"
             description="최근순으로 정렬되며, 항목과 기록 메모를 한 화면에서 빠르게 확인할 수 있습니다."
@@ -96,29 +95,38 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
           />
 
           {records.length > 0 ? (
-            <div className="mt-4 grid gap-3">
-              {records.map((record) => (
-                <article key={record.id} className={portalInsetClass}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+            <div className="admin-table-frame mt-4">
+              <table>
+                <thead>
+                  <tr>
+                    <th>적용 일시</th>
+                    <th>구분</th>
+                    <th>점수</th>
+                    <th>부여 사유</th>
+                    <th>기록자</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((record) => (
+                    <tr key={record.id}>
+                      <td>{formatDateTime(record.date)}</td>
+                      <td>
                         <PointCategoryBadge category={record.category} />
+                      </td>
+                      <td>
                         <PointValueBadge points={record.points} />
-                      </div>
-                      <p className="mt-2 text-[15px] font-semibold text-admin-text">
+                      </td>
+                      <td className="admin-table-name">
                         {record.ruleName || "직접 기록"}
-                      </p>
-                      <p className="mt-1 text-xs text-admin-text-muted">
-                        기록자 {record.recordedByName}
-                      </p>
-                    </div>
-                    <span className="text-xs text-admin-text-muted">{formatDateTime(record.date)}</span>
-                  </div>
-                  <p className="mt-3 text-[13px] leading-[1.5] text-admin-text-muted">
-                    {record.notes || "기록 메모가 없습니다."}
-                  </p>
-                </article>
-              ))}
+                        <p className="admin-help">
+                          {record.notes || "기록 메모가 없습니다."}
+                        </p>
+                      </td>
+                      <td>{record.recordedByName}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="mt-4">

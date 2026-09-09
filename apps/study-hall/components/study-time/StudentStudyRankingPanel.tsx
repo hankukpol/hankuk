@@ -8,7 +8,7 @@ import { StudyRankingTable } from "@/components/study-time/StudyRankingTable";
 import {
   PortalMetricCard,
   PortalSectionHeader,
-  portalSectionClass,
+  portalMetricGrid3Class,
 } from "@/components/student-view/StudentPortalUi";
 import { formatStudyMinutes, getKstMonth } from "@/lib/study-time-meta";
 import type { StudentStudyTimeRanking } from "@/lib/services/study-time.service";
@@ -65,38 +65,30 @@ export function StudentStudyRankingPanel({
 
   return (
     <div className="space-y-5">
-      <section
-        className={`${portalSectionClass} flex flex-col gap-4 md:flex-row md:items-end md:justify-between`}
-      >
-        <div>
-          <p
-            className="text-[13px] font-bold"
-            style={{ color: "var(--division-color)" }}
-          >
-            MONTHLY RANKING
-          </p>
-          <h2 className="mt-1 text-[20px] font-bold tracking-tight text-admin-text">
-            월간 학습 랭킹
-          </h2>
-          <p className="mt-2 text-[13px] leading-[1.5] text-admin-text-muted">
+      {/* DESIGN.md 1절 — 장식용 영문 소제목을 제목 위에 얹지 않는다.
+          5.7절 — 라벨은 .admin-label, 입력 규격은 전역 기본값이 담당한다. */}
+      <section className="admin-section flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <h2 className="admin-section-title">월간 학습 랭킹</h2>
+          <p className="admin-help mt-1.5">
             모두 익명으로 표시되며, 전체 순위에서 내 위치와 월 누적 학습시간을 함께
             확인할 수 있습니다.
           </p>
         </div>
 
-        <div>
-          <label className="text-[13px] font-semibold text-admin-text-muted">조회 월</label>
+        <label className="block w-full md:w-[200px]">
+          <span className="admin-label block">조회 월</span>
           <input
             type="month"
             value={month}
             max={getKstMonth()}
             onChange={(event) => void handleMonthChange(event.target.value)}
-            className="mt-1 block rounded-lg border border-admin-line bg-white px-4 py-2.5 text-sm text-admin-text transition"
+            className="mt-2"
           />
-        </div>
+        </label>
       </section>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <section className={portalMetricGrid3Class}>
         <PortalMetricCard
           label="내 순위"
           value={ranking.myRank ? `${ranking.myRank.rank}등` : "-"}
@@ -129,7 +121,7 @@ export function StudentStudyRankingPanel({
         />
       </section>
 
-      <section className={portalSectionClass}>
+      <section className="admin-section">
         <PortalSectionHeader
           title="전체 익명 랭킹"
           description="이름은 모두 익명 처리되며, 내 행은 강조해서 보여줍니다."

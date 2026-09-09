@@ -2,13 +2,18 @@
 
 import { type ReactNode, useState } from "react";
 
-import { createTabListKeyHandler } from "@/lib/useTabListKeys";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 
 type ExamTabLayoutProps = {
   morningContent: ReactNode;
   regularContent: ReactNode;
   defaultTab?: "morning" | "regular";
 };
+
+const items = [
+  { id: "morning", label: "아침 모의고사" },
+  { id: "regular", label: "정기 모의고사" },
+] as const;
 
 export function ExamTabLayout({
   morningContent,
@@ -17,65 +22,25 @@ export function ExamTabLayout({
 }: ExamTabLayoutProps) {
   const [activeTab, setActiveTab] = useState<"morning" | "regular">(defaultTab);
 
-  // DESIGN.md 5.4 — 좌우 방향키·Home·End 로 탭 이동
-  const handleTabKeyDown = createTabListKeyHandler(
-    ["morning", "regular"] as const,
-    activeTab,
-    setActiveTab,
-  );
-
   return (
+    /* DESIGN.md 5.5 — 화면 이동(성적 상세)은 1차 폴더 탭이 담당하므로,
+       그 안의 시험 종류 구분은 2차 밑줄 탭이다. 폴더 줄을 두 번 쌓지 않는다. */
     <div>
-      {/* DESIGN.md 5.4 — 화면 이동은 1차 폴더 탭. 데이터 필터용 조건 버튼과 섞지 않는다. */}
-      <div className="admin-tabs" role="tablist" aria-label="시험 종류">
-        <button
-          type="button"
-          role="tab"
-          id="exam-tab-morning"
-          aria-controls="exam-panel-morning"
-          aria-selected={activeTab === "morning"}
-          tabIndex={activeTab === "morning" ? 0 : -1}
-          onClick={() => setActiveTab("morning")}
-          onKeyDown={handleTabKeyDown}
-          className="admin-tab"
-          data-active={activeTab === "morning"}
-        >
-          아침 모의고사
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="exam-tab-regular"
-          aria-controls="exam-panel-regular"
-          aria-selected={activeTab === "regular"}
-          tabIndex={activeTab === "regular" ? 0 : -1}
-          onClick={() => setActiveTab("regular")}
-          onKeyDown={handleTabKeyDown}
-          className="admin-tab"
-          data-active={activeTab === "regular"}
-        >
-          정기 모의고사
-        </button>
-      </div>
+      <AdminTabs
+        items={items}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="시험 종류"
+        idPrefix="exam-tab"
+        variant="secondary"
+      />
 
-      <div
-        role="tabpanel"
-        id="exam-panel-morning"
-        aria-labelledby="exam-tab-morning"
-        hidden={activeTab !== "morning"}
-        className="mt-6"
-      >
+      <AdminTabPanel id="morning" activeId={activeTab} idPrefix="exam-tab" className="mt-6">
         {morningContent}
-      </div>
-      <div
-        role="tabpanel"
-        id="exam-panel-regular"
-        aria-labelledby="exam-tab-regular"
-        hidden={activeTab !== "regular"}
-        className="mt-6"
-      >
+      </AdminTabPanel>
+      <AdminTabPanel id="regular" activeId={activeTab} idPrefix="exam-tab" className="mt-6">
         {regularContent}
-      </div>
+      </AdminTabPanel>
     </div>
   );
 }

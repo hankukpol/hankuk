@@ -48,3 +48,7 @@ next-env.d.ts
 
 # 테스트 전용 mock DB (개발용 .local 과 분리)
 /tests/.mock-db/
+
+# 브라우저에 주입해서 쓰는 측정 스크립트. 원본은 scripts/mobile-audit.js 에 있고
+# public/ 에 둔 사본은 프로덕션에 그대로 서빙되므로 저장소에 넣지 않는다.
+/public/__*

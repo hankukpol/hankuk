@@ -776,7 +776,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
               <Link
                 key={card.title}
                 href={card.href}
-                className={`group rounded-lg border ${card.borderClass} bg-white p-5 transition hover:bg-admin-surface-soft`}
+                className={`admin-action-card group rounded-lg border ${card.borderClass} bg-white p-5 transition hover:bg-admin-surface-soft`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className={`inline-flex h-12 w-12 items-center justify-center rounded-lg ${card.iconClass}`}>
@@ -807,7 +807,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       <div className="grid gap-6 xl:grid-cols-2">
         {/* 교시별 출결 현황 */}
         <section
-          className={`flex h-full flex-col rounded-lg border border-admin-line bg-white p-5 ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
+          className={`admin-section h-full ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -867,7 +867,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         <section className="space-y-5">
           {/* 반복 지각/결석 */}
           <section
-            className={`rounded-lg border border-admin-line bg-white p-5 ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
+            className={`admin-section ${ featureFlags.attendanceManagement ? "" : "hidden" }`}
           >
             <div className="flex items-center gap-2.5">
               <h2 className="admin-section-title">반복 지각 · 결석</h2>
@@ -922,10 +922,10 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                       <button
                         type="button"
                         onClick={() => void copyPhone(student.phone)}
-                        className="shrink-0 rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50"
+                        className="admin-button admin-icon-button shrink-0"
                         title="연락처 복사"
                       >
-                        <Copy className="h-3.5 w-3.5" />
+                        <Copy className="h-4 w-4" />
                       </button>
                     </div>
                   ))}
@@ -939,7 +939,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           </section>
 
           {/* 경고 위험 학생 */}
-          {featureFlags.warningManagement && <section className="rounded-lg border border-admin-line bg-white p-5">
+          {featureFlags.warningManagement && <section className="admin-section">
             <div className="flex items-center gap-2.5">
               <h2 className="admin-section-title">경고 위험 학생</h2>
               <div className="ml-auto flex items-center gap-2">
@@ -1006,7 +1006,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       {featureFlags.studentManagement && (
         <div className="grid gap-6 xl:grid-cols-2">
         {/* 수강 만료 임박 */}
-        <section className="rounded-lg border border-admin-line bg-white p-5">
+        <section className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div>
@@ -1077,7 +1077,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
         </section>
 
         {/* 신규 입실 */}
-        <section className="rounded-lg border border-admin-line bg-white p-5">
+        <section className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div>
@@ -1145,7 +1145,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
       {/* 최근 변동 */}
       <div className="grid gap-6 xl:grid-cols-2">
-        {featureFlags.pointManagement && <section className="rounded-lg border border-admin-line bg-white p-5">
+        {featureFlags.pointManagement && <section className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div>
@@ -1199,7 +1199,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
           </div>
         </section>}
 
-        {featureFlags.paymentManagement && <section className="rounded-lg border border-admin-line bg-white p-5">
+        {featureFlags.paymentManagement && <section className="admin-section">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div>
@@ -1261,7 +1261,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
       <div className="grid gap-6 xl:grid-cols-2">
         {/* 오늘 외출/휴가 현황 */}
         <section
-          className={`rounded-lg border border-admin-line bg-white p-5 ${ leaveManagementEnabled ? "" : "hidden" }`}
+          className={`admin-section ${ leaveManagementEnabled ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -1325,7 +1325,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
 
         {/* 면담 필요 학생 */}
         <section
-          className={`rounded-lg border border-admin-line bg-white p-5 ${ interviewManagementEnabled ? "" : "hidden" }`}
+          className={`admin-section ${ interviewManagementEnabled ? "" : "hidden" }`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">

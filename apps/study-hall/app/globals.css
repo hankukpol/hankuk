@@ -2906,6 +2906,45 @@ body:has(.admin-shell) {
   .admin-shell :is(.admin-page-title) {
     font-size: var(--admin-type-section);
   }
+  /* --- 홈 바로가기: 768px 미만에서 카드가 아니라 행이다 (§2.4·§3).
+         223px 카드가 다섯 개 쌓이면 1100px 이 바로가기 하나로 나간다.
+         데스크톱 격자 카드는 그대로 두고 모바일에서만 편다. --- */
+  .admin-action-card {
+    display: grid;
+    min-height: 48px;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 12px;
+    border-width: 0 0 1px 0;
+    border-radius: 0;
+    padding: 12px 16px;
+  }
+
+  /* 아이콘 상자는 줄이고, 설명·CTA 는 접는다. 행에서 읽어야 하는 것은 제목과 값이다. */
+  .admin-action-card > div:first-child > :first-child {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    border-radius: var(--admin-radius-mobile);
+  }
+
+  .admin-action-card > div:first-child {
+    display: contents;
+  }
+
+  .admin-action-card > p:first-of-type {
+    margin: 0;
+    grid-column: 2;
+    grid-row: 1;
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+  }
+
+  .admin-action-card > p:nth-of-type(2),
+  .admin-action-card > div:last-child {
+    display: none;
+  }
+
   /* --- 페이지 설명은 숨긴다 (§2.1).
          설명이 꼭 필요하면 첫 섹션 상단에 .admin-help 한 줄로 둔다. --- */
   .admin-page-description {

@@ -103,3 +103,28 @@ test("D-Day labels distinguish future, today and past", () => {
   assert.equal(formatDDay(0), "D-Day");
   assert.equal(formatDDay(-2), "D+2");
 });
+
+test("today is computed in Korean time, not the server's UTC date", () => {
+  // 회귀: new Date().toISOString().slice(0, 10) 을 쓰면 한국 시간 00:00~08:59 사이에
+  // 어제 날짜가 나온다. 결제·환불 날짜가 하루 밀려 기록됐던 원인이다.
+  for (const [instant, expected] of [
+    // 한국 2026-09-09 00:30 = UTC 2026-09-08 15:30
+    ["2026-09-08T15:30:00.000Z", "2026-09-09"],
+    // 한국 2026-09-09 08:59 = UTC 2026-09-08 23:59 (가장 위험한 경계)
+    ["2026-09-08T23:59:00.000Z", "2026-09-09"],
+    // 한국 2026-09-09 09:00 = UTC 2026-09-09 00:00
+    ["2026-09-09T00:00:00.000Z", "2026-09-09"],
+    // 한국 2026-09-09 23:59 = UTC 2026-09-09 14:59
+    ["2026-09-09T14:59:00.000Z", "2026-09-09"],
+    // 한국 2026-09-10 00:00 = UTC 2026-09-09 15:00
+    ["2026-09-09T15:00:00.000Z", "2026-09-10"],
+  ] as const) {
+    const now = new Date(instant);
+    assert.equal(getKstTodayYmd(now), expected, instant);
+  }
+
+  // UTC 날짜와 갈리는 구간이 실제로 존재하는지 확인한다.
+  const risky = new Date("2026-09-08T23:59:00.000Z");
+  assert.equal(risky.toISOString().slice(0, 10), "2026-09-08");
+  assert.equal(getKstTodayYmd(risky), "2026-09-09");
+});

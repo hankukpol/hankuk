@@ -28,6 +28,7 @@ import type { SeatOptionItem } from "@/lib/services/seat.service";
 import type { StudentDashboardData } from "@/lib/services/student-dashboard.service";
 import type { StudentDetail } from "@/lib/services/student.service";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
+import { getKstTodayYmd } from "@/lib/date-utils";
 
 type WarningThresholds = {
   warnLevel1: number;
@@ -335,7 +336,7 @@ export function StudentDetailView({
               studentId: initialStudent.id,
               paymentTypeId: refundCategory.id,
               amount: amount * -1,
-              paymentDate: new Date().toISOString().slice(0, 10),
+              paymentDate: getKstTodayYmd(),
               method: refundMethod,
               notes: refundNotes || null,
             }),

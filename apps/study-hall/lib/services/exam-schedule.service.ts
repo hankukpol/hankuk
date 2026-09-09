@@ -5,6 +5,7 @@ import { readMockState, updateMockState, type MockExamScheduleRecord } from "@/l
 import type { ExamScheduleSchemaInput, ExamScheduleUpdateSchemaInput } from "@/lib/exam-schedule-schemas";
 import { calcDDay, formatDDay, type ExamScheduleTypeValue } from "@/lib/exam-schedule-meta";
 import { getPrismaClient, getDivisionBySlugOrThrow } from "@/lib/service-helpers";
+import { getKstTodayYmd } from "@/lib/date-utils";
 
 type ExamScheduleActor = {
   id: string;
@@ -96,7 +97,8 @@ export async function listExamSchedules(
 
   const where: Record<string, unknown> = { divisionId: division.id };
   if (onlyActive) where.isActive = true;
-  if (onlyUpcoming) where.examDate = { gte: new Date(new Date().toISOString().slice(0, 10)) };
+  // 서버는 UTC 로 돌기 때문에 오늘을 한국 시간으로 잡아야 한다.
+  if (onlyUpcoming) where.examDate = { gte: new Date(`${getKstTodayYmd()}T00:00:00Z`) };
 
   const records = await prisma.examSchedule.findMany({
     where,

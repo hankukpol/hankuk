@@ -3,14 +3,9 @@ export type PointDateRange = {
   dateTo: string;
 };
 
-export function getKstTodayYmd() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+import { getKstTodayYmd } from "@/lib/date-utils";
+
+export { getKstTodayYmd };
 
 export function getKstCurrentMonthRange(today = getKstTodayYmd()): PointDateRange {
   return {

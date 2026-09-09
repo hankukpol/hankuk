@@ -1,6 +1,5 @@
 "use client";
 
-import { Clock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -126,15 +125,9 @@ export function StudyTimeStats({ divisionSlug, studentId }: StudyTimeStatsProps)
 
       {/* 일별 막대 차트 */}
       {isLoading ? (
-        <div className="flex flex-col items-center gap-3 py-10 text-slate-400">
-          <Clock className="h-7 w-7 animate-pulse" />
-          <p className="text-sm">불러오는 중...</p>
-        </div>
+        <p role="status" className="admin-empty-state">학습 기록을 불러오는 중입니다.</p>
       ) : byDate.length === 0 ? (
-        <div className="admin-help flex flex-col items-center gap-3 py-12">
-          <Clock className="h-7 w-7" />
-          <p className="text-sm">해당 월의 학습 기록이 없습니다.</p>
-        </div>
+        <p className="admin-empty-state">해당 월의 학습 기록이 없습니다.</p>
       ) : (
         <div className="rounded-lg border border-slate-100 bg-white p-4">
           <p className="mb-4 text-xs font-semibold text-slate-500">

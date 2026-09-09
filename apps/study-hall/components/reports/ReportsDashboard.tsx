@@ -29,7 +29,7 @@ const ReportsTrendChart = dynamic(
   () => import("@/components/reports/ReportsTrendChart").then((mod) => mod.ReportsTrendChart),
   {
     ssr: false,
-    loading: () => <div className="h-full animate-pulse rounded-lg bg-slate-50" />,
+    loading: () => <div className="admin-skeleton h-full w-full" aria-hidden="true" />,
   },
 );
 

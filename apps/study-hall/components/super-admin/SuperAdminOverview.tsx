@@ -31,7 +31,7 @@ const LazyAttendanceComparisonChart = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <div className="h-44 animate-pulse rounded-lg bg-slate-50" />,
+    loading: () => <div className="admin-skeleton h-44 w-full" aria-hidden="true" />,
   },
 );
 
@@ -42,7 +42,7 @@ const LazyStudentTrendChart = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <div className="h-64 animate-pulse rounded-lg bg-slate-50" />,
+    loading: () => <div className="admin-skeleton h-64 w-full" aria-hidden="true" />,
   },
 );
 
@@ -53,7 +53,7 @@ const LazyTuitionCard = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <div className="h-48 animate-pulse rounded-lg bg-slate-50" />,
+    loading: () => <div className="admin-skeleton h-48 w-full" aria-hidden="true" />,
   },
 );
 

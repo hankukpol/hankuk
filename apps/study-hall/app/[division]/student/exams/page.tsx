@@ -12,7 +12,6 @@ import {
   PortalEmptyState,
   PortalMetricCard,
   PortalSectionHeader,
-  portalInsetClass,
   portalSectionClass,
 } from "@/components/student-view/StudentPortalUi";
 import { requireDivisionStudentAccess } from "@/lib/auth";
@@ -81,6 +80,15 @@ export default async function StudentExamsPage({ params, searchParams }: Student
       const examType = allExamTypes.find((t) => t.id === exam.examTypeId);
       return !examType || examType.category === "REGULAR";
     }).sort((left, right) => (right.examDate ?? "").localeCompare(left.examDate ?? ""));
+
+    // 시험마다 과목 구성이 다를 수 있으므로 표 열은 등장한 과목의 합집합으로 만든다.
+    const subjectColumns = Array.from(
+      new Map(
+        regularExams
+          .flatMap((exam) => exam.subjects)
+          .map((subject) => [subject.subjectId, subject]),
+      ).values(),
+    );
 
     const analysisSessions = (await Promise.all(allExamTypes.filter((type) => type.category === "REGULAR").map(async (type) => {
       const sessions = await listRegularSessions(params.division, type.id, session.studentId);
@@ -186,7 +194,8 @@ export default async function StudentExamsPage({ params, searchParams }: Student
 
         <ExamScoreChartLoader results={regularExams} />
 
-        <section className={portalSectionClass}>
+        {/* DESIGN.md 8절 — 학생 목록은 폭에 상관없이 표다. 바깥에 카드를 덧대지 않는다. */}
+        <section>
           <PortalSectionHeader
             title="날짜별 성적 기록"
             description="정기모의고사 날짜별 총점, 석차, 과목 점수를 확인합니다."
@@ -194,70 +203,49 @@ export default async function StudentExamsPage({ params, searchParams }: Student
           />
 
           {regularExams.length > 0 ? (
-            <div className="mt-4 space-y-4">
-              {regularExams.map((exam) => (
-                <article key={exam.id} className={portalInsetClass}>
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[13px] font-medium text-admin-text-muted">
-                        {exam.examTypeName}
-                      </p>
-                      <h3 className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                        {exam.examDate ? formatDate(exam.examDate) : "시험일 미등록"}
-                      </h3>
-                      <p className="mt-1.5 text-[13px] text-admin-text-muted">
-                        시험일 {formatDate(exam.examDate)}
-                      </p>
-                    </div>
-
-                    <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:min-w-[260px]">
-                      <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
-                        <p className="text-[13px] font-medium text-admin-text-muted">
-                          총점
-                        </p>
-                        <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                          {exam.totalScore ?? "-"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
-                        <p className="text-[13px] font-medium text-admin-text-muted">
-                          반 석차
-                        </p>
-                        <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                          {exam.rankInClass ? `${exam.rankInClass}등` : "-"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-                    {exam.subjects.map((subject) => (
-                      <div
-                        key={`${exam.id}-${subject.subjectId}`}
-                        className="rounded-lg border border-admin-line bg-white px-4 py-3"
-                      >
-                        <p className="text-[13px] font-semibold text-admin-text">{subject.name}</p>
-                        <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                          {subject.score ?? "-"}
-                        </p>
-                        <p className="mt-1.5 text-[13px] text-admin-text-muted">
-                          {subject.maxScore ? `만점 ${subject.maxScore}` : "만점 정보 없음"}
-                        </p>
-                      </div>
+            <div className="admin-table-frame mt-4">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">시험일</th>
+                    <th scope="col">시험 종류</th>
+                    <th scope="col">총점</th>
+                    <th scope="col">반 석차</th>
+                    {subjectColumns.map((subject) => (
+                      <th scope="col" key={subject.subjectId}>{subject.name}</th>
                     ))}
-                  </div>
+                    <th scope="col">메모</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {regularExams.map((exam) => (
+                    <tr key={exam.id}>
+                      <td>{formatDate(exam.examDate)}</td>
+                      <td className="admin-table-name">{exam.examTypeName}</td>
+                      <td className="admin-table-amount">{exam.totalScore ?? "-"}</td>
+                      <td>{exam.rankInClass ? `${exam.rankInClass}등` : "-"}</td>
+                      {subjectColumns.map((column) => {
+                        const subject = exam.subjects.find(
+                          (item) => item.subjectId === column.subjectId,
+                        );
 
-                  <p className="mt-4 text-[13px] leading-[1.5] text-admin-text-muted">
-                    {exam.notes || "시험 메모가 없습니다."}
-                  </p>
-                </article>
-              ))}
+                        return (
+                          <td key={`${exam.id}-${column.subjectId}`} className="admin-table-amount">
+                            {subject?.score ?? "-"}
+                          </td>
+                        );
+                      })}
+                      <td className="admin-table-name">{exam.notes || "시험 메모가 없습니다."}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="mt-4">
               <PortalEmptyState
                 title="정기모의고사 기록이 없습니다."
-                description="시험 결과가 등록되면 날짜별 성적 카드가 이 영역에 표시됩니다."
+                description="시험 결과가 등록되면 날짜별 성적이 이 영역에 표시됩니다."
               />
             </div>
           )}

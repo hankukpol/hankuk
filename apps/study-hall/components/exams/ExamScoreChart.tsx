@@ -123,25 +123,38 @@ export function ExamScoreChart({ results, variant = "portal" }: ExamScoreChartPr
         description="시험 종류별로 과목 점수와 총점 변화를 비교할 수 있습니다."
       />
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {examTypeGroups.map((group) => (
-          <button
-            key={group.examTypeId}
-            type="button"
-            onClick={() => setSelectedExamTypeId(group.examTypeId)}
-            className={`rounded-lg border px-3 py-2 text-[13px] font-medium transition ${ (selectedGroup?.examTypeId ?? "") === group.examTypeId ? "border-transparent" : "border-admin-line bg-white text-admin-text-muted hover:text-admin-text" }`}
-            style={
-              (selectedGroup?.examTypeId ?? "") === group.examTypeId
-                ? {
-                    backgroundColor: "var(--division-color)",
-                    color: "var(--division-on-accent)",
-                  }
-                : undefined
-            }
-          >
-            {group.examTypeName}
-          </button>
-        ))}
+      {/* DESIGN.md 5.6 — 시험 종류 고르기는 탐색이 아니라 데이터 필터이므로 조건 선택 버튼이다.
+          시험 종류 이름은 길이를 미리 알 수 없어 -auto 를 함께 준다.
+          학생 포털(8절)은 카드 레이아웃을 유지하므로 기존 모양 그대로 둔다. */}
+      <div className={variant === "admin" ? "admin-choice-group mt-5" : "mt-5 flex flex-wrap gap-2"}>
+        {examTypeGroups.map((group) => {
+          const isSelected = (selectedGroup?.examTypeId ?? "") === group.examTypeId;
+
+          return (
+            <button
+              key={group.examTypeId}
+              type="button"
+              aria-pressed={isSelected}
+              title={group.examTypeName}
+              onClick={() => setSelectedExamTypeId(group.examTypeId)}
+              className={
+                variant === "admin"
+                  ? "admin-choice-button admin-choice-button-auto"
+                  : `rounded-lg border px-3 py-2 text-[13px] font-medium transition ${ isSelected ? "border-transparent" : "border-admin-line bg-white text-admin-text-muted hover:text-admin-text" }`
+              }
+              style={
+                variant !== "admin" && isSelected
+                  ? {
+                      backgroundColor: "var(--division-color)",
+                      color: "var(--division-on-accent)",
+                    }
+                  : undefined
+              }
+            >
+              {group.examTypeName}
+            </button>
+          );
+        })}
       </div>
 
       <div className={`mt-5 ${portalCardClass} p-4`}>

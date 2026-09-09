@@ -224,6 +224,8 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 
 ### 5.1 전체 레이아웃과 사이드바
 
+> **768px 미만은 [MOBILE_DESIGN.md](MOBILE_DESIGN.md) §2.1 을 따른다.** 페이지 제목은 본문이 아니라 `.admin-mobile-topbar`(52px sticky, 좌 `←`/`≡` · 제목 16px/700 가운데 · 우측 텍스트 액션 15px/600) 안에 들어가고, `.admin-page-description` 은 숨기며, `.admin-utility-row` 는 그 바의 우측 액션으로 합쳐진다. 검은 64px 헤더는 홈 화면에만 남는다. 본문 여백은 20px 16px 32px. **상단 크롬이 200px 이면 첫 화면의 4분의 1 이 크롬이다.**
+
 - `.admin-shell`은 `min-height: 100dvh`, 흰색 작업 화면이다.
 - 데스크톱 사이드바는 **1024px 이상**에서 256px 폭. rail 배경이 문서 끝까지 이어지고 내부 메뉴는 `sticky top: 0`, `height: 100dvh`이다.
 - 메뉴 목록만 세로 스크롤한다. 아래 로그아웃에 접근할 수 있어야 한다.
@@ -260,6 +262,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 패널(`.admin-panel`) 제목부는 padding 16px 20px, 최소 높이 56px, soft 배경과 아래 1px line.
 - 패널 내부 행(`.admin-panel-row`)은 좌우 20px, 위아래 12px, `line-soft`. 마지막 행의 아래 선은 없다.
 - 외곽만 8px로 자르고 **내부 행·헤더는 직각**. header 배경이 라운드 경계 밖으로 나가지 않게 한다.
+- **768px 미만에서 요약은 상자가 아니라 선으로 나눈다([MOBILE_DESIGN.md](MOBILE_DESIGN.md) §2.5).** `.admin-dashboard-metric` 과 `.admin-metric-box` 는 테두리·모서리를 버리고 `.admin-portal-summary` 와 같은 1px 간격 격자가 되며, KPI 32px 숫자는 20px 로 내려간다. 학생 포털이 이미 이 방식이라 관리자·조교를 거기에 맞춘다.
 - `.admin-metric-strip` / `.admin-metric-box`는 **16px 간격의 독립 요약 박스**다. 각 항목에 닫힌 1px line 외곽과 8px 모서리, 16px padding. 그룹 자체에는 배경·외곽·클리핑을 두지 않는다. 레이블 13px 위, 값 20px 아래 오른쪽 정렬. 768px 미만 2열, 그 이상 최소 160px 자동 열. 대시보드 KPI의 32px 숫자와 구분한다.
 
 ### 업무별 화면 구성과 기록 카드
@@ -271,13 +274,15 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 기본 탭은 일상적인 조회·처리 업무다. 월말 정산처럼 별도 기준과 실행 시점이 있는 작업은 자체 필터와 실행 버튼을 갖는다. 다른 탭의 집계 숫자를 공통 요약처럼 보여주지 않는다.
 - 학생별 기록·권장 대상처럼 독립된 항목은 `.admin-record-card`로 묶는다. 표로 비교해야 하는 금액·날짜·순위는 전체 폭 표를 사용한다. 대시보드의 동시 비교, 목록과 편집 폼의 연결은 2열을 유지할 수 있다.
 - 기록 카드: 1px line, 8px 모서리, padding 20px, 그림자 없음. 학생명·상태·날짜를 상단에 두고 사유/내용/결과는 이름이 있는 `dl`로 구분한다. 카드 안에 다른 외곽 박스를 넣지 않는다.
-- 모바일(768px 미만)의 상벌점·수납·외출/휴가 내역은 같은 데이터를 기록 카드로 제공한다. 금액·점수·상태와 행 작업을 가로 스크롤 없이 보여주고, 데스크톱 표와 동일한 필터·선택·처리 함수를 사용한다.
+- ~~모바일(768px 미만)의 상벌점·수납·외출/휴가 내역은 기록 카드로 제공한다.~~ **폐기했다([MOBILE_DESIGN.md](MOBILE_DESIGN.md) §2.4).** 전체 폭 카드가 세로로 쌓이면 그것이 곧 "카드 1행 나열"이다. 768px 미만에서는 `.admin-record-card` 가 테두리·모서리를 버리고 1px `line-soft` 구분 행이 되며, 단순 항목은 `.admin-list-row`(48px, 좌 제목 15px/400 · 우 값 15px/600), 제목·메타가 여러 줄이면 `.admin-list-row-stack` 을 쓴다. 데스크톱 표와 같은 필터·선택·처리 함수를 쓰는 것은 그대로다.
 - `.admin-workspace-toolbar`는 작업 제목/조회 건수와 버튼을 16px 간격으로 배치하고 좁은 폭에서 줄바꿈한다. `.admin-filter-bar`는 soft 배경의 평면 필터 띠로 padding/gap 16px, 입력 최소 폭 160px를 사용한다.
 - 모바일 필터 필드는 한 줄 전체 폭으로 정렬하고 실행 버튼끼리 다음 줄에 모은다. 프로그램에서 활성 탭을 바꾸어도 선택 탭이 가로 스크롤 영역 안에 온전히 보이도록 위치를 맞춘다.
 - `.admin-empty-state`는 데이터가 없는 이유와 현재 조회 범위를 보여주는 평면 soft 영역이다. 높이를 채우기 위한 가짜 기록이나 장식을 넣지 않는다.
 - 탭 전환 시 필터·선택·입력 초안을 유지한다. 중첩 업무 탐색은 `AdminTabs`의 `variant="secondary"`를 사용하며 2차 탭 규격을 따른다.
 
 ### 5.4 1차 폴더 탭
+
+> **768px 미만에서는 폴더 모양을 버린다([MOBILE_DESIGN.md](MOBILE_DESIGN.md) §2.2).** 가로 스크롤 텍스트 탭 44px, 15px/600, gap 12, 좌측 16px 시작, `flex: 0 0 auto`. 활성은 `text` 700 + 아래 2px accent 막대이고 배경·테두리는 없다. 폴더 탭 56px 을 그대로 줄이면 데스크톱 탭을 축소한 모양이 된다. 2차 탭(§5.5)은 모바일에서 43px · 14px/700 로 한 단계 줄인다.
 
 공용 [`AdminTabs`](components/ui/AdminTabs.tsx)를 쓴다. 클래스는 `.admin-tabs` / `.admin-tab`이다.
 
@@ -305,6 +310,11 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 **학생 포털 메뉴는 1차 폴더 탭이다**(§5.4). 화면을 오가는 최상위 이동이므로 밑줄형으로 두지 않는다. 그 안에서 나뉘는 시험 종류(아침·정기 모의고사)가 이 절의 2차 밑줄 탭이다. 조교 하단 탐색도 같은 밑줄 디자인을 쓴다(하단 탐색은 밑줄이 위쪽 2px).
 
 ### 5.6 조건 선택 버튼과 일반 버튼
+
+> **768px 미만에서 `.admin-choice-button` 은 칩이 된다([MOBILE_DESIGN.md](MOBILE_DESIGN.md) §2.3).** 36px · radius 999 · 13px/600 · 좌우 12 · 가로 스크롤이고 줄바꿈하지 않는다. 활성은 `text` 배경 + `surface` 글자(검정 반전)이며 직렬 accent 를 쓰지 않는다 — 검정이 어디서나 같은 뜻이다. 128px 고정폭을 모바일에 그대로 두면 버튼이 두세 줄로 쌓인다. 터치 44 는 세로 padding 으로 확보한다.
+> `.admin-choice-card` 도 768px 미만에서는 카드를 버리고 구분 행이 된다. 선택은 `accent-soft` 배경 + **왼쪽 3px accent 막대**(§5.1 사이드바 활성 표시와 같은 방식)로 알린다.
+> **`.admin-status-button`(§8 표 안 상태 지정)은 칩이 되지 않는다.** 칩은 표 밖의 조회 조건에만 쓴다.
+> 컨트롤 모서리는 768px 미만에서 `--admin-radius-mobile`(4px)이다. 8px 은 이미지·배너·모달에만 남는다.
 
 **탭은 탐색, `.admin-choice-group` / `.admin-choice-button`은 데이터 필터·폼 선택이다. 두 역할을 혼용하지 않는다.**
 
@@ -505,6 +515,8 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 ---
 
 ## 8. 조교·학생 화면의 경계
+
+> **모바일 배치는 세 역할이 같다([MOBILE_DESIGN.md](MOBILE_DESIGN.md) §3).** 조교·학생만의 모바일 규격을 따로 만들지 않는다. 관리자와 다른 것은 메뉴 항목과 데이터뿐이다. 조교 출석체크·휴대폰 체크의 하단 sticky 저장 바는 이 절 그대로 유지한다.
 
 관리자 규격을 그대로 쓰되 아래는 유지한다.
 

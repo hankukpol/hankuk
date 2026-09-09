@@ -84,6 +84,8 @@
 
   /* --- 치수 --- */
   --admin-radius: 8px;
+  /* 768px 미만 컨트롤 모서리 (MOBILE_DESIGN.md 2.7). 8px 은 이미지·배너·모달에만 남는다. */
+  --admin-radius-mobile: 4px;
   --admin-control-height: 44px;
   --admin-control-compact: 36px;
   --admin-control-padding-x: 16px;
@@ -2610,4 +2612,269 @@ body:has(.admin-shell) {
     td
   ) {
   border-radius: 0;
+}
+
+/* ==========================================================================
+   768px 미만 모바일 규격 — MOBILE_DESIGN.md §2
+   데스크톱 규격을 줄여 놓는 것이 아니라 배치를 바꾼다. 토큰·색·13px 하한·
+   44px 터치·그림자 금지는 DESIGN.md 그대로다.
+   레이어 밖 맨 끝에 둔다 — @layer components 의 데스크톱 규격을 덮어야 한다.
+   ========================================================================== */
+
+@media (max-width: 767px) {
+  /* --- 모서리: 컨트롤 4px. 8px 은 이미지·배너·모달에만 남긴다 (§2.7) --- */
+  .admin-shell
+    :is(
+      .admin-button,
+      input:not([type="checkbox"], [type="radio"]),
+      select,
+      textarea,
+      .admin-notice
+    ) {
+    border-radius: var(--admin-radius-mobile);
+  }
+
+  /* --- 상단 바 (§2.1). 마크업은 2단계에서 붙는다.
+         규격을 먼저 두어 붙는 즉시 동작하게 한다. --- */
+  .admin-mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--admin-line-soft);
+    padding: 4px 8px;
+    background: var(--admin-surface);
+  }
+
+  /* 제목은 가운데. 두 줄이 되면 말줄임이 아니라 줄바꿈이고 바가 늘어난다 (§3 제목 truncate 금지). */
+  .admin-mobile-topbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--admin-text);
+    font-size: var(--admin-type-section);
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: center;
+    word-break: keep-all;
+  }
+
+  .admin-mobile-topbar-action {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 0 8px;
+    color: var(--admin-text);
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+  }
+
+  /* --- 1차 탭: 폴더 모양을 버리고 텍스트 탭이 된다 (§2.2) --- */
+  .admin-tabs {
+    gap: 12px;
+    padding-inline: 16px;
+  }
+
+  .admin-tab {
+    flex: 0 0 auto;
+    min-height: 44px;
+    margin: 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 0;
+    background: none;
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+  }
+
+  .admin-tab:hover:not([data-active="true"]):not([aria-disabled="true"]):not(:disabled) {
+    background: none;
+  }
+
+  .admin-tab:is([data-active="true"], [aria-current="page"], [aria-selected="true"]) {
+    border-color: transparent;
+    border-bottom-color: var(--admin-accent);
+    background: none;
+    color: var(--admin-text);
+    font-weight: 700;
+  }
+
+  /* --- 2차 탭: 한 단계 줄인다 (§2.2) --- */
+  .admin-subtab {
+    min-height: 43px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  /* --- 조건 선택 = 칩 (§2.3). 128px 고정폭은 두세 줄로 쌓인다 --- */
+  .admin-choice-group {
+    width: auto;
+    max-width: none;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .admin-choice-group::-webkit-scrollbar {
+    height: 0;
+  }
+
+  /* 36px 은 칩의 시각 높이다. 터치 44 는 세로 padding 으로 확보한다. */
+  .admin-choice-button {
+    width: auto;
+    min-width: 0;
+    min-height: 36px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: var(--admin-type-caption);
+    white-space: nowrap;
+  }
+
+  /* 활성은 검정 반전이다. 직렬 accent 를 쓰지 않는 이유는 검정이 어디서나 같은 뜻이기 때문이다. */
+  .admin-choice-button[aria-pressed="true"],
+  .admin-choice-button[data-active="true"] {
+    border-color: var(--admin-text);
+    background: var(--admin-text);
+    color: var(--admin-surface);
+  }
+
+  /* --- 선택 카드 → 구분 행 (§2.4).
+         전체 폭 카드가 세로로 쌓이면 그것이 곧 "카드 1행 나열"이다.
+         선택은 accent-soft 배경 + 왼쪽 3px accent 막대로 알린다
+         (§5.1 사이드바 활성 표시와 같은 방식. 그림자는 §7 금지라 쓰지 않는다). --- */
+  .admin-choice-card {
+    border: 0;
+    border-bottom: 1px solid var(--admin-line-soft);
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    padding: 12px 16px 12px 13px;
+    background: none;
+  }
+
+  .admin-choice-card:hover:not(:disabled) {
+    background: var(--admin-surface-soft);
+  }
+
+  .admin-choice-card[aria-pressed="true"],
+  .admin-choice-card[data-active="true"] {
+    border-left-color: var(--admin-accent);
+    background: var(--admin-accent-soft);
+  }
+
+  /* --- 기록 카드 → 구분 행. §5.3 "768px 미만은 기록 카드" 규칙을 폐기한다 (§2.4) --- */
+  .admin-record-card {
+    border: 0;
+    border-bottom: 1px solid var(--admin-line-soft);
+    border-radius: 0;
+    padding: 16px;
+  }
+
+  /* --- 목록 행 (§2.4). 카드 대신 이것을 쓴다 --- */
+  .admin-list-row {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--admin-line-soft);
+    padding: 8px 16px;
+  }
+
+  .admin-list-row:last-child {
+    border-bottom: 0;
+  }
+
+  .admin-list-row-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--admin-type-body);
+    font-weight: 400;
+    word-break: keep-all;
+  }
+
+  .admin-list-row-value {
+    flex: 0 0 auto;
+    font-size: var(--admin-type-body);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 제목·메타가 여러 줄인 복합 행. 높이는 내용이 정한다. */
+  .admin-list-row-stack {
+    display: block;
+    padding: 16px;
+  }
+
+  .admin-list-row-label {
+    display: block;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .admin-list-row-meta {
+    display: block;
+    margin-top: 4px;
+    color: var(--admin-text-muted);
+    font-size: var(--admin-type-caption);
+    line-height: 1.4;
+  }
+
+  /* --- 요약·지표: 상자를 없애고 선으로만 나눈다 (§2.5).
+         학생 포털이 이미 이 방식이라 관리자·조교를 여기에 맞춘다. --- */
+  .admin-dashboard-metrics,
+  .admin-metric-strip {
+    gap: 1px;
+    border: 1px solid var(--admin-line-soft);
+    background: var(--admin-line-soft);
+  }
+
+  .admin-dashboard-metric,
+  .admin-metric-box {
+    border: 0;
+    border-radius: 0;
+    padding: 12px 16px 14px;
+    background: var(--admin-surface);
+  }
+
+  /* KPI 32px 은 모바일에서 쓰지 않는다. 넷이면 한 화면을 다 쓴다. */
+  .admin-dashboard-metric-value {
+    margin-top: 4px;
+    font-size: 20px;
+  }
+
+  /* --- 간격 (§2.8) --- */
+  .admin-main {
+    padding: 20px 16px 32px;
+  }
+
+  .admin-flat-page {
+    gap: 20px;
+  }
+
+  .admin-section {
+    gap: 16px;
+  }
+
+  /* 섹션 사이에 구분선을 두지 않는다. 선이 하나 더 있으면 카드처럼 닫혀 보인다. */
+  .admin-flat-page > .admin-section + .admin-section {
+    margin-top: 20px;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  /* --- 표: 여백만 한 단계 줄인다 (§2.6) --- */
+  .admin-shell :is(th, td) {
+    padding: 10px 8px;
+  }
+
+  /* --- 페이지 설명은 숨긴다 (§2.1).
+         설명이 꼭 필요하면 첫 섹션 상단에 .admin-help 한 줄로 둔다. --- */
+  .admin-page-description {
+    display: none;
+  }
 }

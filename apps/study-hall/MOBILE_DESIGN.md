@@ -118,15 +118,18 @@ DESIGN.md 의 **불변 조항은 그대로다**: 13px 미만 글자 금지(§3),
 
 - 768px 미만에서 `.admin-dashboard-metric`(테두리 카드)과 `.admin-metric-box` 는 **`.admin-portal-summary` 방식**(1px 간격에 `line-soft` 가 비치는 격자, 사방 선)으로 통일한다. 학생 포털이 이미 이렇게 한다 — 관리자·조교 대시보드도 같게.
 - 2열 기본, 항목 3개면 3열. 라벨 13px/600 muted 위, 값 **20px/700** 아래. KPI 32px 은 768px 미만에서 쓰지 않는다(§5.3 도 "32px 넷이면 한 화면을 다 쓴다"고 이미 경고한다).
-- 지표 4개 이하면 격자 대신 **한 줄 텍스트 요약**도 허용: `응시 8/8회 · 평균 82점 · 반 3등` 15px/600, 구분 ` · `.
-- **요약에 쓰는 값은 화면에서 계산하지 않는다.** 서비스가 완성된 값을 준다. 평균이 대표적인 위험이다 — 점수가 없는 회차를 분모에 넣을지가 화면에 있으면 관리자 화면과 학생 화면이 서로 다른 평균을 보여준다. 지금 없는 값은 아래와 같고, **그 요약을 실제로 쓰기로 한 화면이 정해진 뒤에** 서비스에 추가한다(안 쓸 필드를 미리 만들면 죽은 코드가 된다).
+- 지표 4개 이하면 격자 대신 **한 줄 텍스트 요약**도 허용. 15px/600, 구분 ` · `.
+- **요약에 쓰는 값은 화면에서 계산하지 않는다.** 서비스가 완성된 값을 준다. 계산이 화면에 있으면 관리자 화면과 학생 화면이 같은 학생에게 다른 숫자를 보여줄 수 있다.
+- **그래서 계산이 필요 없는 값만 고른다.** 아래 다섯은 전부 이미 서비스가 주는 값이라 서비스 작업이 없다.
 
-| 화면 | 서비스 | 없는 값 |
+| 화면 | 문구 | 출처 |
 | --- | --- | --- |
-| 성적 | `exam.service.listStudentExamResults` | 응시 횟수 · 총 회차 · 평균 점수 (최근 등수는 마지막 회차의 `rankInClass` 로 충분) |
-| 상벌점 | `point.service.listPointRecords` | 상점 합계 · 벌점 합계 · 순합계 |
-| 출결 | `getStudentDashboard` | 없음 (`monthlyAttendanceRate` · `attendedCount` · `expectedCount` 로 충분) |
-| 휴가 | `previewLeaveSettlement` | 없음 (`holidayRemaining` 등 재사용) |
+| 성적 | `응시 12회 · 최신 총점 205점 · 반 3등` | `regularExams.length` · `[0].totalScore` · `[0].rankInClass` |
+| 상벌점 | `상점 12점 · 벌점 3점 · 순합계 9점` | `student.meritPoints` · `demeritPoints` · `netPoints` |
+| 출결 | 기존 값 | `getStudentDashboard` 의 `monthlyAttendanceRate` · `attendedCount` · `expectedCount` |
+| 휴가 | 기존 값 | `previewLeaveSettlement` 의 `holidayRemaining` 등 |
+
+- **평균 점수와 총 회차는 쓰지 않는다.** 평균은 "점수가 없는 회차를 분모에 넣는가"라는 판단을 요구하고, 그 판단이 어디에 있든 두 화면이 갈릴 여지를 만든다. 위 조합으로 요약이 성립하므로 그 문제를 아예 만들지 않는다. 평균이 정말 필요해지는 화면이 나오면 그때 서비스에 넣는다.
 
 ### 2.6 표
 

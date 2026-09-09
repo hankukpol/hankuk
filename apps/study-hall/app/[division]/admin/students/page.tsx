@@ -1,5 +1,4 @@
 import dynamic from "next/dynamic";
-import { Users } from "lucide-react";
 
 import { requireDivisionAdminAccess } from "@/lib/auth";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
@@ -16,19 +15,14 @@ const StudentListManager = dynamic(
       <div className="space-y-4">
         <section className="admin-dashboard-metrics">
           {Array.from({ length: 4 }).map((_, i) => (
-            <article key={i} className="admin-dashboard-metric">
-              <div className="h-4 w-20 animate-pulse rounded bg-slate-100" />
-              <div className="mt-4 h-8 w-14 animate-pulse rounded bg-slate-100" />
-              <div className="mt-3 h-3 w-32 animate-pulse rounded bg-slate-100" />
+            <article key={i} className="admin-dashboard-metric" aria-hidden="true">
+              <div className="admin-skeleton h-4 w-20" />
+              <div className="admin-skeleton mt-4 h-8 w-14" />
+              <div className="admin-skeleton mt-3 h-3 w-32" />
             </article>
           ))}
         </section>
-        <section className="flex items-center justify-center rounded-lg border border-slate-200 bg-white p-10">
-          <div className="flex items-center gap-3 text-sm text-slate-400">
-            <Users className="h-5 w-5 animate-pulse" />
-            학생 명단을 불러오는 중입니다…
-          </div>
-        </section>
+        <p role="status" className="admin-empty-state">학생 명단을 불러오는 중입니다…</p>
       </div>
     ),
   },

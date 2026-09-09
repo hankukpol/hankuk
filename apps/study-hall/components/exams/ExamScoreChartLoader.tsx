@@ -15,11 +15,7 @@ const ExamScoreChart = dynamic(
   () => import("@/components/exams/ExamScoreChart").then((mod) => mod.ExamScoreChart),
   {
     ssr: false,
-    loading: () => (
-      <div className="mt-5 rounded-lg border border-admin-line bg-white p-5">
-        <div className="h-48 animate-pulse rounded-lg bg-admin-surface-soft" />
-      </div>
-    ),
+    loading: () => <div className="admin-skeleton mt-5 h-48 w-full" aria-hidden="true" />,
   },
 );
 

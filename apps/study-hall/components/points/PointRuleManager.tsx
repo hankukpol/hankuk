@@ -42,25 +42,25 @@ function createDefaultForm(categories: string[]): FormState {
 
 function LoadingSkeleton() {
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+    <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]" aria-hidden="true">
       <section className="admin-section">
-        <div className="h-7 w-40 animate-pulse rounded bg-slate-100" />
-        <div className="mt-5 space-y-3">
-          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
-          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
-          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
+        <div className="admin-skeleton h-7 w-40" />
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="admin-skeleton h-24 w-full" />
+          ))}
         </div>
       </section>
 
       <section className="space-y-6">
         <div className="admin-section">
-          <div className="h-7 w-44 animate-pulse rounded bg-slate-100" />
-          <div className="mt-5 h-28 animate-pulse rounded-lg bg-slate-100" />
+          <div className="admin-skeleton h-7 w-44" />
+          <div className="admin-skeleton h-28 w-full" />
         </div>
 
         <div className="admin-section">
-          <div className="h-7 w-36 animate-pulse rounded bg-slate-100" />
-          <div className="mt-5 h-72 animate-pulse rounded-lg bg-slate-100" />
+          <div className="admin-skeleton h-7 w-36" />
+          <div className="admin-skeleton h-72 w-full" />
         </div>
       </section>
     </div>

@@ -11,6 +11,8 @@
 
 # next.js
 /.next/
+# 동시에 띄운 dev 서버들이 각자 쓰는 빌드 폴더 (scripts/dev-server.mjs)
+/.next-dev-*/
 /out/
 
 # production
@@ -43,3 +45,6 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# 테스트 전용 mock DB (개발용 .local 과 분리)
+/tests/.mock-db/

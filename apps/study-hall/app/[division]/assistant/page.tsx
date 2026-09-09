@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, BookOpenCheck, CalendarDays, Clock3, Users } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
 import { getCurrentPeriod, getPeriods, type PeriodRecord } from "@/lib/services/period.service";
@@ -33,18 +33,18 @@ export default async function AssistantPage({ params }: AssistantPageProps) {
 
   if (!attendanceEnabled) {
     return (
-      <section className="admin-notice admin-notice-warning text-center">
-        <p className="text-[13px] font-bold text-amber-700">
-          조교 도구
-        </p>
-        <h1 className="mt-2 text-[20px] font-bold text-amber-950">
-          조교 출결 체크가 비활성화되었습니다.
-        </h1>
-        <p className="mt-2 text-[13px] leading-5 text-amber-900">
-          현재 지점에서는 조교용 출결 체크 기능을 사용하지 않도록 설정했습니다.
-          다시 필요해지면 관리자 설정에서 켜 주세요.
-        </p>
-      </section>
+      <div className="admin-flat-page">
+        <section className="admin-section">
+          <h1 className="admin-page-title">조교 출결 체크</h1>
+          <p className="admin-page-description">
+            현재 지점에서는 조교용 출결 체크 기능을 사용하지 않도록 설정했습니다.
+          </p>
+        </section>
+
+        <div className="admin-notice admin-notice-warning">
+          조교 출결 체크가 비활성화되었습니다. 다시 필요해지면 관리자 설정에서 켜 주세요.
+        </div>
+      </div>
     );
   }
 
@@ -62,108 +62,100 @@ export default async function AssistantPage({ params }: AssistantPageProps) {
   const remainingCount = Math.max(totalStudents - processedCount, 0);
 
   return (
-    <div className="grid gap-3">
+    <div className="admin-flat-page">
       <section className="admin-section">
-        <div className="grid gap-4 lg:grid-cols-[1.04fr_0.96fr]">
-          <div className="rounded-lg border border-admin-line p-5">
-            <p className="text-[13px] font-bold text-[var(--division-color)]">
-              조교
-            </p>
-            <h1 className="mt-1 text-[20px] font-bold text-slate-950">
-              조교 출결 체크
-            </h1>
-            <p className="mt-2 text-[13px] leading-5 text-slate-600">
-              현재 교시와 처리 현황을 확인하고 출석 체크를 시작하세요.
-            </p>
+        <h1 className="admin-page-title">조교 출결 체크</h1>
+        <p className="admin-page-description">
+          현재 교시와 처리 현황을 확인하고 출석 체크를 시작하세요.
+        </p>
 
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
-              <Link
-                href={`/${params.division}/assistant/check`}
-                className="admin-button admin-button-primary"
-              >
-                출석체크 시작
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <span className="rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-500">
-                {today}
-              </span>
-            </div>
-          </div>
+        <div className="admin-workspace-toolbar">
+          <p className="admin-help">
+            {today} ·{" "}
+            {currentPeriod
+              ? `${currentPeriod.name} 진행 중 (${currentPeriod.startTime}–${currentPeriod.endTime})`
+              : "현재 진행 중인 교시가 없습니다."}
+          </p>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <article className="rounded-lg border border-admin-line bg-admin-surface-soft p-4 text-center">
-              <div className="flex flex-col items-center gap-1.5 text-slate-500">
-                <Clock3 className="h-4 w-4" />
-                <span className="text-[13px] font-bold">현재 교시</span>
-              </div>
-              <p className="mt-2.5 text-[20px] font-bold text-slate-950">
-                {currentPeriod ? currentPeriod.name : "미운영"}
-              </p>
-              <p className="mt-1.5 text-[13px] font-medium text-slate-500">
-                {currentPeriod ? `${currentPeriod.startTime}-${currentPeriod.endTime}` : "종료됨"}
-              </p>
-            </article>
-
-            <article className="rounded-lg border border-admin-line bg-admin-surface-soft p-4 text-center">
-              <div className="flex flex-col items-center gap-1.5 text-slate-500">
-                <BookOpenCheck className="h-4 w-4" />
-                <span className="text-[13px] font-bold">처리 현황</span>
-              </div>
-              <p className="mt-2.5 text-[20px] font-bold text-slate-950">
-                {currentPeriod ? `${processedCount}/${totalStudents}` : `${activePeriods.length}개`}
-              </p>
-              <p className="mt-1.5 text-[13px] font-medium text-slate-500">
-                {currentPeriod ? `남은인원 ${remainingCount}` : "오늘 총 교시"}
-              </p>
-            </article>
-
-            <article className="rounded-lg border border-admin-line bg-admin-surface-soft p-4 text-center">
-              <div className="flex flex-col items-center gap-1.5 text-slate-500">
-                <Users className="h-4 w-4" />
-                <span className="text-[13px] font-bold">대상 인원</span>
-              </div>
-              <p className="mt-2.5 text-[20px] font-bold text-slate-950">
-                {totalStudents || "-"}
-              </p>
-              <p className="mt-1.5 text-[13px] font-medium text-slate-500">
-                교시별 학생 수
-              </p>
-            </article>
-
-            <article className="rounded-lg border border-admin-line bg-admin-surface-soft p-4 text-center">
-              <div className="flex flex-col items-center gap-1.5 text-slate-500">
-                <CalendarDays className="h-4 w-4" />
-                <span className="text-[13px] font-bold">기타 정보</span>
-              </div>
-              <p className="mt-2.5 text-[20px] font-bold text-slate-950">확인중</p>
-              <p className="mt-1.5 text-[13px] font-medium text-slate-500">
-                실시간 업데이트
-              </p>
-            </article>
-          </div>
+          <Link
+            href={`/${params.division}/assistant/check`}
+            className="admin-button admin-button-primary"
+          >
+            출석체크 시작
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3">
-        <article className="admin-section">
-          <p className="text-[13px] font-bold text-emerald-600">
-            팁
+      {/* DESIGN.md 5.3 — 관리자 대시보드와 같은 KPI 격자. 768px 미만 2열, 1280px 이상 4열. */}
+      <section className="admin-dashboard-metrics">
+        {/* KPI 값은 수치다. 교시 이름 같은 글자를 32px 로 키우면 화면이 그 한 칸에 눌린다.
+            현재 교시는 위 안내 줄에서 이미 알려준다 (DESIGN.md 3 · 5.3). */}
+        <article className="admin-dashboard-metric">
+          <p className="admin-dashboard-metric-label">오늘 교시</p>
+          <p className="admin-dashboard-metric-value">
+            {activePeriods.length}
+            <span className="admin-dashboard-metric-unit">개</span>
           </p>
-          <p className="mt-1.5 text-[13px] font-bold text-slate-900 leading-tight">미처리 필터 활용</p>
-          <p className="mt-1.5 text-[13px] leading-4 text-slate-500">
-            필터로 대기 학생만 빠르게 확인하세요.
+          <p className="admin-help mt-3">
+            {currentPeriod ? `현재 ${currentPeriod.name} 진행 중` : "운영 시간 종료"}
           </p>
         </article>
 
-        <article className="admin-section">
-          <p className="text-[13px] font-bold text-amber-600">
-            스와이프
+        <article className="admin-dashboard-metric">
+          <p className="admin-dashboard-metric-label">처리 현황</p>
+          <p className="admin-dashboard-metric-value">
+            {processedCount}
+            <span className="admin-dashboard-metric-unit">/ {totalStudents}명</span>
           </p>
-          <p className="mt-1.5 text-[13px] font-bold text-slate-900 leading-tight">스와이프 입력</p>
-          <p className="mt-1.5 text-[13px] leading-4 text-slate-500">
-            좌우 스와이프로 즉시 처리 가능합니다.
+          <p className="admin-help mt-3">
+            {currentPeriod ? `미처리 ${remainingCount}명` : "진행 중인 교시 없음"}
           </p>
         </article>
+
+        <article className="admin-dashboard-metric">
+          <p className="admin-dashboard-metric-label">대상 인원</p>
+          <p className="admin-dashboard-metric-value">
+            {totalStudents}
+            <span className="admin-dashboard-metric-unit">명</span>
+          </p>
+          <p className="admin-help mt-3">
+            {currentPeriod ? "현재 교시 출결 대상" : "교시를 선택하면 집계됩니다"}
+          </p>
+        </article>
+
+        <article className="admin-dashboard-metric">
+          <p className="admin-dashboard-metric-label">남은 처리</p>
+          <p className="admin-dashboard-metric-value">
+            {currentPeriod ? remainingCount : 0}
+            <span className="admin-dashboard-metric-unit">명</span>
+          </p>
+          <p className="admin-help mt-3">
+            {currentPeriod && remainingCount > 0 ? "출석체크에서 바로 처리" : "처리할 학생 없음"}
+          </p>
+        </article>
+      </section>
+
+      <section className="admin-section">
+        <h2 className="admin-section-title">현장 입력 안내</h2>
+        {/* 가로로 나란히 놓는 요약은 .admin-section 형제로 두지 않는다 (DESIGN.md 5.2). */}
+        {/* DESIGN.md 3절 — 본문보다 작은 제목을 만들지 않는다.
+            라벨(13px/600)과 본문(15px)의 짝으로 둔다. */}
+        <dl className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="admin-label">미처리 필터</dt>
+            <dd className="mt-1">
+              아직 입력하지 않은 학생만 걸러서 빠르게 확인할 수 있습니다.
+            </dd>
+          </div>
+
+          <div className="min-w-0">
+            <dt className="admin-label">스와이프 입력</dt>
+            <dd className="mt-1">
+              명단 행을 오른쪽으로 밀면 출석, 왼쪽으로 밀면 결석으로 즉시 처리됩니다.
+            </dd>
+          </div>
+        </dl>
       </section>
     </div>
   );

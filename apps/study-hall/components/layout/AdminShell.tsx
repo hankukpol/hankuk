@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { LogOut, Menu, X } from "lucide-react";
 
-import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { AdminSidebar, getShellMenuLabel, type ShellRole } from "@/components/layout/AdminSidebar";
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
@@ -18,6 +18,8 @@ type AdminShellProps = {
   viewerId: string;
   viewerRole: "SUPER_ADMIN" | "ADMIN" | "ASSISTANT";
   featureFlags: DivisionFeatureFlags;
+  /** 조교도 같은 셸을 쓴다. 메뉴 목록과 경로만 달라진다. */
+  role?: ShellRole;
 };
 
 /**
@@ -33,8 +35,10 @@ export function AdminShell({
   viewerId,
   viewerRole,
   featureFlags,
+  role = "admin",
 }: AdminShellProps) {
   const router = useRouter();
+  const menuLabel = getShellMenuLabel(role);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -74,6 +78,7 @@ export function AdminShell({
           featureFlags={featureFlags}
           onLogout={handleLogout}
           isLoggingOut={isPending}
+          role={role}
         />
       </div>
 
@@ -88,8 +93,8 @@ export function AdminShell({
               aria-expanded={isMenuOpen}
               aria-controls="admin-mobile-navigation"
             >
-              {isMenuOpen ? <Menu className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              관리자 메뉴
+              <Menu className="h-5 w-5" />
+              {menuLabel}
             </button>
             <div className="min-w-0">
               <p className="truncate text-[15px] font-bold leading-tight">{divisionName}</p>
@@ -130,6 +135,7 @@ export function AdminShell({
               onLogout={handleLogout}
               isLoggingOut={isPending}
               variant="mobile"
+              role={role}
             />
           </div>
         ) : null}
@@ -145,7 +151,7 @@ export function AdminShell({
                 viewerRole={viewerRole}
                 enabled={featureFlags.staffChat}
               />
-              <AppSwitchMenu role="admin" divisionSlug={divisionSlug} />
+              <AppSwitchMenu role={role} divisionSlug={divisionSlug} />
             </div>
             {children}
           </div>

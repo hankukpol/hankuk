@@ -11,7 +11,6 @@ import {
   RefreshCcw,
   Save,
   Search,
-  Users,
   X,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
@@ -19,7 +18,6 @@ import { toast } from "@/lib/sonner";
 
 import {
   ATTENDANCE_STATUS_OPTIONS,
-  getAttendanceStatusClasses,
   getAttendanceStatusLabel,
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
@@ -83,10 +81,20 @@ const QUICK_STATUS_BUTTONS: Array<{
   value: Extract<AttendanceOptionValue, "PRESENT" | "TARDY" | "ABSENT">;
   activeClassName: string;
 }> = [
-  { label: "출석", value: "PRESENT", activeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-  { label: "지각", value: "TARDY", activeClassName: "border-amber-200 bg-amber-50 text-amber-700" },
-  { label: "결석", value: "ABSENT", activeClassName: "border-rose-200 bg-rose-50 text-rose-700" },
+  // 출결 상태색은 업무 의미가 있어 강조색으로 치환하지 않는다 (DESIGN.md 2).
+  { label: "출석", value: "PRESENT", activeClassName: "text-attend-present" },
+  { label: "지각", value: "TARDY", activeClassName: "text-attend-tardy" },
+  { label: "결석", value: "ABSENT", activeClassName: "text-attend-absent" },
 ];
+
+const QUICK_STATUS_VALUES = new Set<AttendanceOptionValue>(
+  QUICK_STATUS_BUTTONS.map((button) => button.value),
+);
+
+/** 사유결석·휴무·반휴·해당없음처럼 빠른 버튼에 없는 상태인지. */
+function isOtherStatus(status: AttendanceOptionValue) {
+  return status !== "" && !QUICK_STATUS_VALUES.has(status);
+}
 
 function buildInitialState(students: StudentItem[], records: AttendanceRecordItem[]): FormState {
   const recordMap = new Map(records.map((record) => [record.studentId, record]));
@@ -111,25 +119,6 @@ function hasStudentStateChanged(
     (currentState?.status ?? "") !== (previousState?.status ?? "") ||
     (currentState?.reason ?? "") !== (previousState?.reason ?? "")
   );
-}
-
-function getStudentCardClasses(status: AttendanceOptionValue) {
-  switch (status) {
-    case "PRESENT":
-      return "border-emerald-100";
-    case "TARDY":
-      return "border-amber-100";
-    case "ABSENT":
-      return "border-rose-100";
-    case "EXCUSED":
-      return "border-sky-100";
-    case "HOLIDAY":
-    case "HALF_HOLIDAY":
-    case "NOT_APPLICABLE":
-      return "border-slate-200 bg-slate-50/70";
-    default:
-      return "border-indigo-100";
-  }
 }
 
 export function MobileCheckForm({
@@ -160,6 +149,13 @@ export function MobileCheckForm({
   const [searchQuery, setSearchQuery] = useState("");
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+  const [openOtherIds, setOpenOtherIds] = useState<Record<string, boolean>>({});
+  // 자습실이 하나뿐이면 카드마다 같은 이름을 반복할 이유가 없다. 좌석 라벨만 남긴다.
+  const showStudyRoomName = useMemo(
+    () =>
+      new Set(students.map((student) => student.studyRoomName).filter(Boolean)).size > 1,
+    [students],
+  );
   const [headerHeight, setHeaderHeight] = useState(132);
   const swipeRef = useRef<SwipeContext | null>(null);
   const swipeRafRef = useRef<number>(0);
@@ -322,16 +318,40 @@ export function MobileCheckForm({
     }
   }
 
-  function markAllPresent() {
+  /**
+   * 이미 기록된 칸(관리자가 미리 넣어둔 사유결석·휴무 등)은 건드리지 않고
+   * 미처리 학생만 출석으로 채운다. 기존 기록을 바꾸려면 학생별로 직접 선택한다.
+   */
+  function markUncheckedPresent() {
+    const targets = visibleStudents.filter((student) => !formState[student.id]?.status);
+
+    if (targets.length === 0) {
+      toast.message("미처리 학생이 없습니다. 기존 기록은 그대로 두었습니다.");
+      return;
+    }
+
+    const targetIds = new Set(targets.map((student) => student.id));
+
     setFormState((current) => {
       const nextState: FormState = { ...current };
 
       for (const student of visibleStudents) {
+        if (!targetIds.has(student.id) || current[student.id]?.status) {
+          continue;
+        }
+
         nextState[student.id] = { status: "PRESENT", reason: "" };
       }
 
       return nextState;
     });
+
+    const skippedCount = visibleStudents.length - targets.length;
+    toast.success(
+      skippedCount > 0
+        ? `미처리 ${targets.length}명을 출석 처리했습니다. 기존 기록 ${skippedCount}명은 그대로 두었습니다.`
+        : `${targets.length}명을 출석 처리했습니다.`,
+    );
   }
 
   async function refreshCurrentPeriod() {
@@ -451,6 +471,8 @@ export function MobileCheckForm({
     const currentSwipe = swipeRef.current;
     const offset = swipeOffsets[studentId] ?? 0;
 
+    cancelAnimationFrame(swipeRafRef.current);
+
     if (currentSwipe?.studentId === studentId) {
       const threshold = Math.min(88, currentSwipe.width * 0.24);
 
@@ -476,29 +498,24 @@ export function MobileCheckForm({
             className="flex w-full items-center gap-3 px-4 py-3 text-left"
           >
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[var(--division-color)]">
-                모바일 출결
-              </p>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-[15px] font-bold text-slate-950">
-                  {selectedPeriod ? selectedPeriod.name : "교시 선택"}
-                </span>
-                <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[13px] font-semibold text-slate-600">
-                  {selectedDate}
-                </span>
-              </div>
+              {/* 이 패널의 제목은 교시다. 위에 같은 뜻의 라벨을 덧붙이지 않는다 (DESIGN.md 1). */}
+              <h2 className="admin-section-title">
+                {selectedPeriod ? selectedPeriod.name : "교시 선택"}
+                <span className="admin-help ml-2">{selectedDate}</span>
+              </h2>
               {selectedPeriod && (
-                <p className="mt-0.5 text-[13px] text-slate-400">
+                <p className="admin-help mt-0.5">
                   {selectedPeriod.startTime} – {selectedPeriod.endTime}
                 </p>
               )}
             </div>
 
+            {/* 진행 수치는 섹션 제목이 아니다. 요약 값 규격(20px)을 쓴다. */}
             <div className="shrink-0 text-right">
-              <h2 className="admin-section-title">
+              <p className="admin-metric-box-value">
                 {summary.checkedCount}/{students.length}
-              </h2>
-              <p className="text-[13px] text-slate-400">
+              </p>
+              <p className="admin-help">
                 {summary.uncheckedCount > 0 ? `미처리 ${summary.uncheckedCount}명` : "완료"}
               </p>
             </div>
@@ -514,47 +531,38 @@ export function MobileCheckForm({
           >
             <div className="min-h-0 overflow-hidden">
               <div className="border-t border-slate-100 px-4 pt-3 pb-2">
-                <div className="h-2 rounded-full bg-slate-100">
+                <div className="h-2 rounded-lg bg-admin-surface-muted">
                   <div
-                    className="h-full rounded-full bg-[var(--division-color)] transition-[width] duration-200"
+                    className="h-full rounded-lg bg-[var(--division-color)] transition-[width] duration-200"
                     style={{ width: `${progressPercentage}%` }}
                   />
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1">
-                    <Users className="h-3.5 w-3.5" />
-                    대상 {students.length}명
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    미처리 {summary.uncheckedCount}명
-                  </span>
                 </div>
               </div>
 
               <div className="grid gap-3 px-4 py-4">
-                <div className="grid grid-cols-4 gap-2">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2.5 text-center">
-                    <p className="text-[13px] font-semibold text-slate-400">대상</p>
-                    <p className="mt-0.5 text-base font-bold text-slate-950">{students.length}</p>
+                <div className="admin-metric-strip">
+                  <div className="admin-metric-box">
+                    <p className="admin-metric-box-label">대상</p>
+                    <p className="admin-metric-box-value">{students.length}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2.5 text-center">
-                    <p className="text-[13px] font-semibold text-slate-400">미처리</p>
-                    <p className="mt-0.5 text-base font-bold text-slate-950">{summary.uncheckedCount}</p>
+                  <div className="admin-metric-box">
+                    <p className="admin-metric-box-label">미처리</p>
+                    <p className="admin-metric-box-value">{summary.uncheckedCount}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2.5 text-center">
-                    <p className="text-[13px] font-semibold text-slate-400">출석</p>
-                    <p className="mt-0.5 text-base font-bold text-emerald-600">{summary.presentCount}</p>
+                  <div className="admin-metric-box">
+                    <p className="admin-metric-box-label">출석</p>
+                    {/* 출결 상태색은 업무 의미가 있어 강조색으로 치환하지 않는다 (DESIGN.md 2). */}
+                    <p className="admin-metric-box-value text-attend-present">{summary.presentCount}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2.5 text-center">
-                    <p className="text-[13px] font-semibold text-slate-400">결석</p>
-                    <p className="mt-0.5 text-base font-bold text-rose-600">{summary.absentCount}</p>
+                  <div className="admin-metric-box">
+                    <p className="admin-metric-box-label">결석</p>
+                    <p className="admin-metric-box-value text-attend-absent">{summary.absentCount}</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                   <label className="block">
-                    <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600">
+                    <span className="admin-label mb-2 flex items-center gap-2">
                       <CalendarDays className="h-4 w-4" />
                       날짜
                     </span>
@@ -562,19 +570,19 @@ export function MobileCheckForm({
                       type="date"
                       value={selectedDate}
                       onChange={(event) => setSelectedDate(event.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition"
+                      className="w-full"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-600">
+                    <span className="admin-label mb-2 flex items-center gap-2">
                       <Clock3 className="h-4 w-4" />
                       교시
                     </span>
                     <select
                       value={selectedPeriodId}
                       onChange={(event) => setSelectedPeriodId(event.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition"
+                      className="w-full"
                     >
                       {periods.map((period) => (
                         <option key={period.id} value={period.id}>
@@ -585,35 +593,52 @@ export function MobileCheckForm({
                   </label>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="admin-label mb-2 block">표시 범위</span>
+                  <div className="admin-choice-group" role="group" aria-label="표시 범위">
+                    <button
+                      type="button"
+                      onClick={() => setShowOnlyUnchecked(false)}
+                      aria-pressed={!showOnlyUnchecked}
+                      className="admin-choice-button"
+                    >
+                      <Eye className="h-4 w-4" />
+                      전체
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowOnlyUnchecked(true)}
+                      aria-pressed={showOnlyUnchecked}
+                      className="admin-choice-button"
+                    >
+                      <EyeOff className="h-4 w-4" />
+                      미처리만
+                    </button>
+                  </div>
+                </div>
+
+                {/* 주 실행은 저장 하나뿐이다. 나머지는 글자로 둔다 (DESIGN.md 5.6). */}
+                <div className="flex flex-wrap items-center gap-x-4 border-t border-admin-line-soft pt-1">
                   <button
                     type="button"
                     onClick={refreshCurrentPeriod}
-                    className="admin-button"
+                    className="admin-text-action inline-flex items-center gap-1"
                   >
-                    <RefreshCcw className="h-4 w-4" />
+                    <RefreshCcw className="h-3.5 w-3.5" />
                     현재 교시 맞추기
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowOnlyUnchecked((current) => !current)}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold transition ${ showOnlyUnchecked ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-700" }`}
+                    onClick={markUncheckedPresent}
+                    className="admin-text-action"
                   >
-                    {showOnlyUnchecked ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                    {showOnlyUnchecked ? "전체 보기" : "미처리만 보기"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={markAllPresent}
-                    className="admin-notice admin-notice-success font-semibold"
-                  >
-                    전원 출석 처리
+                    미처리 전원 출석
                   </button>
                   <button
                     type="button"
                     onClick={handleSave}
                     disabled={isSaving || isLoading}
-                    className="admin-button admin-button-primary"
+                    className="admin-button admin-button-primary ml-auto"
                   >
                     {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     저장
@@ -625,30 +650,26 @@ export function MobileCheckForm({
         </section>
       </div>
 
-      <section className="space-y-3 pb-24">
-        <div className="flex items-center justify-between px-1">
-          <div>
-            <h2 className="admin-section-title">학생 출결 체크</h2>
-          </div>
-          <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-            {visibleStudents.length}명 표시
-          </span>
+      <section className="admin-section">
+        <div className="admin-workspace-toolbar">
+          <h2 className="admin-section-title">학생 출결 체크</h2>
+          <span className="admin-badge">{visibleStudents.length}명 표시</span>
         </div>
 
         <label className="relative block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" />
           <input
             type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
-            className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm text-slate-900 transition"
+            className="w-full pl-11 pr-11"
           />
           {hasSearchQuery ? (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-admin-text-muted transition hover:text-admin-text"
               aria-label="검색어 지우기"
             >
               <X className="h-4 w-4" />
@@ -657,115 +678,157 @@ export function MobileCheckForm({
         </label>
 
         {isLoading ? (
-          <div className="admin-notice text-center">
-            출석 정보를 불러오는 중입니다.
-          </div>
+          <div className="admin-notice">출석 정보를 불러오는 중입니다.</div>
         ) : null}
 
         {!isLoading && visibleStudents.length === 0 ? (
-          <div className="admin-notice text-center">
-            {hasSearchQuery
-              ? "검색 조건에 맞는 학생이 없습니다."
-              : showOnlyUnchecked
-                ? "미처리 학생이 없습니다."
-                : "출석 대상 학생이 없습니다."}
+          <div className="admin-empty-state">
+            <p className="font-semibold">
+              {hasSearchQuery
+                ? "검색 조건에 맞는 학생이 없습니다."
+                : showOnlyUnchecked
+                  ? "미처리 학생이 없습니다."
+                  : "출석 대상 학생이 없습니다."}
+            </p>
+            <p className="admin-help mt-2">
+              {selectedDate} · {selectedPeriod ? selectedPeriod.name : "교시 미선택"}
+            </p>
           </div>
         ) : null}
 
-        {visibleStudents.map((student) => {
-          const state = formState[student.id] ?? { status: "", reason: "" };
-          const needsReason = state.status === "ABSENT" || state.status === "EXCUSED";
-          const swipeOffset = swipeOffsets[student.id] ?? 0;
-          const locationLabel = [student.studyRoomName, student.seatDisplay].filter(Boolean).join(" / ");
+        {/* DESIGN.md 5.8 — 명단은 카드가 아니라 표다. 선은 globals.css 가 긋는다.
+            좁은 화면에서는 좌석·기타 열을 학생/출결 칸으로 접어 가로 스크롤을 피한다. */}
+        <div className="admin-table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th>좌석</th>
+                <th>학생</th>
+                <th>출결</th>
+                <th className="hidden sm:table-cell">기타 상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleStudents.map((student) => {
+                const state = formState[student.id] ?? { status: "", reason: "" };
+                const needsReason = state.status === "ABSENT" || state.status === "EXCUSED";
+                const swipeOffset = swipeOffsets[student.id] ?? 0;
+                const hasOtherStatus = isOtherStatus(state.status);
+                // 이미 기타 상태가 지정된 행은 무엇이 걸렸는지 바로 보이도록 펼쳐 둔다.
+                const isOtherOpen = openOtherIds[student.id] ?? hasOtherStatus;
+                // seatDisplay 는 `자습실 / 좌석` 이라 자습실이 하나뿐이면 좌석만 남긴다.
+                const locationLabel = showStudyRoomName
+                  ? student.seatDisplay ?? student.seatLabel ?? "좌석 미배정"
+                  : student.seatLabel ?? "좌석 미배정";
 
-          return (
-            <div
-              key={student.id}
-              className="relative overflow-hidden rounded-lg border border-admin-line bg-admin-surface touch-pan-y"
-              onTouchStart={(event) => handleSwipeStart(student.id, event)}
-              onTouchMove={(event) => handleSwipeMove(student.id, event)}
-              onTouchEnd={() => handleSwipeEnd(student.id)}
-              onTouchCancel={() => handleSwipeEnd(student.id)}
-            >
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-xs font-semibold text-transparent">
-                <span className="text-emerald-600">오른쪽으로 밀기 · 출석</span>
-                오른쪽 밀기 · 출석
-              </div>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4 text-xs font-semibold text-transparent">
-                <span className="text-rose-600">왼쪽으로 밀기 · 결석</span>
-                왼쪽 밀기 · 결석
-              </div>
-
-              <article
-                className={`relative bg-white p-4 ${getStudentCardClasses(state.status)}`}
-                style={{
-                  transform: `translateX(${swipeOffset}px)`,
-                  transition: swipeOffset === 0 ? "transform 150ms" : "none",
-                }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="admin-help">{locationLabel || "좌석 미배정"}</p>
-                    <h3 className="admin-section-title mt-1">{student.name}</h3>
-                    <p className="admin-help mt-1">{student.studentNumber}</p>
-                    <p className="admin-help mt-1">{student.studyTrack || "직렬 미지정"}</p>
-                  </div>
-
-                  <span
-                    className={`shrink-0 rounded-lg border px-3 py-1 text-xs font-semibold ${getAttendanceStatusClasses( state.status, )}`}
+                return (
+                  <tr
+                    key={student.id}
+                    className="touch-pan-y"
+                    style={
+                      swipeOffset === 0
+                        ? undefined
+                        : { transform: `translateX(${swipeOffset}px)` }
+                    }
+                    onTouchStart={(event) => handleSwipeStart(student.id, event)}
+                    onTouchMove={(event) => handleSwipeMove(student.id, event)}
+                    onTouchEnd={() => handleSwipeEnd(student.id)}
+                    onTouchCancel={() => handleSwipeEnd(student.id)}
                   >
-                    {getAttendanceStatusLabel(state.status)}
-                  </span>
-                </div>
+                    <td>{locationLabel}</td>
 
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {QUICK_STATUS_BUTTONS.map((button) => {
-                    const isActive = state.status === button.value;
+                    <td className="admin-table-name">
+                      {student.name}
+                      <span className="admin-help block">{student.studentNumber}</span>
+                    </td>
 
-                    return (
-                      <button
-                        key={button.value}
-                        type="button"
-                        onClick={() => applyStudentStatus(student.id, button.value)}
-                        className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${ isActive ? button.activeClassName : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50" }`}
+                    <td>
+                      <div className="flex flex-wrap justify-center gap-1">
+                        {QUICK_STATUS_BUTTONS.map((button) => {
+                          const isActive = state.status === button.value;
+
+                          return (
+                            <button
+                              key={button.value}
+                              type="button"
+                              onClick={() => applyStudentStatus(student.id, button.value)}
+                              aria-pressed={isActive}
+                              className={`admin-status-button transition ${ isActive ? button.activeClassName : "" }`}
+                            >
+                              {button.label}
+                            </button>
+                          );
+                        })}
+
+                        {/* 640px 미만에는 기타 상태 열이 없다. 같은 줄의 토글로 연다. */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenOtherIds((current) => ({
+                              ...current,
+                              [student.id]: !isOtherOpen,
+                            }))
+                          }
+                          aria-expanded={isOtherOpen}
+                          aria-pressed={hasOtherStatus}
+                          className="admin-status-button transition sm:hidden"
+                        >
+                          {hasOtherStatus ? getAttendanceStatusLabel(state.status) : "기타"}
+                        </button>
+                      </div>
+
+                      {isOtherOpen ? (
+                        <select
+                          value={state.status}
+                          onChange={(event) =>
+                            applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
+                          }
+                          aria-label={`${student.name} 기타 상태`}
+                          className="mt-1 block w-full sm:hidden"
+                        >
+                          {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value || "empty"} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+
+                      {needsReason ? (
+                        <input
+                          value={state.reason}
+                          onChange={(event) =>
+                            updateStudentState(student.id, { reason: event.target.value })
+                          }
+                          placeholder="사유"
+                          aria-label={`${student.name} 사유`}
+                          className="mt-1 block w-full"
+                        />
+                      ) : null}
+                    </td>
+
+                    <td className="hidden sm:table-cell">
+                      <select
+                        value={state.status}
+                        onChange={(event) =>
+                          applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
+                        }
+                        aria-label={`${student.name} 기타 상태`}
+                        className="block w-full"
                       >
-                        {button.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-3">
-                  <label className="mb-2 block text-xs font-semibold text-slate-500">
-                    기타 상태
-                  </label>
-                  <select
-                    value={state.status}
-                    onChange={(event) => applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition"
-                  >
-                    {ATTENDANCE_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value || "empty"} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {needsReason ? (
-                  <div className="mt-3">
-                    <input
-                      value={state.reason}
-                      onChange={(event) => updateStudentState(student.id, { reason: event.target.value })}
-                      placeholder="사유를 입력해 주세요."
-                      className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition"
-                    />
-                  </div>
-                ) : null}
-              </article>
-            </div>
-          );
-        })}
+                        {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                          <option key={option.value || "empty"} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <ActionCompleteModal

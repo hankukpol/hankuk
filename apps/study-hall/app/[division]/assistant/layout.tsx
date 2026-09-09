@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 
-import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import { StaffChatWatcher } from "@/components/chat/StaffChatWatcher";
-import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
-import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
+import { AdminShell } from "@/components/layout/AdminShell";
 import { requireDivisionAssistantAccess } from "@/lib/auth";
 import { getChatUnreadSummary } from "@/lib/services/chat.service";
 import { getDivisionBySlug } from "@/lib/services/division.service";
@@ -16,6 +14,11 @@ type AssistantLayoutProps = {
   };
 };
 
+/**
+ * DESIGN.md 5.1 · 8 — 조교도 관리자와 같은 셸을 쓴다.
+ * 1024px 이상은 256px 검은 사이드바, 미만은 상단 헤더의 `조교 메뉴` 버튼으로 펼친다.
+ * 메뉴 목록과 경로만 조교용으로 바뀌고 레이아웃·여백·본문 폭은 관리자와 동일하다.
+ */
 export default async function AssistantLayout({ children, params }: AssistantLayoutProps) {
   const [session, division, featureSettings] = await Promise.all([
     requireDivisionAssistantAccess(params.division),
@@ -23,55 +26,33 @@ export default async function AssistantLayout({ children, params }: AssistantLay
     getDivisionFeatureSettings(params.division),
   ]);
 
+  if (!division) {
+    return children;
+  }
+
   const chatEnabled = featureSettings.featureFlags.staffChat;
   const unread = chatEnabled ? await getChatUnreadSummary(params.division, session) : null;
 
   return (
-    <div className="admin-shell flex-col">
-      {/* DESIGN.md 5.1 — 조교 화면도 같은 토큰을 쓰고 상단은 검은 헤더로 통일한다. */}
-      <header className="admin-mobile-header">
-        <div className="min-w-0">
-          <h1 className="truncate text-[16px] font-bold leading-tight">
-            {division?.name ?? params.division}
-          </h1>
-          <p className="truncate text-[13px] text-white/60">조교 · {session.name}</p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <StaffChatDock
-            divisionSlug={params.division}
-            divisionName={division?.name ?? params.division}
-            viewerId={session.id}
-            viewerRole={session.role}
-            enabled={chatEnabled}
-          />
-          <AppSwitchMenu role="assistant" divisionSlug={params.division} />
-          <form action="/api/auth/logout" method="post" className="shrink-0">
-            <button
-              type="submit"
-              className="admin-button"
-            >
-              로그아웃
-            </button>
-          </form>
-        </div>
-      </header>
-
-      <main className="admin-main mx-auto w-full max-w-4xl pb-24">{children}</main>
-
-      <AssistantBottomNav
-        divisionSlug={params.division}
-        phoneSubmissionsEnabled={featureSettings.featureFlags.phoneSubmissions}
-      />
-
+    <AdminShell
+      role="assistant"
+      divisionSlug={division.slug}
+      divisionName={division.name}
+      divisionColor={division.color}
+      adminName={session.name}
+      viewerId={session.id}
+      viewerRole={session.role}
+      featureFlags={featureSettings.featureFlags}
+    >
       <StaffChatWatcher
-        divisionSlug={params.division}
-        divisionId={division?.id ?? ""}
-        divisionName={division?.name ?? params.division}
+        divisionSlug={division.slug}
+        divisionId={division.id}
+        divisionName={division.name}
         viewerId={session.id}
         enabled={chatEnabled}
         initialUnreadCount={unread?.unreadCount ?? 0}
       />
-    </div>
+      {children}
+    </AdminShell>
   );
 }

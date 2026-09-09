@@ -140,7 +140,7 @@ export function PhoneCheckTable({
       <table className="min-w-[1100px] w-full">
         <thead>
           <tr>
-            <th className="sticky left-0 z-10 min-w-[140px] admin-table-name">
+            <th className="admin-table-sticky-col min-w-[140px] admin-table-name">
               좌석
             </th>
             <th className="min-w-[160px] admin-table-name">
@@ -176,7 +176,7 @@ export function PhoneCheckTable({
                 key={student.id}
                 className={`align-top ${isCheckable ? "" : "bg-slate-50/70 opacity-75"}`}
               >
-                <td className="sticky left-0 z-10">
+                <td className="admin-table-sticky-col">
                   <div className="font-semibold text-slate-900">{student.seatLabel ?? "미배정"}</div>
                   <div className="admin-help mt-1">{student.studyRoomName ?? "좌석 미배정"}</div>
                 </td>

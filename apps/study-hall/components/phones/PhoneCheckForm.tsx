@@ -4,7 +4,7 @@ import { DialogActions } from "@/components/ui/DialogActions";
 
 import dynamic from "next/dynamic";
 
-import { Phone, RefreshCcw, Save, Search, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone, RefreshCcw, Save, Search, X } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/sonner";
 
@@ -301,6 +301,8 @@ export function PhoneCheckForm({
   );
   const [viewMode, setViewMode] = useState<"seat" | "table">("table");
   const [searchQuery, setSearchQuery] = useState("");
+  // 좁은 화면에서는 날짜·검색·필터를 접어 둔다. 조교가 늘 보는 것은 교시와 명단이다.
+  const [isQueryOpen, setIsQueryOpen] = useState(false);
   const [studentFilterMode, setStudentFilterMode] = useState<StudentFilterMode>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
@@ -1053,27 +1055,27 @@ export function PhoneCheckForm({
           }`;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <UnsavedChangesGuard isDirty={isDirty} />
-      {/* 날짜 선택 */}
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="date"
-          value={date}
-          max={getKstToday()}
-          onChange={(e) => handleDateChange(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm transition"
-        />
-        <button
-          type="button"
-          onClick={() => loadSnapshot(date)}
-          disabled={isLoading}
-          className="admin-button"
-        >
-          <RefreshCcw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          새로고침
-        </button>
-      </div>
+      {/* 좁은 화면에서 조회 조건을 여는 버튼. 768px 이상은 아래 블록이 늘 펼쳐져 있다. */}
+      <button
+        type="button"
+        onClick={() => setIsQueryOpen((open) => !open)}
+        aria-expanded={isQueryOpen}
+        aria-controls="phone-query-panel"
+        className="admin-button w-full justify-between md:hidden"
+      >
+        <span>
+          조회 조건 · {date}
+          {searchQuery ? ` · 검색 "${searchQuery}"` : ""}
+          {studentFilterMode === "unchecked" ? " · 미체크만" : ""}
+        </span>
+        {isQueryOpen ? (
+          <ChevronUp className="h-4 w-4" />
+        ) : (
+          <ChevronDown className="h-4 w-4" />
+        )}
+      </button>
 
       {/* DESIGN.md 5.4 — 보기 전체가 바뀌므로 1차 폴더 탭 */}
       {hasSeatLayout ? (
@@ -1087,21 +1089,44 @@ export function PhoneCheckForm({
         />
       ) : null}
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div
+        id="phone-query-panel"
+        className={`${isQueryOpen ? "flex" : "hidden"} flex-col gap-4 md:!flex`}
+      >
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap sm:gap-3">
+          <input
+            type="date"
+            value={date}
+            max={getKstToday()}
+            onChange={(e) => handleDateChange(e.target.value)}
+            className="w-full min-w-0"
+          />
+          <button
+            type="button"
+            onClick={() => loadSnapshot(date)}
+            disabled={isLoading}
+            className="admin-button"
+          >
+            <RefreshCcw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            새로고침
+          </button>
+        </div>
+
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <label className="relative block w-full md:max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" />
           <input
             type="search"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="이름, 수험번호, 연락처, 좌석, 강의실로 검색"
-            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 transition"
+            className="w-full pl-11 pr-11"
           />
           {hasSearchQuery ? (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-admin-text-muted transition hover:text-admin-text"
               aria-label="검색어 지우기"
             >
               <X className="h-4 w-4" />
@@ -1110,7 +1135,7 @@ export function PhoneCheckForm({
         </label>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="admin-choice-group" aria-label="휴대폰 체크 필터">
+          <div className="admin-choice-group shrink-0" aria-label="휴대폰 체크 필터">
             {[
               { value: "all" as const, label: "전체" },
               { value: "unchecked" as const, label: "미체크만" },
@@ -1126,10 +1151,18 @@ export function PhoneCheckForm({
               </button>
             ))}
           </div>
-          <div className="inline-flex items-center rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-            {visibleStudents.length}명 표시 / 검색 {filteredStudents.length}명 / 전체 {students.length}명
-          </div>
+          {/* 좁은 화면에서는 필터와 같은 줄에 들어가도록 줄인다. */}
+          <span className="admin-badge">
+            <span className="sm:hidden">
+              {visibleStudents.length}/{students.length}명
+            </span>
+            <span className="hidden sm:inline">
+              {visibleStudents.length}명 표시 / 검색 {filteredStudents.length}명 / 전체{" "}
+              {students.length}명
+            </span>
+          </span>
         </div>
+      </div>
       </div>
 
       {periods.length === 0 ? (
@@ -1138,104 +1171,124 @@ export function PhoneCheckForm({
         </div>
       ) : (
         <>
-          {/* 교시 탭 */}
-          <div className="overflow-x-auto">
-            <div className="admin-choice-group" aria-label="휴대폰 확인 교시">
-              {periods.map((period) => {
-                const isActive = period.periodId === activePeriodId;
-                return (
-                  <button
-                    key={period.periodId}
-                    type="button"
-                    onClick={() => setActivePeriodId(period.periodId)}
-                    className="admin-choice-button" data-active={isActive} aria-pressed={isActive}
-                  >
-                    {period.periodName}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* DESIGN.md 5.5 — 교시 이동은 데이터 필터가 아니라 탐색이다.
+             128px 고정 폭 조건 버튼으로 두면 좁은 화면에서 다섯 줄로 늘어난다. */}
+          <AdminTabs
+            items={periods.map((period) => ({
+              id: period.periodId,
+              label: period.periodName,
+            }))}
+            activeId={activePeriodId}
+            onChange={setActivePeriodId}
+            label="휴대폰 확인 교시"
+            idPrefix="phone-period"
+            variant="secondary"
+            scrollable
+          />
 
           {/* 선택된 교시 내용 */}
           {activePeriod && (
             <div className="space-y-4" role="tabpanel" id={`phone-view-panel-${viewMode}`} aria-labelledby={hasSeatLayout ? `phone-view-${viewMode}` : undefined} aria-label={hasSeatLayout ? undefined : "휴대폰 체크"}>
               {/* 교시 정보 + 통계 */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {activePeriod.periodName}
-                    {activePeriod.periodLabel && (
-                      <span className="ml-1.5 text-slate-500">({activePeriod.periodLabel})</span>
-                    )}
-                    <span className="admin-help ml-2">
-                      {activePeriod.startTime}–{activePeriod.endTime}
-                    </span>
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex items-center rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                    반납 {activePeriodStats.submittedCount}
+              <div className="admin-workspace-toolbar">
+                <div className="min-w-0">
+                <h3 className="admin-section-title">
+                  {activePeriod.periodName}
+                  {activePeriod.periodLabel && (
+                    <span className="admin-help ml-1.5">({activePeriod.periodLabel})</span>
+                  )}
+                  <span className="admin-help ml-2">
+                    {activePeriod.startTime}–{activePeriod.endTime}
                   </span>
-                  <span className="inline-flex items-center rounded-lg bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">
-                    미반납 {activePeriodStats.notSubmittedCount}
+                </h3>
+
+                {/* 집계는 상자에 담지 않는다. 라벨은 보조색, 숫자만 업무색으로 읽힌다. */}
+                <p className="admin-help flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span>
+                    반납{" "}
+                    <strong className="tabular-nums text-emerald-700">
+                      {activePeriodStats.submittedCount}
+                    </strong>
                   </span>
-                  <span className="inline-flex items-center rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-700/20">
-                    대여 {activePeriodStats.rentedCount}
+                  <span>
+                    미반납{" "}
+                    <strong className="tabular-nums text-rose-700">
+                      {activePeriodStats.notSubmittedCount}
+                    </strong>
                   </span>
-                  <span className="inline-flex items-center rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">
-                    체크대상 {activePeriodStats.checkableStudentCount}
+                  <span>
+                    대여{" "}
+                    <strong className="tabular-nums text-sky-700">
+                      {activePeriodStats.rentedCount}
+                    </strong>
+                  </span>
+                  <span>
+                    체크대상{" "}
+                    <strong className="tabular-nums text-admin-text">
+                      {activePeriodStats.checkableStudentCount}
+                    </strong>
                   </span>
                   {activePeriodStats.uncheckedCount > 0 && (
-                    <span className="inline-flex items-center rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
-                      미체크 {activePeriodStats.uncheckedCount}
+                    <span>
+                      미체크{" "}
+                      <strong className="tabular-nums text-amber-700">
+                        {activePeriodStats.uncheckedCount}
+                      </strong>
                     </span>
                   )}
                   {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceUnprocessedCount > 0 && (
-                    <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
-                      출결 미확인 {activePeriodStats.attendanceUnprocessedCount}
+                    <span>
+                      출결 미확인{" "}
+                      <strong className="tabular-nums text-amber-700">
+                        {activePeriodStats.attendanceUnprocessedCount}
+                      </strong>
                     </span>
                   )}
                   {snapshot.attendanceIntegrationEnabled && activePeriodStats.attendanceBlockedCount > 0 && (
-                    <span className="inline-flex items-center rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 ring-1 ring-inset ring-slate-200">
-                      체크 제외 {activePeriodStats.attendanceBlockedCount}
+                    <span>
+                      체크 제외{" "}
+                      <strong className="tabular-nums text-admin-text">
+                        {activePeriodStats.attendanceBlockedCount}
+                      </strong>
                     </span>
                   )}
+                </p>
                 </div>
-              </div>
 
-              {/* 빠른 설정 + 저장 */}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", visibleStudents)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  표시 학생 반납
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED", visibleStudents)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  표시 학생 미반납
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openBulkRentalModal()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
-                >
-                  <Phone className="h-3.5 w-3.5" />
-                  일괄 대여
-                </button>
                 <button
                   type="button"
                   onClick={() => savePeriod(activePeriodId)}
                   disabled={savingPeriodId === activePeriodId || isLoading}
-                  className="admin-button admin-button-primary ml-auto"
+                  className="admin-button admin-button-primary"
                 >
                   <Save className="h-4 w-4" />
                   {savingPeriodId === activePeriodId ? "저장 중..." : "저장"}
+                </button>
+              </div>
+
+              {/* 주 실행(저장)은 위 툴바에 있다. 여기 셋은 보조라 글자로 둔다. */}
+              <div className="flex flex-wrap items-center gap-x-4 border-y border-admin-line-soft py-1">
+                <button
+                  type="button"
+                  onClick={() => setAllForPeriod(activePeriodId, "SUBMITTED", visibleStudents)}
+                  className="admin-text-action"
+                >
+                  표시 학생 전원 반납
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAllForPeriod(activePeriodId, "NOT_SUBMITTED", visibleStudents)}
+                  className="admin-text-action"
+                >
+                  전원 미반납
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openBulkRentalModal()}
+                  className="admin-text-action inline-flex items-center gap-1"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  일괄 대여
                 </button>
               </div>
 

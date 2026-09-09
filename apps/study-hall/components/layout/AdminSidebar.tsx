@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BookOpenCheck,
   CalendarClock,
+  ClipboardCheck,
   CreditCard,
   FileSpreadsheet,
   GraduationCap,
@@ -34,6 +35,8 @@ type NavSection = {
   label: string;
   items: NavItem[];
 };
+
+export type ShellRole = "admin" | "assistant";
 
 const navSections: NavSection[] = [
   {
@@ -133,6 +136,38 @@ const navSections: NavSection[] = [
   },
 ];
 
+/* 조교는 현장 처리 화면만 쓴다. 관리자 메뉴를 권한으로 가리는 대신
+   애초에 조교용 목록을 따로 둔다. 껍데기와 규격은 관리자와 같다. */
+const assistantNavSections: NavSection[] = [
+  {
+    label: "조교 업무",
+    items: [
+      { href: "", label: "조교 홈", icon: LayoutDashboard },
+      {
+        href: "check",
+        label: "출석체크",
+        icon: ClipboardCheck,
+        featureKey: "attendanceManagement",
+      },
+      {
+        href: "phones",
+        label: "휴대폰 체크",
+        icon: Smartphone,
+        featureKey: "phoneSubmissions",
+      },
+    ],
+  },
+];
+
+const shellNav: Record<ShellRole, { sections: NavSection[]; basePath: string; menuLabel: string }> = {
+  admin: { sections: navSections, basePath: "admin", menuLabel: "관리자 메뉴" },
+  assistant: { sections: assistantNavSections, basePath: "assistant", menuLabel: "조교 메뉴" },
+};
+
+export function getShellMenuLabel(role: ShellRole) {
+  return shellNav[role].menuLabel;
+}
+
 type AdminSidebarProps = {
   divisionSlug: string;
   divisionName: string;
@@ -143,6 +178,7 @@ type AdminSidebarProps = {
   onLogout?: () => void;
   isLoggingOut?: boolean;
   variant?: "desktop" | "mobile";
+  role?: ShellRole;
 };
 
 /**
@@ -158,9 +194,11 @@ export function AdminSidebar({
   onLogout,
   isLoggingOut = false,
   variant = "desktop",
+  role = "admin",
 }: AdminSidebarProps) {
   const pathname = usePathname();
-  const visibleSections = navSections
+  const { sections, basePath, menuLabel } = shellNav[role];
+  const visibleSections = sections
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => (!item.divisionOnly || item.divisionOnly === divisionSlug) && (!item.featureKey || featureFlags[item.featureKey])),
@@ -178,12 +216,12 @@ export function AdminSidebar({
         </div>
       ) : null}
 
-      <nav className="admin-sidebar-nav" aria-label="관리자 메뉴">
+      <nav className="admin-sidebar-nav" aria-label={menuLabel}>
         {visibleSections.map((section) => (
           <div key={section.label}>
             <p className="admin-sidebar-group">{section.label}</p>
             {section.items.map((item) => {
-              const href = `/${divisionSlug}/admin${item.href ? `/${item.href}` : ""}`;
+              const href = `/${divisionSlug}/${basePath}${item.href ? `/${item.href}` : ""}`;
               const isActive =
                 item.href === ""
                   ? pathname === href

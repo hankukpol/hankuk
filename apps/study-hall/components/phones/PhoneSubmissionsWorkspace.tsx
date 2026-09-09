@@ -74,7 +74,9 @@ export async function PhoneSubmissionsWorkspace({
           {mode === "assistant" ? "휴대폰 체크" : "휴대폰 관리"}
         </h1>
         <p className="admin-page-description">
-          교시별 휴대폰 반납, 미반납, 대여 상태를 체크하고 대여 범위를 한 번에 저장합니다.
+          {mode === "assistant"
+            ? "교시별 반납·미반납·대여를 체크하고 저장합니다."
+            : "교시별 휴대폰 반납, 미반납, 대여 상태를 체크하고 대여 범위를 한 번에 저장합니다."}
           {showHistory ? " 필요한 경우 이력에서 미반납 학생에게 벌점을 부여할 수 있습니다." : ""}
         </p>
       </section>

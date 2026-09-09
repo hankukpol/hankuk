@@ -36,13 +36,22 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
     : { students: [], records: [] };
 
   return (
-    <MobileCheckForm
-      divisionSlug={params.division}
-      initialDate={today}
-      initialPeriods={periods}
-      initialPeriodId={periodId}
-      initialStudents={snapshot.students}
-      initialRecords={snapshot.records}
-    />
+    <div className="admin-flat-page">
+      <section className="admin-section">
+        <h1 className="admin-page-title">출석 체크</h1>
+        <p className="admin-page-description">
+          교시를 고르고 학생별 출결을 지정한 뒤 저장합니다.
+        </p>
+      </section>
+
+      <MobileCheckForm
+        divisionSlug={params.division}
+        initialDate={today}
+        initialPeriods={periods}
+        initialPeriodId={periodId}
+        initialStudents={snapshot.students}
+        initialRecords={snapshot.records}
+      />
+    </div>
   );
 }

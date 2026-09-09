@@ -20,6 +20,8 @@ type AdminTabsProps<T extends string> = {
   idPrefix?: string;
   className?: string;
   variant?: "primary" | "secondary";
+  /** 항목이 많은 서브 탭을 줄바꿈 대신 한 줄 가로 스크롤로 둔다. */
+  scrollable?: boolean;
 };
 
 /**
@@ -35,6 +37,7 @@ export function AdminTabs<T extends string>({
   idPrefix = "tab",
   className,
   variant = "primary",
+  scrollable = false,
 }: AdminTabsProps<T>) {
   const listRef = useRef<HTMLDivElement>(null);
   const enabled = items.filter((item) => !item.disabled).map((item) => item.id);
@@ -43,17 +46,24 @@ export function AdminTabs<T extends string>({
   useEffect(() => {
     const list = listRef.current;
     const active = list?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!list || !active || variant !== "primary") return;
+    if (!list || !active || (variant !== "primary" && !scrollable)) return;
     const frame = list.getBoundingClientRect();
     const tab = active.getBoundingClientRect();
+
+    // 한 줄 스크롤 탭은 가운데로 보낸다. 가장자리에 붙이면 뒤에 항목이 더 있는지 보이지 않는다.
+    if (scrollable) {
+      list.scrollLeft += tab.left - frame.left - (frame.width - tab.width) / 2;
+      return;
+    }
+
     if (tab.left < frame.left) list.scrollLeft -= frame.left - tab.left;
     else if (tab.right > frame.right) list.scrollLeft += tab.right - frame.right;
-  }, [activeId, variant]);
+  }, [activeId, variant, scrollable]);
 
   return (
     <div
       ref={listRef}
-      className={`${variant === "secondary" ? "admin-subtabs" : "admin-tabs"}${className ? ` ${className}` : ""}`}
+      className={`${variant === "secondary" ? "admin-subtabs" : "admin-tabs"}${ scrollable && variant === "secondary" ? " admin-subtabs-scroll" : "" }${className ? ` ${className}` : ""}`}
       role="tablist"
       aria-label={label}
     >

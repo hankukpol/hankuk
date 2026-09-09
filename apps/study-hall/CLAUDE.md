@@ -322,3 +322,6 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 - ❌ 서버 컴포넌트에서 브라우저 API 사용
 - ❌ ExcelJS를 클라이언트 사이드에서 import
 - ❌ 인코딩 확인 없이 한글 문서/문자열을 수정하여 깨진 상태로 저장
+
+> 세션을 나눠 작업할 때의 통신 규약은 [`ORCHESTRA.md`](ORCHESTRA.md)를 따른다.
+> 다른 세션에 메시지를 보내기 전에 그 문서의 길이 상한과 호출 규칙을 확인한다.

@@ -252,30 +252,20 @@ export function ScoreTargetPanel({
                 </span>
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
-                  <p className="text-[13px] font-medium text-admin-text-muted">
-                    목표 점수
-                  </p>
-                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                    {target.targetScore}
-                  </p>
+              {/* DESIGN.md 5.3 — 요약 세 칸은 손으로 만든 카드가 아니라 평면 격자다.
+                  테두리 상자 셋을 쌓으면 그것이 곧 카드 나열이다(MOBILE_DESIGN.md 2.5). */}
+              <div className="admin-portal-summary admin-portal-summary-3 mt-4">
+                <div>
+                  <p className="admin-portal-summary-label">목표 점수</p>
+                  <p className="admin-portal-summary-value">{target.targetScore}</p>
                 </div>
-                <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
-                  <p className="text-[13px] font-medium text-admin-text-muted">
-                    최신 점수
-                  </p>
-                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                    {target.latestScore ?? "-"}
-                  </p>
+                <div>
+                  <p className="admin-portal-summary-label">최신 점수</p>
+                  <p className="admin-portal-summary-value">{target.latestScore ?? "-"}</p>
                 </div>
-                <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
-                  <p className="text-[13px] font-medium text-admin-text-muted">
-                    최신 회차
-                  </p>
-                  <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-                    {target.latestExamRound ? `${target.latestExamRound}회차` : "-"}
-                  </p>
+                <div>
+                  <p className="admin-portal-summary-label">최신 회차</p>
+                  <p className="admin-portal-summary-value">{target.latestExamRound ? `${target.latestExamRound}회차` : "-"}</p>
                 </div>
               </div>
 

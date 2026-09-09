@@ -10,7 +10,8 @@ type PortalSectionHeaderProps = {
 type PortalMetricCardProps = {
   label: string;
   value: string | number;
-  caption: string;
+  /** 없으면 줄 자체를 만들지 않는다. 빈 줄이 남으면 칸 높이가 어긋난다. */
+  caption?: string;
   valueToneClassName?: string;
 };
 
@@ -105,7 +106,7 @@ export function PortalMetricCard({
     <div>
       <p className="admin-portal-summary-label">{label}</p>
       <p className={`admin-portal-summary-value ${valueToneClassName}`}>{value}</p>
-      <p className="admin-help mt-1">{caption}</p>
+      {caption ? <p className="admin-help mt-1">{caption}</p> : null}
     </div>
   );
 }

@@ -12,33 +12,15 @@ import {
   YAxis,
 } from "recharts";
 
+import {
+  PortalMetricCard,
+  portalMetricGrid3Class,
+} from "@/components/student-view/StudentPortalUi";
 import type { StudentMorningExamWeekItem } from "@/lib/services/morning-exam.service";
 
 type MorningExamStudentViewProps = {
   weeks: StudentMorningExamWeekItem[];
 };
-
-function MetricCard({
-  label,
-  value,
-  caption,
-}: {
-  label: string;
-  value: string | number;
-  caption?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-admin-line bg-white px-4 py-3">
-      <p className="text-[13px] font-medium text-admin-text-muted">
-        {label}
-      </p>
-      <p className="mt-1.5 text-[20px] font-bold tracking-tight text-admin-text">
-        {value}
-      </p>
-      {caption && <p className="mt-1 text-[13px] text-admin-text-muted">{caption}</p>}
-    </div>
-  );
-}
 
 export function MorningExamStudentView({ weeks }: MorningExamStudentViewProps) {
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
@@ -78,18 +60,18 @@ export function MorningExamStudentView({ weeks }: MorningExamStudentViewProps) {
   return (
     <div className="space-y-5">
       {latestWeek && (
-        <section className="grid grid-cols-3 gap-3">
-          <MetricCard
+        <section className={portalMetricGrid3Class}>
+          <PortalMetricCard
             label="이번주 총점"
             value={latestWeek.weeklyTotal ?? "-"}
             caption={`${latestWeek.weekYear}년 ${latestWeek.weekNumber}주차`}
           />
-          <MetricCard
+          <PortalMetricCard
             label="이번주 평균"
             value={latestWeek.weeklyAverage ?? "-"}
             caption={`${latestWeek.dailyScores.length}과목 기준`}
           />
-          <MetricCard
+          <PortalMetricCard
             label="이번주 석차"
             value={latestWeek.weeklyRank ? `${latestWeek.weeklyRank}등` : "-"}
           />

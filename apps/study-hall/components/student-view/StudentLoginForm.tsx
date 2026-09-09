@@ -70,11 +70,14 @@ export function StudentLoginForm({
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <label className="admin-field">
             <span className="admin-label">수험번호</span>
+            {/* 수험번호는 전부 숫자다. 학생이 매일 폰으로 치는 칸이라
+                문자 키패드가 먼저 뜨면 로그인마다 전환을 한 번씩 더 하게 된다. */}
             <input
               value={studentNumber}
               onChange={(event) => setStudentNumber(event.target.value)}
               placeholder="수험번호 입력"
               autoComplete="username"
+              inputMode="numeric"
               required
             />
           </label>

@@ -350,7 +350,7 @@ export function MorningExamScoreManager({
       />
         <div className="admin-filter-bar">
           <label className="block">
-            <span className="admin-help mb-1 block">시험 템플릿</span>
+            <span className="admin-label mb-2 block">시험 템플릿</span>
             <select
               value={selectedExamTypeId}
               onChange={(e) => {
@@ -368,7 +368,7 @@ export function MorningExamScoreManager({
           </label>
 
           {viewTab === "daily" ? <label className="block">
-            <span className="admin-help mb-1 block">과목 선택</span>
+            <span className="admin-label mb-2 block">과목 선택</span>
             <select
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
@@ -383,7 +383,7 @@ export function MorningExamScoreManager({
           </label> : null}
 
           <label className="block">
-            <span className="admin-help mb-1 block">{viewTab === "daily" ? "시험일" : "기준일"}</span>
+            <span className="admin-label mb-2 block">{viewTab === "daily" ? "시험일" : "기준일"}</span>
             <input
               type="date"
               value={examDate}
@@ -414,7 +414,7 @@ export function MorningExamScoreManager({
                 <textarea
                   ref={pasteRef}
                   rows={4}
-                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 font-mono text-sm"
+                  className="mt-2 font-mono"
                   placeholder={"P-001\t홍길동\t85\t\nP-002\t김철수\t92\t잘함"}
                 />
                 <button
@@ -483,7 +483,7 @@ export function MorningExamScoreManager({
                   {visibleRows.map((row) => (
                     <tr key={row.studentId} className="align-top">
                       <td>{row.studentNumber}</td>
-                      <td>{row.studentName}</td>
+                      <td className="admin-table-name">{row.studentName}</td>
                       <td>
                         <input
                           type="text"
@@ -491,7 +491,7 @@ export function MorningExamScoreManager({
                           aria-label={`${row.studentName} 점수`}
                           value={row.score}
                           onChange={(e) => handleRowScoreChange(row.studentId, e.target.value)}
-                          className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                          className="w-24 text-center"
                           placeholder="-"
                         />
                       </td>
@@ -501,7 +501,7 @@ export function MorningExamScoreManager({
                           aria-label={`${row.studentName} 비고`}
                           value={row.notes}
                           onChange={(e) => handleRowNotesChange(row.studentId, e.target.value)}
-                          className="w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                          className="w-32"
                           placeholder=""
                         />
                       </td>
@@ -621,9 +621,7 @@ export function MorningExamScoreManager({
                 <tbody>
                   {visibleRankings.map((ranking) => (
                     <tr key={ranking.studentId} className="align-top">
-                      <td>
-                        {ranking.studentName}
-                      </td>
+                      <td className="admin-table-name">{ranking.studentName}</td>
                       {weeklySummary.dailyEntries.map((entry) => {
                         const ds = ranking.dailyScores[entry.date];
                         return (

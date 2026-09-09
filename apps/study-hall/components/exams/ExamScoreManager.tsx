@@ -434,34 +434,18 @@ export function ExamScoreManager({
 
   if (examTypes.length === 0) {
     return (
-      <section className="admin-help px-6 py-10">
+      <p className="admin-empty-state">
         시험 템플릿이 아직 없습니다. 먼저 시험 설정 화면에서 직렬별 시험 템플릿을
         만들어 주세요.
-      </section>
+      </p>
     );
   }
 
   const summaryCards = [
-    {
-      label: "대상 직렬",
-      value: formatTrackLabel(sheet?.studyTrack ?? selectedExamType?.studyTrack ?? null),
-      hint: "현재 선택한 시험 템플릿 기준",
-    },
-    {
-      label: "대상 학생",
-      value: `${rows.length}명`,
-      hint: "해당 직렬 학생만 시트에 포함",
-    },
-    {
-      label: "활성 과목",
-      value: `${selectedExamType?.subjects.filter((subject) => subject.isActive).length ?? 0}개`,
-      hint: "시험 템플릿 기준",
-    },
-    {
-      label: "편집 상태",
-      value: blockingChangeMessage ? "변경 내용 있음" : "저장 완료",
-      hint: blockingChangeMessage ?? "현재 시트와 서버 상태가 같습니다.",
-    },
+    { label: "대상 직렬", value: formatTrackLabel(sheet?.studyTrack ?? selectedExamType?.studyTrack ?? null) },
+    { label: "대상 학생", value: `${rows.length}명` },
+    { label: "활성 과목", value: `${selectedExamType?.subjects.filter((subject) => subject.isActive).length ?? 0}개` },
+    { label: "편집 상태", value: blockingChangeMessage ? "변경 내용 있음" : "저장 완료" },
   ];
 
   return (
@@ -474,155 +458,134 @@ export function ExamScoreManager({
             : "저장하지 않은 변경사항이 있습니다. 페이지를 떠나시겠습니까?"
         }
       />
-      <div className="space-y-6 pb-28">
-        <section className="admin-section">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="admin-section-title">
-                시험 성적 입력
-              </h2>
-              <p className="admin-page-description">
-                시험, 시험일, 붙여넣기와 저장 순서를 한 화면에서 처리합니다. 저장 전
-                내부 이동과 브라우저 이탈도 경고 후 진행됩니다.
-              </p>
-            </div>
+      {/* DESIGN.md 5.2 — 페이지 루트는 평면. 제목·작업 → 요약 → 필터 → 도구 → 표 순서로 편다.
+          하단 고정 막대가 마지막 행을 가리지 않도록 아래 여백만 더한다. */}
+      <div className="admin-flat-page pb-28">
+        <div className="admin-workspace-toolbar">
+          <h2 className="admin-section-title">시험 성적 입력</h2>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!sheet}
-                onClick={() => {
-                  if (!sheet || !selectedExamType) return;
-                  const url = new URL(`/api/${divisionSlug}/exams/template`, window.location.origin);
-                  url.searchParams.set("examTypeId", selectedExamType.id);
-                  url.searchParams.set("examRound", String(sheet.examRound));
-                  triggerDownload(url.toString());
-                }}
-                className="admin-button"
-              >
-                <Download className="h-4 w-4" />
-                CSV 양식 다운로드
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleRefresh()}
-                disabled={isSaving || isRefreshing || isLoading}
-                className="admin-button"
-              >
-                {isRefreshing || isLoading ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" />
-                )}
-                시트 새로고침
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={isSaving || isLoading || !sheet || hasPendingDateChange}
-                className="admin-button admin-button-primary"
-              >
-                {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                성적 저장
-              </button>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!sheet}
+              onClick={() => {
+                if (!sheet || !selectedExamType) return;
+                const url = new URL(`/api/${divisionSlug}/exams/template`, window.location.origin);
+                url.searchParams.set("examTypeId", selectedExamType.id);
+                url.searchParams.set("examRound", String(sheet.examRound));
+                triggerDownload(url.toString());
+              }}
+              className="admin-button"
+            >
+              <Download className="h-4 w-4" />
+              CSV 양식 다운로드
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRefresh()}
+              disabled={isSaving || isRefreshing || isLoading}
+              className="admin-button"
+            >
+              {isRefreshing || isLoading ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4" />
+              )}
+              시트 새로고침
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving || isLoading || !sheet || hasPendingDateChange}
+              className="admin-button admin-button-primary"
+            >
+              {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              성적 저장
+            </button>
           </div>
+        </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {summaryCards.map((card) => (
-              <article
-                key={card.label}
-                className="admin-section"
-              >
-                <p className="admin-help">{card.label}</p>
-                <h2 className="admin-section-title">{card.value}</h2>
-                <p className="admin-help mt-1">{card.hint}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="admin-filter-bar">
-              <label className="block">
-                <span className="admin-label mb-2 block">시험 템플릿</span>
-                <select
-                  disabled={isSaving}
-                  value={selectedExamTypeId}
-                  onChange={(event) => void handleExamTypeChange(event.target.value)}
-                  className="w-full"
-                >
-                  {examTypes.map((examType) => (
-                    <option key={examType.id} value={examType.id}>
-                      [{formatTrackLabel(examType.studyTrack)}] {examType.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="admin-label mb-2 block">시험일</span>
-                <input
-                  type="date"
-                  disabled={isSaving}
-                  value={examDateInput}
-                  onChange={(event) => setExamDateInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void handleApplyDate();
-                    }
-                  }}
-                  className="w-full"
-                />
-              </label>
-
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  disabled={isSaving || isLoading}
-                  onClick={() => void handleApplyDate()}
-                  className="admin-button w-full"
-                >
-                  시험일 적용
-                </button>
-              </div>
+        <div className="admin-metric-strip">
+          {summaryCards.map((card) => (
+            <div className="admin-metric-box" key={card.label}>
+              <p className="admin-metric-box-label">{card.label}</p>
+              <p className="admin-metric-box-value">{card.value}</p>
             </div>
+          ))}
+        </div>
 
-            <div className="admin-section">
-              <h2 className="admin-section-title">붙여넣기 입력</h2>
-              <p className="admin-help mt-2 leading-5">
-                <span className="font-semibold">수험번호 + 과목 점수</span> 또는 <span className="font-semibold">과목 점수만</span> 탭으로 구분해
-                붙여넣을 수 있습니다.
-              </p>
-              <textarea
-                value={pasteText}
-                onChange={(event) => setPasteText(event.target.value)}
-                className="mt-3 min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
-                placeholder={"P-2026-001\t80\t76\t72\t84\t88.5\nP-2026-002\t88\t80\t78\t86\t90"}
-              />
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={applyPaste}
-                  className="admin-button"
-                >
-                  붙여넣기 반영
-                </button>
-              </div>
-            </div>
+        <div className="admin-filter-bar">
+          <label className="admin-label">
+            시험 템플릿
+            <select
+              disabled={isSaving}
+              value={selectedExamTypeId}
+              onChange={(event) => void handleExamTypeChange(event.target.value)}
+            >
+              {examTypes.map((examType) => (
+                <option key={examType.id} value={examType.id}>
+                  [{formatTrackLabel(examType.studyTrack)}] {examType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="admin-label">
+            시험일
+            <input
+              type="date"
+              disabled={isSaving}
+              value={examDateInput}
+              onChange={(event) => setExamDateInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleApplyDate();
+                }
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            disabled={isSaving || isLoading}
+            onClick={() => void handleApplyDate()}
+            className="admin-button"
+          >
+            시험일 적용
+          </button>
+        </div>
+
+        {/* 아침 모의고사 입력과 같은 접이식 도구로 맞춘다. 매번 쓰는 칸이 아니라 표를 밀어내지 않는다. */}
+        <details className="admin-section">
+          <summary className="admin-label cursor-pointer">엑셀에서 붙여넣기</summary>
+          <div className="mt-3 space-y-3">
+            <p className="admin-help">
+              <span className="font-semibold">수험번호 + 과목 점수</span> 또는 <span className="font-semibold">과목 점수만</span> 탭으로 구분해
+              붙여넣을 수 있습니다.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={(event) => setPasteText(event.target.value)}
+              rows={4}
+              className="font-mono"
+              placeholder={"P-2026-001\t80\t76\t72\t84\t88.5\nP-2026-002\t88\t80\t78\t86\t90"}
+            />
+            <button
+              type="button"
+              onClick={applyPaste}
+              className="admin-button"
+            >
+              붙여넣기 반영
+            </button>
           </div>
-        </section>
+        </details>
 
         <section className="admin-section">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h3 className="admin-section-title">
-                {selectedExamType?.name || "시험"} {appliedExamDate} 성적 시트
-              </h3>
-              <p className="admin-help mt-2 leading-6">
-                선택한 템플릿의 대상 직렬 학생만 표시됩니다.
-              </p>
-            </div>
+          <div className="admin-workspace-toolbar">
+            <h3 className="admin-section-title">
+              {selectedExamType?.name || "시험"} {appliedExamDate} 성적 시트
+            </h3>
 
             {selectedExamType ? (
               <div className="flex flex-wrap gap-2">
@@ -638,12 +601,6 @@ export function ExamScoreManager({
 
           {sheet ? (
             <>
-              <div className="admin-notice mt-5">
-                대상 직렬 <strong>{formatTrackLabel(sheet.studyTrack)}</strong>
-                {" · "}대상 학생 <strong>{rows.length}명</strong>
-                {" · "}현재 시험일 <strong>{sheet.examDate}</strong>
-              </div>
-
               <div className="admin-filter-bar mt-4">
                 <StudentSearchField
                   label="성적 시트 학생 검색"
@@ -679,9 +636,9 @@ export function ExamScoreManager({
                       return (
                         <tr key={row.studentId} className="align-top">
                           <td>{row.studentNumber}</td>
-                          <td>{row.studentName}</td>
+                          <td className="admin-table-name">{row.studentName}</td>
                           {sheet.subjects.map((subject) => (
-                            <td key={subject.id} className="px-3 py-3">
+                            <td key={subject.id}>
                               <input
                                 value={
                                   row.scoreInputs[subject.id] ?? formatScoreInput(row.scores[subject.id])
@@ -710,7 +667,7 @@ export function ExamScoreManager({
                                     };
                                   });
                                 }}
-                                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition"
+                                className="w-24 text-center"
                                 inputMode="decimal"
                                 placeholder="-"
                               />
@@ -729,7 +686,7 @@ export function ExamScoreManager({
                                   notes: event.target.value,
                                 }))
                               }
-                              className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm transition"
+                              className="w-56"
                               placeholder="메모"
                             />
                           </td>
@@ -748,27 +705,20 @@ export function ExamScoreManager({
               </div>
             </>
           ) : (
-            <div className="admin-help mt-6 px-4 py-6">
+            <p className="admin-empty-state mt-6">
               {isLoading
                 ? "성적 시트를 불러오는 중입니다."
                 : "시험 템플릿과 시험일을 선택해 주세요."}
-            </div>
+            </p>
           )}
         </section>
       </div>
 
       {sheet && blockingChangeMessage ? (
-        <div className="fixed bottom-6 left-4 right-4 z-40 mx-auto max-w-5xl">
-          <div className="rounded-lg border border-slate-200 bg-white/95 px-5 py-4">
+        <div className="fixed inset-x-4 bottom-6 z-40 mx-auto max-w-5xl">
+          <div role="status" className="admin-notice admin-notice-warning">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-3">
-                <div>
-                  <h2 className="admin-section-title">{blockingChangeMessage}이 있습니다.</h2>
-                  <p className="admin-help mt-1">
-                    시험 변경, 시험일 변경, 내부 이동, 새로고침 전에 저장하거나 정리해 주세요.
-                  </p>
-                </div>
-              </div>
+              <p>{blockingChangeMessage}이 있습니다. 저장하거나 다시 불러온 뒤 이동해 주세요.</p>
 
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 <button

@@ -1181,8 +1181,9 @@ body {
     border-radius: 0;
   }
 
+  /* 이름 열은 폭과 줄바꿈만 정한다. 정렬은 표 기본값(가운데)을 따른다. */
   .admin-table-name {
-    text-align: left;
+    white-space: normal;
   }
 
   .admin-table-amount {
@@ -2249,11 +2250,11 @@ body:has(.admin-shell) {
 }
 
 /* 행 머리글(th[scope="row"])은 표 머리글이 아니라 이름 열이다.
-   기본 th 규칙의 accent-tint 배경·가운데 정렬을 되돌려 .admin-table-name 과 같게 만든다. */
+   기본 th 규칙의 accent-tint 배경만 되돌린다. 정렬은 다른 셀과 같이 가운데다 —
+   교시·과목명처럼 짧은 이름표가 왼쪽에 붙으면 그 열만 격자에서 어긋나 보인다. */
 .admin-shell tbody th {
   background: var(--admin-surface);
   font-weight: 400;
-  text-align: left;
 }
 
 .admin-shell tbody tr:hover th {
@@ -2314,7 +2315,6 @@ body:has(.admin-shell) {
 .admin-shell td.admin-table-name {
   min-width: 120px;
   max-width: 240px;
-  text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -2323,25 +2323,12 @@ body:has(.admin-shell) {
   text-align: right;
 }
 
-.admin-shell td.admin-table-name > :is(.flex, .inline-flex):not(:has(input, select, textarea)) {
-  justify-content: flex-start;
-}
-
 .admin-shell td.admin-table-amount > :is(.flex, .inline-flex):not(:has(input, select, textarea)) {
   justify-content: flex-end;
 }
 
-.admin-shell td.admin-table-name > .flex-col:not(:has(input, select, textarea)) {
-  align-items: flex-start;
-}
-
 .admin-shell td.admin-table-amount > .flex-col:not(:has(input, select, textarea)) {
   align-items: flex-end;
-}
-
-.admin-shell td.admin-table-name > :is(div, p, button, a) {
-  margin-inline: 0;
-  text-align: left;
 }
 
 .admin-shell td.admin-table-amount > :is(div, p, button, a) {
@@ -2987,6 +2974,16 @@ body:has(.admin-shell) {
   .admin-dashboard-metric-value {
     margin-top: 4px;
     font-size: 20px;
+  }
+
+  /* 상자였을 때는 값을 오른쪽에 붙여 자릿수를 맞췄다. 상자를 걷어낸 뒤에도 그대로 두면
+     라벨은 왼쪽, 값은 오른쪽으로 갈라져 칸마다 글자가 어긋나 보인다.
+     §2.5 의 "라벨 위, 값 아래" 는 학생 포털 요약과 같은 왼쪽 정렬이다. */
+  .admin-metric-box-value,
+  .admin-shell .admin-metric-strip > :is(article, div) > p:nth-child(2),
+  .admin-shell .admin-metric-strip > :is(article, div) > dd {
+    margin-top: 4px;
+    text-align: left;
   }
 
   /* --- 간격 (§2.8) --- */

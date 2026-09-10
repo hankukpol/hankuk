@@ -23,11 +23,17 @@ type StudentPointsPageProps = {
   };
 };
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR", {
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("ko-KR", {
     timeZone: "Asia/Seoul",
     month: "numeric",
     day: "numeric",
+  });
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString("ko-KR", {
+    timeZone: "Asia/Seoul",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -101,23 +107,31 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
             icon={<ShieldAlert className="h-5 w-5" />}
           />
 
+          {/* 640px 미만에서는 일시·점수·사유 셋만 남긴다. 구분과 기록자는 사유 아래로
+              접는다 — 다섯 열은 폰 화면 밖으로 나가 사유가 잘린 채 보였다. */}
           {records.length > 0 ? (
             <div className="admin-table-frame mt-4">
-              <table>
+              <table className="w-full">
                 <thead>
                   <tr>
                     <th>적용 일시</th>
-                    <th>구분</th>
+                    <th className="hidden sm:table-cell">구분</th>
                     <th>점수</th>
-                    <th>부여 사유</th>
-                    <th>기록자</th>
+                    <th className="admin-table-name">부여 사유</th>
+                    <th className="hidden sm:table-cell">기록자</th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.map((record) => (
                     <tr key={record.id}>
-                      <td>{formatDateTime(record.date)}</td>
                       <td>
+                        {formatDate(record.date)}
+                        <div className="admin-help mt-0.5 sm:hidden">
+                          {formatTime(record.date)}
+                        </div>
+                        <span className="hidden sm:inline"> {formatTime(record.date)}</span>
+                      </td>
+                      <td className="hidden sm:table-cell">
                         <PointCategoryBadge category={record.category} />
                       </td>
                       <td>
@@ -128,8 +142,11 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
                         <p className="admin-help">
                           {record.notes || "기록 메모가 없습니다."}
                         </p>
+                        <p className="admin-help mt-1 sm:hidden">
+                          {record.recordedByName}
+                        </p>
                       </td>
-                      <td>{record.recordedByName}</td>
+                      <td className="hidden sm:table-cell">{record.recordedByName}</td>
                     </tr>
                   ))}
                 </tbody>

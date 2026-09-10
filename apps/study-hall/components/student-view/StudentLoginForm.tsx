@@ -1,8 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
+
+import {
+  forgetStudentLogin,
+  readStudentLogin,
+  rememberStudentLogin,
+} from "@/lib/login-storage";
 
 type StudentLoginFormProps = {
   divisionSlug: string;
@@ -23,9 +29,10 @@ export function StudentLoginForm({
   const [name, setName] = useState(sampleLogin?.name ?? "");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const autoTried = useRef(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const submit = useCallback(async (number: string, studentName: string, keep: boolean) => {
     setIsSubmitting(true);
     setError("");
 
@@ -37,8 +44,8 @@ export function StudentLoginForm({
         },
         body: JSON.stringify({
           division: divisionSlug,
-          studentNumber,
-          name,
+          studentNumber: number,
+          name: studentName,
         }),
       });
 
@@ -46,8 +53,14 @@ export function StudentLoginForm({
 
       if (!response.ok) {
         setError(data.error ?? "학생 로그인에 실패했습니다.");
+        // 저장해 둔 값으로 실패했으면 지운다. 이름이 바뀌었거나 명단에서 빠진 경우이고,
+        // 남겨 두면 열 때마다 같은 오류만 본다.
+        forgetStudentLogin(divisionSlug);
         return;
       }
+
+      if (keep) rememberStudentLogin(divisionSlug, number, studentName);
+      else forgetStudentLogin(divisionSlug);
 
       router.push(`/${divisionSlug}/student`);
       router.refresh();
@@ -56,7 +69,24 @@ export function StudentLoginForm({
     } finally {
       setIsSubmitting(false);
     }
+  }, [divisionSlug, router]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submit(studentNumber, name, remember);
   }
+
+  // 저장해 둔 학생이 있으면 열자마자 들어간다. 한 번만 시도하고, 실패하면 저장을 지운다.
+  useEffect(() => {
+    if (autoTried.current) return;
+    autoTried.current = true;
+    const saved = readStudentLogin(divisionSlug);
+    if (!saved) return;
+    setStudentNumber(saved.studentNumber);
+    setName(saved.name);
+    setRemember(true);
+    void submit(saved.studentNumber, saved.name, true);
+  }, [divisionSlug, submit]);
 
   return (
     /* DESIGN.md 5.1 — 운영 계정 로그인과 같은 카드 규격(최대 480px)을 쓴다. */
@@ -94,6 +124,22 @@ export function StudentLoginForm({
           </label>
 
           {error ? <p className="admin-notice admin-notice-danger">{error}</p> : null}
+
+          {/* .admin-field 는 세로 배치라 체크박스 줄에는 쓰지 않는다. */}
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(event) => {
+                setRemember(event.target.checked);
+                if (!event.target.checked) forgetStudentLogin(divisionSlug);
+              }}
+            />
+            <span className="admin-label">이 기기에서 자동 로그인</span>
+          </label>
+          <p className="admin-help -mt-2">
+            수험번호와 이름을 이 기기에만 저장해 다음부터 바로 들어갑니다. 공용 기기에서는 켜지 마세요.
+          </p>
 
           <button
             type="submit"

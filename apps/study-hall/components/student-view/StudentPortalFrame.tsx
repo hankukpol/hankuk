@@ -78,8 +78,10 @@ export function StudentPortalFrame({
                 pointsEnabled={pointsEnabled}
                 examsEnabled={examsEnabled}
               />
-              {/* 모바일은 메뉴 다음에 신원 요약을 둔다. 데스크톱 순서는 유지한다. */}
-              <dl className="admin-portal-summary admin-portal-summary-3">
+              {/* 신원 요약은 좁은 화면에서 숨긴다. 학생이 자기 수험번호·좌석·직렬을 매번
+                  다시 읽을 일은 없는데, 여섯 칸이 화면 위쪽을 차지해 정작 보러 온 출결·성적이
+                  아래로 밀린다. 데스크톱은 자리가 남으므로 그대로 둔다. */}
+              <dl className="admin-portal-summary admin-portal-summary-3 max-md:hidden">
                 <div>
                   <dt>수험번호</dt>
                   <dd>{student.studentNumber}</dd>

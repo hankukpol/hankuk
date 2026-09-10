@@ -137,28 +137,33 @@ export function PhoneCheckTable({
 
   return (
     <div className="admin-table-frame overflow-x-auto">
-      <table className="min-w-[1100px] w-full">
+      <table /* 좁은 화면에서는 접은 열 몫까지 폭을 잡지 않는다. 1100px 을 그대로 두면
+             열을 세 개로 줄여도 표가 그만큼 넓어 계속 끌어야 한다. */
+          className="w-full sm:min-w-[1100px]">
         <thead>
           <tr>
-            <th className="admin-table-sticky-col min-w-[140px] admin-table-name">
+            {/* 좁은 화면에서는 눌러야 하는 «휴대폰 상태» 가 화면 안에 들어와야 한다.
+                수험번호·직렬·출석 상태·대여 메모는 학생 칸으로 접고, 좌석·학생 폭도 줄인다.
+                sm 이상에서는 예전 그대로 각자 열을 갖는다. */}
+            <th className="admin-table-sticky-col min-w-[44px] sm:min-w-[140px] admin-table-name">
               좌석
             </th>
-            <th className="min-w-[160px] admin-table-name">
+            <th className="min-w-[84px] sm:min-w-[160px] admin-table-name">
               학생
             </th>
-            <th className="min-w-[120px] admin-table-name">
+            <th className="hidden sm:table-cell min-w-[120px] admin-table-name">
               수험번호
             </th>
-            <th className="min-w-[120px] admin-table-name">
+            <th className="hidden sm:table-cell min-w-[120px] admin-table-name">
               직렬
             </th>
-            <th className="min-w-[130px] admin-table-name">
+            <th className="hidden sm:table-cell min-w-[130px] admin-table-name">
               출석 상태
             </th>
-            <th className="min-w-[280px] admin-table-name">
+            <th className="min-w-[168px] sm:min-w-[280px] admin-table-name">
               휴대폰 상태
             </th>
-            <th className="min-w-[240px] admin-table-name">
+            <th className="hidden sm:table-cell min-w-[240px] admin-table-name">
               대여 메모
             </th>
           </tr>
@@ -178,7 +183,7 @@ export function PhoneCheckTable({
               >
                 <td className="admin-table-sticky-col">
                   <div className="font-semibold text-slate-900">{student.seatLabel ?? "미배정"}</div>
-                  <div className="admin-help mt-1">{student.studyRoomName ?? "좌석 미배정"}</div>
+                  <div className="admin-help mt-1 hidden sm:block">{student.studyRoomName ?? "좌석 미배정"}</div>
                 </td>
                 <td>
                   <button
@@ -199,14 +204,22 @@ export function PhoneCheckTable({
                           : "저장 실패"}
                     </span>
                   ) : null}
+                  {/* 좁은 화면에서 접은 열을 이름 아래로 되돌린다. 숨기는 것이지 버리는 것이 아니다. */}
+                  <div className="admin-help mt-1 sm:hidden">
+                    {student.studentNumber}
+                    {student.studyTrack ? ` · ${getStudyTrackShortLabel(student.studyTrack)}` : ""}
+                  </div>
+                  <div className="admin-help sm:hidden">
+                    출결 {attendanceIntegrationEnabled ? getAttendanceStatusLabel(attendanceCell?.status) : "연동 없음"}
+                  </div>
                 </td>
-                <td>
+                <td className="hidden sm:table-cell">
                   {student.studentNumber}
                 </td>
-                <td>
+                <td className="hidden sm:table-cell">
                   {getStudyTrackShortLabel(student.studyTrack)}
                 </td>
-                <td>
+                <td className="hidden sm:table-cell">
                   <span
                     className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                   >
@@ -244,7 +257,7 @@ export function PhoneCheckTable({
                     </span>
                   )}
                 </td>
-                <td>
+                <td className="hidden sm:table-cell">
                   {isCheckable && status === "RENTED" ? (
                     <input
                       type="text"

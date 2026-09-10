@@ -8,7 +8,7 @@ import { getExamImportParseReason } from '../../lib/exam-import-meta';
 const fixture=(name:string)=>readFileSync(path.join(process.cwd(),'tests/fixtures/exam-import',name+'.xls'));
 const regular=()=>[fixture('regular-score'),fixture('regular-moon')] as const;
 const parse=()=>parseExamImportPair(...regular());
-test('registered number must also match a provided name; failures never disclose source identity', () => {
+test('수험번호만으로 매칭한다 — 파일의 이름은 읽지도 저장하지도 않는다', () => {
  const [s,m]=regular();
  const named=(name:string)=>mutate(s,w=>{
   for(const sheet of ['Score','Errata']) {
@@ -17,18 +17,13 @@ test('registered number must also match a provided name; failures never disclose
    ws[XLSX.utils.encode_cell({r:1,c:col})]={t:'s',v:name};
   }
  });
- const roster=[{studentNumber:'90001',name:'검증학생'}];
- const result=parseExamImportPair(named('검증학생'),m,roster);
- assert.equal(result.score[0].studentNumber,'90001');
- assert.ok(!JSON.stringify(result).includes('검증학생'));
- assert.throws(()=>parseExamImportPair(named('다른학생'),m,roster),(e:unknown)=>{
-  assert.ok(e instanceof ExamImportParseError);assert.equal(e.code,'STUDENT_IDENTITY_MISMATCH');
-  assert.ok(!e.message.includes('다른학생'));assert.ok(!e.message.includes('90001'));return true;
- });
- // 이름 칸이 빈 것은 불일치가 아니다. OMR 출력은 성명을 자주 비우고(이 학원 정기
- // 채점표는 316행 중 14행), 그걸 막으면 그런 학생 한 명 때문에 파일 전체가 거부된다.
- assert.equal(parseExamImportPair(named(''),m,roster).score[0].studentNumber,'90001');
- assert.doesNotThrow(()=>parseExamImportPair(named('외부학생'),m,[]));
+ // OMR 에 적힌 이름이 명단과 달라도(«이볌수»/«이범수») 막지 않는다. 한 명 때문에
+ // 나머지 학생의 성적이 통째로 들어가지 못하는 쪽이 나쁘다.
+ for (const name of ['검증학생','전혀다른이름','']) {
+  const result = parseExamImportPair(named(name), m);
+  assert.equal(result.score[0].studentNumber, '90001');
+  if (name) assert.ok(!JSON.stringify(result).includes(name), '파일의 이름은 결과에 남지 않는다');
+ }
 });
 function mutate(buffer:Buffer, edit:(wb:XLSX.WorkBook)=>void):Buffer {const wb=XLSX.read(buffer,{type:'buffer'}); edit(wb);return XLSX.write(wb,{type:'buffer',bookType:'xlsx'});}
 // 메시지는 이유를 말하되 파일 안의 값(이름·생년월일 등)은 절대 담지 않는다.

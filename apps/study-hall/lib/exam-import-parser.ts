@@ -59,25 +59,10 @@ export function mapErrataBlocksToSubjects(blocks: Pick<RawErrataBlock, "blockInd
   });
   if (used.size !== names.length) fail("INCOMPLETE_BLOCK_MAPPING"); return mapped;
 }
-export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer, roster: ReadonlyArray<{ studentNumber: string; name: string }> = []): ParsedExamImport {
-  // Identity checks stay in memory; neither names nor birth dates enter parsed/stored data.
-  const registered = new Map(roster.map(student => [student.studentNumber, student.name.trim().normalize('NFC')]));
-  const nameColumn = (row: unknown[]) => {
-    const indexes = row.flatMap((value, index) => ['성명', '이름'].includes(str(value)) ? [index] : []);
-    if (indexes.length > 1) fail('DUPLICATE_OR_MISSING_HEADER', '성명 열 중복');
-    return indexes[0];
-  };
-  const checkIdentity = (row: unknown[], numberIndex: number, nameIndex: number | undefined, source: string, rowNumber: number) => {
-    const expected = registered.get(str(row[numberIndex]));
-    if (expected === undefined || nameIndex === undefined) return;
-    // 파일이 이름을 주지 않은 것과 이름이 다른 것은 다른 일이다. OMR 출력은 성명을
-    // 자주 비운다 — 이 학원의 정기 채점표는 수험번호가 있는 316행 중 14행이 그렇다.
-    // 빈 칸을 불일치로 보면 그런 학생이 한 명만 등록돼 있어도 파일 전체가 거부된다.
-    // 대조할 이름이 양쪽에 다 있을 때만 판정한다.
-    const found = str(row[nameIndex]).normalize('NFC');
-    if (!found || !expected) return;
-    if (found !== expected) fail('STUDENT_IDENTITY_MISMATCH', `${source} ${rowNumber}행`);
-  };
+// 매칭 기준은 수험번호 하나다. 이름은 대조하지 않는다 — OMR 에 적힌 이름은 학생이 손으로
+// 쓴 것이라 명단과 한 글자씩 어긋나는 일이 흔하고(«이볌수» / «이범수»), 그걸로 파일을
+// 막으면 나머지 200명의 성적이 들어가지 못한다. 파일 안의 이름은 읽지도 저장하지도 않는다.
+export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer): ParsedExamImport {
   try {
     const grading = workbook(scoreBuffer), analysis = workbook(moonBuffer);
     const md = rows(analysis, "Moon"); const mh = header(md, ["문항번호", "정답", "과목명"]);
@@ -100,15 +85,12 @@ export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer, ros
     const examDate = str(metadata("시험일자")); if (!/^\d{4}-\d{2}-\d{2}$/.test(examDate) || !Number.isFinite(Date.parse(examDate)) || new Date(examDate).toISOString().slice(0,10)!==examDate) fail("EXAM_DATE");
     const cohortSize = number(str(metadata("응시인원")).replace(/\s*명$/, "")); if (cohortSize == null || !Number.isInteger(cohortSize) || cohortSize<1 || cohortSize>EXAM_IMPORT_LIMITS.students) fail("COHORT_SIZE");
     const sd=rows(grading,"Score"), sh=header(sd,["수험번호","지원지역"]), sn=col(sd[sh],"수험번호"), sr=col(sd[sh],"지원지역");
-    const scoreName = nameColumn(sd[sh]);
-    sd.slice(sh + 1).forEach((row, index) => checkIdentity(row, sn, scoreName, '채점표', sh + index + 2));
     const ignored = new Set(["수험번호","성명","이름","응시분야","지원지역","생년월일"]);
     const scoreColumns=sd[sh].flatMap((v,i)=>str(v) && !ignored.has(str(v)) ? [{name:label(v),index:i}] : []);
     if (!scoreColumns.length || new Set(scoreColumns.map(c=>c.name)).size!==scoreColumns.length) fail("SCORE_HEADERS");
     const score: RawScoreRow[]=[];
     sd.slice(sh+1).forEach((row,i)=>{ if(row.every(v=>!str(v))) return; const scores: Record<string,number|null>={}; for(const c of scoreColumns) scores[c.name]=number(row[c.index]); const region=str(row[sr]); if(region.length>40) fail("REGION"); score.push({studentNumber:studentNumber(row[sn]),sourceRow:sh+i+2,region:region||null,scores}); });
     const ed=rows(grading,"Errata"), eh=header(ed,["수험번호"]), en=col(ed[eh],"수험번호");
-    const errataName = nameColumn(ed[eh]);
     const columns:number[][]=[];
     ed[eh].forEach((v,i)=>{const s=str(v); if(!/^\d+$/.test(s)) return; const n=Number(s); if(n===1) columns.push([]); if(!columns.length || n!==columns[columns.length-1].length+1) fail("BLOCK_SEQUENCE"); columns[columns.length-1].push(i);});
     if(!columns.length) fail("MISSING_BLOCKS");
@@ -116,7 +98,6 @@ export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer, ros
     for(let r=eh+1;r<ed.length;r+=3) {
       if(ed.slice(r).every(row=>row.every(v=>!str(v)))) break;
       if(!ed[r+1] || !ed[r+2]) fail("INCOMPLETE_STUDENT_BLOCK");
-      checkIdentity(ed[r], en, errataName, '오답표', r + 1);
       const blocks:RawErrataBlock[]=columns.map((cs,blockIndex)=>{
         const active=cs.filter(c=>str(ed[r][c]));
         // 정답이 하나도 없는 블록은 아래 filter 가 통째로 버린다. OMR 템플릿이 실제

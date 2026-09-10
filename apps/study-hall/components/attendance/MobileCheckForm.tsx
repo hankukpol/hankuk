@@ -540,6 +540,20 @@ export function MobileCheckForm({
         />
       ) : null}
 
+      {/* DESIGN.md 5.5 — 교시 이동은 필터가 아니라 탐색이다. 휴대폰 체크 화면과 같은
+          가로 탭으로 두어, 접기를 열어 select 를 고르지 않고 바로 옮길 수 있게 한다. */}
+      {periods.length > 0 ? (
+        <AdminTabs
+          items={periods.map((period) => ({ id: period.id, label: period.name }))}
+          activeId={selectedPeriodId}
+          onChange={(id: string) => { setPickedByHand(true); setSelectedPeriodId(id); }}
+          label="출석 확인 교시"
+          idPrefix="attendance-period"
+          variant="secondary"
+          scrollable
+        />
+      ) : null}
+
       <div className="sticky z-20 -mx-1 bg-admin-surface px-1 pb-3" style={{ top: `${headerHeight}px` }}>
         <section className="admin-check-summary overflow-hidden rounded-lg border border-admin-line bg-white">
           {/* 항상 표시되는 컴팩트 헤더 바 */}

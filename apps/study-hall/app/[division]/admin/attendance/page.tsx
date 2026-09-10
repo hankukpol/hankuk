@@ -10,7 +10,6 @@ import {
   getAttendanceStats,
   type AttendanceSnapshot,
 } from "@/lib/services/attendance.service";
-import { getCurrentPeriod } from "@/lib/services/period.service";
 import { selectPeriodForCheck, kstMinutesOfDay } from "@/lib/attendance-meta";
 import {
   filterOperationalStudyRooms,
@@ -49,10 +48,9 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
   await redirectIfDivisionFeatureDisabled(params.division, "attendanceManagement");
 
   const today = getTodayInKst();
-  const [snapshot, stats, currentPeriod, allSeatRooms, policy, featureSettings] = await Promise.all([
+  const [snapshot, stats, allSeatRooms, policy, featureSettings] = await Promise.all([
     getAttendanceSnapshot(params.division, today),
     getAttendanceStats(params.division, today, today),
-    getCurrentPeriod(params.division),
     listStudyRooms(params.division),
     getManagementPolicy(params.division),
     getDivisionFeatureSettings(params.division),

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { CalendarCheck, GraduationCap, ScrollText, Star, Trophy } from "lucide-react";
+import { CalendarCheck, GraduationCap, ScrollText, Star, Trophy, UserRound } from "lucide-react";
 
 type StudentPortalTabsProps = {
   divisionSlug: string;
@@ -11,7 +11,8 @@ type StudentPortalTabsProps = {
     | "attendance"
     | "study-ranking"
     | "points"
-    | "exams";
+    | "exams"
+    | "profile";
   policyEnabled?: boolean;
   attendanceEnabled?: boolean;
   pointsEnabled?: boolean;
@@ -24,6 +25,8 @@ const items = [
   { key: "study-ranking", label: "학습 랭킹", href: "study-ranking", Icon: Trophy },
   { key: "points", label: "상벌점", href: "points", Icon: Star },
   { key: "exams", label: "성적", href: "exams", Icon: GraduationCap },
+  // 신원 정보는 화면마다 붙어 있지 않고 이 항목 하나로 들어간다.
+  { key: "profile", label: "내 정보", href: "profile", Icon: UserRound },
 ] as const;
 
 export function StudentPortalTabs({

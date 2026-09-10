@@ -1479,18 +1479,22 @@ export async function createStudent(divisionSlug: string, input: StudentUpsertIn
 export type BulkStudentInputRow = {
   studentNumber: string;
   name: string;
+  phone?: string | null;
+  /** 좌석 라벨(예: "1", "A-01"). 비어 있으면 배정하지 않는다. */
+  seatLabel?: string | null;
 };
 
 export type BulkStudentResultItem = {
   rowNumber: number;
   studentNumber: string;
   name: string;
-  result: "CREATED" | "DUPLICATE" | "FAILED";
+  result: "CREATED" | "UPDATED" | "DUPLICATE" | "FAILED";
   message: string | null;
 };
 
 export type BulkStudentResult = {
   createdCount: number;
+  updatedCount: number;
   duplicateCount: number;
   failedCount: number;
   items: BulkStudentResultItem[];
@@ -1509,6 +1513,7 @@ export async function createStudentsBulk(
   divisionSlug: string,
   rows: BulkStudentInputRow[],
   studyTrack?: string | null,
+  options?: { overwriteExisting?: boolean },
 ): Promise<BulkStudentResult> {
   if (rows.length === 0) {
     throw badRequest("등록할 학생이 없습니다.");
@@ -1520,8 +1525,39 @@ export async function createStudentsBulk(
 
   const existing = await listStudents(divisionSlug);
   const takenNumbers = new Set(existing.map((student) => student.studentNumber));
+  const existingByNumber = new Map(existing.map((student) => [student.studentNumber, student]));
+  const overwriteExisting = options?.overwriteExisting ?? false;
+
+  // 좌석은 라벨로 들어온다. 같은 라벨이 강의실 두 곳에 있으면 어느 쪽인지 고를 수 없으므로
+  // 그 줄만 실패로 남기고 나머지는 진행한다 — 넘겨짚어 배정하면 엉뚱한 자리에 앉는다.
+  const wantsSeat = rows.some((row) => normalizeText(row.seatLabel ?? "") !== "");
+  const { listSeatOptions } = wantsSeat
+    ? await import("@/lib/services/seat.service")
+    : { listSeatOptions: null };
+  const seatsByLabel = new Map<string, { id: string; studyRoomName: string; assignedStudentId: string | null }[]>();
+  if (listSeatOptions) {
+    for (const seat of await listSeatOptions(divisionSlug, { activeOnly: true })) {
+      const key = seat.label.trim();
+      if (!key) continue;
+      seatsByLabel.set(key, [...(seatsByLabel.get(key) ?? []), seat]);
+    }
+  }
+  /** 라벨 하나를 좌석 하나로 좁힌다. 못 좁히면 이유를 문장으로 돌려준다. */
+  const resolveSeatLabel = (label: string, forStudentId?: string) => {
+    const found = seatsByLabel.get(label) ?? [];
+    if (found.length === 0) return { error: `좌석 «${label}» 을 찾을 수 없습니다.` };
+    if (found.length > 1) {
+      return { error: `좌석 «${label}» 이 ${found.map((s) => s.studyRoomName).join(", ")} 에 모두 있습니다. 강의실을 하나로 정해 주세요.` };
+    }
+    const [seat] = found;
+    if (seat.assignedStudentId && seat.assignedStudentId !== forStudentId) {
+      return { error: `좌석 «${label}» 은 이미 다른 학생이 쓰고 있습니다.` };
+    }
+    return { seatId: seat.id };
+  };
   const items: BulkStudentResultItem[] = [];
   let createdCount = 0;
+  let updatedCount = 0;
   let duplicateCount = 0;
   let failedCount = 0;
 
@@ -1529,27 +1565,77 @@ export async function createStudentsBulk(
     const row = rows[index];
     const studentNumber = normalizeText(row.studentNumber);
     const name = normalizeText(row.name);
+    const phone = normalizeOptionalText(row.phone ?? null);
+    const seatLabel = normalizeText(row.seatLabel ?? "");
     const rowNumber = index + 1;
+    const already = existingByNumber.get(studentNumber);
+    const seat = seatLabel ? resolveSeatLabel(seatLabel, already?.id) : null;
 
-    // 이미 등록된 번호와 이번 요청 안에서 중복된 번호를 같은 방식으로 건너뛴다.
+    if (seat?.error) {
+      failedCount += 1;
+      items.push({ rowNumber, studentNumber, name, result: "FAILED", message: seat.error });
+      continue;
+    }
+
+    // 이미 등록된 번호와 이번 요청 안에서 중복된 번호를 같은 방식으로 다룬다.
     if (takenNumbers.has(studentNumber)) {
-      duplicateCount += 1;
-      items.push({
-        rowNumber,
-        studentNumber,
-        name,
-        result: "DUPLICATE",
-        message: "이미 등록된 수험번호입니다.",
-      });
+      // 덮어쓰기가 아니거나 같은 붙여넣기 안에서 두 번 나온 줄이면 건너뛴다.
+      // 두 번째 줄까지 반영하면 어느 쪽이 이겼는지 결과 표로 알 수 없다.
+      if (!overwriteExisting || !already) {
+        duplicateCount += 1;
+        items.push({
+          rowNumber,
+          studentNumber,
+          name,
+          result: "DUPLICATE",
+          message: overwriteExisting
+            ? "붙여넣은 목록 안에서 중복된 수험번호입니다."
+            : "이미 등록된 수험번호입니다.",
+        });
+        continue;
+      }
+
+      try {
+        // 빈 연락처는 기존 값을 지우지 않는다. 연락처 없이 만든 명단을 다시 넣어
+        // 이름만 고치는 경우가 있고, 그때 이미 받아 둔 번호가 사라지면 안 된다.
+        await updateStudent(divisionSlug, already.id, {
+          ...already,
+          name,
+          studentNumber,
+          phone: phone ?? already.phone ?? null,
+          studyTrack: studyTrack ?? already.studyTrack ?? null,
+          seatId: seat?.seatId ?? already.seatId ?? null,
+        });
+        if (seat?.seatId) {
+          seatsByLabel.set(seatLabel, (seatsByLabel.get(seatLabel) ?? []).map((s) => ({ ...s, assignedStudentId: already.id })));
+        }
+        existingByNumber.set(studentNumber, { ...already, name, phone: phone ?? already.phone ?? null });
+        takenNumbers.add(studentNumber);
+        updatedCount += 1;
+        items.push({ rowNumber, studentNumber, name, result: "UPDATED", message: null });
+      } catch (error) {
+        failedCount += 1;
+        items.push({
+          rowNumber,
+          studentNumber,
+          name,
+          result: "FAILED",
+          message: error instanceof Error ? error.message : "수정에 실패했습니다.",
+        });
+      }
       continue;
     }
 
     try {
       await createStudentRecord(
         divisionSlug,
-        { name, studentNumber, studyTrack: studyTrack ?? null },
+        { name, studentNumber, phone, seatId: seat?.seatId ?? null, studyTrack: studyTrack ?? null },
         { skipRevalidate: true },
       );
+      // 같은 붙여넣기 안에서 같은 좌석을 두 번 쓰지 못하게 곧바로 찼다고 표시한다.
+      if (seat?.seatId) {
+        seatsByLabel.set(seatLabel, (seatsByLabel.get(seatLabel) ?? []).map((s) => ({ ...s, assignedStudentId: "just-assigned" })));
+      }
       takenNumbers.add(studentNumber);
       createdCount += 1;
       items.push({ rowNumber, studentNumber, name, result: "CREATED", message: null });
@@ -1565,11 +1651,11 @@ export async function createStudentsBulk(
     }
   }
 
-  if (createdCount > 0) {
+  if (createdCount > 0 || updatedCount > 0) {
     revalidateDivisionOperationalViews(divisionSlug);
   }
 
-  return { createdCount, duplicateCount, failedCount, items };
+  return { createdCount, updatedCount, duplicateCount, failedCount, items };
 }
 
 export async function updateStudent(
@@ -1877,59 +1963,139 @@ export async function withdrawStudent(
   return getStudentDetail(divisionSlug, studentId);
 }
 
-export async function deleteStudent(divisionSlug: string, studentId: string) {
+/** 삭제 요청의 결과. 화면이 사실대로 말할 수 있도록 어느 쪽이었는지 돌려준다. */
+export type DeleteStudentResult = {
+  mode: "DELETED" | "WITHDRAWN";
+  /** 퇴실로 돌아간 경우, 남아 있어서 지우지 않은 기록의 종류와 건수. */
+  keptRecords: { label: string; count: number }[];
+};
+
+/**
+ * 기록이 없으면 학생을 실제로 지우고, 있으면 퇴실 처리한다.
+ *
+ * 잘못 등록한 학생은 실제로 사라져야 한다 — 명단을 붙여넣다 오타가 나면 그 줄을 되돌릴
+ * 방법이 있어야 하고, 지금까지는 "삭제했습니다" 라고 말한 뒤 퇴실 상태로 목록에 남았다.
+ *
+ * 반대로 출결·상벌점·성적이 쌓인 학생을 지우면 그 기록들이 함께 사라진다. 학생 한 명을
+ * 정리하려다 그 반의 출석 통계가 바뀌는 일은 없어야 하므로, 그 경우에는 퇴실로 남기고
+ * 무엇이 남았는지 돌려준다. 화면은 그 값으로 실제로 일어난 일을 말한다.
+ */
+export async function deleteStudent(
+  divisionSlug: string,
+  studentId: string,
+): Promise<DeleteStudentResult> {
+  const withdrawnNote = "관리자 삭제 요청으로 퇴실 처리됨";
+
   if (isMockMode()) {
-    await updateMockState(async (state) => {
+    return updateMockState(async (state) => {
       const current = state.studentsByDivision[divisionSlug] ?? [];
       const target = current.find((student) => student.id === studentId);
       if (!target) {
         throw notFound("학생 정보를 찾을 수 없습니다.");
       }
+
+      const slices: [string, unknown[] | undefined][] = [
+        ["출결", state.attendanceByDivision[divisionSlug]],
+        ["상벌점", state.pointRecordsByDivision[divisionSlug]],
+        ["외출·휴가", state.leavePermissionsByDivision[divisionSlug]],
+        ["면담", state.interviewsByDivision[divisionSlug]],
+        ["수납", state.paymentRecordsByDivision[divisionSlug]],
+        ["정기 성적", state.examScoresByDivision[divisionSlug]],
+        ["아침 성적", state.morningExamScoresByDivision[divisionSlug]],
+        ["휴대폰", state.phoneSubmissionsByDivision[divisionSlug]],
+      ];
+      const keptRecords = slices
+        .map(([label, rows]) => ({
+          label,
+          count: (rows ?? []).filter((row) => (row as { studentId?: string }).studentId === studentId).length,
+        }))
+        .filter((entry) => entry.count > 0);
+
+      if (keptRecords.length === 0) {
+        state.studentsByDivision[divisionSlug] = current.filter((student) => student.id !== studentId);
+        return { mode: "DELETED" as const, keptRecords };
+      }
+
       state.studentsByDivision[divisionSlug] = current.map((student) =>
         student.id === studentId
           ? {
               ...student,
               status: "WITHDRAWN",
               withdrawnAt: new Date().toISOString(),
-              withdrawnNote: student.withdrawnNote ?? "관리자 삭제 요청으로 퇴실 처리됨",
+              withdrawnNote: student.withdrawnNote ?? withdrawnNote,
+              // 목업 학생은 seatLabel 을 따로 들고 있고, 좌석 해석기가 seatId 가 비면
+              // 그 라벨로 자리를 다시 찾는다. 둘 다 비워야 자리가 실제로 난다.
               seatId: null,
+              seatLabel: null,
               updatedAt: new Date().toISOString(),
             }
           : student,
       );
+      return { mode: "WITHDRAWN" as const, keptRecords };
     });
-    return;
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
   const prisma = await getPrismaClient();
   const student = await prisma.student.findFirst({
-    where: {
-      id: studentId,
-      divisionId: division.id,
+    where: { id: studentId, divisionId: division.id },
+    select: {
+      id: true,
+      _count: {
+        select: {
+          attendanceRecords: true,
+          pointRecords: true,
+          leavePermissions: true,
+          interviews: true,
+          payments: true,
+          examScores: true,
+          morningExamScores: true,
+          phoneSubmissions: true,
+          warningNotices: true,
+          scoreTargets: true,
+        },
+      },
     },
-    select: { id: true },
   });
 
   if (!student) {
     throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
+  const labels: Record<string, string> = {
+    attendanceRecords: "출결",
+    pointRecords: "상벌점",
+    leavePermissions: "외출·휴가",
+    interviews: "면담",
+    payments: "수납",
+    examScores: "정기 성적",
+    morningExamScores: "아침 성적",
+    phoneSubmissions: "휴대폰",
+    warningNotices: "경고 통지",
+    scoreTargets: "목표 점수",
+  };
+  const keptRecords = Object.entries(student._count)
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => ({ label: labels[key] ?? key, count }));
+
+  if (keptRecords.length === 0) {
+    await prisma.student.delete({ where: { id: studentId }, select: { id: true } });
+    revalidateDivisionOperationalViews(divisionSlug, { studentId });
+    return { mode: "DELETED", keptRecords };
+  }
+
   await prisma.student.update({
-    where: {
-      id: studentId,
-    },
+    where: { id: studentId },
     data: {
       status: "WITHDRAWN",
       withdrawnAt: new Date(),
-      withdrawnNote: "관리자 삭제 요청으로 퇴실 처리됨",
+      withdrawnNote,
       seatId: null,
     },
-    select: {
-      id: true,
-    },
+    select: { id: true },
   });
   revalidateDivisionOperationalViews(divisionSlug, { studentId });
+  return { mode: "WITHDRAWN", keptRecords };
 }
 
 export async function reactivateStudent(divisionSlug: string, studentId: string) {

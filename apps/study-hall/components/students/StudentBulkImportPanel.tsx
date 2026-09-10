@@ -27,6 +27,7 @@ type BulkResultItem = {
 
 type BulkResult = {
   createdCount: number;
+  updatedCount: number;
   duplicateCount: number;
   failedCount: number;
   items: BulkResultItem[];
@@ -53,6 +54,9 @@ export function StudentBulkImportPanel({
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [studyTrack, setStudyTrack] = useState(() => studyTrackOptions[0] ?? "");
+  // 이미 등록된 학생을 건너뛰지 않고 이름·연락처·좌석을 다시 채운다. 연락처 없이 만든
+  // 명단에 뒤늦게 번호를 채워 넣는 것이 실제로 가장 흔한 경우다.
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
 
@@ -153,9 +157,12 @@ export function StudentBulkImportPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studyTrack: studyTrack || null,
+          overwriteExisting,
           rows: selectedRows.map((row) => ({
             studentNumber: row.studentNumber,
             name: row.name,
+            phone: row.phone || null,
+            seatLabel: row.seatLabel || null,
           })),
         }),
       });
@@ -166,7 +173,10 @@ export function StudentBulkImportPanel({
       }
 
       setResult(data as BulkResult);
-      toast.success(`${data.createdCount}명을 등록했습니다.`);
+      const parts = [`${data.createdCount}명 등록`];
+      if (data.updatedCount > 0) parts.push(`${data.updatedCount}명 수정`);
+      if (data.failedCount > 0) parts.push(`${data.failedCount}명 실패`);
+      toast.success(parts.join(" · "));
       onImported();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "학생 일괄 등록에 실패했습니다.");
@@ -207,7 +217,8 @@ export function StudentBulkImportPanel({
       <div className="space-y-2 border-t border-slate-100 pt-4">
         <p className="admin-label">엑셀에서 붙여넣기</p>
         <p className="admin-help">
-          엑셀에서 <strong>수험번호</strong>와 <strong>이름</strong>이 이 순서로 앞 두 칸에 오도록 복사해 붙여넣으세요.
+          머리글 줄(<strong>수험번호 · 좌석번호 · 이름 · 연락처</strong>)을 함께 붙여넣으면 열 순서와 상관없이 읽습니다.
+          머리글 없이 붙여넣을 때는 <strong>수험번호 · 이름 · 연락처</strong> 순서로 앞 세 칸에 오도록 하세요.
           뒤에 붙은 다른 열(응시분야·점수 등)은 무시하므로 채점표를 그대로 붙여넣어도 됩니다.
         </p>
         <textarea
@@ -240,6 +251,21 @@ export function StudentBulkImportPanel({
 
       {rows.length > 0 ? (
         <div className="space-y-2 border-t border-slate-100 pt-4">
+          {/* 이미 등록된 학생을 다시 넣을 수 있어야 한다. 연락처나 좌석을 나중에 채우는
+              경우가 있고, 그때마다 한 명씩 상세 화면을 여는 것은 현실적이지 않다. */}
+          <label className="admin-field flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={overwriteExisting}
+              onChange={(event) => setOverwriteExisting(event.target.checked)}
+            />
+            <span className="admin-label">이미 등록된 학생의 이름·연락처·좌석을 덮어쓰기</span>
+          </label>
+          {overwriteExisting ? (
+            <p className="admin-help">
+              같은 수험번호가 있으면 건너뛰지 않고 다시 채웁니다. 빈 칸은 기존 값을 지우지 않습니다.
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="admin-label">
               등록 대상
@@ -309,7 +335,7 @@ export function StudentBulkImportPanel({
         <div className="space-y-2 border-t border-slate-100 pt-4">
           <p className="admin-label">등록 결과</p>
           <p className="admin-notice admin-notice-success font-medium">
-            등록 {result.createdCount}명 · 건너뜀 {result.duplicateCount}명 · 실패{" "}
+            등록 {result.createdCount}명 · 수정 {result.updatedCount ?? 0}명 · 건너뜀 {result.duplicateCount}명 · 실패{" "}
             {result.failedCount}명
           </p>
           {failedItems.length > 0 ? (
@@ -322,7 +348,7 @@ export function StudentBulkImportPanel({
             </ul>
           ) : null}
           <p className="admin-help">
-            좌석·수강기간·수강료는 등록되지 않습니다. 학생 목록에서 개별 수정해 주세요.
+            수강기간·수강료는 등록되지 않습니다. 학생 목록에서 개별 수정해 주세요.
           </p>
         </div>
       ) : null}

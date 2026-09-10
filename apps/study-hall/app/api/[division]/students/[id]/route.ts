@@ -90,8 +90,8 @@ export async function DELETE(
   }
 
   try {
-    await deleteStudent(params.division, params.id);
-    return NextResponse.json({ success: true });
+    const result = await deleteStudent(params.division, params.id);
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     return toApiErrorResponse(error, "학생 삭제 중 오류가 발생했습니다.");
   }

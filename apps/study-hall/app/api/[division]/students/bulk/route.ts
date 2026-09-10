@@ -40,6 +40,7 @@ export async function POST(
       params.division,
       parsed.data.rows,
       parsed.data.studyTrack ?? null,
+      { overwriteExisting: parsed.data.overwriteExisting ?? false },
     );
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

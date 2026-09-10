@@ -319,7 +319,15 @@ export function StudentListManager({
       if (!response.ok) {
         throw new Error(data.error ?? "학생 삭제에 실패했습니다.");
       }
-      toast.success(`${deleteTarget.name} 학생을 삭제했습니다.`);
+      const kept = (data?.keptRecords ?? []) as { label: string; count: number }[];
+      if (data?.mode === "WITHDRAWN") {
+        toast.success(
+          `${deleteTarget.name} 학생을 퇴실 처리했습니다. ` +
+            `${kept.map((entry) => `${entry.label} ${entry.count}건`).join(" · ")} 이 있어 기록은 지우지 않았습니다.`,
+        );
+      } else {
+        toast.success(`${deleteTarget.name} 학생을 삭제했습니다.`);
+      }
       setDeleteTarget(null);
       router.refresh();
     } catch (error) {
@@ -816,7 +824,7 @@ export function StudentListManager({
         onClose={() => !isDeleting && setDeleteTarget(null)}
         badge="학생 삭제"
         title="학생을 삭제하시겠습니까?"
-        description="삭제된 학생 데이터는 복구할 수 없습니다."
+        description="기록이 없는 학생만 완전히 삭제됩니다."
       >
         {deleteTarget && (
           <form id={`${dialogFormId}-1`} onSubmit={handleDeleteStudent} className="space-y-5">
@@ -826,7 +834,8 @@ export function StudentListManager({
                 <div>
                   <p className="font-semibold">이 작업은 되돌릴 수 없습니다.</p>
                   <p className="mt-1">
-                    학생의 출결 기록, 상벌점, 성적, 수납 내역, 면담 기록 등 모든 관련 데이터가 영구적으로 삭제됩니다.
+                    출결·상벌점·성적·수납·면담 기록이 하나도 없는 학생은 완전히 삭제되며 되돌릴 수 없습니다.
+                    기록이 하나라도 있으면 그 기록을 지우지 않기 위해 «퇴실»로 바꾸고 좌석만 비웁니다 — 목록에는 퇴실 상태로 남습니다.
                   </p>
                 </div>
               </div>

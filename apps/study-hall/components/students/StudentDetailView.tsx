@@ -283,7 +283,12 @@ export function StudentDetailView({
       if (!response.ok) {
         throw new Error(data.error ?? "학생 삭제에 실패했습니다.");
       }
-      toast.success("학생을 삭제했습니다.");
+      const kept = (data?.keptRecords ?? []) as { label: string; count: number }[];
+      toast.success(
+        data?.mode === "WITHDRAWN"
+          ? `퇴실 처리했습니다. ${kept.map((entry) => `${entry.label} ${entry.count}건`).join(" · ")} 이 있어 기록은 지우지 않았습니다.`
+          : "학생을 삭제했습니다.",
+      );
       router.push(`/${divisionSlug}/admin/students`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "학생 삭제에 실패했습니다.");

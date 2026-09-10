@@ -58,10 +58,14 @@ export const studentBulkCreateSchema = z.object({
           .trim()
           .min(1, "학생 이름을 입력해 주세요.")
           .max(50, "학생 이름은 50자 이하여야 합니다."),
+        phone: z.string().trim().max(20, "연락처는 20자 이하여야 합니다.").nullable().optional(),
+        seatLabel: z.string().trim().max(50, "좌석번호는 50자 이하여야 합니다.").nullable().optional(),
       }),
     )
     .min(1, "등록할 학생을 한 명 이상 선택해 주세요.")
     .max(500, "한 번에 등록할 수 있는 인원은 500명까지입니다."),
+  /** 이미 등록된 수험번호를 건너뛰지 않고 이름·연락처를 덮어쓴다. */
+  overwriteExisting: z.boolean().optional(),
 });
 
 export const studentWithdrawSchema = z.object({

@@ -815,7 +815,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
             </div>
             <Link
               href={`/${divisionSlug}/admin/attendance`}
-              className="text-xs font-medium text-slate-400 transition hover:text-slate-700"
+              className="admin-table-link text-xs"
             >
               출석부 →
             </Link>
@@ -879,7 +879,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 )}
                 <Link
                   href={`/${divisionSlug}/admin/attendance`}
-                  className="text-xs font-medium text-slate-400 transition hover:text-slate-700"
+                  className="admin-table-link text-xs"
                 >
                   출결 현황 →
                 </Link>
@@ -899,7 +899,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           {featureFlags.studentManagement ? (
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.studentId}`}
-                              className="text-sm font-semibold text-slate-900 transition hover:text-slate-600"
+                              className="admin-table-link font-semibold"
                             >
                               {student.studentName}
                             </Link>
@@ -950,7 +950,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                 )}
                 <Link
                   href={`/${divisionSlug}/admin/warnings`}
-                  className="text-xs font-medium text-slate-400 transition hover:text-slate-700"
+                  className="admin-table-link text-xs"
                 >
                   경고 관리 →
                 </Link>
@@ -967,7 +967,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           {featureFlags.studentManagement ? (
                             <Link
                               href={`/${divisionSlug}/admin/students/${student.id}`}
-                              className="text-sm font-semibold text-slate-900 transition hover:text-slate-600"
+                              className="admin-table-link font-semibold"
                             >
                               {student.name}
                             </Link>
@@ -1290,7 +1290,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                           {featureFlags.studentManagement ? (
                             <Link
                               href={`/${divisionSlug}/admin/students/${leave.studentId}`}
-                              className="text-sm font-semibold text-slate-900 transition hover:text-slate-600"
+                              className="admin-table-link font-semibold"
                             >
                               {leave.studentName}
                             </Link>
@@ -1352,7 +1352,7 @@ export function AdminDashboard({ divisionSlug, initialData }: AdminDashboardProp
                         {featureFlags.studentManagement ? (
                           <Link
                             href={`/${divisionSlug}/admin/students/${student.id}`}
-                            className="text-sm font-semibold text-slate-900 transition hover:text-slate-600"
+                            className="admin-table-link font-semibold"
                           >
                             {student.name}
                           </Link>

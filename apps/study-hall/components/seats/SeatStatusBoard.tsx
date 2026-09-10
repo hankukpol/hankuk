@@ -814,7 +814,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
             </div>
             <Link
               href={`/${divisionSlug}/admin/settings/seats`}
-              className="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-600"
+              className="admin-table-link inline-flex items-center gap-1 text-xs"
             >
               <MapPin className="h-3 w-3" />
               좌석 배치 편집

@@ -1374,7 +1374,7 @@ export function PhoneCheckForm({
                             <button
                               type="button"
                               onClick={() => openBulkRentalModal(student.id)}
-                              className="text-left text-sm font-semibold text-slate-900 underline-offset-4 transition hover:text-sky-700 hover:underline"
+                              className="admin-table-link text-left font-semibold"
                             >
                               {student.name}
                             </button>

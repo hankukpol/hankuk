@@ -184,7 +184,7 @@ export function PhoneCheckTable({
                   <button
                     type="button"
                     onClick={() => onOpenBulkRental(student.id)}
-                    className="text-left font-semibold text-slate-900 underline-offset-4 transition hover:text-sky-700 hover:underline"
+                    className="admin-table-link text-left font-semibold"
                   >
                     {student.name}
                   </button>

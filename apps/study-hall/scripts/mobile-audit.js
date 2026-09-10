@@ -57,11 +57,19 @@
    */
   function hitHeight(el) {
     const own = el.getBoundingClientRect().height;
-    const before = getComputedStyle(el, "::before");
-    if (before.content && before.content !== "none" && before.position === "absolute") {
-      const top = parseFloat(before.top) || 0;
-      const bottom = parseFloat(before.bottom) || 0;
+    // 확장은 ::after 로도 온다. globals.css 의 칩과 표 링크가 그 쪽을 쓴다.
+    for (const pseudo of ["::before", "::after"]) {
+      const s = getComputedStyle(el, pseudo);
+      if (!s.content || s.content === "none" || s.position !== "absolute") continue;
+      const top = parseFloat(s.top) || 0;
+      const bottom = parseFloat(s.bottom) || 0;
       if (top < 0 || bottom < 0) return own - top - bottom;
+    }
+    // 테두리도 배경도 없는 입력칸은 감싼 상자가 탭 영역이다. `.admin-input-group`
+    // 안의 input 은 23px 지만 상자가 44px 이고, 상자 어디를 눌러도 입력칸이 잡힌다.
+    const own_s = getComputedStyle(el);
+    if (own < 44 && el.parentElement && px(own_s.borderTopWidth) === 0 && own_s.backgroundColor === "rgba(0, 0, 0, 0)") {
+      return Math.max(own, el.parentElement.getBoundingClientRect().height);
     }
     return own;
   }

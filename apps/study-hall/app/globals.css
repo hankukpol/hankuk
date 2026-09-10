@@ -3003,6 +3003,42 @@ body:has(.admin-shell) {
   .admin-shell :is(.admin-page-title) {
     font-size: var(--admin-type-section);
   }
+  /* --- 체크박스·라디오: 감싼 라벨이 탭 영역이다 (§4).
+         네모 자체는 20px 다. `input` 은 대체 요소라 ::after 를 붙일 수 없으므로
+         라벨에 높이를 준다. 라벨 어디를 눌러도 값이 바뀌므로 그것이 실제 탭 영역이다. --- */
+  .admin-shell label:has(> input:is([type="checkbox"], [type="radio"])) {
+    min-height: 44px;
+  }
+
+  /* --- 손으로 만든 카드: 768px 미만에서 편다 (§2.4·§4).
+         `.admin-*` 클래스는 이 파일이 이미 평면화한다. 남는 것은 화면에서 직접
+         `rounded-lg border bg-white` 로 만든 상자들이고, 규격 밖이라 그 규칙이 닿지
+         않았다. 전 화면 실측 결과 실제로 보이는 것은 네 곳뿐이다 — 학생 명단 요약줄,
+         좌석 설정, 리포트 두 곳.
+
+         컨테이너로만 한정한다. `label`·`input`·`button` 은 제외해야 입력칸과 배지가
+         같이 펴지지 않는다. 데스크톱은 건드리지 않는다. --- */
+  .admin-shell :is(div, section, article):is(.rounded-lg, .rounded-xl, .rounded-md).border:is(.bg-white, .bg-slate-50, .bg-admin-surface, .bg-admin-surface-soft) {
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+
+  /* --- 표·행 안의 이름 링크: 보이는 크기는 두고 탭 영역만 넓힌다 (§4).
+         이 링크는 `display: inline` 이라 글 흐름에 놓인다. 높이를 44px 로 키우면
+         줄 간격이 벌어져 표가 성글어진다. 칩(§2.3)이 쓰는 방법을 그대로 쓴다 —
+         보이는 것은 그대로, 손가락이 닿는 영역만 위아래로 늘린다. --- */
+  .admin-shell .admin-table-link {
+    position: relative;
+  }
+
+  /* 인라인 링크의 보이는 높이는 글자 한 줄(17px)이다. 위아래 14px 씩 늘려 45px 로
+     만든다 — §4 의 44px 를 3px 넘긴다. 늘린 영역은 칸 경계를 넘지 않는다. */
+  .admin-shell .admin-table-link::after {
+    content: "";
+    position: absolute;
+    inset: -14px -8px;
+  }
+
   /* --- 로그인·인증 화면 (MOBILE_DESIGN.md §2.10).
          데스크톱은 480px 카드 그대로 두고, 폰에서만 편다.
 

@@ -36,17 +36,19 @@ export async function PhoneSubmissionsWorkspace({
 }: PhoneSubmissionsWorkspaceProps) {
   const today = getKstToday();
 
-  const [snapshot, currentPeriod, allSeatRooms, initialSeatLayout, featureSettings, policy] = await Promise.all([
+  const [snapshot, currentPeriod, allSeatRooms, featureSettings, policy] = await Promise.all([
     getPhoneDaySnapshot(divisionSlug, today),
     getCurrentPeriod(divisionSlug),
     listStudyRooms(divisionSlug),
-    getSeatLayout(divisionSlug),
     getDivisionFeatureSettings(divisionSlug),
     getManagementPolicy(divisionSlug),
   ]);
 
   // 비활성 자습실은 운영 화면에서 숨긴다. 배정된 학생이 남아 있으면 그대로 보여준다.
   const seatRooms = filterOperationalStudyRooms(allSeatRooms);
+  // 좌석 현황·출석부와 같은 강의실을 보여준다. 강의실을 지정하지 않으면 서비스 기본값이
+  // 오고, 그 순서에는 비활성 자습실도 들어 있어 화면마다 다른 방이 나온다.
+  const initialSeatLayout = await getSeatLayout(divisionSlug, seatRooms[0]?.id);
 
   const [students, periods] = policy && mode === "admin" ? await Promise.all([listStudents(divisionSlug), getPeriods(divisionSlug)]) : [[], []];
   const approval = policy && mode === "admin" ? <PhoneLoanApproval divisionSlug={divisionSlug} policy={policy} students={students.filter((s) => s.status === "ACTIVE" || s.status === "ON_LEAVE")} periods={periods} /> : undefined;

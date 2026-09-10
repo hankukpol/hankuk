@@ -19,6 +19,8 @@ import { toast } from "@/lib/sonner";
 import {
   ATTENDANCE_STATUS_OPTIONS,
   getAttendanceStatusLabel,
+  kstMinutesOfDay,
+  selectPeriodForCheck,
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
@@ -130,9 +132,28 @@ export function MobileCheckForm({
   initialRecords,
 }: MobileCheckFormProps) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  // 서버가 준 교시는 그 화면이 그려진 순간의 것이다. 조교는 출석부를 열어 두고 교시가
+  // 바뀔 때마다 돌아오므로, 화면에서 현재 시각으로 다시 고른다. 손으로 교시를 고른 뒤에는
+  // 건드리지 않는다 — 지난 교시를 정정하는 중일 수 있다.
   const [selectedPeriodId, setSelectedPeriodId] = useState(initialPeriodId ?? initialPeriods[0]?.id ?? "");
+  const [pickedByHand, setPickedByHand] = useState(false);
   const [students, setStudents] = useState(initialStudents);
   const [periods] = useState(initialPeriods);
+
+  // 오늘 화면이고 아직 손으로 고르지 않았다면, 현재 시각에 맞는 교시로 맞춘다.
+  // 화면을 열어 둔 채 교시가 넘어가도 돌아왔을 때 그 교시가 잡혀 있다.
+  useEffect(() => {
+    if (pickedByHand || selectedDate !== initialDate) return;
+    const sync = () => {
+      const next = selectPeriodForCheck(periods, kstMinutesOfDay());
+      if (next) setSelectedPeriodId((current) => (current === next.id ? current : next.id));
+    };
+    sync();
+    const onVisible = () => { if (document.visibilityState === "visible") sync(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(sync, 60_000);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.clearInterval(timer); };
+  }, [pickedByHand, selectedDate, initialDate, periods]);
   const [formState, setFormState] = useState<FormState>(() => buildInitialState(initialStudents, initialRecords));
   // Track the last loaded/saved snapshot so mobile can also save only edited students.
   const [savedFormState, setSavedFormState] = useState<FormState>(() =>
@@ -585,7 +606,7 @@ export function MobileCheckForm({
                     </span>
                     <select
                       value={selectedPeriodId}
-                      onChange={(event) => setSelectedPeriodId(event.target.value)}
+                      onChange={(event) => { setPickedByHand(true); setSelectedPeriodId(event.target.value); }}
                       className="w-full"
                     >
                       {periods.map((period) => (

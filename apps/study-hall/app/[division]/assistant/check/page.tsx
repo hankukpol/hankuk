@@ -3,6 +3,10 @@ import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard"
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
 import { selectPeriodForCheck, kstMinutesOfDay } from "@/lib/attendance-meta";
 
+// 오늘의 출결과 현재 교시를 보여주는 화면이라 캐시하지 않는다. 캐시되면 처음 그려진
+// 시각의 교시가 굳는다.
+export const dynamic = "force-dynamic";
+
 function getTodayInKst() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",

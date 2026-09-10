@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { CalendarCheck, GraduationCap, ScrollText, Star, Trophy } from "lucide-react";
 
 type StudentPortalTabsProps = {
   divisionSlug: string;
@@ -18,11 +19,11 @@ type StudentPortalTabsProps = {
 };
 
 const items = [
-  { key: "management-policy", label: "관리규정", href: "management-policy" },
-  { key: "attendance", label: "출석", href: "attendance" },
-  { key: "study-ranking", label: "학습 랭킹", href: "study-ranking" },
-  { key: "points", label: "상벌점", href: "points" },
-  { key: "exams", label: "성적", href: "exams" },
+  { key: "management-policy", label: "관리규정", href: "management-policy", Icon: ScrollText },
+  { key: "attendance", label: "출석", href: "attendance", Icon: CalendarCheck },
+  { key: "study-ranking", label: "학습 랭킹", href: "study-ranking", Icon: Trophy },
+  { key: "points", label: "상벌점", href: "points", Icon: Star },
+  { key: "exams", label: "성적", href: "exams", Icon: GraduationCap },
 ] as const;
 
 export function StudentPortalTabs({
@@ -68,7 +69,9 @@ export function StudentPortalTabs({
   return (
     /* DESIGN.md 5.4 — 화면 이동은 1차 폴더 탭이다.
        경로를 오가므로 button/onChange 대신 Link 와 aria-current 를 쓴다. */
-    <nav ref={navRef} className="admin-tabs" aria-label="학생 메뉴">
+    /* 좁은 화면에서는 화면 아래 고정 바가 된다. 엄지가 닿는 곳에 두면 화면을 오갈 때마다
+       위로 손을 올리지 않아도 되고, 위쪽 자리는 보러 온 내용에 돌아간다. */
+    <nav ref={navRef} className="admin-tabs admin-portal-nav" aria-label="학생 메뉴">
       {visibleItems.map((item) => {
         const isActive = current === item.key;
         const href = `/${divisionSlug}/student${item.href ? `/${item.href}` : ""}`;
@@ -82,7 +85,8 @@ export function StudentPortalTabs({
             data-active={isActive}
             aria-current={isActive ? "page" : undefined}
           >
-            {item.label}
+            <item.Icon className="admin-portal-nav-icon" aria-hidden />
+            <span>{item.label}</span>
           </Link>
         );
       })}

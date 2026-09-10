@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { StaffChatWatcher } from "@/components/chat/StaffChatWatcher";
 import { AdminShell } from "@/components/layout/AdminShell";
+import { AssistantBottomNav } from "@/components/layout/AssistantBottomNav";
 import { requireDivisionAssistantAccess } from "@/lib/auth";
 import { getChatUnreadSummary } from "@/lib/services/chat.service";
 import { getDivisionBySlug } from "@/lib/services/division.service";
@@ -53,6 +54,10 @@ export default async function AssistantLayout({ children, params }: AssistantLay
         initialUnreadCount={unread?.unreadCount ?? 0}
       />
       {children}
+      <AssistantBottomNav
+        divisionSlug={division.slug}
+        phoneSubmissionsEnabled={featureSettings.featureFlags.phoneSubmissions}
+      />
     </AdminShell>
   );
 }

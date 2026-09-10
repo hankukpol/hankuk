@@ -139,7 +139,7 @@ const analysis: MorningCohortAnalysis = {
   dailyWrongTop: [], declines: [], lowAttendance: [], studentSubjects: [], topics: [], insufficientSample: true,
 };
 
-test("cohort has 84-day defaults and distinguishes insufficient samples from no declines", () => {
+test("cohort defaults to today and distinguishes insufficient samples from no declines", () => {
   const Component = load("components/exams/analysis/MorningCohortAnalysis.tsx", {
     "@/components/ui/SlideOver": { SlideOver: () => null },
     react: { ...React, useState(initial: unknown) {
@@ -149,7 +149,7 @@ test("cohort has 84-day defaults and distinguishes insufficient samples from no 
   }).MorningCohortAnalysis;
   const html = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "cohort" }));
   const studentsHtml = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "students" }));
-  for (const text of ["최근 84일", "6회부터 추세", "진도 라벨이 입력된 시험이 없습니다"]) assert.ok(html.includes(text), text);
+  for (const text of ["기본은 오늘 하루", "6회부터 추세", "진도 라벨이 입력된 시험이 없습니다"]) assert.ok(html.includes(text), text);
   assert.ok(studentsHtml.includes("판정에 필요한 응시 회차가 부족합니다"), "판정에 필요한 응시 회차가 부족합니다");
   assert.ok(!studentsHtml.includes("감지된 과목별 하락 신호가 없습니다"));
   analysis.insufficientSample = false;
@@ -229,8 +229,10 @@ test("student SSR uses authenticated identity, validates period, preserves manua
   failure = 404;
   const missing = renderToStaticMarkup(await Component({ params: { division: "test" }, searchParams: { morningType: "morning" } }));
   assert.ok(missing.includes("가져온 아침 문항 분석 자료가 없습니다")); assert.ok(missing.includes("기존 수기 아침 성적"));
+  // 학생 화면도 같은 기본값을 쓴다 — 오늘 하루.
   const range = calls.at(-1)![3] as { from: string; to: string };
-  assert.equal((Date.parse(range.to) - Date.parse(range.from)) / 86400000, 83);
+  assert.equal((Date.parse(range.to) - Date.parse(range.from)) / 86400000, 0);
+  assert.equal(range.from, range.to);
   failure = 403;
   await assert.rejects(Component({ params: { division: "test" } }), /service-403/);
   failure = 500;

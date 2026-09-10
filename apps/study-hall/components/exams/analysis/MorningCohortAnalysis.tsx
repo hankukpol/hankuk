@@ -62,7 +62,7 @@ export function MorningCohortAnalysis({ divisionSlug, examTypes, initialSelectio
       <button className="admin-button admin-button-primary" type="submit">분석 조회</button>
     </form>
     {error && <p role="alert" className="admin-notice admin-notice-danger">{error}</p>}
-    <p className="admin-help">조회 기간 {range.from} ~ {range.to}. 기본 기간은 오늘을 포함한 최근 84일입니다.</p>
+    <p className="admin-help">조회 기간 {range.from} ~ {range.to}. 기본은 오늘 하루이며, 시작일을 옮기면 과거 회차까지 함께 봅니다.</p>
     <CohortReport key={`${divisionSlug}:${query}`} base={`/api/${encodeURIComponent(divisionSlug)}/morning-exams/analysis`} query={query} view={view} />
   </div>;
 }

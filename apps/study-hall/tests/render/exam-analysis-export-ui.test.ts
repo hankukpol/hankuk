@@ -81,13 +81,13 @@ test("selection filters category, retains inactive history, and no types has an 
   assert.ok(renderToStaticMarkup(empty).includes("시험 종류가 없습니다"));
 });
 
-test("morning uses shared 84-day KST range and disables invalid, reversed, oversized dates", () => {
+test("morning uses the shared today-only KST range and disables invalid, reversed, oversized dates", () => {
   const h = hooks(); const Component = load({ react: h.api }).MorningExport;
   let tree = h.render(() => Component({ base: "/api/test", examTypeId: "morning" }));
   const download = tree.props.children.at(-1);
   const query = new URL(download.props.url, "http://localhost").searchParams;
   assert.equal(query.get("kind"), "morning"); assert.equal(query.get("examTypeId"), "morning");
-  assert.equal((Date.parse(query.get("to")!) - Date.parse(query.get("from")!)) / 86400000, 83);
+  assert.equal((Date.parse(query.get("to")!) - Date.parse(query.get("from")!)) / 86400000, 0);
   for (const range of [{ from: "2026-02-30", to: "2026-03-01" }, { from: "2026-09-08", to: "2026-09-01" }, { from: "2026-01-01", to: "2026-09-08" }]) {
     h.slots[0].value = range;
     tree = h.render(() => Component({ base: "/api/test", examTypeId: "morning" }));

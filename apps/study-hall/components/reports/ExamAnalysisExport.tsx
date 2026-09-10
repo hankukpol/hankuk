@@ -102,7 +102,7 @@ function MorningExport({ base, examTypeId }: { base: string; examTypeId: string 
   const valid = morningAnalysisRangeSchema.safeParse(range).success;
   const query = new URLSearchParams({ kind: "morning", examTypeId, ...range });
   return <div className="space-y-4"><div className="admin-filter-bar"><label className="admin-label" htmlFor={`${id}-from`}>시작일</label><input id={`${id}-from`} type="date" required value={range.from} max={range.to} onChange={(event) => setRange({ ...range, from: event.target.value })} /><label className="admin-label" htmlFor={`${id}-to`}>종료일</label><input id={`${id}-to`} type="date" required value={range.to} min={range.from} onChange={(event) => setRange({ ...range, to: event.target.value })} /></div>
-    <p className="admin-help">기본 기간은 오늘을 포함한 최근 84일입니다. 시작일과 종료일의 차이는 최대 92일입니다.</p>
+    <p className="admin-help">기본은 오늘 하루입니다. 시작일과 종료일의 차이는 최대 92일까지 선택할 수 있습니다.</p>
     {!valid && <p role="alert" className="admin-notice admin-notice-danger">날짜를 확인해 주세요. 시작일부터 종료일까지 날짜 차이 92일 이내로 선택해 주세요.</p>}
     <DownloadFile key={query.toString()} disabled={!valid} url={`${base}/reports/exam-analysis?${query}`} filename={`아침_성적분석_${range.from}_${range.to}.xlsx`} />
   </div>;

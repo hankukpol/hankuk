@@ -380,13 +380,27 @@ body {
     color: var(--admin-surface);
   }
 
+  /* 열린 메뉴는 화면에 고정한다.
+     흐름 안에 두면 문서가 [메뉴][제목 바][본문] 로 길어져, 아래로 밀면 메뉴 끝과
+     본문 머리가 한 화면에 같이 보인다 — 메뉴를 연 채 스크롤하면 화면이 깨지는 것처럼
+     보였던 것이 이것이다. 배경 스크롤은 아래 .admin-shell-locked 가 막는다. */
   .admin-mobile-panel {
     display: flex;
+    position: fixed;
+    z-index: 50;
+    inset: 0;
     flex-direction: column;
-    max-height: calc(100dvh - 64px);
     overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--admin-text);
     color: var(--admin-surface);
+  }
+
+  /* 메뉴가 열려 있는 동안 뒤 화면은 움직이지 않는다. 모바일 브라우저는 body 만
+     막으면 문서가 계속 밀리므로 html 까지 함께 잠근다. */
+  html:has(> body .admin-mobile-panel),
+  body:has(.admin-mobile-panel) {
+    overflow: hidden;
   }
 
   /* ------------------------------------------------------------------

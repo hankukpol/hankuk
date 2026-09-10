@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { defaultMorningAnalysisRange, morningAnalysisQuerySchema, morningAnalysisRangeSchema } from "../../lib/morning-exam-analysis-schemas";
 
-test("morning range defaults to 84 calendar days using Seoul date", () => {
-  assert.deepEqual(defaultMorningAnalysisRange(new Date("2026-09-08T16:00:00Z")), { from: "2026-06-18", to: "2026-09-09" });
+test("morning range defaults to today in Seoul, both ends", () => {
+  // 아침 시험은 매일 있어 기본을 넓게 잡으면 오늘 성적을 보러 온 사람이 매번 좁혀야 한다.
+  assert.deepEqual(defaultMorningAnalysisRange(new Date("2026-09-08T16:00:00Z")), { from: "2026-09-09", to: "2026-09-09" });
   assert.ok(morningAnalysisQuerySchema.safeParse({ examTypeId: "type" }).success);
 });
 test("morning range rejects impossible, reversed and excessive dates", () => {

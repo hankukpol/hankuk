@@ -2,6 +2,7 @@ import { MobileCheckForm } from "@/components/attendance/MobileCheckForm";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
 import { selectPeriodForCheck, kstMinutesOfDay } from "@/lib/attendance-meta";
+import { filterOperationalStudyRooms, getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
 
 // 오늘의 출결과 현재 교시를 보여주는 화면이라 캐시하지 않는다. 캐시되면 처음 그려진
 // 시각의 교시가 굳는다.
@@ -39,6 +40,11 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
     ? await getAttendanceSnapshot(params.division, today, periodId)
     : { students: [], records: [] };
 
+  // 좌석 보기는 휴대폰 체크 화면과 같은 자료를 쓴다. 강의실을 거른 뒤 첫 방으로
+  // 배치도를 가져와야 좌석 현황·출석부와 같은 방이 나온다.
+  const seatRooms = filterOperationalStudyRooms(await listStudyRooms(params.division));
+  const initialSeatLayout = await getSeatLayout(params.division, seatRooms[0]?.id);
+
   return (
     <div className="admin-flat-page">
       <section className="admin-section max-md:sr-only">
@@ -55,6 +61,8 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
         initialPeriodId={periodId}
         initialStudents={snapshot.students}
         initialRecords={snapshot.records}
+        seatRooms={seatRooms}
+        initialSeatLayout={initialSeatLayout}
       />
     </div>
   );

@@ -16,6 +16,9 @@ import {
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { toast } from "@/lib/sonner";
 
+import { AdminTabs } from "@/components/ui/AdminTabs";
+import { AttendanceSeatView } from "@/components/attendance/AttendanceSeatView";
+import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import {
   ATTENDANCE_STATUS_OPTIONS,
   getAttendanceStatusLabel,
@@ -61,6 +64,9 @@ export type MobileCheckFormProps = {
   initialPeriodId: string | null;
   initialStudents: StudentItem[];
   initialRecords: AttendanceRecordItem[];
+  /** 좌석 보기용. 넘기지 않으면 표만 보인다. */
+  seatRooms?: StudyRoomItem[];
+  initialSeatLayout?: SeatLayout;
 };
 
 type FormState = Record<
@@ -123,6 +129,11 @@ function hasStudentStateChanged(
   );
 }
 
+const VIEW_TABS = [
+  { id: "table" as const, label: "테이블" },
+  { id: "seat" as const, label: "좌석" },
+];
+
 export function MobileCheckForm({
   divisionSlug,
   initialDate,
@@ -130,7 +141,12 @@ export function MobileCheckForm({
   initialPeriodId,
   initialStudents,
   initialRecords,
+  seatRooms,
+  initialSeatLayout,
 }: MobileCheckFormProps) {
+  // 휴대폰 체크 화면과 같은 1차 탭이다. 좌석 배치도가 없으면 탭 자체를 세우지 않는다.
+  const hasSeatLayout = Boolean(seatRooms?.length && initialSeatLayout);
+  const [viewMode, setViewMode] = useState<"table" | "seat">("table");
   const [selectedDate, setSelectedDate] = useState(initialDate);
   // 서버가 준 교시는 그 화면이 그려진 순간의 것이다. 조교는 출석부를 열어 두고 교시가
   // 바뀔 때마다 돌아오므로, 화면에서 현재 시각으로 다시 고른다. 손으로 교시를 고른 뒤에는
@@ -513,6 +529,17 @@ export function MobileCheckForm({
 
   return (
     <div className="admin-check-workspace space-y-3">
+      {/* DESIGN.md 5.4 — 보기 전체가 바뀌므로 1차 폴더 탭. 휴대폰 체크 화면과 같은 자리다. */}
+      {hasSeatLayout ? (
+        <AdminTabs
+          items={VIEW_TABS}
+          activeId={viewMode}
+          onChange={setViewMode}
+          label="출석 체크 보기"
+          idPrefix="attendance-view"
+        />
+      ) : null}
+
       <div className="sticky z-20 -mx-1 bg-admin-surface px-1 pb-3" style={{ top: `${headerHeight}px` }}>
         <section className="admin-check-summary overflow-hidden rounded-lg border border-admin-line bg-white">
           {/* 항상 표시되는 컴팩트 헤더 바 */}
@@ -725,89 +752,120 @@ export function MobileCheckForm({
 
         {/* DESIGN.md 5.8 — 명단은 카드가 아니라 표다. 선은 globals.css 가 긋는다.
             좁은 화면에서는 좌석·기타 열을 학생/출결 칸으로 접어 가로 스크롤을 피한다. */}
-        <div className="admin-table-frame">
-          <table>
-            <thead>
-              <tr>
-                <th>좌석</th>
-                <th>학생</th>
-                <th>출결</th>
-                <th className="hidden sm:table-cell">기타 상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleStudents.map((student) => {
-                const state = formState[student.id] ?? { status: "", reason: "" };
-                const needsReason = state.status === "ABSENT" || state.status === "EXCUSED";
-                const swipeIntent = swipeIntents[student.id];
-                const hasOtherStatus = isOtherStatus(state.status);
-                // 이미 기타 상태가 지정된 행은 무엇이 걸렸는지 바로 보이도록 펼쳐 둔다.
-                const isOtherOpen = openOtherIds[student.id] ?? hasOtherStatus;
-                // seatDisplay 는 `자습실 / 좌석` 이라 자습실이 하나뿐이면 좌석만 남긴다.
-                const locationLabel = showStudyRoomName
-                  ? student.seatDisplay ?? student.seatLabel ?? "좌석 미배정"
-                  : student.seatLabel ?? "좌석 미배정";
+        {viewMode === "table" ? (
+          <div className="admin-table-frame">
+            <table>
+              <thead>
+                <tr>
+                  <th>좌석</th>
+                  <th>학생</th>
+                  <th>출결</th>
+                  <th className="hidden sm:table-cell">기타 상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleStudents.map((student) => {
+                  const state = formState[student.id] ?? { status: "", reason: "" };
+                  const needsReason = state.status === "ABSENT" || state.status === "EXCUSED";
+                  const swipeIntent = swipeIntents[student.id];
+                  const hasOtherStatus = isOtherStatus(state.status);
+                  // 이미 기타 상태가 지정된 행은 무엇이 걸렸는지 바로 보이도록 펼쳐 둔다.
+                  const isOtherOpen = openOtherIds[student.id] ?? hasOtherStatus;
+                  // seatDisplay 는 `자습실 / 좌석` 이라 자습실이 하나뿐이면 좌석만 남긴다.
+                  const locationLabel = showStudyRoomName
+                    ? student.seatDisplay ?? student.seatLabel ?? "좌석 미배정"
+                    : student.seatLabel ?? "좌석 미배정";
 
-                return (
-                  <tr
-                    key={student.id}
-                    className="touch-pan-y"
-                    data-swipe={swipeIntent}
-                    onTouchStart={(event) => handleSwipeStart(student.id, event)}
-                    onTouchMove={(event) => handleSwipeMove(student.id, event)}
-                    onTouchEnd={() => handleSwipeEnd(student.id)}
-                    onTouchCancel={() => handleSwipeEnd(student.id)}
-                  >
-                    <td>{locationLabel}</td>
+                  return (
+                    <tr
+                      key={student.id}
+                      className="touch-pan-y"
+                      data-swipe={swipeIntent}
+                      onTouchStart={(event) => handleSwipeStart(student.id, event)}
+                      onTouchMove={(event) => handleSwipeMove(student.id, event)}
+                      onTouchEnd={() => handleSwipeEnd(student.id)}
+                      onTouchCancel={() => handleSwipeEnd(student.id)}
+                    >
+                      <td>{locationLabel}</td>
 
-                    <td className="admin-table-name">
-                      {student.name}
-                      <span className="admin-help block">{student.studentNumber}</span>
-                    </td>
+                      <td className="admin-table-name">
+                        {student.name}
+                        <span className="admin-help block">{student.studentNumber}</span>
+                      </td>
 
-                    <td>
-                      <div className="flex flex-wrap justify-center gap-1">
-                        {QUICK_STATUS_BUTTONS.map((button) => {
-                          const isActive = state.status === button.value;
+                      <td>
+                        <div className="flex flex-wrap justify-center gap-1">
+                          {QUICK_STATUS_BUTTONS.map((button) => {
+                            const isActive = state.status === button.value;
 
-                          return (
-                            <button
-                              key={button.value}
-                              type="button"
-                              onClick={() => applyStudentStatus(student.id, button.value)}
-                              aria-pressed={isActive}
-                              className={`admin-status-button transition ${ isActive ? button.activeClassName : "" }`}
-                            >
-                              {button.label}
-                            </button>
-                          );
-                        })}
+                            return (
+                              <button
+                                key={button.value}
+                                type="button"
+                                onClick={() => applyStudentStatus(student.id, button.value)}
+                                aria-pressed={isActive}
+                                className={`admin-status-button transition ${ isActive ? button.activeClassName : "" }`}
+                              >
+                                {button.label}
+                              </button>
+                            );
+                          })}
 
-                        {/* 640px 미만에는 기타 상태 열이 없다. 같은 줄의 토글로 연다. */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenOtherIds((current) => ({
-                              ...current,
-                              [student.id]: !isOtherOpen,
-                            }))
-                          }
-                          aria-expanded={isOtherOpen}
-                          aria-pressed={hasOtherStatus}
-                          className="admin-status-button transition sm:hidden"
-                        >
-                          {hasOtherStatus ? getAttendanceStatusLabel(state.status) : "기타"}
-                        </button>
-                      </div>
+                          {/* 640px 미만에는 기타 상태 열이 없다. 같은 줄의 토글로 연다. */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenOtherIds((current) => ({
+                                ...current,
+                                [student.id]: !isOtherOpen,
+                              }))
+                            }
+                            aria-expanded={isOtherOpen}
+                            aria-pressed={hasOtherStatus}
+                            className="admin-status-button transition sm:hidden"
+                          >
+                            {hasOtherStatus ? getAttendanceStatusLabel(state.status) : "기타"}
+                          </button>
+                        </div>
 
-                      {isOtherOpen ? (
+                        {isOtherOpen ? (
+                          <select
+                            value={state.status}
+                            onChange={(event) =>
+                              applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
+                            }
+                            aria-label={`${student.name} 기타 상태`}
+                            className="mt-1 block w-full sm:hidden"
+                          >
+                            {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                              <option key={option.value || "empty"} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+
+                        {needsReason ? (
+                          <input
+                            value={state.reason}
+                            onChange={(event) =>
+                              updateStudentState(student.id, { reason: event.target.value })
+                            }
+                            placeholder="사유"
+                            aria-label={`${student.name} 사유`}
+                            className="mt-1 block w-full"
+                          />
+                        ) : null}
+                      </td>
+
+                      <td className="hidden sm:table-cell">
                         <select
                           value={state.status}
                           onChange={(event) =>
                             applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
                           }
                           aria-label={`${student.name} 기타 상태`}
-                          className="mt-1 block w-full sm:hidden"
+                          className="block w-full"
                         >
                           {ATTENDANCE_STATUS_OPTIONS.map((option) => (
                             <option key={option.value || "empty"} value={option.value}>
@@ -815,43 +873,35 @@ export function MobileCheckForm({
                             </option>
                           ))}
                         </select>
-                      ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
 
-                      {needsReason ? (
-                        <input
-                          value={state.reason}
-                          onChange={(event) =>
-                            updateStudentState(student.id, { reason: event.target.value })
-                          }
-                          placeholder="사유"
-                          aria-label={`${student.name} 사유`}
-                          className="mt-1 block w-full"
-                        />
-                      ) : null}
-                    </td>
-
-                    <td className="hidden sm:table-cell">
-                      <select
-                        value={state.status}
-                        onChange={(event) =>
-                          applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
-                        }
-                        aria-label={`${student.name} 기타 상태`}
-                        className="block w-full"
-                      >
-                        {ATTENDANCE_STATUS_OPTIONS.map((option) => (
-                          <option key={option.value || "empty"} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {/* 좌석 보기. 지금 고른 교시 한 칸만 다루므로 행렬은 그 교시로만 만든다. */}
+        {viewMode === "seat" && hasSeatLayout && selectedPeriod ? (
+          <AttendanceSeatView
+            divisionSlug={divisionSlug}
+            rooms={seatRooms!}
+            initialSeatLayout={initialSeatLayout!}
+            students={visibleStudents}
+            periods={[selectedPeriod]}
+            matrix={Object.fromEntries(
+              visibleStudents.map((student) => [
+                student.id,
+                { [selectedPeriod.id]: formState[student.id] ?? { status: "", reason: "" } },
+              ]),
+            )}
+            onUpdateCell={(studentId, _periodId, value) => updateStudentState(studentId, value)}
+            // 이 화면은 교시 하나를 통째로 저장한다. 좌석에서 한 명을 저장해도
+            // 같은 저장 경로를 태워, 표에서 고친 다른 학생이 뒤에 남지 않는다.
+            onSaveStudent={async () => { await handleSave(); }}
+          />
+        ) : null}
       </section>
 
       <div className="admin-check-savebar md:hidden">

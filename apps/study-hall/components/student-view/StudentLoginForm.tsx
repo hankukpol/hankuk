@@ -60,8 +60,8 @@ export function StudentLoginForm({
 
   return (
     /* DESIGN.md 5.1 — 운영 계정 로그인과 같은 카드 규격(최대 480px)을 쓴다. */
-    <main className="admin-shell flex min-h-[100dvh] items-center justify-center px-4 py-12">
-      <div className="w-full max-w-[480px] rounded-lg border border-admin-line p-6">
+    <main className="admin-shell admin-auth-page flex min-h-[100dvh] items-center justify-center px-4 py-12">
+      <div className="admin-auth-card w-full max-w-[480px] rounded-lg border border-admin-line p-6">
         <h1 className="admin-page-title">학생 로그인</h1>
         <p className="admin-page-description">
           {divisionName} 학생은 수험번호와 이름만 입력하면 바로 로그인할 수 있습니다.

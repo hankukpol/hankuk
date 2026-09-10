@@ -58,8 +58,8 @@ export default function LoginPage() {
 
   return (
     /* DESIGN.md 5.1 — 로그인 카드 최대 480px, 관리자 공통 폰트·입력·버튼을 쓴다. */
-    <main className="admin-shell flex min-h-[100dvh] items-center justify-center px-4 py-12">
-      <div className="w-full max-w-[480px] rounded-lg border border-admin-line p-6">
+    <main className="admin-shell admin-auth-page flex min-h-[100dvh] items-center justify-center px-4 py-12">
+      <div className="admin-auth-card w-full max-w-[480px] rounded-lg border border-admin-line p-6">
         <h1 className="admin-page-title">운영 계정으로 로그인</h1>
         <p className="admin-page-description">
           로그인하면 권한과 소속 지점에 맞는 화면으로 자동 이동합니다.

@@ -17,7 +17,7 @@ import {
   PhoneStatusCheckButton,
 } from "@/components/phones/PhoneStatusCheckButton";
 import { SlideOver } from "@/components/ui/SlideOver";
-import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
+import { getAttendanceStatusLabel, kstMinutesOfDay, selectPeriodForCheck } from "@/lib/attendance-meta";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 import { indexFirstBy } from "@/lib/record-index";
 import type {
@@ -97,51 +97,19 @@ function getKstToday() {
   }).format(new Date());
 }
 
-function timeToMinutes(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function getCurrentKstMinutes(now = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Seoul",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-
-  return hour * 60 + minute;
-}
-
 function getSuggestedPeriodId(snapshot: PhoneDaySnapshot, targetDate: string) {
   if (targetDate !== getKstToday()) {
     return null;
   }
 
-  const currentMinutes = getCurrentKstMinutes();
-  const activePeriod =
-    snapshot.periods.find((period) => {
-      const start = timeToMinutes(period.startTime);
-      const end = timeToMinutes(period.endTime) + 5;
-      return currentMinutes >= start && currentMinutes <= end;
-    }) ?? null;
-
-  if (activePeriod) {
-    return activePeriod.periodId;
-  }
-
-  const startedPeriods = snapshot.periods.filter(
-    (period) => timeToMinutes(period.startTime) <= currentMinutes,
+  // 출석부와 같은 규칙을 쓴다. 예전에는 "이미 시작한 마지막 교시" 를 골라, 쉬는 시간에
+  // 출석부는 곧 할 교시를, 휴대폰은 직전 교시를 보여 두 화면이 서로 다른 교시를 가리켰다.
+  return (
+    selectPeriodForCheck(
+      snapshot.periods.map((period) => ({ id: period.periodId, startTime: period.startTime, endTime: period.endTime })),
+      kstMinutesOfDay(),
+    )?.id ?? snapshot.periods[0]?.periodId ?? null
   );
-
-  if (startedPeriods.length > 0) {
-    return startedPeriods[startedPeriods.length - 1]?.periodId ?? null;
-  }
-
-  return snapshot.periods[0]?.periodId ?? null;
 }
 
 function resolveActivePeriodId(
@@ -299,6 +267,25 @@ export function PhoneCheckForm({
   const [activePeriodId, setActivePeriodId] = useState<string>(
     () => resolveActivePeriodId(initialSnapshot, initialDate, initialActivePeriodId),
   );
+  // 손으로 교시를 고른 뒤에는 자동으로 옮기지 않는다. 지난 교시를 정정하는 중일 수 있다.
+  const [periodPickedByHand, setPeriodPickedByHand] = useState(false);
+
+  // 서버가 준 교시는 그 화면이 그려진 순간의 것이다. 화면을 열어 둔 채 교시가 넘어가도
+  // 돌아왔을 때 지금 교시가 잡혀 있어야 한다. 출석부와 같은 주기·같은 규칙이다.
+  useEffect(() => {
+    if (periodPickedByHand) return;
+    const sync = () => {
+      const next = resolveActivePeriodId(snapshot, date, undefined);
+      if (next) setActivePeriodId((current) => (current === next ? current : next));
+    };
+    sync();
+    // 렌더 검증 하네스에는 DOM 이 없다. 타이머·리스너 없이 한 번만 맞추고 끝낸다.
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+    const onVisible = () => { if (document.visibilityState === "visible") sync(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(sync, 60_000);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.clearInterval(timer); };
+  }, [periodPickedByHand, snapshot, date]);
   const [viewMode, setViewMode] = useState<"seat" | "table">("table");
   const [searchQuery, setSearchQuery] = useState("");
   // 좁은 화면에서는 날짜·검색·필터를 접어 둔다. 조교가 늘 보는 것은 교시와 명단이다.
@@ -1179,7 +1166,7 @@ export function PhoneCheckForm({
               label: period.periodName,
             }))}
             activeId={activePeriodId}
-            onChange={setActivePeriodId}
+            onChange={(id: string) => { setPeriodPickedByHand(true); setActivePeriodId(id); }}
             label="휴대폰 확인 교시"
             idPrefix="phone-period"
             variant="secondary"

@@ -149,6 +149,8 @@ export function MobileCheckForm({
       if (next) setSelectedPeriodId((current) => (current === next.id ? current : next.id));
     };
     sync();
+    // 렌더 검증 하네스에는 DOM 이 없다. 타이머·리스너 없이 한 번만 맞추고 끝낸다.
+    if (typeof document === "undefined" || typeof window === "undefined") return;
     const onVisible = () => { if (document.visibilityState === "visible") sync(); };
     document.addEventListener("visibilitychange", onVisible);
     const timer = window.setInterval(sync, 60_000);

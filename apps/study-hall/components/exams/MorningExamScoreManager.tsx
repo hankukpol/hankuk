@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Download, LoaderCircle, Save, Upload } from 
 import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatWeekLabel } from "@/lib/exam-week-label";
 import { toast } from "@/lib/sonner";
 
 import {
@@ -622,7 +623,7 @@ export function MorningExamScoreManager({
         ) : weeklySummary ? (
           <div className="mt-4">
             <p className="admin-help">
-              {weeklySummary.weekYear}년 {weeklySummary.weekNumber}주차
+              {formatWeekLabel({ ...weeklySummary, startDate: weeklySummary.weekDateRange.start })}
               ({weeklySummary.weekDateRange.start} ~ {weeklySummary.weekDateRange.end})
             </p>
 

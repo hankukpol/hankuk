@@ -5,6 +5,7 @@ import { MorningLearningSummary, SubjectTabs } from "./LearningActionSummary";
 import { ReportPrintButton } from "./ReportPrintButton";
 import { PersonalReportTabs, type ReportSection } from "./PersonalReportTabs";
 import { reviewBuckets } from "@/lib/exam-learning-plan";
+import { formatWeekLabel } from "@/lib/exam-week-label";
 import type { ReactNode } from "react";
 import { ItemAnalysisTable } from "./ItemAnalysisTable";
 import { TrendLines } from "./charts/TrendLines";
@@ -61,7 +62,7 @@ export function MorningStudentReport({ report, mode, section, records }: { repor
       }))} />
     </section>
     {<section data-report-section="rank" className="admin-section"><h2 className="admin-section-title">누적 시험과 진도 시험 비교</h2>{report.cumulativeGap ? <p className="admin-notice">같은 주끼리 비교한 {report.cumulativeGap.pairedWeeks}주 기준: 누적 평균 {value(report.cumulativeGap.cumulativeAvg, "점")} · 진도 평균 {value(report.cumulativeGap.progressAvg, "점")} · 격차 {value(report.cumulativeGap.gap, "점")}</p> : <p className="admin-empty-state">같은 주의 누적 시험과 진도 시험을 함께 비교할 자료가 없습니다.</p>}</section>}
-    {<section data-report-section="rank" className="admin-section"><h2 className="admin-section-title">주간 석차 변동</h2>{!report.weeklyRanks.length ? <p className="admin-empty-state">선택한 기간에 주간 석차 기록이 없습니다.</p> : <><div className="admin-table-frame"><table><thead><tr><th scope="col">주차</th><th scope="col">반 석차</th><th scope="col">응시 인원</th></tr></thead><tbody>{[...report.weeklyRanks].sort((left, right) => right.weekYear - left.weekYear || right.weekNumber - left.weekNumber).map((week) => <tr key={`${week.weekYear}:${week.weekNumber}`}><td>{week.weekYear}년 {week.weekNumber}주</td><td>{week.rank}등</td><td>{week.count}명</td></tr>)}</tbody></table></div>{report.weeklyRanks.length < 2 && <p className="admin-empty-state">직전 주 기록이 없어 석차 변동을 비교할 수 없습니다.</p>}</>}</section>}
+    {<section data-report-section="rank" className="admin-section"><h2 className="admin-section-title">주간 석차 변동</h2>{!report.weeklyRanks.length ? <p className="admin-empty-state">선택한 기간에 주간 석차 기록이 없습니다.</p> : <><div className="admin-table-frame"><table><thead><tr><th scope="col">주차</th><th scope="col">반 석차</th><th scope="col">응시 인원</th></tr></thead><tbody>{[...report.weeklyRanks].sort((left, right) => right.weekYear - left.weekYear || right.weekNumber - left.weekNumber).map((week) => <tr key={`${week.weekYear}:${week.weekNumber}`}><td>{formatWeekLabel(week)}</td><td>{week.rank}등</td><td>{week.count}명</td></tr>)}</tbody></table></div>{report.weeklyRanks.length < 2 && <p className="admin-empty-state">직전 주 기록이 없어 석차 변동을 비교할 수 없습니다.</p>}</>}</section>}
     {records && <div data-report-section="records" className="admin-flat-page">{records}</div>}
     </PersonalReportTabs>
   </div>;

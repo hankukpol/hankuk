@@ -16,6 +16,7 @@ import {
   PortalMetricCard,
   portalMetricGrid3Class,
 } from "@/components/student-view/StudentPortalUi";
+import { formatShortWeekLabel, formatWeekLabel } from "@/lib/exam-week-label";
 import type { StudentMorningExamWeekItem } from "@/lib/services/morning-exam.service";
 
 type MorningExamStudentViewProps = {
@@ -31,7 +32,7 @@ export function MorningExamStudentView({ weeks }: MorningExamStudentViewProps) {
     return [...weeks]
       .reverse()
       .map((w) => ({
-        label: `${w.weekNumber}주`,
+        label: formatShortWeekLabel({ ...w, startDate: w.weekDateRange.start }),
         total: w.weeklyTotal ?? 0,
         average: w.weeklyAverage ?? 0,
       }));
@@ -64,7 +65,7 @@ export function MorningExamStudentView({ weeks }: MorningExamStudentViewProps) {
           <PortalMetricCard
             label="이번주 총점"
             value={latestWeek.weeklyTotal ?? "-"}
-            caption={`${latestWeek.weekYear}년 ${latestWeek.weekNumber}주차`}
+            caption={formatWeekLabel({ ...latestWeek, startDate: latestWeek.weekDateRange.start })}
           />
           <PortalMetricCard
             label="이번주 평균"
@@ -148,7 +149,7 @@ export function MorningExamStudentView({ weeks }: MorningExamStudentViewProps) {
                 >
                   <div>
                     <p className="text-[15px] font-bold text-admin-text">
-                      {week.weekYear}년 {week.weekNumber}주차
+                      {formatWeekLabel({ ...week, startDate: week.weekDateRange.start })}
                     </p>
                     <p className="text-[13px] text-admin-text-muted">
                       {week.weekDateRange.start} ~ {week.weekDateRange.end}

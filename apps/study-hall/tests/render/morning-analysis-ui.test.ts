@@ -149,7 +149,7 @@ test("cohort defaults to today and distinguishes insufficient samples from no de
   }).MorningCohortAnalysis;
   const html = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "cohort" }));
   const studentsHtml = renderToStaticMarkup(React.createElement(Component, { divisionSlug: "test", examTypes: [{ id: "morning", name: "아침 시험", category: "MORNING" }], view: "students" }));
-  for (const text of ["기본은 오늘 하루", "6회부터 추세", "진도 라벨이 입력된 시험이 없습니다"]) assert.ok(html.includes(text), text);
+  for (const text of ["기본은 오늘 하루", "추세 그래프는 6회부터 표시합니다", "진도 라벨이 입력된 시험이 없습니다"]) assert.ok(html.includes(text), text);
   assert.ok(studentsHtml.includes("판정에 필요한 응시 회차가 부족합니다"), "판정에 필요한 응시 회차가 부족합니다");
   assert.ok(!studentsHtml.includes("감지된 과목별 하락 신호가 없습니다"));
   analysis.insufficientSample = false;

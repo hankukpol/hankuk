@@ -43,7 +43,7 @@ async function loadDb(slug: string, typeId: string, range: MorningRange): Promis
  if (!division) throw notFound('지점을 찾을 수 없습니다.');
  const divisionId = division.id;
  const [examTypes, sessions] = await Promise.all([
-  prisma.examType.findMany({ where: { divisionId, id: typeId }, include: { subjects: { where: { examType: { divisionId } } } } }),
+  prisma.examType.findMany({ where: { divisionId, id: typeId }, include: { subjects: { where: { examType: { divisionId } }, orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] } } }),
   prisma.examSession.findMany({ where: { divisionId, examTypeId: typeId }, select: { id: true, divisionId: true, examTypeId: true, examDate: true, primarySubjectId: true, topic: true, fullScore: true, itemCount: true, externalCohortSize: true, externalStats: true } }),
  ]);
  const metadata = { divisionId, examTypes, sessions }, selected = selectMorningSessions(metadata, typeId, range), ids = selected.map(s => s.id);

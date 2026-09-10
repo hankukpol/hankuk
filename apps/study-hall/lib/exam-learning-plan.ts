@@ -19,6 +19,15 @@ export function reviewBuckets(items: ItemDiagnosticRow[], responseCorrectness?: 
   };
 }
 
+/*
+ * 과목 순서는 설정에 적힌 순서 하나뿐이다.
+ *
+ * 이 두 함수는 원래 복습이 급한 과목을 앞으로 끌어올렸고, 같으면 이름 가나다순이었다.
+ * 그런데 이 목록은 화면에서 **과목 탭 줄**로 그려진다. 탭이 성적에 따라 자리를 바꾸면
+ * 같은 과목이 탭마다 다른 자리에 오고 — 성적 추이·과목 비교는 정의 순서를 쓴다 —
+ * 응시 기록이 없는 기간에는 전부 0 이라 가나다순으로 무너졌다.
+ * 무엇을 먼저 볼지는 각 과목 칸 안의 "쉬운 문항 오답 N개"가 말해 준다.
+ */
 export function regularLearningPlan(report: RegularStudentReport) {
   const priorities = report.stats.subjects.map(subject => {
     const items = report.items.list.filter(item => item.subjectId === subject.subjectId);
@@ -26,7 +35,7 @@ export function regularLearningPlan(report: RegularStudentReport) {
     return { ...subject, ...buckets, lostPoints: Math.max(0, subject.fullScore - subject.my),
       examWeight: report.session.fullScore > 0 ? subject.fullScore / report.session.fullScore * 100 : null,
       gap: subject.externalAvg == null ? null : subject.my - subject.externalAvg };
-  }).sort((a, b) => b.easyWrong.length - a.easyWrong.length || b.lostPoints - a.lostPoints || a.name.localeCompare(b.name));
+  });
   const currentKeys = Object.keys(report.myScore.subjectScores).sort().join('|');
   const compatible = (report.history?.rows ?? []).filter(row => !row.isPartial && row.fullScore === report.session.fullScore
     && Object.keys(row.subjectScores).sort().join('|') === currentKeys && Number.isFinite(row.total))
@@ -59,5 +68,5 @@ export function morningLearningPlan(report: MorningStudentReport) {
     return { ...subject, tasks, topics, withheld,
       easyWrongCount: tasks.reduce((sum, task) => sum + task.easyWrong.length, 0),
       unansweredCount: tasks.reduce((sum, task) => sum + task.unanswered.length, 0) };
-  }).sort((a, b) => b.easyWrongCount - a.easyWrongCount || a.name.localeCompare(b.name));
+  });
 }

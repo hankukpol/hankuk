@@ -47,7 +47,13 @@ function prepare(bundle: MorningRawBundle) {
  const items = bundle.items.filter(i => i.divisionId === bundle.divisionId && ids.has(i.sessionId));
  const membership = new Set(participants.map(p => key(p.sessionId, p.studentId)));
  const responses = bundle.responses.filter(r => r.divisionId === bundle.divisionId && ids.has(r.sessionId) && membership.has(key(r.sessionId, r.studentId)));
- const subjectDefinitions = type.subjects.map(s => ({ id: s.id, name: s.name, fullScore: (s.totalItems ?? 0) * (s.pointsPerItem ?? 0), itemCount: s.totalItems ?? 0, alternateGroup: s.alternateGroup ?? null }));
+ // 과목 순서는 설정에서 정한 것을 그대로 쓴다. 조회가 순서를 보장하지 않는 경로가 있어 여기서 한 번 더 맞춘다.
+ // 내린 과목은 목록에서 뺀다 — 다만 조회 기간에 실제로 치른 회차가 있으면 이름이 사라지므로 남긴다.
+ const examinedSubjectIds = new Set(sessions.map(s => s.primarySubjectId).filter((id): id is string => Boolean(id)));
+ const subjectDefinitions = [...type.subjects]
+  .filter(s => s.isActive !== false || examinedSubjectIds.has(s.id))
+  .sort((l, r) => (l.displayOrder ?? 0) - (r.displayOrder ?? 0))
+  .map(s => ({ id: s.id, name: s.name, fullScore: (s.totalItems ?? 0) * (s.pointsPerItem ?? 0), itemCount: s.totalItems ?? 0, alternateGroup: s.alternateGroup ?? null }));
  const external = (s: AnalysisSessionRow): number | null => {
   const value = s.externalStats as { mean?: unknown; subjects?: Record<string, { mean?: unknown }> } | null;
   const v = value?.subjects?.[s.primarySubjectId!]?.mean ?? value?.mean;
@@ -66,7 +72,11 @@ function subjectSummaries(bundle: MorningRawBundle, data: Prepared, studentId: s
  for (const evidence of [...(bundle.choiceEvidence ?? []), ...selectMorningChoiceEvidence(bundle, bundle.examTypeId, bundle.range.to)]) {
   if (evidence.divisionId === bundle.divisionId && evidence.examTypeId === bundle.examTypeId && evidence.studentId === studentId && evidence.examDate <= bundle.range.to) taken.add(evidence.subjectId);
  }
- return data.subjectDefinitions.filter(s => !s.alternateGroup || taken.has(s.id)).map(subject => {
+ // 택1 과목은 고른 쪽만 남긴다. 아직 아무 쪽도 치르지 않았다면 어느 쪽을 고를지 모르는
+ // 것이지 고르지 않은 것이 아니므로 그 묶음은 통째로 남긴다 — 안 그러면 기록이 없는
+ // 학생에게는 그 묶음의 과목이 하나도 보이지 않는다.
+ const decidedGroups = new Set(data.subjectDefinitions.filter(s => s.alternateGroup && taken.has(s.id)).map(s => s.alternateGroup));
+ return data.subjectDefinitions.filter(s => !s.alternateGroup || taken.has(s.id) || !decidedGroups.has(s.alternateGroup)).map(subject => {
   const sessions = data.sessions.filter(s => s.primarySubjectId === subject.id);
   const attended = sessions.flatMap(s => { const score = data.score(mine.get(s.id), subject.id); return score === null ? [] : [{ date: dateKey(s.examDate), score, topic: s.topic, sessionId: s.id }]; });
   const classSeries = attended.flatMap(s => { const value = data.heatById.get(s.sessionId)?.internalAvg; return value == null ? [] : [{ date: s.date, score: value }]; });

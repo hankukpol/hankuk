@@ -12,6 +12,7 @@ export type ImportSubject = {
   totalItems: number | null;
   pointsPerItem: number | null;
   alternateGroup?: string | null;
+  displayOrder?: number | null;
   isActive: boolean;
 };
 export type ImportExamType = {

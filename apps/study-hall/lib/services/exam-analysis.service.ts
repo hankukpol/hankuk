@@ -36,7 +36,7 @@ async function loadDb(divisionSlug: string, examTypeId: string, examDate?: strin
   if (!division) throw notFound("지점을 찾을 수 없습니다.");
   const divisionId = division.id;
   const [examTypes, sessions] = await Promise.all([
-    prisma.examType.findMany({ where: { divisionId, id: examTypeId }, include: { subjects: { where: { examType: { divisionId } } } } }),
+    prisma.examType.findMany({ where: { divisionId, id: examTypeId }, include: { subjects: { where: { examType: { divisionId } }, orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] } } }),
     prisma.examSession.findMany({ where: { divisionId, examTypeId }, select: { id: true, divisionId: true, examTypeId: true, examDate: true, primarySubjectId: true, topic: true, fullScore: true, itemCount: true, externalCohortSize: true, externalStats: true } }),
   ]);
   const metadata = { divisionId, examTypes, sessions };

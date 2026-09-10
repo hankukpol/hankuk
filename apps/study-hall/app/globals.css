@@ -3037,7 +3037,30 @@ body:has(.admin-shell) {
     border-radius: 0;
   }
 
-  /* --- 표·행 안의 이름 링크: 보이는 크기는 두고 탭 영역만 넓힌다 (§4).
+  /* --- 출결 스와이프 표식 (MobileCheckForm).
+       손가락을 놓으면 무엇이 되는지 행 색으로 알린다. 행을 밀어 보이려고 <tr> 에
+       transform 을 걸면 셀이 공통 열 너비를 잃고 표가 무너진다. 배경색은 배치를
+       건드리지 않으므로 미는 동안에도 표가 그대로다.
+
+       td 에 걸어야 한다 — tr 배경은 셀 배경에 가려진다.
+       색은 고정값으로 둔다. color-mix 와 변수를 엮으면 이 위치에서 값이 풀리지 않았다. --- */
+  .admin-shell tr[data-swipe] > td {
+    transition: background-color 120ms ease-out;
+  }
+
+  /* 첫 열은 가로 스크롤용 고정 열이라 위에서 흰 배경을 (0,3,4) 로 못박는다.
+     표식이 그 칸만 비껴가지 않도록 같은 모양으로 한 번 더 적는다. */
+  .admin-shell tr[data-swipe="PRESENT"] > td,
+  .admin-table-frame table > tbody > tr[data-swipe="PRESENT"] > :is(th, td):first-child:not([colspan]) {
+    background: #e8f6ed;
+  }
+
+  .admin-shell tr[data-swipe="ABSENT"] > td,
+  .admin-table-frame table > tbody > tr[data-swipe="ABSENT"] > :is(th, td):first-child:not([colspan]) {
+    background: #fdeaea;
+  }
+
+/* --- 표·행 안의 이름 링크: 보이는 크기는 두고 탭 영역만 넓힌다 (§4).
          이 링크는 `display: inline` 이라 글 흐름에 놓인다. 높이를 44px 로 키우면
          줄 간격이 벌어져 표가 성글어진다. 칩(§2.3)이 쓰는 방법을 그대로 쓴다 —
          보이는 것은 그대로, 손가락이 닿는 영역만 위아래로 늘린다. --- */

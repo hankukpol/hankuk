@@ -148,7 +148,10 @@ export function MobileCheckForm({
   const [showOnlyUnchecked, setShowOnlyUnchecked] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(true);
-  const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+  // 스와이프 중에는 "놓으면 무엇이 되는지" 만 들고 있는다. 예전에는 밀린 픽셀을 담아
+  // <tr> 에 transform 으로 걸었는데, 표 행에 transform 을 주면 셀이 공통 열 너비를
+  // 잃고 따로 배치돼 미는 동안 표가 무너져 보였다.
+  const [swipeIntents, setSwipeIntents] = useState<Record<string, "PRESENT" | "ABSENT">>({});
   const [openOtherIds, setOpenOtherIds] = useState<Record<string, boolean>>({});
   // 자습실이 하나뿐이면 카드마다 같은 이름을 반복할 이유가 없다. 좌석 라벨만 남긴다.
   const showStudyRoomName = useMemo(
@@ -237,7 +240,7 @@ export function MobileCheckForm({
       setFormState(initialFormState);
       setSavedFormState(initialFormState);
       setShowOnlyUnchecked(false);
-      setSwipeOffsets({});
+      setSwipeIntents({});
       setIsLoading(false);
       return;
     }
@@ -268,7 +271,7 @@ export function MobileCheckForm({
         setFormState(nextState);
         setSavedFormState(nextState);
         setShowOnlyUnchecked(false);
-        setSwipeOffsets({});
+        setSwipeIntents({});
       } catch (error) {
         if (isMounted) {
           toast.error(error instanceof Error ? error.message : "출석 데이터를 불러오지 못했습니다.");
@@ -415,7 +418,7 @@ export function MobileCheckForm({
       const nextState = buildInitialState(data.students, data.records);
       setFormState(nextState);
       setSavedFormState(nextState);
-      setSwipeOffsets({});
+      setSwipeIntents({});
       toast.success("출석 기록을 저장했습니다.");
       setSaveSuccessModal({
         title: "출석 저장 완료",
@@ -453,37 +456,36 @@ export function MobileCheckForm({
 
     if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
       swipeRef.current = null;
-      setSwipeOffsets((current) => ({ ...current, [studentId]: 0 }));
+      setSwipeIntents((current) => { const next = { ...current }; delete next[studentId]; return next; });
       return;
     }
 
-    const maxOffset = Math.min(120, currentSwipe.width * 0.34);
-    const bounded = Math.max(-maxOffset, Math.min(maxOffset, deltaX));
+    const threshold = Math.min(88, currentSwipe.width * 0.24);
+    const intent = deltaX >= threshold ? "PRESENT" : deltaX <= -threshold ? "ABSENT" : null;
 
     cancelAnimationFrame(swipeRafRef.current);
     swipeRafRef.current = requestAnimationFrame(() => {
-      setSwipeOffsets((current) => ({ ...current, [studentId]: bounded }));
+      setSwipeIntents((current) => {
+        if (current[studentId] === intent) return current;
+        const next = { ...current };
+        if (intent) next[studentId] = intent; else delete next[studentId];
+        return next;
+      });
     });
   }
 
   function handleSwipeEnd(studentId: string) {
     const currentSwipe = swipeRef.current;
-    const offset = swipeOffsets[studentId] ?? 0;
+    const intent = swipeIntents[studentId];
 
     cancelAnimationFrame(swipeRafRef.current);
 
-    if (currentSwipe?.studentId === studentId) {
-      const threshold = Math.min(88, currentSwipe.width * 0.24);
-
-      if (offset >= threshold) {
-        applyStudentStatus(studentId, "PRESENT", true);
-      } else if (offset <= -threshold) {
-        applyStudentStatus(studentId, "ABSENT", true);
-      }
+    if (currentSwipe?.studentId === studentId && intent) {
+      applyStudentStatus(studentId, intent, true);
     }
 
     swipeRef.current = null;
-    setSwipeOffsets((current) => ({ ...current, [studentId]: 0 }));
+    setSwipeIntents((current) => { const next = { ...current }; delete next[studentId]; return next; });
   }
 
   return (
@@ -714,7 +716,7 @@ export function MobileCheckForm({
               {visibleStudents.map((student) => {
                 const state = formState[student.id] ?? { status: "", reason: "" };
                 const needsReason = state.status === "ABSENT" || state.status === "EXCUSED";
-                const swipeOffset = swipeOffsets[student.id] ?? 0;
+                const swipeIntent = swipeIntents[student.id];
                 const hasOtherStatus = isOtherStatus(state.status);
                 // 이미 기타 상태가 지정된 행은 무엇이 걸렸는지 바로 보이도록 펼쳐 둔다.
                 const isOtherOpen = openOtherIds[student.id] ?? hasOtherStatus;
@@ -727,11 +729,7 @@ export function MobileCheckForm({
                   <tr
                     key={student.id}
                     className="touch-pan-y"
-                    style={
-                      swipeOffset === 0
-                        ? undefined
-                        : { transform: `translateX(${swipeOffset}px)` }
-                    }
+                    data-swipe={swipeIntent}
                     onTouchStart={(event) => handleSwipeStart(student.id, event)}
                     onTouchMove={(event) => handleSwipeMove(student.id, event)}
                     onTouchEnd={() => handleSwipeEnd(student.id)}

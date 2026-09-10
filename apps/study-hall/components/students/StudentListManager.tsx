@@ -651,13 +651,14 @@ export function StudentListManager({
                 <tr>
                   <th>수험번호</th>
                   <th>이름</th>
+                  <th>연락처</th>
                   <th>직렬</th>
                   <th>좌석</th>
                   <th>상태</th>
                   <th>벌점</th>
                   <th>경고 단계</th>
                   <th>등록일</th>
-                  <th className="admin-table-amount">상세</th>
+                  <th className="text-center">상세</th>
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -666,10 +667,14 @@ export function StudentListManager({
                     <td>{student.studentNumber}</td>
                     <td>
                       <div className="font-medium text-slate-950">{student.name}</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className="admin-help">{student.phone || "연락처 미등록"}</span>
-                        {student.tuitionExempt ? <TuitionExemptBadge reason={student.tuitionExemptReason} /> : null}
-                      </div>
+                      {student.tuitionExempt ? (
+                        <div className="mt-1">
+                          <TuitionExemptBadge reason={student.tuitionExemptReason} />
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="tabular-nums">
+                      {student.phone || <span className="admin-help">미등록</span>}
                     </td>
                     <td>
                       <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
@@ -687,8 +692,8 @@ export function StudentListManager({
                       <WarningStageBadge stage={student.warningStage} label={student.warningStageLabel} />
                     </td>
                     <td>{formatDate(student.createdAt)}</td>
-                    <td className="admin-table-amount">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td>
+                      <div className="flex items-center justify-center gap-1.5">
                         <Link
                           href={`/${divisionSlug}/admin/students/${student.id}`}
                           prefetch={false}

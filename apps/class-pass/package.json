@@ -6,7 +6,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node ../../scripts/docker-dev.mjs dev class-pass",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -22,7 +22,10 @@
     "verify:course-template-copy": "node scripts/verify-course-template-copy-local.js",
     "verify:designated-seat-display": "node scripts/verify-designated-seat-display.js",
     "verify:designated-seat-multi-room": "node scripts/verify-designated-seat-multi-room-local-workflow.js",
-    "verify:designated-seat-200": "node scripts/verify-designated-seat-200-local-workflow.js"
+    "verify:designated-seat-200": "node scripts/verify-designated-seat-200-local-workflow.js",
+    "dev:runtime": "next dev",
+    "dev:stop": "node ../../scripts/docker-dev.mjs stop class-pass",
+    "dev:logs": "node ../../scripts/docker-dev.mjs logs class-pass"
   },
   "dependencies": {
     "@hankuk/config": "workspace:*",

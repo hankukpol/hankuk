@@ -15,7 +15,7 @@
     "dev:portal": "pnpm --dir ./apps/portal dev",
     "dev:academy-ops": "pnpm --dir ./apps/academy-ops dev",
     "dev:interview-mate": "pnpm --dir ./apps/interview-mate dev",
-    "dev:police-exam-bank": "pnpm --dir ./apps/police-exam-bank dev",
+    "dev:police-exam-bank": "node scripts/docker-dev.mjs dev police-exam-bank",
     "build:score-predict": "pnpm --dir ./apps/score-predict build",
     "build:study-hall": "pnpm --dir ./apps/study-hall build",
     "build:interview-pass": "pnpm --dir ./apps/interview-pass build",
@@ -27,7 +27,14 @@
     "turbo:build": "pnpm exec turbo run build",
     "turbo:lint": "pnpm exec turbo run lint",
     "turbo:typecheck": "pnpm exec turbo run typecheck",
-    "turbo:dev": "pnpm exec turbo run dev --parallel"
+    "turbo:dev": "node scripts/docker-dev.mjs dev all",
+    "docker:setup": "node scripts/docker-config.mjs && node scripts/docker-env.mjs",
+    "docker:dev": "node scripts/docker-dev.mjs dev",
+    "docker:start": "node scripts/docker-dev.mjs start",
+    "docker:stop": "node scripts/docker-dev.mjs stop",
+    "docker:status": "node scripts/docker-dev.mjs status",
+    "docker:check": "node scripts/docker-dev.mjs check",
+    "docker:exec": "node scripts/docker-dev.mjs exec"
   },
   "devDependencies": {
     "pnpm": "10.0.0",

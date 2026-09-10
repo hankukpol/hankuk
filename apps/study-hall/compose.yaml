@@ -1,0 +1,66 @@
+name: study-hall
+
+x-dev-environment: &dev-environment
+  NODE_ENV: development
+  MOCK_MODE: "true"
+  DATABASE_URL: postgresql://local:local@localhost:5432/mockdb
+  DIRECT_URL: postgresql://local:local@localhost:5432/mockdb
+  APP_SESSION_SECRET: local-docker-development-only
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_SUPABASE_URL: https://local.test
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: local-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: local-service-role
+  NEXT_TELEMETRY_DISABLED: "1"
+
+services:
+  dev:
+    image: study-hall-dev:local
+    build:
+      context: ../..
+      dockerfile: apps/study-hall/Dockerfile.dev
+    init: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      <<: *dev-environment
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - .:/workspace/apps/study-hall
+      # The source mount would carry the host's real env files in with it, and Next loads
+      # .env.local on its own. Blank them: this server takes settings from `environment` only.
+      # Add any new .env file placed in this folder here as well.
+      - /dev/null:/workspace/apps/study-hall/.env.production.pull:ro
+      - /dev/null:/workspace/apps/study-hall/.env.local:ro
+      - /dev/null:/workspace/apps/study-hall/.env.development.local:ro
+      - ../../packages/config:/workspace/packages/config:ro
+      - dependencies:/workspace/apps/study-hall/node_modules
+      - next-cache:/workspace/apps/study-hall/.next-dev
+      - dev-state:/workspace/apps/study-hall/.local
+      - ./.local:/seed:ro
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -f .local/mock-db.json ] && [ -f /seed/mock-db.json ]; then
+          cp /seed/mock-db.json .local/mock-db.json
+        fi
+        exec pnpm dev:runtime --hostname 0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 20s
+      start_period: 120s
+      retries: 5
+  test:
+    image: study-hall-dev:local
+    profiles: ["test"]
+    init: true
+    environment:
+      <<: *dev-environment
+      MOCK_DB_DIR: /tmp/study-hall-test
+    command: ["sh", "-ec", "pnpm prisma:generate && pnpm test && pnpm lint && pnpm typecheck"]
+
+volumes:
+  dependencies:
+  next-cache:
+  dev-state:

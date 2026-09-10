@@ -6,12 +6,15 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node ../../scripts/docker-dev.mjs dev interview-mate",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test src/**/*.test.ts",
+    "dev:runtime": "next dev",
+    "dev:stop": "node ../../scripts/docker-dev.mjs stop interview-mate",
+    "dev:logs": "node ../../scripts/docker-dev.mjs logs interview-mate"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",

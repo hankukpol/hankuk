@@ -13,56 +13,23 @@ Next.js 14 + Prisma + Supabase 기반 운영 시스템입니다.
 
 ## 로컬 실행
 
-### 1. 의존성 설치
+기본 개발 환경은 Docker Compose입니다. Docker Desktop을 켠 뒤 앱 폴더에서 실행합니다.
 
-```bash
-cd study-hall
-npm install
+```powershell
+pnpm dev
 ```
 
-### 2. 환경변수 준비
+백그라운드 실행과 상태 확인:
 
-`.env.example`를 기준으로 `.env.local` 또는 `.env`를 설정합니다.
-
-mock 모드만 빠르게 확인할 때는 최소값만 있어도 됩니다.
-
-```env
-MOCK_MODE=true
-APP_SESSION_SECRET=local-dev-secret
-NEXT_PUBLIC_SUPABASE_URL=https://local.test
-NEXT_PUBLIC_SUPABASE_ANON_KEY=local-anon-key
-SUPABASE_SERVICE_ROLE_KEY=local-service-role
-DATABASE_URL=postgresql://user:pass@localhost:5432/mockdb
-DIRECT_URL=postgresql://user:pass@localhost:5432/mockdb
+```powershell
+docker compose up -d --build
+docker compose ps
+docker compose logs -f dev
 ```
 
-### 3. mock 모드 실행
-
-저장소 루트에서:
-
-```bat
-run-local-test.bat
-```
-
-또는 `web` 폴더에서:
-
-```bash
-npm run dev
-```
-
-### 4. mock 데이터 초기화
-
-저장소 루트에서:
-
-```bat
-reset-all-data.bat --force
-```
-
-또는 `web` 폴더에서:
-
-```bash
-npm run reset:all -- --force
-```
+화면은 http://localhost:3000 입니다. 기본값은 mock 모드이며, 기존 개발 데이터를
+Docker 전용 볼륨으로 한 번 복사합니다. 운영 DB에는 연결하지 않습니다.
+실행·테스트·데이터 보존 방법은 [Docker 개발 가이드](docs/docker-development.md)를 따릅니다.
 
 ## 실제 DB 초기화와 시드
 

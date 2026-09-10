@@ -6,7 +6,10 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "node scripts/ensure-prisma-generated.cjs && node scripts/dev-server.mjs",
+    "dev": "docker compose up --build",
+    "dev:runtime": "node scripts/ensure-prisma-generated.cjs && node scripts/dev-server.mjs",
+    "dev:stop": "docker compose stop dev",
+    "dev:logs": "docker compose logs -f dev",
     "build": "node scripts/ensure-prisma-generated.cjs && node scripts/clean-build-artifacts.cjs && next build",
     "start": "node scripts/ensure-prisma-generated.cjs && next start",
     "lint": "node scripts/ensure-prisma-generated.cjs && next lint",

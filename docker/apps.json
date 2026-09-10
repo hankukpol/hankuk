@@ -1,0 +1,9 @@
+{
+  "study-hall": { "port": 3000, "path": "/login", "standalone": true },
+  "academy-ops": { "port": 3100, "path": "/login", "schema": "academy_ops", "mock": true },
+  "score-predict": { "port": 3200, "path": "/police/login", "schema": "score_predict_fire" },
+  "class-pass": { "port": 3300, "path": "/login", "apiPort": 54321 },
+  "portal": { "port": 3400, "path": "/" },
+  "interview-pass": { "port": 3500, "path": "/" },
+  "interview-mate": { "port": 3600, "path": "/" }
+}

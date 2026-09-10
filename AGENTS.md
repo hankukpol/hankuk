@@ -130,6 +130,16 @@ This repository will become a Turborepo monorepo with pnpm workspaces.
 
 ## Package Manager Rules
 
+### Local development: Docker default (2026-09-10)
+
+- Use `pnpm dev:<app>` from the repository root or `pnpm dev` inside an app. These start Docker development containers.
+- Read `docs/DOCKER_DEVELOPMENT.md` for ports, setup, checks, and data boundaries.
+- Do not start a separate VM, WSL-hosted Node server, or native `next dev` for routine development. Docker Desktop's WSL2 backend is required infrastructure and stays enabled.
+- Run checks inside the app's container: `pnpm docker:check <app>` or `pnpm docker:exec <app> <pnpm arguments>`.
+- Keep each app's image, Prisma client, and build cache separate. Do not share host node_modules with Linux containers.
+- Never copy production environment files into development images. Local Docker environments live in ignored `docker/environments/*.env.local`.
+- `police-exam-bank` currently has no application source; do not create a fake server to report it as running.
+
 ### Current state
 - Use pnpm ONLY across the entire repo. npm and yarn are forbidden.
 - Do NOT run `npm install` or `yarn install` anywhere.

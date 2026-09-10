@@ -1,0 +1,751 @@
+{
+  "name": "hankuk-dev",
+  "services": {
+    "academy-ops": {
+      "image": "hankuk-academy-ops-dev:local",
+      "build": {
+        "context": ".",
+        "dockerfile": "docker/Dockerfile.dev",
+        "args": {
+          "APP": "academy-ops"
+        }
+      },
+      "init": true,
+      "profiles": [
+        "academy-ops"
+      ],
+      "ports": [
+        "127.0.0.1:3100:3100"
+      ],
+      "env_file": [
+        "docker/environments/academy-ops.env.local"
+      ],
+      "environment": {
+        "NODE_ENV": "development",
+        "PORT": "3100",
+        "WATCHPACK_POLLING": "true",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      },
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ],
+      "develop": {
+        "watch": [
+          {
+            "action": "sync",
+            "path": "apps/academy-ops/src",
+            "target": "/workspace/apps/academy-ops/src",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/academy-ops/public",
+            "target": "/workspace/apps/academy-ops/public",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/academy-ops/prisma",
+            "target": "/workspace/apps/academy-ops/prisma",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/academy-ops/scripts",
+            "target": "/workspace/apps/academy-ops/scripts",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/academy-ops/.eslintrc.json",
+            "target": "/workspace/apps/academy-ops/.eslintrc.json"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/academy-ops/next.config.mjs",
+            "target": "/workspace/apps/academy-ops/next.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/academy-ops/postcss.config.mjs",
+            "target": "/workspace/apps/academy-ops/postcss.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/academy-ops/tailwind.config.ts",
+            "target": "/workspace/apps/academy-ops/tailwind.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/academy-ops/tsconfig.json",
+            "target": "/workspace/apps/academy-ops/tsconfig.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "apps/academy-ops/package.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "pnpm-lock.yaml"
+          },
+          {
+            "action": "sync+restart",
+            "path": "packages/config",
+            "target": "/workspace/packages/config",
+            "ignore": [
+              "node_modules/"
+            ]
+          }
+        ]
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3100/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "30s",
+        "timeout": "25s",
+        "start_period": "120s",
+        "retries": 5
+      }
+    },
+    "score-predict": {
+      "image": "hankuk-score-predict-dev:local",
+      "build": {
+        "context": ".",
+        "dockerfile": "docker/Dockerfile.dev",
+        "args": {
+          "APP": "score-predict"
+        }
+      },
+      "init": true,
+      "profiles": [
+        "score-predict"
+      ],
+      "ports": [
+        "127.0.0.1:3200:3200"
+      ],
+      "env_file": [
+        "docker/environments/score-predict.env.local"
+      ],
+      "environment": {
+        "NODE_ENV": "development",
+        "PORT": "3200",
+        "WATCHPACK_POLLING": "true",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      },
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ],
+      "develop": {
+        "watch": [
+          {
+            "action": "sync",
+            "path": "apps/score-predict/src",
+            "target": "/workspace/apps/score-predict/src",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/score-predict/public",
+            "target": "/workspace/apps/score-predict/public",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/score-predict/prisma",
+            "target": "/workspace/apps/score-predict/prisma",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/score-predict/scripts",
+            "target": "/workspace/apps/score-predict/scripts",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/score-predict/eslint.config.mjs",
+            "target": "/workspace/apps/score-predict/eslint.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/score-predict/next.config.mjs",
+            "target": "/workspace/apps/score-predict/next.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/score-predict/postcss.config.mjs",
+            "target": "/workspace/apps/score-predict/postcss.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/score-predict/tailwind.config.ts",
+            "target": "/workspace/apps/score-predict/tailwind.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/score-predict/tsconfig.json",
+            "target": "/workspace/apps/score-predict/tsconfig.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "apps/score-predict/package.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "pnpm-lock.yaml"
+          },
+          {
+            "action": "sync+restart",
+            "path": "packages/config",
+            "target": "/workspace/packages/config",
+            "ignore": [
+              "node_modules/"
+            ]
+          }
+        ]
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3200/police/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "30s",
+        "timeout": "25s",
+        "start_period": "120s",
+        "retries": 5
+      }
+    },
+    "class-pass": {
+      "image": "hankuk-class-pass-dev:local",
+      "build": {
+        "context": ".",
+        "dockerfile": "docker/Dockerfile.dev",
+        "args": {
+          "APP": "class-pass"
+        }
+      },
+      "init": true,
+      "profiles": [
+        "class-pass"
+      ],
+      "ports": [
+        "127.0.0.1:3300:3300"
+      ],
+      "env_file": [
+        "docker/environments/class-pass.env.local"
+      ],
+      "environment": {
+        "NODE_ENV": "development",
+        "PORT": "3300",
+        "WATCHPACK_POLLING": "true",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      },
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ],
+      "develop": {
+        "watch": [
+          {
+            "action": "sync",
+            "path": "apps/class-pass/src",
+            "target": "/workspace/apps/class-pass/src",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/class-pass/public",
+            "target": "/workspace/apps/class-pass/public",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/class-pass/scripts",
+            "target": "/workspace/apps/class-pass/scripts",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/class-pass/tests",
+            "target": "/workspace/apps/class-pass/tests",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/class-pass/.eslintrc.json",
+            "target": "/workspace/apps/class-pass/.eslintrc.json"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/class-pass/next.config.ts",
+            "target": "/workspace/apps/class-pass/next.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/class-pass/postcss.config.mjs",
+            "target": "/workspace/apps/class-pass/postcss.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/class-pass/tailwind.config.ts",
+            "target": "/workspace/apps/class-pass/tailwind.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/class-pass/tsconfig.json",
+            "target": "/workspace/apps/class-pass/tsconfig.json"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/class-pass/tsconfig.test.json",
+            "target": "/workspace/apps/class-pass/tsconfig.test.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "apps/class-pass/package.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "pnpm-lock.yaml"
+          },
+          {
+            "action": "sync+restart",
+            "path": "packages/config",
+            "target": "/workspace/packages/config",
+            "ignore": [
+              "node_modules/"
+            ]
+          }
+        ]
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3300/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "30s",
+        "timeout": "25s",
+        "start_period": "120s",
+        "retries": 5
+      }
+    },
+    "portal": {
+      "image": "hankuk-portal-dev:local",
+      "build": {
+        "context": ".",
+        "dockerfile": "docker/Dockerfile.dev",
+        "args": {
+          "APP": "portal"
+        }
+      },
+      "init": true,
+      "profiles": [
+        "portal"
+      ],
+      "ports": [
+        "127.0.0.1:3400:3400"
+      ],
+      "env_file": [
+        "docker/environments/portal.env.local"
+      ],
+      "environment": {
+        "NODE_ENV": "development",
+        "PORT": "3400",
+        "WATCHPACK_POLLING": "true",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      },
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ],
+      "develop": {
+        "watch": [
+          {
+            "action": "sync",
+            "path": "apps/portal/src",
+            "target": "/workspace/apps/portal/src",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/portal/next.config.ts",
+            "target": "/workspace/apps/portal/next.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/portal/tsconfig.json",
+            "target": "/workspace/apps/portal/tsconfig.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "apps/portal/package.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "pnpm-lock.yaml"
+          },
+          {
+            "action": "sync+restart",
+            "path": "packages/config",
+            "target": "/workspace/packages/config",
+            "ignore": [
+              "node_modules/"
+            ]
+          }
+        ]
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3400/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "30s",
+        "timeout": "25s",
+        "start_period": "120s",
+        "retries": 5
+      }
+    },
+    "interview-pass": {
+      "image": "hankuk-interview-pass-dev:local",
+      "build": {
+        "context": ".",
+        "dockerfile": "docker/Dockerfile.dev",
+        "args": {
+          "APP": "interview-pass"
+        }
+      },
+      "init": true,
+      "profiles": [
+        "interview-pass"
+      ],
+      "ports": [
+        "127.0.0.1:3500:3500"
+      ],
+      "env_file": [
+        "docker/environments/interview-pass.env.local"
+      ],
+      "environment": {
+        "NODE_ENV": "development",
+        "PORT": "3500",
+        "WATCHPACK_POLLING": "true",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      },
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ],
+      "develop": {
+        "watch": [
+          {
+            "action": "sync",
+            "path": "apps/interview-pass/src",
+            "target": "/workspace/apps/interview-pass/src",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-pass/.eslintrc.json",
+            "target": "/workspace/apps/interview-pass/.eslintrc.json"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-pass/next.config.ts",
+            "target": "/workspace/apps/interview-pass/next.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-pass/postcss.config.mjs",
+            "target": "/workspace/apps/interview-pass/postcss.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-pass/tsconfig.json",
+            "target": "/workspace/apps/interview-pass/tsconfig.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "apps/interview-pass/package.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "pnpm-lock.yaml"
+          },
+          {
+            "action": "sync+restart",
+            "path": "packages/config",
+            "target": "/workspace/packages/config",
+            "ignore": [
+              "node_modules/"
+            ]
+          }
+        ]
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3500/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "30s",
+        "timeout": "25s",
+        "start_period": "120s",
+        "retries": 5
+      }
+    },
+    "interview-mate": {
+      "image": "hankuk-interview-mate-dev:local",
+      "build": {
+        "context": ".",
+        "dockerfile": "docker/Dockerfile.dev",
+        "args": {
+          "APP": "interview-mate"
+        }
+      },
+      "init": true,
+      "profiles": [
+        "interview-mate"
+      ],
+      "ports": [
+        "127.0.0.1:3600:3600"
+      ],
+      "env_file": [
+        "docker/environments/interview-mate.env.local"
+      ],
+      "environment": {
+        "NODE_ENV": "development",
+        "PORT": "3600",
+        "WATCHPACK_POLLING": "true",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      },
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ],
+      "develop": {
+        "watch": [
+          {
+            "action": "sync",
+            "path": "apps/interview-mate/src",
+            "target": "/workspace/apps/interview-mate/src",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync",
+            "path": "apps/interview-mate/public",
+            "target": "/workspace/apps/interview-mate/public",
+            "initial_sync": true,
+            "ignore": [
+              "node_modules/",
+              ".env*",
+              ".local/",
+              ".mock-db/",
+              "*.log",
+              "*.tsbuildinfo",
+              "__*"
+            ]
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-mate/.eslintrc.json",
+            "target": "/workspace/apps/interview-mate/.eslintrc.json"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-mate/next.config.mjs",
+            "target": "/workspace/apps/interview-mate/next.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-mate/postcss.config.mjs",
+            "target": "/workspace/apps/interview-mate/postcss.config.mjs"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-mate/tailwind.config.ts",
+            "target": "/workspace/apps/interview-mate/tailwind.config.ts"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-mate/tsconfig.json",
+            "target": "/workspace/apps/interview-mate/tsconfig.json"
+          },
+          {
+            "action": "sync+restart",
+            "path": "apps/interview-mate/tsconfig.typecheck.json",
+            "target": "/workspace/apps/interview-mate/tsconfig.typecheck.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "apps/interview-mate/package.json"
+          },
+          {
+            "action": "rebuild",
+            "path": "pnpm-lock.yaml"
+          },
+          {
+            "action": "sync+restart",
+            "path": "packages/config",
+            "target": "/workspace/packages/config",
+            "ignore": [
+              "node_modules/"
+            ]
+          }
+        ]
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3600/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "30s",
+        "timeout": "25s",
+        "start_period": "120s",
+        "retries": 5
+      }
+    }
+  }
+}

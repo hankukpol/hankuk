@@ -6,8 +6,8 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "next dev -p 3200 --webpack",
-    "dev:fast": "next dev -p 3200 --turbopack",
+    "dev": "node ../../scripts/docker-dev.mjs dev score-predict",
+    "dev:fast": "node ../../scripts/docker-dev.mjs dev score-predict",
     "typecheck": "tsc --noEmit",
     "build": "prisma generate && next build --webpack",
     "start": "next start",
@@ -52,7 +52,7 @@
     "test:notice-board-crud": "tsx scripts/notice-board-crud-e2e.ts",
     "test:notice-summary": "tsx scripts/notice-summary-visual-qa.ts",
     "verify:calculations": "pnpm run test:police-written-bonus && pnpm run test:fire-written-bonus && pnpm run test:submission-suspicion && pnpm run test:prediction-model && pnpm run test:tenant-isolation && pnpm run test:exam-lifecycle",
-    "local:dev": "tsx scripts/local-environment.ts dev",
+    "local:dev": "node ../../scripts/docker-dev.mjs dev score-predict",
     "local:up": "tsx scripts/local-environment.ts up",
     "local:reset": "tsx scripts/local-environment.ts reset",
     "local:test": "tsx scripts/local-environment.ts test",
@@ -79,7 +79,12 @@
     "db:promotions:verify": "tsx --conditions=react-server scripts/verify-promotion-readiness.ts",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
-    "prisma:backfill-exam-number-ranges": "tsx prisma/backfill-exam-number-ranges.ts"
+    "prisma:backfill-exam-number-ranges": "tsx prisma/backfill-exam-number-ranges.ts",
+    "dev:runtime": "next dev -p 3200 --webpack",
+    "dev:stop": "node ../../scripts/docker-dev.mjs stop score-predict",
+    "dev:logs": "node ../../scripts/docker-dev.mjs logs score-predict",
+    "dev:fast:runtime": "next dev -p 3200 --turbopack",
+    "local:dev:legacy": "tsx scripts/local-environment.ts dev"
   },
   "dependencies": {
     "@hankuk/config": "workspace:*",

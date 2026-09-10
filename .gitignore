@@ -24,6 +24,7 @@
 **/.turbo/
 
 # Local env and secrets
+/docker/environments/*.env.local
 **/.env
 **/.env.*
 !**/.env.example

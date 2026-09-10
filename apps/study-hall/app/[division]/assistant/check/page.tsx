@@ -1,7 +1,7 @@
 import { MobileCheckForm } from "@/components/attendance/MobileCheckForm";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
 import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
-import { getCurrentPeriod } from "@/lib/services/period.service";
+import { selectPeriodForCheck, kstMinutesOfDay } from "@/lib/attendance-meta";
 
 function getTodayInKst() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -29,8 +29,8 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
   const today = getTodayInKst();
   const initialSnapshot = await getAttendanceSnapshot(params.division, today);
   const periods = initialSnapshot.periods;
-  const currentPeriod = await getCurrentPeriod(params.division);
-  const periodId = periods.find((p) => p.id === currentPeriod?.id)?.id ?? periods[0]?.id ?? null;
+  // 쉬는 시간에도 곧 할 교시가 잡혀야 한다. 목록은 이미 관리규정이 거른 출석 교시다.
+  const periodId = selectPeriodForCheck(periods, kstMinutesOfDay())?.id ?? null;
   const snapshot = periodId
     ? await getAttendanceSnapshot(params.division, today, periodId)
     : { students: [], records: [] };

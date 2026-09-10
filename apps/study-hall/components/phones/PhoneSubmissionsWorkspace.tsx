@@ -6,6 +6,7 @@ import { listStudents } from "@/lib/services/student.service";
 import { PhoneCheckForm } from "@/components/phones/PhoneCheckForm";
 import { PhoneWorkspaceTabs } from "@/components/phones/PhoneWorkspaceTabs";
 import { getCurrentPeriod } from "@/lib/services/period.service";
+import { selectPeriodForCheck, kstMinutesOfDay } from "@/lib/attendance-meta";
 import { getPhoneDaySnapshot, listPhoneRecords } from "@/lib/services/phone-submission.service";
 import {
   filterOperationalStudyRooms,
@@ -49,6 +50,13 @@ export async function PhoneSubmissionsWorkspace({
   // 좌석 현황·출석부와 같은 강의실을 보여준다. 강의실을 지정하지 않으면 서비스 기본값이
   // 오고, 그 순서에는 비활성 자습실도 들어 있어 화면마다 다른 방이 나온다.
   const initialSeatLayout = await getSeatLayout(divisionSlug, seatRooms[0]?.id);
+  // 출석부와 같은 규칙으로 교시를 고른다. 쉬는 시간에 첫 교시가 잡히면 이미 끝난
+  // 교시에 반납을 체크하게 된다.
+  const initialPeriodId =
+    selectPeriodForCheck(
+      snapshot.periods.map((period) => ({ id: period.periodId, startTime: period.startTime, endTime: period.endTime })),
+      kstMinutesOfDay(),
+    )?.id ?? currentPeriod?.id ?? snapshot.periods[0]?.periodId ?? "";
 
   const [students, periods] = policy && mode === "admin" ? await Promise.all([listStudents(divisionSlug), getPeriods(divisionSlug)]) : [[], []];
   const approval = policy && mode === "admin" ? <PhoneLoanApproval divisionSlug={divisionSlug} policy={policy} students={students.filter((s) => s.status === "ACTIVE" || s.status === "ON_LEAVE")} periods={periods} /> : undefined;
@@ -60,7 +68,7 @@ export async function PhoneSubmissionsWorkspace({
       divisionSlug={divisionSlug}
       initialDate={today}
       initialSnapshot={snapshot}
-      initialActivePeriodId={currentPeriod?.id ?? snapshot.periods[0]?.periodId ?? ""}
+      initialActivePeriodId={initialPeriodId}
       seatRooms={seatRooms}
       initialSeatLayout={initialSeatLayout}
       viewTabsVariant={showHistory ? "secondary" : "primary"}

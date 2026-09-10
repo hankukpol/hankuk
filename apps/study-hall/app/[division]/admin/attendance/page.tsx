@@ -11,6 +11,7 @@ import {
   type AttendanceSnapshot,
 } from "@/lib/services/attendance.service";
 import { getCurrentPeriod } from "@/lib/services/period.service";
+import { selectPeriodForCheck, kstMinutesOfDay } from "@/lib/attendance-meta";
 import {
   filterOperationalStudyRooms,
   getSeatLayout,
@@ -64,7 +65,8 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
   // 두 화면이 같은 좌석을 보여야 한다.
   const initialSeatLayout = await getSeatLayout(params.division, seatRooms[0]?.id);
 
-  const mobilePeriodId = currentPeriod?.id ?? snapshot.periods[0]?.id ?? null;
+  // 쉬는 시간에는 currentPeriod 가 비어 첫 교시로 떨어졌다. 아직 끝나지 않은 교시를 고른다.
+  const mobilePeriodId = selectPeriodForCheck(snapshot.periods, kstMinutesOfDay())?.id ?? null;
   const initialMode = getInitialModeFromUserAgent(headers().get("user-agent"));
 
   return (

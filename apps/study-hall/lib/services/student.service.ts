@@ -1531,6 +1531,7 @@ export async function createStudentsBulk(
   // 좌석은 라벨로 들어온다. 같은 라벨이 강의실 두 곳에 있으면 어느 쪽인지 고를 수 없으므로
   // 그 줄만 실패로 남기고 나머지는 진행한다 — 넘겨짚어 배정하면 엉뚱한 자리에 앉는다.
   const wantsSeat = rows.some((row) => normalizeText(row.seatLabel ?? "") !== "");
+  let assignedSeat = false;
   const { listSeatOptions } = wantsSeat
     ? await import("@/lib/services/seat.service")
     : { listSeatOptions: null };
@@ -1607,6 +1608,7 @@ export async function createStudentsBulk(
           seatId: seat?.seatId ?? already.seatId ?? null,
         });
         if (seat?.seatId) {
+          assignedSeat = true;
           seatsByLabel.set(seatLabel, (seatsByLabel.get(seatLabel) ?? []).map((s) => ({ ...s, assignedStudentId: already.id })));
         }
         existingByNumber.set(studentNumber, { ...already, name, phone: phone ?? already.phone ?? null });
@@ -1634,6 +1636,7 @@ export async function createStudentsBulk(
       );
       // 같은 붙여넣기 안에서 같은 좌석을 두 번 쓰지 못하게 곧바로 찼다고 표시한다.
       if (seat?.seatId) {
+        assignedSeat = true;
         seatsByLabel.set(seatLabel, (seatsByLabel.get(seatLabel) ?? []).map((s) => ({ ...s, assignedStudentId: "just-assigned" })));
       }
       takenNumbers.add(studentNumber);
@@ -1653,6 +1656,12 @@ export async function createStudentsBulk(
 
   if (createdCount > 0 || updatedCount > 0) {
     revalidateDivisionOperationalViews(divisionSlug);
+    // 좌석을 배정했으면 좌석 현황의 캐시까지 비운다. 경로만 새로 그리면 좌석 서비스가
+    // 자기 태그로 캐시한 배치도를 그대로 돌려준다.
+    if (assignedSeat) {
+      const { revalidateSeatViews } = await import("@/lib/services/seat.service");
+      revalidateSeatViews(divisionSlug);
+    }
   }
 
   return { createdCount, updatedCount, duplicateCount, failedCount, items };

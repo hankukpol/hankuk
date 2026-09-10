@@ -129,6 +129,17 @@ function seatLayoutTag(divisionSlug: string, roomId?: string) {
   return `seat-layout:${divisionSlug}:${roomId ?? "default"}`;
 }
 
+/**
+ * 좌석 화면의 캐시를 비운다.
+ *
+ * 좌석 배정은 이 파일 밖에서도 일어난다 — 학생 일괄 등록이 좌석 라벨을 받아 배정하는데,
+ * `revalidateDivisionOperationalViews` 는 경로만 새로 그리고 이 태그들은 건드리지 않아
+ * 좌석 현황이 배정 전 화면을 그대로 보여줬다.
+ */
+export function revalidateSeatViews(divisionSlug: string, roomId?: string) {
+  revalidateSeatData(divisionSlug, roomId);
+}
+
 function revalidateSeatData(divisionSlug: string, roomId?: string) {
   revalidateTag(studyRoomsTag(divisionSlug));
   revalidateTag(seatOptionsTag(divisionSlug, false));

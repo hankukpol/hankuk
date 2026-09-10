@@ -33,12 +33,59 @@ function readHeader(cols: string[]): Partial<Record<ColumnKey, number>> | null {
   return map.studentNumber !== undefined && map.name !== undefined ? map : null;
 }
 
+const HANGUL = /[가-힣]/;
+const PHONE = /^0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}$/;
+const SEAT = /^[A-Za-z]?-?\d{1,3}$/;
+
+/**
+ * 머리글이 없을 때 내용을 보고 칸의 뜻을 정한다.
+ *
+ * 순서를 넘겨짚으면 안 된다. 이 학원의 시트는 수험번호·좌석번호·이름·연락처 순서인데
+ * 앞 세 칸을 수험번호·이름·연락처로 읽으면 좌석번호가 이름 자리에, 이름이 연락처 자리에
+ * 들어간다 — 28명이 그렇게 등록됐다.
+ *
+ * 세 가지는 생김새로 갈린다. 이름에는 한글이 있고, 연락처는 전화번호 꼴이며, 좌석번호는
+ * 둘 다 아닌 짧은 값이다. 수험번호는 첫 칸으로 둔다 — 모든 시트가 그렇게 시작한다.
+ */
+function inferColumns(rows: string[][]): Partial<Record<ColumnKey, number>> {
+  const width = rows.reduce((max, cols) => Math.max(max, cols.length), 0);
+  const sample = rows.slice(0, 20);
+  const looks = (index: number, test: (value: string) => boolean) => {
+    const filled = sample.map((cols) => cols[index]?.trim() ?? "").filter(Boolean);
+    return filled.length > 0 && filled.every(test);
+  };
+
+  const map: Partial<Record<ColumnKey, number>> = { studentNumber: 0 };
+  for (let index = 1; index < width; index += 1) {
+    if (map.phone === undefined && looks(index, (value) => PHONE.test(value.replace(/\s/g, "")))) {
+      map.phone = index;
+      continue;
+    }
+    if (map.name === undefined && looks(index, (value) => HANGUL.test(value))) {
+      map.name = index;
+      continue;
+    }
+    // 좌석 라벨은 "12" 나 "A-01" 꼴이다. 값이 줄마다 다르기도 해야 한다 — 채점표의
+    // 응시분야·지원지역은 모든 줄이 "0" 이라 모양만 보면 좌석으로 읽힌다.
+    if (map.seatLabel === undefined && looks(index, (value) => SEAT.test(value))) {
+      const distinct = new Set(sample.map((cols) => cols[index]?.trim() ?? "").filter(Boolean));
+      if (distinct.size > 1) map.seatLabel = index;
+    }
+  }
+  // 한글이 하나도 없는 명단(영문 이름 등)은 옛 순서로 되돌린다.
+  if (map.name === undefined) {
+    map.name = 1;
+    if (map.seatLabel === 1) map.seatLabel = undefined;
+    if (map.phone === undefined) map.phone = 2;
+  }
+  return map;
+}
+
 /**
  * 붙여넣은 표를 읽는다.
  *
- * 첫 줄이 머리글이면 이름으로 칸을 찾는다 — 학원마다 열 순서가 다르고, 엑셀에서 통째로
- * 복사할 때 좌석번호가 이름 앞에 오는 시트가 실제로 있다. 머리글이 없으면 예전처럼
- * 수험번호·이름·연락처 순서로 읽어, 지금까지 쓰던 붙여넣기가 그대로 동작한다.
+ * 첫 줄이 머리글이면 이름으로 칸을 찾는다. 머리글이 없으면 내용을 보고 정한다 —
+ * 학원마다 열 순서가 다르고, 엑셀에서 범위만 복사하면 머리글이 딸려 오지 않는다.
  *
  * 수험번호나 이름이 비어 있는 줄은 건너뛴다.
  */
@@ -57,19 +104,18 @@ export function parseBulkStudentRows(
     if (header) start = index + 1;
     break;
   }
-  const at = (cols: string[], key: ColumnKey, fallback: number) => {
-    const column = header ? header[key] : fallback;
+  const columns = header ?? inferColumns(lines.slice(start));
+  const at = (cols: string[], key: ColumnKey) => {
+    const column = columns[key];
     return column === undefined ? "" : cols[column]?.trim() ?? "";
   };
 
   for (let index = start; index < lines.length; index += 1) {
     const cols = lines[index];
-    const studentNumber = at(cols, "studentNumber", 0);
-    const name = at(cols, "name", 1);
-    // 머리글이 없으면 좌석 열은 없는 것으로 본다. 세 번째 칸을 좌석으로 넘겨짚으면
-    // 지금까지 연락처를 그 자리에 붙여 넣던 명단이 좌석 배정으로 잘못 읽힌다.
-    const phone = at(cols, "phone", 2);
-    const seatLabel = header ? at(cols, "seatLabel", -1) : "";
+    const studentNumber = at(cols, "studentNumber");
+    const name = at(cols, "name");
+    const phone = at(cols, "phone");
+    const seatLabel = at(cols, "seatLabel");
 
     // 여러 블록을 이어 붙이면 머리글이 목록 중간에도 나온다. 첫 줄만 보고 넘어가면
     // 그 줄들이 학생으로 들어간다.

@@ -1,0 +1,83 @@
+name: Wrong Answer Hunt APK
+
+on:
+  push:
+    branches:
+      - 'build/wrong-answer-hunt-apk-v4'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'experimental/wrong-answer-hunt-android/**'
+      - '.github/workflows/wrong-answer-hunt-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: experimental/wrong-answer-hunt-android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 35 SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Pack minimal Android SDK toolchain
+        run: |
+          rm -rf /tmp/android-sdk-export
+          mkdir -p /tmp/android-sdk-export/android-35
+          cp "$ANDROID_HOME/platforms/android-35/android.jar" /tmp/android-sdk-export/android-35/android.jar
+          cp -a "$ANDROID_HOME/build-tools/35.0.0" /tmp/android-sdk-export/build-tools-35.0.0
+          tar -C /tmp -cf /tmp/android-sdk-toolchain-35.tar android-sdk-export
+          ls -lh /tmp/android-sdk-toolchain-35.tar
+
+      - name: Upload Android SDK toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-sdk-toolchain-35
+          path: /tmp/android-sdk-toolchain-35.tar
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Generate launcher and audio assets
+        run: python3 tools/prepare_assets.py
+
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify APK
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee APK_SHA256.txt
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrong-answer-hunt-android-debug
+          path: |
+            experimental/wrong-answer-hunt-android/app/build/outputs/apk/debug/app-debug.apk
+            experimental/wrong-answer-hunt-android/APK_SHA256.txt
+          if-no-files-found: error
+          retention-days: 14

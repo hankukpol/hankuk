@@ -38,18 +38,20 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
 
-      - name: Pack Android SDK toolchain
+      - name: Pack minimal Android SDK toolchain
         run: |
-          mkdir -p /tmp/android-sdk-export
-          cp -a "$ANDROID_HOME/platforms/android-35" /tmp/android-sdk-export/android-35
+          rm -rf /tmp/android-sdk-export
+          mkdir -p /tmp/android-sdk-export/android-35
+          cp "$ANDROID_HOME/platforms/android-35/android.jar" /tmp/android-sdk-export/android-35/android.jar
           cp -a "$ANDROID_HOME/build-tools/35.0.0" /tmp/android-sdk-export/build-tools-35.0.0
-          tar -C /tmp -czf /tmp/android-sdk-toolchain-35.tar.gz android-sdk-export
+          tar -C /tmp -cf /tmp/android-sdk-toolchain-35.tar android-sdk-export
+          ls -lh /tmp/android-sdk-toolchain-35.tar
 
       - name: Upload Android SDK toolchain
         uses: actions/upload-artifact@v4
         with:
           name: android-sdk-toolchain-35
-          path: /tmp/android-sdk-toolchain-35.tar.gz
+          path: /tmp/android-sdk-toolchain-35.tar
           if-no-files-found: error
           retention-days: 1
 

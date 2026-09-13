@@ -1,6 +1,9 @@
 name: Wrong Answer Hunt APK
 
 on:
+  push:
+    branches:
+      - 'build/wrong-answer-hunt-apk-v4'
   pull_request:
     branches: [main]
     paths:

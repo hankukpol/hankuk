@@ -71,7 +71,7 @@ const STATUS_LABEL: Record<StatusKey, string> = {
   CLASS: "수업",
   TARDY: "지각",
   ABSENT: "결석",
-  EXCUSED: "공결",
+  EXCUSED: getAttendanceStatusLabel("EXCUSED"),
   HOLIDAY: "휴무",
   HALF_HOLIDAY: "반휴",
   NOT_APPLICABLE: "해당없음",
@@ -110,10 +110,12 @@ function computeDayStatus(
   const studentMatrix = matrix[studentId] ?? {};
   const statuses = periods.map((p) => studentMatrix[p.id]?.status ?? "");
 
+  if (statuses.length === 0) return "UNPROCESSED";
+  // 아직 입력하지 않은 교시가 이미 저장된 출결을 가리지 않게 한다.
+  // 이 배지는 좌석의 대표 표시이며, 교시별 기록·출석률·벌점은 변경하지 않는다.
   if (statuses.includes("ABSENT")) return "ABSENT";
-  if (statuses.some((s) => !s)) return "UNPROCESSED";
   if (statuses.includes("TARDY")) return "TARDY";
-  if (statuses.some((s) => s === "HOLIDAY" || s === "HALF_HOLIDAY")) return "HOLIDAY";
+  if (statuses.includes("HOLIDAY")) return "HOLIDAY";
   if (statuses.includes("HALF_HOLIDAY")) return "HALF_HOLIDAY";
   if (statuses.includes("EXCUSED")) {
     return periods
@@ -131,7 +133,7 @@ const QUICK_STATUSES: { value: Exclude<AttendanceInputValue, "">; label: string 
   { value: "CLASS", label: "수업" },
   { value: "TARDY", label: "지각" },
   { value: "ABSENT", label: "결석" },
-  { value: "EXCUSED", label: "공결" },
+  { value: "EXCUSED", label: getAttendanceStatusLabel("EXCUSED") },
   { value: "HOLIDAY", label: "휴무" },
   { value: "NOT_APPLICABLE", label: "해당없음" },
 ];

@@ -6,8 +6,9 @@ import { isDeepStrictEqual } from "node:util";
 import * as history from "../../lib/exam-import-history";
 import * as assembler from "../../lib/exam-import-assembler";
 import * as identity from "../../lib/exam-session-identity";
-import { ExamImportParseError, type ParsedExamImport } from "../../lib/exam-import-parser";
+import { ExamImportParseError, parseExamImportPair, type ParsedExamImport } from "../../lib/exam-import-parser";
 import type { ExamImportSelection } from "../../lib/exam-import-types";
+import { morningObjectiveFixture } from "../helpers/morning-objective-fixture";
 
 type Service = typeof import("../../lib/services/exam-import.service");
 type Row = Record<string, unknown>;
@@ -60,7 +61,7 @@ function actualMockUpdater(read: () => Record<string, unknown>, persist: (state:
   return testModule.exports.updateMockState;
 }
 
-function harness(mock: boolean, category: "REGULAR" | "MORNING") {
+function harness(mock: boolean, category: "REGULAR" | "MORNING", actualParser = false) {
   const data = fixture(category);
   let store = data.store;
   let id = 0;
@@ -119,7 +120,7 @@ function harness(mock: boolean, category: "REGULAR" | "MORNING") {
     "next/cache": { revalidateTag: (tag: string) => calls.push({ table: "cache", operation: "invalidate", args: { tag } }) },
     "node:crypto": { randomUUID: () => { id++; if (id === failAfterId) throw new Error("injected late failure"); return `generated-${id}`; } },
     "@/lib/exam-import-assembler": assembler,
-    "@/lib/exam-import-parser": { ExamImportParseError, parseExamImportPair: () => structuredClone(data.parsed) },
+    "@/lib/exam-import-parser": { ExamImportParseError, parseExamImportPair: actualParser ? parseExamImportPair : () => structuredClone(data.parsed) },
     "@/lib/exam-session-identity": identity,
     "@/lib/exam-import-history": history,
     "@/lib/errors": { badRequest: error, conflict: error, forbidden: error, notFound: error },
@@ -158,6 +159,28 @@ function comparable(store: Store) {
     return Object.fromEntries(Object.entries(value).filter(([key]) => !["createdAt", "updatedAt", "importedAt"].includes(key)).map(([key, v]) => [key, clean(v)]));
   };
   return clean(store);
+}
+
+for (const mock of [true, false]) {
+  test(`morning preview and confirmation persist only objective scores/items with extra O/X (${mock ? "mock" : "DB"})`, async () => {
+    const h = harness(mock, "MORNING", true);
+    h.edit((store) => { for (const type of store.examType) {
+      const subject = (type.subjects as Row[])[0]; subject.totalItems = 20; subject.pointsPerItem = 5;
+    } });
+    const input = morningObjectiveFixture().files();
+    const before = h.snapshots();
+    const preview = await h.service.previewExamImport("a", actor, input, h.data.selection);
+    assert.equal(preview.canConfirm, true); assert.equal(preview.itemCount, 20); assert.equal(preview.fullScore, 100);
+    const result = await h.service.confirmExamImport("a", actor, input, h.data.selection);
+    assert.equal(result.importedCount, 2);
+    const saved = h.snapshots();
+    assert.equal(saved.examSessionItem.length, 20); assert.equal(saved.examItemResponse.length, 40);
+    assert.deepEqual(saved.morningExamScore.map((row) => row.score), [90, 50]);
+    assert.deepEqual(saved.examSessionParticipant.map((row) => row.totalScore), [90, 50]);
+    assert.deepEqual(saved.student, before.student); assert.deepEqual(saved.examType, before.examType);
+    assert.equal(saved.examScore.length, 0);
+    assert.ok(!/PRIVATE_NAME_SENTINEL|1999-12-31|주관식/.test(JSON.stringify(saved)));
+  });
 }
 
 for (const category of ["REGULAR", "MORNING"] as const) {

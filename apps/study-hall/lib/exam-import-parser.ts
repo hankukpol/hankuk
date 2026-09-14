@@ -62,8 +62,13 @@ export function mapErrataBlocksToSubjects(blocks: Pick<RawErrataBlock, "blockInd
 // 매칭 기준은 수험번호 하나다. 이름은 대조하지 않는다 — OMR 에 적힌 이름은 학생이 손으로
 // 쓴 것이라 명단과 한 글자씩 어긋나는 일이 흔하고(«이볌수» / «이범수»), 그걸로 파일을
 // 막으면 나머지 200명의 성적이 들어가지 못한다. 파일 안의 이름은 읽지도 저장하지도 않는다.
-export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer): ParsedExamImport {
+export function parseExamImportPair(
+  scoreBuffer: Buffer,
+  moonBuffer: Buffer,
+  options: { category?: "MORNING" | "REGULAR" } = {},
+): ParsedExamImport {
   try {
+    const objectiveOnly = options.category === "MORNING";
     const grading = workbook(scoreBuffer), analysis = workbook(moonBuffer);
     const md = rows(analysis, "Moon"); const mh = header(md, ["문항번호", "정답", "과목명"]);
     // Some exports have a merged group header followed by the actual choice labels.
@@ -86,13 +91,25 @@ export function parseExamImportPair(scoreBuffer: Buffer, moonBuffer: Buffer): Pa
     const cohortSize = number(str(metadata("응시인원")).replace(/\s*명$/, "")); if (cohortSize == null || !Number.isInteger(cohortSize) || cohortSize<1 || cohortSize>EXAM_IMPORT_LIMITS.students) fail("COHORT_SIZE");
     const sd=rows(grading,"Score"), sh=header(sd,["수험번호","지원지역"]), sn=col(sd[sh],"수험번호"), sr=col(sd[sh],"지원지역");
     const ignored = new Set(["수험번호","성명","이름","응시분야","지원지역","생년월일"]);
-    const scoreColumns=sd[sh].flatMap((v,i)=>str(v) && !ignored.has(str(v)) ? [{name:label(v),index:i}] : []);
+    // 아침 시험의 주관식(O/X) 점수는 검증·순위·통계에도 포함하지 않는다.
+    const scoreColumns = objectiveOnly
+      ? [{ name: "객관식", index: col(sd[sh], "객관식") }]
+      : sd[sh].flatMap((v,i)=>str(v) && !ignored.has(str(v)) ? [{name:label(v),index:i}] : []);
     if (!scoreColumns.length || new Set(scoreColumns.map(c=>c.name)).size!==scoreColumns.length) fail("SCORE_HEADERS");
     const score: RawScoreRow[]=[];
     sd.slice(sh+1).forEach((row,i)=>{ if(row.every(v=>!str(v))) return; const scores: Record<string,number|null>={}; for(const c of scoreColumns) scores[c.name]=number(row[c.index]); const region=str(row[sr]); if(region.length>40) fail("REGION"); score.push({studentNumber:studentNumber(row[sn]),sourceRow:sh+i+2,region:region||null,scores}); });
     const ed=rows(grading,"Errata"), eh=header(ed,["수험번호"]), en=col(ed[eh],"수험번호");
     const columns:number[][]=[];
-    ed[eh].forEach((v,i)=>{const s=str(v); if(!/^\d+$/.test(s)) return; const n=Number(s); if(n===1) columns.push([]); if(!columns.length || n!==columns[columns.length-1].length+1) fail("BLOCK_SEQUENCE"); columns[columns.length-1].push(i);});
+    for (let i = 0; i < ed[eh].length; i++) {
+      const s = str(ed[eh][i]); if (!/^\d+$/.test(s)) continue;
+      const n = Number(s);
+      // 아침 OMR은 객관식 뒤의 O/X에서 번호가 1번으로 다시 시작한다.
+      // 첫 묶음만 읽되 문항 수·정답은 Moon 및 시험 설정과 계속 대조한다.
+      if (n === 1 && objectiveOnly && columns.length) break;
+      if (n === 1) columns.push([]);
+      if (!columns.length || n !== columns[columns.length - 1].length + 1) fail("BLOCK_SEQUENCE");
+      columns[columns.length - 1].push(i);
+    }
     if(!columns.length) fail("MISSING_BLOCKS");
     const errata:RawErrataStudent[]=[]; let canonical:string|undefined;
     for(let r=eh+1;r<ed.length;r+=3) {

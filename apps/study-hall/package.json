@@ -10,7 +10,7 @@
     "dev:runtime": "node scripts/ensure-prisma-generated.cjs && node scripts/dev-server.mjs",
     "dev:stop": "docker compose stop dev",
     "dev:logs": "docker compose logs -f dev",
-    "build": "node scripts/ensure-prisma-generated.cjs && node scripts/clean-build-artifacts.cjs && next build",
+    "build": "node scripts/ensure-prisma-generated.cjs && node scripts/clean-build-artifacts.cjs && next build && node scripts/verify-icon-ssr.cjs",
     "start": "node scripts/ensure-prisma-generated.cjs && next start",
     "lint": "node scripts/ensure-prisma-generated.cjs && next lint",
     "typecheck": "node scripts/ensure-prisma-generated.cjs && tsc --noEmit",

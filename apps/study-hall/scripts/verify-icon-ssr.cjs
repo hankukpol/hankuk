@@ -18,6 +18,23 @@ async function verify() {
   if (!actual) throw new Error(`Login icon was not found in ${htmlPath}`);
   const shapes = (svg) => svg.replace(/^<svg\b[^>]*>/, "").replace(/<\/svg>$/, "");
   if (shapes(actual) !== shapes(expected) || shapes(actual) !== shapes(browserExpected)) {
+    const serverRoot = path.join(process.env.NEXT_DIST_DIR || ".next", "server");
+    function inspectBundles(directory) {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const file = path.join(directory, entry.name);
+        if (entry.isDirectory()) inspectBundles(file);
+        else if (file.endsWith(".js")) {
+          const source = fs.readFileSync(file, "utf8");
+          const oldShape = source.includes("10 17 15 12 10 7");
+          const currentShape = source.includes("M15 12H3");
+          if (oldShape || currentShape) console.error("Icon bundle", {
+            file: path.relative(serverRoot, file), oldShape, currentShape,
+            snippets: [...source.matchAll(/.{0,80}(?:10 17 15 12 10 7|M15 12H3).{0,160}/g)].slice(0,2).map((match) => match[0]),
+          });
+        }
+      }
+    }
+    inspectBundles(serverRoot);
     console.error("Login icon SSR differs from this app's installed lucide-react", {
       version: require("lucide-react/package.json").version,
       packagePath: require.resolve("lucide-react"),

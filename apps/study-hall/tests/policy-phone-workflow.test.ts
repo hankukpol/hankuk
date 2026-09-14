@@ -90,6 +90,14 @@ async function fixture(t: TestContext) {
   };
 }
 
+test("휴대폰 화면은 활성 교시를 모두 보여 주되 규정 밖 교시는 체크 대상에서 제외한다", async (t) => {
+  const f = await fixture(t);
+  const snapshot = await f.service.getPhoneDaySnapshot("police", date);
+  assert.deepEqual(snapshot.periods.map(period => period.startTime), manifest.periods.map((period: { startTime: string }) => period.startTime));
+  assert.equal(snapshot.periods.find(period => period.startTime === "06:00")?.checkableStudentCount, 0);
+  await assert.rejects(f.service.upsertPhoneCheckBatch("police", assistant, f.input({ status: "SUBMITTED" }, { periodId: "06:00" })), /대상|교시/);
+});
+
 test("short loan requires a reason, records the configured deadline, and return retains history without charging points", async (t) => {
   const f = await fixture(t);
   await assert.rejects(f.service.upsertPhoneCheckBatch("police", assistant, f.input({ rentalNote: " " })), /사유/);

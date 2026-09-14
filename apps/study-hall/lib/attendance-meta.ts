@@ -19,6 +19,19 @@ export const ATTENDANCE_INPUT_OPTIONS = [
 ] as const;
 
 export type AttendanceInputValue = AttendanceOptionValue | "CLASS";
+
+export function isLeaveAttendanceStatus(status: string | null | undefined) {
+  return status === "HOLIDAY" || status === "HALF_HOLIDAY";
+}
+
+/** 휴무권 사용량은 휴가 승인에서 관리한다. 출석부는 승인된 칸을 그대로 저장만 한다. */
+export function canEditLeaveAttendance(
+  next: { status: string; reason?: string | null },
+  previous?: { status: string; reason?: string | null },
+) {
+  if (!isLeaveAttendanceStatus(next.status) && !isLeaveAttendanceStatus(previous?.status)) return true;
+  return next.status === previous?.status && (next.reason?.trim() || null) === (previous.reason?.trim() || null);
+}
 const CLASS_REASON = "수업";
 
 export function isClassAttendance(status: string | null | undefined, reason?: string | null) {

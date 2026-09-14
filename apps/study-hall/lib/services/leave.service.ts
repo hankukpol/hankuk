@@ -2,6 +2,7 @@ import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isControlledPeriod, isPolicyEffective, kstDate, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 
 import { getMockAdminSession, getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
@@ -40,6 +41,22 @@ type AttendanceStatus =
   | "HOLIDAY"
   | "HALF_HOLIDAY"
   | "NOT_APPLICABLE";
+
+const leaveAttendanceSnapshotSchema = z.object({
+  version: z.literal(1),
+  cells: z.array(z.object({
+    periodId: z.string(),
+    appliedAt: z.string(),
+    previous: z.object({
+      status: z.enum(["PRESENT", "TARDY", "ABSENT", "EXCUSED", "HOLIDAY", "HALF_HOLIDAY", "NOT_APPLICABLE"]),
+      reason: z.string().nullable(), checkInTime: z.string().nullable(), recordedById: z.string().nullable(),
+    }).nullable(),
+  })),
+});
+type LeaveAttendanceSnapshot = z.infer<typeof leaveAttendanceSnapshotSchema>;
+function previousAttendance(record?: {status: AttendanceStatus; reason: string | null; checkInTime?: Date | string | null; recordedById: string | null}) {
+  return record ? {status: record.status, reason: record.reason, checkInTime: record.checkInTime instanceof Date ? record.checkInTime.toISOString() : record.checkInTime ?? null, recordedById: record.recordedById} : null;
+}
 
 export type LeavePermissionItem = {
   id: string;
@@ -323,10 +340,11 @@ async function applyMockLeaveAttendance(
   input: LeavePermissionSchemaInput,
   policy: ManagementPolicy | null,
 ) {
+  const snapshot: LeaveAttendanceSnapshot = {version: 1, cells: []};
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
   if (!attendanceStatus) {
-    return;
+    return snapshot;
   }
 
   const targetPeriods = getTargetLeavePeriods(
@@ -334,20 +352,21 @@ async function applyMockLeaveAttendance(
   );
 
   if (targetPeriods.length === 0) {
-    return;
+    return snapshot;
   }
 
   const current = new Map(
-    (state.attendanceByDivision[divisionSlug] ?? []).map((record) => [record.id, record]),
+    (state.attendanceByDivision[divisionSlug] ?? []).map((record) => [buildMockAttendanceId(record.studentId, record.periodId, record.date), record]),
   );
   const now = new Date().toISOString();
 
   for (const period of targetPeriods) {
     const id = buildMockAttendanceId(input.studentId, period.id, input.date);
     const existing = current.get(id);
+    snapshot.cells.push({periodId: period.id, appliedAt: now, previous: previousAttendance(existing)});
 
     current.set(id, {
-      id,
+      id: existing?.id ?? id,
       studentId: input.studentId,
       periodId: period.id,
       date: input.date,
@@ -361,6 +380,7 @@ async function applyMockLeaveAttendance(
   }
 
   state.attendanceByDivision[divisionSlug] = Array.from(current.values());
+  return snapshot;
 }
 
 async function applyDbLeaveAttendanceWithTx(
@@ -370,24 +390,25 @@ async function applyDbLeaveAttendanceWithTx(
   input: LeavePermissionSchemaInput,
   policy: ManagementPolicy | null,
 ) {
+  const snapshot: LeaveAttendanceSnapshot = {version: 1, cells: []};
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
   if (!attendanceStatus) {
-    return;
+    return snapshot;
   }
 
   const targetPeriods = await getTargetDbPeriods(tx, divisionId, input, policy);
 
   if (targetPeriods.length === 0) {
-    return;
+    return snapshot;
   }
 
   const targetDate = parseDateString(input.date);
   const attendanceReason = buildAttendanceReason(input.type, normalizeOptionalText(input.reason));
 
-  await Promise.all(
-    targetPeriods.map((period) =>
-      tx.attendance.upsert({
+  const previous = await tx.attendance.findMany({where: {studentId: input.studentId, student: {divisionId}, date: targetDate, periodId: {in: targetPeriods.map(period=>period.id)}}});
+  for (const period of targetPeriods) {
+      const applied = await tx.attendance.upsert({
         where: {
           studentId_periodId_date: {
             studentId: input.studentId,
@@ -410,9 +431,10 @@ async function applyDbLeaveAttendanceWithTx(
           checkInTime: null,
           recordedById: actorId,
         },
-      }),
-    ),
-  );
+      });
+      snapshot.cells.push({periodId: period.id, appliedAt: applied.updatedAt.toISOString(), previous: previousAttendance(previous.find(row=>row.periodId===period.id))});
+  }
+  return snapshot;
 }
 
 async function revertMockLeaveAttendance(
@@ -423,9 +445,23 @@ async function revertMockLeaveAttendance(
     type: LeaveTypeValue;
     date: string;
     reason: string | null;
+    attendanceSnapshot?: unknown;
   },
   policy: ManagementPolicy | null,
 ) {
+  if (input.attendanceSnapshot != null) {
+    const snapshot = leaveAttendanceSnapshotSchema.parse(input.attendanceSnapshot);
+    const records = state.attendanceByDivision[divisionSlug] ?? [];
+    for (const cell of snapshot.cells) {
+      const index = records.findIndex(row=>row.studentId===input.studentId && row.date===input.date && row.periodId===cell.periodId);
+      const current = records[index];
+      if (!current || current.updatedAt !== cell.appliedAt || current.status !== getAttendanceStatusForLeaveType(input.type) || current.reason !== buildAttendanceReason(input.type, input.reason)) continue;
+      if (cell.previous) records[index] = {...current, ...cell.previous, updatedAt: new Date().toISOString()};
+      else records.splice(index, 1);
+    }
+    state.attendanceByDivision[divisionSlug] = records;
+    return;
+  }
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
   if (!attendanceStatus) {
@@ -463,9 +499,20 @@ async function revertDbLeaveAttendance(
     type: LeaveTypeValue;
     date: string;
     reason: string | null;
+    attendanceSnapshot?: unknown;
   },
   policy: ManagementPolicy | null,
 ) {
+  if (input.attendanceSnapshot != null) {
+    const snapshot = leaveAttendanceSnapshotSchema.parse(input.attendanceSnapshot);
+    for (const cell of snapshot.cells) {
+      const where = {studentId: input.studentId, student: {divisionId}, date: parseDateString(input.date), periodId: cell.periodId,
+        status: getAttendanceStatusForLeaveType(input.type)!, reason: buildAttendanceReason(input.type, input.reason), updatedAt: new Date(cell.appliedAt)};
+      if (cell.previous) await tx.attendance.updateMany({where, data: {...cell.previous, checkInTime: cell.previous.checkInTime ? new Date(cell.previous.checkInTime) : null}});
+      else await tx.attendance.deleteMany({where});
+    }
+    return;
+  }
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
 
   if (!attendanceStatus) {
@@ -713,7 +760,7 @@ export async function createLeavePermission(
         nextRecord,
         ...(state.leavePermissionsByDivision[divisionSlug] ?? []),
       ];
-      await applyMockLeaveAttendance(divisionSlug, state, actor.id, {
+      nextRecord.attendanceSnapshot = await applyMockLeaveAttendance(divisionSlug, state, actor.id, {
         ...input,
         reason,
       }, policy);
@@ -806,10 +853,12 @@ export async function createLeavePermission(
         },
       });
 
-      await applyDbLeaveAttendanceWithTx(tx, division.id, actor.id, {
+      const attendanceSnapshot = await applyDbLeaveAttendanceWithTx(tx, division.id, actor.id, {
         ...input,
         reason,
       }, policy);
+
+      await tx.leavePermission.update({where: {id: created.id}, data: {attendanceSnapshot}});
 
       return created;
     }, {
@@ -866,6 +915,7 @@ export async function cancelLeavePermission(
         type: record.type,
         date: record.date,
         reason: record.reason,
+        attendanceSnapshot: record.attendanceSnapshot,
       }, policy);
 
       record.status = "REJECTED";
@@ -936,6 +986,7 @@ export async function cancelLeavePermission(
       type: permission.type,
       date: toDateString(permission.date),
       reason: permission.reason,
+      attendanceSnapshot: permission.attendanceSnapshot,
     }, policy);
 
     return tx.leavePermission.update({

@@ -4,6 +4,7 @@
   "buildCommand": "pnpm build",
   "ignoreCommand": "node ../../scripts/vercel-ignore.mjs study-hall",
   "regions": ["icn1"],
+  "crons": [{"path": "/api/cron/attendance-close", "schedule": "10 15 * * *"}],
   "functions": {
     "app/api/**/*.ts": {
       "memory": 1024,

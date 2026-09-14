@@ -103,6 +103,37 @@ function fixture(t: TestContext, now = "2026-10-01T00:00:00+09:00") {
   };
 }
 
+test("휴무 취소는 승인 전에 등록된 수업을 복원한다", async t => {
+  const f = fixture(t, "2026-09-08T09:00:00+09:00");
+  const original = attendance("original-class", "a", "09:15", "2026-09-09", "EXCUSED", "수업: 기본이론");
+  f.state.attendanceByDivision.police.push(original);
+  const leave = await f.leave.createLeavePermission("police", actor, {studentId:"a",type:"HOLIDAY",date:"2026-09-09"});
+  assert.equal(f.state.attendanceByDivision.police.filter(r=>r.periodId==="09:15").length, 1);
+  assert.equal(f.state.attendanceByDivision.police.find(r=>r.periodId==="09:15")!.status, "HOLIDAY");
+  f.state.studentsByDivision.police[0].seatId = "fixture-seat";
+  t.mock.timers.tick(1000);
+  const approvedCell = f.state.attendanceByDivision.police.find(r => r.periodId === "09:15")!;
+  const attendanceService = f.load<typeof import("../lib/services/attendance.service")>("attendance");
+  await attendanceService.upsertAttendanceBatch("police", actor, {
+    date: "2026-09-09", periodId: "09:15",
+    records: [{ studentId: "a", status: "HOLIDAY", reason: approvedCell.reason ?? "" }],
+  });
+  await f.leave.cancelLeavePermission("police", leave!.id, actor);
+  const restored = f.state.attendanceByDivision.police.find(r=>r.periodId==="09:15")!;
+  assert.equal(restored.status, "EXCUSED"); assert.equal(restored.reason, "수업: 기본이론");
+  assert.equal(restored.recordedById, original.recordedById);
+});
+
+test("휴무 승인 이후 별도로 수정한 출결은 취소 시 덮어쓰지 않는다", async t => {
+  const f = fixture(t, "2026-09-08T09:00:00+09:00");
+  f.state.attendanceByDivision.police.push(attendance("original-class", "a", "09:15", "2026-09-09", "EXCUSED", "수업: 기본이론"));
+  const leave = await f.leave.createLeavePermission("police", actor, {studentId:"a",type:"HOLIDAY",date:"2026-09-09"});
+  const changed=f.state.attendanceByDivision.police.find(r=>r.periodId==="09:15")!;
+  changed.status="PRESENT";changed.reason="직접 확인";
+  await f.leave.cancelLeavePermission("police", leave!.id, actor);
+  assert.equal(f.state.attendanceByDivision.police.find(r=>r.periodId==="09:15")!.status,"PRESENT");
+});
+
 test("휴일권은 월 2회, 취소분 제외, 다음 달 한도 독립 (학생규정 170)", async (t) => {
   const f = fixture(t, "2026-09-08T09:00:00+09:00");
   const beforeFire = JSON.stringify(f.state.studentsByDivision.fire);

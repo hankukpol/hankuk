@@ -9,13 +9,14 @@ const date = "2026-08-15";
 const students = ["old", "import", "new"].map(id => ({ id, name: id, studentNumber: id, studyTrack: null, status: "ACTIVE" }));
 const type = { id: "t", divisionId: "a", name: "시험", category: "REGULAR", studyTrack: null, isActive: true, displayOrder: 0, createdAt: new Date(), updatedAt: new Date(), subjects: [{ id: "s", name: "과목", totalItems: 20, pointsPerItem: 5, isActive: true, displayOrder: 0 }] };
 const record = (studentId: string, examRound: number, examDate = date) => ({ id: studentId, studentId, examTypeId: "t", examRound, examDate, scores: { s: 70 }, totalScore: 70, rankInClass: 1, notes: null, recordedById: "admin", createdAt: "2026-01-01", updatedAt: "2026-01-01" });
-function service(mock: boolean) {
-  const state = { examTypesByDivision: { a: [type] }, examScoresByDivision: { a: [record("old", 2), record("import", 20260815), record("otherDate", 3, "2026-07-01")], b: [record("foreign", 2)] } };
+function service(mock: boolean, imported = false) {
+  const state = { examSessionsByDivision: {a: imported ? [{id:"session",examTypeId:"t",examDate:date}] : []}, examTypesByDivision: { a: [type] }, examScoresByDivision: { a: [record("old", 2), record("import", 20260815), record("otherDate", 3, "2026-07-01")], b: [record("foreign", 2)] } };
   const queries: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
   const writes: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
   const prisma = {
     division: { findUnique: async () => ({ id: "a" }) },
     examType: { findMany: async () => [type] },
+    examSession: {findFirst: async () => imported ? {id:"session"} : null},
     student: { findMany: async ({ where }: any) => students.filter(s => where.id.in.includes(s.id)) }, // eslint-disable-line @typescript-eslint/no-explicit-any
     examScore: {
       findMany: async (query: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -25,13 +26,14 @@ function service(mock: boolean) {
       },
       upsert: (write: any) => { writes.push(write); return Promise.resolve(); }, // eslint-disable-line @typescript-eslint/no-explicit-any
     },
-    $transaction: (values: Promise<unknown>[]) => Promise.all(values),
+    $queryRaw: async () => [],
+    $transaction: (callback: (tx: unknown) => Promise<unknown>): Promise<unknown> => callback(prisma),
   };
   const dependencies: Record<string, unknown> = {
     "@/lib/exam-meta": meta, "@/lib/exam-session-identity": identity,
     "@/lib/mock-data": { isMockMode: () => mock },
     "@/lib/mock-store": { readMockState: async () => state, updateMockState: async (fn: (s: typeof state) => void) => fn(state) },
-    "@/lib/errors": { notFound: (message: string) => new Error(message) },
+    "@/lib/errors": { notFound: (message: string) => new Error(message), conflict: (message: string) => new Error(message) },
     "@/lib/services/student.service": { listStudents: async () => students },
     "@/lib/prisma": { prisma }, "@/lib/service-helpers": {},
   };
@@ -51,6 +53,13 @@ test("date validation rejects rolled-over dates and accepts legacy payloads", ()
   assert.equal(identity.getLegacyExamDateKey(date), 20260815);
 });
 for (const mock of [true, false]) {
+  test(`${mock ? "mock" : "DB"}: imported scores require corrected grading files, including legacy round edits`, async () => {
+    for (const payload of [input, {...input, examRound:2, examDate:null}]) {
+      const {api,state,writes}=service(mock,true); const before=structuredClone(state);
+      await assert.rejects(api.saveExamScores("a",actor,payload),/다시 가져/);
+      assert.deepEqual(state,before);assert.equal(writes.length,0);
+    }
+  });
   test(`${mock ? "mock" : "DB stub"}: date reads legacy and imported scores, round reads remain compatible`, async () => {
     const { api } = service(mock);
     const sheet = await api.getExamScoreSheet("a", "t", date);

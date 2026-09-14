@@ -315,12 +315,8 @@ export async function getPhoneDaySnapshot(
     getAttendanceIntegrationEnabled(divisionSlug),
   ]);
   const students = allStudents.filter((s) => s.status === "ACTIVE" || s.status === "ON_LEAVE");
-  // 교시 목록은 출석부와 같아야 한다. 두 화면을 나란히 놓고 같은 교시를 체크하는데
-  // 한쪽에만 0교시·아침모의고사가 더 있으면 어느 칸이 어느 교시인지 매번 세어야 한다.
-  // 출석부와 같은 규칙을 쓴다 — 관리규정이 정한 출석 교시만 (attendance.service.ts:323).
-  const activePeriods = allPeriods
-    .filter((p) => p.isActive)
-    .filter((p) => !isPolicyEffective(policy, normalizedDate) || policy.attendancePeriodIds.includes(p.id));
+  // 출석부와 같은 활성 교시를 표시한다. 실제 체크 가능 여부는 아래에서 통제 조건으로 판단한다.
+  const activePeriods = allPeriods.filter((p) => p.isActive);
 
   if (isMockMode()) {
     const state = await readMockState();

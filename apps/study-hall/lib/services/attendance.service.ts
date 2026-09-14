@@ -2,7 +2,7 @@ import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isPolicyEffective, isControlledPeriod, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
 import { logServerError } from "@/lib/server-log";
-import { getAttendanceCountStatus, isClassAttendance } from "@/lib/attendance-meta";
+import { getAttendanceCountStatus, isClassAttendance, canEditLeaveAttendance, isLeaveAttendanceStatus } from "@/lib/attendance-meta";
 
 import {
   readMockState,
@@ -1179,6 +1179,11 @@ export async function upsertAttendanceBatch(
           date: normalizedDate,
         });
 
+        if (!canEditLeaveAttendance(record, touchedMap.get(id))) {
+          throw badRequest("휴무·반휴는 외출/휴가 메뉴에서 승인하거나 취소해 주세요.");
+        }
+        // 그대로 전달된 승인 칸은 수정 시각도 보존해야 취소 시 이전 출결을 복원할 수 있다.
+        if (isLeaveAttendanceStatus(record.status)) continue;
         if (record.status === "") {
           touchedMap.delete(id);
           continue;
@@ -1239,12 +1244,17 @@ export async function upsertAttendanceBatch(
   const now = new Date();
   const existingRecords = await prisma.attendance.findMany({
     where: { student: { divisionId: division.id }, studentId: { in: input.records.map((record) => record.studentId) }, periodId: input.periodId, date: start },
-    select: { studentId: true, status: true, checkInTime: true },
+    select: { studentId: true, status: true, reason: true, checkInTime: true },
   });
   const existingByStudent = new Map(existingRecords.map((record) => [record.studentId, record]));
+  for (const record of input.records) {
+    if (!canEditLeaveAttendance(record, existingByStudent.get(record.studentId))) {
+      throw badRequest("휴무·반휴는 외출/휴가 메뉴에서 승인하거나 취소해 주세요.");
+    }
+  }
 
   await prisma.$transaction(
-    input.records.map((record) => {
+    input.records.filter((record) => !isLeaveAttendanceStatus(record.status)).map((record) => {
       if (record.status === "") {
         return prisma.attendance.deleteMany({
           where: {
@@ -1252,6 +1262,7 @@ export async function upsertAttendanceBatch(
             periodId: input.periodId,
             date: start,
             student: { divisionId: division.id },
+            status: { notIn: ["HOLIDAY", "HALF_HOLIDAY"] },
           },
         });
       }
@@ -1267,6 +1278,7 @@ export async function upsertAttendanceBatch(
       return prisma.attendance.upsert({
         where: {
           student: { divisionId: division.id },
+          status: { notIn: ["HOLIDAY", "HALF_HOLIDAY"] },
           studentId_periodId_date: {
             studentId: record.studentId,
             periodId: input.periodId,
@@ -1417,6 +1429,9 @@ export async function applyRecurringAttendance(
 
   const reason =
     input.status === "ABSENT" || input.status === "EXCUSED" ? input.reason?.trim() ?? null : null;
+  if (isLeaveAttendanceStatus(input.status)) {
+    throw badRequest("휴무·반휴는 외출/휴가 메뉴에서 승인해 주세요.");
+  }
   const overwriteExisting = input.overwriteExisting ?? false;
   const now = new Date();
 
@@ -1438,7 +1453,7 @@ export async function applyRecurringAttendance(
             });
             const existingRecord = touchedMap.get(id);
 
-            if (existingRecord && !overwriteExisting) {
+            if (existingRecord && (!overwriteExisting || isLeaveAttendanceStatus(existingRecord.status))) {
               skippedExistingCount += 1;
               continue;
             }
@@ -1554,7 +1569,7 @@ export async function applyRecurringAttendance(
             const key = `${studentId}:${period.id}:${date}`;
             const existingRecord = existingRecordByKey.get(key);
 
-            if (!existingRecord) {
+            if (!existingRecord || isLeaveAttendanceStatus(existingRecord.status)) {
               return [];
             }
 
@@ -1598,6 +1613,7 @@ export async function applyRecurringAttendance(
           where: {
             id: { in: group.ids },
             student: { divisionId: division.id },
+            status: { notIn: ["HOLIDAY", "HALF_HOLIDAY"] },
           },
           data: {
             status: input.status,

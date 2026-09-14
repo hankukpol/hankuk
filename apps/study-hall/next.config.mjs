@@ -25,6 +25,11 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
+  modularizeImports: {
+    "lucide-react": {
+      transform: "lucide-react/dist/esm/icons/{{kebabCase member}}",
+    },
+  },
   webpack(config) {
     // Resolve both SSR and browser icons from this app's installed package.
     // Workspace packages can depend on different Lucide icon definitions.

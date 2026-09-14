@@ -241,6 +241,40 @@ test("check forms: navigation, draft recovery and deferred saving", async (t) =>
       } finally { await view.destroy(); }
     });
 
+    await t.test("admin seat save writes only the selected period and preserves other drafts", async (t) => {
+      const view = mount();
+      const writes: Array<{ periodId: string; records: Array<{ studentId: string; status: string }> }> = [];
+      t.mock.method(globalThis, "fetch", async (_url: unknown, options?: RequestInit) => {
+        if (options?.method === "POST") writes.push(JSON.parse(String(options.body)));
+        return Response.json({ totals: {}, attendanceRate: 100 });
+      });
+      try {
+        await view.render(h(AdminAttendanceBoard, { ...attendanceProps,
+          initialStats: { totals: {}, attendanceRate: 0 }, initialSeatPeriodId: "p1",
+          seatRooms: [{ id: "room", name: "자습실", isActive: true }] as never,
+          initialSeatLayout: { room: { id: "room", name: "자습실" }, rows: 1, columns: 1, aisleColumns: [],
+            seats: [{ id: "seat", label: "1", positionX: 1, positionY: 1, isActive: true,
+              assignedStudent: { ...students[0], status: "ACTIVE" } }] } as never,
+        }));
+        await change(document.querySelector<HTMLSelectElement>('select[aria-label="학생1 1교시 출결 상태"]')!, "PRESENT");
+        await change(document.querySelector<HTMLSelectElement>('select[aria-label="학생1 2교시 출결 상태"]')!, "ABSENT");
+        await click(button("좌석"));
+        await tick(); await tick();
+        const seat = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((node) => node.textContent?.includes("학생1") && node.textContent.includes("10001"));
+        assert.ok(seat, "attendance seat is visible");
+        assert.match(seat.textContent!, /출석/);
+        assert.doesNotMatch(seat.textContent!, /결석/);
+        await click(seat);
+        const dialog = document.querySelector('[role="dialog"]')!;
+        assert.match(dialog.textContent!, /1교시/);
+        assert.doesNotMatch(dialog.textContent!, /2교시/);
+        await click(button("저장", dialog));
+        await tick();
+        assert.deepEqual(writes, [{ periodId: "p1", date: "2020-01-01", records: [{ studentId: "s1", status: "PRESENT", reason: null }] }]);
+        assert.equal(hasPendingCheckChanges(), true, "another period's draft must remain unsaved");
+      } finally { await view.destroy(); }
+    });
+
     await t.test("phone writes serialize, preserve rental edits, guard refresh and retry failed cells only", async (t) => {
       const view = mount(); const requests: Array<{ body: { records: Array<{ studentId: string; status: string; rentalNote?: string }> }; result: ReturnType<typeof deferred<Response>> }> = [];
       t.mock.method(globalThis, "fetch", async (_url: unknown, options?: RequestInit) => { const result = deferred<Response>(); requests.push({ body: JSON.parse(String(options?.body)), result }); return result.promise; });

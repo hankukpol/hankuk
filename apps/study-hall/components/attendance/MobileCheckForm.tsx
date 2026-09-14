@@ -963,6 +963,7 @@ export function MobileCheckForm({
             initialSeatLayout={initialSeatLayout!}
             students={visibleStudents}
             periods={[selectedPeriod]}
+            selectedPeriodId={selectedPeriod.id}
             matrix={Object.fromEntries(
               visibleStudents.map((student) => [
                 student.id,

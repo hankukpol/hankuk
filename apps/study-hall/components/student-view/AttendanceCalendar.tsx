@@ -1,4 +1,8 @@
 import type { StudentDashboardData } from "@/lib/services/student-dashboard.service";
+import {
+  getAttendanceStatusClasses,
+  getAttendanceStatusLabel,
+} from "@/lib/attendance-meta";
 
 type AttendanceCalendarProps = {
   weeklyAttendance: StudentDashboardData["weeklyAttendance"];
@@ -22,26 +26,32 @@ type DateRow = {
 
 function getStatusClasses(
   status: StudentDashboardData["weeklyAttendance"]["rows"][number]["cells"][number]["status"],
+  reason?: string | null,
 ) {
   switch (status) {
-    case "PRESENT":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    case "TARDY":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "ABSENT":
-      return "border-rose-200 bg-rose-50 text-rose-700";
-    case "EXCUSED":
-      return "border-sky-200 bg-sky-50 text-sky-700";
-    case "HOLIDAY":
-    case "HALF_HOLIDAY":
-      return "border-slate-300 bg-slate-100 text-slate-700";
-    case "NOT_APPLICABLE":
     case "UPCOMING":
       return "border-slate-200 bg-slate-50 text-slate-500";
     case "OFF":
       return "border-slate-200 bg-slate-100 text-slate-500";
-    default:
+    case "UNPROCESSED":
       return "border-orange-200 bg-orange-50 text-orange-700";
+    default:
+      return getAttendanceStatusClasses(status, reason);
+  }
+}
+
+function getStatusLabel(
+  status: StudentDashboardData["weeklyAttendance"]["rows"][number]["cells"][number]["status"],
+  reason: string | null,
+  fallback: string,
+) {
+  switch (status) {
+    case "UPCOMING":
+    case "OFF":
+    case "UNPROCESSED":
+      return fallback;
+    default:
+      return getAttendanceStatusLabel(status, reason);
   }
 }
 
@@ -142,10 +152,12 @@ export function AttendanceCalendar({
                   return (
                     <td key={`${dateRow.date.date}-${periodRow.periodId}`}>
                       <span
-                        className={`admin-status-chip font-semibold ${cell ? getStatusClasses(cell.status) : ""}`}
+                        className={`admin-status-chip font-semibold ${cell ? getStatusClasses(cell.status, cell.reason) : ""}`}
                         title={cell?.reason || `${periodRow.periodName} ${periodRow.startTime}-${periodRow.endTime}`}
                       >
-                        {cell?.statusLabel ?? "-"}
+                        {cell
+                          ? getStatusLabel(cell.status, cell.reason, cell.statusLabel)
+                          : "-"}
                       </span>
                     </td>
                   );
@@ -211,13 +223,15 @@ export function AttendanceCalendar({
                 {row.periods.map((period) => (
                   <td key={`${row.date.date}-${period.periodId}`} className="align-top">
                     <div
-                      className={`admin-status-chip text-center ${getStatusClasses(period.status)}`}
+                      className={`admin-status-chip text-center ${getStatusClasses(period.status, period.reason)}`}
                       title={period.reason || `${period.periodName} ${period.startTime}-${period.endTime}`}
                     >
                       <p className="text-[13px] font-medium opacity-75">
                         {period.periodName}
                       </p>
-                      <p className="mt-1.5 text-sm font-semibold">{period.statusLabel}</p>
+                      <p className="mt-1.5 text-sm font-semibold">
+                        {getStatusLabel(period.status, period.reason, period.statusLabel)}
+                      </p>
                       <p className="mt-1 text-[13px] leading-4 opacity-80">
                         {period.reason || `${period.startTime}-${period.endTime}`}
                       </p>

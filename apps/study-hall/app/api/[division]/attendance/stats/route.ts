@@ -38,7 +38,7 @@ export async function GET(
   try {
     const stats = await getAttendanceStats(params.division, dateFrom, dateTo);
     return NextResponse.json(stats, {
-      headers: { "Cache-Control": "max-age=10, stale-while-revalidate=5" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
     return toApiErrorResponse(error, "출석 통계를 계산하지 못했습니다.", 400);

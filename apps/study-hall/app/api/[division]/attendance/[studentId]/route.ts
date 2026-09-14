@@ -30,7 +30,7 @@ export async function GET(
       dateFrom: searchParams.get("dateFrom")?.trim() || undefined,
       dateTo: searchParams.get("dateTo")?.trim() || undefined,
     });
-    return NextResponse.json({ records }, { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=15" } });
+    return NextResponse.json({ records }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return toApiErrorResponse(error, "출석 이력을 불러오는 중 오류가 발생했습니다.");
   }

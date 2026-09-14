@@ -82,6 +82,7 @@ export default async function AdminAttendancePage({ params }: AdminAttendancePag
         desktopProps={{
           divisionSlug: params.division,
           initialDate: today,
+          initialSeatPeriodId: mobilePeriodId,
           initialPeriods: snapshot.periods,
           initialStudents: snapshot.students,
           initialRecords: snapshot.records,

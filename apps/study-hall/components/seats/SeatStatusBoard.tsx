@@ -7,7 +7,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 
 import Link from "next/link";
 import {
-  BookOpenCheck,
   ChevronRight,
   LoaderCircle,
   MapPin,
@@ -20,7 +19,6 @@ import { toast } from "@/lib/sonner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { getSeatPositionKey } from "@/lib/seat-layout";
-import type { AttendanceSnapshot } from "@/lib/services/attendance.service";
 import type { PaymentCategoryItem, PaymentItem } from "@/lib/services/payment.service";
 import type { PointRuleItem } from "@/lib/services/point.service";
 import type { SeatLayout, SeatMapSeat, StudyRoomItem } from "@/lib/services/seat.service";
@@ -35,25 +33,13 @@ import { PaymentMethodSelect } from "@/components/payments/PaymentMethodSelect";
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
-type AttendanceStatusKey =
-  | "PRESENT"
-  | "TARDY"
-  | "ABSENT"
-  | "EXCUSED"
-  | "HOLIDAY"
-  | "HALF_HOLIDAY"
-  | "NOT_APPLICABLE"
-  | "UNPROCESSED";
-
-type PanelTab = "info" | "attendance" | "payment" | "points";
+type PanelTab = "info" | "payment" | "points";
 
 type SeatStatusBoardProps = {
   divisionSlug: string;
   initialRooms: StudyRoomItem[];
   initialLayout: SeatLayout;
   initialStudents: StudentListItem[];
-  todaySnapshot: AttendanceSnapshot;
-  attendanceEnabled: boolean;
   paymentEnabled: boolean;
   pointsEnabled: boolean;
   studentManagementEnabled: boolean;
@@ -61,71 +47,7 @@ type SeatStatusBoardProps = {
 
 type SelectedSeatInfo = {
   seat: SeatMapSeat;
-  dayStatus: AttendanceStatusKey | null;
-  periodRecords: Array<{
-    periodId: string;
-    periodName: string;
-    status: AttendanceStatusKey;
-  }>;
 };
-
-// ─── 상수 ────────────────────────────────────────────────────────────────────
-
-const STATUS_LABEL: Record<AttendanceStatusKey, string> = {
-  PRESENT: "출석",
-  TARDY: "지각",
-  ABSENT: "결석",
-  EXCUSED: "공결",
-  HOLIDAY: "휴가",
-  HALF_HOLIDAY: "반차",
-  NOT_APPLICABLE: "해당없음",
-  UNPROCESSED: "미처리",
-};
-
-const STATUS_BADGE_CLASS: Record<AttendanceStatusKey, string> = {
-  PRESENT: "border border-slate-200 bg-white text-emerald-600 font-medium",
-  TARDY: "border border-slate-200 bg-white text-amber-600 font-medium",
-  ABSENT: "border border-slate-200 bg-white text-rose-600 font-medium",
-  EXCUSED: "border border-slate-200 bg-white text-blue-600 font-medium",
-  HOLIDAY: "border border-slate-200 bg-white text-blue-600 font-medium",
-  HALF_HOLIDAY: "border border-slate-200 bg-white text-indigo-600 font-medium",
-  NOT_APPLICABLE: "border border-slate-200 bg-slate-50 text-slate-500",
-  UNPROCESSED: "border border-slate-200 bg-slate-50 text-slate-500",
-};
-
-const QUICK_ATTENDANCE_STATUSES: AttendanceStatusKey[] = [
-  "PRESENT",
-  "TARDY",
-  "ABSENT",
-  "EXCUSED",
-];
-
-// ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-function getSeatToneClasses(
-  status: AttendanceStatusKey | null,
-  hasStudent: boolean,
-  isActive: boolean,
-): string {
-  if (!isActive) return "border-dashed border-slate-200 bg-slate-50 text-slate-400";
-  if (!hasStudent) return "border-slate-200 bg-white text-slate-500";
-  switch (status) {
-    case "PRESENT":
-      return "border-slate-200 text-white font-medium";
-    case "TARDY":
-      return "border-slate-200 text-white font-medium";
-    case "ABSENT":
-      return "border-slate-200 text-white font-medium";
-    case "EXCUSED":
-    case "HOLIDAY":
-    case "HALF_HOLIDAY":
-      return "border-slate-200 text-white font-medium";
-    case "UNPROCESSED":
-      return "border-slate-200 text-white font-medium";
-    default:
-      return "border-slate-200 text-white font-medium";
-  }
-}
 
 function getAssignedSeatStyle(
   seat: Pick<SeatMapSeat, "isActive" | "assignedStudent">,
@@ -140,28 +62,6 @@ function getAssignedSeatStyle(
   };
 }
 
-function computeDayStatusFromStudentRecords(
-  studentRecords: AttendanceSnapshot["records"],
-  periods: AttendanceSnapshot["periods"],
-): AttendanceStatusKey | null {
-  const mandatoryPeriods = periods.filter((p) => p.isActive && p.isMandatory);
-  const statuses = studentRecords.map((r) => r.status as AttendanceStatusKey);
-
-  if (statuses.includes("ABSENT")) return "ABSENT";
-
-  const recordedPeriodIds = new Set(studentRecords.map((r) => r.periodId));
-  for (const p of mandatoryPeriods) {
-    if (!recordedPeriodIds.has(p.id)) return "UNPROCESSED";
-  }
-
-  if (statuses.includes("TARDY")) return "TARDY";
-  if (statuses.some((s) => s === "HOLIDAY" || s === "HALF_HOLIDAY")) return "HOLIDAY";
-  if (statuses.includes("EXCUSED")) return "EXCUSED";
-  if (studentRecords.length === 0 && mandatoryPeriods.length === 0) return null;
-  return "PRESENT";
-}
-
-
 // ─── 통계 카드 ───────────────────────────────────────────────────────────────
 
 
@@ -172,8 +72,6 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
   initialRooms,
   initialLayout,
   initialStudents,
-  todaySnapshot,
-  attendanceEnabled,
   paymentEnabled,
   pointsEnabled,
   studentManagementEnabled,
@@ -208,12 +106,6 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
   const [targetLayout, setTargetLayout] = useState<SeatLayout | null>(null);
   const [isLoadingTarget, setIsLoadingTarget] = useState(false);
   const [isMovingToRoom, setIsMovingToRoom] = useState(false);
-
-  // 출결 탭
-  const [savingPeriodId, setSavingPeriodId] = useState<string | null>(null);
-  const [localPeriodRecords, setLocalPeriodRecords] = useState<
-    Array<{ periodId: string; periodName: string; status: AttendanceStatusKey }>
-  >([]);
 
   // 수납 탭
   const [selectedPlanId, setSelectedPlanId] = useState("");
@@ -275,62 +167,16 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
       });
   }, [assignSearchQuery, assignableStudents]);
 
-  const today = todaySnapshot.date;
-  const activePeriods = useMemo(
-    () => todaySnapshot.periods.filter((period) => period.isActive),
-    [todaySnapshot.periods],
-  );
-  const recordsByStudentId = useMemo(() => {
-    const grouped = new Map<string, AttendanceSnapshot["records"]>();
-
-    todaySnapshot.records.forEach((record) => {
-      const current = grouped.get(record.studentId);
-
-      if (current) {
-        current.push(record);
-        return;
-      }
-
-      grouped.set(record.studentId, [record]);
-    });
-
-    return grouped;
-  }, [todaySnapshot.records]);
-  const dayStatusByStudentId = useMemo(() => {
-    const grouped = new Map<string, AttendanceStatusKey | null>();
-
-    layout.seats.forEach((seat) => {
-      const studentId = seat.assignedStudent?.id;
-
-      if (!studentId || grouped.has(studentId)) {
-        return;
-      }
-
-      grouped.set(
-        studentId,
-        computeDayStatusFromStudentRecords(recordsByStudentId.get(studentId) ?? [], activePeriods),
-      );
-    });
-
-    return grouped;
-  }, [activePeriods, layout.seats, recordsByStudentId]);
   const stats = useMemo(() => {
     const activeSeats = layout.seats.filter((seat) => seat.isActive);
-    const assignedSeats = activeSeats.filter((seat) => seat.assignedStudent?.status === "ACTIVE");
+    const assignedSeats = activeSeats.filter((seat) => Boolean(seat.assignedStudent));
     const emptyCount = activeSeats.filter((seat) => !seat.assignedStudent).length;
-    const presentCount = assignedSeats.filter((seat) => {
-      const studentId = seat.assignedStudent?.id;
-      return studentId ? dayStatusByStudentId.get(studentId) === "PRESENT" : false;
-    }).length;
-
     return {
       totalSeats: activeSeats.length,
       assignedCount: assignedSeats.length,
       emptyCount,
-      presentRate:
-        assignedSeats.length > 0 ? Math.round((presentCount / assignedSeats.length) * 100) : 0,
     };
-  }, [dayStatusByStudentId, layout.seats]);
+  }, [layout.seats]);
 
   async function refreshStudents() {
     const response = await fetch(`/api/${divisionSlug}/students`, { cache: "no-store" });
@@ -430,14 +276,13 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
   useEffect(() => {
     const isDisabledTab =
-      (panelTab === "attendance" && !attendanceEnabled) ||
       (panelTab === "payment" && !paymentEnabled) ||
       (panelTab === "points" && !pointsEnabled);
 
     if (isDisabledTab) {
       setPanelTab("info");
     }
-  }, [attendanceEnabled, panelTab, paymentEnabled, pointsEnabled]);
+  }, [panelTab, paymentEnabled, pointsEnabled]);
 
   // 다른 자습실 layout fetch
   useEffect(() => {
@@ -564,34 +409,6 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
     }
   }
 
-  // 출결 상태 저장
-  async function handleAttendanceSave(periodId: string, status: AttendanceStatusKey) {
-    const studentId = panelInfo?.seat.assignedStudent?.id;
-    if (!studentId) return;
-    setSavingPeriodId(periodId);
-    try {
-      const res = await fetch(`/api/${divisionSlug}/attendance`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          periodId,
-          date: today,
-          records: [{ studentId, status }],
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "출결 저장에 실패했습니다.");
-      setLocalPeriodRecords((prev) =>
-        prev.map((r) => (r.periodId === periodId ? { ...r, status } : r)),
-      );
-      toast.success("출결이 저장되었습니다.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "출결 저장에 실패했습니다.");
-    } finally {
-      setSavingPeriodId(null);
-    }
-  }
-
   // 수납 저장
   async function handlePaymentSave() {
     const studentId = panelInfo?.seat.assignedStudent?.id;
@@ -695,25 +512,12 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
 
       setAssignSeat(null);
       setAssignSearchQuery("");
-      const studentId = seat.assignedStudent.id;
-      const dayStatus = dayStatusByStudentId.get(studentId) ?? null;
-      const studentRecords = recordsByStudentId.get(studentId) ?? [];
-      const periodRecords = activePeriods
-        .map((p) => {
-          const rec = studentRecords.find((r) => r.periodId === p.id);
-          return {
-            periodId: p.id,
-            periodName: `${p.name}${p.label ? ` (${p.label})` : ""}`,
-            status: (rec?.status ?? "UNPROCESSED") as AttendanceStatusKey,
-          };
-        });
-      setPanelInfo({ seat, dayStatus, periodRecords });
-      setLocalPeriodRecords(periodRecords);
+      setPanelInfo({ seat });
       setPanelTab("info");
       setTargetRoomId(null);
       setTargetLayout(null);
     },
-    [activePeriods, dayStatusByStudentId, recordsByStudentId],
+    [],
   );
 
   const suppressSeatClick = useCallback((durationMs = 250) => {
@@ -731,17 +535,11 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
   return (
     <div className="admin-flat-page">
       {/* 통계 카드 */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="admin-portal-summary admin-portal-summary-3">
         {[
           { label: "전체 좌석", value: stats.totalSeats, unit: "석", color: "text-slate-700" },
           { label: "배정 학생", value: stats.assignedCount, unit: "명", color: "text-emerald-700" },
           { label: "공석", value: stats.emptyCount, unit: "석", color: "text-slate-500" },
-          {
-            label: "오늘 출석률",
-            value: stats.presentRate,
-            unit: "%",
-            color: stats.presentRate >= 80 ? "text-emerald-700" : "text-amber-700",
-          },
         ].map((card) => (
           <div
             key={card.label}
@@ -779,7 +577,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
         )}
 
         <div className="p-5">
-          {/* 상단 바: 검색 + 범례 + 설정 링크 */}
+          {/* 상단 바: 검색 + 설정 링크 */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             {/* 검색 */}
             <div className="relative">
@@ -793,25 +591,6 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {(
-                [
-                  ["PRESENT", "출석"],
-                  ["TARDY", "지각"],
-                  ["ABSENT", "결석"],
-                  ["EXCUSED", "공결/휴가"],
-                  ["UNPROCESSED", "미처리"],
-                ] as [AttendanceStatusKey, string][]
-              ).map(([status, label]) => (
-                <span
-                  key={status}
-                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 font-medium ${STATUS_BADGE_CLASS[status]}`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                  {label}
-                </span>
-              ))}
-            </div>
             <Link
               href={`/${divisionSlug}/admin/settings/seats`}
               className="admin-table-link inline-flex items-center gap-1 text-xs"
@@ -860,8 +639,9 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                   }
 
                   const student = seat.assignedStudent;
-                  const dayStatus = student ? dayStatusByStudentId.get(student.id) ?? null : null;
-                  const tone = getSeatToneClasses(dayStatus, !!student, seat.isActive);
+                  const tone = !seat.isActive
+                    ? "border-dashed border-slate-200 bg-slate-50 text-slate-400"
+                    : student ? "border-slate-200 text-white font-medium" : "border-slate-200 bg-white text-slate-500";
                   const assignedSeatStyle = getAssignedSeatStyle(seat);
                   const isSelected = panelInfo?.seat.id === seat.id || assignSeat?.id === seat.id;
                   const canDrag =
@@ -935,18 +715,11 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                         </div>
                       )}
 
-                      {/* 상단: 좌석번호 + 상태 */}
+                      {/* 상단: 좌석번호 */}
                       <div className="flex items-start justify-between gap-1">
                         <span className="text-xs font-semibold">
                           {seat.isActive ? seat.label : ""}
                         </span>
-                        {student && dayStatus && (
-                          <span
-                            className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE_CLASS[dayStatus]}`}
-                          >
-                            {STATUS_LABEL[dayStatus]}
-                          </span>
-                        )}
                       </div>
 
                       {/* 하단: 학생 정보 */}
@@ -1073,13 +846,11 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
               {(
                 [
                   { key: "info", label: "기본 정보" },
-                  { key: "attendance", label: "출결" },
                   { key: "payment", label: "수납" },
                   { key: "points", label: "상벌점" },
                 ] as { key: PanelTab; label: string }[]
               )
                 .filter(({ key }) => {
-                  if (key === "attendance") return attendanceEnabled;
                   if (key === "payment") return paymentEnabled;
                   if (key === "points") return pointsEnabled;
                   return true;
@@ -1095,7 +866,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                   tabIndex={panelTab === key ? 0 : -1}
                   onClick={() => setPanelTab(key)}
                   onKeyDown={createTabListKeyHandler<PanelTab>(
-                    ["info", ...(attendanceEnabled ? ["attendance" as const] : []), ...(paymentEnabled ? ["payment" as const] : []), ...(pointsEnabled ? ["points" as const] : [])],
+                    ["info", ...(paymentEnabled ? ["payment" as const] : []), ...(pointsEnabled ? ["points" as const] : [])],
                     panelTab,
                     setPanelTab,
                   )}
@@ -1125,41 +896,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     </span>
                   </div>
 
-                  {panelInfo.dayStatus && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <span className="admin-help">오늘 종합</span>
-                      <span
-                        className={`rounded-lg border px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[panelInfo.dayStatus]}`}
-                      >
-                        {STATUS_LABEL[panelInfo.dayStatus]}
-                      </span>
-                    </div>
-                  )}
                 </div>
-
-                {/* 교시별 출석 요약 */}
-                {localPeriodRecords.length > 0 && (
-                  <div>
-                    <p className="admin-label mb-2">
-                      오늘 교시별
-                    </p>
-                    <div className="space-y-1.5">
-                      {localPeriodRecords.map((rec) => (
-                        <div
-                          key={rec.periodId}
-                          className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-3 py-2"
-                        >
-                          <span className="admin-help">{rec.periodName}</span>
-                          <span
-                            className={`rounded-lg border px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[rec.status]}`}
-                          >
-                            {STATUS_LABEL[rec.status]}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* 자습실 간 이동 */}
                 {rooms.length > 1 && (
@@ -1242,61 +979,7 @@ export const SeatStatusBoard = memo(function SeatStatusBoard({
                     </Link>
                   ) : null}
 
-                  {attendanceEnabled ? (
-                    <Link
-                    href={`/${divisionSlug}/admin/attendance`}
-                    onClick={closePanel}
-                    className="admin-button w-full"
-                  >
-                    <span className="flex items-center gap-2">
-                      <BookOpenCheck className="h-4 w-4 text-slate-400" />
-                      출석부로 이동
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                    </Link>
-                  ) : null}
                 </div>
-              </div>
-            )}
-
-            {/* ── 출결 탭 ── */}
-            {attendanceEnabled && panelTab === "attendance" && (
-              <div className="space-y-3" role="tabpanel" id="seat-student-panel-attendance" aria-labelledby="seat-student-attendance">
-                <p className="admin-help">
-                  교시를 선택해 출결 상태를 변경합니다. 저장은 즉시 반영됩니다.
-                </p>
-                {localPeriodRecords.length === 0 ? (
-                  <p className="admin-help py-4 text-center">교시가 없습니다.</p>
-                ) : (
-                  localPeriodRecords.map((rec) => (
-                    <div key={rec.periodId} className="rounded-lg border border-slate-100 bg-white p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-slate-700">{rec.periodName}</span>
-                        <span
-                          className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE_CLASS[rec.status]}`}
-                        >
-                          {STATUS_LABEL[rec.status]}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {QUICK_ATTENDANCE_STATUSES.map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            disabled={savingPeriodId !== null}
-                            onClick={() => void handleAttendanceSave(rec.periodId, s)}
-                            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${ rec.status === s ? STATUS_BADGE_CLASS[s] : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100" }`}
-                          >
-                            {savingPeriodId === rec.periodId && (
-                              <LoaderCircle className="h-3 w-3 animate-spin" />
-                            )}
-                            {STATUS_LABEL[s]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                )}
               </div>
             )}
 

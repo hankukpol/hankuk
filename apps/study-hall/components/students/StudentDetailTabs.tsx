@@ -26,6 +26,11 @@ import type { ScoreTargetItem } from "@/lib/services/score-target.service";
 import type { StudentDashboardData } from "@/lib/services/student-dashboard.service";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
 import { getKstTodayYmd } from "@/lib/date-utils";
+import {
+  getAttendanceStatusClasses,
+  getAttendanceStatusLabel,
+  isClassAttendance,
+} from "@/lib/attendance-meta";
 
 type StudentDetailTabId = "attendance" | "points" | "exams" | "payments" | "interviews" | "study-time";
 
@@ -146,57 +151,41 @@ function formatCurrency(value: number) {
 type WeeklyAttendanceCellStatus =
   StudentDashboardData["weeklyAttendance"]["rows"][number]["cells"][number]["status"];
 
-function getAttendanceStatusClasses(status: WeeklyAttendanceCellStatus) {
+function getWeeklyAttendanceStatusClasses(
+  status: WeeklyAttendanceCellStatus,
+  reason?: string | null,
+) {
   switch (status) {
-    case "PRESENT":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    case "TARDY":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "ABSENT":
-      return "border-rose-200 bg-rose-50 text-rose-700";
-    case "EXCUSED":
-      return "border-sky-200 bg-sky-50 text-sky-700";
-    case "HOLIDAY":
-    case "HALF_HOLIDAY":
-      return "border-slate-300 bg-slate-100 text-slate-700";
     case "UPCOMING":
-    case "NOT_APPLICABLE":
       return "border-slate-200 bg-slate-50 text-slate-500";
     case "OFF":
       return "border-slate-200 bg-slate-100 text-slate-500";
-    default:
+    case "UNPROCESSED":
       return "border-orange-200 bg-orange-50 text-orange-700";
+    default:
+      return getAttendanceStatusClasses(status, reason);
   }
 }
 
-function getAttendanceHistoryStatusClasses(status: StudentAttendanceHistoryItem["status"]) {
-  return getAttendanceStatusClasses(status);
-}
-
-function getAttendanceHistoryStatusLabel(status: StudentAttendanceHistoryItem["status"]) {
+function getWeeklyAttendanceStatusLabel(
+  status: WeeklyAttendanceCellStatus,
+  reason: string | null,
+  fallback: string,
+) {
   switch (status) {
-    case "PRESENT":
-      return "출석";
-    case "TARDY":
-      return "지각";
-    case "ABSENT":
-      return "결석";
-    case "EXCUSED":
-      return "사유결석";
-    case "HOLIDAY":
-      return "휴무";
-    case "HALF_HOLIDAY":
-      return "반휴";
-    case "NOT_APPLICABLE":
-      return "해당없음";
+    case "UPCOMING":
+    case "OFF":
+    case "UNPROCESSED":
+      return fallback;
     default:
-      return status;
+      return getAttendanceStatusLabel(status, reason);
   }
 }
 
 const attendanceHistoryFilters = [
   { value: "ALL", label: "전체" },
   { value: "ABSENT", label: "결석" },
+  { value: "CLASS", label: "수업" },
   { value: "EXCUSED", label: "사유결석" },
   { value: "HOLIDAY", label: "휴무" },
   { value: "HALF_HOLIDAY", label: "반휴" },
@@ -307,6 +296,14 @@ export function StudentDetailTabs({
 
     if (attendanceHistoryFilter === "REASONED") {
       return Boolean(record.reason?.trim());
+    }
+
+    if (attendanceHistoryFilter === "CLASS") {
+      return isClassAttendance(record.status, record.reason);
+    }
+
+    if (attendanceHistoryFilter === "EXCUSED") {
+      return record.status === "EXCUSED" && !isClassAttendance(record.status, record.reason);
     }
 
     return record.status === attendanceHistoryFilter;
@@ -503,8 +500,8 @@ export function StudentDetailTabs({
                     </th>
                     {row.cells.map((cell) => (
                       <td key={`${row.date}-${cell.periodId}`} className="border-b border-r border-slate-100 px-3 py-3 align-top last:border-r-0">
-                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceStatusClasses(cell.status)}`}>
-                          {cell.statusLabel}
+                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getWeeklyAttendanceStatusClasses(cell.status, cell.reason)}`}>
+                          {getWeeklyAttendanceStatusLabel(cell.status, cell.reason, cell.statusLabel)}
                         </span>
                         <p className="admin-help mt-2 leading-5">
                           {cell.reason || `${cell.startTime}-${cell.endTime}`}
@@ -523,7 +520,7 @@ export function StudentDetailTabs({
             <div>
               <p className="text-sm font-semibold text-slate-900">출결 상세 이력</p>
               <p className="admin-help mt-1">
-                결석, 사유결석, 휴무와 사유 작성 및 수정 시점을 확인합니다.
+                결석, 수업, 사유결석, 휴무와 사유 작성 및 수정 시점을 확인합니다.
               </p>
             </div>
 
@@ -613,8 +610,8 @@ export function StudentDetailTabs({
                         ) : null}
                       </td>
                       <td>
-                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceHistoryStatusClasses(record.status)}`}>
-                          {getAttendanceHistoryStatusLabel(record.status)}
+                        <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceStatusClasses(record.status, record.reason)}`}>
+                          {getAttendanceStatusLabel(record.status, record.reason)}
                         </span>
                       </td>
                       <td className="max-w-[280px]">

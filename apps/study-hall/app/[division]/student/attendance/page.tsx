@@ -20,8 +20,10 @@ type StudentAttendancePageProps = {
 
 const legendItems = [
   { label: "출석", className: "text-emerald-700" },
+  { label: "수업", className: "text-[var(--admin-attendance-class)]" },
   { label: "지각", className: "text-amber-700" },
   { label: "결석", className: "text-rose-700" },
+  { label: "사유결석", className: "text-blue-700" },
   { label: "휴무", className: "text-slate-700" },
   { label: "예정/미처리", className: "text-orange-700" },
 ] as const;

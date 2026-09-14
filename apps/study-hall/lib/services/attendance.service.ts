@@ -262,6 +262,10 @@ function isAttendancePenaltyStatus(status: AttendanceStatus): status is Attendan
   return status === "TARDY" || status === "ABSENT";
 }
 
+function isPerfectAttendanceStatus(status: AttendanceStatus, reason?: string | null) {
+  return status === "PRESENT" || isClassAttendance(status, reason);
+}
+
 function getAttendancePenaltyRuleId(
   status: AttendancePenaltyStatus,
   settings: {
@@ -639,7 +643,7 @@ async function syncPerfectAttendancePoints(
       const studentPresentMap = new Map<string, Set<string>>();
       for (const record of dayRecords) {
         if (!mandatoryPeriodIds.has(record.periodId)) continue;
-        if (record.status !== "PRESENT") continue;
+        if (!isPerfectAttendanceStatus(record.status, record.reason)) continue;
 
         if (!studentPresentMap.has(record.studentId)) {
           studentPresentMap.set(record.studentId, new Set());
@@ -708,6 +712,7 @@ async function syncPerfectAttendancePoints(
       studentId: true,
       periodId: true,
       status: true,
+      reason: true,
     },
   });
 
@@ -715,7 +720,7 @@ async function syncPerfectAttendancePoints(
   const studentPresentMap = new Map<string, Set<string>>();
   for (const record of dayRecords) {
     if (!mandatoryPeriodIds.has(record.periodId)) continue;
-    if (record.status !== "PRESENT") continue;
+    if (!isPerfectAttendanceStatus(record.status, record.reason)) continue;
 
     if (!studentPresentMap.has(record.studentId)) {
       studentPresentMap.set(record.studentId, new Set());

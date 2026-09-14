@@ -4,6 +4,7 @@ import { DialogActions } from "@/components/ui/DialogActions";
 
 import { Save } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "@/lib/sonner";
 
 import { SlideOver } from "@/components/ui/SlideOver";
 import { getSeatPositionKey } from "@/lib/seat-layout";
@@ -50,6 +51,7 @@ type AttendanceSeatViewProps = {
   initialSeatLayout: SeatLayout;
   students: StudentItem[];
   periods: PeriodItem[];
+  selectedPeriodId: string | null;
   matrix: MatrixState;
   onUpdateCell: (studentId: string, periodId: string, value: Partial<CellState>) => void;
   onSaveStudent: (studentId: string) => Promise<void>;
@@ -102,32 +104,6 @@ const STATUS_TONE: Record<StatusKey, string> = {
   UNPROCESSED: "border-slate-200 bg-white text-slate-600",
 };
 
-function computeDayStatus(
-  studentId: string,
-  matrix: MatrixState,
-  periods: PeriodItem[],
-): StatusKey {
-  const studentMatrix = matrix[studentId] ?? {};
-  const statuses = periods.map((p) => studentMatrix[p.id]?.status ?? "");
-
-  if (statuses.length === 0) return "UNPROCESSED";
-  // 아직 입력하지 않은 교시가 이미 저장된 출결을 가리지 않게 한다.
-  // 이 배지는 좌석의 대표 표시이며, 교시별 기록·출석률·벌점은 변경하지 않는다.
-  if (statuses.includes("ABSENT")) return "ABSENT";
-  if (statuses.includes("TARDY")) return "TARDY";
-  if (statuses.includes("HOLIDAY")) return "HOLIDAY";
-  if (statuses.includes("HALF_HOLIDAY")) return "HALF_HOLIDAY";
-  if (statuses.includes("EXCUSED")) {
-    return periods
-      .map((period) => studentMatrix[period.id])
-      .filter((cell) => cell?.status === "EXCUSED")
-      .every((cell) => isClassAttendance(cell.status, cell.reason)) ? "CLASS" : "EXCUSED";
-  }
-  if (statuses.every((s) => s === "NOT_APPLICABLE")) return "NOT_APPLICABLE";
-  if (statuses.includes("PRESENT")) return "PRESENT";
-  return "UNPROCESSED";
-}
-
 const QUICK_STATUSES: { value: Exclude<AttendanceInputValue, "">; label: string }[] = [
   { value: "PRESENT", label: "출석" },
   { value: "CLASS", label: "수업" },
@@ -144,6 +120,7 @@ export function AttendanceSeatView({
   initialSeatLayout,
   students,
   periods,
+  selectedPeriodId,
   matrix,
   onUpdateCell,
   onSaveStudent,
@@ -160,19 +137,20 @@ export function AttendanceSeatView({
     if (roomId === selectedRoomId) return;
     setLoadingRoomId(roomId);
     try {
-      const res = await fetch(`/api/${divisionSlug}/seats?roomId=${roomId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLayout(data.layout as SeatLayout);
-        setSelectedRoomId(roomId);
-      }
+      const res = await fetch(`/api/${divisionSlug}/seats?roomId=${roomId}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "좌석 정보를 불러오지 못했습니다.");
+      setLayout(data.layout as SeatLayout);
+      setSelectedRoomId(roomId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "좌석 정보를 불러오지 못했습니다.");
     } finally {
       setLoadingRoomId(null);
     }
   }
 
   async function handleSave() {
-    if (!modalStudentId) return;
+    if (!modalStudentId || isSaving) return;
     setIsSaving(true);
     try {
       await onSaveStudent(modalStudentId);
@@ -200,15 +178,17 @@ export function AttendanceSeatView({
       ),
     [layout.seats],
   );
-  const dayStatusByStudentId = useMemo(() => {
+  const selectedPeriod = periods.find((period) => period.id === selectedPeriodId) ?? null;
+  const periodStatusByStudentId = useMemo(() => {
     const next = new Map<string, StatusKey>();
 
     students.forEach((student) => {
-      next.set(student.id, computeDayStatus(student.id, matrix, periods));
+      const cell = selectedPeriod ? matrix[student.id]?.[selectedPeriod.id] : undefined;
+      next.set(student.id, cell?.status ? getAttendanceInputValue(cell.status, cell.reason) as StatusKey : "UNPROCESSED");
     });
 
     return next;
-  }, [matrix, periods, students]);
+  }, [matrix, selectedPeriod, students]);
 
   const modalStudent = modalStudentId ? studentById.get(modalStudentId) : null;
 
@@ -234,6 +214,8 @@ export function AttendanceSeatView({
         </div>
       )}
 
+      {!selectedPeriod && <p className="admin-empty-state">선택할 교시가 없습니다.</p>}
+
       {/* 출입구 */}
       <div className="admin-notice text-center">
         칠판
@@ -243,7 +225,7 @@ export function AttendanceSeatView({
       <div className="overflow-x-auto">
         <div
           className="grid gap-3"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(88px, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(140px, 1fr))` }}
         >
           {Array.from({ length: rows }).flatMap((_, rowIdx) =>
             Array.from({ length: columns }).map((__, colIdx) => {
@@ -274,30 +256,30 @@ export function AttendanceSeatView({
 
               const studentId = seatToStudentId.get(seat.id) ?? null;
               const student = studentId ? studentById.get(studentId) : null;
-              const dayStatus = student ? dayStatusByStudentId.get(student.id) ?? null : null;
+              const periodStatus = student ? periodStatusByStudentId.get(student.id) ?? null : null;
               const isSelected = student?.id === modalStudentId;
 
               const tone = !seat.isActive
                 ? "border-dashed border-slate-200 bg-slate-100 text-slate-400"
                 : !student
                   ? "border-slate-200 bg-white text-slate-500"
-                  : STATUS_TONE[dayStatus ?? "UNPROCESSED"];
+                  : STATUS_TONE[periodStatus ?? "UNPROCESSED"];
 
               return (
                 <button
                   key={`seat-${posX}-${posY}`}
                   type="button"
                   onClick={() => {
-                    if (student) setModalStudentId(student.id);
+                    if (student && seat.isActive && selectedPeriod) setModalStudentId(student.id);
                   }}
                   className={`relative flex min-h-[108px] w-full flex-col justify-between rounded-lg border p-3 text-left transition hover:opacity-80 ${tone} ${ isSelected ? "ring-2 ring-slate-900 ring-offset-1" : "" } ${!student || !seat.isActive ? "cursor-default" : ""}`}
                 >
-                  {/* 상단: 좌석번호 + 상태 배지 */}
-                  <div className="flex items-start justify-between gap-1">
-                    <span className="text-xs font-semibold">{seat.label}</span>
-                    {student && dayStatus && (
-                      <span className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE[dayStatus]}`}>
-                        {STATUS_LABEL[dayStatus]}
+                  {/* 상단: 좌석번호 + 선택 교시 상태 */}
+                  <div className="flex flex-wrap items-start justify-between gap-1">
+                    <span className="whitespace-nowrap text-xs font-semibold">{seat.label}</span>
+                    {student && periodStatus && (
+                      <span className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${STATUS_BADGE[periodStatus]}`}>
+                        {STATUS_LABEL[periodStatus]}
                       </span>
                     )}
                   </div>
@@ -330,11 +312,11 @@ export function AttendanceSeatView({
         description={`${modalStudent?.seatDisplay ?? "좌석 미배정"} · ${modalStudent?.studentNumber ?? ""}`}
         badge="출석 체크"
 
-        onClose={() => setModalStudentId(null)}
+        onClose={() => { if (!isSaving) setModalStudentId(null); }}
       >
         {modalStudentId && (
           <div className="space-y-3">
-            {periods.map((period) => {
+            {(selectedPeriod ? [selectedPeriod] : []).map((period) => {
               const cell = matrix[modalStudentId]?.[period.id] ?? { status: "", reason: "" };
               const needsReason = cell.status === "ABSENT" || cell.status === "EXCUSED";
 
@@ -351,7 +333,7 @@ export function AttendanceSeatView({
                       </p>
                     </div>
                     {cell.status && (
-                      <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getAttendanceStatusClasses(cell.status)}`}>
+                      <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getAttendanceStatusClasses(cell.status, cell.reason)}`}>
                         {getAttendanceStatusLabel(cell.status, cell.reason)}
                       </span>
                     )}
@@ -367,7 +349,7 @@ export function AttendanceSeatView({
                             cell,
                           ))
                         }
-                        className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${ getAttendanceInputValue(cell.status, cell.reason) === value ? getAttendanceStatusClasses(cell.status) : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50" }`}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${ getAttendanceInputValue(cell.status, cell.reason) === value ? getAttendanceStatusClasses(cell.status, cell.reason) : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50" }`}
                       >
                         {label}
                       </button>

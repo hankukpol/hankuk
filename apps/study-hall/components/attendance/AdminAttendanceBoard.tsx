@@ -13,6 +13,8 @@ import {
   getAttendanceInputValue,
   getAttendanceReasonDetail,
   isClassAttendance,
+  selectPeriodForCheck,
+  kstMinutesOfDay,
   setAttendanceReasonDetail,
   type AttendanceInputValue,
   type AttendanceOptionValue,
@@ -74,6 +76,7 @@ type StatsPayload = {
 export type AdminAttendanceBoardProps = {
   divisionSlug: string;
   initialDate: string;
+  initialSeatPeriodId?: string | null;
   initialPeriods: PeriodItem[];
   initialStudents: StudentItem[];
   initialRecords: AttendanceRecordItem[];
@@ -284,6 +287,7 @@ const ATTENDANCE_VIEW_TABS = [
 export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   divisionSlug,
   initialDate,
+  initialSeatPeriodId,
   initialPeriods,
   initialStudents,
   initialRecords,
@@ -298,6 +302,13 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [students, setStudents] = useState(initialStudents);
   const [periods, setPeriods] = useState(initialPeriods);
+  const [seatPeriodId, setSeatPeriodId] = useState(initialSeatPeriodId ?? initialPeriods[0]?.id ?? "");
+  const seatPeriod = periods.find((period) => period.isActive && period.id === seatPeriodId) ?? periods.find((period) => period.isActive) ?? null;
+  useEffect(() => {
+    if (!periods.some((period) => period.isActive && period.id === seatPeriodId)) {
+      setSeatPeriodId(selectPeriodForCheck(periods, kstMinutesOfDay())?.id ?? "");
+    }
+  }, [periods, seatPeriodId]);
   const [matrix, setMatrix] = useState<MatrixState>(() => initialMatrix);
   const matrixRef = useRef(matrix);
   matrixRef.current = matrix;
@@ -739,10 +750,13 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }
 
   // Save only edited cells so future-period pre-checks do not require filling every student.
-  async function persistChangedPeriodsForStudents(targetStudentIds?: string[]) {
+  async function persistChangedPeriodsForStudents(targetStudentIds?: string[], targetPeriodId?: string) {
     if (saveLock.current || isLoading || recurringSavingStudentId) throw new Error("진행 중인 작업이 끝난 뒤 저장해 주세요.");
+    if (targetPeriodId !== undefined && !periods.some((period) => period.isActive && period.id === targetPeriodId)) {
+      throw new Error("저장할 교시를 선택해 주세요.");
+    }
     const targetStudents = targetStudentIds ? students.filter((student) => targetStudentIds.includes(student.id)) : students;
-    const changes = periods.map((period) => ({ period, records: targetStudents.flatMap((student) => {
+    const changes = periods.filter((period) => targetPeriodId === undefined || period.id === targetPeriodId).map((period) => ({ period, records: targetStudents.flatMap((student) => {
       const cell = getCellState(matrix, student.id, period.id);
       if (!hasCellChanged(cell, getCellState(savedMatrix, student.id, period.id))) return [];
       return [{ studentId: student.id, status: cell.status, reason: cell.reason || null }];
@@ -769,7 +783,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         });
       }
       try {
-        const response = await fetchCheck(`/api/${divisionSlug}/attendance/stats?dateFrom=${selectedDate}&dateTo=${selectedDate}`);
+        const response = await fetchCheck(`/api/${divisionSlug}/attendance/stats?dateFrom=${selectedDate}&dateTo=${selectedDate}`, { cache: "no-store" });
         if (!response.ok) throw new Error();
         setStats(await response.json());
       } catch { toast.warning("출결은 저장되었습니다. 통계 갱신에 실패하여 화면을 다시 불러와야 합니다."); }
@@ -796,15 +810,15 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     }
   }
 
-  async function handleSaveStudent(studentId: string) {
+  async function handleSaveStudent(studentId: string, periodId: string) {
     try {
-      const editedDuringSave = await persistChangedPeriodsForStudents([studentId]);
+      const editedDuringSave = await persistChangedPeriodsForStudents([studentId], periodId);
       if (editedDuringSave) throw new Error("저장 요청한 출결을 반영했습니다. 추가한 변경을 다시 저장해 주세요.");
       const targetStudent = students.find((student) => student.id === studentId);
       toast.success("저장되었습니다.");
       setSaveSuccessModal({
         title: "학생 출결 저장 완료",
-        description: `${targetStudent?.name ?? "선택한 학생"}의 ${selectedDate} 출결이 저장되었습니다.`,
+        description: `${targetStudent?.name ?? "선택한 학생"}의 ${selectedDate} ${periods.find((period) => period.id === periodId)?.name ?? ""} 출결이 저장되었습니다.`,
         notice: "저장한 출결과 사유 메모는 선택한 날짜의 좌석 보드와 출석 통계에 바로 반영됩니다.",
       });
     } catch (error) {
@@ -930,22 +944,36 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
       {viewMode === "seat" && hasSeatLayout && seatRooms && initialSeatLayout ? (
         <section className="admin-section" role="tabpanel" id="attendance-view-panel-seat" aria-labelledby="attendance-view-seat">
+          <AdminTabs
+            items={periods.filter((period) => period.isActive).map((period) => ({ id: period.id, label: period.name, disabled: isSaving || isLoading }))}
+            activeId={seatPeriod?.id ?? ""}
+            onChange={(id) => setSeatPeriodId(id)}
+            label="좌석 출결 교시"
+            idPrefix="attendance-seat-period"
+            variant="secondary"
+            scrollable
+          />
+          {seatPeriod && <p className="admin-help my-4">{selectedDate} · {seatPeriod.name} {seatPeriod.startTime}–{seatPeriod.endTime}</p>}
           {hasSearchQuery ? (
             <div className="admin-help mb-4 px-4 py-3">
               검색 조건에 맞는 학생만 좌석도에 표시됩니다.
             </div>
           ) : null}
           {filteredStudents.length > 0 ? (
+            <div role="tabpanel" id={`attendance-seat-period-panel-${seatPeriod?.id ?? "none"}`} aria-labelledby={seatPeriod ? `attendance-seat-period-${seatPeriod.id}` : undefined}>
             <AttendanceSeatView
+              key={`${selectedDate}:${seatPeriod?.id ?? "none"}`}
               divisionSlug={divisionSlug}
               rooms={seatRooms}
               initialSeatLayout={initialSeatLayout}
               students={filteredStudents}
-              periods={periods}
+              periods={periods.filter((period) => period.isActive)}
+              selectedPeriodId={seatPeriod?.id ?? null}
               matrix={matrix}
               onUpdateCell={(studentId, periodId, value) => updateCell(studentId, periodId, value)}
-              onSaveStudent={handleSaveStudent}
+              onSaveStudent={(studentId) => handleSaveStudent(studentId, seatPeriod?.id ?? "")}
             />
+            </div>
           ) : (
             <div className="admin-help py-16 text-center">
               검색 조건에 맞는 학생이 없습니다.

@@ -21,6 +21,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
   require(name: string) {
     // Modal geometry and icons are unrelated to the seat's status label.
     if (name === "lucide-react" || name.startsWith("@/components/")) return new Proxy({}, { get: () => () => null });
+    if (name === "@/lib/sonner") return { toast: {} };
     return localRequire(name.startsWith("@/") ? path.join(root, name.slice(2)) : name);
   },
 }, { filename });
@@ -31,9 +32,9 @@ type Cell = { status: AttendanceOptionValue; reason: string };
 const cell = (status: AttendanceOptionValue, reason = ""): Cell => ({ status, reason });
 const classCell = cell("EXCUSED", "수업: 기본이론");
 
-function seatBadge(cells: Record<string, Cell>, selectedPeriods = periods) {
+function seatBadge(cells: Record<string, Cell>, selectedPeriodId: string | null = "p1", selectedPeriods = periods) {
   const html = renderToStaticMarkup(React.createElement(loaded.exports.AttendanceSeatView, {
-    divisionSlug: "police", rooms: [], students: [student], periods: selectedPeriods,
+    divisionSlug: "police", rooms: [], students: [student], periods: selectedPeriods, selectedPeriodId,
     initialSeatLayout: { room: null, rows: 1, columns: 1, aisleColumns: [], seats: [{
       id: "seat1", studyRoomId: "room1", label: "1", positionX: 1, positionY: 1, isActive: true,
       assignedStudent: { ...student, status: "ACTIVE", studyRoomName: "자습실", courseEndDate: null },
@@ -44,7 +45,7 @@ function seatBadge(cells: Record<string, Cell>, selectedPeriods = periods) {
   assert.ok(seat, "rendered a seat button");
   assert.ok(seat.includes("검증학생"), "rendered the assigned student's seat");
   const labels = Array.from(seat.matchAll(/<span\b[^>]*>([^<]*)<\/span>/g), (match) => match[1]);
-  assert.equal(labels.length, 2, "seat number and one representative status");
+  assert.equal(labels.length, 2, "seat number and the selected period status");
   return labels[1];
 }
 
@@ -61,18 +62,20 @@ for (const [status, label] of [
   });
 }
 
-test("seat preserves existing mixed-status priority and keeps class separate from ordinary excuses", () => {
-  assert.equal(seatBadge({ p1: cell("ABSENT"), p2: cell("PRESENT") }), "결석");
-  assert.equal(seatBadge({ p1: cell("TARDY"), p2: classCell }), "지각");
-  assert.equal(seatBadge({ p1: classCell, p2: cell("EXCUSED", "병원 진료") }), "사유결석");
-  assert.equal(seatBadge({ p1: classCell, p2: cell("PRESENT") }), "수업");
+test("seat reads only the selected period without borrowing another period status", () => {
+  const cells = { p1: classCell, p2: cell("ABSENT"), p3: cell(""), p4: cell("EXCUSED", "병원 진료"), p5: cell("PRESENT") };
+  assert.equal(seatBadge(cells, "p1"), "수업");
+  assert.equal(seatBadge(cells, "p2"), "결석");
+  assert.equal(seatBadge(cells, "p3"), "미처리");
+  assert.equal(seatBadge(cells, "p4"), "사유결석");
+  assert.equal(seatBadge(cells, "p5"), "출석");
 });
 
-test("seat keeps truly empty records unprocessed and respects the selected period", () => {
+test("seat keeps empty, missing and removed periods unprocessed", () => {
   assert.equal(seatBadge({}), "미처리");
   assert.equal(seatBadge({ p1: cell("") }), "미처리");
-  assert.equal(seatBadge({ p1: classCell }, [periods[1]]), "미처리");
-  assert.equal(seatBadge({ p1: classCell }, [periods[0]]), "수업");
-  assert.equal(seatBadge({}, []), "미처리");
-  assert.equal(seatBadge(Object.fromEntries(periods.map((p) => [p.id, cell("NOT_APPLICABLE")]))), "해당없음");
+  assert.equal(seatBadge({ p1: classCell }, "p2"), "미처리");
+  assert.equal(seatBadge({ p1: classCell }, "p1", [periods[1]]), "미처리");
+  assert.equal(seatBadge({}, null, []), "미처리");
+  assert.equal(seatBadge({ p1: cell("NOT_APPLICABLE") }), "해당없음");
 });

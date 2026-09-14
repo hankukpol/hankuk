@@ -44,6 +44,23 @@ before(async () => {
   superCookie = await login("super@mock.local");
 });
 
+test("attendance statistics do not serve stale browser or shared-cache results", async () => {
+  const response = await request("/api/police/attendance/stats?dateFrom=2026-09-14&dateTo=2026-09-14", "GET", adminCookie);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /private/);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+});
+
+test("assistants can read their seat map for attendance but cannot assign seats", async () => {
+  const cookie = await login("assistant-police@mock.local");
+  const response = await request("/api/police/seats", "GET", cookie);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+  assert.ok((await response.json()).layout);
+  assert.equal((await request("/api/fire/seats", "GET", cookie)).status, 403);
+  assert.equal((await request("/api/police/seats/missing-test-seat/assign", "PATCH", cookie, "{}")).status, 403);
+});
+
 test("every protected HTTP method rejects unauthenticated requests before touching data", async (t) => {
   assert.ok(protectedRoutes.length > 100, "route inventory must cover the app");
   for (const route of protectedRoutes) await t.test(`${route.method} ${route.url}`, async () => {

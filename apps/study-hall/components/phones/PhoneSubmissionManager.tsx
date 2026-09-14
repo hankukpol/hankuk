@@ -6,7 +6,10 @@ import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
-import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
+import {
+  getAttendanceStatusClasses,
+  getAttendanceStatusLabel,
+} from "@/lib/attendance-meta";
 import type { PhoneCheckRecord } from "@/lib/services/phone-submission.service";
 import type { PointRuleItem } from "@/lib/services/point.service";
 
@@ -47,24 +50,9 @@ function findPhonePointRule(rules: PointRuleItem[]) {
 
 function getAttendanceBadgeClassName(record: PhoneCheckRecord) {
   if (record.attendanceStatus === null && record.attendanceCheckable) {
-    return "bg-slate-50 text-slate-500 ring-slate-200";
+    return "border-slate-200 bg-slate-50 text-slate-500";
   }
-
-  switch (record.attendanceStatus) {
-    case "PRESENT":
-      return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
-    case "TARDY":
-      return "bg-amber-50 text-amber-700 ring-amber-600/20";
-    case "ABSENT":
-    case "EXCUSED":
-      return "bg-rose-50 text-rose-700 ring-rose-600/20";
-    case "HOLIDAY":
-    case "HALF_HOLIDAY":
-    case "NOT_APPLICABLE":
-      return "bg-slate-50 text-slate-500 ring-slate-200";
-    default:
-      return "bg-indigo-50 text-indigo-700 ring-indigo-600/20";
-  }
+  return getAttendanceStatusClasses(record.attendanceStatus, record.attendanceReason);
 }
 
 export function PhoneSubmissionManager({
@@ -387,11 +375,11 @@ export function PhoneSubmissionManager({
                   <td>{item.studentNumber}</td>
                   <td>
                     <span
-                      className={`inline-flex rounded-lg px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${getAttendanceBadgeClassName(item)}`}
+                      className={`inline-flex rounded-lg border px-2.5 py-0.5 text-xs font-medium ${getAttendanceBadgeClassName(item)}`}
                     >
                       {item.attendanceStatus === null && item.attendanceCheckable
                         ? "출결 연동 없음"
-                        : getAttendanceStatusLabel(item.attendanceStatus)}
+                        : getAttendanceStatusLabel(item.attendanceStatus, item.attendanceReason)}
                     </span>
                   </td>
                   <td>

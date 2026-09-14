@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import {
+  getAttendanceStatusClasses,
+  getAttendanceStatusLabel,
+} from "@/lib/attendance-meta";
 import type { PhoneCheckRecord } from "@/lib/services/phone-submission.service";
 
 export function OutstandingPhoneReturns({ divisionSlug, records }: {
@@ -31,7 +35,15 @@ export function OutstandingPhoneReturns({ divisionSlug, records }: {
     <h2 className="admin-section-title">출결 변경 학생의 반납 대기</h2>
     <p className="admin-help">반출 후 외출·사유결석 등으로 출석 상태가 바뀐 학생입니다. 실제 휴대폰을 돌려받았을 때 반납을 기록해 주세요.</p>
     <ul className="space-y-4">{records.map((record) => <li className="admin-workspace-toolbar" key={record.id}>
-      <span>{record.studentName} ({record.studentNumber}) · {record.periodName}</span>
+      <div>
+        <span>{record.studentName} ({record.studentNumber}) · {record.periodName}</span>
+        <p className="admin-help mt-1">
+          <span className={`mr-2 inline-flex rounded-lg border px-2 py-0.5 text-xs font-medium ${getAttendanceStatusClasses(record.attendanceStatus, record.attendanceReason)}`}>
+            {getAttendanceStatusLabel(record.attendanceStatus, record.attendanceReason)}
+          </span>
+          {record.attendanceReason || "사유 없음"}
+        </p>
+      </div>
       <button className="admin-button" disabled={pending} onClick={() => void recordReturn(record)}>{record.studentName} 반납 기록</button>
     </li>)}</ul>
   </section>;

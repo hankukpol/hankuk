@@ -6,7 +6,10 @@ import {
   PHONE_CHECK_STATUS_OPTIONS,
   PhoneStatusCheckButton,
 } from "@/components/phones/PhoneStatusCheckButton";
-import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
+import {
+  getAttendanceStatusClasses,
+  getAttendanceStatusLabel,
+} from "@/lib/attendance-meta";
 import { getStudyTrackShortLabel } from "@/lib/study-track-meta";
 import type {
   PhoneAttendanceCell,
@@ -39,22 +42,7 @@ type PhoneCheckTableProps = {
 
 function getAttendanceBadgeClassName(cell: PhoneAttendanceCell | undefined, enabled: boolean) {
   if (!enabled) return "border-slate-200 bg-slate-50 text-slate-500";
-
-  switch (cell?.status) {
-    case "PRESENT":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    case "TARDY":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "ABSENT":
-    case "EXCUSED":
-      return "border-rose-200 bg-rose-50 text-rose-700";
-    case "HOLIDAY":
-    case "HALF_HOLIDAY":
-    case "NOT_APPLICABLE":
-      return "border-slate-200 bg-slate-50 text-slate-500";
-    default:
-      return "border-indigo-200 bg-indigo-50 text-indigo-500";
-  }
+  return getAttendanceStatusClasses(cell?.status, cell?.reason);
 }
 
 function compareStudentsBySeat(left: StudentItem, right: StudentItem) {

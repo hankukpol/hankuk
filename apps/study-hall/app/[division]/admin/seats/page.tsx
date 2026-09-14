@@ -1,6 +1,5 @@
 import { SeatStatusBoard } from "@/components/seats/SeatStatusBoard";
 import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard";
-import { getAttendanceSnapshot } from "@/lib/services/attendance.service";
 import {
   filterOperationalStudyRooms,
   getSeatLayout,
@@ -17,14 +16,9 @@ type Props = {
 export default async function SeatStatusPage({ params }: Props) {
   await redirectIfDivisionFeatureDisabled(params.division, "seatManagement");
 
-  const today = new Date()
-    .toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
-    .slice(0, 10);
-
-  const [allRooms, students, todaySnapshot, featureSettings] = await Promise.all([
+  const [allRooms, students, featureSettings] = await Promise.all([
     listStudyRooms(params.division),
     listStudents(params.division),
-    getAttendanceSnapshot(params.division, today),
     getDivisionFeatureSettings(params.division),
   ]);
 
@@ -37,8 +31,7 @@ export default async function SeatStatusPage({ params }: Props) {
       <section>
         <h1 className="admin-page-title">좌석 현황</h1>
         <p className="admin-help mt-2">
-          오늘({today}) 기준 좌석 배치와 출석 상태를 한눈에 확인합니다.
-          좌석을 클릭하면 학생 상세 정보를 확인할 수 있습니다.
+          좌석별 배정 학생과 공석을 확인하고 좌석을 배정하거나 이동합니다.
         </p>
       </section>
 
@@ -55,8 +48,6 @@ export default async function SeatStatusPage({ params }: Props) {
           initialRooms={rooms}
           initialLayout={layout}
           initialStudents={students}
-          todaySnapshot={todaySnapshot}
-          attendanceEnabled={featureSettings.featureFlags.attendanceManagement}
           paymentEnabled={featureSettings.featureFlags.paymentManagement}
           pointsEnabled={featureSettings.featureFlags.pointManagement}
           studentManagementEnabled={featureSettings.featureFlags.studentManagement}

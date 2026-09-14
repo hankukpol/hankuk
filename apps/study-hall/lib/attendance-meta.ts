@@ -90,7 +90,10 @@ export function getAttendanceStatusLabel(status: string | null | undefined, reas
   return ATTENDANCE_STATUS_OPTIONS.find((item) => item.value === (status ?? ""))?.label ?? "미처리";
 }
 
-export function getAttendanceStatusClasses(status: string | null | undefined) {
+export function getAttendanceStatusClasses(status: string | null | undefined, reason?: string | null) {
+  if (status === "CLASS" || isClassAttendance(status, reason)) {
+    return "border-[var(--admin-attendance-class-line)] bg-[var(--admin-attendance-class-soft)] text-[var(--admin-attendance-class)] font-medium";
+  }
   switch (status) {
     case "PRESENT":
       return "border-slate-200 bg-white text-emerald-600 font-medium";

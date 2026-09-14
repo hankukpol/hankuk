@@ -210,7 +210,7 @@ export function PhoneCheckTable({
                     {student.studyTrack ? ` · ${getStudyTrackShortLabel(student.studyTrack)}` : ""}
                   </div>
                   <div className="admin-help sm:hidden">
-                    출결 {attendanceIntegrationEnabled ? getAttendanceStatusLabel(attendanceCell?.status) : "연동 없음"}
+                    출결 {attendanceIntegrationEnabled ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason) : "연동 없음"}
                   </div>
                 </td>
                 <td className="hidden sm:table-cell">
@@ -224,7 +224,7 @@ export function PhoneCheckTable({
                     className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                   >
                     {attendanceIntegrationEnabled
-                      ? getAttendanceStatusLabel(attendanceCell?.status)
+                      ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
                       : "출결 연동 없음"}
                   </span>
                   {attendanceCell?.reason ? (

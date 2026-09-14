@@ -16,6 +16,10 @@ import { listInterviews } from "@/lib/services/interview.service";
 import { listLeavePermissions } from "@/lib/services/leave.service";
 import { getPrismaClient } from "@/lib/service-helpers";
 import { toDemeritPoints } from "@/lib/student-meta";
+import {
+  getAttendanceCountStatus,
+  isAttendanceRateExcluded,
+} from "@/lib/attendance-meta";
 
 const kstDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",
@@ -214,7 +218,7 @@ function indexRecordsByPeriod(records: AttendanceSnapshot["records"]) {
 function countRecords(records: AttendanceSnapshot["records"]) {
   const counts = createCounts();
   for (const record of records) {
-    switch (record.status) {
+    switch (getAttendanceCountStatus(record.status, record.reason)) {
       case "PRESENT":
         counts.present += 1;
         break;
@@ -251,11 +255,14 @@ function buildRateSummary(
   let expectedCount = 0;
 
   for (const period of mandatoryPeriods) {
-    const counts = countRecords(recordsByPeriod.get(period.id) ?? []);
-    // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
+    const records = recordsByPeriod.get(period.id) ?? [];
+    const counts = countRecords(records);
+    const excludedCount = records.filter((record) =>
+      isAttendanceRateExcluded(record.status, record.reason),
+    ).length;
     attendedCount +=
-      counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday;
-    expectedCount += Math.max(activeStudentCount - counts.notApplicable, 0);
+      counts.present + counts.tardy + counts.holiday + counts.halfHoliday;
+    expectedCount += Math.max(activeStudentCount - excludedCount, 0);
   }
 
   return {
@@ -275,7 +282,8 @@ function buildPeriodRows(
     .filter((period) => period.isActive)
     .sort((left, right) => left.displayOrder - right.displayOrder)
     .map((period) => {
-      const counts = countRecords(recordsByPeriod.get(period.id) ?? []);
+      const records = recordsByPeriod.get(period.id) ?? [];
+      const counts = countRecords(records);
 
       const processed =
         counts.present +
@@ -287,10 +295,12 @@ function buildPeriodRows(
         counts.notApplicable;
       counts.unprocessed = Math.max(activeStudentCount - processed, 0);
 
-      // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
       const attended =
-        counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday;
-      const expected = Math.max(activeStudentCount - counts.notApplicable, 0);
+        counts.present + counts.tardy + counts.holiday + counts.halfHoliday;
+      const excludedCount = records.filter((record) =>
+        isAttendanceRateExcluded(record.status, record.reason),
+      ).length;
+      const expected = Math.max(activeStudentCount - excludedCount, 0);
       const attendanceRate = expected > 0 ? Number(((attended / expected) * 100).toFixed(1)) : 0;
 
       return {

@@ -1373,7 +1373,7 @@ export function PhoneCheckForm({
                               className={`mt-1 inline-flex rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, snapshot.attendanceIntegrationEnabled, )}`}
                             >
                               {snapshot.attendanceIntegrationEnabled
-                                ? getAttendanceStatusLabel(attendanceCell?.status)
+                                ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
                                 : "출결 연동 없음"}
                             </span>
                             {saveState ? (

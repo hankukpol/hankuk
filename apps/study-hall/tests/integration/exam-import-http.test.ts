@@ -137,21 +137,24 @@ test("file import HTTP flow persists both legacy score paths and rejects foreign
     assert.equal(preview.matching.matched, 5);
     assert.equal(preview.reproduction.mismatches.length, 0);
     assert.equal(preview.existing, false);
-    // Re-check the current roster at confirmation, not only at preview time.
+    // Matching uses the exam number; handwritten names may differ from the roster.
     await updateMockState(state => { state.studentsByDivision.police[0].name = "번호재사용검증"; });
     try {
-      assert.equal((await send("/preview")).status, 400);
-      const rejected = await send("");
-      assert.equal(rejected.status, 400);
-      assert.ok(!(await rejected.text()).includes("번호재사용검증"));
-      assert.equal((await readMockState()).examSessionsByDivision.police.filter(row => row.examTypeId === id).length, 0);
+      const renamedPreview = await send("/preview");
+      assert.equal(renamedPreview.status, 200);
+      const renamedBody = await renamedPreview.json();
+      assert.equal(renamedBody.preview.canConfirm, true);
+      assert.equal(renamedBody.preview.matching.matched, 5);
+      const confirmed = await send("");
+      assert.equal(confirmed.status, 201, await confirmed.clone().text());
+      assert.equal((await confirmed.json()).result.importedCount, 5);
+      const current = await readMockState();
+      const session = current.examSessionsByDivision.police.find(row => row.examTypeId === id)!;
+      assert.ok(current.examSessionParticipantsByDivision.police.some(row =>
+        row.sessionId === session.id && row.studentId === current.studentsByDivision.police[0].id));
     } finally {
       await updateMockState(state => { state.studentsByDivision.police[0].name = "학생01"; });
     }
-    const confirmed = await send("");
-    assert.equal(confirmed.status, 201, await confirmed.clone().text());
-    const { result } = await confirmed.json();
-    assert.equal(result.importedCount, 5);
     assert.equal((await send("")).status, 409);
     assert.equal((await send("", true)).status, 201);
     const state = await readMockState();

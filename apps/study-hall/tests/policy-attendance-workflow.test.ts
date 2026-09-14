@@ -5,6 +5,7 @@ import test from "node:test";
 import ts from "typescript";
 import * as policyMeta from "../lib/management-policy";
 import * as dateUtils from "../lib/date-utils";
+import * as attendanceMeta from "../lib/attendance-meta";
 import { mapPolicy } from "../scripts/restart-police-policy";
 import type { MockAttendanceRecord, MockPointRecordRecord } from "../lib/mock-store";
 
@@ -54,6 +55,7 @@ function fixture() {
     "react": { cache: (fn: unknown) => fn },
     "node:crypto": { randomUUID },
     "@/lib/date-utils": dateUtils,
+    "@/lib/attendance-meta": attendanceMeta,
     "@/lib/management-policy": policyMeta,
     "@/lib/mock-data": { isMockMode: () => true },
     "@/lib/mock-store": {
@@ -189,8 +191,8 @@ test("policy attendance stats distinguish approved absence and missing records f
   assert.equal(stats.totals.present, 0);
   assert.equal(stats.totals.excused, 1);
   assert.equal(stats.totals.unprocessed, 1);
-  // 사유결석은 인정 출석이므로 출석률에 포함된다. 물리적 출석(present=0)과는 여전히 구분된다.
-  assert.equal(stats.attendanceRate, 50);
+  // 일반 사유결석은 분자·분모에서 제외된다. 남은 학생이 미처리이므로 출석률은 0이다.
+  assert.equal(stats.attendanceRate, 0);
 });
 
 test("inactive policy periods cannot accept new attendance or inflate expected attendance", async (t) => {
@@ -414,4 +416,143 @@ test("Sunday and non-enrolled fifth-period attendance are recorded without contr
   assert.equal(weekday.periods.find(p => p.periodId === "18:15")?.counts.unprocessed, 0);
   const sunday = await f.attendance.getAttendanceStats("police", "2026-09-13", "2026-09-13");
   assert.equal(Object.values(sunday.totals).reduce((sum, count) => sum + count, 0), 0);
+});
+
+test("수업만 출석으로 세고 일반 사유결석은 분자·분모 및 결석 벌점에서 제외한다", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T22:00:00+09:00`) });
+  const f = fixture();
+  for (const periodId of ["09:15", "11:00", "13:45", "15:30"]) {
+    await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId, records: [
+      { studentId: "p1", status: "EXCUSED", reason: "수업" },
+      { studentId: "p2", status: "EXCUSED", reason: "병원 진료" },
+    ] });
+  }
+  const stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.present, 1);
+  assert.equal(stats.totals.excused, 1);
+  assert.equal(stats.totals.absent, 0);
+  assert.equal(stats.classStudentDays, 1);
+  assert.equal(stats.physicalStudentDays, 0);
+  assert.equal(stats.attendanceRate, 100);
+  const firstPeriod = stats.periods.find(period => period.periodId === "09:15")!;
+  assert.equal(firstPeriod.counts.present, 1);
+  assert.equal(firstPeriod.counts.excused, 1);
+  assert.equal(firstPeriod.attendanceRate, 100);
+  assert.deepEqual(f.state.pointRecordsByDivision.police, []);
+  assert.deepEqual(await f.penalties.previewPolicyAttendance("police", date), []);
+
+  for (const periodId of ["09:15", "11:00", "13:45", "15:30"]) {
+    await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId, records: [
+      { studentId: "p2", status: "ABSENT", reason: "무단결석" },
+    ] });
+  }
+  assert.equal(f.state.pointRecordsByDivision.police.length, 1, "전체 교시가 실제 결석일 때만 종일 결석 벌점을 부과한다");
+  await f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId: "15:30", records: [
+    { studentId: "p2", status: "EXCUSED", reason: "병원 진료" },
+  ] });
+  assert.deepEqual(f.state.pointRecordsByDivision.police, [], "사유결석으로 정정하면 해당 자동 결석 벌점도 정리한다");
+});
+
+test("policy와 legacy 통계는 학생·날짜 대표 상태가 출석일 때만 수업을 분리한다", async () => {
+  for (const mode of ["policy", "legacy"] as const) {
+    const makeFixture = () => {
+      const f = fixture();
+      if (mode === "legacy") f.policy.effectiveFrom = "2099-01-01";
+      return f;
+    };
+
+    const classOnly = makeFixture();
+    classOnly.record("09:15", "EXCUSED").reason = "수업: 형법 기본이론";
+    classOnly.state.attendanceByDivision.fire.push({
+      ...classOnly.state.attendanceByDivision.police[0],
+      id: `fire-class-${mode}`,
+      studentId: "f1",
+      reason: "수업: 소방학",
+    });
+    let stats = await classOnly.attendance.getAttendanceStats("police", date, date);
+    assert.deepEqual(
+      { present: stats.totals.present, class: stats.classStudentDays, physical: stats.physicalStudentDays, rate: stats.attendanceRate },
+      { present: 1, class: 1, physical: 0, rate: 50 },
+      `${mode}: class-only`,
+    );
+
+    const classAndPresent = makeFixture();
+    classAndPresent.record("09:15", "EXCUSED").reason = "수업";
+    classAndPresent.record("11:00", "PRESENT");
+    stats = await classAndPresent.attendance.getAttendanceStats("police", date, date);
+    assert.deepEqual(
+      { present: stats.totals.present, class: stats.classStudentDays, physical: stats.physicalStudentDays, rate: stats.attendanceRate },
+      { present: 1, class: 1, physical: 0, rate: 50 },
+      `${mode}: class+present`,
+    );
+
+    const classAndTardy = makeFixture();
+    classAndTardy.record("09:15", "EXCUSED").reason = "수업";
+    classAndTardy.record("11:00", "TARDY");
+    stats = await classAndTardy.attendance.getAttendanceStats("police", date, date);
+    assert.deepEqual(
+      { tardy: stats.totals.tardy, class: stats.classStudentDays, physical: stats.physicalStudentDays, rate: stats.attendanceRate },
+      { tardy: 1, class: 0, physical: 0, rate: 50 },
+      `${mode}: class+tardy`,
+    );
+
+    const genericExcused = makeFixture();
+    for (const periodId of ["09:15", "11:00", "13:45", "15:30"]) {
+      genericExcused.record(periodId, "EXCUSED").reason = "병원 진료";
+    }
+    stats = await genericExcused.attendance.getAttendanceStats("police", date, date);
+    assert.deepEqual(
+      { excused: stats.totals.excused, class: stats.classStudentDays, physical: stats.physicalStudentDays, rate: stats.attendanceRate },
+      { excused: 1, class: 0, physical: 0, rate: 0 },
+      `${mode}: generic EXCUSED`,
+    );
+
+    const physicalOnly = makeFixture();
+    physicalOnly.record("09:15", "PRESENT");
+    stats = await physicalOnly.attendance.getAttendanceStats("police", date, date);
+    assert.deepEqual(
+      { present: stats.totals.present, class: stats.classStudentDays, physical: stats.physicalStudentDays, rate: stats.attendanceRate },
+      { present: 1, class: 0, physical: 1, rate: 50 },
+      `${mode}: physical-only`,
+    );
+  }
+});
+
+test("policy 통계는 통제 대상이 아닌 교시의 수업을 학생·날짜 수업 집계에 더하지 않는다", async () => {
+  const f = fixture();
+  f.record("18:15", "EXCUSED").reason = "수업: 선택 강의";
+  const stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.classStudentDays, 0);
+  assert.equal(stats.physicalStudentDays, 0);
+  assert.equal(stats.totals.present, 0);
+});
+
+test("DB와 mock 출석 통계 모두 사유로 수업을 구분하고 직렬 범위를 유지한다", async () => {
+  const f = fixture();
+  for (const periodId of ["09:15", "11:00", "13:45", "15:30"]) {
+    f.record(periodId, "EXCUSED", "p1").reason = "수업: 기본이론";
+    f.record(periodId, "EXCUSED", "p2").reason = "병원 진료";
+  }
+  const expected = await f.attendance.getAttendanceStats("police", date, date);
+  let reads = 0;
+  const prisma = { attendance: { findMany: async (args: { where: { student: { division: { slug: string } }; date: { gte: Date; lt: Date } }; select: { reason: boolean } }) => {
+    reads++;
+    assert.equal(args.where.student.division.slug, "police");
+    assert.equal(args.where.date.gte.toISOString(), `${date}T00:00:00.000Z`);
+    assert.equal(args.where.date.lt.toISOString(), "2026-09-09T00:00:00.000Z");
+    assert.equal(args.select.reason, true);
+    return f.state.attendanceByDivision.police.map(row => ({ ...row, date: new Date(`${row.date}T00:00:00Z`) }));
+  } } };
+  const service = loadService<AttendanceService>("attendance", {
+    ...f.dependencies,
+    "@/lib/mock-data": { isMockMode: () => false },
+    "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+  });
+  assert.deepEqual(await service.getAttendanceStats("police", date, date), expected);
+  assert.equal(reads, 1);
+  assert.equal(expected.attendanceRate, 100);
+  assert.equal(expected.totals.present, 1);
+  assert.equal(expected.totals.excused, 1);
+  assert.equal(expected.classStudentDays, 1);
+  assert.equal(expected.physicalStudentDays, 0);
 });

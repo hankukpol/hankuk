@@ -2,7 +2,11 @@ import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isPolicyEffective, isControlledPeriod } from "@/lib/management-policy";
 import { unstable_cache } from "next/cache";
 
-import { getAttendanceStatusLabel } from "@/lib/attendance-meta";
+import {
+  getAttendanceCountStatus,
+  getAttendanceStatusLabel,
+  isAttendanceRateExcluded,
+} from "@/lib/attendance-meta";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { isMockMode } from "@/lib/mock-data";
 import { normalizeYmMonth, normalizeYmdDate } from "@/lib/date-utils";
@@ -367,8 +371,9 @@ function createStatusCounts() {
 function addAttendanceCount(
   counts: ReturnType<typeof createStatusCounts>,
   status: AttendanceStatus,
+  reason?: string | null,
 ) {
-  switch (status) {
+  switch (getAttendanceCountStatus(status, reason)) {
     case "PRESENT":
       counts.present += 1;
       break;
@@ -394,9 +399,8 @@ function addAttendanceCount(
 }
 
 function toAttendanceRate(counts: ReturnType<typeof createStatusCounts>, expectedCount: number) {
-  // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
   const attended =
-    counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday;
+    counts.present + counts.tardy + counts.holiday + counts.halfHoliday;
   return expectedCount > 0 ? Number(((attended / expectedCount) * 100).toFixed(1)) : 0;
 }
 
@@ -455,9 +459,9 @@ function buildStudentRows(
             continue;
           }
 
-          addAttendanceCount(counts, record.status);
+          addAttendanceCount(counts, record.status, record.reason);
 
-          if (record.status !== "NOT_APPLICABLE") {
+          if (!isAttendanceRateExcluded(record.status, record.reason)) {
             expectedCount += 1;
           }
         }
@@ -544,7 +548,7 @@ function buildDailyPeriodRows(
   for (const record of attendanceRecords) {
     if (record.date !== date) continue;
     const counts = countsByPeriod.get(record.periodId) ?? createStatusCounts();
-    addAttendanceCount(counts, record.status);
+    addAttendanceCount(counts, record.status, record.reason);
     countsByPeriod.set(record.periodId, counts);
   }
 
@@ -564,7 +568,12 @@ function buildDailyPeriodRows(
         counts.notApplicable;
       counts.unprocessed = Math.max((expectedByPeriod?.get(period.id) ?? activeStudentCount) - processed, 0);
 
-      const expected = Math.max((expectedByPeriod?.get(period.id) ?? activeStudentCount) - counts.notApplicable, 0);
+      const expected = Math.max(
+        (expectedByPeriod?.get(period.id) ?? activeStudentCount) -
+          counts.notApplicable -
+          counts.excused,
+        0,
+      );
 
       return {
         periodId: period.id,
@@ -598,7 +607,7 @@ function buildTrendForDates(
   for (const record of attendanceRecords) {
     if (!mandatoryIds.has(record.periodId)) continue;
     const counts = countsByDate.get(record.date) ?? createStatusCounts();
-    addAttendanceCount(counts, record.status);
+    addAttendanceCount(counts, record.status, record.reason);
     countsByDate.set(record.date, counts);
   }
   const dateFormatter = new Intl.DateTimeFormat("ko-KR", {
@@ -611,14 +620,16 @@ function buildTrendForDates(
     const counts = countsByDate.get(date) ?? createStatusCounts();
 
     const expected =
-      (expectedByDate?.get(date) ?? activeStudentCount * mandatoryPeriods.length) - counts.notApplicable;
+      (expectedByDate?.get(date) ?? activeStudentCount * mandatoryPeriods.length) -
+      counts.notApplicable -
+      counts.excused;
 
     return {
       label: dateFormatter.format(parseDateKey(date)),
       dateKey: date,
       attendanceRate: toAttendanceRate(counts, expected),
       tardyCount: counts.tardy,
-      // 사유결석은 인정 출석이므로 결석 추이에서 제외한다.
+      // 일반 사유결석은 출석·결석 모두 아니므로 결석 추이에서 제외한다.
       absentCount: counts.absent,
     } satisfies ReportTrendPoint;
   });
@@ -730,7 +741,7 @@ async function listAttendanceEditLogs(
           studentId: student.id,
           studentName: student.name,
           studentNumber: student.studentNumber,
-          detail: `${record.date} · ${getAttendanceStatusLabel(record.status)}${record.reason ? ` · ${record.reason}` : ""}`,
+          detail: `${record.date} · ${getAttendanceStatusLabel(record.status, record.reason)}${record.reason ? ` · ${record.reason}` : ""}`,
         } satisfies ActivityLogItem;
       })
       .filter(Boolean) as ActivityLogItem[];
@@ -784,7 +795,7 @@ async function listAttendanceEditLogs(
       studentId: record.student.id,
       studentName: record.student.name,
       studentNumber: record.student.studentNumber,
-      detail: `${record.date.toISOString().slice(0, 10)} · ${getAttendanceStatusLabel(record.status)}${record.reason ? ` · ${record.reason}` : ""}`,
+      detail: `${record.date.toISOString().slice(0, 10)} · ${getAttendanceStatusLabel(record.status, record.reason)}${record.reason ? ` · ${record.reason}` : ""}`,
     })) satisfies ActivityLogItem[];
 }
 

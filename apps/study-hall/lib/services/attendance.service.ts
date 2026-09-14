@@ -2,6 +2,7 @@ import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isPolicyEffective, isControlledPeriod, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
 import { logServerError } from "@/lib/server-log";
+import { getAttendanceCountStatus, isClassAttendance } from "@/lib/attendance-meta";
 
 import {
   readMockState,
@@ -91,6 +92,8 @@ export type AttendanceStats = {
   dateFrom: string;
   dateTo: string;
   totals: Record<Lowercase<AttendanceStatus> | "unprocessed", number>;
+  classStudentDays: number;
+  physicalStudentDays: number;
   attendanceRate: number;
   periods: Array<{
     periodId: string;
@@ -1721,29 +1724,43 @@ export async function getAttendanceStats(
   for (const record of records) {
     const summary = periodSummaries.find((item) => item.periodId === record.periodId);
     if (summary) {
-      summary.counts[statusKey(record.status)] += 1;
+      summary.counts[statusKey(getAttendanceCountStatus(record.status, record.reason))] += 1;
     }
   }
   // --- Totals: unique student counts per date ---
   // 출석·지각을 우선하고, 입력된 상태가 모두 결석이면 뒤 교시 미입력과 무관하게 1명으로 집계한다.
   // 모든 교시가 미입력이면 미처리이며, 종일 결석 벌점 판정은 별도로 처리한다.
+  let excludedStudentDates = 0;
+  let classStudentDays = 0;
   for (const date of dates) {
     if (isPolicyEffective(policy, date)) {
       const byStudent = new Map<string, Map<string, AttendanceStatus>>();
+      const classStudentIds = new Set<string>();
       for (const record of records) {
         if (record.date !== date) continue;
         const cells = byStudent.get(record.studentId) ?? new Map<string, AttendanceStatus>();
-        cells.set(record.periodId, record.status);
+        cells.set(record.periodId, getAttendanceCountStatus(record.status, record.reason));
         byStudent.set(record.studentId, cells);
+        if (isClassAttendance(record.status, record.reason)) {
+          classStudentIds.add(record.studentId);
+        }
       }
       for (const student of students) {
         const expected = periods.filter((p) => expectedCell(p.id, date, student.id));
         if (!expected.length) continue;
         const cells = byStudent.get(student.id);
         const statuses = expected.map((p) => cells?.get(p.id));
+        if (statuses.every((status) => status === "EXCUSED" || status === "NOT_APPLICABLE")) {
+          excludedStudentDates += 1;
+          if (statuses.includes("EXCUSED")) totals.excused += 1;
+          else totals.not_applicable += 1;
+          continue;
+        }
         if (statuses.includes("TARDY")) totals.tardy += 1;
-        else if (statuses.includes("PRESENT")) totals.present += 1;
-        else if (
+        else if (statuses.includes("PRESENT")) {
+          totals.present += 1;
+          if (classStudentIds.has(student.id)) classStudentDays += 1;
+        } else if (
           statuses.includes("ABSENT") &&
           statuses.every((status) => status === undefined || status === "ABSENT")
         ) totals.absent += 1;
@@ -1756,21 +1773,41 @@ export async function getAttendanceStats(
       continue;
     }
     const studentStatuses = new Map<string, Set<string>>();
+    const classStudentIds = new Set<string>();
 
     for (const record of records) {
       if (record.date !== date) continue;
       if (!studentStatuses.has(record.studentId)) {
         studentStatuses.set(record.studentId, new Set());
       }
-      studentStatuses.get(record.studentId)!.add(statusKey(record.status));
+      studentStatuses.get(record.studentId)!.add(statusKey(getAttendanceCountStatus(record.status, record.reason)));
+      if (
+        studentIds.has(record.studentId) &&
+        expectedCell(record.periodId, record.date, record.studentId) &&
+        isClassAttendance(record.status, record.reason)
+      ) {
+        classStudentIds.add(record.studentId);
+      }
     }
 
-    for (const [, statuses] of Array.from(studentStatuses.entries())) {
+    for (const [studentId, allStatuses] of Array.from(studentStatuses.entries())) {
+      const statuses = new Set(Array.from(allStatuses).filter((status) => status !== "excused" && status !== "not_applicable"));
+      if (statuses.size === 0) {
+        if (allStatuses.has("excused")) totals.excused += 1;
+        else totals.not_applicable += 1;
+        excludedStudentDates += 1;
+        continue;
+      }
       const allAbsent = statuses.size === 1 && statuses.has("absent");
-      if (allAbsent) {
-        totals.absent += 1;
-      } else if (statuses.has("tardy")) {
+      if (statuses.has("tardy")) {
         totals.tardy += 1;
+      } else if (statuses.has("present")) {
+        totals.present += 1;
+        if (classStudentIds.has(studentId)) classStudentDays += 1;
+      } else if (allStatuses.has("excused")) {
+        totals.excused += 1;
+      } else if (allAbsent) {
+        totals.absent += 1;
       } else {
         totals.present += 1;
       }
@@ -1785,31 +1822,33 @@ export async function getAttendanceStats(
       .reduce((sum, [, value]) => sum + value, 0);
     summary.counts.unprocessed = Math.max(expectedPerPeriod - processed, 0);
 
-    // 인정 상태 목록은 lib/attendance-meta.ts의 ATTENDED_ATTENDANCE_STATUSES 기준 (사유결석 포함)
+    // 수업은 present에 포함하고 일반 사유결석은 분자·분모에서 제외한다.
     const presentLike =
       summary.counts.present +
       summary.counts.tardy +
-      summary.counts.excused +
       summary.counts.holiday +
       summary.counts.half_holiday;
     const expected = (summary.isMandatory || policyRange)
-      ? expectedPerPeriod - summary.counts.not_applicable
-      : processed;
+      ? expectedPerPeriod - summary.counts.not_applicable - summary.counts.excused
+      : processed - summary.counts.not_applicable - summary.counts.excused;
 
     summary.attendanceRate = expected > 0 ? Number(((presentLike / expected) * 100).toFixed(1)) : 0;
   }
 
-  // 출석률 = (출석 + 지각 + 사유결석) / 전체학생 × 100  (학생 기준)
-  // 사유결석은 수업·체력 등 관리자가 승인한 인정 사유이므로 출석으로 집계한다.
-  const cameStudents = totals.present + totals.tardy + totals.excused;
+  // 수업은 출석 인원에 포함한다. 평가할 교시가 전부 면제된 학생·날짜는 분모에서 제외한다.
+  const cameStudents = totals.present + totals.tardy;
   const expectedStudentDates = dates.reduce((sum, date) => sum + (isPolicyEffective(policy, date) ? students.filter((s) => periods.some((p) => expectedCell(p.id, date, s.id))).length : students.length), 0);
+  const countedStudentDates = Math.max(expectedStudentDates - excludedStudentDates, 0);
   const attendanceRate =
-    expectedStudentDates > 0 ? Number(((cameStudents / expectedStudentDates) * 100).toFixed(1)) : 0;
+    countedStudentDates > 0 ? Number(((cameStudents / countedStudentDates) * 100).toFixed(1)) : 0;
+  const physicalStudentDays = totals.present - classStudentDays;
 
   return {
     dateFrom: normalizedFrom,
     dateTo: normalizedTo,
     totals,
+    classStudentDays,
+    physicalStudentDays,
     attendanceRate,
     periods: periodSummaries.map((summary) => ({
       periodId: summary.periodId,

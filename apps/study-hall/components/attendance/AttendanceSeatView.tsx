@@ -8,8 +8,14 @@ import { useMemo, useState } from "react";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { getSeatPositionKey } from "@/lib/seat-layout";
 import {
+  buildAttendanceInput,
+  getAttendanceInputValue,
+  getAttendanceReasonDetail,
+  isClassAttendance,
+  setAttendanceReasonDetail,
   getAttendanceStatusClasses,
   getAttendanceStatusLabel,
+  type AttendanceInputValue,
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
 import { getStudyTrackShortLabel } from "@/lib/study-track-meta";
@@ -51,6 +57,7 @@ type AttendanceSeatViewProps = {
 
 type StatusKey =
   | "PRESENT"
+  | "CLASS"
   | "TARDY"
   | "ABSENT"
   | "EXCUSED"
@@ -61,6 +68,7 @@ type StatusKey =
 
 const STATUS_LABEL: Record<StatusKey, string> = {
   PRESENT: "출석",
+  CLASS: "수업",
   TARDY: "지각",
   ABSENT: "결석",
   EXCUSED: "공결",
@@ -72,6 +80,7 @@ const STATUS_LABEL: Record<StatusKey, string> = {
 
 const STATUS_BADGE: Record<StatusKey, string> = {
   PRESENT: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  CLASS: "border-sky-200 bg-sky-50 text-sky-700",
   TARDY: "border-amber-200 bg-amber-50 text-amber-700",
   ABSENT: "border-rose-200 bg-rose-50 text-rose-700",
   EXCUSED: "border-sky-200 bg-sky-50 text-sky-700",
@@ -83,6 +92,7 @@ const STATUS_BADGE: Record<StatusKey, string> = {
 
 const STATUS_TONE: Record<StatusKey, string> = {
   PRESENT: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  CLASS: "border-sky-200 bg-sky-50 text-sky-900",
   TARDY: "border-amber-200 bg-amber-50 text-amber-900",
   ABSENT: "border-rose-200 bg-rose-50 text-rose-900",
   EXCUSED: "border-sky-200 bg-sky-50 text-sky-900",
@@ -105,14 +115,20 @@ function computeDayStatus(
   if (statuses.includes("TARDY")) return "TARDY";
   if (statuses.some((s) => s === "HOLIDAY" || s === "HALF_HOLIDAY")) return "HOLIDAY";
   if (statuses.includes("HALF_HOLIDAY")) return "HALF_HOLIDAY";
-  if (statuses.includes("EXCUSED")) return "EXCUSED";
+  if (statuses.includes("EXCUSED")) {
+    return periods
+      .map((period) => studentMatrix[period.id])
+      .filter((cell) => cell?.status === "EXCUSED")
+      .every((cell) => isClassAttendance(cell.status, cell.reason)) ? "CLASS" : "EXCUSED";
+  }
   if (statuses.every((s) => s === "NOT_APPLICABLE")) return "NOT_APPLICABLE";
   if (statuses.includes("PRESENT")) return "PRESENT";
   return "UNPROCESSED";
 }
 
-const QUICK_STATUSES: { value: Exclude<AttendanceOptionValue, "">; label: string }[] = [
+const QUICK_STATUSES: { value: Exclude<AttendanceInputValue, "">; label: string }[] = [
   { value: "PRESENT", label: "출석" },
+  { value: "CLASS", label: "수업" },
   { value: "TARDY", label: "지각" },
   { value: "ABSENT", label: "결석" },
   { value: "EXCUSED", label: "공결" },
@@ -332,7 +348,7 @@ export function AttendanceSeatView({
                     </div>
                     {cell.status && (
                       <span className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${getAttendanceStatusClasses(cell.status)}`}>
-                        {getAttendanceStatusLabel(cell.status)}
+                        {getAttendanceStatusLabel(cell.status, cell.reason)}
                       </span>
                     )}
                   </div>
@@ -342,13 +358,12 @@ export function AttendanceSeatView({
                         key={value}
                         type="button"
                         onClick={() =>
-                          onUpdateCell(modalStudentId, period.id, {
-                            status: cell.status === value ? "" : value,
-                            reason:
-                              value !== "ABSENT" && value !== "EXCUSED" ? "" : cell.reason,
-                          })
+                          onUpdateCell(modalStudentId, period.id, buildAttendanceInput(
+                            getAttendanceInputValue(cell.status, cell.reason) === value ? "" : value,
+                            cell,
+                          ))
                         }
-                        className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${ cell.status === value ? getAttendanceStatusClasses(value) : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50" }`}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition ${ getAttendanceInputValue(cell.status, cell.reason) === value ? getAttendanceStatusClasses(cell.status) : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50" }`}
                       >
                         {label}
                       </button>
@@ -356,11 +371,11 @@ export function AttendanceSeatView({
                   </div>
                   {needsReason && (
                     <input
-                      value={cell.reason}
+                      value={getAttendanceReasonDetail(cell.status, cell.reason)}
                       onChange={(e) =>
-                        onUpdateCell(modalStudentId, period.id, { reason: e.target.value })
+                        onUpdateCell(modalStudentId, period.id, { reason: setAttendanceReasonDetail(cell.status, cell.reason, e.target.value) })
                       }
-                      placeholder="사유"
+                      placeholder={isClassAttendance(cell.status, cell.reason) ? "수업명 (선택)" : "사유"}
                       className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-900"
                     />
                   )}

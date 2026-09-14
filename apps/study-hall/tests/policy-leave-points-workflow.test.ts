@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { loadWithMocks } from "./helpers/module-mocks";
 import { mapPolicy } from "../scripts/restart-police-policy";
-import type { MockStudentRecord, MockLeavePermissionRecord, MockPointRecordRecord } from "../lib/mock-store";
+import type { MockAttendanceRecord, MockStudentRecord, MockLeavePermissionRecord, MockPointRecordRecord } from "../lib/mock-store";
 
 type MockState = Awaited<ReturnType<typeof import("../lib/mock-store").readMockState>>;
 
@@ -24,6 +24,17 @@ function permission(studentId: string, date: string, type: MockLeavePermissionRe
 
 function point(studentId: string, date: string, points: number, ruleId: string | null = null): MockPointRecordRecord {
   return { id: `${studentId}-${date}-${points}`, studentId, date: `${date}T00:00:00Z`, points, ruleId, notes: null, recordedById: actor.id, createdAt: `${date}T00:00:00Z` };
+}
+
+function attendance(
+  id: string,
+  studentId: string,
+  periodId: string,
+  date: string,
+  status: MockAttendanceRecord["status"],
+  reason: string,
+): MockAttendanceRecord {
+  return { id, studentId, periodId, date, status, reason, checkInTime: null, recordedById: actor.id, createdAt: `${date}T00:00:00Z`, updatedAt: `${date}T00:00:00Z` };
 }
 
 function fixture(t: TestContext, now = "2026-10-01T00:00:00+09:00") {
@@ -302,6 +313,95 @@ test("반복 인정일정은 월 경계를 넘어 사유·요일·교시를 보�
   assert.ok(f.state.attendanceByDivision.police.every((r) => r.status === "EXCUSED" && r.reason === input.reason));
   assert.deepEqual(f.state.pointRecordsByDivision.police, []);
   assert.deepEqual(f.state.attendanceByDivision.fire, []);
+});
+
+test("수업 선택은 한 달의 선택 학생·요일·교시만 인정 출석으로 저장하고 기존·타 직렬 기록을 보호한다", async (t) => {
+  const f = fixture(t, "2026-09-01T09:00:00+09:00");
+  f.state.studentsByDivision.police.push(student("b"), student("c"));
+  for (const seated of f.state.studentsByDivision.police) seated.seatId = "fixture-seat";
+
+  const protectedPoliceRecords = [
+    attendance("existing-target", "a", "09:15", "2026-09-08", "PRESENT", "기존 출석"),
+    attendance("outside-range", "a", "09:15", "2026-08-31", "ABSENT", "기간 밖 기록"),
+    attendance("unselected-weekday", "a", "09:15", "2026-09-02", "ABSENT", "미선택 요일"),
+    attendance("unselected-period", "a", "18:15", "2026-09-01", "ABSENT", "미선택 교시"),
+    attendance("unselected-student", "c", "09:15", "2026-09-01", "ABSENT", "미선택 학생"),
+  ];
+  const protectedFireRecord = attendance("fire-record", "fire", "09:15", "2026-09-01", "ABSENT", "소방 기록");
+  f.state.attendanceByDivision.police.push(...protectedPoliceRecords);
+  f.state.attendanceByDivision.fire.push(protectedFireRecord);
+
+  const service = f.load<typeof import("../lib/services/attendance.service")>("attendance");
+  const classReason = "수업: 형법 기본이론";
+  const input = {
+    studentIds: ["a", "b"],
+    dateFrom: "2026-09-01",
+    dateTo: "2026-09-30",
+    weekdays: [2, 4],
+    startPeriodId: "09:15",
+    endPeriodId: "15:30",
+    status: "EXCUSED" as const,
+    reason: classReason,
+  };
+
+  assert.deepEqual(await service.applyRecurringAttendance("police", actor, input), {
+    appliedCount: 71,
+    updatedExistingCount: 0,
+    skippedExistingCount: 1,
+    targetDateCount: 9,
+    targetStudentCount: 2,
+    targetCellCount: 72,
+  });
+  const attendanceBeforeDuplicate = JSON.stringify(f.state.attendanceByDivision);
+  assert.deepEqual(await service.applyRecurringAttendance("police", actor, input), {
+    appliedCount: 0,
+    updatedExistingCount: 0,
+    skippedExistingCount: 72,
+    targetDateCount: 9,
+    targetStudentCount: 2,
+    targetCellCount: 72,
+  });
+  assert.equal(JSON.stringify(f.state.attendanceByDivision), attendanceBeforeDuplicate);
+
+  const expectedDates = [
+    "2026-09-01", "2026-09-03", "2026-09-08", "2026-09-10", "2026-09-15",
+    "2026-09-17", "2026-09-22", "2026-09-24", "2026-09-29",
+  ];
+  const classRows = f.state.attendanceByDivision.police.filter((record) => record.reason === classReason);
+  assert.equal(classRows.length, 71);
+  assert.deepEqual(Array.from(new Set(classRows.map((record) => record.date))), expectedDates);
+  assert.deepEqual(Array.from(new Set(classRows.map((record) => record.studentId))).sort(), ["a", "b"]);
+  assert.deepEqual(Array.from(new Set(classRows.map((record) => record.periodId))), ["09:15", "11:00", "13:45", "15:30"]);
+  assert.ok(classRows.every((record) => record.status === "EXCUSED"));
+  for (const record of protectedPoliceRecords) {
+    assert.deepEqual(f.state.attendanceByDivision.police.find((candidate) => candidate.id === record.id), record);
+  }
+  assert.deepEqual(f.state.attendanceByDivision.fire, [protectedFireRecord]);
+
+  const queriedClassRows = (await service.getAttendanceSnapshots("police", expectedDates))
+    .flatMap((snapshot) => snapshot.records)
+    .filter((record) => record.reason === classReason);
+  assert.equal(queriedClassRows.length, 71);
+  assert.ok(queriedClassRows.every((record) => record.status === "EXCUSED" && record.reason === classReason));
+
+  const stats = await service.getAttendanceStats("police", "2026-09-10", "2026-09-10");
+  assert.equal(stats.totals.present, 2);
+  assert.equal(stats.totals.excused, 0);
+  assert.equal(stats.totals.unprocessed, 1);
+  assert.equal(stats.attendanceRate, 66.7);
+  assert.deepEqual(f.state.pointRecordsByDivision, { police: [], fire: [] });
+});
+
+test("강의명 없는 수업 사유도 EXCUSED 상태와 함께 조회된다", async (t) => {
+  const f = fixture(t, "2026-09-01T09:00:00+09:00");
+  f.state.studentsByDivision.police[0].seatId = "fixture-seat";
+  const service = f.load<typeof import("../lib/services/attendance.service")>("attendance");
+  await service.applyRecurringAttendance("police", actor, {
+    studentIds: ["a"], dateFrom: "2026-09-01", dateTo: "2026-09-01", weekdays: [2],
+    startPeriodId: "09:15", endPeriodId: "09:15", status: "EXCUSED", reason: "수업",
+  });
+  const snapshot = await service.getAttendanceSnapshot("police", "2026-09-01", "09:15");
+  assert.deepEqual(snapshot.records.map(({ status, reason }) => ({ status, reason })), [{ status: "EXCUSED", reason: "수업" }]);
 });
 
 test("반복 인정일정은 선택한 학생 전원에게 한 번에 적용되고 좌석 없는 학생은 거부된다", async (t) => {

@@ -20,7 +20,13 @@ import { AdminTabs } from "@/components/ui/AdminTabs";
 import { AttendanceSeatView } from "@/components/attendance/AttendanceSeatView";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import {
-  ATTENDANCE_STATUS_OPTIONS,
+  ATTENDANCE_INPUT_OPTIONS,
+  buildAttendanceInput,
+  getAttendanceInputValue,
+  getAttendanceReasonDetail,
+  isClassAttendance,
+  setAttendanceReasonDetail,
+  type AttendanceInputValue,
   getAttendanceStatusLabel,
   kstMinutesOfDay,
   selectPeriodForCheck,
@@ -348,11 +354,8 @@ export function MobileCheckForm({
     }));
   }
 
-  function applyStudentStatus(studentId: string, status: AttendanceOptionValue, vibrate = false) {
-    updateStudentState(studentId, {
-      status,
-      reason: status === "ABSENT" || status === "EXCUSED" ? formState[studentId]?.reason ?? "" : "",
-    });
+  function applyStudentStatus(studentId: string, status: AttendanceInputValue, vibrate = false) {
+    updateStudentState(studentId, buildAttendanceInput(status, formState[studentId]));
 
     if (vibrate && typeof navigator !== "undefined" && "vibrate" in navigator) {
       navigator.vibrate?.(25);
@@ -702,15 +705,6 @@ export function MobileCheckForm({
                   >
                     미처리 전원 출석
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={isSaving || isLoading}
-                    className="admin-button admin-button-primary ml-auto max-md:hidden"
-                  >
-                    {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    저장
-                  </button>
                 </div>
               </div>
             </div>
@@ -720,8 +714,19 @@ export function MobileCheckForm({
 
       <section className="admin-section">
         <div className="admin-workspace-toolbar">
-          <h2 className="admin-section-title">학생 출결 체크</h2>
-          <span className="admin-badge">{visibleStudents.length}명 표시</span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="admin-section-title">학생 출결 체크</h2>
+            <span className="admin-badge">{visibleStudents.length}명 표시</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving || isLoading}
+            className="admin-button admin-button-primary max-md:hidden"
+          >
+            {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            저장
+          </button>
         </div>
 
         <label className="relative block">
@@ -838,20 +843,20 @@ export function MobileCheckForm({
                             aria-pressed={hasOtherStatus}
                             className="admin-status-button transition sm:hidden"
                           >
-                            {hasOtherStatus ? getAttendanceStatusLabel(state.status) : "기타"}
+                            {hasOtherStatus ? getAttendanceStatusLabel(state.status, state.reason) : "기타"}
                           </button>
                         </div>
 
                         {isOtherOpen ? (
                           <select
-                            value={state.status}
+                            value={getAttendanceInputValue(state.status, state.reason)}
                             onChange={(event) =>
-                              applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
+                              applyStudentStatus(student.id, event.target.value as AttendanceInputValue)
                             }
                             aria-label={`${student.name} 기타 상태`}
                             className="mt-1 block w-full sm:hidden"
                           >
-                            {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                            {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                               <option key={option.value || "empty"} value={option.value}>
                                 {option.label}
                               </option>
@@ -861,11 +866,11 @@ export function MobileCheckForm({
 
                         {needsReason ? (
                           <input
-                            value={state.reason}
+                            value={getAttendanceReasonDetail(state.status, state.reason)}
                             onChange={(event) =>
-                              updateStudentState(student.id, { reason: event.target.value })
+                              updateStudentState(student.id, { reason: setAttendanceReasonDetail(state.status, state.reason, event.target.value) })
                             }
-                            placeholder="사유"
+                            placeholder={isClassAttendance(state.status, state.reason) ? "수업명 (선택)" : "사유"}
                             aria-label={`${student.name} 사유`}
                             className="mt-1 block w-full"
                           />
@@ -874,14 +879,14 @@ export function MobileCheckForm({
 
                       <td className="hidden sm:table-cell">
                         <select
-                          value={state.status}
+                          value={getAttendanceInputValue(state.status, state.reason)}
                           onChange={(event) =>
-                            applyStudentStatus(student.id, event.target.value as AttendanceOptionValue)
+                            applyStudentStatus(student.id, event.target.value as AttendanceInputValue)
                           }
                           aria-label={`${student.name} 기타 상태`}
                           className="block w-full"
                         >
-                          {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                          {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                             <option key={option.value || "empty"} value={option.value}>
                               {option.label}
                             </option>

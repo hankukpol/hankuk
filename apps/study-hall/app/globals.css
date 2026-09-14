@@ -71,6 +71,18 @@
   --admin-success-soft-rgb: 238 248 238;
   --admin-success-line: #c5e3c5;
   --admin-success-line-rgb: 197 227 197;
+  --admin-attendance-class: #0f766e;
+  --admin-attendance-class-rgb: 15 118 110;
+  --admin-attendance-class-soft: #edf8f7;
+  --admin-attendance-class-soft-rgb: 237 248 247;
+  --admin-attendance-class-line: #b8dedb;
+  --admin-attendance-class-line-rgb: 184 222 219;
+  --admin-attendance-excused: #1d4ed8;
+  --admin-attendance-excused-rgb: 29 78 216;
+  --admin-attendance-excused-soft: #eff6ff;
+  --admin-attendance-excused-soft-rgb: 239 246 255;
+  --admin-attendance-excused-line: #bfdbfe;
+  --admin-attendance-excused-line-rgb: 191 219 254;
   --admin-chart-1: var(--admin-accent);
   --admin-chart-2: #0f766e;
   --admin-chart-3: #c2410c;
@@ -87,6 +99,7 @@
   /* 768px 미만 컨트롤 모서리 (MOBILE_DESIGN.md 2.7). 8px 은 이미지·배너·모달에만 남는다. */
   --admin-radius-mobile: 4px;
   --admin-control-height: 44px;
+  --admin-mobile-nav-item-height: 56px;
   --admin-control-compact: 36px;
   --admin-control-padding-x: 16px;
   --admin-control-padding-y: 8px;
@@ -103,6 +116,7 @@
   --admin-type-section: 16px;
   --admin-type-body: 15px;
   --admin-type-caption: 13px;
+  --admin-type-attendance: 14px;
 
   /* --- 레거시 별칭: 기존 마크업이 참조하는 이름을 새 토큰으로 연결 --- */
   --background: var(--admin-surface);
@@ -1987,6 +2001,76 @@ body:has(.admin-shell) {
   border-color: var(--admin-line-soft);
 }
 
+/* --- 출석부: 이름과 상태의 크기, 상태별 파스텔 표시 --- */
+.admin-shell .admin-attendance-student-name,
+.admin-shell select.admin-attendance-status-select {
+  font-size: var(--admin-type-attendance);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.admin-shell [data-attendance-status] {
+  --attendance-ink: var(--admin-text-secondary);
+  --attendance-surface: var(--admin-surface);
+  --attendance-line: var(--admin-line);
+}
+
+.admin-shell [data-attendance-status="PRESENT"] {
+  --attendance-ink: var(--admin-success);
+  --attendance-surface: var(--admin-success-soft);
+  --attendance-line: var(--admin-success-line);
+}
+
+.admin-shell [data-attendance-status="CLASS"] {
+  --attendance-ink: var(--admin-attendance-class);
+  --attendance-surface: var(--admin-attendance-class-soft);
+  --attendance-line: var(--admin-attendance-class-line);
+}
+
+.admin-shell [data-attendance-status="TARDY"] {
+  --attendance-ink: var(--admin-warning);
+  --attendance-surface: var(--admin-warning-soft);
+  --attendance-line: var(--admin-warning-line);
+}
+
+.admin-shell [data-attendance-status="ABSENT"] {
+  --attendance-ink: var(--admin-danger);
+  --attendance-surface: var(--admin-danger-soft);
+  --attendance-line: var(--admin-danger-line);
+}
+
+.admin-shell [data-attendance-status="EXCUSED"] {
+  --attendance-ink: var(--admin-attendance-excused);
+  --attendance-surface: var(--admin-attendance-excused-soft);
+  --attendance-line: var(--admin-attendance-excused-line);
+}
+
+.admin-shell :is([data-attendance-status="HOLIDAY"], [data-attendance-status="HALF_HOLIDAY"], [data-attendance-status="NOT_APPLICABLE"]) {
+  --attendance-surface: var(--admin-surface-muted);
+}
+
+.admin-shell select.admin-attendance-status-select:not(:disabled) {
+  color: var(--attendance-ink);
+  background-color: var(--attendance-surface);
+  border-color: var(--attendance-line);
+}
+
+.admin-shell .admin-attendance-summary .admin-metric-box .admin-metric-box-label {
+  color: var(--attendance-ink);
+}
+
+@media (min-width: 768px) {
+  .admin-shell .admin-attendance-summary {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-shell .admin-attendance-summary > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
 /* --- 폼 컨트롤 --- */
 
 .admin-shell
@@ -2846,6 +2930,11 @@ body:has(.admin-shell) {
     flex-shrink: 0;
   }
 
+  .admin-shell:has(.admin-portal-nav) .admin-check-savebar {
+    bottom: calc(var(--admin-mobile-nav-item-height) + 1px + env(safe-area-inset-bottom));
+    padding-bottom: 8px;
+  }
+
   /* 첫 열은 가로 스크롤 중에도 식별자를 남긴다. 병합된 설명 행은 제외한다. */
   .admin-table-frame table > :is(thead, tbody, tfoot) > tr > :is(th, td):first-child:not([colspan]) {
     position: sticky;
@@ -3061,7 +3150,7 @@ body:has(.admin-shell) {
 
   .admin-portal-nav .admin-tab {
     display: flex;
-    min-height: 56px;
+    min-height: var(--admin-mobile-nav-item-height);
     flex-direction: column;
     align-items: center;
     justify-content: center;

@@ -1,6 +1,9 @@
 import { unstable_cache } from "next/cache";
 
-import { isAttendedAttendanceStatus } from "@/lib/attendance-meta";
+import {
+  isAttendanceRateExcluded,
+  isAttendedAttendanceStatus,
+} from "@/lib/attendance-meta";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { DEFAULT_DIVISION_FEATURE_FLAGS } from "@/lib/division-features";
 import { parseUtcDateFromYmd } from "@/lib/date-utils";
@@ -104,6 +107,7 @@ async function getMockDivisionOverviewMetrics(slug: string, today: string) {
           records: snapshot.records.map((record) => ({
             periodId: record.periodId,
             status: record.status,
+            reason: record.reason,
           })),
         }
       : null,
@@ -150,7 +154,7 @@ async function getDbDivisionOverviewMetrics(divisionId: string, today: string) {
             studentId: { in: studentIds },
             periodId: { in: periodIds },
           },
-          select: { periodId: true, status: true },
+          select: { periodId: true, status: true, reason: true },
         })
       : Promise.resolve([]),
   ]);
@@ -238,13 +242,13 @@ async function getDivisionSummary(
       const records = recordsByPeriod.get(period.id) ?? [];
       let periodAttended = 0;
       let periodExpected = 0;
-      let notApplicable = 0;
+      let excludedCount = 0;
       let applicableCount = 0;
 
       for (const record of records) {
-        if (record.status === "NOT_APPLICABLE") {
-          notApplicable += 1;
-        } else if (isAttendedAttendanceStatus(record.status)) {
+        if (isAttendanceRateExcluded(record.status, record.reason)) {
+          excludedCount += 1;
+        } else if (isAttendedAttendanceStatus(record.status, record.reason)) {
           periodAttended += 1;
           applicableCount += 1;
         } else {
@@ -252,7 +256,7 @@ async function getDivisionSummary(
         }
       }
 
-      periodExpected = Math.max(activeStudentCount - notApplicable, 0);
+      periodExpected = Math.max(activeStudentCount - excludedCount, 0);
       attendedCount += periodAttended;
       expectedCount += periodExpected;
 

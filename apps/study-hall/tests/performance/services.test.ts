@@ -9,6 +9,7 @@ import * as dateUtils from "../../lib/date-utils";
 import * as studentMeta from "../../lib/student-meta";
 import * as policyMeta from "../../lib/management-policy";
 import * as recordIndex from "../../lib/record-index";
+import * as attendanceMeta from "../../lib/attendance-meta";
 import * as chatMeta from "../../lib/chat-meta";
 import * as chatSchemas from "../../lib/chat-schemas";
 import { mapPolicy } from "../../scripts/restart-police-policy";
@@ -33,6 +34,7 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>, int
     "@/lib/student-meta": studentMeta,
     "@/lib/management-policy": policyMeta,
     "@/lib/record-index": recordIndex,
+    "@/lib/attendance-meta": attendanceMeta,
     "@/lib/chat-meta": chatMeta,
     "@/lib/chat-schemas": chatSchemas,
     "@/lib/errors": { notFound: (message: string) => new Error(message), badRequest: (message: string) => new Error(message), conflict: (message: string) => new Error(message), forbidden: (message: string) => new Error(message) },
@@ -46,6 +48,25 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>, int
 
 type SeatService = typeof import("../../lib/services/seat.service");
 type ExamService = typeof import("../../lib/services/exam.service");
+
+test("student attendance counts class while excluding ordinary excused records from numerator and denominator", () => {
+  type Cell = { periodId: string; date: string; status: string; reason: string | null };
+  type SummaryOptions = { dates: string[]; periods: { id: string; endTime: string; isMandatory: boolean; isActive: boolean }[]; recordMap: Map<string, Cell>; operatingDays: Record<string, boolean>; now: Date };
+  const service = loadService<{ calculateAttendanceSummary(options: SummaryOptions): { attendedCount: number; expectedCount: number; rate: number } }>("student-dashboard", {}, ["calculateAttendanceSummary"]);
+  const date = "2026-09-14";
+  const periods = Array.from({ length: 4 }, (_, i) => ({ id: `p${i}`, endTime: "10:00", isMandatory: true, isActive: true }));
+  const statuses = ["PRESENT", "EXCUSED", "EXCUSED", "ABSENT"];
+  const reasons = [null, "수업: 기본이론", "병원 진료", "무단결석"];
+  const options = {
+    dates: [date], periods,
+    recordMap: new Map(periods.map((period, i) => [`${date}:${period.id}`, { periodId: period.id, date, status: statuses[i], reason: reasons[i] }])),
+    operatingDays: { mon: true }, now: new Date(`${date}T22:00:00+09:00`),
+  };
+  assert.deepEqual(service.calculateAttendanceSummary(options), { attendedCount: 2, expectedCount: 3, rate: 66.7 });
+  for (const cell of Array.from(options.recordMap.values())) { cell.status = "EXCUSED"; cell.reason = "병원 진료"; }
+  assert.deepEqual(service.calculateAttendanceSummary(options), { attendedCount: 0, expectedCount: 0, rate: 0 });
+  assert.deepEqual(service.calculateAttendanceSummary({ ...options, now: new Date(`${date}T09:00:00+09:00`) }), { attendedCount: 0, expectedCount: 0, rate: 0 });
+});
 
 for (const slug of ["police", "fire"]) {
   test(`seat editor rejects foreign or wrong-room seat IDs before any write (${slug})`, async () => {
@@ -117,8 +138,9 @@ function legacyCounts(records: ReportRecord[]) {
   return counts;
 }
 function legacyRate(counts: ReturnType<typeof legacyCounts>, expected: number) {
-  // 인정 출석 = ATTENDED_ATTENDANCE_STATUSES (사유결석 포함)
-  return expected > 0 ? Number(((counts.present + counts.tardy + counts.excused + counts.holiday + counts.halfHoliday) / expected * 100).toFixed(1)) : 0;
+  // 일반 사유결석은 출석률의 분자·분모에서 제외한다.
+  const counted = expected - counts.excused;
+  return counted > 0 ? Number(((counts.present + counts.tardy + counts.holiday + counts.halfHoliday) / counted * 100).toFixed(1)) : 0;
 }
 
 test("report aggregation matches legacy scans for all statuses, missing cells and policy expectations", () => {

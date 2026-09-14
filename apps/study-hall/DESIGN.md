@@ -142,6 +142,7 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | 서브 탭·조건 버튼 | `.admin-subtab`, `.admin-choice-button` | 15px | 600 | 1.3 |
 | 표 | `table` | 13px | 본문 400, 헤더 600 | 1.3 |
 | 표 안 상태 지정 | `.admin-status-button` | 13px | 600 | 1.3 |
+| 관리자 출석부 학생 이름·상태 선택 | `.admin-attendance-student-name`, `.admin-attendance-status-select`, `--admin-type-attendance` | 14px | 600 | 1.5 |
 | 대시보드 KPI | `.admin-dashboard-metric-value` | 32px | 700 | 1.2 |
 | 요약 박스 값 | `.admin-metric-box-value` | 20px | 700 | 1.3 |
 
@@ -180,6 +181,15 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 
 ---
 
+### 관리자 출석부 상태 표현
+
+- 사용자 지정 규격: 학생 이름과 출결 드롭다운을 모두 14px로 맞춘다. 선택창은 최소 44px, 사유 입력은 선택창 아래에 배치한다.
+- `.admin-attendance-status-select`는 저장 상태가 아닌 표시 상태(`data-attendance-status`)에 따라 파스텔 배경·진한 글자를 함께 쓴다. 수업은 `EXCUSED + 수업 사유`를 `CLASS`로 표시하며 저장 형식은 유지한다.
+- 출석은 `success/-soft/-line`, 지각은 `warning/-soft/-line`, 결석은 `danger/-soft/-line` 토큰을 사용한다. 휴무·반휴·해당없음은 `surface-muted/text-secondary/line`, 미처리는 `surface/text-secondary/line`이다.
+- 수업 전용 토큰 `--admin-attendance-class` / `-soft` / `-line`: `#0f766e` / `#edf8f7` / `#b8dedb`. 사유결석 전용 `--admin-attendance-excused` / `-soft` / `-line`: `#1d4ed8` / `#eff6ff` / `#bfdbfe`. 업무색이므로 직렬 강조색 변경에 영향을 받지 않는다. 토큰 원본과 RGB 별칭은 `globals.css`에 둔다.
+- 요약은 출석·수업·지각·결석·출석률 순서로 표시한다. 768px 이상 5열, 미만 2열이며 마지막 출석률은 한 행을 사용한다. 모바일에서는 기존 `admin-metric-strip`의 선 격자를 사용한다.
+- 일별 학생 대표 상태의 우선순위는 유지한다. 출석으로 집계된 학생 중 수업 기록이 있으면 수업 카드에만 표시한다(출석+수업 혼합도 수업 1명). 지각+수업 혼합은 지각 1명이다. 서비스가 두 인원을 완성해 반환하며, 출석률에는 수업을 포함한다.
+
 ## 4. 간격·규격·모서리
 
 ### 치수 토큰
@@ -190,6 +200,7 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 | --- | --- | --- |
 | `--admin-radius` | 8px | 일반 컨트롤·허용된 외곽 박스 |
 | `--admin-control-height` | 44px | 일반 버튼·입력·선택·닫기 최소 높이 |
+| `--admin-mobile-nav-item-height` | 56px | 모바일 하단 메뉴 항목 높이. 저장 바는 메뉴 테두리 1px와 안전 영역을 더한 높이만큼 위에 배치 |
 | `--admin-control-compact` | 36px | 표 안 축약 작업 |
 | `--admin-control-padding-x` / `-y` | 16px / 8px | 일반 버튼 안쪽 여백 |
 | `--admin-choice-width` | 128px | 조건·필터 버튼 동일 폭 |

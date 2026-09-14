@@ -11,26 +11,82 @@ export const ATTENDANCE_STATUS_OPTIONS = [
 
 export type AttendanceOptionValue = (typeof ATTENDANCE_STATUS_OPTIONS)[number]["value"];
 
+// 수업은 기존 인정 출석(EXCUSED)과 사유로 저장한다. UI 전용 값을 API에 보내지 않는다.
+export const ATTENDANCE_INPUT_OPTIONS = [
+  ...ATTENDANCE_STATUS_OPTIONS.slice(0, 2),
+  { value: "CLASS", label: "수업" },
+  ...ATTENDANCE_STATUS_OPTIONS.slice(2),
+] as const;
+
+export type AttendanceInputValue = AttendanceOptionValue | "CLASS";
+const CLASS_REASON = "수업";
+
+export function isClassAttendance(status: string | null | undefined, reason?: string | null) {
+  const value = reason?.trim() ?? "";
+  return status === "EXCUSED" && (value === CLASS_REASON || value.startsWith(`${CLASS_REASON}:`));
+}
+
+export function getAttendanceInputValue(status: AttendanceOptionValue, reason?: string | null): AttendanceInputValue {
+  return isClassAttendance(status, reason) ? "CLASS" : status;
+}
+
+export function getAttendanceReasonDetail(status: string | null | undefined, reason?: string | null) {
+  return isClassAttendance(status, reason)
+    ? (reason?.trimStart().slice(CLASS_REASON.length).replace(/^: ?/, "") ?? "")
+    : reason ?? "";
+}
+
+export function setAttendanceReasonDetail(status: string | null | undefined, reason: string | null | undefined, detail: string) {
+  return isClassAttendance(status, reason)
+    ? `${CLASS_REASON}${detail.trim() ? `: ${detail}` : ""}`
+    : detail;
+}
+
+export function buildAttendanceInput(
+  value: AttendanceInputValue,
+  current: { status: AttendanceOptionValue; reason: string } = { status: "", reason: "" },
+): { status: AttendanceOptionValue; reason: string } {
+  if (value === "CLASS") {
+    return { status: "EXCUSED", reason: isClassAttendance(current.status, current.reason) ? current.reason : CLASS_REASON };
+  }
+  return {
+    status: value,
+    reason: value === "ABSENT" || value === "EXCUSED"
+      ? (isClassAttendance(current.status, current.reason) ? "" : current.reason)
+      : "",
+  };
+}
+
 /**
  * 출석률 계산에서 "출석"으로 인정하는 상태.
- * 사유결석(EXCUSED)은 수업·체력 등 관리자가 승인한 인정 사유이므로 출석으로 집계한다.
- * 출석률을 계산하는 모든 지점은 이 목록을 기준으로 삼는다.
+ * 사유 확인 없이 출석으로 인정할 수 있는 상태.
+ * 수업은 EXCUSED + 수업 사유로 저장되므로 아래 판별 함수에 사유도 전달한다.
  */
 export const ATTENDED_ATTENDANCE_STATUSES = [
   "PRESENT",
   "TARDY",
-  "EXCUSED",
   "HOLIDAY",
   "HALF_HOLIDAY",
 ] as const;
 
 const ATTENDED_ATTENDANCE_STATUS_SET: ReadonlySet<string> = new Set(ATTENDED_ATTENDANCE_STATUSES);
 
-export function isAttendedAttendanceStatus(status: string | null | undefined) {
-  return status ? ATTENDED_ATTENDANCE_STATUS_SET.has(status) : false;
+export function isAttendedAttendanceStatus(status: string | null | undefined, reason?: string | null) {
+  return isClassAttendance(status, reason) || (status ? ATTENDED_ATTENDANCE_STATUS_SET.has(status) : false);
 }
 
-export function getAttendanceStatusLabel(status: string | null | undefined) {
+/** 일반 사유결석은 출석·결석 어느 쪽에도 포함하지 않고 출석률 분모에서도 제외한다. */
+export function isAttendanceRateExcluded(status: string | null | undefined, reason?: string | null) {
+  return status === "NOT_APPLICABLE" || (status === "EXCUSED" && !isClassAttendance(status, reason));
+}
+
+/** 저장값을 바꾸지 않고 집계할 때만 수업을 출석 항목으로 분류한다. */
+export function getAttendanceCountStatus<T extends string>(status: T, reason?: string | null): T | "PRESENT" {
+  return isClassAttendance(status, reason) ? "PRESENT" : status;
+}
+
+export function getAttendanceStatusLabel(status: string | null | undefined, reason?: string | null) {
+  if (isClassAttendance(status, reason)) return "수업";
   return ATTENDANCE_STATUS_OPTIONS.find((item) => item.value === (status ?? ""))?.label ?? "미처리";
 }
 

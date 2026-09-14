@@ -8,8 +8,13 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } fro
 import { toast } from "@/lib/sonner";
 
 import {
-  ATTENDANCE_STATUS_OPTIONS,
-  getAttendanceStatusClasses,
+  ATTENDANCE_INPUT_OPTIONS,
+  buildAttendanceInput,
+  getAttendanceInputValue,
+  getAttendanceReasonDetail,
+  isClassAttendance,
+  setAttendanceReasonDetail,
+  type AttendanceInputValue,
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
@@ -60,6 +65,8 @@ type AttendanceRecordItem = {
 type StatsPayload = {
   attendanceRate: number;
   totals: Record<string, number>;
+  classStudentDays?: number;
+  physicalStudentDays?: number;
 };
 
 export type AdminAttendanceBoardProps = {
@@ -319,10 +326,11 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   const summaryCards = useMemo(
     () => [
-      { label: "출석", value: stats.totals.present ?? 0, className: "border border-slate-200 bg-white text-emerald-600 font-medium" },
-      { label: "지각", value: stats.totals.tardy ?? 0, className: "border border-slate-200 bg-white text-amber-600 font-medium" },
-      { label: "결석", value: stats.totals.absent ?? 0, className: "border border-slate-200 bg-white text-rose-600 font-medium" },
-      { label: "출석률", value: `${stats.attendanceRate}%`, className: "border border-slate-200 bg-white text-slate-800 font-medium" },
+      { label: "출석", value: stats.physicalStudentDays ?? stats.totals.present ?? 0, status: "PRESENT" },
+      { label: "수업", value: stats.classStudentDays ?? 0, status: "CLASS" },
+      { label: "지각", value: stats.totals.tardy ?? 0, status: "TARDY" },
+      { label: "결석", value: stats.totals.absent ?? 0, status: "ABSENT" },
+      { label: "출석률", value: `${stats.attendanceRate}%`, status: "" },
     ],
     [stats],
   );
@@ -921,11 +929,11 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           )}
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <div className="admin-metric-strip admin-attendance-summary mt-5 grid grid-cols-2 gap-3" aria-label="출결 요약">
           {summaryCards.map((card) => (
-            <div key={card.label} className={`rounded-lg px-4 py-4 ${card.className}`}>
-              <p className="text-sm font-medium opacity-80">{card.label}</p>
-              <h2 className="admin-section-title">{card.value}</h2>
+            <div key={card.label} className="admin-metric-box" data-attendance-status={card.status}>
+              <p className="admin-metric-box-label">{card.label}</p>
+              <p className="admin-metric-box-value">{card.value}</p>
             </div>
           ))}
         </div>
@@ -1046,7 +1054,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       type="button"
                       onClick={() => openBulkApplyModal(student.id)}
                       aria-label={`${student.name} 출석 일괄 적용 열기`}
-                      className="text-left font-semibold text-slate-900 underline-offset-2 transition hover:text-[var(--division-color)] hover:underline"
+                      className="admin-attendance-student-name text-left font-semibold text-slate-900 underline-offset-2 transition hover:text-[var(--division-color)] hover:underline"
                     >
                       {student.name}
                     </button>
@@ -1064,33 +1072,31 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
                     return (
                       <td key={period.id} className="min-w-[120px] border-b border-slate-100 px-2 py-2">
-                        <select
-                          value={cell.status}
-                          onChange={(event) =>
-                            updateCell(student.id, period.id, {
-                              status: event.target.value as AttendanceOptionValue,
-                              reason:
-                                event.target.value === "ABSENT" || event.target.value === "EXCUSED"
-                                  ? cell.reason
-                                  : "",
-                            })
-                          }
-                          className={`w-full rounded-lg border px-3 py-2.5 text-xs font-semibold ${getAttendanceStatusClasses(cell.status)}`}
-                        >
-                          {ATTENDANCE_STATUS_OPTIONS.map((option) => (
-                            <option key={option.value || "empty"} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        {needsReason && (
-                          <input
-                            value={cell.reason}
-                            onChange={(event) => updateCell(student.id, period.id, { reason: event.target.value })}
-                            placeholder="사유"
-                            className="mt-1 h-7 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
-                          />
-                        )}
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <select
+                            aria-label={`${student.name} ${period.name} 출결 상태`}
+                            data-attendance-status={getAttendanceInputValue(cell.status, cell.reason)}
+                            value={getAttendanceInputValue(cell.status, cell.reason)}
+                            onChange={(event) =>
+                              updateCell(student.id, period.id, buildAttendanceInput(event.target.value as AttendanceInputValue, cell))
+                            }
+                            className="admin-attendance-status-select block w-full min-w-0 rounded-lg border px-3 py-2.5"
+                          >
+                            {ATTENDANCE_INPUT_OPTIONS.map((option) => (
+                              <option key={option.value || "empty"} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          {needsReason && (
+                            <input
+                              value={getAttendanceReasonDetail(cell.status, cell.reason)}
+                              onChange={(event) => updateCell(student.id, period.id, { reason: setAttendanceReasonDetail(cell.status, cell.reason, event.target.value) })}
+                              placeholder={isClassAttendance(cell.status, cell.reason) ? "수업명 (선택)" : "사유"}
+                              className="block h-7 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+                            />
+                          )}
+                        </div>
                       </td>
                     );
                   })}
@@ -1347,19 +1353,14 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
               <label className="admin-label">
                 상태
                 <select
-                  value={activeBulkApplyDraft.status}
+                  value={getAttendanceInputValue(activeBulkApplyDraft.status, activeBulkApplyDraft.reason)}
                   onChange={(event) =>
-                    updateBulkApplyDraft(bulkApplyStudent.id, {
-                      status: event.target.value as AttendanceOptionValue,
-                      reason:
-                        event.target.value === "ABSENT" || event.target.value === "EXCUSED"
-                          ? activeBulkApplyDraft.reason
-                          : "",
-                    })
+                    updateBulkApplyDraft(bulkApplyStudent.id, buildAttendanceInput(event.target.value as AttendanceInputValue, activeBulkApplyDraft))
                   }
-                  className={`mt-1.5 h-11 w-full rounded-lg border px-3 text-sm font-semibold ${getAttendanceStatusClasses( activeBulkApplyDraft.status, )}`}
+                  data-attendance-status={getAttendanceInputValue(activeBulkApplyDraft.status, activeBulkApplyDraft.reason)}
+                  className="admin-attendance-status-select mt-1.5 h-11 w-full rounded-lg border px-3"
                 >
-                  {ATTENDANCE_STATUS_OPTIONS.map((option) => (
+                  {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                     <option key={option.value || "active-bulk-empty"} value={option.value}>
                       {option.label}
                     </option>
@@ -1367,13 +1368,13 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                 </select>
               </label>
               <label className="admin-label">
-                사유
+                {isClassAttendance(activeBulkApplyDraft.status, activeBulkApplyDraft.reason) ? "수업명 (선택)" : "사유"}
                 <input
-                  value={activeBulkApplyDraft.reason}
+                  value={getAttendanceReasonDetail(activeBulkApplyDraft.status, activeBulkApplyDraft.reason)}
                   onChange={(event) =>
-                    updateBulkApplyDraft(bulkApplyStudent.id, { reason: event.target.value })
+                    updateBulkApplyDraft(bulkApplyStudent.id, { reason: setAttendanceReasonDetail(activeBulkApplyDraft.status, activeBulkApplyDraft.reason, event.target.value) })
                   }
-                  placeholder={activeBulkNeedsReason ? "사유를 입력해 주세요." : "선택 사항"}
+                  placeholder={isClassAttendance(activeBulkApplyDraft.status, activeBulkApplyDraft.reason) ? "수업명" : activeBulkNeedsReason ? "사유를 입력해 주세요." : "선택 사항"}
                   className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
                   disabled={!activeBulkNeedsReason}
                 />

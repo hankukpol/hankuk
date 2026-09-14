@@ -1,4 +1,4 @@
-import { ATTENDED_ATTENDANCE_STATUSES } from "@/lib/attendance-meta";
+import { isAttendedAttendanceStatus, isAttendanceRateExcluded, isClassAttendance } from "@/lib/attendance-meta";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState } from "@/lib/mock-store";
@@ -101,9 +101,6 @@ type StudentAttendanceRecord = {
 
 type OperatingDays = Record<"mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun", boolean>;
 
-const PRESENT_LIKE_STATUSES = new Set<AttendanceStatus>(
-  ATTENDED_ATTENDANCE_STATUSES as readonly AttendanceStatus[],
-);
 
 const DEFAULT_OPERATING_DAYS: OperatingDays = {
   mon: true,
@@ -225,7 +222,8 @@ function buildAttendanceCellStatus(
   return record.status;
 }
 
-function getAttendanceCellLabel(status: StudentAttendanceCellStatus) {
+function getAttendanceCellLabel(status: StudentAttendanceCellStatus, reason?: string | null) {
+  if (isClassAttendance(status, reason)) return "수업";
   switch (status) {
     case "PRESENT":
       return "출석";
@@ -275,11 +273,12 @@ function calculateAttendanceSummary(options: {
         continue;
       }
 
+      const record = options.recordMap.get(`${date}:${period.id}`);
+      if (isAttendanceRateExcluded(record?.status, record?.reason)) continue;
+
       expectedCount += 1;
 
-      const record = options.recordMap.get(`${date}:${period.id}`);
-
-      if (record && PRESENT_LIKE_STATUSES.has(record.status)) {
+      if (isAttendedAttendanceStatus(record?.status, record?.reason)) {
         attendedCount += 1;
       }
     }
@@ -463,7 +462,7 @@ export async function getStudentDashboardData(
           return {
             date,
             status,
-            label: getAttendanceCellLabel(status),
+            label: getAttendanceCellLabel(status, record?.reason),
             reason: record?.reason ?? null,
           };
         }),
@@ -496,4 +495,3 @@ export async function getStudentDashboardData(
     ),
   };
 }
-

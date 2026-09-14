@@ -258,7 +258,7 @@ export function PhoneCheckSeatMap({
                         className={`shrink-0 rounded-lg border px-1.5 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
                       >
                         {attendanceIntegrationEnabled
-                          ? getAttendanceStatusLabel(attendanceCell?.status)
+                          ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
                           : "출결 없음"}
                       </span>
                     )}
@@ -347,7 +347,7 @@ export function PhoneCheckSeatMap({
                       className={`mt-1 inline-flex rounded-lg border px-2 py-0.5 text-[13px] font-semibold ${getAttendanceBadgeClassName( attendanceCell, attendanceIntegrationEnabled, )}`}
                     >
                       {attendanceIntegrationEnabled
-                        ? getAttendanceStatusLabel(attendanceCell?.status)
+                        ? getAttendanceStatusLabel(attendanceCell?.status, attendanceCell?.reason)
                         : "출결 연동 없음"}
                     </span>
                     {saveState ? (
@@ -416,7 +416,7 @@ export function PhoneCheckSeatMap({
                 className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${getAttendanceBadgeClassName( modalAttendanceCell ?? undefined, attendanceIntegrationEnabled, )}`}
               >
                 {attendanceIntegrationEnabled
-                  ? getAttendanceStatusLabel(modalAttendanceCell?.status)
+                  ? getAttendanceStatusLabel(modalAttendanceCell?.status, modalAttendanceCell?.reason)
                   : "출결 연동 없음"}
               </span>
               {modalAttendanceCell?.reason ? (

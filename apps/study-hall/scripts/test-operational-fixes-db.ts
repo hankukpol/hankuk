@@ -8,6 +8,7 @@ import ts from "typescript";
 import * as policyMeta from "../lib/management-policy";
 import * as dates from "../lib/date-utils";
 import * as errors from "../lib/errors";
+import * as perfectAttendance from "../lib/perfect-attendance";
 import { mapPolicy } from "./restart-police-policy";
 
 const url = new URL(process.env.DATABASE_URL ?? "http://invalid");
@@ -25,8 +26,9 @@ const yesterday = nextDay(policyMeta.kstDate(), -1);
 const dependencies: Record<string, unknown> = {
   react: { cache: (fn: unknown) => fn },
   "@prisma/client": { Prisma },
-  zod: { z },
   "node:crypto": { randomUUID },
+  "@/lib/perfect-attendance": perfectAttendance,
+  zod: { z },
   "@/lib/management-policy": policyMeta,
   "@/lib/date-utils": dates,
   "@/lib/errors": errors,
@@ -93,6 +95,7 @@ async function main() {
     await prisma.attendance.create({ data: { studentId: student.id, periodId: selected.id, date: toDate(policyDay), status: "ABSENT", recordedById: null } });
   }
   dependencies["@/lib/services/policy-attendance.service"] = load<typeof import("../lib/services/policy-attendance.service")>("policy-attendance");
+  dependencies["@/lib/services/perfect-attendance.service"] = load<typeof import("../lib/services/perfect-attendance.service")>("perfect-attendance");
   const closer = load<typeof import("../lib/services/attendance-close.service")>("attendance-close");
   await closer.closeDivisionAttendance(slug);
   const records = await prisma.pointRecord.findMany({ where: { studentId: student.id } });
@@ -103,6 +106,26 @@ async function main() {
   assert.equal((await prisma.attendanceCloseState.findUniqueOrThrow({ where: { divisionId: division.id } })).closedThrough.toISOString().slice(0, 10), yesterday);
   assert.equal(await prisma.attendanceCloseState.findUnique({ where: { divisionId: foreign.id } }), null);
   console.log("PASS PostgreSQL: past-day closure, null recorder fallback, idempotency and tenant-scoped checkpoint");
+
+  const meritStudent = await prisma.student.create({ data: { divisionId: division.id, name: "개근 검증", studentNumber: `merit-${suffix}` } });
+  const meritService = dependencies["@/lib/services/perfect-attendance.service"] as typeof import("../lib/services/perfect-attendance.service");
+  for (let day = policyDay; day <= yesterday; day = nextDay(day, 1)) {
+    for (const selected of periods) {
+      if (!policyMeta.isControlledPeriod(policy, selected.id, day, meritStudent.id)) continue;
+      await prisma.attendance.create({ data: { studentId: meritStudent.id, periodId: selected.id, date: toDate(day), status: "EXCUSED", reason: "수업: 검증", recordedById: actor.id } });
+    }
+  }
+  const awards = { perfectAttendanceWeeklyPts: 2, perfectAttendanceMonthlyPts: 0 };
+  await meritService.syncPeriodicPerfectAttendancePoints(slug, yesterday, actor.id, policy, awards);
+  const awarded = await prisma.pointRecord.findMany({ where: { studentId: meritStudent.id } });
+  const expected = perfectAttendance.buildPerfectAttendanceAwards({ windows: perfectAttendance.perfectAttendanceWindows(yesterday), policy, periods, studentIds: [meritStudent.id], records: (await prisma.attendance.findMany({ where: { studentId: meritStudent.id } })).map(row => ({ ...row, date: row.date.toISOString().slice(0, 10) })), weeklyPts: 2, monthlyPts: 0, now: new Date() });
+  assert.equal(awarded.length, expected.length);
+  await meritService.syncPeriodicPerfectAttendancePoints(slug, yesterday, actor.id, policy, awards);
+  assert.equal(await prisma.pointRecord.count({ where: { studentId: meritStudent.id } }), awarded.length);
+  await prisma.student.update({ where: { id: meritStudent.id }, data: { status: "WITHDRAWN" } });
+  await meritService.syncPeriodicPerfectAttendancePoints(slug, yesterday, actor.id, policy, { ...awards, perfectAttendanceWeeklyPts: 0 });
+  assert.equal(await prisma.pointRecord.count({ where: { studentId: meritStudent.id } }), awarded.length, "inactive history is preserved");
+  console.log(`PASS PostgreSQL: class-only weekly merits (${awarded.length}), idempotency, inactive history preservation`);
 }
 
 main().finally(() => prisma.$disconnect()).catch(error => { console.error(error); process.exitCode = 1; });

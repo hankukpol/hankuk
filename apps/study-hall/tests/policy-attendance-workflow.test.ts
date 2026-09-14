@@ -48,7 +48,7 @@ function fixture() {
     ],
     periodsByDivision: { police: periods, fire: [] as MockPeriodRecord[] },
     divisionSettingsByDivision: { police: { managementPolicy: policy }, fire: {} },
-    studentsByDivision: { police: [{ id: "p1", seatId: "seat1" }, { id: "p2", seatId: "seat2" }], fire: [{ id: "f1", seatId: "fire-seat" }] },
+    studentsByDivision: { police: [{ id: "p1", seatId: "seat1", status: "ACTIVE" }, { id: "p2", seatId: "seat2", status: "ACTIVE" }], fire: [{ id: "f1", seatId: "fire-seat", status: "ACTIVE" }] },
     attendanceByDivision: { police: [] as MockAttendanceRecord[], fire: [] as MockAttendanceRecord[] },
     pointRulesByDivision: { police: rules, fire: [] },
     pointRecordsByDivision: { police: [] as MockPointRecordRecord[], fire: [] as MockPointRecordRecord[] },
@@ -118,13 +118,13 @@ test("일일 마감이 추가 저장 없이 지난 날 결석을 반영하고 �
   const f=fixture();
   f.policy.managerConfirmsAttendance = false;
   for(const periodId of ["09:15","11:00","13:45","15:30"]) await f.attendance.upsertAttendanceBatch("police",assistant,{date,periodId,records:[{studentId:"p1",status:"ABSENT"}]});
-  assert.equal(f.state.pointRecordsByDivision.police.length,0);
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row=>row.points),[-2,-2,-2,-2]);
   const close=loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close",f.dependencies);
   await close.closeDivisionAttendance("police");
-  assert.equal(f.state.pointRecordsByDivision.police.length,0);
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row=>row.points),[-2,-2,-2,-2]);
   t.mock.timers.tick(9*60*60*1000);
   await close.closeDivisionAttendance("police");
-  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row=>row.points),[-5]);
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row=>row.points),[-9]);
   await close.closeDivisionAttendance("police");
   assert.equal(f.state.pointRecordsByDivision.police.length,1);
 });
@@ -158,7 +158,58 @@ test("관리자 확정 정책에서는 자동 마감도 벌점 확정을 우회�
   f.record("09:15", "TARDY");
   const close = loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close", f.dependencies);
   const result = await close.closeDivisionAttendance("police");
-  assert.equal(result.closedDays, 0);
+  assert.ok(result.closedDays > 0);
+  assert.deepEqual(f.state.pointRecordsByDivision.police, []);
+});
+
+test("추가 저장 없이 일일 마감에서 주간 개근을 지급하고 관리자 벌점 확인은 유지한다", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-13T01:00:00+09:00") });
+  const f = fixture();
+  f.policy.effectiveFrom = "2026-09-07";
+  for (let day = 7; day <= 12; day++) {
+    for (const period of f.periods) {
+      const ymd = `2026-09-${String(day).padStart(2, "0")}`;
+      if (policyMeta.isControlledPeriod(f.policy, period.id, ymd, "p1")) f.record(period.id, "PRESENT", "p1", ymd);
+    }
+  }
+  const close = loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close", {
+    ...f.dependencies,
+    "@/lib/services/settings.service": { getDivisionSettings: async () => ({ perfectAttendanceWeeklyPts: 2, perfectAttendanceMonthlyPts: 2 }) },
+  });
+  await close.closeDivisionAttendance("police");
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row => row.points), [2]);
+  assert.match(f.state.pointRecordsByDivision.police[0].notes!, /주간 개근/);
+  await close.closeDivisionAttendance("police");
+  assert.equal(f.state.pointRecordsByDivision.police.length, 1);
+});
+
+test("월말 이후 추가 입력 없이 월 개근을 마감하고 재실행해도 중복 지급하지 않는다", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-01T01:00:00+09:00") });
+  const f = fixture();
+  f.policy.effectiveFrom = "2026-09-01";
+  for (let day = 1; day <= 30; day++) {
+    const ymd = `2026-09-${String(day).padStart(2, "0")}`;
+    for (const period of f.periods) {
+      if (policyMeta.isControlledPeriod(f.policy, period.id, ymd, "p1")) f.record(period.id, "PRESENT", "p1", ymd);
+    }
+  }
+  const close = loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close", {
+    ...f.dependencies,
+    "@/lib/services/settings.service": { getDivisionSettings: async () => ({ perfectAttendanceWeeklyPts: 0, perfectAttendanceMonthlyPts: 2 }) },
+  });
+  await close.closeDivisionAttendance("police");
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row => row.points), [2]);
+  assert.match(f.state.pointRecordsByDivision.police[0].notes!, /월 개근/);
+  await close.closeDivisionAttendance("police");
+  assert.equal(f.state.pointRecordsByDivision.police.length, 1);
+});
+
+test("비재원 학생은 출결 벌점 후보와 신규 확정에서 제외한다", async () => {
+  const f = fixture();
+  f.state.studentsByDivision.police[0].status = "WITHDRAWN";
+  f.record("09:15", "TARDY");
+  assert.deepEqual(await f.penalties.previewPolicyAttendance("police", date), []);
+  await f.penalties.confirmPolicyAttendance("police", date, admin.id);
   assert.deepEqual(f.state.pointRecordsByDivision.police, []);
 });
 

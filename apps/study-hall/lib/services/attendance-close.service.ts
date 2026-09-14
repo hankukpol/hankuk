@@ -4,6 +4,9 @@ import { applyPolicyAttendancePoints } from "@/lib/services/policy-attendance.se
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState, updateMockState } from "@/lib/mock-store";
 import { getPrismaClient } from "@/lib/service-helpers";
+import { getDivisionSettings } from "@/lib/services/settings.service";
+import { syncPeriodicPerfectAttendancePoints } from "@/lib/services/perfect-attendance.service";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 
 function nextDate(date: string, days = 1) {
   return new Date(new Date(`${date}T00:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10);
@@ -14,8 +17,7 @@ export async function closeDivisionAttendance(divisionSlug: string, deadline = D
   const through = nextDate(kstDate(), -1);
   const policy = await getManagementPolicy(divisionSlug);
   if (!isPolicyEffective(policy, through)) return {closedDays: 0, pending: false};
-  // 관리자 확정 정책에서는 예약 작업도 상벌점을 확정하거나 완료일을 넘기지 않는다.
-  if (policy.managerConfirmsAttendance) return {closedDays: 0, pending: false, requiresManager: true};
+  const settings = await getDivisionSettings(divisionSlug);
   const mock = isMockMode();
   const prisma = mock ? null : await getPrismaClient();
   const division = prisma ? await prisma.division.findUniqueOrThrow({where: {slug: divisionSlug}, select: {id: true}}) : null;
@@ -35,7 +37,10 @@ export async function closeDivisionAttendance(divisionSlug: string, deadline = D
         ? (await readMockState()).admins.find(admin => admin.isActive && (admin.role === "SUPER_ADMIN" || (admin.role === "ADMIN" && admin.divisionSlug === divisionSlug)))?.id
         : (await prisma!.admin.findFirst({where: {isActive: true, OR: [{role: "SUPER_ADMIN"}, {role: "ADMIN", divisionId: division!.id}]}, select: {id: true}}))?.id);
       if (!actorId) throw new Error("출결 마감을 기록할 관리자가 없습니다.");
-      await applyPolicyAttendancePoints(divisionSlug, date, actorId);
+      // 개근 상점은 자동 마감하되 벌점은 지점의 관리자 확정 설정을 지킨다.
+      const merits = await syncPeriodicPerfectAttendancePoints(divisionSlug, date, actorId, policy, settings);
+      if (merits.grantedCount || merits.revokedCount) revalidateDivisionOperationalViews(divisionSlug);
+      if (!policy.managerConfirmsAttendance) await applyPolicyAttendancePoints(divisionSlug, date, actorId);
     }
     if (mock) {
       await updateMockState(state=>{

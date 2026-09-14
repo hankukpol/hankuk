@@ -31,11 +31,11 @@ export async function syncPeriodicPerfectAttendancePoints(
   if (isMockMode()) {
     return updateMockState(state => {
       const all = state.pointRecordsByDivision[divisionSlug] ?? [];
-      const existing = all.filter(r => r.ruleId === null && notes.includes(r.notes ?? ""));
+      const students = (state.studentsByDivision[divisionSlug] ?? []).filter(student => student.status === "ACTIVE");
+      const activeIds = new Set(students.map(student => student.id));
+      const existing = all.filter(r => activeIds.has(r.studentId) && r.ruleId === null && notes.includes(r.notes ?? ""));
       if (!existing.length && amounts.weeklyPts <= 0 && amounts.monthlyPts <= 0) return { grantedCount: 0, revokedCount: 0 };
-      // 현재 좌석/재원 상태가 아니라 해당 기간의 출결로 판정한다.
-      // 퇴실·좌석 해제 뒤에도 이미 달성한 과거 개근을 회수하면 안 된다.
-      const students = state.studentsByDivision[divisionSlug] ?? [];
+      // 신규 계산은 재원 학생만 대상으로 한다. 비재원 학생의 과거 지급분은 보존한다.
       const desired = buildPerfectAttendanceAwards({ windows, policy, now, ...amounts,
         periods: state.periodsByDivision[divisionSlug] ?? [], studentIds: students.map(s => s.id),
         records: state.attendanceByDivision[divisionSlug] ?? [],
@@ -53,13 +53,13 @@ export async function syncPeriodicPerfectAttendancePoints(
   return prisma.$transaction(async tx => {
     const division = await tx.division.findUniqueOrThrow({ where: { slug: divisionSlug }, select: { id: true } });
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`perfect-attendance:${division.id}`}))`;
-    const existing = await tx.pointRecord.findMany({ where: { student: { divisionId: division.id }, ruleId: null, notes: { in: notes } } });
+    const existing = await tx.pointRecord.findMany({ where: { student: { divisionId: division.id, status: "ACTIVE" }, ruleId: null, notes: { in: notes } } });
     if (!existing.length && amounts.weeklyPts <= 0 && amounts.monthlyPts <= 0) return { grantedCount: 0, revokedCount: 0 };
     const from = windows.map(w => w.dateFrom).sort()[0];
     const to = windows.map(w => w.dateTo).sort().at(-1)!;
     const [periods, students, records] = await Promise.all([
       tx.period.findMany({ where: { divisionId: division.id } }),
-      tx.student.findMany({ where: { divisionId: division.id }, select: { id: true } }),
+      tx.student.findMany({ where: { divisionId: division.id, status: "ACTIVE" }, select: { id: true } }),
       tx.attendance.findMany({ where: { student: { divisionId: division.id }, date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } }, select: { studentId: true, periodId: true, status: true, reason: true, date: true } }),
     ]);
     const desired = buildPerfectAttendanceAwards({ windows, policy, periods, now, ...amounts,

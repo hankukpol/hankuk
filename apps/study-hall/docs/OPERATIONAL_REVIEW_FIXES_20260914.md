@@ -31,7 +31,7 @@
 - `prisma/schema.prisma`, `lib/mock-store.ts`: 새 스냅샷/마감 상태와 다른 작업의 설정 필드를 모두 보존한다.
 - 출석 저장의 관리자 확정 여부는 다른 작업에서 `applyPolicyAttendancePoints`를 수정한다. 이 변경의 cron은 `managerConfirmsAttendance=true`를 독립적으로 확인한다.
 - `RulesSettingsManager.tsx`는 이 변경에서 수정하지 않았다.
-- 주간·월간 개근의 예약 마감 연결은 정책 작업과 최종 통합 때 점검한다. 현재 cron은 출결 벌점 마감만 담당한다.
+- 최종 통합에서 주간·월간 개근도 일일 마감에 연결했다. 관리자 확인 정책은 벌점 자동 확정만 막으며 개근 상점은 자동 계산한다. 신규 자동 부과는 현재 ACTIVE 학생으로 제한하고 비재원생의 기존 이력은 보존한다.
 
 ## 운영 반영 순서
 

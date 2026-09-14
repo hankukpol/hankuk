@@ -87,10 +87,10 @@ function serviceFixture(mock = true) {
     division: { findUniqueOrThrow: async ({ where }: { where: { slug: string } }) => ({ id: where.slug }) },
     $executeRaw: async (_query: TemplateStringsArray, lock: string) => { assert.equal(lock, "perfect-attendance:police"); locked = true; },
     period: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return periods; } },
-    student: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return state.studentsByDivision.police; } },
+    student: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return state.studentsByDivision.police.filter(student => student.status === "ACTIVE"); } },
     attendance: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return state.attendanceByDivision.police.map(r => ({ ...r, date: new Date(r.date) })); } },
     pointRecord: {
-      findMany: async (q: Parameters<typeof check>[0] & { where: { ruleId: null; notes: { in: string[] } } }) => { check(q); return state.pointRecordsByDivision.police.filter(r => r.ruleId === q.where.ruleId && q.where.notes.in.includes(r.notes)).map(r => ({ ...r, date: new Date(r.date) })); },
+      findMany: async (q: Parameters<typeof check>[0] & { where: { ruleId: null; notes: { in: string[] } } }) => { check(q); return state.pointRecordsByDivision.police.filter(r => state.studentsByDivision.police.some(student => student.id === r.studentId && student.status === "ACTIVE") && r.ruleId === q.where.ruleId && q.where.notes.in.includes(r.notes)).map(r => ({ ...r, date: new Date(r.date) })); },
       deleteMany: async (q: Parameters<typeof check>[0] & { where: { id: { in: string[] } } }) => { check(q); state.pointRecordsByDivision.police = state.pointRecordsByDivision.police.filter(r => !q.where.id.in.includes(r.id)); },
       createMany: async ({ data }: { data: Array<Omit<Point, "id" | "date"> & { date: Date }> }) => { state.pointRecordsByDivision.police.push(...data.map(r => ({ ...r, id: randomUUID(), date: r.date.toISOString() }))); },
     },
@@ -108,6 +108,15 @@ function serviceFixture(mock = true) {
 }
 
 for (const mode of ["mock", "DB"] as const) {
+  test(`${mode}: 휴원·퇴실 학생에게 신규 개근 상점을 지급하지 않는다`, async t => {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-05T22:00:00+09:00") });
+    for (const status of ["WITHDRAWN", "ON_LEAVE"]) {
+      const { state, service } = serviceFixture(mode === "mock");
+      state.studentsByDivision.police[0].status = status;
+      await service.syncPeriodicPerfectAttendancePoints("police", "2026-09-12", "assistant", policy, { perfectAttendanceWeeklyPts: 2, perfectAttendanceMonthlyPts: 2 });
+      assert.deepEqual(state.pointRecordsByDivision.police, []);
+    }
+  });
   test(`${mode}: 출석 수정 시 주·월 회수, 재지급·재호출 멱등, 수동·다른 직렬 보존, 기본0`, async t => {
     t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-05T22:00:00+09:00") });
     const { state, service } = serviceFixture(mode === "mock");
@@ -125,6 +134,7 @@ for (const mode of ["mock", "DB"] as const) {
     state.studentsByDivision.police[0].seatId = "";
     assert.deepEqual(await sync(), { grantedCount: 0, revokedCount: 0 }, "현재 퇴실·좌석 해제는 과거 개근을 취소하지 않는다");
     assert.equal(JSON.stringify(state.pointRecordsByDivision.police), first);
+    state.studentsByDivision.police[0].status = "ACTIVE";
     const cell = state.attendanceByDivision.police.find(r => r.date === "2026-09-08")!;
     cell.status = "TARDY";
     assert.deepEqual(await sync(), { grantedCount: 0, revokedCount: 2 });

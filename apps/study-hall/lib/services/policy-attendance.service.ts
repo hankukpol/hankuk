@@ -16,13 +16,14 @@ export async function previewPolicyAttendance(divisionSlug: string, date: string
   if (!isPolicyEffective(policy, date)) return [];
   if (isMockMode()) {
     const state = await readMockState();
+    const activeIds = new Set((state.studentsByDivision[divisionSlug] ?? []).filter(student => student.status === "ACTIVE").map(student => student.id));
     return buildPolicyAttendanceCandidates(policy, state.periodsByDivision[divisionSlug] ?? [],
-      (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date), state.pointRulesByDivision[divisionSlug] ?? [], date)
+      (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date && activeIds.has(r.studentId)), state.pointRulesByDivision[divisionSlug] ?? [], date)
       .filter((c) => !(state.pointRecordsByDivision[divisionSlug] ?? []).some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && r.date.slice(0, 10) === date && !r.notes?.startsWith(`[자동][출결벌점][${date}]`)));
   }
   const prisma = await getPrismaClient();
   const [records, periods, rules, existing] = await Promise.all([
-    prisma.attendance.findMany({ where: { student: { division: { slug: divisionSlug } }, date: new Date(`${date}T00:00:00Z`) }, select: { studentId: true, periodId: true, status: true } }),
+    prisma.attendance.findMany({ where: { student: { division: { slug: divisionSlug }, status: "ACTIVE" }, date: new Date(`${date}T00:00:00Z`) }, select: { studentId: true, periodId: true, status: true } }),
     getPeriods(divisionSlug),
     prisma.pointRule.findMany({ where: { division: { slug: divisionSlug }, isActive: true }, select: { id: true, points: true, isActive: true } }),
     prisma.pointRecord.findMany({ where: { student: { division: { slug: divisionSlug } }, date: { gte: new Date(`${date}T00:00:00Z`), lt: new Date(new Date(`${date}T00:00:00Z`).getTime()+86400000) } }, select: { studentId: true, ruleId: true, notes: true } }),
@@ -70,14 +71,15 @@ export async function confirmPolicyAttendance(
   const result = isMockMode() ? await updateMockState((state) => {
     const actor = state.admins.find((a) => a.id === actorId && a.isActive && (a.role === "SUPER_ADMIN" || (a.role === "ADMIN" && a.divisionSlug === divisionSlug)));
     if (requireManager && !actor) throw badRequest("관리자만 출결 벌점을 확정할 수 있습니다.");
-    let candidates = buildPolicyAttendanceCandidates(policy, state.periodsByDivision[divisionSlug] ?? [], (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date), state.pointRulesByDivision[divisionSlug] ?? [], date);
+    const activeIds = new Set((state.studentsByDivision[divisionSlug] ?? []).filter(student => student.status === "ACTIVE").map(student => student.id));
+    let candidates = buildPolicyAttendanceCandidates(policy, state.periodsByDivision[divisionSlug] ?? [], (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date && activeIds.has(r.studentId)), state.pointRulesByDivision[divisionSlug] ?? [], date);
     const existing = state.pointRecordsByDivision[divisionSlug] ?? [];
     candidates = candidates.filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && r.date.slice(0, 10) === date && !r.notes?.startsWith(prefix)));
     const old = existing.filter((r) => r.notes?.startsWith(prefix));
     const next = candidates.map((c) => old.find((r) => r.studentId === c.studentId && r.notes === c.notes && r.points === c.points && r.ruleId === c.ruleId) ?? {
       ...c, id: randomUUID(), date: `${date}T00:00:00.000Z`, recordedById: actorId, createdAt: new Date().toISOString(),
     });
-    state.pointRecordsByDivision[divisionSlug] = [...existing.filter((r) => !r.notes?.startsWith(prefix)), ...next];
+    state.pointRecordsByDivision[divisionSlug] = [...existing.filter((r) => !r.notes?.startsWith(prefix) || !activeIds.has(r.studentId)), ...next];
     return { confirmedCount: next.length };
   }) : await (await getPrismaClient()).$transaction(async (tx) => {
     const division = await tx.division.findUniqueOrThrow({ where: { slug: divisionSlug }, select: { id: true } });
@@ -88,10 +90,10 @@ export async function confirmPolicyAttendance(
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`policy-attendance:${division.id}:${date}`}))`;
     const day = new Date(`${date}T00:00:00Z`);
     const [records, periods, rules, existing] = await Promise.all([
-      tx.attendance.findMany({ where: { student: { divisionId: division.id }, date: day }, select: { studentId: true, periodId: true, status: true } }),
+      tx.attendance.findMany({ where: { student: { divisionId: division.id, status: "ACTIVE" }, date: day }, select: { studentId: true, periodId: true, status: true } }),
       tx.period.findMany({ where: { divisionId: division.id } }),
       tx.pointRule.findMany({ where: { divisionId: division.id, isActive: true } }),
-      tx.pointRecord.findMany({ where: { student: { divisionId: division.id }, date: { gte: day, lt: new Date(day.getTime() + 86400000) } } }),
+      tx.pointRecord.findMany({ where: { student: { divisionId: division.id, status: "ACTIVE" }, date: { gte: day, lt: new Date(day.getTime() + 86400000) } } }),
     ]);
     const candidates = buildPolicyAttendanceCandidates(policy, periods, records, rules, date).filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && !r.notes?.startsWith(prefix)));
     const keep = new Set<string>();

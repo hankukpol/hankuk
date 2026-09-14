@@ -197,6 +197,7 @@ export type MockLeavePermissionRecord = {
   type: MockLeaveTypeRecord;
   date: string;
   reason: string | null;
+  attendanceSnapshot?: unknown;
   approvedById: string;
   status: MockLeaveStatusRecord;
   createdAt: string;
@@ -403,6 +404,7 @@ export type MockExamSessionParticipantRecord = Omit<ImportAssembly["participants
 export type MockExamItemResponseRecord = ImportAssembly["participants"][number]["responses"][number] & { id: string; divisionId: string; sessionId: string; studentId: string };
 
 type MockState = {
+  attendanceClosedThroughByDivision: Record<string, string>;
   examItemResponsesByDivision: Record<string, MockExamItemResponseRecord[]>;
   examSessionParticipantsByDivision: Record<string, MockExamSessionParticipantRecord[]>;
   examSessionItemsByDivision: Record<string, MockExamSessionItemRecord[]>;
@@ -1578,6 +1580,7 @@ function createInitialState(): MockState {
     deletedDivisionSlugs: [],
     divisions,
     divisionSettingsByDivision,
+    attendanceClosedThroughByDivision: {},
     admins,
     periodsByDivision,
     attendanceByDivision,
@@ -1982,6 +1985,7 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
     divisionSettingsByDivision: Object.fromEntries(
       Object.entries(divisionSettingsByDivision).filter((entry): entry is [string, MockDivisionSettingsRecord] => Boolean(entry[1])),
     ),
+    attendanceClosedThroughByDivision: state.attendanceClosedThroughByDivision ?? {},
     admins,
     periodsByDivision,
     attendanceByDivision,

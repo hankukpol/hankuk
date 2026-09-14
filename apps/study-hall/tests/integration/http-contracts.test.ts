@@ -75,7 +75,7 @@ test("every division and super-admin HTTP method enforces tenant or role boundar
     const response = await request(url, route.method, adminCookie);
     // Analysis preserves an authenticated administrator's tenant denial (403)
     // instead of replacing it with the missing fallback student session (401).
-    const expected = /\/student\//.test(url) && !/\/analysis\/student\//.test(url) ? 401 : 403;
+    const expected = url.startsWith("/api/cron/") || (/\/student\//.test(url) && !/\/analysis\/student\//.test(url)) ? 401 : 403;
     assert.equal(response.status, expected, `${route.method} ${url}: ${await response.text()}`);
   });
 });

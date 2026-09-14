@@ -21,6 +21,7 @@ import { AttendanceSeatView } from "@/components/attendance/AttendanceSeatView";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import {
   ATTENDANCE_INPUT_OPTIONS,
+  isLeaveAttendanceStatus,
   buildAttendanceInput,
   getAttendanceInputValue,
   getAttendanceReasonDetail,
@@ -373,6 +374,10 @@ export function MobileCheckForm({
 
   function updateStudentState(studentId: string, value: Partial<{ status: AttendanceOptionValue; reason: string }>) {
     if (isLoading || !contextReady) return;
+    if (isLeaveAttendanceStatus(formState[studentId]?.status) || isLeaveAttendanceStatus(value.status)) {
+      toast.message("휴무·반휴는 관리자에게 승인·취소를 요청해 주세요.");
+      return;
+    }
     setFormState((current) => ({
       ...current,
       [studentId]: {
@@ -911,7 +916,7 @@ export function MobileCheckForm({
                             className="mt-1 block w-full sm:hidden"
                           >
                             {ATTENDANCE_INPUT_OPTIONS.map((option) => (
-                              <option key={option.value || "empty"} value={option.value}>
+                              <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
                                 {option.label}
                               </option>
                             ))}
@@ -941,7 +946,7 @@ export function MobileCheckForm({
                           className="block w-full"
                         >
                           {ATTENDANCE_INPUT_OPTIONS.map((option) => (
-                            <option key={option.value || "empty"} value={option.value}>
+                            <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
                               {option.label}
                             </option>
                           ))}

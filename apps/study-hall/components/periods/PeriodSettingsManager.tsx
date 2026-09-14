@@ -452,6 +452,7 @@ export function PeriodSettingsManager({
             <input
               type="checkbox"
               checked={form.isMandatory}
+              disabled={policyEnabled}
               onChange={(event) =>
                 setForm((current) => ({ ...current, isMandatory: event.target.checked }))
               }

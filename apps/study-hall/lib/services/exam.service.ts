@@ -1,7 +1,7 @@
 import { examScoresSaveSchema, selectExamDateRecords } from "@/lib/exam-meta";
 import { getLegacyExamDateKey } from "@/lib/exam-session-identity";
 import { getMockDivisionBySlug, isMockMode } from "@/lib/mock-data";
-import { notFound } from "@/lib/errors";
+import { notFound, conflict } from "@/lib/errors";
 import {
   readMockState,
   updateMockState,
@@ -970,6 +970,10 @@ export async function saveExamScores(
   if (isMockMode()) {
     await updateMockState((state) => {
       const current = state.examScoresByDivision[divisionSlug] ?? [];
+      const originalDates = current.filter(score=>score.examTypeId===input.examTypeId && score.examRound===input.examRound).map(score=>score.examDate);
+      if ((state.examSessionsByDivision?.[divisionSlug] ?? []).some(session=>session.examTypeId===input.examTypeId && (session.examDate===input.examDate || originalDates.includes(session.examDate)))) {
+        throw conflict("가져온 시험은 채점표·문항분석표를 수정해 다시 가져와 주세요. 점수 입력으로 변경할 수 없습니다.");
+      }
       const dateRecords = dateSelection ? selectExamDateRecords(current.filter((score) => score.examTypeId === input.examTypeId && score.examDate === dateSelection), dateSelection) : null;
       const untouched = current.filter(
         (score) => !(score.examTypeId === input.examTypeId && preparedRows.some((row) => row.studentId === score.studentId) && score.examRound === (dateRecords?.get(score.studentId)?.examRound ?? input.examRound)),
@@ -1023,15 +1027,21 @@ export async function saveExamScores(
     throw notFound("학생 정보를 찾을 수 없습니다.");
   }
 
-  const existingDateRecords = dateSelection ? await prisma.examScore.findMany({
-    where: { examTypeId: input.examTypeId, examDate: toUtcDate(dateSelection), student: { divisionId: division.id }, studentId: { in: studentIds } },
-    select: { studentId: true, examRound: true },
-  }) : [];
+  await prisma.$transaction(async tx => {
+  await tx.$queryRaw`SELECT id FROM study_hall.exam_types WHERE id = ${input.examTypeId} AND division_id = ${division.id} FOR UPDATE`;
+  const existingDateRecords = await tx.examScore.findMany({
+    where: { examTypeId: input.examTypeId, ...(dateSelection ? {examDate: toUtcDate(dateSelection)} : {examRound: input.examRound}), student: { divisionId: division.id } },
+    select: { studentId: true, examRound: true, examDate: true },
+  });
+  const importDates = Array.from(new Set([input.examDate, ...existingDateRecords.map(row => row.examDate instanceof Date ? row.examDate.toISOString().slice(0,10) : row.examDate)].filter((date): date is string => Boolean(date))));
+  if (importDates.length && await tx.examSession.findFirst({where: {divisionId: division.id, examTypeId: input.examTypeId, examDate: {in: importDates.map(date=>toUtcDate(date)!)}}, select: {id:true}})) {
+    throw conflict("가져온 시험은 채점표·문항분석표를 수정해 다시 가져와 주세요. 점수 입력으로 변경할 수 없습니다.");
+  }
   const dateRecords = dateSelection ? selectExamDateRecords(existingDateRecords, dateSelection) : null;
 
-  await prisma.$transaction(
+  await Promise.all(
     preparedRows.map((row) =>
-      prisma.examScore.upsert({
+      tx.examScore.upsert({
         where: {
           studentId_examTypeId_examRound: {
             studentId: row.studentId,
@@ -1061,6 +1071,7 @@ export async function saveExamScores(
       }),
     ),
   );
+  });
 
   return getExamScoreSheet(divisionSlug, input.examTypeId, dateSelection ?? input.examRound);
 }

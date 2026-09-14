@@ -90,6 +90,78 @@ function fixture() {
   return { state, policy, periods, rules, management, attendance, penalties, record, dependencies, periodSettings };
 }
 
+test("직접 출석 입력으로 휴무권 승인을 우회하지 못한다", async () => {
+  const f=fixture();
+  for(const status of ["HOLIDAY","HALF_HOLIDAY"] as const) {
+    await assert.rejects(f.attendance.upsertAttendanceBatch("police",admin,{date,periodId:"09:15",records:[{studentId:"p1",status}]}),/외출\/휴가/);
+  }
+  assert.equal(f.state.attendanceByDivision.police.length,0);
+});
+
+test("휴무 승인 칸은 일괄 출석 덮어쓰기에서도 보존되며 휴무 반복 입력은 차단된다", async () => {
+  const f = fixture();
+  const holiday = f.record("09:15", "HOLIDAY");
+  holiday.reason = "휴무 승인";
+  const input = { studentIds: ["p1"], dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "09:15", endPeriodId: "11:00", status: "PRESENT" as const, overwriteExisting: true };
+  for (const status of ["HOLIDAY", "HALF_HOLIDAY"] as const) {
+    await assert.rejects(f.attendance.applyRecurringAttendance("police", admin, { ...input, status }), /외출\/휴가/);
+  }
+  await f.attendance.applyRecurringAttendance("police", admin, input);
+  assert.equal(f.state.attendanceByDivision.police.find(row => row.periodId === "09:15")?.reason, "휴무 승인");
+  assert.equal(f.state.attendanceByDivision.police.find(row => row.periodId === "11:00")?.status, "PRESENT");
+  await f.attendance.upsertAttendanceBatch("police", admin, { date, periodId: "09:15", records: [{ studentId: "p1", status: "HOLIDAY", reason: "휴무 승인" }] });
+  await assert.rejects(f.attendance.upsertAttendanceBatch("police", admin, { date, periodId: "09:15", records: [{ studentId: "p1", status: "PRESENT" }] }), /외출\/휴가/);
+});
+
+test("일일 마감이 추가 저장 없이 지난 날 결석을 반영하고 재실행해도 중복 부과하지 않는다", async t => {
+  t.mock.timers.enable({apis:["Date"],now:new Date("2026-09-08T16:00:00+09:00")});
+  const f=fixture();
+  f.policy.managerConfirmsAttendance = false;
+  for(const periodId of ["09:15","11:00","13:45","15:30"]) await f.attendance.upsertAttendanceBatch("police",assistant,{date,periodId,records:[{studentId:"p1",status:"ABSENT"}]});
+  assert.equal(f.state.pointRecordsByDivision.police.length,0);
+  const close=loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close",f.dependencies);
+  await close.closeDivisionAttendance("police");
+  assert.equal(f.state.pointRecordsByDivision.police.length,0);
+  t.mock.timers.tick(9*60*60*1000);
+  await close.closeDivisionAttendance("police");
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row=>row.points),[-5]);
+  await close.closeDivisionAttendance("police");
+  assert.equal(f.state.pointRecordsByDivision.police.length,1);
+});
+
+test("마감 실패 날짜는 완료로 표시하지 않고 다음 실행에서 다시 처리한다", async t => {
+  t.mock.timers.enable({apis:["Date"],now:new Date("2026-09-09T01:00:00+09:00")});
+  const f=fixture();f.record("09:15","TARDY"); let fail=true;
+  f.policy.managerConfirmsAttendance = false;
+  const close=loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close",{
+    ...f.dependencies,"@/lib/services/policy-attendance.service":{applyPolicyAttendancePoints:async (...args: Parameters<PolicyAttendanceService["applyPolicyAttendancePoints"]>)=>{if(fail)throw new Error("temporary failure");return f.penalties.applyPolicyAttendancePoints(...args);}},
+  });
+  await assert.rejects(close.closeDivisionAttendance("police"),/temporary failure/);
+  fail=false;await close.closeDivisionAttendance("police");
+  assert.deepEqual(f.state.pointRecordsByDivision.police.map(row=>row.points),[-2]);
+});
+
+test("기록자가 없는 출결도 같은 직렬 관리자 기준으로 마감한다", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-09T01:00:00+09:00") });
+  const f = fixture();
+  f.policy.managerConfirmsAttendance = false;
+  f.record("09:15", "TARDY").recordedById = null;
+  const close = loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close", f.dependencies);
+  await close.closeDivisionAttendance("police");
+  assert.equal(f.state.pointRecordsByDivision.police[0].points, -2);
+  assert.equal(f.state.pointRecordsByDivision.police[0].recordedById, admin.id);
+});
+
+test("관리자 확정 정책에서는 자동 마감도 벌점 확정을 우회하지 않는다", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-09T01:00:00+09:00") });
+  const f = fixture();
+  f.record("09:15", "TARDY");
+  const close = loadService<typeof import("../lib/services/attendance-close.service")>("attendance-close", f.dependencies);
+  const result = await close.closeDivisionAttendance("police");
+  assert.equal(result.closedDays, 0);
+  assert.deepEqual(f.state.pointRecordsByDivision.police, []);
+});
+
 test("attendance exposes all active periods while policy controls mandatory attendance", async () => {
   const f = fixture();
   assert.equal(f.periods.length, 8);

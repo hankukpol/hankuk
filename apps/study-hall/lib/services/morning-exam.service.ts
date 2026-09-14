@@ -4,7 +4,7 @@ import {
   updateMockState,
   type MockMorningExamScoreRecord,
 } from "@/lib/mock-store";
-import { badRequest, notFound } from "@/lib/errors";
+import { badRequest, notFound, conflict } from "@/lib/errors";
 import type { MorningExamScoresBatchInput } from "@/lib/morning-exam-schemas";
 import { listExamTypes, type ExamSubjectItem, type ExamTypeItem } from "@/lib/services/exam.service";
 import { listStudents } from "@/lib/services/student.service";
@@ -312,6 +312,10 @@ export async function saveMorningExamScores(
         throw badRequest("다른 지점 학생의 성적은 저장할 수 없습니다.");
       }
 
+      if ((state.examSessionsByDivision?.[divisionSlug] ?? []).some(session=>session.examTypeId===input.examTypeId && session.examDate===input.date)) {
+        throw conflict("가져온 시험은 채점표·문항분석표를 수정해 다시 가져와 주세요. 점수 입력으로 변경할 수 없습니다.");
+      }
+
       const existing = state.morningExamScoresByDivision[divisionSlug] ?? [];
       const scores = existing.filter(
         (s) =>
@@ -385,7 +389,12 @@ export async function saveMorningExamScores(
     throw badRequest("다른 지점 학생의 성적은 저장할 수 없습니다.");
   }
 
-  await prisma.morningExamScore.deleteMany({
+  await prisma.$transaction(async tx => {
+  await tx.$queryRaw`SELECT id FROM study_hall.exam_types WHERE id = ${input.examTypeId} AND division_id = ${division.id} FOR UPDATE`;
+  if (await tx.examSession.findFirst({where: {divisionId: division.id, examTypeId: input.examTypeId, examDate}, select: {id:true}})) {
+    throw conflict("가져온 시험은 채점표·문항분석표를 수정해 다시 가져와 주세요. 점수 입력으로 변경할 수 없습니다.");
+  }
+  await tx.morningExamScore.deleteMany({
     where: {
       examTypeId: input.examTypeId,
       examDate,
@@ -397,7 +406,7 @@ export async function saveMorningExamScores(
   });
 
   for (const row of input.rows) {
-    await prisma.morningExamScore.upsert({
+    await tx.morningExamScore.upsert({
       where: {
         studentId_examTypeId_subjectId_examDate: {
           studentId: row.studentId,
@@ -425,6 +434,7 @@ export async function saveMorningExamScores(
     });
     savedCount += 1;
   }
+  });
 
   return { savedCount };
 }

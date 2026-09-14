@@ -84,6 +84,7 @@ enum PhoneSubmissionStatus {
 }
 
 model Division {
+  attendanceCloseState AttendanceCloseState?
   id                String             @id @default(cuid())
   name              String
   slug              String             @unique
@@ -235,12 +236,22 @@ model PointRecord {
   @@map("point_records")
 }
 
+model AttendanceCloseState {
+  divisionId    String   @id @map("division_id")
+  closedThrough DateTime @db.Date @map("closed_through")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  division      Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_close_states")
+}
+
 model LeavePermission {
   id           String      @id @default(cuid())
   studentId    String      @map("student_id")
   type         LeaveType
   date         DateTime    @db.Date
   reason       String?
+  attendanceSnapshot Json? @map("attendance_snapshot")
   approvedById String      @map("approved_by_id")
   status       LeaveStatus
   createdAt    DateTime    @default(now()) @map("created_at")

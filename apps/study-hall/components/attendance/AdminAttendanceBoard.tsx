@@ -13,6 +13,7 @@ import {
   getAttendanceInputValue,
   getAttendanceReasonDetail,
   isClassAttendance,
+  isLeaveAttendanceStatus,
   selectPeriodForCheck,
   kstMinutesOfDay,
   setAttendanceReasonDetail,
@@ -125,11 +126,6 @@ const STUDENT_WHOLE_DAY_ACTIONS = [
     status: "PRESENT" as const,
     label: "전체출석",
     classes: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
-  },
-  {
-    status: "HOLIDAY" as const,
-    label: "전체휴무",
-    classes: "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
   },
   {
     status: "ABSENT" as const,
@@ -418,6 +414,10 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   function updateCell(studentId: string, periodId: string, value: Partial<{ status: AttendanceOptionValue; reason: string }>) {
     if (isLoading || recurringSavingStudentId || loadedDate.current !== selectedDate) return;
+    if (isLeaveAttendanceStatus(matrix[studentId]?.[periodId]?.status) || isLeaveAttendanceStatus(value.status)) {
+      toast.message("휴무·반휴는 외출/휴가 메뉴에서 승인·취소해 주세요.");
+      return;
+    }
     setMatrix((current) => ({
       ...current,
       [studentId]: {
@@ -437,6 +437,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     setMatrix((current) => {
       const updated = { ...current, [studentId]: { ...(current[studentId] ?? {}) } };
       for (const period of periods) {
+        if (isLeaveAttendanceStatus(current[studentId]?.[period.id]?.status)) continue;
         updated[studentId][period.id] = { status, reason: nextReason };
       }
       return updated;
@@ -1065,13 +1066,15 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                             aria-label={`${student.name} ${period.name} 출결 상태`}
                             data-attendance-status={getAttendanceInputValue(cell.status, cell.reason)}
                             value={getAttendanceInputValue(cell.status, cell.reason)}
+                            disabled={isLeaveAttendanceStatus(cell.status)}
+                            title={isLeaveAttendanceStatus(cell.status) ? "외출/휴가 메뉴에서 취소할 수 있습니다." : undefined}
                             onChange={(event) =>
                               updateCell(student.id, period.id, buildAttendanceInput(event.target.value as AttendanceInputValue, cell))
                             }
                             className="admin-attendance-status-select block w-full min-w-0 rounded-lg border px-3 py-2.5"
                           >
                             {ATTENDANCE_INPUT_OPTIONS.map((option) => (
-                              <option key={option.value || "empty"} value={option.value}>
+                              <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
                                 {option.label}
                               </option>
                             ))}
@@ -1348,7 +1351,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                   data-attendance-status={getAttendanceInputValue(activeBulkApplyDraft.status, activeBulkApplyDraft.reason)}
                   className="admin-attendance-status-select mt-1.5 h-11 w-full rounded-lg border px-3"
                 >
-                  {ATTENDANCE_INPUT_OPTIONS.map((option) => (
+                  {ATTENDANCE_INPUT_OPTIONS.filter((option) => !isLeaveAttendanceStatus(option.value)).map((option) => (
                     <option key={option.value || "active-bulk-empty"} value={option.value}>
                       {option.label}
                     </option>

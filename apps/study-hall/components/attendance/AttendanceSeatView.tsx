@@ -13,6 +13,7 @@ import {
   getAttendanceInputValue,
   getAttendanceReasonDetail,
   isClassAttendance,
+  isLeaveAttendanceStatus,
   setAttendanceReasonDetail,
   getAttendanceStatusClasses,
   getAttendanceStatusLabel,
@@ -110,7 +111,6 @@ const QUICK_STATUSES: { value: Exclude<AttendanceInputValue, "">; label: string 
   { value: "TARDY", label: "지각" },
   { value: "ABSENT", label: "결석" },
   { value: "EXCUSED", label: getAttendanceStatusLabel("EXCUSED") },
-  { value: "HOLIDAY", label: "휴무" },
   { value: "NOT_APPLICABLE", label: "해당없음" },
 ];
 
@@ -343,6 +343,8 @@ export function AttendanceSeatView({
                       <button
                         key={value}
                         type="button"
+                        disabled={isLeaveAttendanceStatus(cell.status)}
+                        title={isLeaveAttendanceStatus(cell.status) ? "휴무·반휴는 외출/휴가 메뉴에서 취소해 주세요." : undefined}
                         onClick={() =>
                           onUpdateCell(modalStudentId, period.id, buildAttendanceInput(
                             getAttendanceInputValue(cell.status, cell.reason) === value ? "" : value,

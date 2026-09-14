@@ -38,8 +38,10 @@ const nextConfig = {
         const subpath = request.match(/[\\/]node_modules[\\/]lucide-react[\\/](.+)$/)?.[1];
         if (!subpath) return;
         const pinned = join(lucidePackageRoot, ...subpath.split(/[\\/]/));
-        if (resource.createData) resource.createData.resource = pinned;
-        else resource.request = pinned;
+        if (resource.createData) {
+          resource.createData.resource = pinned;
+          resource.createData.context = dirname(pinned);
+        } else resource.request = pinned;
       },
     ));
     return config;

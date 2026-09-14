@@ -1725,7 +1725,8 @@ export async function getAttendanceStats(
     }
   }
   // --- Totals: unique student counts per date ---
-  // 출석: 왔는데 지각 없음, 지각: 왔는데 지각 1회 이상, 결석: 아예 안 옴 (기록 없거나 전부 결석)
+  // 출석·지각을 우선하고, 입력된 상태가 모두 결석이면 뒤 교시 미입력과 무관하게 1명으로 집계한다.
+  // 모든 교시가 미입력이면 미처리이며, 종일 결석 벌점 판정은 별도로 처리한다.
   for (const date of dates) {
     if (isPolicyEffective(policy, date)) {
       const byStudent = new Map<string, Map<string, AttendanceStatus>>();
@@ -1742,8 +1743,11 @@ export async function getAttendanceStats(
         const statuses = expected.map((p) => cells?.get(p.id));
         if (statuses.includes("TARDY")) totals.tardy += 1;
         else if (statuses.includes("PRESENT")) totals.present += 1;
+        else if (
+          statuses.includes("ABSENT") &&
+          statuses.every((status) => status === undefined || status === "ABSENT")
+        ) totals.absent += 1;
         else if (statuses.includes(undefined)) totals.unprocessed += 1;
-        else if (statuses.every((status) => status === "ABSENT")) totals.absent += 1;
         else if (statuses.includes("EXCUSED")) totals.excused += 1;
         else if (statuses.includes("HOLIDAY")) totals.holiday += 1;
         else if (statuses.includes("HALF_HOLIDAY")) totals.half_holiday += 1;

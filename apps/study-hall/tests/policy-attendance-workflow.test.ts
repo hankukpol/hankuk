@@ -202,6 +202,82 @@ test("inactive policy periods cannot accept new attendance or inflate expected a
   assert.equal(stats.periods.reduce((sum, p) => sum + p.counts.unprocessed, 0), 0);
 });
 
+test("saving first-period absence counts one student while later periods are unprocessed", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T09:17:00+09:00`) });
+  const f = fixture();
+  await f.attendance.upsertAttendanceBatch("police", assistant, {
+    date, periodId: "09:15", records: [{ studentId: "p1", status: "ABSENT" }],
+  });
+  const stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 1);
+  assert.equal(stats.totals.unprocessed, 1, "only the wholly unchecked student remains unprocessed");
+  assert.equal(stats.periods.find(p => p.periodId === "11:00")?.counts.unprocessed, 2);
+  assert.equal(stats.attendanceRate, 0);
+  assert.deepEqual(f.state.pointRecordsByDivision.police, [], "partial checking cannot trigger a full-day absence penalty");
+});
+
+test("repeated absence across five periods counts one student, not five records", async () => {
+  const f = fixture();
+  f.policy.optionalEnrollments.push({ studentId: "p1", periodId: "18:15", dateFrom: date, dateTo: date, weekdays: [2] });
+  for (const id of ["09:15", "11:00", "13:45", "15:30", "18:15"]) f.record(id, "ABSENT");
+  const stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 1);
+  assert.equal(stats.periods.reduce((sum, p) => sum + p.counts.absent, 0), 5);
+});
+
+test("later attendance and corrections remove the student's provisional absence count", async () => {
+  const f = fixture();
+  const absence = f.record("09:15", "ABSENT");
+  assert.equal((await f.attendance.getAttendanceStats("police", date, date)).totals.absent, 1);
+  const arrival = f.record("11:00", "PRESENT");
+  let stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 0);
+  assert.equal(stats.totals.present, 1);
+  arrival.status = "TARDY";
+  stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 0);
+  assert.equal(stats.totals.tardy, 1);
+  assert.equal(stats.totals.present, 0);
+  f.state.attendanceByDivision.police = [absence];
+  absence.status = "EXCUSED";
+  assert.equal((await f.attendance.getAttendanceStats("police", date, date)).totals.absent, 0);
+});
+
+test("partial checking does not turn approved statuses or an empty day into absence", async () => {
+  for (const approved of ["EXCUSED", "HOLIDAY", "HALF_HOLIDAY", "NOT_APPLICABLE"] as const) {
+    const f = fixture();
+    f.record("09:15", "ABSENT");
+    f.record("11:00", approved);
+    const stats = await f.attendance.getAttendanceStats("police", date, date);
+    assert.equal(stats.totals.absent, 0, approved);
+  }
+  const f = fixture();
+  const stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 0);
+  assert.equal(stats.totals.unprocessed, 2);
+});
+
+test("DB-backed stats count a saved absence with missing periods and retain date and division boundaries", async () => {
+  const f = fixture();
+  const row = f.record("09:15", "ABSENT");
+  const prisma = { attendance: { findMany: async (query: {
+    where: { student: { division: { slug: string } }; date: { gte: Date; lt: Date } };
+  }) => {
+    assert.equal(query.where.student.division.slug, "police");
+    assert.equal(query.where.date.gte.toISOString(), `${date}T00:00:00.000Z`);
+    assert.equal(query.where.date.lt.toISOString(), "2026-09-09T00:00:00.000Z");
+    return [{ ...row, date: new Date(`${date}T00:00:00Z`) }];
+  } } };
+  const service = loadService<AttendanceService>("attendance", {
+    ...f.dependencies,
+    "@/lib/mock-data": { isMockMode: () => false },
+    "@/lib/service-helpers": { getPrismaClient: async () => prisma },
+  });
+  const stats = await service.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 1);
+  assert.equal(stats.totals.unprocessed, 1);
+});
+
 test("cancelling one optional enrollment preserves another weekday schedule with matching dates", async (t) => {
   t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T09:17:00+09:00`) });
   const f = fixture();

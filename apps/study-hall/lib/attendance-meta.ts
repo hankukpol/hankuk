@@ -36,7 +36,8 @@ const CLASS_REASON = "수업";
 
 export function isClassAttendance(status: string | null | undefined, reason?: string | null) {
   const value = reason?.trim() ?? "";
-  return status === "EXCUSED" && (value === CLASS_REASON || value.startsWith(`${CLASS_REASON}:`));
+  return status === "EXCUSED" && value.includes(CLASS_REASON)
+    && !/(?:수업\s*:?\s*(?:없|미참|불참|미수강|취소)|수업.*(?:참석|참여|수강)\s*(?:불가|못|안\s*함|하지\s*않)|수업.*(?:못\s*(?:들|감)|안\s*들))/.test(value);
 }
 
 export function getAttendanceInputValue(status: AttendanceOptionValue, reason?: string | null): AttendanceInputValue {
@@ -44,9 +45,9 @@ export function getAttendanceInputValue(status: AttendanceOptionValue, reason?: 
 }
 
 export function getAttendanceReasonDetail(status: string | null | undefined, reason?: string | null) {
-  return isClassAttendance(status, reason)
-    ? (reason?.trimStart().slice(CLASS_REASON.length).replace(/^: ?/, "") ?? "")
-    : reason ?? "";
+  if (!isClassAttendance(status, reason)) return reason ?? "";
+  const text = reason?.trimStart() ?? "";
+  return text === CLASS_REASON ? "" : text.startsWith(`${CLASS_REASON}:`) ? text.slice(CLASS_REASON.length).replace(/^: ?/, "") : text;
 }
 
 export function setAttendanceReasonDetail(status: string | null | undefined, reason: string | null | undefined, detail: string) {

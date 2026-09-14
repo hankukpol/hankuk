@@ -1033,6 +1033,7 @@ export async function cancelLeavePermission(
 export async function previewLeaveSettlement(
   divisionSlug: string,
   input: LeaveSettlementSchemaInput,
+  options: { activeOnly?: boolean } = {},
 ) {
   const { normalizedMonth, start, end } = getMonthRange(input.month);
   const settlementNote = buildSettlementNote(normalizedMonth);
@@ -1047,7 +1048,7 @@ export async function previewLeaveSettlement(
 
   if (isMockMode()) {
     const state = await readMockState();
-    const students = state.studentsByDivision[divisionSlug] ?? [];
+    const students = (state.studentsByDivision[divisionSlug] ?? []).filter(student=>!options.activeOnly || student.status === "ACTIVE");
     const permissions = (state.leavePermissionsByDivision[divisionSlug] ?? [])
       .filter((permission) => permission.date.startsWith(normalizedMonth))
       .map((permission) => ({
@@ -1088,7 +1089,7 @@ export async function previewLeaveSettlement(
   const prisma = await getPrismaClient();
   const [students, permissions, settledStudentIds] = await Promise.all([
     prisma.student.findMany({
-      where: { divisionId: division.id },
+      where: { divisionId: division.id, ...(options.activeOnly ? {status: "ACTIVE" as const} : {}) },
       select: { id: true, name: true, studentNumber: true, studyTrack: true, status: true, courseStartDate: true, courseEndDate: true, enrolledAt: true },
     }),
     prisma.leavePermission.findMany({
@@ -1134,8 +1135,9 @@ export async function settleLeaveMonth(
   divisionSlug: string,
   actor: LeaveActor,
   input: LeaveSettlementSchemaInput,
+  options: { activeOnly?: boolean } = {},
 ) {
-  const preview = await previewLeaveSettlement(divisionSlug, input);
+  const preview = await previewLeaveSettlement(divisionSlug, input, options);
 
   if (!preview.isClosedMonth) {
     throw badRequest("진행 중인 월은 아직 정산할 수 없습니다.");
@@ -1161,7 +1163,7 @@ export async function settleLeaveMonth(
       const settledStudentIds = new Set((state.pointRecordsByDivision[divisionSlug] ?? [])
         .filter((record) => record.notes === note).map((record) => record.studentId));
       const currentStudentIds = new Set((state.studentsByDivision[divisionSlug] ?? [])
-        .filter((student) => student.status === "ACTIVE" || student.status === "ON_LEAVE")
+        .filter((student) => student.status === "ACTIVE" || (!options.activeOnly && student.status === "ON_LEAVE"))
         .map((student) => student.id));
       const nextRecords = grantTargets.filter((item) =>
         currentStudentIds.has(item.studentId) && !settledStudentIds.has(item.studentId)).map(
@@ -1205,7 +1207,7 @@ export async function settleLeaveMonth(
             in: grantTargets.map((item) => item.studentId),
           },
           status: {
-            in: ["ACTIVE", "ON_LEAVE"],
+            in: options.activeOnly ? ["ACTIVE"] : ["ACTIVE", "ON_LEAVE"],
           },
         },
         select: {

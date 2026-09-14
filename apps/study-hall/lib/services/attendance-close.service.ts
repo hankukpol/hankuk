@@ -7,6 +7,7 @@ import { getPrismaClient } from "@/lib/service-helpers";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { syncPeriodicPerfectAttendancePoints } from "@/lib/services/perfect-attendance.service";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
+import { closeDivisionExamPoints } from "@/lib/services/exam-point-close.service";
 
 function nextDate(date: string, days = 1) {
   return new Date(new Date(`${date}T00:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10);
@@ -69,6 +70,8 @@ export async function closeAllAttendance() {
     try {
       const remaining = Math.max(0, deadline - Date.now());
       const result = await closeDivisionAttendance(division.slug, Date.now() + remaining / (divisions.length - index));
+      if(Date.now() >= deadline) { results.push({division:division.slug,...result,pending:true}); continue; }
+      await closeDivisionExamPoints(division.slug);
       results.push({division:division.slug, ...result});
     } catch {
       results.push({division:division.slug, failed:true});

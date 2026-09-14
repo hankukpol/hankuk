@@ -7,8 +7,7 @@ import { badRequest, notFound } from "@/lib/errors";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 
 export const getManagementPolicy = cache(async (divisionSlug: string): Promise<ManagementPolicy | null> => {
-  // This rollout is deliberately limited to one division; no inherited defaults.
-  if (divisionSlug !== "police") return null;
+  // Every division owns its policy. An unconfigured division inherits nothing.
   let value: unknown;
   if (isMockMode()) {
     const state = await readMockState();

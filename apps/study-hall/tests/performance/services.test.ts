@@ -25,6 +25,7 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>, int
   }).outputText;
   const identity = (fn: unknown) => fn;
   const stubs: Record<string, unknown> = {
+    "@/lib/services/exam-point.service": {syncExamPoints:async()=>({grantedCount:0,revokedCount:0})},
     "react": { cache: identity },
     "next/cache": { unstable_cache: identity, revalidateTag() {} },
     "@/lib/mock-data": { isMockMode: () => true },

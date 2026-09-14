@@ -110,6 +110,7 @@ function harness(mock: boolean, category: "REGULAR" | "MORNING", actualParser = 
       return admins.filter((row) => matches(row, args.where, current));
     } };
     db.$queryRaw = async (_sql: TemplateStringsArray, ...values: unknown[]) => { calls.push({ table: "examType", operation: "lock", args: { values } }); return []; };
+    db.$executeRaw = async () => 0;
     return db;
   }
   const admins = [{ id: "admin-a", name: "Admin A", divisionId: "division-a", role: "ADMIN" },
@@ -117,6 +118,8 @@ function harness(mock: boolean, category: "REGULAR" | "MORNING", actualParser = 
     { id: "super", name: "Super", divisionId: null, role: "SUPER_ADMIN" }];
   const error = (message: string) => new Error(message);
   const dependencies = {
+    "@/lib/services/exam-point.service": { syncDbExamPoints: async () => ({grantedCount:0,revokedCount:0}), syncMockExamPoints: () => ({grantedCount:0,revokedCount:0}) },
+    "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
     "next/cache": { revalidateTag: (tag: string) => calls.push({ table: "cache", operation: "invalidate", args: { tag } }) },
     "node:crypto": { randomUUID: () => { id++; if (id === failAfterId) throw new Error("injected late failure"); return `generated-${id}`; } },
     "@/lib/exam-import-assembler": assembler,

@@ -1,4 +1,5 @@
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
+import { examPointDisplayNote } from "@/lib/exam-point-automation";
 import { isPolicyEffective, kstDate } from "@/lib/management-policy";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { cache } from "react";
@@ -273,7 +274,7 @@ function getPointRecordDisplayNotes(notes: string | null) {
     return `[자동] ${displayDetail} (${date})`;
   }
 
-  return notes;
+  return examPointDisplayNote(notes);
 }
 
 function getLatestMandatoryPeriodEndTime(

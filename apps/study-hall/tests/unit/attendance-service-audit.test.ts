@@ -64,6 +64,7 @@ function loadAttendanceService(state: Record<string, unknown>) {
       },
     },
     "@/lib/services/management-policy.service": { getManagementPolicy: async () => null },
+    "@/lib/services/exam-point.service": { syncExamPoints: async () => ({grantedCount:0,revokedCount:0}) },
     "@/lib/services/period.service": { getPeriods: async () => [period] },
     "@/lib/services/settings.service": { getDivisionSettings: async () => settings },
     "@/lib/services/student.service": {

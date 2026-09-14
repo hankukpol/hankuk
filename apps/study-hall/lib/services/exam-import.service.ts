@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidateTag } from "next/cache";
+import { syncDbExamPoints, syncMockExamPoints } from "@/lib/services/exam-point.service";
+import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 import type { Prisma } from "@prisma/client";
 import type { AdminSession } from "@/lib/auth";
 import {
@@ -297,7 +299,7 @@ export async function confirmExamImport(
 ): Promise<ExamImportResult> {
   if (isMockMode()) {
     const result = await confirmMock(slug, actor, files, selection);
-    revalidateTag(`exam-analysis:${slug}`);
+    revalidateTag(`exam-analysis:${slug}`); revalidateDivisionOperationalViews(slug);
     return result;
   }
   const division = await getDivisionBySlugOrThrow(slug);
@@ -305,6 +307,7 @@ export async function confirmExamImport(
   const prisma = await getPrismaClient();
   const result = await prisma.$transaction(
     async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`exam-points:${division.id}`}))`;
       // Serialize import/replacement on this tenant's exam type, including first-time imports.
       await tx.$queryRaw`SELECT id FROM study_hall.exam_types WHERE id = ${selection.examTypeId ?? ""} AND division_id = ${division.id} FOR UPDATE`;
       const source = await loadDb(tx, division.id);
@@ -377,11 +380,12 @@ export async function confirmExamImport(
         await tx.morningExamScore.deleteMany({ where: scope });
         await tx.morningExamScore.createMany({ data: derived.map(morningDbRecord) });
       }
+      await syncDbExamPoints(tx, division.id, session.examDate.slice(0,7), actor.id);
       return importResult(session, assembly.participants.length);
     },
     { timeout: 30000 },
   );
-  revalidateTag(`exam-analysis:${slug}`);
+  revalidateTag(`exam-analysis:${slug}`); revalidateDivisionOperationalViews(slug);
   return result;
 }
 async function confirmMock(
@@ -462,6 +466,7 @@ async function confirmMock(
         ...derived as typeof state.morningExamScoresByDivision[string],
       ];
     }
+    syncMockExamPoints(state, slug, session.examDate.slice(0,7), actor.id);
     return importResult(session, assembly.participants.length);
   });
 }
@@ -510,13 +515,14 @@ async function deleteProvenScore(tx: Prisma.TransactionClient, divisionId: strin
 export async function deleteExamImport(slug: string, actor: ImportActor, sessionId: string) {
   if (isMockMode()) {
     const result = await deleteMock(slug, actor, sessionId);
-    revalidateTag(`exam-analysis:${slug}`);
+    revalidateTag(`exam-analysis:${slug}`); revalidateDivisionOperationalViews(slug);
     return result;
   }
   const division = await getDivisionBySlugOrThrow(slug);
   authorize(actor, division.id);
   const prisma = await getPrismaClient();
   const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`exam-points:${division.id}`}))`;
     const where = { divisionId: division.id, id: sessionId };
     const initial = (await tx.examSession.findMany({ where }))[0];
     if (!initial) throw notFound("가져오기 이력을 찾을 수 없습니다.");
@@ -540,9 +546,10 @@ export async function deleteExamImport(slug: string, actor: ImportActor, session
       if (deleted.count === 0) keptManualScores++;
     }
     await tx.examSession.deleteMany({ where });
+    await syncDbExamPoints(tx, division.id, session.examDate.toISOString().slice(0,7), actor.id);
     return { removedStudents: plan.removedStudents, keptManualScores };
   }, { timeout: 30000 });
-  revalidateTag(`exam-analysis:${slug}`);
+  revalidateTag(`exam-analysis:${slug}`); revalidateDivisionOperationalViews(slug);
   return result;
 }
 
@@ -569,6 +576,7 @@ async function deleteMock(slug: string, actor: ImportActor, sessionId: string) {
     else
       state.morningExamScoresByDivision[slug] = (state.morningExamScoresByDivision[slug] ?? []).filter((row) => !removedIds.has(row.id));
     state.examSessionsByDivision[slug] = (state.examSessionsByDivision[slug] ?? []).filter((row) => row.id !== sessionId || row.divisionId !== source.divisionId);
+    syncMockExamPoints(state, slug, session.examDate.slice(0,7), actor.id);
     return { removedStudents: plan.removedStudents, keptManualScores: plan.keptManualScores };
   });
 }

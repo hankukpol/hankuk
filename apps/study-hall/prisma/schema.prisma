@@ -588,6 +588,7 @@ model DivisionSettings {
   pointCategories             Json     @default("[]") @map("point_categories")
   featureFlags                Json     @default("{}") @map("feature_flags")
   managementPolicy            Json?    @map("management_policy")
+  examPointAutomation         Json?    @map("exam_point_automation")
   perfectAttendancePtsEnabled Boolean  @default(false) @map("perfect_attendance_pts_enabled")
   perfectAttendancePts        Int      @default(0) @map("perfect_attendance_pts")
   perfectAttendanceWeeklyPts  Int      @default(0) @map("perfect_attendance_weekly_pts")

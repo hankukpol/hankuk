@@ -37,6 +37,7 @@ const dependencies: Record<string, unknown> = {
   "@/lib/service-helpers": { getPrismaClient: async () => prisma, normalizeOptionalText: (text?: string) => text?.trim() || null },
   "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
   "@/lib/services/attendance.service": { syncAttendanceDerivedPoints: async () => {} },
+  "@/lib/services/exam-point-close.service": { closeDivisionExamPoints: async () => ({grantedCount:0,revokedCount:0,leaveCount:0}) },
   "@/lib/services/period.service": {},
   "@/lib/services/settings.service": { getDivisionSettings: async () => ({ holidayLimit: 2, halfDayLimit: 2, healthLimit: 1 }) },
 };

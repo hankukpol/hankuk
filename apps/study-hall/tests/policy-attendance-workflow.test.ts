@@ -22,6 +22,11 @@ const assistant = { id: "assistant", role: "ASSISTANT" as const };
 // Execute real services against a disposable in-memory fixture. Imports are
 // closed: neither the persisted .mock-data store nor a DB client can be loaded.
 function loadService<T>(name: string, dependencies: Record<string, unknown>): T {
+  dependencies = {
+    "@/lib/services/exam-point.service": {syncExamPoints:async()=>({grantedCount:0,revokedCount:0})},
+    "@/lib/services/exam-point-close.service": {closeDivisionExamPoints:async()=>({grantedCount:0,revokedCount:0,leaveCount:0})},
+    ...dependencies,
+  };
   const source = readFileSync(`lib/services/${name}.service.ts`, "utf8");
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

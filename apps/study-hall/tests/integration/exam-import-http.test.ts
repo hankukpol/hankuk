@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { updateMockState, readMockState } from "../../lib/mock-store";
 import { parseExamImportPair } from "../../lib/exam-import-parser";
+import { examPointAutomationSchema } from "../../lib/exam-point-automation";
 
 const base = process.env.TEST_BASE_URL;
 if (
@@ -243,4 +244,38 @@ test("history deletion removes importer-owned scores and keeps subsequently edit
   // Restore this test-owned fixture for the subsequent analysis suite.
   const restored = await fetch(url, { method: "POST", headers: { cookie: admin }, body: upload("MORNING", "import-http-morning", true) });
   assert.equal(restored.status, 201, await restored.clone().text());
+});
+
+test("administrator calendar controls imported exam points and tenant isolation through HTTP", async()=>{
+  const cookie=await login("admin-police@mock.local");
+  const assistant=await login("assistant-police@mock.local");
+  const state=await readMockState();
+  const before=state.divisionSettingsByDivision.police.examPointAutomation;
+  const foreignBefore=JSON.stringify(state.divisionSettingsByDivision.fire);
+  const session=state.examSessionsByDivision.police.find(s=>s.examTypeId==="import-http-morning")!;
+  const day=session.examDate;
+  const rule=state.pointRulesByDivision.police.find(r=>r.points>0 && r.isActive)!;
+  const config=examPointAutomationSchema.parse({enabled:true,effectiveFrom:day,morningStartDate:day,morningWeekdays:[1,2,3,4,5],morningFirstRuleId:rule.id});
+  const endpoint=`${base}/api/police/settings/exam-points`;
+  const save=(body:unknown,auth=cookie,url=endpoint)=>fetch(url,{method:"PATCH",headers:{cookie:auth,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  try {
+    assert.equal((await save(config,assistant)).status,403);
+    assert.equal((await save(config,cookie,endpoint.replace("/police/","/fire/"))).status,403);
+    assert.equal((await save({...config,morningFirstRuleId:"foreign-rule"})).status,400);
+    assert.equal((await save({...config,morningWeekdays:[6]})).status,400);
+    assert.equal((await save(config)).status,200);
+    const retrieved=await fetch(endpoint,{headers:{cookie}});
+    assert.deepEqual((await retrieved.json()).config,config);
+    await updateMockState(s=>{for(const student of s.studentsByDivision.police.slice(0,5)) {student.status="ACTIVE";student.courseStartDate="2026-01-01";}});
+    const reimport=()=>fetch(`${base}/api/police/exam-imports`,{method:"POST",headers:{cookie},body:upload("MORNING","import-http-morning",true)});
+    assert.equal((await reimport()).status,201);
+    const awarded=(await readMockState()).pointRecordsByDivision.police.filter(r=>r.notes?.startsWith("[자동][성적]"));
+    assert.ok(awarded.length>0,"import must grant own participant first-place points");
+    assert.equal((await reimport()).status,201);
+    assert.deepEqual((await readMockState()).pointRecordsByDivision.police.filter(r=>r.notes?.startsWith("[자동][성적]")).map(r=>r.id).sort(),awarded.map(r=>r.id).sort());
+    assert.equal((await save({...config,morningExcludedDates:[day]})).status,200);
+    assert.equal((await reimport()).status,201);
+    assert.equal((await readMockState()).pointRecordsByDivision.police.filter(r=>r.notes?.startsWith("[자동][성적]")).length,0);
+    assert.equal(JSON.stringify((await readMockState()).divisionSettingsByDivision.fire),foreignBefore);
+  } finally {await updateMockState(s=>{s.divisionSettingsByDivision.police.examPointAutomation=before;});}
 });

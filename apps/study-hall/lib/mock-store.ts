@@ -65,6 +65,7 @@ export type MockDivisionRecord = {
 };
 
 export type MockDivisionSettingsRecord = Omit<MockDivisionSettings, "updatedAt"> & {
+  examPointAutomation?: import("./exam-point-automation").ExamPointAutomation | null;
   examAnalysis?: ExamAnalysisSettings;
   updatedAt: string;
 };

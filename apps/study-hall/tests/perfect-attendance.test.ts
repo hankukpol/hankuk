@@ -32,7 +32,7 @@ test("수업 사유결석만 있는 주도 +2, 아침모의·토요일 저녁·�
 });
 
 test("지각 1회·결석·무단중도퇴실 결석·일반 사유·휴일권·미입력은 개근이 아니다", () => {
-  for (const [status, reason] of [["TARDY", null], ["ABSENT", null], ["ABSENT", "무단중도퇴실"], ["EXCUSED", "기본이론 수업 수강"], ["EXCUSED", "병원"], ["HOLIDAY", null], ["NOT_APPLICABLE", null]]) {
+  for (const [status, reason] of [["TARDY", null], ["ABSENT", null], ["ABSENT", "무단중도퇴실"], ["EXCUSED", "수업 불참"], ["EXCUSED", "병원"], ["HOLIDAY", null], ["NOT_APPLICABLE", null]]) {
     const rows = records("2026-09-07", "2026-09-12");
     rows[0] = { ...rows[0], status: status!, reason };
     assert.deepEqual(awards(rows), [], `${status}: ${reason}`);
@@ -45,6 +45,10 @@ test("미래 수업 일괄 입력은 마지막 관리 교시가 끝나기 전 �
   assert.deepEqual(awards(rows, "2026-09-12", "2026-09-12T16:59:59+09:00"), []);
   assert.equal(awards(rows, "2026-09-12", "2026-09-12T17:00:00+09:00").length, 1);
   assert.equal(awards(rows, "2026-09-14", "2026-09-14T09:15:00+09:00").length, 1, "다음 주 저장이 직전 주를 마감한다");
+});
+
+test("기존 강좌명 수업 사유도 주간 개근 출석으로 인정한다",()=>{
+  assert.equal(awards(records("2026-09-07","2026-09-12","EXCUSED","기본이론 수업 수강")).length,1);
 });
 
 test("월 경계를 넘는 주는 마지막 관리일의 달에 귀속하고 월 개근도 마지막 관리일로 기록", () => {

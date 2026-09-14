@@ -7,6 +7,7 @@ import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { SettingsHistoryList } from "@/components/settings/SettingsHistoryList";
+import { ExamPointAutomationSettings } from "@/components/settings/ExamPointAutomationSettings";
 import type { PointRuleItem, WarningStageDistribution } from "@/lib/services/point.service";
 import type { DivisionRuleSettings } from "@/lib/services/settings.service";
 import type { SettingsHistoryItem } from "@/lib/services/settings-history.service";
@@ -938,6 +939,7 @@ export function RulesSettingsManager({
         </form>
         </section>
       </div>
+      <ExamPointAutomationSettings divisionSlug={divisionSlug} />
       <SettingsHistoryList history={history} />
       {actionCompleteModal}
     </>

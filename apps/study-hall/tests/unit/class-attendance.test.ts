@@ -40,18 +40,23 @@ test("일반 사유결석은 출석으로 인정하지 않고 출석률 분모�
 });
 
 test("기존 수업 사유만 식별하고 관련 없는 자유 입력 사유는 바꾸지 않는다", () => {
-  for (const reason of ["수업", " 수업 ", "수업: 형법 기본이론"]) {
+  for (const reason of ["수업", " 수업 ", "수업: 형법 기본이론", "기본이론 수업 수강", "정규 수업 수강"]) {
     assert.equal(getAttendanceInputValue("EXCUSED", reason), "CLASS");
     assert.equal(getAttendanceStatusLabel("EXCUSED", reason), "수업");
     assert.deepEqual(buildAttendanceInput("CLASS", { status: "EXCUSED", reason }), { status: "EXCUSED", reason });
   }
-  for (const reason of [undefined, null, "", "병원", "수업 미참석", "정규 수업 수강"]) {
+  for (const reason of [undefined, null, "", "병원", "수업 미참석", "수업 없음", "수업 불참", "수업: 미참여", "수업 수강 불가"]) {
     assert.equal(isClassAttendance("EXCUSED", reason), false);
     assert.equal(getAttendanceStatusLabel("EXCUSED", reason), "사유결석");
   }
   for (const status of [undefined, null, "", "ABSENT", "PRESENT"]) {
     assert.equal(isClassAttendance(status, "수업"), false);
   }
+});
+
+test("강좌명으로 시작하는 기존 수업 사유를 편집해도 앞부분이 잘리지 않는다",()=>{
+  assert.equal(getAttendanceReasonDetail("EXCUSED","기본이론 수업 수강"),"기본이론 수업 수강");
+  assert.equal(setAttendanceReasonDetail("EXCUSED","기본이론 수업 수강","심화이론"),"수업: 심화이론");
 });
 
 test("선택 사항인 수업명을 입력하거나 지워도 수업 상태가 유지된다", () => {

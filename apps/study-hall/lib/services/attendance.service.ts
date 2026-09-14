@@ -1105,6 +1105,12 @@ export async function syncAttendanceDerivedPoints(
 ) {
   const normalizedDate = normalizeDate(date);
   const policy = await getManagementPolicy(divisionSlug);
+  try {
+    const { syncExamPoints } = await import("@/lib/services/exam-point.service");
+    await syncExamPoints(divisionSlug, normalizedDate, actorId);
+  } catch (error) {
+    logServerError("ExamPoints", error);
+  }
   // 관리규정 기간에는 주/월 개근을 동기화하고 벌점은 관리자 확정 정책을 따른다.
   //
   // 아래 옛 경로(division_settings 의 tardy/absent 규칙)로 내려보내면 안 된다. 규정과 기준이

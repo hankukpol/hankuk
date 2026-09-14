@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 const require = createRequire(import.meta.url);
 const lucidePackageRoot = dirname(require.resolve("lucide-react/package.json"));
@@ -25,23 +25,23 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
-  transpilePackages: ["lucide-react"],
-  modularizeImports: {
-    "lucide-react": {
-      transform: "lucide-react/dist/esm/icons/{{kebabCase member}}",
-    },
-  },
-  webpack(config) {
+  webpack(config, { webpack }) {
     // Resolve both SSR and browser icons from this app's installed package.
     // Workspace packages can depend on different Lucide icon definitions.
     config.resolve.alias["lucide-react"] = lucidePackageRoot;
-    config.plugins.push({ apply(compiler) {
-      compiler.hooks.compilation.tap("IconResolutionDiagnostic", (compilation) => {
-        compilation.hooks.succeedModule.tap("IconResolutionDiagnostic", (module) => {
-          if (module.resource?.includes("/icons/log-in.js")) console.log("Icon resolution", compiler.name, lucidePackageRoot, module.resource);
-        });
-      });
-    } });
+    // Next's server entry loader can supply an already-resolved absolute path
+    // from another workspace's Lucide version, bypassing the package alias.
+    config.plugins.push(new webpack.NormalModuleReplacementPlugin(
+      /[\\/]node_modules[\\/]lucide-react[\\/]/,
+      (resource) => {
+        const request = resource.createData?.resource ?? resource.request;
+        const subpath = request.match(/[\\/]node_modules[\\/]lucide-react[\\/](.+)$/)?.[1];
+        if (!subpath) return;
+        const pinned = join(lucidePackageRoot, ...subpath.split(/[\\/]/));
+        if (resource.createData) resource.createData.resource = pinned;
+        else resource.request = pinned;
+      },
+    ));
     return config;
   },
   compiler: {

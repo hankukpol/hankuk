@@ -1046,7 +1046,7 @@ export function PhoneCheckForm({
   return (
     <div className="admin-check-workspace space-y-4">
       <CheckDraftSafety key={date} scope={`phones:${divisionSlug}:${date}`} values={phoneDraftCells(periodsState)}
-        baseline={phoneDraftCells(savedPeriodsState)} busy={busy}
+        baseline={phoneDraftCells(savedPeriodsState)} busy={pendingSaves > 0 || isSavingBulkRental}
         onDiscard={() => { setPeriodsState(savedPeriodsState); dirtyCellKeysRef.current = new Set(); setDirtyCellKeys(new Set()); setCellSaveStates({}); }}
         onRestore={(patch) => {
           setPeriodsState((current) => {

@@ -77,6 +77,9 @@ test("phone date safety: lookup failures and delayed saves", async (t) => {
           await changeDate("2020-01-02");
           assert.match(view.requests[0].url, /date=2020-01-02/);
           assert.equal(dateInput().value, "2020-01-01", "display date stays bound to the loaded roster until lookup succeeds");
+          const unload = new Event("beforeunload", { cancelable: true });
+          window.dispatchEvent(unload);
+          assert.equal(unload.defaultPrevented, false, "a stalled read with no pending edits must not trap the user on the page");
           await act(async () => {
             if (failure === "network") view.requests[0].result.reject(new Error("offline"));
             else if (failure === "http") view.requests[0].result.resolve(Response.json({ error: "unavailable" }, { status: 503 }));

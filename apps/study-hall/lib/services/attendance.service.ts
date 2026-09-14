@@ -322,9 +322,14 @@ function buildAttendanceSnapshot(
   periodId?: string,
 ): AttendanceSnapshot {
   const policy = context.policy;
-  const available = isPolicyEffective(policy, date)
-    ? context.periods.filter((p) => policy.attendancePeriodIds.includes(p.id)).map((p) => ({ ...p, isMandatory: isControlledPeriod(policy, p.id, date) }))
-    : context.periods;
+  // 교시 설정이 입력 목록을 결정한다. 관리규정은 의무 출석·벌점 대상만 결정하며,
+  // 자율 교시나 아침모의고사의 출결 기록 자체를 막지 않는다.
+  const available = context.periods.filter((period) => period.isActive).map((period) => ({
+    ...period,
+    isMandatory: isPolicyEffective(policy, date)
+      ? isControlledPeriod(policy, period.id, date)
+      : period.isMandatory,
+  }));
   const periods = periodId ? available.filter((period) => period.id === periodId) : available;
 
   return {
@@ -1136,14 +1141,12 @@ export async function upsertAttendanceBatch(
   const normalizedDate = normalizeDate(input.date);
   await ensureAssistantAllowed(divisionSlug, actor, normalizedDate);
 
-  const [students, periods, policy] = await Promise.all([
+  const [students, periods] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
-    getManagementPolicy(divisionSlug),
   ]);
 
   const period = periods.find((item) => item.id === input.periodId);
-  if (isPolicyEffective(policy, normalizedDate) && !policy.attendancePeriodIds.includes(input.periodId)) throw badRequest("관리반 출석은 1~5교시에서 기록합니다. 아침모의고사는 별도 시험 기록을 사용해 주세요.");
   if (!period) {
     throw notFound("교시 정보를 찾을 수 없습니다.");
   }
@@ -1343,10 +1346,9 @@ export async function applyRecurringAttendance(
     throw badRequest("결석 또는 사유결석은 사유를 입력해야 합니다.");
   }
 
-  const [students, periods, policy] = await Promise.all([
+  const [students, periods] = await Promise.all([
     getSeatedStudents(divisionSlug),
     getPeriods(divisionSlug),
-    getManagementPolicy(divisionSlug),
   ]);
   const studentIds = Array.from(new Set(input.studentIds));
 
@@ -1370,15 +1372,15 @@ export async function applyRecurringAttendance(
 
   const [fromPeriodIndex, toPeriodIndex] =
     startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-  const targetPeriods = periods.slice(fromPeriodIndex, toPeriodIndex + 1);
-  if (isPolicyEffective(policy, normalizedTo) && targetPeriods.some((p) => !policy.attendancePeriodIds.includes(p.id))) throw badRequest("새 관리규정 적용 기간의 출석은 1~5교시에서 기록해 주세요.");
+  // 오래 열린 폼에서 비활성화된 교시를 끝점으로 보내면 저장을 막는다.
+  // 범위 중간의 비활성 교시는 화면에 없으므로 반복 입력에서도 건너뛴다.
+  if (!periods[startIndex].isActive || !periods[endIndex].isActive) {
+    throw badRequest("비활성 교시는 반복 적용할 수 없습니다.");
+  }
+  const targetPeriods = periods.slice(fromPeriodIndex, toPeriodIndex + 1).filter((period) => period.isActive);
 
   if (targetPeriods.length === 0) {
     throw badRequest("적용할 교시를 찾을 수 없습니다.");
-  }
-
-  if (targetPeriods.some((period) => !period.isActive)) {
-    throw badRequest("비활성 교시는 반복 적용할 수 없습니다.");
   }
 
   const targetDates = enumerateDatesInclusive(normalizedFrom, normalizedTo).filter((date) =>

@@ -17,6 +17,10 @@ export function revalidateDivisionOperationalViews(
   revalidateTag("super-admin-tuition-status");
 
   revalidatePath(`/${divisionSlug}/admin`);
+  revalidatePath(`/${divisionSlug}/admin/attendance`);
+  revalidatePath(`/${divisionSlug}/admin/settings/periods`);
+  revalidatePath(`/${divisionSlug}/assistant`);
+  revalidatePath(`/${divisionSlug}/assistant/check`);
   revalidatePath(`/${divisionSlug}/admin/students`);
   revalidatePath(`/${divisionSlug}/admin/seats`);
   revalidatePath(`/${divisionSlug}/admin/settings/seats`);

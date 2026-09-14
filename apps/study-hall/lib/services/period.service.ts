@@ -132,7 +132,7 @@ export const getPeriods = cache(async function getPeriods(divisionSlug: string) 
 
 export async function createPeriod(divisionSlug: string, input: PeriodInput) {
   if (isMockMode()) {
-    return updateMockState(async (state) => {
+    const result = await updateMockState(async (state) => {
       const division = getMockDivisionBySlug(divisionSlug);
       if (!division) {
         throw new Error(`Mock division not found for slug: ${divisionSlug}`);
@@ -154,6 +154,8 @@ export async function createPeriod(divisionSlug: string, input: PeriodInput) {
       state.periodsByDivision[divisionSlug] = reindexMockPeriods([...periods, nextPeriod]);
       return state.periodsByDivision[divisionSlug].find((period) => period.id === nextPeriod.id) ?? nextPeriod;
     });
+    revalidateDivisionOperationalViews(divisionSlug);
+    return result;
   }
 
 
@@ -185,13 +187,15 @@ export async function updatePeriod(
   input: Partial<PeriodInput> & { reorderIds?: string[] },
 ) {
   if (isMockMode()) {
-    return updateMockState(async (state) => {
+    const result = await updateMockState(async (state) => {
       const periods = state.periodsByDivision[divisionSlug] ?? [];
       if (input.reorderIds?.length) {
         const reordered = input.reorderIds
           .map((id) => periods.find((period) => period.id === id))
           .filter(Boolean) as MockPeriodRecord[];
-        state.periodsByDivision[divisionSlug] = reindexMockPeriods(reordered);
+        state.periodsByDivision[divisionSlug] = reindexMockPeriods(
+          reordered.map((period, index) => ({ ...period, displayOrder: index })),
+        );
         return state.periodsByDivision[divisionSlug];
       }
       state.periodsByDivision[divisionSlug] = periods.map((period) =>
@@ -210,6 +214,8 @@ export async function updatePeriod(
       );
       return state.periodsByDivision[divisionSlug].find((period) => period.id === periodId) ?? null;
     });
+    revalidateDivisionOperationalViews(divisionSlug);
+    return result;
   }
 
 
@@ -258,13 +264,15 @@ export async function updatePeriod(
 
 export async function deletePeriod(divisionSlug: string, periodId: string) {
   if (isMockMode()) {
-    return updateMockState(async (state) => {
+    const result = await updateMockState(async (state) => {
       const periods = state.periodsByDivision[divisionSlug] ?? [];
       state.periodsByDivision[divisionSlug] = reindexMockPeriods(
         periods.filter((period) => period.id !== periodId),
       );
       return state.periodsByDivision[divisionSlug];
     });
+    revalidateDivisionOperationalViews(divisionSlug);
+    return result;
   }
 
 

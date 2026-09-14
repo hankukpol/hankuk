@@ -63,7 +63,7 @@ export async function GET(
   try {
     const snapshot = await getAttendanceSnapshot(params.division, date, periodId);
     return NextResponse.json(snapshot, {
-      headers: { "Cache-Control": "max-age=10, stale-while-revalidate=5" },
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     return toApiErrorResponse(error, "출석 데이터를 불러오지 못했습니다.");

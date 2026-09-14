@@ -170,7 +170,19 @@ export function MobileCheckForm({
   const [selectedPeriodId, setSelectedPeriodId] = useState(initialPeriodId ?? initialPeriods[0]?.id ?? "");
   const [pickedByHand, setPickedByHand] = useState(false);
   const [students, setStudents] = useState(initialStudents);
-  const [periods] = useState(initialPeriods);
+  const [periods, setPeriods] = useState(initialPeriods);
+  const periodRefreshVersion = useRef(0);
+
+  useEffect(() => () => { periodRefreshVersion.current += 1; }, [selectedDate, selectedPeriodId]);
+
+  useEffect(() => {
+    requestCheckNavigation(() => {
+      setPeriods(initialPeriods);
+      setSelectedPeriodId((current) => initialPeriods.some((period) => period.id === current)
+        ? current
+        : selectPeriodForCheck(initialPeriods, kstMinutesOfDay())?.id ?? "");
+    });
+  }, [initialPeriods]);
 
   // 오늘 화면이고 아직 손으로 고르지 않았다면, 현재 시각에 맞는 교시로 맞춘다.
   // 화면을 열어 둔 채 교시가 넘어가도 돌아왔을 때 그 교시가 잡혀 있다.
@@ -293,6 +305,7 @@ export function MobileCheckForm({
 
   useEffect(() => {
     if (!selectedPeriodId) {
+      setIsLoading(false);
       return;
     }
 
@@ -414,26 +427,36 @@ export function MobileCheckForm({
     );
   }
 
-  async function refreshCurrentPeriod() {
-    try {
-      const response = await fetch(`/api/${divisionSlug}/periods/current`, { cache: "no-store" });
-      const data = await response.json();
+  function refreshCurrentPeriod() {
+    requestCheckNavigation(() => { void loadCurrentPeriods(); });
 
-      if (!response.ok) {
-        throw new Error(data.error ?? "현재 교시를 조회하지 못했습니다.");
-      }
+    async function loadCurrentPeriods() {
+      const version = ++periodRefreshVersion.current;
+      try {
+        const response = await fetchCheck(`/api/${divisionSlug}/attendance?date=${selectedDate}`);
+        const data = await response.json();
 
-      if (data.period?.id) {
-        if (data.period.id !== selectedPeriodId) requestCheckNavigation(() => {
-          setIsLoading(true);
-          setSelectedPeriodId(data.period.id);
-          toast.success(`현재 교시를 ${data.period.name}로 맞췄습니다.`);
+        if (!response.ok) {
+          throw new Error(data.error ?? "현재 교시를 조회하지 못했습니다.");
+        }
+        if (version !== periodRefreshVersion.current) return;
+
+        const nextPeriods: PeriodItem[] = data.periods;
+        const nextPeriod = selectPeriodForCheck(nextPeriods, kstMinutesOfDay());
+        // 조회를 기다리는 동안 입력하거나 저장했을 수 있으므로 적용 직전에도 확인한다.
+        requestCheckNavigation(() => {
+          if (version !== periodRefreshVersion.current) return;
+          setPeriods(nextPeriods);
+          setIsLoading(Boolean(nextPeriod && nextPeriod.id !== selectedPeriodId));
+          setSelectedPeriodId(nextPeriod?.id ?? "");
+          if (nextPeriod) toast.success(`현재 교시를 ${nextPeriod.name}로 맞췄습니다.`);
+          else toast.message("현재 시간에는 해당하는 활성 교시가 없습니다.");
         });
-      } else {
-        toast.message("현재 시간에는 해당하는 활성 교시가 없습니다.");
+      } catch (error) {
+        if (version === periodRefreshVersion.current) {
+          toast.error(error instanceof Error ? error.message : "현재 교시를 조회하지 못했습니다.");
+        }
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "현재 교시를 조회하지 못했습니다.");
     }
   }
 

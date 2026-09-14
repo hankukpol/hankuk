@@ -33,6 +33,7 @@ type PeriodItem = {
 type PeriodSettingsManagerProps = {
   divisionSlug: string;
   initialPeriods: PeriodItem[];
+  policyEnabled?: boolean;
 };
 
 const defaultForm = {
@@ -150,6 +151,7 @@ function SortablePeriodRow({
 export function PeriodSettingsManager({
   divisionSlug,
   initialPeriods,
+  policyEnabled = false,
 }: PeriodSettingsManagerProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [periods, setPeriods] = useState<PeriodItem[]>(initialPeriods);
@@ -391,7 +393,7 @@ export function PeriodSettingsManager({
           {editingId ? "교시 수정" : "새 교시 추가"}
         </h2>
         <p className="admin-help mt-2 leading-6">
-          출석 의무 여부와 활성 상태는 이후 출석 체크 대상 계산에 직접 사용됩니다.
+          활성 교시가 출석 입력 목록에 표시됩니다. 변경 후 출석부를 새로고침해 주세요.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -443,7 +445,9 @@ export function PeriodSettingsManager({
           <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
             <span>
               <span className="admin-label block">필수 교시</span>
-              <span className="admin-help block">출석률 계산 대상 교시로 포함합니다.</span>
+              <span className="admin-help block">{policyEnabled
+                ? "관리규정 적용 중에는 규정의 요일·신청 조건으로 의무 출석을 판단합니다."
+                : "출석률 계산 대상 교시로 포함합니다."}</span>
             </span>
             <input
               type="checkbox"

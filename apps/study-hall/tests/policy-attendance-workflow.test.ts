@@ -7,11 +7,12 @@ import * as policyMeta from "../lib/management-policy";
 import * as dateUtils from "../lib/date-utils";
 import * as attendanceMeta from "../lib/attendance-meta";
 import { mapPolicy } from "../scripts/restart-police-policy";
-import type { MockAttendanceRecord, MockPointRecordRecord } from "../lib/mock-store";
+import type { MockAttendanceRecord, MockPeriodRecord, MockPointRecordRecord } from "../lib/mock-store";
 
 type AttendanceService = typeof import("../lib/services/attendance.service");
 type PolicyAttendanceService = typeof import("../lib/services/policy-attendance.service");
 type PolicyService = typeof import("../lib/services/management-policy.service");
+type PeriodService = typeof import("../lib/services/period.service");
 const manifest = JSON.parse(readFileSync("docs/policies/restart-police-v3.1.json", "utf8"));
 const date = "2026-09-08";
 const admin = { id: "admin", role: "ADMIN" as const };
@@ -44,7 +45,7 @@ function fixture() {
       { id: "inactive", role: "ADMIN", isActive: false, divisionSlug: "police" },
       { id: "super", role: "SUPER_ADMIN", isActive: true, divisionSlug: null },
     ],
-    periodsByDivision: { police: periods, fire: [] },
+    periodsByDivision: { police: periods, fire: [] as MockPeriodRecord[] },
     divisionSettingsByDivision: { police: { managementPolicy: policy }, fire: {} },
     studentsByDivision: { police: [{ id: "p1", seatId: "seat1" }, { id: "p2", seatId: "seat2" }], fire: [{ id: "f1", seatId: "fire-seat" }] },
     attendanceByDivision: { police: [] as MockAttendanceRecord[], fire: [] as MockAttendanceRecord[] },
@@ -53,11 +54,12 @@ function fixture() {
   };
   const dependencies: Record<string, unknown> = {
     "react": { cache: (fn: unknown) => fn },
+    "next/cache": { revalidateTag() {}, unstable_cache: (fn: unknown) => fn },
     "node:crypto": { randomUUID },
     "@/lib/date-utils": dateUtils,
     "@/lib/attendance-meta": attendanceMeta,
     "@/lib/management-policy": policyMeta,
-    "@/lib/mock-data": { isMockMode: () => true },
+    "@/lib/mock-data": { isMockMode: () => true, getMockDivisionBySlug: (slug: string) => ({ id: slug }) },
     "@/lib/mock-store": {
       readMockState: async () => state,
       updateMockState: async (mutate: (value: typeof state) => unknown) => mutate(state),
@@ -66,10 +68,11 @@ function fixture() {
     "@/lib/service-helpers": { getPrismaClient: () => { throw new Error("Database access forbidden in fixture"); } },
     "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
     "@/lib/server-log": { logServerError: (_scope: string, error: unknown) => { throw error; } },
-    "@/lib/services/period.service": { getPeriods: async (slug: "police" | "fire") => state.periodsByDivision[slug] },
     "@/lib/services/student.service": { getDivisionStudents: async (slug: "police" | "fire") => state.studentsByDivision[slug] },
     "@/lib/services/settings.service": { getDivisionSettings: async () => ({ assistantPastEditAllowed: true, assistantPastEditDays: 30 }) },
   };
+  const periodSettings = loadService<PeriodService>("period", dependencies);
+  dependencies["@/lib/services/period.service"] = periodSettings;
   const management = loadService<PolicyService>("management-policy", dependencies);
   dependencies["@/lib/services/management-policy.service"] = management;
   // 출석 저장이 벌점 반영을 직접 부르므로, 출결 서비스보다 먼저 세워 의존성에 넣는다.
@@ -81,20 +84,92 @@ function fixture() {
     state.attendanceByDivision.police.push(value);
     return value;
   }
-  return { state, policy, periods, rules, management, attendance, penalties, record, dependencies };
+  return { state, policy, periods, rules, management, attendance, penalties, record, dependencies, periodSettings };
 }
 
-test("all eight periods retain the published timetable; attendance records expose only periods 1-5", async () => {
+test("attendance exposes all active periods while policy controls mandatory attendance", async () => {
   const f = fixture();
   assert.equal(f.periods.length, 8);
   assert.equal(f.periods.find((p: { id: string }) => p.id === "20:10").endTime, "21:50");
   assert.equal(f.policy.closingTime, "22:00");
   const snapshot = await f.attendance.getAttendanceSnapshot("police", date);
-  assert.deepEqual(snapshot.periods.map(p => p.startTime), ["09:15", "11:00", "13:45", "15:30", "18:15"]);
+  assert.deepEqual(snapshot.periods.map(p => p.startTime), ["06:00", "08:30", "09:15", "11:00", "13:45", "15:30", "18:15", "20:10"]);
   for (const day of [date, "2026-09-12", "2026-09-13"]) {
     const result = await f.attendance.getAttendanceSnapshot("police", day);
     assert.equal(result.periods.filter(p => p.isMandatory).length, day === "2026-09-13" ? 0 : 4);
   }
+});
+
+test("period settings edits, deactivation, reordering and reactivation reach the attendance snapshot", async () => {
+  const f = fixture();
+  const policyBefore = JSON.stringify(f.policy);
+  f.record("18:15", "PRESENT");
+  await f.periodSettings.updatePeriod("police", "06:00", { name: "이른 자습", startTime: "06:10", endTime: "08:10" });
+  await f.periodSettings.updatePeriod("police", "18:15", { isActive: false });
+  await f.periodSettings.updatePeriod("police", "06:00", {
+    reorderIds: ["08:30", "06:00", "09:15", "11:00", "13:45", "15:30", "18:15", "20:10"],
+  });
+  const snapshot = await f.attendance.getAttendanceSnapshot("police", date);
+  assert.deepEqual(snapshot.periods.map(p => p.id), ["08:30", "06:00", "09:15", "11:00", "13:45", "15:30", "20:10"]);
+  assert.equal(snapshot.periods[1].name, "이른 자습");
+  assert.equal(snapshot.periods[1].startTime, "06:10");
+  assert.equal(snapshot.periods[1].endTime, "08:10");
+  assert.equal((await f.attendance.getAttendanceSnapshot("police", date, "18:15")).periods.length, 0);
+  assert.equal(f.state.attendanceByDivision.police.length, 1, "deactivation preserves saved records");
+  await f.periodSettings.updatePeriod("police", "18:15", { isActive: true });
+  const restored = await f.attendance.getAttendanceSnapshot("police", date, "18:15");
+  assert.equal(restored.periods.length, 1);
+  assert.equal(restored.records[0].status, "PRESENT");
+  assert.equal(JSON.stringify(f.policy), policyBefore, "display settings do not rewrite penalty policy");
+});
+
+test("active voluntary, morning exam and newly added periods accept records without policy penalties", async () => {
+  const f = fixture();
+  const added = await f.periodSettings.createPeriod("police", {
+    name: "추가 자습", startTime: "22:00", endTime: "22:30", isActive: true, isMandatory: false,
+  });
+  for (const periodId of ["06:00", "08:30", "20:10", added.id]) {
+    await f.attendance.upsertAttendanceBatch("police", assistant, {
+      date, periodId, records: [{ studentId: "p1", status: "ABSENT", reason: "자율 참여 안 함" }],
+    });
+    assert.equal((await f.attendance.getAttendanceSnapshot("police", date, periodId)).records[0].status, "ABSENT");
+  }
+  assert.deepEqual(f.state.pointRecordsByDivision.police, []);
+  const stats = await f.attendance.getAttendanceStats("police", date, date);
+  assert.equal(stats.totals.absent, 0);
+  assert.equal(stats.totals.unprocessed, 2);
+  await assert.rejects(f.attendance.upsertAttendanceBatch("fire", admin, {
+    date, periodId: added.id, records: [{ studentId: "f1", status: "PRESENT" }],
+  }), /교시/);
+  assert.deepEqual(f.state.attendanceByDivision.fire, []);
+});
+
+test("recurring attendance follows the visible range and skips an inactive period in the middle", async () => {
+  const f = fixture();
+  await f.periodSettings.updatePeriod("police", "18:15", { isActive: false });
+  const input = { studentIds: ["p1"], dateFrom: date, dateTo: date, weekdays: [2], startPeriodId: "06:00", endPeriodId: "20:10", status: "PRESENT" as const, overwriteExisting: false };
+  const result = await f.attendance.applyRecurringAttendance("police", admin, input);
+  assert.equal(result.targetCellCount, 7);
+  assert.deepEqual(f.state.attendanceByDivision.police.map(r => r.periodId), ["06:00", "08:30", "09:15", "11:00", "13:45", "15:30", "20:10"]);
+  await assert.rejects(f.attendance.applyRecurringAttendance("police", admin, { ...input, endPeriodId: "18:15" }), /비활성/);
+  assert.equal(f.state.attendanceByDivision.police.length, 7);
+});
+
+test("without an effective policy active periods and mandatory flags come from period settings", async () => {
+  const f = fixture();
+  await f.periodSettings.updatePeriod("police", "06:00", { isMandatory: true });
+  await f.periodSettings.updatePeriod("police", "18:15", { isActive: false });
+  const beforePolicy = await f.attendance.getAttendanceSnapshot("police", "2026-09-07");
+  assert.equal(beforePolicy.periods.length, 7);
+  assert.equal(beforePolicy.periods.find(period => period.id === "06:00")?.isMandatory, true);
+  f.state.periodsByDivision.fire = [
+    { ...f.periods[0], id: "fire-active", isActive: true, isMandatory: false },
+    { ...f.periods[1], id: "fire-inactive", isActive: false, isMandatory: true },
+  ];
+  const fire = await f.attendance.getAttendanceSnapshot("fire", date);
+  assert.deepEqual(fire.periods.map(period => period.id), ["fire-active"]);
+  assert.equal(fire.periods[0].isMandatory, false);
+  assert.deepEqual(fire.students.map(student => student.id), ["f1"]);
 });
 
 test("조교의 출결 기록이 곧 벌점이 되고, 출결을 정정하면 자동 벌점도 함께 정정된다", async (t) => {
@@ -199,6 +274,7 @@ test("inactive policy periods cannot accept new attendance or inflate expected a
   t.mock.timers.enable({ apis: ["Date"], now: new Date(`${date}T09:17:00+09:00`) });
   const f = fixture();
   f.periods.forEach((p: { isActive: boolean }) => { p.isActive = false; });
+  assert.deepEqual((await f.attendance.getAttendanceSnapshot("police", date)).periods, []);
   await assert.rejects(f.attendance.upsertAttendanceBatch("police", assistant, { date, periodId: "09:15", records: [{ studentId: "p1", status: "PRESENT" }] }), /비활성/);
   const stats = await f.attendance.getAttendanceStats("police", date, date);
   assert.equal(stats.periods.reduce((sum, p) => sum + p.counts.unprocessed, 0), 0);

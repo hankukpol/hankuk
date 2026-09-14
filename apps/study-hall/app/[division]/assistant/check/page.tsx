@@ -34,7 +34,7 @@ export default async function AssistantCheckPage({ params }: AssistantCheckPageP
   const today = getTodayInKst();
   const initialSnapshot = await getAttendanceSnapshot(params.division, today);
   const periods = initialSnapshot.periods;
-  // 쉬는 시간에도 곧 할 교시가 잡혀야 한다. 목록은 이미 관리규정이 거른 출석 교시다.
+  // 쉬는 시간에도 곧 할 교시가 잡혀야 한다. 교시 설정의 활성 목록에서 선택한다.
   const periodId = selectPeriodForCheck(periods, kstMinutesOfDay())?.id ?? null;
   const snapshot = periodId
     ? await getAttendanceSnapshot(params.division, today, periodId)

@@ -173,6 +173,52 @@ test("check forms: navigation, draft recovery and deferred saving", async (t) =>
       } finally { await view.destroy(); }
     });
 
+    await t.test("period refresh guards the whole list and edits made while fetching", async (t) => {
+      const view = mount();
+      const refreshes: Array<ReturnType<typeof deferred<Response>>> = [];
+      const nextPeriods = [{ ...periods[1], name: "2교시 변경", startTime: "06:10", endTime: "23:59" }];
+      t.mock.method(globalThis, "fetch", async (url: unknown) => {
+        if (String(url).includes("periodId=")) return Response.json({ students, records: [], periods: nextPeriods });
+        const result = deferred<Response>(); refreshes.push(result); return result.promise;
+      });
+      try {
+        await view.render(h(MobileCheckForm, { ...attendanceProps, initialPeriodId: "p1" }));
+        const row = () => document.querySelector("tbody tr")!;
+        await click(button("현재 교시 맞추기")); assert.equal(refreshes.length, 1);
+        await click(button("결석", row()));
+        await act(async () => refreshes[0].resolve(Response.json({ periods: nextPeriods })));
+        assert.ok(button("머무르기"));
+        assert.equal(button("1교시").getAttribute("aria-selected"), "true");
+        assert.equal(button("결석", row()).getAttribute("aria-pressed"), "true");
+        await click(button("머무르기"));
+        await click(button("현재 교시 맞추기"));
+        assert.equal(refreshes.length, 1, "dirty input must be reviewed before fetching");
+        await click(button("저장하지 않고 떠나기")); await tick(); await tick();
+        assert.equal(refreshes.length, 2);
+        await act(async () => refreshes[1].resolve(Response.json({ periods: nextPeriods })));
+        await tick();
+        assert.equal(button("2교시 변경").getAttribute("aria-selected"), "true");
+        assert.equal(Array.from(document.querySelectorAll('[role="tab"]')).some((node) => node.textContent === "1교시"), false);
+        assert.equal(hasPendingCheckChanges(), false);
+        await click(button("현재 교시 맞추기"));
+        await act(async () => refreshes[2].resolve(Response.json({ periods: [] })));
+        assert.equal(document.querySelector('[role="tablist"][aria-label="출석 확인 교시"]'), null);
+      } finally { await view.destroy(); }
+    });
+
+    await t.test("period refresh ignores an older response after moving to another period", async (t) => {
+      const view = mount(); const refresh = deferred<Response>();
+      t.mock.method(globalThis, "fetch", async (url: unknown) => String(url).includes("periodId=")
+        ? Response.json({ students, records: [], periods }) : refresh.promise);
+      try {
+        await view.render(h(MobileCheckForm, { ...attendanceProps, initialPeriodId: "p1" }));
+        await click(button("현재 교시 맞추기"));
+        await click(button("2교시")); await tick();
+        await act(async () => refresh.resolve(Response.json({ periods: [periods[0]] })));
+        assert.equal(button("2교시").getAttribute("aria-selected"), "true");
+      } finally { await view.destroy(); }
+    });
+
     await t.test("admin partial failure retries only failed periods and later edits", async (t) => {
       const view = mount(); const requests: Array<{ body: { periodId: string; records: Array<{ status: string }> }; result: ReturnType<typeof deferred<Response>> }> = [];
       t.mock.method(globalThis, "fetch", async (_url: unknown, options?: RequestInit) => { const result = deferred<Response>(); requests.push({ body: JSON.parse(String(options?.body)), result }); return result.promise; });

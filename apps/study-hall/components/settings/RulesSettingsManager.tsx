@@ -12,6 +12,7 @@ import type { DivisionRuleSettings } from "@/lib/services/settings.service";
 import type { SettingsHistoryItem } from "@/lib/services/settings-history.service";
 import type { ManagementPolicy } from "@/lib/management-policy";
 import Link from "next/link";
+import { formatKstDateTime } from "@/lib/date-utils";
 
 type RulesSettingsManagerProps = {
   divisionSlug: string;
@@ -45,6 +46,8 @@ type FormState = {
   absentPointRuleId: string;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: string;
+  perfectAttendanceWeeklyPts: string;
+  perfectAttendanceMonthlyPts: string;
   expirationWarningDays: string;
 };
 
@@ -71,6 +74,8 @@ function toFormState(settings: DivisionRuleSettings): FormState {
     absentPointRuleId: settings.absentPointRuleId ?? "",
     perfectAttendancePtsEnabled: settings.perfectAttendancePtsEnabled,
     perfectAttendancePts: String(settings.perfectAttendancePts),
+    perfectAttendanceWeeklyPts: String(settings.perfectAttendanceWeeklyPts ?? 0),
+    perfectAttendanceMonthlyPts: String(settings.perfectAttendanceMonthlyPts ?? 0),
     expirationWarningDays: String(settings.expirationWarningDays),
   };
 }
@@ -199,8 +204,10 @@ export function RulesSettingsManager({
           halfDayUnusedPts: form.halfDayUnusedPts,
           tardyPointRuleId: form.tardyPointRuleId || null,
           absentPointRuleId: form.absentPointRuleId || null,
-          perfectAttendancePtsEnabled: form.perfectAttendancePtsEnabled,
-          perfectAttendancePts: form.perfectAttendancePtsEnabled ? form.perfectAttendancePts : "0",
+          perfectAttendancePtsEnabled: !policy && form.perfectAttendancePtsEnabled,
+          perfectAttendancePts: !policy && form.perfectAttendancePtsEnabled ? form.perfectAttendancePts : "0",
+          perfectAttendanceWeeklyPts: form.perfectAttendanceWeeklyPts,
+          perfectAttendanceMonthlyPts: form.perfectAttendanceMonthlyPts,
           expirationWarningDays: form.expirationWarningDays,
         }),
       });
@@ -228,8 +235,9 @@ export function RulesSettingsManager({
   }
 
   const warningGap = asNumber(form.warnWithdraw) - asNumber(form.warnLevel1);
-  const selectedTardyRule = pointRules.find((rule) => rule.id === form.tardyPointRuleId) ?? null;
-  const selectedAbsentRule = pointRules.find((rule) => rule.id === form.absentPointRuleId) ?? null;
+  const selectedTardyRule = pointRules.find((rule) => rule.id === (policy?.tardyRuleId ?? form.tardyPointRuleId)) ?? null;
+  const selectedAbsentRule = pointRules.find((rule) => rule.id === (policy?.partialAbsenceRuleId ?? form.absentPointRuleId)) ?? null;
+  const selectedFullDayRule = pointRules.find((rule) => rule.id === policy?.fullDayAbsenceRuleId) ?? null;
 
   return (
     <>
@@ -266,8 +274,9 @@ export function RulesSettingsManager({
                   지각: {selectedTardyRule ? `${selectedTardyRule.name} (${selectedTardyRule.points}점)` : "연동 안 함"}
                 </p>
                 <p>
-                  결석: {selectedAbsentRule ? `${selectedAbsentRule.name} (${selectedAbsentRule.points}점)` : "연동 안 함"}
+                  {policy ? "교시 결석" : "결석"}: {selectedAbsentRule ? `${selectedAbsentRule.name} (${selectedAbsentRule.points}점)` : "연동 안 함"}
                 </p>
+                {policy && <p>종일 결석: {selectedFullDayRule ? `${selectedFullDayRule.name} (${selectedFullDayRule.points}점)` : "연동 안 함"}</p>}
               </div>
             </article>
             <article className="admin-section">
@@ -292,7 +301,7 @@ export function RulesSettingsManager({
             <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">개근 상점</p>
               <p className="admin-help mt-2">
-                {form.perfectAttendancePtsEnabled
+                {policy ? `주간 ${asNumber(form.perfectAttendanceWeeklyPts) > 0 ? `+${form.perfectAttendanceWeeklyPts}점` : "꺼짐"} · 월 ${asNumber(form.perfectAttendanceMonthlyPts) > 0 ? `+${form.perfectAttendanceMonthlyPts}점` : "꺼짐"} · 일일 꺼짐` : form.perfectAttendancePtsEnabled
                   ? `활성 — 매일 개근 시 +${form.perfectAttendancePts}점 자동 부여`
                   : "비활성"}
               </p>
@@ -308,7 +317,7 @@ export function RulesSettingsManager({
             <article className="admin-section">
               <p className="text-sm font-semibold text-slate-900">최근 저장</p>
               <p className="admin-help mt-2">
-                {new Date(settings.updatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+                {formatKstDateTime(settings.updatedAt)}
               </p>
             </article>
 
@@ -649,20 +658,35 @@ export function RulesSettingsManager({
           </div>
 
           <div className="admin-section">
-            <h3 className="text-sm font-semibold text-slate-900">개근 상점</h3>
+            <h3 className="admin-section-title">개근 상점</h3>
             <p className="admin-help mt-2">
-              {policy ? "일일 일반 출석 개근 상점은 적용하지 않습니다. 아침모의고사 한 달 개근은 결과 확인 후 상벌점 메뉴에서 부여합니다." : "당일 모든 필수 교시에 출석한 학생에게 자동으로 상점을 부여합니다."}
+              {policy ? "의무 통제 교시의 출석·수업만 개근으로 인정합니다. 지각·결석·미처리가 있으면 부여하지 않습니다. 아침모의고사는 제외합니다." : "당일 모든 필수 교시에 출석한 학생에게 자동으로 상점을 부여합니다. 주간·월 개근은 관리규정이 적용된 지점에서 사용합니다."}
             </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {([
+                ["perfectAttendanceWeeklyPts", "주간 개근 상점"],
+                ["perfectAttendanceMonthlyPts", "월 개근 상점"],
+              ] as const).map(([field, label]) => (
+                <label key={field} className="admin-field">
+                  <span className="admin-label">{label}</span>
+                  <input type="number" inputMode="numeric" min={0} max={100} step={1}
+                    value={form[field]} onChange={event => setForm(current => ({ ...current, [field]: event.target.value }))}
+                    className="admin-input" required disabled={!policy} />
+                  <span className="admin-help">0점이면 자동 부여하지 않습니다.</span>
+                </label>
+              ))}
+            </div>
+            {policy && <p className="admin-help mt-4">한 주는 월요일~일요일입니다. 마지막 관리 교시가 끝난 뒤 출석 저장 시 지급하며, 다음 저장 때 직전 주·월도 확인합니다. 기록 날짜는 마지막 관리일이고, 출석 정정으로 개근이 깨지면 회수합니다. 일일 개근은 사용하지 않습니다.</p>}
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <span>
-                  <span className="admin-label block">개근 상점 자동 부여</span>
+                  <span className="admin-label block">일일 개근 상점 자동 부여</span>
                   <span className="admin-help block">끄면 개근 시에도 상점이 부여되지 않습니다.</span>
                 </span>
                 <input
                   type="checkbox"
                   disabled={!!policy}
-                  checked={form.perfectAttendancePtsEnabled}
+                  checked={!policy && form.perfectAttendancePtsEnabled}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -676,13 +700,13 @@ export function RulesSettingsManager({
                 />
               </label>
               <label className="block">
-                <span className="admin-label mb-2 block">개근 시 부여 상점</span>
+                <span className="admin-label mb-2 block">일일 개근 시 부여 상점</span>
                 <input
                   type="number"
                   min={0}
                   max={100}
-                  disabled={!form.perfectAttendancePtsEnabled}
-                  value={form.perfectAttendancePtsEnabled ? form.perfectAttendancePts : "0"}
+                  disabled={!!policy || !form.perfectAttendancePtsEnabled}
+                  value={!policy && form.perfectAttendancePtsEnabled ? form.perfectAttendancePts : "0"}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, perfectAttendancePts: event.target.value }))
                   }

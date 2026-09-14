@@ -124,6 +124,8 @@ export const rulesSettingsSchema = z
     absentPointRuleId: pointRuleIdSchema.default(null),
     perfectAttendancePtsEnabled: z.boolean().default(false),
     perfectAttendancePts: z.coerce.number().int().min(0, "개근 점수는 0 이상이어야 합니다.").max(100),
+    perfectAttendanceWeeklyPts: z.coerce.number().int().min(0, "주간 개근 점수는 0 이상이어야 합니다.").max(100).default(0),
+    perfectAttendanceMonthlyPts: z.coerce.number().int().min(0, "월 개근 점수는 0 이상이어야 합니다.").max(100).default(0),
     expirationWarningDays: z.coerce.number().int().min(1, "만료 알림 일수는 1일 이상이어야 합니다.").max(90, "만료 알림 일수는 90일 이하여야 합니다."),
   })
   .superRefine((value, ctx) => {

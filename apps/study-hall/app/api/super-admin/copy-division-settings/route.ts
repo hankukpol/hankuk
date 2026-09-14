@@ -304,6 +304,8 @@ export async function POST(request: NextRequest) {
             : null,
           perfectAttendancePtsEnabled: sourceSettings.perfectAttendancePtsEnabled,
           perfectAttendancePts: sourceSettings.perfectAttendancePts,
+          perfectAttendanceWeeklyPts: sourceSettings.perfectAttendanceWeeklyPts,
+          perfectAttendanceMonthlyPts: sourceSettings.perfectAttendanceMonthlyPts,
           operatingDays: sourceSettings.operatingDays as Prisma.InputJsonValue,
           studyTracks: sourceSettings.studyTracks as Prisma.InputJsonValue,
           ...(categoryCustomizationEnabled

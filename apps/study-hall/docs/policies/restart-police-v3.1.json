@@ -93,7 +93,7 @@
     "separateMeritDemerit": true,
     "managerConfirmsAttendance": true,
     "fullDayAbsenceRuleId": "restart-v31-police-full-day-absence",
-    "partialAbsenceRuleId": null,
+    "partialAbsenceRuleId": "restart-v31-police-partial-absence",
     "tardyRuleId": "restart-v31-police-late-arrival",
     "lateArrivalPolicy": "after_start",
     "phone": {
@@ -168,7 +168,7 @@
       },
       {
         "title": "월별 상·벌점",
-        "text": "상점과 벌점은 별도 집계하며 상계하지 않습니다. 매월 말 집계가 종료되고 다음 달 새로 집계합니다. 원기록·개선미션·최종경고·즉시 퇴실심의 이력은 삭제하지 않습니다. 월 상점 상위 3명 보상은 별도 공지, 동점은 휴일권 미사용자 우선입니다."
+        "text": "주간 개근 +2점, 월 전체 개근 +2점이며 일일 개근은 사용하지 않습니다. 의무 통제 교시의 출석·수업만 인정하고 아침모의고사는 제외합니다. 기록일은 마지막 관리일이며 출석 정정으로 개근이 깨지면 회수합니다. 상점과 벌점은 별도 집계하며 상계하지 않습니다. 매월 말 집계가 종료되고 다음 달 새로 집계합니다. 원기록·개선미션·최종경고·즉시 퇴실심의 이력은 삭제하지 않습니다. 월 상점 상위 3명 보상은 별도 공지, 동점은 휴일권 미사용자 우선입니다."
       },
       {
         "title": "단계별 개입",
@@ -222,7 +222,7 @@
       "key": "full-day-absence",
       "category": "출결",
       "name": "관리일 전체 무단결석",
-      "points": -5,
+      "points": -9,
       "description": "사전 승인 없는 관리일 전체 무단결석. 교시별 결석과 중복 금지.",
       "displayOrder": 0
     },
@@ -387,6 +387,15 @@
       "points": 2,
       "description": "월 2회 중 미사용 개수당 +2. 외출/휴가 월 정산과 이중 지급하지 않음.",
       "displayOrder": 18
+    },
+    {
+      "id": "restart-v31-police-partial-absence",
+      "key": "partial-absence",
+      "category": "출결",
+      "name": "시간통제 교시 결석",
+      "points": -2,
+      "description": "의무 시간통제 교시 무단결석. 관리일 전체 무단결석과 중복 금지.",
+      "displayOrder": 19
     }
   ],
   "periods": [

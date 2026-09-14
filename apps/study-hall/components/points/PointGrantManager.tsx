@@ -1,5 +1,7 @@
 "use client";
 
+import { formatKstDateTime } from "@/lib/date-utils";
+
 import { useId } from "react";
 import { DialogActions } from "@/components/ui/DialogActions";
 
@@ -72,7 +74,7 @@ function createPointBatchIdempotencyKey() {
 }
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+  return formatKstDateTime(value);
 }
 
 function formatRulePreview(rule: PointRuleItem) {

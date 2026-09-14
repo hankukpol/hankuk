@@ -1,6 +1,7 @@
 "use client";
 
 import type { SettingsChangeEntry, SettingsHistoryItem } from "@/lib/services/settings-history.service";
+import { formatKstDateTime } from "@/lib/date-utils";
 
 type SettingsHistoryListProps = {
   history: SettingsHistoryItem[];
@@ -21,13 +22,7 @@ function formatValue(value: unknown) {
 }
 
 function formatChangedAt(value: string) {
-  return new Date(value).toLocaleString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatKstDateTime(value);
 }
 
 function ChangeRow({ change }: { change: SettingsChangeEntry }) {

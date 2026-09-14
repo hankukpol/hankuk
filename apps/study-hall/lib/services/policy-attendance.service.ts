@@ -40,7 +40,7 @@ export async function previewPolicyAttendance(divisionSlug: string, date: string
 export async function applyPolicyAttendancePoints(divisionSlug: string, date: string, actorId: string) {
   if (date > kstDate()) return { confirmedCount: 0 };
   const policy = await getManagementPolicy(divisionSlug);
-  if (!isPolicyEffective(policy, date)) return { confirmedCount: 0 };
+  if (!isPolicyEffective(policy, date) || policy.managerConfirmsAttendance) return { confirmedCount: 0 };
   return confirmPolicyAttendance(divisionSlug, date, actorId, { requireManager: false });
 }
 
@@ -48,8 +48,8 @@ export async function applyPolicyAttendancePoints(divisionSlug: string, date: st
  * 출결 벌점을 다시 계산해 그 날짜에 반영한다. 원본 출결은 건드리지 않는다.
  *
  * `requireManager` 가 참이면 관리자 화면의 확정 버튼이고, 거짓이면 출석 저장 직후
- * 시스템이 부르는 자동 반영이다. 자동 쪽은 사람이 누른 것이 아니므로 관리자 확인을
- * 요구하지 않는다 — 조교가 지각·결석을 기록하면 그 자리에서 벌점이 붙는다.
+ * 시스템이 부르는 자동 반영이다. 관리자 확정 정책이 켜져 있으면 자동 호출에서도
+ * 관리자 권한을 확인한다. 조교 출석 저장은 후보 계산까지만 허용한다.
  *
  * 어느 쪽이든 계산과 중복 처리는 같다. 자동 기록은 `[자동][출결벌점][날짜]` 로
  * 자기를 밝히고, 다시 계산할 때 값이 같은 것은 그대로 두고 사라진 것만 지운다.
@@ -65,6 +65,7 @@ export async function confirmPolicyAttendance(
   if (date > kstDate()) throw badRequest("미래 날짜의 벌점은 확정할 수 없습니다.");
   const policy = await getManagementPolicy(divisionSlug);
   if (!isPolicyEffective(policy, date)) throw badRequest("새 관리규정 적용일 이후의 출결만 확정할 수 있습니다.");
+  requireManager = requireManager || policy.managerConfirmsAttendance;
   const prefix = `[자동][출결벌점][${date}]`;
   const result = isMockMode() ? await updateMockState((state) => {
     const actor = state.admins.find((a) => a.id === actorId && a.isActive && (a.role === "SUPER_ADMIN" || (a.role === "ADMIN" && a.divisionSlug === divisionSlug)));

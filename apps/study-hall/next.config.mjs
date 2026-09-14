@@ -1,3 +1,9 @@
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+
+const require = createRequire(import.meta.url);
+const lucidePackageRoot = dirname(require.resolve("lucide-react/package.json"));
+
 /** @type {import('next').NextConfig} */
 const externalPackages = ["@prisma/client", "prisma", "exceljs"];
 const isProduction = process.env.NODE_ENV === "production";
@@ -19,6 +25,12 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
+  webpack(config) {
+    // Resolve both SSR and browser icons from this app's installed package.
+    // Workspace packages can depend on different Lucide icon definitions.
+    config.resolve.alias["lucide-react"] = lucidePackageRoot;
+    return config;
+  },
   compiler: {
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
   },

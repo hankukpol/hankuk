@@ -25,6 +25,7 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
+  transpilePackages: ["lucide-react"],
   modularizeImports: {
     "lucide-react": {
       transform: "lucide-react/dist/esm/icons/{{kebabCase member}}",
@@ -34,6 +35,13 @@ const nextConfig = {
     // Resolve both SSR and browser icons from this app's installed package.
     // Workspace packages can depend on different Lucide icon definitions.
     config.resolve.alias["lucide-react"] = lucidePackageRoot;
+    config.plugins.push({ apply(compiler) {
+      compiler.hooks.compilation.tap("IconResolutionDiagnostic", (compilation) => {
+        compilation.hooks.succeedModule.tap("IconResolutionDiagnostic", (module) => {
+          if (module.resource?.includes("/icons/log-in.js")) console.log("Icon resolution", compiler.name, lucidePackageRoot, module.resource);
+        });
+      });
+    } });
     return config;
   },
   compiler: {

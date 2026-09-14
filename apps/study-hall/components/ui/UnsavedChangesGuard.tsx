@@ -1,129 +1,118 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { CHECK_NAVIGATION_EVENT, CHECK_SAFETY_CHANGED, registerCheckGuard, type CheckNavigationDetail } from "@/lib/check-navigation";
 
-type UnsavedChangesGuardProps = {
-  isDirty: boolean;
-  message?: string;
-};
-
-/**
- * 저장하지 않은 변경사항이 있을 때 페이지 이탈을 방지하는 가드 컴포넌트.
- *
- * - 브라우저 닫기/새로고침: `beforeunload` 네이티브 경고
- * - 앱 내부 링크 클릭: 커스텀 확인 모달
- */
-export function UnsavedChangesGuard({
-  isDirty,
-  message = "저장하지 않은 변경사항이 있습니다. 페이지를 떠나시겠습니까?",
-}: UnsavedChangesGuardProps) {
+export function UnsavedChangesGuard({ isDirty, isSaving = false, onDiscard, message = "저장하지 않은 변경사항이 있습니다. 머무르기를 눌러 저장한 뒤 이동해 주세요." }: {
+  isDirty: boolean; isSaving?: boolean; onDiscard?: () => void; message?: string;
+}) {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
-  const pendingHrefRef = useRef<string | null>(null);
-  const bypassRef = useRef(false);
+  const state = useRef({ isDirty, isSaving, onDiscard });
+  state.current = { isDirty, isSaving, onDiscard };
+  const pending = useRef<(() => void) | null>(null);
+  const bypass = useRef(false);
+  const historyGuard = useRef(false);
+  const restoringHistory = useRef(false);
+  const afterHistory = useRef<(() => void) | null>(null);
 
-  // 브라우저 닫기 / 새로고침 / 외부 URL 이동 방지
+  useEffect(() => registerCheckGuard(() => !bypass.current && (state.current.isDirty || state.current.isSaving)), []);
+  useEffect(() => { window.dispatchEvent(new Event(CHECK_SAFETY_CHANGED)); }, [isDirty, isSaving]);
+
   useEffect(() => {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (isDirty && !bypassRef.current) {
-        e.preventDefault();
-      }
-    }
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isDirty]);
-
-  // 앱 내부 링크 클릭 가로채기 (capture phase로 Next.js Link보다 먼저 실행)
-  useEffect(() => {
-    if (!isDirty) return;
-
-    function handleClick(e: MouseEvent) {
-      if (bypassRef.current) return;
-
-      const anchor = (e.target as HTMLElement).closest("a");
-      if (!anchor) return;
-
+    const blocked = () => !bypass.current && (state.current.isDirty || state.current.isSaving);
+    const ask = (action: () => void) => { pending.current = action; setShowModal(true); };
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (blocked()) { event.preventDefault(); event.returnValue = ""; }
+    };
+    const requested = (event: Event) => {
+      if (!blocked()) return;
+      event.preventDefault();
+      ask((event as CustomEvent<CheckNavigationDetail>).detail.action);
+    };
+    const click = (event: MouseEvent) => {
+      if (!blocked() || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest("a") : null;
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
       const href = anchor.getAttribute("href");
-      if (!href) return;
-
-      // 외부 링크, 해시, 새 탭, 특수 프로토콜은 무시 (beforeunload가 처리)
-      if (
-        anchor.target === "_blank" ||
-        href.startsWith("#") ||
-        href.startsWith("javascript:") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:") ||
-        href.startsWith("http")
-      ) {
+      if (!href || href.startsWith("#")) return;
+      const url = new URL(href, window.location.href);
+      if (!["http:", "https:"].includes(url.protocol)) return;
+      event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+      ask(() => {
+        if (url.origin === window.location.origin) router.push(`${url.pathname}${url.search}${url.hash}`);
+        else window.location.assign(url.href);
+      });
+    };
+    // Preserve Next's history metadata; restore the source before asking.
+    const pop = (event: PopStateEvent) => {
+      if (restoringHistory.current) {
+        event.stopImmediatePropagation();
+        restoringHistory.current = false;
+        const action = afterHistory.current;
+        afterHistory.current = null;
+        action?.();
         return;
       }
-
-      e.preventDefault();
-      e.stopPropagation();
-      pendingHrefRef.current = href;
-      setShowModal(true);
-    }
-
-    document.addEventListener("click", handleClick, true);
-    return () => document.removeEventListener("click", handleClick, true);
-  }, [isDirty]);
-
-  // 브라우저 뒤로가기/앞으로가기 방지
-  useEffect(() => {
-    if (!isDirty) return;
-
-    function handlePopState() {
-      if (bypassRef.current) return;
-
-      // popstate 시점에 이미 URL이 바뀌었으므로 원래 URL로 복원
-      window.history.pushState(null, "", window.location.href);
-      pendingHrefRef.current = null;
-      setShowModal(true);
-    }
-
-    // 현재 위치에 가드 히스토리 추가
-    window.history.pushState(null, "", window.location.href);
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [isDirty]);
-
-  const handleConfirm = useCallback(() => {
-    setShowModal(false);
-    bypassRef.current = true;
-
-    const href = pendingHrefRef.current;
-    pendingHrefRef.current = null;
-
-    if (href) {
-      router.push(href);
-    } else {
-      // 뒤로가기 버튼으로 촉발된 경우
-      window.history.go(-1);
-    }
-
-    setTimeout(() => {
-      bypassRef.current = false;
-    }, 300);
+      if (!historyGuard.current || !blocked()) return;
+      event.stopImmediatePropagation();
+      restoringHistory.current = true;
+      window.history.go(1);
+      ask(() => { window.history.back(); });
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener(CHECK_NAVIGATION_EVENT, requested);
+    window.addEventListener("popstate", pop, true);
+    document.addEventListener("click", click, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener(CHECK_NAVIGATION_EVENT, requested);
+      window.removeEventListener("popstate", pop, true);
+      document.removeEventListener("click", click, true);
+    };
   }, [router]);
 
-  const handleCancel = useCallback(() => {
-    setShowModal(false);
-    pendingHrefRef.current = null;
-  }, []);
+  useEffect(() => {
+    if ((isDirty || isSaving) && !historyGuard.current) {
+      // A reload may retain the same sentinel. Reuse it during draft recovery.
+      if (!window.history.state?.studyHallCheckGuard) {
+        window.history.pushState({ ...window.history.state, studyHallCheckGuard: true }, "", window.location.href);
+      }
+      historyGuard.current = true;
+    } else if (!isDirty && !isSaving && historyGuard.current && !bypass.current) {
+      historyGuard.current = false;
+      if (window.history.state?.studyHallCheckGuard) {
+        restoringHistory.current = true;
+        window.history.back();
+      }
+      setShowModal(false);
+    }
+  }, [isDirty, isSaving]);
 
-  return (
-    <ConfirmDialog
-      open={showModal}
-      title="저장하지 않은 변경사항"
-      description={message}
-      confirmLabel="저장하지 않고 떠나기"
-      cancelLabel="머무르기"
-      variant="warning"
-      onConfirm={handleConfirm}
-      onCancel={handleCancel}
-    />
-  );
+  return <ConfirmDialog open={showModal}
+    title={isSaving ? "저장 중입니다" : "저장하지 않은 변경사항"}
+    description={isSaving ? "저장 결과를 확인한 뒤 이동할 수 있습니다. 잠시 기다려 주세요." : message}
+    confirmLabel="저장하지 않고 떠나기" cancelLabel="머무르기" variant="warning" isLoading={isSaving}
+    onCancel={() => { setShowModal(false); pending.current = null; }}
+    onConfirm={() => {
+      if (state.current.isSaving || restoringHistory.current) return;
+      const action = pending.current;
+      pending.current = null;
+      bypass.current = true;
+      const leave = () => {
+        state.current.onDiscard?.();
+        setShowModal(false);
+        action?.();
+        queueMicrotask(() => { bypass.current = false; });
+      };
+      // Remove our duplicate source entry before changing date, route or account.
+      if (historyGuard.current && window.history.state?.studyHallCheckGuard) {
+        historyGuard.current = false;
+        restoringHistory.current = true;
+        afterHistory.current = leave;
+        window.history.back();
+      } else leave();
+    }} />;
 }

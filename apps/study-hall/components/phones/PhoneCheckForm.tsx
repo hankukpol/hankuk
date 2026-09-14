@@ -26,7 +26,9 @@ import type {
   PhoneDaySnapshot,
 } from "@/lib/services/phone-submission.service";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
-import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
+import { CheckDraftSafety } from "@/components/ui/CheckDraftSafety";
+import { fetchCheck, hasPendingCheckChanges, requestCheckNavigation } from "@/lib/check-navigation";
+import type { CheckCells } from "@/lib/check-draft";
 
 const PhoneCheckSeatMap = dynamic(
   () => import("@/components/phones/PhoneCheckSeatMap").then((mod) => mod.PhoneCheckSeatMap),
@@ -234,6 +236,11 @@ function getBulkRentalAppliedCellKeys(
   return keys;
 }
 
+function phoneDraftCells(state: AllPeriodsState): CheckCells {
+  return Object.fromEntries(Object.entries(state).flatMap(([periodId, students]) =>
+    Object.entries(students).map(([studentId, cell]) => [JSON.stringify([periodId, studentId]), { status: cell.status, note: cell.rentalNote }])));
+}
+
 type PhoneCheckFormProps = {
   divisionSlug: string;
   initialDate: string;
@@ -260,9 +267,8 @@ export function PhoneCheckForm({
 }: PhoneCheckFormProps) {
   const [date, setDate] = useState(initialDate);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
-  const [periodsState, setPeriodsState] = useState<AllPeriodsState>(() =>
-    buildInitialState(initialSnapshot),
-  );
+  const savedPeriodsState = useMemo(() => buildInitialState(snapshot), [snapshot]);
+  const [periodsState, setPeriodsState] = useState<AllPeriodsState>(savedPeriodsState);
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [activePeriodId, setActivePeriodId] = useState<string>(
     () => resolveActivePeriodId(initialSnapshot, initialDate, initialActivePeriodId),
@@ -275,6 +281,7 @@ export function PhoneCheckForm({
   useEffect(() => {
     if (periodPickedByHand) return;
     const sync = () => {
+      if (hasPendingCheckChanges()) return;
       const next = resolveActivePeriodId(snapshot, date, undefined);
       if (next) setActivePeriodId((current) => (current === next ? current : next));
     };
@@ -302,7 +309,10 @@ export function PhoneCheckForm({
   const saveSequenceRef = useRef<Record<string, number>>({});
   const snapshotRequestRef = useRef<AbortController | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const isDirty = dirtyCellKeys.size > 0;
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSavesRef = useRef(0);
+  const busy = pendingSaves > 0 || isSavingBulkRental || isLoading;
 
   useEffect(() => () => snapshotRequestRef.current?.abort(), [divisionSlug]);
 
@@ -384,7 +394,7 @@ export function PhoneCheckForm({
     try {
       const res = await fetch(
         `/api/${divisionSlug}/phone-submissions?mode=snapshot&date=${newDate}`,
-        { signal: controller.signal },
+        { signal: controller.signal, cache: "no-store" },
       );
       if (controller.signal.aborted) return;
       if (!res.ok) {
@@ -393,6 +403,7 @@ export function PhoneCheckForm({
       }
       const { snapshot: newSnapshot } = (await res.json()) as { snapshot: PhoneDaySnapshot };
       if (controller.signal.aborted) return;
+      setDate(newDate);
       setSnapshot(newSnapshot);
       setPeriodsState(buildInitialState(newSnapshot));
       dirtyCellKeysRef.current = new Set();
@@ -415,8 +426,7 @@ export function PhoneCheckForm({
       return;
     }
 
-    setDate(newDate);
-    void loadSnapshot(newDate);
+    requestCheckNavigation(() => { void loadSnapshot(newDate); });
   }
 
   async function savePhoneRecords(
@@ -448,8 +458,11 @@ export function PhoneCheckForm({
       setSavingPeriodId(periodId);
     }
 
+    pendingSavesRef.current += 1;
+    setPendingSaves((count) => count + 1);
+    const task = saveQueue.current.then(async () => {
     try {
-      const res = await fetch(`/api/${divisionSlug}/phone-submissions`, {
+      const res = await fetchCheck(`/api/${divisionSlug}/phone-submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date, periodId, records }),
@@ -460,58 +473,33 @@ export function PhoneCheckForm({
         throw new Error(data.error ?? "저장에 실패했습니다.");
       }
 
-      const isStale = sequences.some(
-        ([key, sequence]) => saveSequenceRef.current[key] !== sequence,
-      );
       const { snapshot: newSnapshot } = (await res.json()) as { snapshot: PhoneDaySnapshot };
+      const isStale = sequences.some(([key, sequence]) => saveSequenceRef.current[key] !== sequence);
+      const acknowledgedKeys = sequences.filter(([key, sequence]) => saveSequenceRef.current[key] === sequence).map(([key]) => key);
 
-      if (!isStale) {
-        const savedKeySet = new Set(dirtyKeysToClear);
+      {
+        // Even an older intent updates the known server baseline. Keep newer
+        // input dirty so a failed follow-up cannot incorrectly appear saved.
+        const savedKeySet = new Set(acknowledgedKeys);
         setSnapshot(newSnapshot);
         setPeriodsState((prev) => {
-          const updated = { ...prev };
-          const savedPeriod = newSnapshot.periods.find((p) => p.periodId === periodId);
-          if (savedPeriod) {
-            const recordByStudentId = new Map(
-              savedPeriod.records.map((record) => [record.studentId, record]),
-            );
-            const attendanceByStudentId = new Map(
-              savedPeriod.attendance.map((cell) => [cell.studentId, cell]),
-            );
-            const newPeriodState: LocalPeriodState = {};
-            for (const student of newSnapshot.students) {
-              const key = getPhoneCellKey(periodId, student.id);
-              if (dirtyCellKeysRef.current.has(key) && !savedKeySet.has(key)) {
-                newPeriodState[student.id] = prev[periodId]?.[student.id] ?? {
-                  status: null,
-                  rentalNote: "",
-                };
-                continue;
+          const updated = buildInitialState(newSnapshot);
+          for (const [nextPeriodId, cells] of Object.entries(updated)) {
+            for (const studentId of Object.keys(cells)) {
+              const key = getPhoneCellKey(nextPeriodId, studentId);
+              if (dirtyCellKeysRef.current.has(key) && !savedKeySet.has(key) && prev[nextPeriodId]?.[studentId]) {
+                cells[studentId] = prev[nextPeriodId][studentId];
               }
-
-              const record = recordByStudentId.get(student.id);
-              const attendanceCell = attendanceByStudentId.get(student.id);
-              const isCheckable =
-                !newSnapshot.attendanceIntegrationEnabled || Boolean(attendanceCell?.checkable);
-              newPeriodState[student.id] = {
-                status: isCheckable && record ? record.status : null,
-                rentalNote: isCheckable ? record?.rentalNote ?? "" : "",
-              };
             }
-            updated[periodId] = newPeriodState;
           }
           return updated;
         });
-        clearDirtyKeys(dirtyKeysToClear);
+        clearDirtyKeys(acknowledgedKeys);
       }
 
       setCellSaveStates((current) => {
         const next = { ...current };
-        for (const key of dirtyKeysToClear) {
-          if (!isStale) {
-            next[key] = { status: "saved" };
-          }
-        }
+        for (const key of acknowledgedKeys) next[key] = { status: "saved" };
         return next;
       });
 
@@ -547,9 +535,16 @@ export function PhoneCheckForm({
         setSavingPeriodId(null);
       }
     }
+    });
+    saveQueue.current = task.catch(() => undefined);
+    try { await task; } finally {
+      pendingSavesRef.current -= 1;
+      setPendingSaves((count) => count - 1);
+    }
   }
 
   function setStudentStatus(periodId: string, studentId: string, status: LocalStatus) {
+    if (isLoading || isSavingBulkRental) return;
     if (!isStudentCheckableForPeriod(periodId, studentId)) {
       return;
     }
@@ -572,7 +567,7 @@ export function PhoneCheckForm({
       },
     }));
 
-    clearDirtyKeys([key]);
+    markDirty(periodId, studentId);
     void savePhoneRecords(
       periodId,
       [{ studentId, status: nextEntry.status, rentalNote: nextEntry.rentalNote || undefined }],
@@ -581,6 +576,10 @@ export function PhoneCheckForm({
   }
 
   function setRentalNote(periodId: string, studentId: string, note: string) {
+    if (isLoading || isSavingBulkRental) return;
+    const editKey = getPhoneCellKey(periodId, studentId);
+    saveSequenceRef.current[editKey] = (saveSequenceRef.current[editKey] ?? 0) + 1;
+    setCellSaveStates((current) => { const next = { ...current }; delete next[editKey]; return next; });
     if (!isStudentCheckableForPeriod(periodId, studentId)) {
       return;
     }
@@ -596,6 +595,7 @@ export function PhoneCheckForm({
   }
 
   function commitRentalNote(periodId: string, studentId: string) {
+    if (isLoading || isSavingBulkRental) return;
     const key = getPhoneCellKey(periodId, studentId);
     if (!dirtyCellKeysRef.current.has(key)) {
       return;
@@ -614,6 +614,7 @@ export function PhoneCheckForm({
     status: PhoneCheckStatus,
     targetStudents: PhoneDaySnapshot["students"] = students,
   ) {
+    if (isLoading || isSavingBulkRental) return;
     const targets = targetStudents
       .filter((student) => isStudentCheckableForPeriod(periodId, student.id))
       .map((student) => {
@@ -649,7 +650,7 @@ export function PhoneCheckForm({
 
     const records = targets.map((target) => target.record);
     const keys = targets.map((target) => target.key);
-    clearDirtyKeys(keys);
+    targets.forEach((target) => markDirty(periodId, target.student.id));
     void savePhoneRecords(periodId, records, keys, {
       successToast: status === "SUBMITTED" ? "전원 반납 저장됨" : "전원 미반납 저장됨",
       periodSaving: true,
@@ -657,12 +658,11 @@ export function PhoneCheckForm({
   }
 
   async function savePeriod(periodId: string) {
+    if (pendingSavesRef.current || isLoading || isSavingBulkRental) return;
     const periodStateMap = periodsState[periodId] ?? {};
     const records = students
       .filter(
-        (student) =>
-          isStudentCheckableForPeriod(periodId, student.id) ||
-          (periodStateMap[student.id]?.status ?? null) !== null,
+        (student) => dirtyCellKeysRef.current.has(getPhoneCellKey(periodId, student.id)),
       )
       .map((student) => {
         const value = periodStateMap[student.id] ?? { status: null, rentalNote: "" };
@@ -859,14 +859,14 @@ export function PhoneCheckForm({
       (state) => state.status === "saving",
     );
 
-    if (isCellSaving) {
-      toast.error("개별 저장이 끝난 뒤 일괄 대여를 실행해주세요.");
+    if (isCellSaving || pendingSavesRef.current || dirtyCellKeysRef.current.size > 0) {
+      toast.error("미저장 변경사항을 저장한 뒤 일괄 대여를 실행해주세요.");
       return;
     }
 
     setIsSavingBulkRental(true);
     try {
-      const res = await fetch(`/api/${divisionSlug}/phone-submissions/bulk-rental`, {
+      const res = await fetchCheck(`/api/${divisionSlug}/phone-submissions/bulk-rental`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -932,6 +932,8 @@ export function PhoneCheckForm({
       } else {
         toast.success(resultMessage);
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "일괄 대여 저장에 실패했습니다. 입력은 유지됩니다.");
     } finally {
       setIsSavingBulkRental(false);
     }
@@ -1043,7 +1045,21 @@ export function PhoneCheckForm({
 
   return (
     <div className="admin-check-workspace space-y-4">
-      <UnsavedChangesGuard isDirty={isDirty} />
+      <CheckDraftSafety key={date} scope={`phones:${divisionSlug}:${date}`} values={phoneDraftCells(periodsState)}
+        baseline={phoneDraftCells(savedPeriodsState)} busy={busy}
+        onDiscard={() => { setPeriodsState(savedPeriodsState); dirtyCellKeysRef.current = new Set(); setDirtyCellKeys(new Set()); setCellSaveStates({}); }}
+        onRestore={(patch) => {
+          setPeriodsState((current) => {
+            const next = { ...current };
+            for (const [key, cell] of Object.entries(patch)) {
+              const [periodId, studentId] = JSON.parse(key) as [string, string];
+              if (!current[periodId]?.[studentId]) continue;
+              next[periodId] = { ...next[periodId], [studentId]: { status: cell.status as LocalStatus, rentalNote: cell.note } };
+            }
+            return next;
+          });
+          Object.keys(patch).forEach((key) => { const [periodId, studentId] = JSON.parse(key) as [string, string]; markDirty(periodId, studentId); });
+        }} />
       {/* 좁은 화면에서 조회 조건을 여는 버튼. 768px 이상은 아래 블록이 늘 펼쳐져 있다. */}
       <button
         type="button"
@@ -1090,7 +1106,7 @@ export function PhoneCheckForm({
           />
           <button
             type="button"
-            onClick={() => loadSnapshot(date)}
+            onClick={() => requestCheckNavigation(() => { void loadSnapshot(date); })}
             disabled={isLoading}
             className="admin-button"
           >
@@ -1166,7 +1182,7 @@ export function PhoneCheckForm({
               label: period.periodName,
             }))}
             activeId={activePeriodId}
-            onChange={(id: string) => { setPeriodPickedByHand(true); setActivePeriodId(id); }}
+            onChange={(id: string) => { if (id !== activePeriodId) requestCheckNavigation(() => { setPeriodPickedByHand(true); setActivePeriodId(id); }); }}
             label="휴대폰 확인 교시"
             idPrefix="phone-period"
             variant="secondary"
@@ -1245,7 +1261,7 @@ export function PhoneCheckForm({
                 <button
                   type="button"
                   onClick={() => savePeriod(activePeriodId)}
-                  disabled={savingPeriodId === activePeriodId || isLoading}
+                  disabled={busy}
                   className="admin-button admin-button-primary max-md:hidden"
                 >
                   <Save className="h-4 w-4" />
@@ -1436,7 +1452,7 @@ export function PhoneCheckForm({
       {activePeriod && (
         <div className="admin-check-savebar md:hidden">
           <span className="admin-help">{activePeriod.periodName} · 미체크 {activePeriodStats.uncheckedCount}명</span>
-          <button type="button" onClick={() => savePeriod(activePeriodId)} disabled={savingPeriodId === activePeriodId || isLoading} className="admin-button admin-button-primary">
+          <button type="button" onClick={() => savePeriod(activePeriodId)} disabled={busy} className="admin-button admin-button-primary">
             <Save className="h-4 w-4" />
             {savingPeriodId === activePeriodId ? "저장 중..." : "저장"}
           </button>

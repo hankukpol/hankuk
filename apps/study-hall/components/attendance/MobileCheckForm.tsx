@@ -33,6 +33,9 @@ import {
   type AttendanceOptionValue,
 } from "@/lib/attendance-meta";
 import { ActionCompleteModal } from "@/components/ui/ActionCompleteModal";
+import { CheckDraftSafety } from "@/components/ui/CheckDraftSafety";
+import { fetchCheck, hasPendingCheckChanges, requestCheckNavigation } from "@/lib/check-navigation";
+import { reconcileCheckCells, type CheckCells } from "@/lib/check-draft";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 
 type PeriodItem = {
@@ -89,6 +92,13 @@ type SwipeContext = {
   startY: number;
   width: number;
 };
+
+function toDraftCells(state: FormState): CheckCells {
+  return Object.fromEntries(Object.entries(state).map(([id, value]) => [id, { status: value.status, note: value.reason }]));
+}
+function fromDraftCells(cells: CheckCells): FormState {
+  return Object.fromEntries(Object.entries(cells).map(([id, value]) => [id, { status: (value.status ?? "") as AttendanceOptionValue, reason: value.note }]));
+}
 
 const QUICK_STATUS_BUTTONS: Array<{
   label: string;
@@ -167,6 +177,7 @@ export function MobileCheckForm({
   useEffect(() => {
     if (pickedByHand || selectedDate !== initialDate) return;
     const sync = () => {
+      if (hasPendingCheckChanges()) return;
       const next = selectPeriodForCheck(periods, kstMinutesOfDay());
       if (next) setSelectedPeriodId((current) => (current === next.id ? current : next.id));
     };
@@ -185,6 +196,11 @@ export function MobileCheckForm({
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const formRef = useRef(formState);
+  formRef.current = formState;
+  const loadedContext = useRef({ date: initialDate, periodId: initialPeriodId ?? initialPeriods[0]?.id ?? "" });
+  const contextReady = loadedContext.current.date === selectedDate && loadedContext.current.periodId === selectedPeriodId;
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
     description: string;
@@ -280,12 +296,7 @@ export function MobileCheckForm({
       return;
     }
 
-    if (selectedDate === initialDate && selectedPeriodId === (initialPeriodId ?? initialPeriods[0]?.id ?? "")) {
-      setStudents(initialStudents);
-      setFormState(initialFormState);
-      setSavedFormState(initialFormState);
-      setShowOnlyUnchecked(false);
-      setSwipeIntents({});
+    if (selectedDate === loadedContext.current.date && selectedPeriodId === loadedContext.current.periodId) {
       setIsLoading(false);
       return;
     }
@@ -296,7 +307,7 @@ export function MobileCheckForm({
       setIsLoading(true);
 
       try {
-        const response = await fetch(
+        const response = await fetchCheck(
           `/api/${divisionSlug}/attendance?date=${selectedDate}&periodId=${selectedPeriodId}`,
           { cache: "no-store" },
         );
@@ -315,11 +326,14 @@ export function MobileCheckForm({
         setStudents(data.students);
         setFormState(nextState);
         setSavedFormState(nextState);
+        loadedContext.current = { date: selectedDate, periodId: selectedPeriodId };
         setShowOnlyUnchecked(false);
         setSwipeIntents({});
       } catch (error) {
         if (isMounted) {
           toast.error(error instanceof Error ? error.message : "출석 데이터를 불러오지 못했습니다.");
+          setSelectedDate(loadedContext.current.date);
+          setSelectedPeriodId(loadedContext.current.periodId);
         }
       } finally {
         if (isMounted) {
@@ -345,6 +359,7 @@ export function MobileCheckForm({
   ]);
 
   function updateStudentState(studentId: string, value: Partial<{ status: AttendanceOptionValue; reason: string }>) {
+    if (isLoading || !contextReady) return;
     setFormState((current) => ({
       ...current,
       [studentId]: {
@@ -367,6 +382,7 @@ export function MobileCheckForm({
    * 미처리 학생만 출석으로 채운다. 기존 기록을 바꾸려면 학생별로 직접 선택한다.
    */
   function markUncheckedPresent() {
+    if (isLoading || !contextReady) return;
     const targets = visibleStudents.filter((student) => !formState[student.id]?.status);
 
     if (targets.length === 0) {
@@ -408,8 +424,11 @@ export function MobileCheckForm({
       }
 
       if (data.period?.id) {
-        setSelectedPeriodId(data.period.id);
-        toast.success(`현재 교시를 ${data.period.name}로 맞췄습니다.`);
+        if (data.period.id !== selectedPeriodId) requestCheckNavigation(() => {
+          setIsLoading(true);
+          setSelectedPeriodId(data.period.id);
+          toast.success(`현재 교시를 ${data.period.name}로 맞췄습니다.`);
+        });
       } else {
         toast.message("현재 시간에는 해당하는 활성 교시가 없습니다.");
       }
@@ -419,9 +438,10 @@ export function MobileCheckForm({
   }
 
   async function handleSave() {
+    if (savingRef.current || isLoading || !contextReady) return false;
     if (!selectedPeriodId) {
       toast.error("교시를 선택해 주세요.");
-      return;
+      return false;
     }
 
     const changedStudents = students.filter((student) =>
@@ -430,13 +450,15 @@ export function MobileCheckForm({
 
     if (changedStudents.length === 0) {
       toast.error("변경한 출결 데이터가 없습니다.");
-      return;
+      return false;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
+    const submitted = formState;
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/attendance`, {
+      const response = await fetchCheck(`/api/${divisionSlug}/attendance`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -458,18 +480,23 @@ export function MobileCheckForm({
       }
 
       const nextState = buildInitialState(data.students, data.records);
-      setFormState(nextState);
+      setFormState((current) => fromDraftCells(reconcileCheckCells(toDraftCells(current), toDraftCells(submitted), toDraftCells(nextState))));
       setSavedFormState(nextState);
       setSwipeIntents({});
-      toast.success("출석 기록을 저장했습니다.");
+      const hasLaterEdits = Object.keys(submitted).some((id) => hasStudentStateChanged(formRef.current[id], submitted[id]));
+      toast.success(hasLaterEdits ? "저장 요청한 출결을 반영했습니다. 그동안 추가한 변경은 한 번 더 저장해 주세요." : "출석 기록을 저장했습니다.");
+      if (hasLaterEdits) return false;
       setSaveSuccessModal({
         title: "출석 저장 완료",
         description: `${selectedDate} ${selectedPeriod?.name ?? "선택한 교시"} 출결이 저장되었습니다.`,
         notice: "저장한 출결과 사유 메모는 선택한 날짜와 교시에 바로 반영됩니다.",
       });
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "출석 저장에 실패했습니다.");
+      return false;
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   }
@@ -532,6 +559,10 @@ export function MobileCheckForm({
 
   return (
     <div className="admin-check-workspace space-y-3">
+      {contextReady && !isLoading && <CheckDraftSafety key={`${selectedDate}:${selectedPeriodId}`} scope={`attendance:${divisionSlug}:${selectedDate}:${selectedPeriodId}`}
+        values={toDraftCells(formState)} baseline={toDraftCells(savedFormState)} busy={isSaving}
+        onRestore={(patch) => setFormState((current) => ({ ...current, ...fromDraftCells(patch) }))}
+        onDiscard={() => setFormState(savedFormState)} />}
       {/* DESIGN.md 5.4 — 보기 전체가 바뀌므로 1차 폴더 탭. 휴대폰 체크 화면과 같은 자리다. */}
       {hasSeatLayout ? (
         <AdminTabs
@@ -549,7 +580,7 @@ export function MobileCheckForm({
         <AdminTabs
           items={periods.map((period) => ({ id: period.id, label: period.name }))}
           activeId={selectedPeriodId}
-          onChange={(id: string) => { setPickedByHand(true); setSelectedPeriodId(id); }}
+          onChange={(id: string) => { if (id !== selectedPeriodId) requestCheckNavigation(() => { setPickedByHand(true); setIsLoading(true); setSelectedPeriodId(id); }); }}
           label="출석 확인 교시"
           idPrefix="attendance-period"
           variant="secondary"
@@ -640,7 +671,7 @@ export function MobileCheckForm({
                     <input
                       type="date"
                       value={selectedDate}
-                      onChange={(event) => setSelectedDate(event.target.value)}
+                      onChange={(event) => { const value = event.target.value; if (value && value !== selectedDate) requestCheckNavigation(() => { setIsLoading(true); setSelectedDate(value); }); }}
                       className="w-full"
                     />
                   </label>
@@ -652,7 +683,7 @@ export function MobileCheckForm({
                     </span>
                     <select
                       value={selectedPeriodId}
-                      onChange={(event) => { setPickedByHand(true); setSelectedPeriodId(event.target.value); }}
+                      onChange={(event) => { const value = event.target.value; if (value !== selectedPeriodId) requestCheckNavigation(() => { setPickedByHand(true); setIsLoading(true); setSelectedPeriodId(value); }); }}
                       className="w-full"
                     >
                       {periods.map((period) => (
@@ -918,7 +949,7 @@ export function MobileCheckForm({
             onUpdateCell={(studentId, _periodId, value) => updateStudentState(studentId, value)}
             // 이 화면은 교시 하나를 통째로 저장한다. 좌석에서 한 명을 저장해도
             // 같은 저장 경로를 태워, 표에서 고친 다른 학생이 뒤에 남지 않는다.
-            onSaveStudent={async () => { await handleSave(); }}
+            onSaveStudent={async () => { if (!await handleSave()) throw new Error("출결 저장을 완료하지 못했습니다."); }}
           />
         ) : null}
       </section>

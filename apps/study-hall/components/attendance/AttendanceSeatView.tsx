@@ -175,6 +175,8 @@ export function AttendanceSeatView({
     try {
       await onSaveStudent(modalStudentId);
       setModalStudentId(null);
+    } catch {
+      // The parent reports the error. Keep the student's editor open for retry.
     } finally {
       setIsSaving(false);
     }

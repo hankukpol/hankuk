@@ -15,6 +15,7 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   variant?: "danger" | "warning" | "default";
   isLoading?: boolean;
+  dismissible?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -37,11 +38,12 @@ export function ConfirmDialog({
   cancelLabel = "취소",
   variant = "default",
   isLoading = false,
+  dismissible = true,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const shouldReduceMotion = useReducedMotion();
-  const close = () => { if (!isLoading) onCancel(); };
+  const close = () => { if (!isLoading && dismissible) onCancel(); };
   const panelRef = useDialogFocus<HTMLDivElement>(open, close);
   const titleId = useId();
 
@@ -81,7 +83,7 @@ export function ConfirmDialog({
               <h2 id={titleId} className="admin-dialog-title break-keep">
                 {title}
               </h2>
-              <button
+              {dismissible && <button
                 type="button"
                 onClick={close}
                 disabled={isLoading}
@@ -90,7 +92,7 @@ export function ConfirmDialog({
                 title="닫기"
               >
                 <X />
-              </button>
+              </button>}
             </div>
 
             {description ? (

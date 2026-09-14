@@ -8,6 +8,8 @@ import { AdminSidebar, getShellMenuLabel, getShellScreenLabel, type ShellRole } 
 import { AppSwitchMenu } from "@/components/layout/AppSwitchMenu";
 import { StaffChatDock } from "@/components/chat/StaffChatDock";
 import type { DivisionFeatureFlags } from "@/lib/division-features";
+import { CheckDraftOwner } from "@/components/ui/CheckDraftSafety";
+import { requestCheckNavigation } from "@/lib/check-navigation";
 
 type AdminShellProps = {
   children: ReactNode;
@@ -60,16 +62,16 @@ export function AdminShell({
   }, [isMenuOpen]);
 
   const handleLogout = () => {
-    void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+    requestCheckNavigation(() => { void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
       startTransition(() => {
         router.push("/login");
         router.refresh();
       });
-    });
+    }); });
   };
 
   return (
-    <div className="admin-shell" data-division={divisionSlug}>
+    <CheckDraftOwner owner={viewerId}><div className="admin-shell" data-division={divisionSlug}>
       {/* 데스크톱 좌측 메뉴 */}
       <div className="admin-sidebar-rail hidden lg:block">
         <AdminSidebar
@@ -173,6 +175,6 @@ export function AdminShell({
           </div>
         </main>
       </div>
-    </div>
+    </div></CheckDraftOwner>
   );
 }

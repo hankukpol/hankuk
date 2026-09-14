@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState, type ReactNode } from "react";
 import { AdminTabs, AdminTabPanel } from "@/components/ui/AdminTabs";
+import { requestCheckNavigation } from "@/lib/check-navigation";
 
 const PhoneSubmissionManager = dynamic(
   () => import("@/components/phones/PhoneSubmissionManager").then((module) => module.PhoneSubmissionManager),
@@ -23,7 +24,7 @@ export function PhoneWorkspaceTabs({ check, approval, divisionSlug, pointsEnable
       <AdminTabs
         items={[{ id: "check", label: "교시별 체크" }, { id: "history", label: "이력 조회" }, ...(approval ? [{ id: "approval" as const, label: "예외 사전승인" }] : [])]}
         activeId={activeTab}
-        onChange={(next) => { setActiveTab(next); if (next === "history") setHistoryOpened(true); }}
+        onChange={(next) => { if (next !== activeTab) requestCheckNavigation(() => { setActiveTab(next); if (next === "history") setHistoryOpened(true); }); }}
         label="휴대폰 업무"
         idPrefix="phone-workspace"
       />

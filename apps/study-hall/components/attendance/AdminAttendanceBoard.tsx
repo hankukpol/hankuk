@@ -4,7 +4,7 @@ import { DialogActions } from "@/components/ui/DialogActions";
 
 import dynamic from "next/dynamic";
 import { LoaderCircle, RefreshCcw, Save, Search, X } from "lucide-react";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { memo, useRef, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import {
@@ -22,7 +22,9 @@ import { AdminTabs } from "@/components/ui/AdminTabs";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
-import { UnsavedChangesGuard } from "@/components/ui/UnsavedChangesGuard";
+import { CheckDraftSafety } from "@/components/ui/CheckDraftSafety";
+import { fetchCheck, requestCheckNavigation } from "@/lib/check-navigation";
+import type { CheckCells } from "@/lib/check-draft";
 
 const seatViewFallback = () => (
   <div className="admin-notice">
@@ -149,20 +151,16 @@ function hasCellChanged(
   return currentCell.status !== previousCell.status || currentCell.reason !== previousCell.reason;
 }
 
-function mergeSavedMatrix(
-  savedMatrix: MatrixState,
-  matrix: MatrixState,
-  targetStudentIds?: string[],
-) {
-  if (!targetStudentIds) {
-    return matrix;
-  }
-
-  const next = { ...savedMatrix };
-  for (const studentId of targetStudentIds) {
-    if (matrix[studentId]) {
-      next[studentId] = matrix[studentId];
-    }
+function toDraftMatrix(matrix: MatrixState): CheckCells {
+  return Object.fromEntries(Object.entries(matrix).flatMap(([studentId, periods]) =>
+    Object.entries(periods).map(([periodId, cell]) => [JSON.stringify([studentId, periodId]), { status: cell.status, note: cell.reason }])));
+}
+function applyDraftMatrix(matrix: MatrixState, patch: CheckCells): MatrixState {
+  const next = { ...matrix };
+  for (const [key, cell] of Object.entries(patch)) {
+    const [studentId, periodId] = JSON.parse(key) as [string, string];
+    if (!matrix[studentId]?.[periodId]) continue;
+    next[studentId] = { ...next[studentId], [periodId]: { status: (cell.status ?? "") as AttendanceOptionValue, reason: cell.note } };
   }
   return next;
 }
@@ -301,6 +299,8 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [students, setStudents] = useState(initialStudents);
   const [periods, setPeriods] = useState(initialPeriods);
   const [matrix, setMatrix] = useState<MatrixState>(() => initialMatrix);
+  const matrixRef = useRef(matrix);
+  matrixRef.current = matrix;
   const [savedMatrix, setSavedMatrix] = useState<MatrixState>(() => initialMatrix);
   const [stats, setStats] = useState(initialStats);
   const [bulkApplyByStudent, setBulkApplyByStudent] = useState<Record<string, BulkApplyDraft>>({});
@@ -317,12 +317,11 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   const [recurringSavingStudentId, setRecurringSavingStudentId] = useState<string | null>(null);
   const hasSeatLayout = Boolean(seatRooms && seatRooms.length > 0 && initialSeatLayout);
   const [viewMode, setViewMode] = useState<"table" | "seat">("table");
-  const [isDirty, setIsDirty] = useState(false);
+  const isDirty = hasMatrixChanges(matrix, savedMatrix, students, periods);
+  const saveLock = useRef(false);
+  const loadedDate = useRef(initialDate);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  const markDirty = useCallback(() => {
-    setIsDirty(true);
-  }, []);
 
   const summaryCards = useMemo(
     () => [
@@ -347,19 +346,9 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   useEffect(() => {
     let isMounted = true;
 
-    if (selectedDate === initialDate) {
-      setStudents(initialStudents);
-      setPeriods(initialPeriods);
-      setMatrix(initialMatrix);
-      setSavedMatrix(initialMatrix);
-      setStats(initialStats);
-      setBulkApplyByStudent({});
-      setBulkApplyStudentId(null);
+    if (selectedDate === loadedDate.current) {
       setIsLoading(false);
-
-      return () => {
-        isMounted = false;
-      };
+      return;
     }
 
     async function loadData() {
@@ -393,13 +382,14 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         setPeriods(attendanceData.periods);
         setMatrix(nextMatrix);
         setSavedMatrix(nextMatrix);
+        loadedDate.current = selectedDate;
         setStats(statsData);
         setBulkApplyByStudent({});
         setBulkApplyStudentId(null);
-        setIsDirty(false);
       } catch (error) {
         if (isMounted) {
           toast.error(error instanceof Error ? error.message : "출석부를 불러오지 못했습니다.");
+          setSelectedDate(loadedDate.current);
         }
       } finally {
         if (isMounted) {
@@ -416,7 +406,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }, [divisionSlug, initialDate, initialMatrix, initialPeriods, initialStats, initialStudents, selectedDate]);
 
   function updateCell(studentId: string, periodId: string, value: Partial<{ status: AttendanceOptionValue; reason: string }>) {
-    markDirty();
+    if (isLoading || recurringSavingStudentId || loadedDate.current !== selectedDate) return;
     setMatrix((current) => ({
       ...current,
       [studentId]: {
@@ -430,9 +420,9 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }
 
   function updateStudentAllPeriods(studentId: string, status: AttendanceOptionValue, reason = "") {
+    if (isLoading || recurringSavingStudentId || loadedDate.current !== selectedDate) return;
     const nextReason = status === "ABSENT" || status === "EXCUSED" ? reason : "";
 
-    markDirty();
     setMatrix((current) => {
       const updated = { ...current, [studentId]: { ...(current[studentId] ?? {}) } };
       for (const period of periods) {
@@ -451,6 +441,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     status: AttendanceOptionValue,
     targetStudents: StudentItem[] = students,
   ) {
+    if (isLoading || recurringSavingStudentId || loadedDate.current !== selectedDate) return;
     const targets = targetStudents.filter(
       (student) => !getCellState(matrix, student.id, periodId).status,
     );
@@ -460,7 +451,6 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       return;
     }
 
-    markDirty();
     setMatrix((current) => {
       const updated = { ...current };
 
@@ -565,6 +555,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }
 
   function applyBulkRangeToStudent(studentId: string) {
+    if (isLoading || recurringSavingStudentId || loadedDate.current !== selectedDate) return;
     const draft = {
       ...createBulkApplyDraft(periods, selectedDate, studentId),
       ...(bulkApplyByStudent[studentId] ?? {}),
@@ -599,7 +590,6 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     const nextReason =
       draft.status === "ABSENT" || draft.status === "EXCUSED" ? draft.reason : "";
 
-    markDirty();
     setMatrix((current) => {
       const updated = {
         ...current,
@@ -652,7 +642,6 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     setStats(statsData);
     setBulkApplyByStudent({});
     setBulkApplyStudentId(null);
-    setIsDirty(false);
   }
 
   function isSelectedDateIncludedInRecurringDraft(draft: BulkApplyDraft) {
@@ -664,6 +653,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
   }
 
   async function applyRecurringRangeToStudent(studentId: string) {
+    if (saveLock.current || recurringSavingStudentId) return;
     const draft = {
       ...createBulkApplyDraft(periods, selectedDate, studentId),
       ...(bulkApplyByStudent[studentId] ?? {}),
@@ -708,7 +698,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
     setRecurringSavingStudentId(studentId);
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/attendance/recurring`, {
+      const response = await fetchCheck(`/api/${divisionSlug}/attendance/recurring`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -750,83 +740,52 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   // Save only edited cells so future-period pre-checks do not require filling every student.
   async function persistChangedPeriodsForStudents(targetStudentIds?: string[]) {
-    const targetStudents = targetStudentIds
-      ? students.filter((student) => targetStudentIds.includes(student.id))
-      : students;
-
-    const periodsWithChanges = periods.filter((period) =>
-      targetStudents.some((student) => {
-        const currentCell = getCellState(matrix, student.id, period.id);
-        const previousCell = getCellState(savedMatrix, student.id, period.id);
-
-        return hasCellChanged(currentCell, previousCell);
-      }),
-    );
-
-    if (periodsWithChanges.length === 0) {
-      throw new Error("변경한 출결 데이터가 없습니다.");
-    }
-
-    await Promise.all(
-      periodsWithChanges.map(async (period) => {
-        const changedRecords = targetStudents.flatMap((student) => {
-          const currentCell = getCellState(matrix, student.id, period.id);
-          const previousCell = getCellState(savedMatrix, student.id, period.id);
-
-          if (!hasCellChanged(currentCell, previousCell)) {
-            return [];
-          }
-
-          return [
-            {
-              studentId: student.id,
-              status: currentCell.status,
-              reason: currentCell.reason || null,
-            },
-          ];
+    if (saveLock.current || isLoading || recurringSavingStudentId) throw new Error("진행 중인 작업이 끝난 뒤 저장해 주세요.");
+    const targetStudents = targetStudentIds ? students.filter((student) => targetStudentIds.includes(student.id)) : students;
+    const changes = periods.map((period) => ({ period, records: targetStudents.flatMap((student) => {
+      const cell = getCellState(matrix, student.id, period.id);
+      if (!hasCellChanged(cell, getCellState(savedMatrix, student.id, period.id))) return [];
+      return [{ studentId: student.id, status: cell.status, reason: cell.reason || null }];
+    }) })).filter(({ records }) => records.length);
+    if (!changes.length) throw new Error("변경한 출결 데이터가 없습니다.");
+    saveLock.current = true;
+    setIsSaving(true);
+    try {
+      // Acknowledge each successful period. A later failure leaves only the
+      // unsaved periods dirty, and never acknowledges edits made mid-request.
+      for (const { period, records } of changes) {
+        const response = await fetchCheck(`/api/${divisionSlug}/attendance`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ periodId: period.id, date: selectedDate, records }),
         });
-
-        if (changedRecords.length === 0) {
-          return;
-        }
-
-        const response = await fetch(`/api/${divisionSlug}/attendance`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            periodId: period.id,
-            date: selectedDate,
-            records: changedRecords,
-          }),
-        });
-
         const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ?? `${period.name} 저장에 실패했습니다.`);
-        }
-      }),
-    );
-
-    const statsResponse = await fetch(
-      `/api/${divisionSlug}/attendance/stats?dateFrom=${selectedDate}&dateTo=${selectedDate}`,
-      { cache: "no-store" },
-    );
-    const statsData = await statsResponse.json();
-    if (statsResponse.ok) {
-      setStats(statsData);
+        if (!response.ok) throw new Error(data.error ?? `${period.name} 저장에 실패했습니다.`);
+        setSavedMatrix((previous) => {
+          const next = { ...previous };
+          for (const record of records) next[record.studentId] = {
+            ...next[record.studentId], [period.id]: { status: record.status, reason: record.reason ?? "" },
+          };
+          return next;
+        });
+      }
+      try {
+        const response = await fetchCheck(`/api/${divisionSlug}/attendance/stats?dateFrom=${selectedDate}&dateTo=${selectedDate}`);
+        if (!response.ok) throw new Error();
+        setStats(await response.json());
+      } catch { toast.warning("출결은 저장되었습니다. 통계 갱신에 실패하여 화면을 다시 불러와야 합니다."); }
+      return hasMatrixChanges(matrixRef.current, matrix, students, periods);
+    } finally {
+      saveLock.current = false;
+      setIsSaving(false);
     }
-
-    const nextSavedMatrix = mergeSavedMatrix(savedMatrix, matrix, targetStudentIds);
-    setSavedMatrix(nextSavedMatrix);
-    return nextSavedMatrix;
   }
 
   async function handleSaveAll() {
-    setIsSaving(true);
+    if (saveLock.current) return;
     try {
-      await persistChangedPeriodsForStudents();
-      setIsDirty(false);
-      toast.success("출석부를 저장했습니다.");
+      const editedDuringSave = await persistChangedPeriodsForStudents();
+      toast.success("저장 요청한 출석부를 반영했습니다. 추가 변경이 남아 있으면 다시 저장해 주세요.");
+      if (editedDuringSave) return;
       setSaveSuccessModal({
         title: "출석부 저장 완료",
         description: `${selectedDate} 출석부가 저장되어 통계와 좌석 보드에 반영되었습니다.`,
@@ -834,15 +793,13 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "출석부 저장에 실패했습니다.");
-    } finally {
-      setIsSaving(false);
     }
   }
 
   async function handleSaveStudent(studentId: string) {
     try {
-      const nextSavedMatrix = await persistChangedPeriodsForStudents([studentId]);
-      setIsDirty(hasMatrixChanges(matrix, nextSavedMatrix, students, periods));
+      const editedDuringSave = await persistChangedPeriodsForStudents([studentId]);
+      if (editedDuringSave) throw new Error("저장 요청한 출결을 반영했습니다. 추가한 변경을 다시 저장해 주세요.");
       const targetStudent = students.find((student) => student.id === studentId);
       toast.success("저장되었습니다.");
       setSaveSuccessModal({
@@ -890,7 +847,10 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
   return (
     <div className="admin-flat-page">
-      <UnsavedChangesGuard isDirty={isDirty} />
+      {!isLoading && loadedDate.current === selectedDate && <CheckDraftSafety key={selectedDate} scope={`attendance-matrix:${divisionSlug}:${selectedDate}`}
+        values={toDraftMatrix(matrix)} baseline={toDraftMatrix(savedMatrix)} busy={isSaving || Boolean(recurringSavingStudentId)}
+        onRestore={(patch) => setMatrix((current) => applyDraftMatrix(current, patch))}
+        onDiscard={() => setMatrix(savedMatrix)} />}
       {/* DESIGN.md 5.4 — 보기 전체가 바뀌므로 1차 폴더 탭 */}
       {hasSeatLayout ? (
         <AdminTabs
@@ -908,7 +868,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           <input
             type="date"
             value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
+            onChange={(event) => { const value = event.target.value; if (value && value !== selectedDate) requestCheckNavigation(() => { setIsLoading(true); setSelectedDate(value); }); }}
             aria-label="조회 날짜"
             className="w-auto"
           />
@@ -916,7 +876,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
             <button
               type="button"
               onClick={handleSaveAll}
-              disabled={isSaving || isLoading}
+              disabled={isSaving || isLoading || Boolean(recurringSavingStudentId)}
               className="admin-button admin-button-primary"
             >
               {isSaving ? (

@@ -232,6 +232,12 @@ function isDailyPerfectAttendanceRecord(record: {
   return record.ruleId === null && Boolean(record.notes?.startsWith(DAILY_PERFECT_ATTENDANCE_NOTE_PREFIX));
 }
 
+function periodicPerfectAttendanceKind(notes: string | null) {
+  if (/^\[자동\] 주간 개근 상점 \(\d{4}-\d{2}-\d{2}~\d{4}-\d{2}-\d{2}\)$/.test(notes ?? "")) return "weekly";
+  if (/^\[자동\] 월 개근 상점 \(\d{4}-\d{2}\)$/.test(notes ?? "")) return "monthly";
+  return null;
+}
+
 function getAttendanceDerivedPointDate(notes: string | null) {
   if (!notes) {
     return null;
@@ -246,6 +252,9 @@ function getAttendanceDerivedPointDate(notes: string | null) {
     const match = notes.match(/^\[자동\] 개근 상점 \((\d{4}-\d{2}-\d{2})\)$/);
     return match?.[1] ?? null;
   }
+
+  if (periodicPerfectAttendanceKind(notes) === "weekly") return notes.match(/\((\d{4}-\d{2}-\d{2})~/)![1];
+  if (periodicPerfectAttendanceKind(notes) === "monthly") return `${notes.match(/\((\d{4}-\d{2})\)/)![1]}-01`;
 
   return null;
 }
@@ -310,6 +319,12 @@ function getPointRecordDisplayName(record: {
     return DAILY_PERFECT_ATTENDANCE_LABEL;
   }
 
+  if (record.ruleId === null) {
+    const kind = periodicPerfectAttendanceKind(record.notes);
+    if (kind === "weekly") return "주간 개근 상점";
+    if (kind === "monthly") return "월 개근 상점";
+  }
+
   return record.ruleName;
 }
 
@@ -321,7 +336,7 @@ function getPointRecordDisplayDateTime(
   },
   context: PointDisplayContext,
 ) {
-  if (isDailyPerfectAttendanceRecord(record) && context.perfectAttendanceEndTime) {
+  if ((isDailyPerfectAttendanceRecord(record) || (record.ruleId === null && periodicPerfectAttendanceKind(record.notes))) && context.perfectAttendanceEndTime) {
     return buildKstDateTimeIso(record.date, context.perfectAttendanceEndTime);
   }
 

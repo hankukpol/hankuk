@@ -3,6 +3,7 @@ import test from "node:test";
 import { generalSettingsSchema, operatingDaysSchema, studyTracksSchema, divisionFeatureFlagsSchema, featureSettingsSchema, rulesSettingsSchema, normalizeOperatingDays, normalizeStudyTracks } from "../../lib/settings-schemas";
 import { normalizeDivisionFeatureFlags, DEFAULT_DIVISION_FEATURE_FLAGS, DIVISION_FEATURES } from "../../lib/division-features";
 import { rejectsAt } from "./schema-assertions";
+import { formatKstDateTime } from "../../lib/date-utils";
 
 const days = { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: false };
 const rules = {
@@ -11,6 +12,10 @@ const rules = {
   warnMsgLevel1: " 1차 안내 ", warnMsgLevel2: "2차 안내", warnMsgInterview: "면담 안내", warnMsgWithdraw: "퇴실 안내",
   perfectAttendancePts: 3, expirationWarningDays: 7,
 };
+
+test("settings timestamps use numeric KST at the UTC month boundary", () => {
+  assert.equal(formatKstDateTime("2026-08-31T15:00:00.000Z"), "2026-09-01 00:00");
+});
 
 test("general settings preserves database-driven tenant branding and an intentionally empty track list", () => {
   assert.deepEqual(generalSettingsSchema.parse({ name: " 지점 ", fullName: " 학원 ", color: " #Ab12ef ", operatingDays: days, studyTracks: [] }), { name: "지점", fullName: "학원", color: "#Ab12ef", operatingDays: days, studyTracks: [], isActive: true });
@@ -25,6 +30,8 @@ test("rule settings coerce numeric form input, trim templates and apply optional
   assert.equal(parsed.warnMsgLevel1, "1차 안내");
   assert.equal(parsed.assistantPastEditAllowed, false);
   assert.equal(parsed.perfectAttendancePtsEnabled, false);
+  assert.equal(parsed.perfectAttendanceWeeklyPts, 0);
+  assert.equal(parsed.perfectAttendanceMonthlyPts, 0);
   assert.equal(parsed.tardyPointRuleId, "rule-a");
   assert.equal(parsed.absentPointRuleId, null);
   assert.equal(rulesSettingsSchema.parse(rules).tardyPointRuleId, null);
@@ -46,7 +53,7 @@ test("past attendance edit permissions and day limits agree", () => {
   rejectsAt(rulesSettingsSchema, { ...rules, assistantPastEditAllowed: "true" }, "assistantPastEditAllowed");
 });
 
-for (const [field, min, max] of [["tardyMinutes", 0, 180], ["holidayLimit", 0, 31], ["halfDayLimit", 0, 31], ["healthLimit", 0, 31], ["holidayUnusedPts", 0, 100], ["halfDayUnusedPts", 0, 100], ["perfectAttendancePts", 0, 100], ["expirationWarningDays", 1, 90]] as const) {
+for (const [field, min, max] of [["tardyMinutes", 0, 180], ["holidayLimit", 0, 31], ["halfDayLimit", 0, 31], ["healthLimit", 0, 31], ["holidayUnusedPts", 0, 100], ["halfDayUnusedPts", 0, 100], ["perfectAttendancePts", 0, 100], ["perfectAttendanceWeeklyPts", 0, 100], ["perfectAttendanceMonthlyPts", 0, 100], ["expirationWarningDays", 1, 90]] as const) {
   test(`${field} accepts configured bounds and rejects out-of-range or nonnumeric values`, () => {
     for (const value of [min, max]) assert.equal(rulesSettingsSchema.safeParse({ ...rules, [field]: value }).success, true);
     for (const value of [min - 1, max + 1, 0.5, "invalid", Infinity]) rejectsAt(rulesSettingsSchema, { ...rules, [field]: value }, field);

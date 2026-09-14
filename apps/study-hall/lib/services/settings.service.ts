@@ -65,6 +65,8 @@ type RawDbDivisionSettingsRecord = {
   featureFlags: unknown;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
+  perfectAttendanceWeeklyPts: number;
+  perfectAttendanceMonthlyPts: number;
   expirationWarningDays: number;
   updatedAt: Date;
 };
@@ -98,6 +100,8 @@ type LegacyDivisionSettingsRow = {
   featureFlags?: unknown;
   perfectAttendancePtsEnabled?: boolean | null;
   perfectAttendancePts?: number | null;
+  perfectAttendanceWeeklyPts?: number | null;
+  perfectAttendanceMonthlyPts?: number | null;
   expirationWarningDays?: number | null;
   updatedAt?: Date | null;
 };
@@ -123,6 +127,8 @@ type DefaultRuleValues = {
   absentPointRuleId: string | null;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
+  perfectAttendanceWeeklyPts: number;
+  perfectAttendanceMonthlyPts: number;
   expirationWarningDays: number;
 };
 
@@ -143,6 +149,8 @@ const DEFAULT_RULE_VALUES: DefaultRuleValues = {
   absentPointRuleId: null,
   perfectAttendancePtsEnabled: false,
   perfectAttendancePts: 0,
+  perfectAttendanceWeeklyPts: 0,
+  perfectAttendanceMonthlyPts: 0,
   expirationWarningDays: 14,
 };
 
@@ -169,6 +177,8 @@ const LEGACY_RULE_SELECT_COLUMNS = [
   { column: "absent_point_rule_id", alias: "absentPointRuleId" },
   { column: "perfect_attendance_pts_enabled", alias: "perfectAttendancePtsEnabled" },
   { column: "perfect_attendance_pts", alias: "perfectAttendancePts" },
+  { column: "perfect_attendance_weekly_pts", alias: "perfectAttendanceWeeklyPts" },
+  { column: "perfect_attendance_monthly_pts", alias: "perfectAttendanceMonthlyPts" },
   { column: "expiration_warning_days", alias: "expirationWarningDays" },
 ] as const;
 
@@ -210,6 +220,8 @@ export type DivisionSettingsRecord = {
   absentPointRuleId: string | null;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
+  perfectAttendanceWeeklyPts: number;
+  perfectAttendanceMonthlyPts: number;
   expirationWarningDays: number;
   operatingDays: OperatingDays;
   studyTracks: StudyTrackList;
@@ -360,6 +372,8 @@ function getLegacyRuleColumnValues(
     { column: "absent_point_rule_id", value: attendancePointRuleSettings.absentPointRuleId },
     { column: "perfect_attendance_pts_enabled", value: input.perfectAttendancePtsEnabled },
     { column: "perfect_attendance_pts", value: input.perfectAttendancePts },
+    { column: "perfect_attendance_weekly_pts", value: input.perfectAttendanceWeeklyPts },
+    { column: "perfect_attendance_monthly_pts", value: input.perfectAttendanceMonthlyPts },
     { column: "expiration_warning_days", value: input.expirationWarningDays },
   ] as const;
 }
@@ -390,6 +404,8 @@ function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSet
     absentPointRuleId: normalizePointRuleId((record as { absentPointRuleId?: string | null }).absentPointRuleId),
     perfectAttendancePtsEnabled: record.perfectAttendancePtsEnabled ?? false,
     perfectAttendancePts: record.perfectAttendancePts ?? 0,
+    perfectAttendanceWeeklyPts: record.perfectAttendanceWeeklyPts ?? 0,
+    perfectAttendanceMonthlyPts: record.perfectAttendanceMonthlyPts ?? 0,
     expirationWarningDays: (record as { expirationWarningDays?: number }).expirationWarningDays ?? 14,
     operatingDays: normalizeOperatingDays(record.operatingDays),
     studyTracks: normalizeStudyTracks(record.studyTracks),
@@ -426,6 +442,8 @@ function serializeLegacySettingsRecord(record: LegacyDivisionSettingsRow): Divis
     perfectAttendancePtsEnabled:
       record.perfectAttendancePtsEnabled ?? DEFAULT_RULE_VALUES.perfectAttendancePtsEnabled,
     perfectAttendancePts: record.perfectAttendancePts ?? DEFAULT_RULE_VALUES.perfectAttendancePts,
+    perfectAttendanceWeeklyPts: record.perfectAttendanceWeeklyPts ?? DEFAULT_RULE_VALUES.perfectAttendanceWeeklyPts,
+    perfectAttendanceMonthlyPts: record.perfectAttendanceMonthlyPts ?? DEFAULT_RULE_VALUES.perfectAttendanceMonthlyPts,
     expirationWarningDays:
       record.expirationWarningDays ?? DEFAULT_RULE_VALUES.expirationWarningDays,
     operatingDays: record.operatingDays ?? normalizeOperatingDays(undefined),
@@ -541,6 +559,8 @@ function getDivisionRuleSettingsFromRecord(
     absentPointRuleId: settings.absentPointRuleId,
     perfectAttendancePtsEnabled: settings.perfectAttendancePtsEnabled,
     perfectAttendancePts: settings.perfectAttendancePts,
+    perfectAttendanceWeeklyPts: settings.perfectAttendanceWeeklyPts,
+    perfectAttendanceMonthlyPts: settings.perfectAttendanceMonthlyPts,
     expirationWarningDays: settings.expirationWarningDays,
     updatedAt: settings.updatedAt,
   };
@@ -946,6 +966,8 @@ export async function updateDivisionRuleSettings(
         absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
         perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
         perfectAttendancePts: input.perfectAttendancePts,
+        perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
+        perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
         expirationWarningDays: input.expirationWarningDays,
         updatedAt: new Date().toISOString(),
       };
@@ -1011,6 +1033,8 @@ export async function updateDivisionRuleSettings(
         absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
         perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
         perfectAttendancePts: input.perfectAttendancePts,
+        perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
+        perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
         expirationWarningDays: input.expirationWarningDays,
       },
       create: {
@@ -1036,6 +1060,8 @@ export async function updateDivisionRuleSettings(
         absentPointRuleId: attendancePointRuleSettings.absentPointRuleId,
         perfectAttendancePtsEnabled: input.perfectAttendancePtsEnabled,
         perfectAttendancePts: input.perfectAttendancePts,
+        perfectAttendanceWeeklyPts: input.perfectAttendanceWeeklyPts,
+        perfectAttendanceMonthlyPts: input.perfectAttendanceMonthlyPts,
         expirationWarningDays: input.expirationWarningDays,
       },
     });

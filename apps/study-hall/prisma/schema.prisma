@@ -579,6 +579,8 @@ model DivisionSettings {
   managementPolicy            Json?    @map("management_policy")
   perfectAttendancePtsEnabled Boolean  @default(false) @map("perfect_attendance_pts_enabled")
   perfectAttendancePts        Int      @default(0) @map("perfect_attendance_pts")
+  perfectAttendanceWeeklyPts  Int      @default(0) @map("perfect_attendance_weekly_pts")
+  perfectAttendanceMonthlyPts Int      @default(0) @map("perfect_attendance_monthly_pts")
   expirationWarningDays       Int      @default(14) @map("expiration_warning_days")
   updatedAt                   DateTime @updatedAt @map("updated_at")
   division                    Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)

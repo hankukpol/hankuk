@@ -61,6 +61,8 @@ export type MockDivisionSettings = {
   absentPointRuleId: string | null;
   perfectAttendancePtsEnabled: boolean;
   perfectAttendancePts: number;
+  perfectAttendanceWeeklyPts: number;
+  perfectAttendanceMonthlyPts: number;
   expirationWarningDays: number;
   operatingDays: Record<string, boolean>;
   studyTracks: string[];
@@ -115,6 +117,8 @@ function createDefaultSettings(divisionId: string, divisionSlug: string): MockDi
     absentPointRuleId: null,
     perfectAttendancePtsEnabled: false,
     perfectAttendancePts: 0,
+    perfectAttendanceWeeklyPts: 0,
+    perfectAttendanceMonthlyPts: 0,
     expirationWarningDays: 14,
     operatingDays: {
       mon: true,

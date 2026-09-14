@@ -551,6 +551,8 @@ function createDefaultDivisionSettingsRecord(division: MockDivisionRecord): Mock
     absentPointRuleId: null,
     perfectAttendancePtsEnabled: false,
     perfectAttendancePts: 0,
+    perfectAttendanceWeeklyPts: 0,
+    perfectAttendanceMonthlyPts: 0,
     expirationWarningDays: 14,
     operatingDays: {
       mon: true,

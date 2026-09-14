@@ -28,19 +28,19 @@ test("optional enrollment limited by student, dates and weekday", () => {
   assert.equal(isControlledPeriod(enrolled, "18:15", weekday, "p2"), false);
   assert.equal(isControlledPeriod(enrolled, "18:15", "2026-09-09", "p1"), false);
 });
-test("full-day absence becomes exactly one -5 and not per-period absence", () => {
-  assert.deepEqual(penalties(attendance("ABSENT")).map((r) => r.points), [-5]);
+test("full-day absence becomes exactly one -9 and not per-period absence", () => {
+  assert.deepEqual(penalties(attendance("ABSENT")).map((r) => r.points), [-9]);
 });
 test("full-day absence waits until final controlled period has ended", () => {
-  assert.equal(penalties(attendance("ABSENT"), weekday, new Date(`${weekday}T16:59:59+09:00`)).length, 0);
+  assert.deepEqual(penalties(attendance("ABSENT"), weekday, new Date(`${weekday}T16:59:59+09:00`)).map(r => r.points), [-2, -2, -2, -2]);
 });
 test("missing and recognized cells never become full-day absence", () => {
-  assert.equal(penalties(attendance("ABSENT").filter((r) => r.periodId !== "09:15")).length, 0);
-  assert.equal(penalties(attendance("ABSENT").map((r) => r.periodId === "09:15" ? { ...r, status: "EXCUSED" } : r)).length, 0);
+  assert.deepEqual(penalties(attendance("ABSENT").filter((r) => r.periodId !== "09:15")).map(r => r.points), [-2, -2, -2]);
+  assert.deepEqual(penalties(attendance("ABSENT").map((r) => r.periodId === "09:15" ? { ...r, status: "EXCUSED" } : r)).map(r => r.ruleId), Array(3).fill(policy.partialAbsenceRuleId));
 });
 test("optional enrollee absence waits until evening end", () => {
   const enrolled = { ...policy, optionalEnrollments: [{ studentId: "p1", periodId: "18:15", dateFrom: weekday, dateTo: weekday, weekdays: [2] }] };
-  assert.equal(penalties(attendance("ABSENT"), weekday, new Date(`${weekday}T19:54:00+09:00`), enrolled).length, 0);
+  assert.deepEqual(penalties(attendance("ABSENT"), weekday, new Date(`${weekday}T19:54:00+09:00`), enrolled).map(r => r.points), [-2, -2, -2, -2, -2]);
   assert.equal(penalties(attendance("ABSENT"), weekday, now, enrolled).length, 1);
 });
 test("late charge uses database rule value and never charges voluntary periods", () => {
@@ -70,4 +70,15 @@ test("approved penalty table is police-only with late -2 and regular exam -3", (
   assert.equal(manifest.decision.basis, "student_penalty_table");
   assert.equal(manifest.rules.find((r: { key: string; points: number }) => r.key === "late-arrival")?.points, -2);
   assert.equal(manifest.rules.find((r: { key: string; points: number }) => r.key === "regular-absence")?.points, -3);
+});
+
+test("교시 결석과 지각은 같은 -2라도 별도 규칙과 학생 표시 사유를 쓴다", () => {
+  const absent = penalties([{ studentId: "p1", periodId: "09:15", status: "ABSENT" }])[0];
+  const tardy = penalties([{ studentId: "p1", periodId: "09:15", status: "TARDY" }])[0];
+  assert.equal(absent.points, -2);
+  assert.equal(tardy.points, -2);
+  assert.notEqual(absent.ruleId, tardy.ruleId);
+  assert.notEqual(absent.notes, tardy.notes);
+  assert.equal(rules.find((r: any) => r.id === absent.ruleId).name, "시간통제 교시 결석");
+  assert.equal(rules.find((r: any) => r.id === tardy.ruleId).name, "시간통제 교시 시작 후 도착");
 });

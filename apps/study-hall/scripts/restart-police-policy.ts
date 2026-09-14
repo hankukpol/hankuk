@@ -31,6 +31,7 @@ export function policySettings(manifest: any, periods: { id: string; startTime: 
     warnMsgLevel1: "관리주의", warnMsgLevel2: "정식 면담·7일 개선미션", warnMsgInterview: "최종경고·개선확약", warnMsgWithdraw: "이용종료 검토",
     tardyMinutes: 0, holidayLimit: 2, holidayUnusedPts: 2, halfDayLimit: 0, halfDayUnusedPts: 0,
     perfectAttendancePtsEnabled: false, perfectAttendancePts: 0,
+    perfectAttendanceWeeklyPts: 0, perfectAttendanceMonthlyPts: 0,
     tardyPointRuleId: manifest.policy.tardyRuleId, absentPointRuleId: null,
     operatingDays: { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: false },
     pointCategories: Array.from(new Set(manifest.rules.map((r: any) => r.category))),

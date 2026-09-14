@@ -54,6 +54,8 @@ export const RULE_SETTING_FIELD_LABELS: Record<string, string> = {
   absentPointRuleId: "결석 자동 벌점 규칙",
   perfectAttendancePtsEnabled: "개근 상점 사용",
   perfectAttendancePts: "개근 상점 점수",
+  perfectAttendanceWeeklyPts: "주간 개근 상점",
+  perfectAttendanceMonthlyPts: "월 개근 상점",
   expirationWarningDays: "수강 만료 알림 일수",
 };
 

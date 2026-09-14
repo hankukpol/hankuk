@@ -1,6 +1,7 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { loadWithMocks } from "./helpers/module-mocks";
 import { mapPolicy } from "../scripts/restart-police-policy";
 import type { MockAttendanceRecord, MockStudentRecord, MockLeavePermissionRecord, MockPointRecordRecord } from "../lib/mock-store";
@@ -97,6 +98,15 @@ function fixture(t: TestContext, now = "2026-10-01T00:00:00+09:00") {
   dependencies["@/lib/services/student.service"] = students;
   return {
     get state() { return state; }, load, students, policy, attendanceSyncs,
+    pointDeletionService: () => {
+      // Compile dynamic imports to require so the existing closed fixture also
+      // intercepts the attendance re-sync instead of Node's ESM module cache.
+      const source = readFileSync("lib/services/point.service.ts", "utf8");
+      const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+      const module = { exports: {} };
+      new Function("require", "module", "exports", code)((id: string) => dependencies[id] ?? require(id), module, module.exports);
+      return module.exports as typeof import("../lib/services/point.service");
+    },
     leave: load<typeof import("../lib/services/leave.service")>("leave"),
     points: load<typeof import("../lib/services/point.service")>("point"),
     review: load<typeof import("../lib/services/policy-review.service")>("policy-review"),
@@ -208,6 +218,37 @@ test("상벌점 날짜 생략 시 한국시간 월초 날짜로 저장한다 (22
   await f.points.createPointRecord("police", actor, { studentId: "a", points: -10, notes: "확정 기록" });
   assert.equal(f.state.pointRecordsByDivision.police[0].date, "2026-10-01T00:00:00.000Z");
   assert.equal((await f.policy.getPolicyPointTotals("police"))?.get("a")?.demerit, 10);
+});
+
+test("주간·월 개근을 이름·마지막 관리일로 표시하고 삭제 시 해당 출석 기간을 재계산한다", async t => {
+  const f = fixture(t);
+  f.state.pointRecordsByDivision.police = [
+    { ...point("a", "2026-09-05", 2), id: "weekly", notes: "[자동] 주간 개근 상점 (2026-08-31~2026-09-06)" },
+    { ...point("a", "2026-09-30", 2), id: "monthly", notes: "[자동] 월 개근 상점 (2026-09)" },
+  ];
+  const listed = await f.points.listPointRecords("police", { dateFrom: "2026-09-01", dateTo: "2026-09-30" });
+  assert.deepEqual(listed.map(r => r.ruleName), ["월 개근 상점", "주간 개근 상점"]);
+  assert.deepEqual(listed.map(r => r.date.slice(0, 10)), ["2026-09-30", "2026-09-05"]);
+  const deletion = f.pointDeletionService();
+  await deletion.deletePointRecord("police", "weekly", actor);
+  await deletion.deletePointRecord("police", "monthly", actor);
+  assert.deepEqual(f.attendanceSyncs, ["police:2026-08-31", "police:2026-09-01"]);
+});
+
+test("문서 3절: 아침 결석 10회는 설정 규칙 합계 벌점30, 상계 없이 이용종료 검토이며 자동 퇴실 없음", async t => {
+  const f = fixture(t, "2026-09-30T23:59:59+09:00");
+  const rules = f.state.pointRulesByDivision.police;
+  const morning = rules.find(r => r.id === "restart-v31-police-morning-absence")!;
+  const partial = rules.find(r => r.id === basePolicy.partialAbsenceRuleId)!;
+  for (let count = 0; count < 10; count++) {
+    f.state.pointRecordsByDivision.police.push({ ...point("a", "2026-09-08", morning.points, morning.id), id: `morning-${count}` }, { ...point("a", "2026-09-08", partial.points, partial.id), id: `partial-${count}` });
+  }
+  f.state.pointRecordsByDivision.police.push(point("a", "2026-09-30", 18));
+  const item = (await f.students.listStudents("police"))[0];
+  assert.equal(item.demeritPoints, 30);
+  assert.equal(item.meritPoints, 18);
+  assert.equal((await f.points.listWarningStudents("police"))[0].warningStage, "WITHDRAWAL");
+  assert.equal(f.state.studentsByDivision.police[0].status, "ACTIVE");
 });
 
 test("상점·벌점 별도 월 합계, 경고 10/20/25/30, 휴일권 미사용 동점 지표 (221–257)", async (t) => {

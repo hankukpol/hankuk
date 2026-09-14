@@ -3,6 +3,7 @@ import { readMockState } from "@/lib/mock-store";
 import { getPrismaClient } from "@/lib/service-helpers";
 import {
   clampStudyTimeDateRange,
+  createStudyMinutesCalculator as createSharedStudyMinutesCalculator,
   maskStudentName,
   splitStudyMinutes,
 } from "@/lib/study-time-meta";
@@ -70,26 +71,7 @@ type RawStudyTimeRecord = {
  * Calculate study minutes from checkInTime to period end on the given date.
  * endTime is "HH:MM" in KST (UTC+9).
  */
-function createStudyMinutesCalculator() {
-  // All students in a date/period share the same KST end timestamp.
-  const endTimes = new Map<string, number>();
-  return function calcStudyMinutes(
-    checkInTimeIso: string | null,
-    date: string,
-    periodEndTime: string,
-  ): number {
-    if (!checkInTimeIso) return 0;
-    const key = `${date}:${periodEndTime}`;
-    let end = endTimes.get(key);
-    if (end === undefined) {
-      const [hh, mm] = periodEndTime.split(":").map(Number);
-      const [y, mo, d] = date.split("-").map(Number);
-      end = Date.UTC(y, mo - 1, d, hh - 9, mm, 0, 0);
-      endTimes.set(key, end);
-    }
-    return Math.max(0, Math.floor((end - new Date(checkInTimeIso).getTime()) / 60_000));
-  };
-}
+function createStudyMinutesCalculator() { return createSharedStudyMinutesCalculator(); }
 
 function getMonthRange(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);

@@ -57,3 +57,25 @@ export function clampStudyTimeDateRange(dateFrom: string, dateTo: string) {
     dateTo,
   };
 }
+
+
+export function createStudyMinutesCalculator() {
+  // All students in a date/period share the same KST end timestamp.
+  const endTimes = new Map<string, number>();
+  return function calcStudyMinutes(
+    checkInTimeIso: string | null,
+    date: string,
+    periodEndTime: string,
+  ): number {
+    if (!checkInTimeIso) return 0;
+    const key = `${date}:${periodEndTime}`;
+    let end = endTimes.get(key);
+    if (end === undefined) {
+      const [hh, mm] = periodEndTime.split(":").map(Number);
+      const [y, mo, d] = date.split("-").map(Number);
+      end = Date.UTC(y, mo - 1, d, hh - 9, mm, 0, 0);
+      endTimes.set(key, end);
+    }
+    return Math.max(0, Math.floor((end - new Date(checkInTimeIso).getTime()) / 60_000));
+  };
+}

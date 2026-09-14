@@ -10,9 +10,10 @@ import * as errors from "../lib/errors";
 const target=new URL(process.env.DATABASE_URL ?? "http://invalid");
 assert.equal(target.hostname,"study-hall-fix-postgres"); assert.equal(target.pathname,"/fix_review"); assert.equal(process.env.MOCK_MODE,"false");
 const prisma=new PrismaClient();
+let today="2026-09-14";
 const dependencies:Record<string,unknown>={
   "node:crypto":{randomUUID},"@/lib/exam-point-automation":calculator,
-  "@/lib/management-policy":{...policy,kstDate:()=>"2026-09-14"},
+  "@/lib/management-policy":{...policy,kstDate:()=>today},
   "@/lib/mock-data":{isMockMode:()=>false},"@/lib/mock-store":{},
   "@/lib/errors":errors,"@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
   "@/lib/services/settings-history.service":{recordDivisionSettingsChange:async()=>{}},
@@ -39,12 +40,24 @@ async function main() {
     const examType=await prisma.examType.create({data:{divisionId:division.id,name:"아침",category:"MORNING"}});
     const session=await prisma.examSession.create({data:{divisionId:division.id,examTypeId:examType.id,identityKey:"2026-09-14",examDate:new Date("2026-09-14"),itemCount:20,fullScore:100,externalCohortSize:100,externalStats:{},sourceFileName:"fixture.xls",importedById:actor.id}});
     await prisma.examSessionParticipant.create({data:{divisionId:division.id,sessionId:session.id,studentId:student.id,totalScore:80,subjectScores:{},externalRank:50}});
-    const config=calculator.examPointAutomationSchema.parse({enabled:true,effectiveFrom:"2026-09-14",morningStartDate:"2026-09-14",morningWeekdays:[1],morningAbsenceRuleId:absenceRule.id,morningFirstRuleId:firstRule.id});
+    const config=calculator.examPointAutomationSchema.parse({enabled:true,effectiveFrom:"2026-09-14",morningStartDate:"2026-09-14",morningWeekdays:[1],rankAggregation:"TOTAL",rankTieBreak:"ATTEMPTS_STUDY_TIME",morningAbsenceRuleId:absenceRule.id,morningFirstRuleId:firstRule.id});
     await settings.updateExamPointSettings(division.slug,config,actor);
-    assert.deepEqual((await prisma.pointRecord.findMany({where:{student:{divisionId:division.id}},orderBy:{points:"asc"}})).map(r=>r.points),[amount,3]);
+    assert.deepEqual((await prisma.pointRecord.findMany({where:{student:{divisionId:division.id}},orderBy:{points:"asc"}})).map(r=>r.points),[amount]);
     fixtures.push({division,actor,student,absent,absenceRule,firstRule,session,config});
   }
   const [own,foreign]=fixtures;
+  await prisma.pointRecord.create({data:{studentId:own.student.id,ruleId:own.firstRule.id,points:3,date:new Date("2026-09-14"),notes:"[자동][성적][2026-09][rank:legacy] 잘못된 일별 순위 상점",recordedById:own.actor.id}});
+  await settings.updateExamPointSettings(own.division.slug,own.config,own.actor);
+  assert.equal(await prisma.pointRecord.count({where:{studentId:own.student.id}}),0,"settings save retracts the premature award");
+  today="2026-09-30";
+  await points.syncExamPoints(own.division.slug,"2026-09-14",own.actor.id);
+  assert.equal(await prisma.pointRecord.count({where:{studentId:own.student.id}}),0,"no award even on the last day");
+  today="2026-10-01";
+  for(const fixture of fixtures) await settings.updateExamPointSettings(fixture.division.slug,fixture.config,fixture.actor);
+  const monthly=await prisma.pointRecord.findMany({where:{studentId:own.student.id}});
+  assert.equal(monthly.length,1);
+  assert.equal(monthly[0].date.toISOString().slice(0,10),"2026-09-30");
+  assert.ok(monthly[0].notes?.includes("[rank-month:MORNING:2026-09]"));
   const ids=(await prisma.pointRecord.findMany({where:{student:{divisionId:own.division.id}}})).map(r=>r.id).sort();
   await Promise.all([points.syncExamPoints(own.division.slug,"2026-09-14",own.actor.id),points.syncExamPoints(own.division.slug,"2026-09-14",own.actor.id)]);
   assert.deepEqual((await prisma.pointRecord.findMany({where:{student:{divisionId:own.division.id}}})).map(r=>r.id).sort(),ids);

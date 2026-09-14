@@ -51,8 +51,8 @@ export async function updateExamPointSettings(slug:string, value:unknown, actor:
       for(const month of months) await syncDbExamPoints(tx,division.id,month,actor.id);
     },{timeout:30000});
   }
-  const labels:Record<string,string>={...EXAM_POINT_RULE_FIELDS,enabled:"성적 자동 상벌점 사용",effectiveFrom:"자동 부여 시작일",morningStartDate:"아침모의고사 시작일",morningWeekdays:"아침모의고사 요일",morningExcludedDates:"아침모의고사 제외일",settleUnusedLeaveAutomatically:"휴일권 미사용 자동 월 마감"};
-  const describe=(field:string,value:unknown)=>field.endsWith("RuleId")?before.rules.find(r=>r.id===value)?.name??null:field==="morningWeekdays" && Array.isArray(value)?value.map(day=>["일","월","화","수","목","금","토"][day]).join(", "):value;
+  const labels:Record<string,string>={...EXAM_POINT_RULE_FIELDS,enabled:"성적 자동 상벌점 사용",effectiveFrom:"자동 부여 시작일",morningStartDate:"아침모의고사 시작일",morningWeekdays:"아침모의고사 요일",morningExcludedDates:"아침모의고사 제외일",rankAggregation:"월간 성적 순위 기준",rankTieBreak:"월간 성적 동점 기준",settleUnusedLeaveAutomatically:"휴일권 미사용 자동 월 마감"};
+  const describe=(field:string,value:unknown)=>field==="rankTieBreak"?(value==="ATTEMPTS_STUDY_TIME"?"응시 횟수, 순공시간 순":"공동 순위"):field==="rankAggregation"?(value==="TOTAL"?"월 누적 점수":"응시한 시험의 월평균 점수"):field.endsWith("RuleId")?before.rules.find(r=>r.id===value)?.name??null:field==="morningWeekdays" && Array.isArray(value)?value.map(day=>["일","월","화","수","목","금","토"][day]).join(", "):value;
   const changes=Object.entries(labels).filter(([field])=>JSON.stringify(before.config[field as keyof ExamPointAutomation])!==JSON.stringify(config[field as keyof ExamPointAutomation])).map(([field,label])=>({field:`examPointAutomation.${field}`,label,before:describe(field,before.config[field as keyof ExamPointAutomation]),after:describe(field,config[field as keyof ExamPointAutomation])}));
   await recordDivisionSettingsChange(slug,actor,changes);
   revalidateDivisionOperationalViews(slug);

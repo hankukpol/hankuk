@@ -338,36 +338,36 @@
       "id": "restart-v31-police-regular-first",
       "key": "regular-first",
       "category": "시험",
-      "name": "정기모의고사 전체 1등",
+      "name": "정기모의고사 월간 1등",
       "points": 3,
-      "description": "월 상점 별도 집계.",
+      "description": "관리반 월간 성적 순위에 따라 월 종료 후 1회 지급.",
       "displayOrder": 13
     },
     {
       "id": "restart-v31-police-regular-second",
       "key": "regular-second",
       "category": "시험",
-      "name": "정기모의고사 전체 2등",
+      "name": "정기모의고사 월간 2등",
       "points": 2,
-      "description": "월 상점 별도 집계.",
+      "description": "관리반 월간 성적 순위에 따라 월 종료 후 1회 지급.",
       "displayOrder": 14
     },
     {
       "id": "restart-v31-police-regular-third",
       "key": "regular-third",
       "category": "시험",
-      "name": "정기모의고사 전체 3등",
+      "name": "정기모의고사 월간 3등",
       "points": 1,
-      "description": "월 상점 별도 집계.",
+      "description": "관리반 월간 성적 순위에 따라 월 종료 후 1회 지급.",
       "displayOrder": 15
     },
     {
       "id": "restart-v31-police-morning-first",
       "key": "morning-first",
       "category": "시험",
-      "name": "아침모의고사 전체 1등",
+      "name": "아침모의고사 월간 1등",
       "points": 3,
-      "description": "월 상점 별도 집계.",
+      "description": "관리반 월간 성적 순위에 따라 월 종료 후 1회 지급.",
       "displayOrder": 16
     },
     {

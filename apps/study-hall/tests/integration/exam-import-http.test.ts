@@ -270,7 +270,13 @@ test("administrator calendar controls imported exam points and tenant isolation 
     const reimport=()=>fetch(`${base}/api/police/exam-imports`,{method:"POST",headers:{cookie},body:upload("MORNING","import-http-morning",true)});
     assert.equal((await reimport()).status,201);
     const awarded=(await readMockState()).pointRecordsByDivision.police.filter(r=>r.notes?.startsWith("[자동][성적]"));
-    assert.ok(awarded.length>0,"import must grant own participant first-place points");
+    const [examYear,examMonth]=day.split("-").map(Number);
+    const monthEnd=new Date(Date.UTC(examYear,examMonth,0)).toISOString().slice(0,10);
+    const today=new Date(Date.now()+9*60*60*1000).toISOString().slice(0,10);
+    if(monthEnd < today) {
+      assert.ok(awarded.length>0,"closed month must settle the monthly winner");
+      assert.ok(awarded.every(row=>row.notes?.includes("[rank-month:")));
+    } else assert.equal(awarded.length,0,"current month import must not grant premature rank merits");
     assert.equal((await reimport()).status,201);
     assert.deepEqual((await readMockState()).pointRecordsByDivision.police.filter(r=>r.notes?.startsWith("[자동][성적]")).map(r=>r.id).sort(),awarded.map(r=>r.id).sort());
     assert.equal((await save({...config,morningExcludedDates:[day]})).status,200);

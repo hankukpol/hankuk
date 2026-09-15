@@ -8,7 +8,6 @@ import { toast } from "@/lib/sonner";
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
 import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
 import { tuitionPlanSchema } from "@/lib/tuition-schemas";
-import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { DialogActions } from "@/components/ui/DialogActions";
 import { SlideOver } from "@/components/ui/SlideOver";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
@@ -314,7 +313,6 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
         </form>
       </SlideOver>
       {dialog}
-      {confirmDialog}
       {actionCompleteModal}
     </>
   );

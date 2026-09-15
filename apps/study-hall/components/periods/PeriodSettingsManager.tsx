@@ -19,7 +19,6 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
-import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { DialogActions } from "@/components/ui/DialogActions";
 import { SlideOver } from "@/components/ui/SlideOver";
@@ -513,7 +512,6 @@ export function PeriodSettingsManager({
         </AdminTabPanel>
       ) : null}
       {dialog}
-      {confirmDialog}
       {actionCompleteModal}
     </>
   );

@@ -8,7 +8,6 @@ import { listPointRules } from "@/lib/services/point.service";
 import { getDivisionRuleSettings } from "@/lib/services/settings.service";
 import { listDivisionSettingsHistory } from "@/lib/services/settings-history.service";
 import { getPointAggregationInfo } from "@/lib/point-aggregation-mode";
-import { SettingsPageShell } from "@/components/settings/SettingsPageShell";
 
 type RulesSettingsPageProps = {
   params: {

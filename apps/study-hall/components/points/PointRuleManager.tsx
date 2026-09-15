@@ -276,14 +276,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
       });
       if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setIsEditorOpen(false);return;}
       toast.success(editingId ? "규칙을 수정했습니다." : "규칙을 추가했습니다.");
-      if (data.rule) {
-        const savedRule = data.rule;
-        setRules((current) => editingId
-          ? current.map((rule) => rule.id === editingId ? savedRule : rule)
-          : [...current, savedRule]);
-      } else {
-        await refreshRules();
-      }
+      await refreshRules();
       resetForm();
       setIsEditorOpen(false);
     } catch (error) {

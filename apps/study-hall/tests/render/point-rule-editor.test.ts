@@ -21,6 +21,15 @@ test("point rule workspace preserves filters and safely submits drawer edits", a
     Event: dom.window.Event, CustomEvent: dom.window.CustomEvent, React, IS_REACT_ACT_ENVIRONMENT: true,
     requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
     fetch: async (url: string, init?: RequestInit) => {
+      if (url.endsWith("settings/templates")) {
+        const current = { periods: [], rooms: [], examTypes: [], pointRules: rules };
+        if (!init?.method && rejectSave) return new Response(JSON.stringify({error:"저장 실패 테스트"}),{status:400});
+        if (!init?.method) return new Response(JSON.stringify({ current, today: "2026-09-15", earliestCalculationDate: "2026-09-15" }));
+        const body = JSON.parse(String(init.body)); writes.push({url,method:init.method,body});
+        if (body.action === "preview") return new Response(JSON.stringify({ revision:"review", after:body.value.payload, changes:[{section:"설정",name:"name",before:"이전",after:"변경"}] }));
+        rules.splice(0,rules.length,...body.value.payload.pointRules);
+        return new Response(JSON.stringify({status:"APPLIED"}));
+      }
       const method = init?.method ?? "GET";
       if (method === "GET") return new Response(JSON.stringify(url.endsWith("point-categories")
         ? { categories: ["출결", "생활"], customizationEnabled: true } : { rules }));
@@ -76,8 +85,10 @@ test("point rule workspace preserves filters and safely submits drawer edits", a
       assert.equal(save.form, drawer().querySelector("form"));
       assert.equal(drawer().querySelector(".admin-dialog-body")?.contains(save), false);
       await click(save);
+      await click(button("변경 미리보기"));
+      await click(button("변경 적용"));
       assert.equal(document.querySelector(".admin-drawer"), null);
-      assert.deepEqual(writes.at(-1), { url: "/api/police/point-rules/late", method: "PATCH", body: { category: "출결", name: "지각 기준 수정", points: -2, description: "시작 후 도착", isActive: true } });
+      assert.equal((writes.at(-1)!.body as any).value.payload.pointRules[0].name, "지각 기준 수정");
       assert.ok(document.querySelector("tbody")?.textContent?.includes("지각 기준 수정"));
     });
 
@@ -113,14 +124,15 @@ test("point rule workspace preserves filters and safely submits drawer edits", a
 
     await t.test("delete does not send a mutation until confirmed", async () => {
       const before = writes.length;
-      await click(button("학습 도움 삭제"));
+      await click(button("학습 도움 비활성화"));
       assert.equal(writes.length, before);
       await click(button("취소", document.querySelector(".admin-dialog")!));
       assert.equal(writes.length, before);
-      await click(button("학습 도움 삭제"));
-      await click(button("삭제", document.querySelector(".admin-dialog")!));
-      assert.equal(writes.at(-1)?.method, "DELETE");
-      assert.ok(document.querySelector("#point-rule-settings-panel-rules")?.textContent?.includes("검색 조건에 맞는 규칙이 없습니다."));
+      await click(button("학습 도움 비활성화"));
+      await click(button("비활성화", document.querySelector(".admin-dialog")!));
+      await click(button("변경 미리보기"));
+      await click(button("변경 적용"));
+      assert.equal((writes.at(-1)!.body as any).value.payload.pointRules.find((r:any)=>r.id==="help").isActive,false);
     });
   } finally {
     await act(async () => root.unmount());

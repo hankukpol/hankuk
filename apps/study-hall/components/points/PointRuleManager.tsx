@@ -290,7 +290,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
 
   async function handleDelete(ruleId: string) {
     const rule = rules.find((item) => item.id === ruleId);
-    if (!(await confirm({ title: "상벌점 규칙을 삭제할까요?", description: `${rule?.name ?? "선택한"} 규칙을 삭제합니다.`, confirmLabel: "삭제", variant: "danger" }))) return;
+    if (!(await confirm({ title: "상벌점 규칙을 비활성화할까요?", description: `${rule?.name ?? "선택한"} 규칙의 기존 기록은 보존합니다.`, confirmLabel: "비활성화", variant: "danger" }))) return;
     setDeletingId(ruleId);
 
     try {

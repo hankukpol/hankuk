@@ -25,6 +25,14 @@ test("admin setting drawers preserve drafts, form submission and list updates", 
     Event: dom.window.Event, CustomEvent: dom.window.CustomEvent, React, IS_REACT_ACT_ENVIRONMENT: true,
     requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
     fetch: async (url: string, init?: RequestInit) => {
+      if (url.endsWith("settings/templates")) {
+        const current = { periods: [], rooms: [], pointRules: [], examTypes: [template] };
+        if (!init?.method) return new Response(JSON.stringify({ current, today: "2026-09-15", earliestCalculationDate: "2026-09-15" }));
+        const body = JSON.parse(String(init.body)); writes.push({url,method:init.method,body});
+        if (body.action === "preview") return new Response(JSON.stringify({ revision:"review", after:body.value.payload, changes:[{section:"설정",name:"name",before:"이전",after:"변경"}] }));
+        
+        return new Response(JSON.stringify({status:"APPLIED"}));
+      }
       if (url.includes("/seats?")) return new Response(JSON.stringify({ layout }));
       if (!init?.method || init.method === "GET") return new Response(JSON.stringify(url.includes("exam-types") ? { examTypes: [template] } : { staff }));
       const body = JSON.parse(String(init.body ?? "{}"));
@@ -133,10 +141,12 @@ test("admin setting drawers preserve drafts, form submission and list updates", 
       assert.ok(document.querySelector("table"));
       await click(button("정기 시험 복사"));
       await submit("복사본 저장");
+      await click(button("변경 미리보기"));
+      await click(button("변경 적용"));
       assert.equal(writes.at(-1)?.method, "POST");
-      const body = writes.at(-1)!.body;
+      const body = (writes.at(-1)!.body as any).value.payload.examTypes.at(-1);
       assert.equal(body.name, "정기 시험 복사본");
-      assert.equal((body.subjects as Array<{ id?: string }>)[0].id, undefined);
+      assert.notEqual((body.subjects as Array<{ id?: string }>)[0].id, template.subjects[0].id);
       assert.equal(document.querySelector(".admin-drawer"), null);
     });
     await t.test("student form reports draft state to its enclosing drawer", async () => {

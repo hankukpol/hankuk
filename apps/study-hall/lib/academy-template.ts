@@ -152,7 +152,7 @@ function hasConfigurationId(value: unknown): value is {id: string} {
 
 /** Keep untouched reserved fields while applying only edits relative to the live form. */
 export function mergeConfigurationEdits<T>(base: T, edited: T, reserved: T): T {
-  if (configurationRevision(base) === configurationRevision(edited)) return structuredClone(reserved);
+  if (Object.is(base, edited) || (base !== undefined && edited !== undefined && configurationRevision(base) === configurationRevision(edited))) return structuredClone(reserved);
   if (Array.isArray(base) && Array.isArray(edited) && Array.isArray(reserved)) {
     const keyed = [...base, ...edited, ...reserved];
     if (keyed.length && keyed.every(hasConfigurationId)) {

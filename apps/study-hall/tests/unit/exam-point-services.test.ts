@@ -135,3 +135,23 @@ test("settings save retracts legacy daily rank; closed-month resaves keep one aw
   assert.deepEqual(f.state.pointRecordsByDivision.police.filter(r=>r.notes.includes("[rank-month:")),monthly);
   assert.equal(f.state.pointRecordsByDivision.fire[0].id,"kept");
 });
+
+test("historical template policy drives automatic absence points and exemption reconciliation", async()=>{
+  const f=fixture(), service=f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");
+  const {createAcademyPolicyDraft}=await import("../../lib/academy-policy-settings");
+  const periods=[{id:"exam",name:"아침시험",startTime:"08:30",endTime:"09:00",isActive:true}];
+  const draft=createAcademyPolicyDraft("2026-09-14",periods);
+  const managementPolicy:any={...draft,enabled:true,morningExam:{periodId:"exam",weekdays:[1],syncAttendance:true}};
+  delete managementPolicy.optionalEnrollments;
+  const after:any={settings:{examPointAutomation:f.config,managementPolicy},periods,examTypes:f.state.examTypesByDivision.police,pointRules:f.state.pointRulesByDivision.police};
+  const before=structuredClone(after);delete before.settings.managementPolicy.morningExam.syncAttendance;
+  Object.assign(f.state,{academyApplications:[{divisionId:"police-id",effectiveFrom:"2026-09-14",createdAt:"2026-09-15T00:00:00Z",status:"APPLIED",before,after}],periodsByDivision:{police:periods}});
+  Object.assign(f.state.divisionSettingsByDivision.police,{managementPolicy});
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:1,revokedCount:0});
+  assert.equal(f.state.pointRecordsByDivision.police[0].points,-1);
+  assert.equal(f.state.attendanceByDivision.police[0].status,"PRESENT");
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
+  f.state.attendanceByDivision.police.push(Object.assign({studentId:"absent",date:"2026-09-14",status:"EXCUSED",reason:"개인일정"},{periodId:"exam"}));
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:1});
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
+});

@@ -66,7 +66,7 @@ export async function getPolicyHolidayUsage(divisionSlug: string, dateFrom: stri
 export async function saveOptionalEnrollment(divisionSlug: string, input: ManagementPolicy["optionalEnrollments"][number]) {
   const policy = await getManagementPolicy(divisionSlug);
   if (!policy) throw notFound("적용된 관리규정이 없습니다.");
-  const parsed = managementPolicySchema.shape.optionalEnrollments.element.parse(input);
+  const parsed = managementPolicySchema.shape.optionalEnrollments.removeDefault().element.parse(input);
   if (!parsed.weekdays.length) throw badRequest("적용 요일을 선택해 주세요.");
   if (parsed.dateFrom > parsed.dateTo) throw badRequest("종료일은 시작일보다 빠를 수 없습니다.");
   if (!policy.controlledPeriods.some((p) => p.periodId === parsed.periodId && p.optional && parsed.weekdays.every((d) => p.weekdays.includes(d)))) throw badRequest("선택자습 교시와 운영 요일을 확인해 주세요.");
@@ -104,7 +104,7 @@ function enrollmentOverlaps(a: ManagementPolicy["optionalEnrollments"][number], 
 export async function endOptionalEnrollment(divisionSlug: string, input: ManagementPolicy["optionalEnrollments"][number]) {
   const policy = await getManagementPolicy(divisionSlug);
   if (!policy) throw notFound("적용된 관리규정이 없습니다.");
-  const parsed = managementPolicySchema.shape.optionalEnrollments.element.parse(input);
+  const parsed = managementPolicySchema.shape.optionalEnrollments.removeDefault().element.parse(input);
   const today = kstDate();
   const matches = (e: ManagementPolicy["optionalEnrollments"][number]) => e.studentId === parsed.studentId && e.periodId === parsed.periodId && e.dateFrom === parsed.dateFrom && e.dateTo === parsed.dateTo
     && e.weekdays.every((day) => parsed.weekdays.includes(day)) && parsed.weekdays.every((day) => e.weekdays.includes(day));
@@ -129,3 +129,4 @@ export async function endOptionalEnrollment(divisionSlug: string, input: Managem
   }
   revalidateDivisionOperationalViews(divisionSlug);
 }
+

@@ -14,7 +14,7 @@ export const managementPolicySchema = z.object({
   source: z.string(),
   attendancePeriodIds: z.array(z.string()),
   controlledPeriods: z.array(z.object({ periodId: z.string(), weekdays, optional: z.boolean() })),
-  optionalEnrollments: z.array(z.object({ studentId: z.string(), periodId: z.string(), dateFrom: ymd, dateTo: ymd, weekdays })),
+  optionalEnrollments: z.array(z.object({ studentId: z.string(), periodId: z.string(), dateFrom: ymd, dateTo: ymd, weekdays })).default([]),
   morningExam: z.object({ periodId: z.string(), weekdays, syncAttendance: z.boolean().optional() }),
   closingTime: time,
   breaks: z.array(z.object({ name: z.string(), startTime: time, endTime: time })).default([]),

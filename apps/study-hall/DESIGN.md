@@ -202,7 +202,8 @@ Spacing base: 4px (간격 스케일의 기본 단위).
 - `.admin-attendance-status-select`는 저장 상태가 아닌 표시 상태(`data-attendance-status`)에 따라 파스텔 배경·진한 글자를 함께 쓴다. 수업은 `EXCUSED + 수업 사유`를 `CLASS`로 표시하며 저장 형식은 유지한다.
 - 출석은 `success/-soft/-line`, 지각은 `warning/-soft/-line`, 결석은 `danger/-soft/-line` 토큰을 사용한다. 휴무·반휴·해당없음은 `surface-muted/text-secondary/line`, 미처리는 `surface/text-secondary/line`이다.
 - 수업 전용 토큰 `--admin-attendance-class` / `-soft` / `-line`: `#0f766e` / `#edf8f7` / `#b8dedb`. 사유결석 전용 `--admin-attendance-excused` / `-soft` / `-line`: `#1d4ed8` / `#eff6ff` / `#bfdbfe`. 업무색이므로 직렬 강조색 변경에 영향을 받지 않는다. 토큰 원본과 RGB 별칭은 `globals.css`에 둔다.
-- 요약은 출석·수업·지각·결석·출석률 순서로 표시한다. 768px 이상 5열, 미만 2열이며 마지막 출석률은 한 행을 사용한다. 모바일에서는 기존 `admin-metric-strip`의 선 격자를 사용한다.
+- 요약은 출석·수업·지각·결석·사유·출석률 순서로 표시한다. 768px 이상 6열, 미만 2열 3행이다. 모바일에서는 기존 `admin-metric-strip`의 선 격자를 사용한다. 사유는 일반 사유결석의 학생 수이며 수업과 구분한다. 요약 아래에는 기존 출석률의 인정·제외 기준을 안내한다.
+- 모바일·조교의 교시별 출석 화면은 펼친 교시 요약의 대상·미처리·출석·결석 아래에 사유 인원을 한 행으로 표시한다. 사유 인원에는 수업 처리를 포함하지 않는다.
 - 일별 학생 대표 상태의 우선순위는 유지한다. 출석으로 집계된 학생 중 수업 기록이 있으면 수업 카드에만 표시한다(출석+수업 혼합도 수업 1명). 지각+수업 혼합은 지각 1명이다. 서비스가 두 인원을 완성해 반환하며, 출석률에는 수업을 포함한다.
 
 ## 4. 간격·규격·모서리

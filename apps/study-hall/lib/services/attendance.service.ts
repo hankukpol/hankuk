@@ -50,6 +50,7 @@ type RecurringAttendanceInput = {
 };
 
 export type RecurringAttendanceResult = {
+  automationWarnings?: string[];
   appliedCount: number;
   updatedExistingCount: number;
   skippedExistingCount: number;
@@ -67,9 +68,11 @@ type AttendanceActor = {
 };
 
 export type AttendanceSnapshot = {
+  automationWarnings?: string[];
   date: string;
   students: Awaited<ReturnType<typeof getDivisionStudents>>;
   periods: Array<{
+    isMorningExam?: boolean;
     id: string;
     name: string;
     label: string | null;
@@ -341,7 +344,7 @@ function buildAttendanceSnapshot(
   return {
     date,
     students: context.students,
-    periods: serializePeriods(periods),
+    periods: serializePeriods(periods).map((period) => ({ ...period, isMorningExam: policy?.morningExam.periodId === period.id })),
     records,
   };
 }
@@ -1111,6 +1114,7 @@ export async function syncAttendanceDerivedPoints(
   date: string,
   actorId: string,
 ) {
+  const warnings: string[] = [];
   const normalizedDate = normalizeDate(date);
   const policy = await getManagementPolicy(divisionSlug, normalizedDate);
   try {
@@ -1118,6 +1122,7 @@ export async function syncAttendanceDerivedPoints(
     await syncExamPoints(divisionSlug, normalizedDate, actorId);
   } catch (error) {
     logServerError("ExamPoints", error);
+    warnings.push("시험 상벌점 자동 계산을 완료하지 못했습니다.");
   }
   // 관리규정 기간에는 주/월 개근을 동기화하고 벌점은 관리자 확정 정책을 따른다.
   //
@@ -1125,12 +1130,13 @@ export async function syncAttendanceDerivedPoints(
   // 다르고, 운영에서는 지각 규칙만 연결돼 있어 결석이 조용히 빠진다.
   //
   // 벌점 반영이 실패해도 출결 저장은 이미 끝나 있다. 조교가 기록한 사실이 벌점 계산 때문에
-  // 사라지는 것이 더 나쁘므로 여기서 삼킨다. 다음 저장이나 관리자 확정이 다시 계산한다.
+  // 사라지지 않게 출결은 유지하고, 실패 내용을 반환해 화면에서 재시도를 안내한다.
   if (isPolicyEffective(policy, normalizedDate)) {
     try {
       await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actorId, policy);
     } catch (error) {
       logServerError("PerfectAttendancePoints", error);
+    warnings.push("개근 상점 자동 계산을 완료하지 못했습니다.");
     }
     try {
       // 서비스 간 호출은 이 저장소 관례대로 동적 import 로 둔다. 테스트 하네스가
@@ -1139,8 +1145,9 @@ export async function syncAttendanceDerivedPoints(
       await applyPolicyAttendancePoints(divisionSlug, normalizedDate, actorId);
     } catch (error) {
       logServerError("PolicyAttendancePoints", error);
+    warnings.push("출결 벌점 자동 계산을 완료하지 못했습니다.");
     }
-    return;
+    return warnings;
   }
   // 규정 적용 전 날짜는 예전 경로를 그대로 쓴다.
 
@@ -1148,13 +1155,16 @@ export async function syncAttendanceDerivedPoints(
     await syncPerfectAttendancePoints(divisionSlug, normalizedDate, actorId);
   } catch (error) {
     logServerError("PerfectAttendancePoints", error);
+    warnings.push("개근 상점 자동 계산을 완료하지 못했습니다.");
   }
 
   try {
     await syncAttendancePenaltyPoints(divisionSlug, normalizedDate, actorId);
   } catch (error) {
     logServerError("AttendancePenaltyPoints", error);
+    warnings.push("출결 벌점 자동 계산을 완료하지 못했습니다.");
   }
+  return warnings;
 }
 
 export async function upsertAttendanceBatch(
@@ -1270,8 +1280,8 @@ export async function upsertAttendanceBatch(
       return snapshot;
     });
 
-    await syncAttendanceDerivedPoints(divisionSlug, normalizedDate, actor.id);
-    return snapshot;
+    const automationWarnings = await syncAttendanceDerivedPoints(divisionSlug, normalizedDate, actor.id);
+    return { ...snapshot, automationWarnings };
   }
 
   const prisma = await getPrismaClient();
@@ -1367,12 +1377,12 @@ export async function upsertAttendanceBatch(
     })),
   };
 
-  await syncAttendanceDerivedPoints(divisionSlug, normalizedDate, actor.id);
+  const automationWarnings = await syncAttendanceDerivedPoints(divisionSlug, normalizedDate, actor.id);
 
   revalidateDivisionOperationalViews(divisionSlug, {
     studentIds: input.records.map((record) => record.studentId),
   });
-  return snapshot;
+  return { ...snapshot, automationWarnings };
 }
 
 export async function applyRecurringAttendance(
@@ -1532,15 +1542,16 @@ export async function applyRecurringAttendance(
       };
     });
 
+    const automationWarnings: string[] = [];
     for (const date of targetDates) {
-      await syncAttendanceDerivedPoints(divisionSlug, date, actor.id);
+      automationWarnings.push(...(await syncAttendanceDerivedPoints(divisionSlug, date, actor.id)).map(message => `${date}: ${message}`));
     }
 
     revalidateDivisionOperationalViews(divisionSlug, {
       studentIds,
     });
 
-    return result;
+    return { ...result, automationWarnings };
   }
 
   const prisma = await getPrismaClient();
@@ -1667,15 +1678,10 @@ export async function applyRecurringAttendance(
     ]);
   }
 
-  const changedDates = Array.from(
-    new Set([
-      ...createData.map((record) => record.date.toISOString().slice(0, 10)),
-      ...updateData.map((record) => record.date),
-    ].filter(Boolean)),
-  );
-
-  for (const date of changedDates) {
-    await syncAttendanceDerivedPoints(divisionSlug, date, actor.id);
+  const automationWarnings: string[] = [];
+  // A retry may contain no new attendance cells, but still has pending points.
+  for (const date of targetDates) {
+    automationWarnings.push(...(await syncAttendanceDerivedPoints(divisionSlug, date, actor.id)).map(message => `${date}: ${message}`));
   }
 
   revalidateDivisionOperationalViews(divisionSlug, {
@@ -1683,6 +1689,7 @@ export async function applyRecurringAttendance(
   });
 
   return {
+    automationWarnings,
     appliedCount: createData.length,
     updatedExistingCount: updateData.length,
     skippedExistingCount: overwriteExisting ? 0 : targetCellCount - createData.length,

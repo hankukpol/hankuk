@@ -164,6 +164,15 @@ async function listMonthlyStudyTimeRecords(
   }));
 }
 
+async function periodsForStudyDates(divisionSlug: string, records: { date: string }[]) {
+  const result = new Map<string, Map<string, Awaited<ReturnType<typeof getPeriods>>[number]>>();
+  // Resolve once per distinct day, not per student/attendance cell. Bound DB concurrency.
+  for (const date of Array.from(new Set(records.map(record => record.date)))) {
+    result.set(date, new Map((await getPeriods(divisionSlug, date)).map(period => [period.id, period])));
+  }
+  return result;
+}
+
 export async function getStudentStudyTimeStats(
   divisionSlug: string,
   studentId: string,
@@ -173,7 +182,7 @@ export async function getStudentStudyTimeStats(
     getPeriods(divisionSlug),
     listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]),
   ]);
-  const periodMap = new Map(periods.map((p) => [p.id, p]));
+  const periodsByDate = await periodsForStudyDates(divisionSlug, rawRecords);
   const calcStudyMinutes = createStudyMinutesCalculator();
 
   // Aggregate by date
@@ -181,13 +190,16 @@ export async function getStudentStudyTimeStats(
   // Aggregate by period: sum minutes and count
   const byPeriodMinutes = new Map<string, number>();
   const byPeriodCount = new Map<string, number>();
+  const displayedPeriods = new Map(periods.filter(period => period.isActive).map(period => [period.id, period]));
 
   let totalMinutes = 0;
 
   for (const r of rawRecords) {
-    const period = periodMap.get(r.periodId);
+    const period = periodsByDate.get(r.date)?.get(r.periodId);
     if (!period) continue;
     const minutes = calcStudyMinutes(r.checkInTime, r.date, period.endTime);
+    // A removed/inactive current period must not hide already recorded study time.
+    if (minutes > 0 && !displayedPeriods.has(period.id)) displayedPeriods.set(period.id, period);
     totalMinutes += minutes;
 
     byDateMap.set(r.date, (byDateMap.get(r.date) ?? 0) + minutes);
@@ -199,8 +211,7 @@ export async function getStudentStudyTimeStats(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, minutes]) => ({ date, minutes }));
 
-  const byPeriod = periods
-    .filter((p) => p.isActive)
+  const byPeriod = Array.from(displayedPeriods.values())
     .map((p) => {
       const sum = byPeriodMinutes.get(p.id) ?? 0;
       const count = byPeriodCount.get(p.id) ?? 0;
@@ -225,8 +236,7 @@ export async function getDivisionStudyTimeRanking(
   divisionSlug: string,
   month: string,
 ): Promise<DivisionStudyTimeRanking> {
-  const [periods, students, rawRecords] = await Promise.all([
-    getPeriods(divisionSlug),
+  const [students, rawRecords] = await Promise.all([
     listStudents(divisionSlug),
     listMonthlyStudyTimeRecords(divisionSlug, month),
   ]);
@@ -234,7 +244,7 @@ export async function getDivisionStudyTimeRanking(
   const activeStudents = students.filter(
     (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
   );
-  const periodMap = new Map(periods.map((period) => [period.id, period]));
+  const periodsByDate = await periodsForStudyDates(divisionSlug, rawRecords);
   const calcStudyMinutes = createStudyMinutesCalculator();
   const studentSummaryMap = new Map(
     activeStudents.map((student) => [
@@ -249,7 +259,7 @@ export async function getDivisionStudyTimeRanking(
 
   for (const record of rawRecords) {
     const summary = studentSummaryMap.get(record.studentId);
-    const period = periodMap.get(record.periodId);
+    const period = periodsByDate.get(record.date)?.get(record.periodId);
 
     if (!summary || !period) {
       continue;
@@ -349,15 +359,12 @@ export async function getStudentMonthlyStudyMinutes(
   studentId: string,
   month: string,
 ): Promise<number> {
-  const [periods, records] = await Promise.all([
-    getPeriods(divisionSlug),
-    listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]),
-  ]);
-  const periodMap = new Map(periods.map((period) => [period.id, period]));
+  const records = await listMonthlyStudyTimeRecords(divisionSlug, month, [studentId]);
+  const periodsByDate = await periodsForStudyDates(divisionSlug, records);
   const calcStudyMinutes = createStudyMinutesCalculator();
   let totalMinutes = 0;
   for (const record of records) {
-    const period = periodMap.get(record.periodId);
+    const period = periodsByDate.get(record.date)?.get(record.periodId);
     if (period) totalMinutes += calcStudyMinutes(record.checkInTime, record.date, period.endTime);
   }
   return totalMinutes;

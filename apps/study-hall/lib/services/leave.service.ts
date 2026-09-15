@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getPeriods, type PeriodRecord } from "@/lib/services/period.service";
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isControlledPeriod, isPolicyEffective, isHealthLeaveExempt, kstDate, type ManagementPolicy } from "@/lib/management-policy";
@@ -61,6 +62,7 @@ function previousAttendance(record?: {examAutoSource?: string | null; status: At
 }
 
 export type LeavePermissionItem = {
+  automationWarnings?: string[];
   id: string;
   studentId: string;
   studentName: string;
@@ -739,7 +741,7 @@ export async function createLeavePermission(
       if (!(isHealthLeaveExempt(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const nextRecord: MockLeavePermissionRecord = {
-        id: `mock-leave-${divisionSlug}-${Date.now()}`,
+        id: `mock-leave-${divisionSlug}-${randomUUID()}`,
         studentId: input.studentId,
         type: input.type,
         date: input.date,
@@ -758,19 +760,19 @@ export async function createLeavePermission(
         reason,
       }, policy, periods);
 
+      await reconcileLeaveSettlementAfterChange(divisionSlug, nextRecord.id, actor.id, input.date, input.type, {state});
       return nextRecord;
     });
 
-    if (getAttendanceStatusForLeaveType(input.type)) {
-      await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id);
-    }
+    const automationWarnings = getAttendanceStatusForLeaveType(input.type)
+      ? (await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id)) ?? [] : [];
 
     const mockState = await readMockState();
     const mockStudent = (mockState.studentsByDivision[divisionSlug] ?? []).find(
       (s) => s.id === record.studentId,
     );
     if (!mockStudent) return null;
-    return serializeLeaveRecord(record, mockStudent, getMockAdminSession(divisionSlug).name);
+    return { ...serializeLeaveRecord(record, mockStudent, getMockAdminSession(divisionSlug).name), automationWarnings };
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
@@ -853,6 +855,7 @@ export async function createLeavePermission(
 
       await tx.leavePermission.update({where: {id: created.id}, data: {attendanceSnapshot}});
 
+      await reconcileLeaveSettlementAfterChange(divisionSlug, created.id, actor.id, input.date, input.type, {tx});
       return created;
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -864,9 +867,8 @@ export async function createLeavePermission(
       throw error;
     });
 
-  if (getAttendanceStatusForLeaveType(input.type)) {
-    await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id);
-  }
+  const automationWarnings = getAttendanceStatusForLeaveType(input.type)
+    ? (await syncAttendanceDerivedPoints(divisionSlug, input.date, actor.id)) ?? [] : [];
 
   const createdPermission = await prisma.leavePermission.findUnique({
     where: { id: permission.id },
@@ -877,7 +879,7 @@ export async function createLeavePermission(
   });
   if (!createdPermission) return null;
   revalidateDivisionOperationalViews(divisionSlug, { studentId: input.studentId });
-  return serializeLeaveRecord(createdPermission, createdPermission.student, createdPermission.approvedBy.name);
+  return { ...serializeLeaveRecord(createdPermission, createdPermission.student, createdPermission.approvedBy.name), automationWarnings };
 }
 
 export async function cancelLeavePermission(
@@ -915,6 +917,7 @@ export async function cancelLeavePermission(
       }, policy, periods);
 
       record.status = "REJECTED";
+      await reconcileLeaveSettlementAfterChange(divisionSlug, record.id, actor.id, record.date, record.type, {state});
 
       const student = (state.studentsByDivision[divisionSlug] ?? []).find(
         (item) => item.id === record.studentId,
@@ -930,12 +933,11 @@ export async function cancelLeavePermission(
       };
     });
 
-    if (getAttendanceStatusForLeaveType(result.record.type)) {
-      await syncAttendanceDerivedPoints(divisionSlug, result.record.date, actor.id);
-    }
+    const automationWarnings = getAttendanceStatusForLeaveType(result.record.type)
+      ? (await syncAttendanceDerivedPoints(divisionSlug, result.record.date, actor.id)) ?? [] : [];
 
     revalidateDivisionOperationalViews(divisionSlug, { studentId: result.record.studentId });
-    return serializeLeaveRecord(result.record, result.student, getMockAdminSession(divisionSlug).name);
+    return { ...serializeLeaveRecord(result.record, result.student, getMockAdminSession(divisionSlug).name), automationWarnings };
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
@@ -986,7 +988,7 @@ export async function cancelLeavePermission(
       attendanceSnapshot: permission.attendanceSnapshot,
     }, policy, periods);
 
-    return tx.leavePermission.update({
+    const cancelled = await tx.leavePermission.update({
       where: {
         id: permission.id,
       },
@@ -1009,22 +1011,44 @@ export async function cancelLeavePermission(
         },
       },
     });
-  });
+    await reconcileLeaveSettlementAfterChange(divisionSlug, permission.id, actor.id, toDateString(permission.date), permission.type, {tx});
+    return cancelled;
+  }, {isolationLevel: Prisma.TransactionIsolationLevel.Serializable});
 
-  if (getAttendanceStatusForLeaveType(updatedPermission.type)) {
-    await syncAttendanceDerivedPoints(
-      divisionSlug,
-      toDateString(updatedPermission.date),
-      actor.id,
-    );
-  }
+  const automationWarnings = getAttendanceStatusForLeaveType(updatedPermission.type)
+    ? (await syncAttendanceDerivedPoints(divisionSlug, toDateString(updatedPermission.date), actor.id)) ?? [] : [];
 
   revalidateDivisionOperationalViews(divisionSlug, { studentId: updatedPermission.studentId });
-  return serializeLeaveRecord(
+  return { ...serializeLeaveRecord(
     updatedPermission,
     updatedPermission.student,
     updatedPermission.approvedBy.name,
-  );
+  ), automationWarnings };
+}
+
+// Retry derived calculations without registering/cancelling the leave again.
+export async function retryLeaveAutomation(divisionSlug: string, permissionId: string, actor: LeaveActor) {
+  let date: string;
+  let studentId: string;
+  if (isMockMode()) {
+    const state = await readMockState();
+    const permission = (state.leavePermissionsByDivision[divisionSlug] ?? []).find(record => record.id === permissionId);
+    if (!permission) throw notFound("외출/휴가 내역을 찾을 수 없습니다.");
+    date = permission.date;
+    studentId = permission.studentId;
+  } else {
+    const division = await getDivisionOrThrow(divisionSlug);
+    const prisma = await getPrismaClient();
+    const permission = await prisma.leavePermission.findFirst({
+      where: { id: permissionId, student: { divisionId: division.id } },
+    });
+    if (!permission) throw notFound("외출/휴가 내역을 찾을 수 없습니다.");
+    date = toDateString(permission.date);
+    studentId = permission.studentId;
+  }
+  const automationWarnings = (await syncAttendanceDerivedPoints(divisionSlug, date, actor.id)) ?? [];
+  revalidateDivisionOperationalViews(divisionSlug, { studentId });
+  return { automationWarnings };
 }
 
 export async function previewLeaveSettlement(
@@ -1246,4 +1270,63 @@ export async function settleLeaveMonth(
     skippedCount: preview.items.length - records.length,
     totalRewardPoints: records.reduce((sum, item) => sum + item.rewardPoints, 0),
   } satisfies LeaveSettlementResult;
+}
+
+/** Reconcile an already settled month after a leave correction. Never creates a
+ * new award or a negative demerit, and keeps the original automatic record ID. */
+async function reconcileLeaveSettlementAfterChange(slug: string, permissionId: string, actorId: string, date: string, type: string, context: {state: Awaited<ReturnType<typeof readMockState>>} | {tx: Prisma.TransactionClient}) {
+  const month = date.slice(0, 7);
+  if (type === "OUTING" || month >= getCurrentMonth()) return;
+  const note = buildSettlementNote(month);
+  const monthEnd = toDateString(getSettlementDate(month));
+  const [settings, policy] = await Promise.all([getDivisionSettings(slug, monthEnd), getManagementPolicy(slug, monthEnd)]);
+  const recognizedHealth = isHealthLeaveExempt(policy, monthEnd);
+  const amount = (permissions: Array<{type: string; status: string}>) => {
+    const used = permissions.filter(p => !isInactiveLeaveStatus(p.status));
+    const holidays = used.filter(p => p.type === "HOLIDAY").length;
+    const health = recognizedHealth ? 0 : used.filter(p => p.type === "HEALTH").length;
+    const halves = used.filter(p => p.type === "HALF_DAY").length;
+    return Math.max(0, settings.holidayLimit - holidays - health) * settings.holidayUnusedPts + Math.max(0, settings.halfDayLimit - halves) * settings.halfDayUnusedPts;
+  };
+  const history = (snapshot: unknown, changes: Array<{id:string; before:number; after:number}>) => {
+    const base = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? snapshot as Record<string, unknown> : {};
+    const previous = Array.isArray(base.settlementCorrections) ? base.settlementCorrections : [];
+    return {...base, settlementCorrections:[...previous,{month,actorId,at:new Date().toISOString(),changes}]};
+  };
+  if ("state" in context) {
+    const state = context.state;
+    {
+      const permission = (state.leavePermissionsByDivision[slug] ?? []).find(p => p.id === permissionId);
+      if (!permission) throw notFound("휴가 기록을 찾을 수 없습니다.");
+      const records = (state.pointRecordsByDivision[slug] ?? []).filter(p => p.studentId === permission.studentId && p.ruleId === null && p.notes === note);
+      if (!records.length) return;
+      const desired = amount((state.leavePermissionsByDivision[slug] ?? []).filter(p => p.studentId === permission.studentId && p.date.startsWith(month)));
+      const changes = records.flatMap((r,index) => {
+        const after = index === 0 ? desired : 0;
+        if (r.points === after) return [];
+        const change = {id:r.id,before:r.points,after}; r.points = after; return [change];
+      });
+      if(changes.length) permission.attendanceSnapshot = history(permission.attendanceSnapshot,changes);
+    }
+    return;
+  }
+  const division = await getDivisionOrThrow(slug);
+  const tx = context.tx;
+  {
+    const permission = await tx.leavePermission.findFirst({where:{id:permissionId,student:{divisionId:division.id}}});
+    if(!permission) throw notFound("휴가 기록을 찾을 수 없습니다.");
+    const records = await tx.pointRecord.findMany({where:{studentId:permission.studentId,student:{divisionId:division.id},ruleId:null,notes:note},orderBy:[{createdAt:"asc"},{id:"asc"}]});
+    if(!records.length) return;
+    const {start,end} = getMonthRange(month);
+    const permissions = await tx.leavePermission.findMany({where:{studentId:permission.studentId,student:{divisionId:division.id},date:{gte:start,lt:end}},select:{type:true,status:true}});
+    const desired = amount(permissions);
+    const changes: Array<{id:string;before:number;after:number}> = [];
+    for(let index=0;index<records.length;index++) {
+      const record=records[index], after=index===0?desired:0;
+      if(record.points===after) continue;
+      await tx.pointRecord.updateMany({where:{id:record.id,student:{divisionId:division.id},points:record.points,ruleId:null,notes:note},data:{points:after}});
+      changes.push({id:record.id,before:record.points,after});
+    }
+    if(changes.length) await tx.leavePermission.updateMany({where:{id:permission.id,student:{divisionId:division.id}},data:{attendanceSnapshot:history(permission.attendanceSnapshot,changes) as Prisma.InputJsonValue}});
+  }
 }

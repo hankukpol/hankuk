@@ -1846,7 +1846,7 @@ async function collectWarningDemeritPoints(
     (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
   );
 
-  if (isPolicyEffective(policy, kstDate()) && policy.monthlyPoints) {
+  if (isPolicyEffective(policy, kstDate())) {
     return {
       entries: operatingStudents.map((student) => ({
         student,

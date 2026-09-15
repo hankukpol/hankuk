@@ -21,6 +21,7 @@ import { AttendanceSeatView } from "@/components/attendance/AttendanceSeatView";
 import type { SeatLayout, StudyRoomItem } from "@/lib/services/seat.service";
 import {
   ATTENDANCE_INPUT_OPTIONS,
+  getPeriodAttendanceLabel,
   isLeaveAttendanceStatus,
   buildAttendanceInput,
   getAttendanceInputValue,
@@ -40,6 +41,7 @@ import { reconcileCheckCells, type CheckCells } from "@/lib/check-draft";
 import { hasStudentSearchQuery, matchesStudentSearch } from "@/lib/student-search";
 
 type PeriodItem = {
+  isMorningExam?: boolean;
   id: string;
   name: string;
   label: string | null;
@@ -251,6 +253,7 @@ export function MobileCheckForm({
     let checkedCount = 0;
     let presentCount = 0;
     let absentCount = 0;
+    let excusedCount = 0;
 
     for (const student of students) {
       const status = formState[student.id]?.status ?? "";
@@ -266,6 +269,9 @@ export function MobileCheckForm({
       if (status === "ABSENT") {
         absentCount += 1;
       }
+      if (status === "EXCUSED" && !isClassAttendance(status, formState[student.id]?.reason)) {
+        excusedCount += 1;
+      }
     }
 
     return {
@@ -273,6 +279,7 @@ export function MobileCheckForm({
       uncheckedCount: Math.max(students.length - checkedCount, 0),
       presentCount,
       absentCount,
+      excusedCount,
     };
   }, [formState, students]);
 
@@ -508,6 +515,7 @@ export function MobileCheckForm({
       }
 
       const nextState = buildInitialState(data.students, data.records);
+      if (data.automationWarnings?.length) throw new Error(`출결은 저장되었지만 ${data.automationWarnings.join(" ")} 같은 내용을 다시 저장해 재계산해 주세요.`);
       setFormState((current) => fromDraftCells(reconcileCheckCells(toDraftCells(current), toDraftCells(submitted), toDraftCells(nextState))));
       setSavedFormState(nextState);
       setSwipeIntents({});
@@ -690,6 +698,10 @@ export function MobileCheckForm({
                   <div className="admin-metric-box">
                     <p className="admin-metric-box-label">결석</p>
                     <p className="admin-metric-box-value text-attend-absent">{summary.absentCount}</p>
+                  </div>
+                  <div className="admin-metric-box col-span-full">
+                    <p className="admin-metric-box-label">사유</p>
+                    <p className="admin-metric-box-value text-attend-excused">{summary.excusedCount}</p>
                   </div>
                 </div>
 
@@ -887,7 +899,7 @@ export function MobileCheckForm({
                                 aria-pressed={isActive}
                                 className={`admin-status-button transition ${ isActive ? button.activeClassName : "" }`}
                               >
-                                {button.label}
+                                {getPeriodAttendanceLabel(button.value, button.label, selectedPeriod?.isMorningExam)}
                               </button>
                             );
                           })}
@@ -920,7 +932,7 @@ export function MobileCheckForm({
                           >
                             {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                               <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
-                                {option.label}
+                                {getPeriodAttendanceLabel(option.value, option.label, selectedPeriod?.isMorningExam)}
                               </option>
                             ))}
                           </select>
@@ -950,7 +962,7 @@ export function MobileCheckForm({
                         >
                           {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                             <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
-                              {option.label}
+                              {getPeriodAttendanceLabel(option.value, option.label, selectedPeriod?.isMorningExam)}
                             </option>
                           ))}
                         </select>

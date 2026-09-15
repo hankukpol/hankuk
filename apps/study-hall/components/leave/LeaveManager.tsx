@@ -125,6 +125,23 @@ export const LeaveManager = memo(function LeaveManager({
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
   const [cancellingPermissionId, setCancellingPermissionId] = useState<string | null>(null);
+  const [recalculatingId, setRecalculatingId] = useState<string | null>(null);
+
+  async function retryAutomation(id: string) {
+    if (recalculatingId) return;
+    setRecalculatingId(id);
+    try {
+      const response = await fetch(`/api/${divisionSlug}/leave/${id}/recalculate`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "상벌점 재계산에 실패했습니다.");
+      if (data.automationWarnings?.length) throw new Error(data.automationWarnings.join(" "));
+      toast.success("저장된 출결 기준으로 상벌점을 다시 계산했습니다.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "상벌점 재계산에 실패했습니다.");
+    } finally {
+      setRecalculatingId(null);
+    }
+  }
   const [saveSuccessModal, setSaveSuccessModal] = useState<{
     title: string;
     description: string;
@@ -332,7 +349,12 @@ export const LeaveManager = memo(function LeaveManager({
         throw new Error(data.error ?? "외출/휴가 등록에 실패했습니다.");
       }
 
-      toast.success(form.type === "OUTING" ? "외출 허가를 등록했습니다." : "휴가를 등록하고 출결에 반영했습니다.");
+      const automationWarning = (data.permission?.automationWarnings as string[] | undefined)?.join(" ");
+      if (automationWarning) {
+        toast.error(`휴가는 저장되었지만 ${automationWarning}`);
+      } else {
+        toast.success(form.type === "OUTING" ? "외출 허가를 등록했습니다." : "휴가를 등록하고 출결에 반영했습니다.");
+      }
       await refreshPermissions(false, [summaryMonth, historyMonth, form.date.slice(0, 7)]);
       setSummaryStudentId(form.studentId);
       closeEditor();
@@ -342,7 +364,9 @@ export const LeaveManager = memo(function LeaveManager({
           form.type === "OUTING"
             ? `${formatDate(form.date)} 외출 허가가 저장되었습니다.`
             : `${formatDate(form.date)} 휴가가 저장되고 출결에 반영되었습니다.`,
-        notice: "등록된 외출·휴가 정보는 사용 현황과 이력 화면에 바로 반영됩니다.",
+        notice: automationWarning
+          ? `상벌점 계산 확인이 필요합니다. ${automationWarning} 이력의 ‘상벌점 재계산’으로 다시 시도해 주세요.`
+          : "등록된 외출·휴가 정보는 사용 현황과 이력 화면에 바로 반영됩니다.",
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "외출/휴가 등록에 실패했습니다.");
@@ -383,7 +407,17 @@ export const LeaveManager = memo(function LeaveManager({
         await loadSettlementPreview();
       }
 
-      toast.success("외출/휴가 승인 취소를 완료했습니다.");
+      const automationWarning = (data.permission?.automationWarnings as string[] | undefined)?.join(" ");
+      if (automationWarning) {
+        setSaveSuccessModal({
+          title: "승인 취소 완료 · 상벌점 확인 필요",
+          description: "승인은 취소되었고 연결된 출결은 복원되었습니다.",
+          notice: `${automationWarning} 이력의 ‘상벌점 재계산’으로 다시 시도해 주세요.`,
+        });
+        toast.error(`승인은 취소되었지만 ${automationWarning}`);
+      } else {
+        toast.success("외출/휴가 승인 취소를 완료했습니다.");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "외출/휴가 승인 취소 처리에 실패했습니다.");
     } finally {
@@ -525,6 +559,7 @@ export const LeaveManager = memo(function LeaveManager({
                       </td>
                       <td className="admin-table-name"><p className="max-w-96 whitespace-pre-wrap break-words">{permission.reason || "-"}</p></td>
                       <td className="admin-table-amount">
+                        <button type="button" className="admin-button" disabled={recalculatingId !== null} onClick={() => void retryAutomation(permission.id)}>상벌점 재계산</button>
                         {canCancelPermission(permission) ? (
                           <button
                             type="button"
@@ -673,6 +708,7 @@ export const LeaveManager = memo(function LeaveManager({
             <div><dt className="admin-label">상태</dt><dd>{getLeaveStatusLabel(detailPermission.status)}</dd></div>
             <div><dt className="admin-label">사유</dt><dd>{detailPermission.reason || "없음"}</dd></div>
           </dl>
+          <button type="button" className="admin-button" disabled={recalculatingId !== null} onClick={() => void retryAutomation(detailPermission.id)}>상벌점 재계산</button>
           {canCancelPermission(detailPermission) ? <button type="button" className="admin-button" disabled={cancellingPermissionId === detailPermission.id} onClick={() => { setDetailPermissionId(null); void handleCancelPermission(detailPermission); }}>{cancellingPermissionId === detailPermission.id ? "처리 중..." : "승인 취소"}</button> : null}
         </div> : null}
       </SlideOver>

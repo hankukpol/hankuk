@@ -57,7 +57,8 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
     const records = await listPointRecords(params.division, { studentId: session.studentId });
     const demeritPoints = student.demeritPoints ?? toDemeritPoints(student.netPoints);
     const month = kstMonthBounds();
-    const metricRecords = student.meritPoints !== undefined ? records.filter((r) => r.date.slice(0, 10) >= month.dateFrom && r.date.slice(0, 10) <= month.dateTo) : records;
+    const pointPeriodLabel = student.pointMetricScope === "course" ? "수강 기간" : "이번 달";
+    const metricRecords = student.pointMetricScope || student.meritPoints !== undefined ? records.filter((r) => r.date.slice(0, 10) >= (student.pointMetricDateFrom ?? month.dateFrom) && r.date.slice(0, 10) <= (student.pointMetricDateTo ?? month.dateTo)) : records;
 
     const rewardCount = metricRecords.filter((record) => record.points > 0).length;
     const penaltyCount = metricRecords.filter((record) => record.points < 0).length;
@@ -66,7 +67,7 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
     // 최고 단계에 닿으면 남은 점수가 없으므로 기존 기준 문구로 돌아간다.
     const nextStage = getNextWarningStage(demeritPoints, rules, student.warningStageLabels);
     const demeritCaption = [
-      student.meritPoints !== undefined ? "이번 달 벌점, 상점과 별도 집계" : null,
+      student.meritPoints !== undefined ? `${pointPeriodLabel} 벌점, 상점과 별도 집계` : student.pointMetricScope ? `${pointPeriodLabel} 상점·벌점 상계 후` : null,
       nextStage ? `${nextStage.label}까지 ${nextStage.pointsRemaining}점` : "경고 단계 반영 기준",
     ].filter(Boolean).join(" · ");
 
@@ -87,15 +88,15 @@ export default async function StudentPointsPage({ params }: StudentPointsPagePro
             caption={demeritCaption}
           />
           <PortalMetricCard
-            label={student.meritPoints !== undefined ? "이번 달 상점" : "가점 기록"}
+            label={student.meritPoints !== undefined ? `${pointPeriodLabel} 상점` : "가점 기록"}
             value={student.meritPoints !== undefined ? `${student.meritPoints}점` : `${rewardCount}건`}
-            caption={student.meritPoints !== undefined ? "벌점과 상계하지 않습니다" : "현재 누적된 가점 건수"}
+            caption={student.meritPoints !== undefined ? "벌점과 상계하지 않습니다" : student.pointMetricScope ? `${pointPeriodLabel} 가점 건수` : "현재 누적된 가점 건수"}
             valueToneClassName="text-admin-success"
           />
           <PortalMetricCard
-            label={student.meritPoints !== undefined ? "이번 달 벌점 기록" : "벌점 기록"}
+            label={student.meritPoints !== undefined ? `${pointPeriodLabel} 벌점 기록` : "벌점 기록"}
             value={`${penaltyCount}건`}
-            caption={student.meritPoints !== undefined ? "이번 달 확정된 벌점 건수" : "현재 누적된 벌점 건수"}
+            caption={student.pointMetricScope || student.meritPoints !== undefined ? `${pointPeriodLabel} 확정된 벌점 건수` : "현재 누적된 벌점 건수"}
             valueToneClassName="text-admin-danger"
           />
         </section>

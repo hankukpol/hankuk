@@ -4,6 +4,25 @@ import { buildVersionedExamPoints } from "../lib/versioned-exam-points";
 import { parseExamPointAutomation, type ExamPointSource } from "../lib/exam-point-automation";
 import { configurationForDate } from "../lib/academy-configuration-history";
 
+test("monthly exam tie-break uses attendance-day periods rather than month-end times", () => {
+  const settings = { examPointAutomation: parseExamPointAutomation({ enabled:true, effectiveFrom:"2026-09-01", regularFirstRuleId:"first", rankTieBreak:"ATTEMPTS_STUDY_TIME" }) };
+  const before = { settings, pointRules:[{id:"first",points:3,isActive:true}], periods:[{id:"p",endTime:"10:00"}], examTypes:[{id:"exam",category:"REGULAR"}] };
+  const after = { ...before, periods:[{id:"p",endTime:"11:00"}] };
+  const source: ExamPointSource = {
+    students:[{id:"a",status:"ACTIVE"},{id:"b",status:"ACTIVE"}],
+    sessions:[{id:"e",examTypeId:"exam",identityKey:"e",examDate:"2026-09-20",category:"REGULAR",fullScore:100}],
+    participants:["a","b"].map(studentId=>({sessionId:"e",studentId,totalScore:90,isPartial:false})),
+    attendance:[
+      {studentId:"a",date:"2026-09-10",periodId:"p",status:"PRESENT",reason:null,checkInTime:"2026-09-10T09:00:00+09:00"},
+      {studentId:"b",date:"2026-09-20",periodId:"p",status:"PRESENT",reason:null,checkInTime:"2026-09-20T09:30:00+09:00"},
+    ], leave:[], rules:before.pointRules,
+  };
+  const history = [{effectiveFrom:"2026-09-15",createdAt:"2026-09-14T10:00:00Z",status:"APPLIED",before,after}];
+  const ranks = buildVersionedExamPoints(after,history,source,"2026-09","2026-10-01").filter(row=>row.notes.includes("[rank-month:"));
+  assert.deepEqual(ranks.map(row=>[row.studentId,row.points]), [["b",3]]);
+  assert.deepEqual(buildVersionedExamPoints(after,[],source,"2026-09","2026-10-01").filter(row=>row.notes.includes("[rank-month:")).map(row=>row.studentId), ["a"]);
+});
+
 test("effective dates preserve old daily penalties and keep two academies independent", () => {
   const config = (points: number) => ({
     settings: { examPointAutomation: parseExamPointAutomation({ enabled:true, effectiveFrom:"2026-09-01", morningStartDate:"2026-09-01", morningWeekdays:[1,2,3,4,5], morningAbsenceRuleId:"absence" }) },

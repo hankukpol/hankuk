@@ -18,11 +18,12 @@ export function buildVersionedExamPoints(current: Configuration, history: ExamCo
   const end = new Date(`${month}-01T00:00:00Z`); end.setUTCMonth(end.getUTCMonth()+1); end.setUTCDate(0);
   for (let day=1; day<=end.getUTCDate(); day++) { const date=`${month}-${String(day).padStart(2,"0")}`; dates.set(date,configurationForDate(current,history,date)); }
   const variants = Array.from(new Set(dates.values()));
+  const periodsByDate = new Map(Array.from(dates, ([date, configuration]) => [date, configuration.periods]));
   return variants.flatMap(configuration => {
     const policy = managementPolicySchema.safeParse(configuration.settings.managementPolicy);
     const types = new Map(configuration.examTypes.map(type => [type.id, type]));
     const awards = buildExamPointAwards(parseExamPointAutomation(configuration.settings.examPointAutomation), {
-      ...source, rules: configuration.pointRules, periods: configuration.periods,
+      ...source, rules: configuration.pointRules, periods: configuration.periods, periodsByDate,
       morningPeriodId: policy.success && policy.data.morningExam.syncAttendance ? policy.data.morningExam.periodId : null,
       sessions: source.sessions.map(session => {
         const type = types.get(session.examTypeId);

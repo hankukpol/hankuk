@@ -61,3 +61,17 @@ test("desktop attendance reason uses the standard input without compact padding 
   assert.equal(input.value, "병원");
   dom.window.close();
 });
+
+test("morning exam dropdown uses participation labels while ordinary periods keep attendance labels",()=>{
+ const html=render(React.createElement(AdminAttendanceBoard,{
+  divisionSlug:"police",initialDate:"2026-09-14",initialPeriods:periods.map((p,i)=>({...p,isMorningExam:i===0})),initialStudents:[student],initialRecords:[],initialStats:{attendanceRate:0,totals:{}}
+ }));
+ const dom=new JSDOM(html);
+ const exam=dom.window.document.querySelector('[aria-label="검증학생 1교시 출결 상태"]');
+ const ordinary=dom.window.document.querySelector('[aria-label="검증학생 2교시 출결 상태"]');
+ assert.equal(exam.querySelector('[value="PRESENT"]').textContent,'응시');
+ assert.equal(exam.querySelector('[value="ABSENT"]').textContent,'미응시');
+ assert.equal(ordinary.querySelector('[value="PRESENT"]').textContent,'출석');
+ assert.equal(ordinary.querySelector('[value="ABSENT"]').textContent,'결석');
+ dom.window.close();
+});

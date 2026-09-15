@@ -255,6 +255,34 @@ test("study-time totals, averages and tied ranking preserve cutoff, inactive per
   assert.equal((await service.getStudentStudyTimeRanking("police", "a", "2026-04")).myRank?.isMe, true);
 });
 
+test("study-time uses each attendance date's timetable across student and ranking totals", async () => {
+  const records = ["2026-04-06", "2026-04-20"].map(date => ({ studentId: "a", periodId: "p", date, status: "PRESENT", checkInTime: `${date}T09:00:00+09:00` }));
+  const service = loadService<typeof import("../../lib/services/study-time.service")>("study-time", {
+    "@/lib/mock-store": { readMockState: async () => ({ attendanceByDivision: { police: records, fire: [] } }) },
+    "@/lib/services/period.service": { getPeriods: async (_slug: string, date?: string) => [{ id: "p", name: "1교시", endTime: date && date < "2026-04-15" ? "10:00" : "11:00", isActive: true }] },
+    "@/lib/services/student.service": { listStudents: async () => [student("a")] },
+  });
+  const stats = await service.getStudentStudyTimeStats("police", "a", "2026-04");
+  assert.equal(stats.totalMinutes, 180);
+  assert.deepEqual(stats.byDate.map(row => row.minutes), [60, 120]);
+  assert.equal(await service.getStudentMonthlyStudyMinutes("police", "a", "2026-04"), 180);
+  assert.equal((await service.getDivisionStudyTimeRanking("police", "2026-04")).rows[0].totalMinutes, 180);
+  assert.equal((await service.getStudentStudyTimeRanking("police", "a", "2026-04")).myRank?.totalMinutes, 180);
+  assert.equal(await service.getStudentMonthlyStudyMinutes("fire", "a", "2026-04"), 0);
+});
+
+test("historical study periods remain visible after removal or deactivation", async () => {
+  for (const current of [[], [{ id: "old", name: "폐지 교시", endTime: "11:00", isActive: false }]]) {
+    const service = loadService<typeof import("../../lib/services/study-time.service")>("study-time", {
+      "@/lib/mock-store": { readMockState: async () => ({ attendanceByDivision: { police: [{ studentId: "a", periodId: "old", date: "2026-04-06", status: "PRESENT", checkInTime: "2026-04-06T09:00:00+09:00" }] } }) },
+      "@/lib/services/period.service": { getPeriods: async (_slug: string, date?: string) => date ? [{ id: "old", name: "당시 교시", endTime: "10:00", isActive: true }] : current },
+    });
+    const result = await service.getStudentStudyTimeStats("police", "a", "2026-04");
+    assert.equal(result.totalMinutes, 60);
+    assert.deepEqual(result.byPeriod, [{ periodId: "old", periodName: "당시 교시", avgMinutes: 60 }]);
+  }
+});
+
 test("study-time end timestamp parsing is once per date/period with legacy numerical parity", (t) => {
   const service = loadService<{ createStudyMinutesCalculator(): (checkIn: string | null, date: string, end: string) => number }>("study-time", {}, ["createStudyMinutesCalculator"]);
   const calculate = service.createStudyMinutesCalculator();

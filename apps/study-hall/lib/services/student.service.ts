@@ -1,5 +1,5 @@
 import { getManagementPolicy, getPolicyPointTotals, getPolicyHolidayUsage } from "@/lib/services/management-policy.service";
-import { kstMonthBounds } from "@/lib/management-policy";
+import { kstDate, kstMonthBounds } from "@/lib/management-policy";
 import { randomUUID } from "node:crypto";
 import { indexFirstBy } from "@/lib/record-index";
 
@@ -57,6 +57,9 @@ export type StudentListItem = DivisionStudent & {
   memo: string | null;
   netPoints: number;
   meritPoints?: number;
+  pointMetricScope?: "monthly" | "course" | "range";
+  pointMetricDateFrom?: string;
+  pointMetricDateTo?: string;
   unusedHolidayCount?: number;
   demeritPoints?: number;
   warningStageLabel?: string;
@@ -2305,20 +2308,27 @@ export async function getDefaultMockStudentSession(divisionSlug = "police") {
 
 async function applyPolicyPointMetrics(divisionSlug: string, students: StudentListItem[], options?: StudentPointMetricOptions): Promise<StudentListItem[]> {
   const month = kstMonthBounds();
-  const totals = await getPolicyPointTotals(divisionSlug, {
+  const explicitRange = Boolean(options?.pointDateFrom || options?.pointDateTo);
+  const totals = await getPolicyPointTotals(divisionSlug, explicitRange ? {
     dateFrom: options?.pointDateFrom ?? month.dateFrom,
     dateTo: options?.pointDateTo ?? month.dateTo,
-  });
+  } : undefined);
   if (!totals) return students;
-  // Warnings always use the current management month, even when viewing old rewards.
+  // Warnings use the academy's current monthly/course scope, not a history filter.
   const warningTotals = options?.pointDateFrom || options?.pointDateTo
     ? await getPolicyPointTotals(divisionSlug) : totals;
   const [settings, policy] = await Promise.all([getDivisionSettings(divisionSlug), getManagementPolicy(divisionSlug)]);
   const holidayUsage = await getPolicyHolidayUsage(divisionSlug, options?.pointDateFrom ?? month.dateFrom, options?.pointDateTo ?? month.dateTo);
   return students.map((student) => {
     const t = totals.get(student.id) ?? { merit: 0, demerit: 0 };
-    const warningStage = getWarningStage(warningTotals?.get(student.id)?.demerit ?? 0, settings);
-    return { ...student, netPoints: t.merit, meritPoints: t.merit, demeritPoints: t.demerit, unusedHolidayCount: Math.max(0, settings.holidayLimit - (holidayUsage.get(student.id) ?? 0)),
+    const warning = warningTotals?.get(student.id) ?? { merit: 0, demerit: 0 };
+    const separate = policy?.separateMeritDemerit === true;
+    const warningStage = getWarningStage(separate ? warning.demerit : Math.max(0, warning.demerit - warning.merit), settings);
+    return { ...student, netPoints: separate ? t.merit : t.merit - t.demerit, meritPoints: separate ? t.merit : undefined, demeritPoints: separate ? t.demerit : Math.max(0, t.demerit - t.merit),
+      pointMetricScope: explicitRange ? "range" : policy?.monthlyPoints ? "monthly" : "course",
+      pointMetricDateFrom: explicitRange ? options?.pointDateFrom ?? month.dateFrom : policy?.monthlyPoints ? month.dateFrom : student.courseStartDate ?? student.enrolledAt.slice(0, 10),
+      pointMetricDateTo: options?.pointDateTo ?? (!explicitRange && !policy?.monthlyPoints ? kstDate() : month.dateTo),
+      unusedHolidayCount: Math.max(0, settings.holidayLimit - (holidayUsage.get(student.id) ?? 0)),
       warningStage, warningStageLabel: policy?.warningLabels[warningStage], warningStageLabels: policy?.warningLabels };
   });
 }

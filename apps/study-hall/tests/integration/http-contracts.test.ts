@@ -21,7 +21,10 @@ function routes(directory = "app/api"): Array<{ url: string; method: string; sou
   });
 }
 const inventory = routes();
-const protectedRoutes = inventory.filter(({ url }) => !url.startsWith("/api/auth/"));
+// Kiosk endpoints use scoped device credentials, not the staff session. Their
+// public status and mutation boundaries are checked separately below.
+const kioskRoutes = new Set(["/api/police/arrival-kiosk", "/api/police/arrival-kiosk/pair"]);
+const protectedRoutes = inventory.filter(({ url }) => !url.startsWith("/api/auth/") && !kioskRoutes.has(url));
 
 async function request(url: string, method = "GET", cookie = "", body?: string) {
   return fetch(`${baseUrl}${url}`, {
@@ -49,6 +52,23 @@ test("attendance statistics do not serve stale browser or shared-cache results",
   assert.equal(response.status, 200);
   assert.match(response.headers.get("cache-control") ?? "", /private/);
   assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+});
+
+test("unpaired kiosks expose no student data and staff login does not authorize device writes", async () => {
+  for (const division of ["police", "fire"]) {
+    const url = `/api/${division}/arrival-kiosk`;
+    const response = await request(url, "GET", adminCookie);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {status: "unpaired"});
+    for (const path of [url, `${url}/pair`]) {
+      assert.equal((await request(path, "POST", adminCookie, "{}")).status, 403, "missing Origin must fail");
+    }
+    const mutation: Response = await fetch(`${baseUrl}${url}`, {
+      method: "POST", headers: {cookie: adminCookie, origin: baseUrl!, "Content-Type": "application/json"},
+      body: JSON.stringify({studentNumber: "90001"}),
+    });
+    assert.equal(mutation.status, 403, "a staff cookie is not a registered kiosk credential");
+  }
 });
 
 test("assistants can read their seat map for attendance but cannot assign seats", async () => {

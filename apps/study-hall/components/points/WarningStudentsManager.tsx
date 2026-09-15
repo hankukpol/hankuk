@@ -25,6 +25,7 @@ type WarningStudentsManagerProps = {
   initialNotices: WarningNoticeItem[];
   divisionName: string;
   warningTemplates: Record<WarningStage, string>;
+  warningStageLabels?: Record<string, string>;
   studentManagementEnabled: boolean;
   interviewManagementEnabled: boolean;
   aggregationLabel: string;
@@ -50,6 +51,7 @@ export function WarningStudentsManager({
   initialNotices,
   divisionName,
   warningTemplates,
+  warningStageLabels,
   studentManagementEnabled,
   interviewManagementEnabled,
   aggregationLabel,
@@ -254,7 +256,7 @@ export function WarningStudentsManager({
           >
             {stageOptions.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {warningStageLabels?.[option.value] || option.label}
               </option>
             ))}
           </select>

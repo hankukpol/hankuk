@@ -781,3 +781,19 @@ test("DB와 mock 출석 통계 모두 사유로 수업을 구분하고 직렬 �
   assert.equal(expected.classStudentDays, 1);
   assert.equal(expected.physicalStudentDays, 0);
 });
+
+test("자동 점수 장애는 출결을 보존하고 경고를 반환하며 같은 저장으로 재시도된다", async () => {
+ const f=fixture(); let failing=true, attempts=0;
+ const attendance=loadService<AttendanceService>("attendance",{...f.dependencies,
+  "@/lib/server-log":{logServerError:()=>"test-error"},
+  "@/lib/services/exam-point.service":{syncExamPoints:async()=>{attempts++;if(failing)throw new Error("injected failure");return {grantedCount:0,revokedCount:0};}},
+ });
+ const input={date,periodId:"09:15",records:[{studentId:"p1",status:"PRESENT" as const}]};
+ const first=await attendance.upsertAttendanceBatch("police",admin,input);
+ assert.deepEqual(first.automationWarnings,["시험 상벌점 자동 계산을 완료하지 못했습니다."]);
+ assert.equal(f.state.attendanceByDivision.police.length,1);
+ failing=false;
+ const retry=await attendance.upsertAttendanceBatch("police",admin,input);
+ assert.deepEqual(retry.automationWarnings,[]);assert.equal(attempts,2);
+ assert.equal(f.state.attendanceByDivision.police.length,1);
+});

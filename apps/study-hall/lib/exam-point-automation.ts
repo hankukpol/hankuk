@@ -46,7 +46,8 @@ export type ExamPointSource = {
   participants: {sessionId: string; studentId: string; totalScore: number; isPartial: boolean}[];
   attendance: {studentId: string; date: string; status: string; reason: string | null; periodId?: string; checkInTime?: string | null}[];
   periods?: {id: string; endTime: string; isActive?: boolean}[];
-  leave: {studentId: string; date: string; status: string}[];
+  periodsByDate?: ReadonlyMap<string, {id: string; endTime: string; isActive?: boolean}[]>;
+  leave: {studentId: string; date: string; status: string; type?: string}[];
   rules: {id: string; points: number; isActive: boolean}[];
 };
 export type ExamPointAward = {studentId: string; ruleId: string; points: number; date: string; notes: string};
@@ -56,7 +57,7 @@ export function isExcusedExamAbsence(source: Pick<ExamPointSource, "attendance" 
   return source.attendance.some(record => record.studentId === studentId && record.date === day &&
     (!periodId || record.periodId === periodId) &&
     ["EXCUSED", "HOLIDAY", "HALF_HOLIDAY"].includes(record.status)) ||
-    (!periodId && source.leave.some(record => record.studentId === studentId && record.date === day &&
+    (!periodId && source.leave.some(record => record.studentId === studentId && record.date === day && record.type !== "OUTING" &&
       ["APPROVED", "USED"].includes(record.status)));
 }
 export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPointSource, month: string, today: string): ExamPointAward[] {
@@ -102,7 +103,8 @@ export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPo
       const periods=new Map((source.periods ?? []).map(p=>[p.id,p]));
       const calculate=createStudyMinutesCalculator();
       for(const record of source.attendance) {
-        const period=record.periodId ? periods.get(record.periodId) : null;
+        const historicalPeriods=source.periodsByDate?.get(record.date);
+        const period=record.periodId ? (historicalPeriods ? historicalPeriods.find(p=>p.id===record.periodId) : periods.get(record.periodId)) : null;
         if(!range || !period || record.date<range.dateFrom || record.date>range.dateTo || !["PRESENT","TARDY"].includes(record.status)) continue;
         const minutes=calculate(record.checkInTime ?? null,record.date,period.endTime);
         if(Number.isFinite(minutes)) studyMinutes.set(record.studentId,(studyMinutes.get(record.studentId) ?? 0)+minutes);

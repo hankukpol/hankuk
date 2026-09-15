@@ -20,6 +20,14 @@ export const ATTENDANCE_INPUT_OPTIONS = [
 
 export type AttendanceInputValue = AttendanceOptionValue | "CLASS";
 
+export function getPeriodAttendanceLabel(value: string, label: string, isMorningExam = false) {
+  if (!isMorningExam) return label;
+  if (value === "PRESENT") return "응시";
+  if (value === "ABSENT") return "미응시";
+  if (value === "EXCUSED") return "사유 미응시";
+  return label;
+}
+
 export function isLeaveAttendanceStatus(status: string | null | undefined) {
   return status === "HOLIDAY" || status === "HALF_HOLIDAY";
 }

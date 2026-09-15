@@ -59,7 +59,7 @@ export async function syncDbExamPoints(tx: Prisma.TransactionClient, divisionId:
     tx.examType.findMany({where:{divisionId},select:{id:true,category:true,studyTrack:true}}),
     tx.examSession.findMany({where:{divisionId,examDate:{gte:from,lt:to}}}),
     tx.attendance.findMany({where:{student:{divisionId},date:{gte:from,lt:to}},select:{studentId:true,date:true,status:true,reason:true,periodId:true,checkInTime:true}}),
-    tx.leavePermission.findMany({where:{student:{divisionId},date:{gte:from,lt:to}},select:{studentId:true,date:true,status:true}}),
+    tx.leavePermission.findMany({where:{student:{divisionId},date:{gte:from,lt:to}},select:{studentId:true,date:true,status:true,type:true}}),
     tx.pointRule.findMany({where:{divisionId}}),
     tx.pointRecord.findMany({where:{student:{divisionId,status:"ACTIVE"},notes:{startsWith:examPointPrefix(month)},ruleId:{not:null}}}),
     tx.period.findMany({where:{divisionId},select:{id:true,endTime:true,isActive:true}}),

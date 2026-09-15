@@ -6,6 +6,7 @@ import { listWarningStudents } from "@/lib/services/point.service";
 import { listWarningNotices } from "@/lib/services/warning-notice.service";
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { getPointAggregationInfo } from "@/lib/point-aggregation-mode";
+import { isPolicyEffective, kstDate } from "@/lib/management-policy";
 import {
   getDivisionFeatureSettings,
   getDivisionRuleSettings,
@@ -48,6 +49,7 @@ export default async function WarningPage({ params }: WarningPageProps) {
         divisionSlug={params.division}
         initialStudents={students}
         initialNotices={notices}
+        warningStageLabels={isPolicyEffective(policy, kstDate()) ? policy.warningLabels : undefined}
         divisionName={division.fullName}
         warningTemplates={{
           WARNING_1: settings.warnMsgLevel1,

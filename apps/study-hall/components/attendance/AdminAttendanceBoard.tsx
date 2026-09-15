@@ -9,6 +9,7 @@ import { toast } from "@/lib/sonner";
 
 import {
   ATTENDANCE_INPUT_OPTIONS,
+  getPeriodAttendanceLabel,
   buildAttendanceInput,
   getAttendanceInputValue,
   getAttendanceReasonDetail,
@@ -41,6 +42,7 @@ const AttendanceSeatView = dynamic(
 );
 
 type PeriodItem = {
+  isMorningExam?: boolean;
   id: string;
   name: string;
   startTime: string;
@@ -336,6 +338,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       { label: "수업", value: stats.classStudentDays ?? 0, status: "CLASS" },
       { label: "지각", value: stats.totals.tardy ?? 0, status: "TARDY" },
       { label: "결석", value: stats.totals.absent ?? 0, status: "ABSENT" },
+      { label: "사유", value: stats.totals.excused ?? 0, status: "EXCUSED" },
       { label: "출석률", value: `${stats.attendanceRate}%`, status: "" },
     ],
     [stats],
@@ -732,6 +735,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
       }
 
       const studentLabel = `학생 ${data.targetStudentCount ?? draft.targetStudentIds.length}명 · `;
+      if (data.automationWarnings?.length) throw new Error(`출결은 반영되었지만 ${data.automationWarnings.join(" ")} 같은 조건으로 다시 적용해 재계산해 주세요.`);
       const resultMessage =
         data.updatedExistingCount > 0
           ? `${studentLabel}${data.appliedCount}칸 신규 적용, 기존 기록 ${data.updatedExistingCount}칸 덮어씀`
@@ -775,6 +779,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? `${period.name} 저장에 실패했습니다.`);
+        if (data.automationWarnings?.length) throw new Error(`출결은 저장되었지만 ${data.automationWarnings.join(" ")} 같은 내용을 다시 저장해 재계산해 주세요.`);
         setSavedMatrix((previous) => {
           const next = { ...previous };
           for (const record of records) next[record.studentId] = {
@@ -914,6 +919,9 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
           ))}
         </div>
 
+        <p className="admin-help mt-3">
+          출석률은 수업·지각을 출석으로 인정하며, 사유결석·해당없음으로 평가 대상에서 제외된 인원은 분모에 포함하지 않습니다.
+        </p>
         <div className="admin-help mt-4 px-4 py-3">
           변경한 칸만 저장됩니다. 미입력 칸은 그대로 두셔도 되고, 미래 날짜나 미래 교시의 사유 메모도 미리 기록할 수 있습니다.
         </div>
@@ -1021,7 +1029,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                       }
                       className="admin-button mt-2"
                     >
-                      미처리 출석
+                      {period.isMorningExam ? "미처리 응시" : "미처리 출석"}
                     </button>
                   </th>
                 ))}
@@ -1077,7 +1085,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
                           >
                             {ATTENDANCE_INPUT_OPTIONS.map((option) => (
                               <option key={option.value || "empty"} value={option.value} disabled={isLeaveAttendanceStatus(option.value)}>
-                                {option.label}
+                                {getPeriodAttendanceLabel(option.value, option.label, period.isMorningExam)}
                               </option>
                             ))}
                           </select>

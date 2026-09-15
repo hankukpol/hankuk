@@ -91,6 +91,27 @@ async function fixture(t: TestContext) {
   };
 }
 
+test("출결 정정은 휴대폰 집계에 즉시 반영되고 이전 반납 원본은 보존된다", async t => {
+  const f = await fixture(t);
+  await f.service.upsertPhoneCheckBatch("police", assistant, f.input({ status: "SUBMITTED", rentalNote: undefined }));
+  const original = await f.records();
+  f.enableAttendance();
+  for (const status of ["PRESENT", "TARDY", "ABSENT", "EXCUSED", "HOLIDAY", "HALF_HOLIDAY", "NOT_APPLICABLE", null, "PRESENT"] as const) {
+    await f.store.updateMockState(state => {
+      state.attendanceByDivision.police = status ? [{ id: "qa-status", studentId: f.students[0].id, periodId: "09:15", date, status, reason: null, checkInTime: null, recordedById: manager.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] : [];
+    });
+    const period = (await f.service.getPhoneDaySnapshot("police", date)).periods.find(row => row.periodId === "09:15")!;
+    const eligible = status === "PRESENT" || status === "TARDY";
+    assert.equal(period.checkableStudentCount, eligible ? 1 : 0, String(status));
+    assert.equal(period.submittedCount, eligible ? 1 : 0, String(status));
+    assert.equal(period.notSubmittedCount, 0);
+    assert.equal(period.uncheckedCount, 0);
+    assert.deepEqual(await f.records(), original, "readback must not destroy the original phone receipt");
+    if (!eligible) await assert.rejects(f.service.upsertPhoneCheckBatch("police", assistant, f.input({ status: "NOT_SUBMITTED" })), /출석/);
+  }
+  assert.deepEqual((await f.store.readMockState()).pointRecordsByDivision.police, [], "phone status alone must not synthesize an unconfigured penalty");
+});
+
 test("휴대폰 화면은 활성 교시를 모두 보여 주되 규정 밖 교시는 체크 대상에서 제외한다", async (t) => {
   const f = await fixture(t);
   const snapshot = await f.service.getPhoneDaySnapshot("police", date);

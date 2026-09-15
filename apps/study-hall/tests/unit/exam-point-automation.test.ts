@@ -10,6 +10,18 @@ const source = (): ExamPointSource => ({
   rules:[{id:"absence",points:-1,isActive:true},{id:"regular-absence",points:-3,isActive:true},{id:"first",points:3,isActive:true},{id:"second",points:2,isActive:true},{id:"third",points:1,isActive:true},{id:"monthly",points:3,isActive:true}],
   attendance:[],leave:[],
 });
+
+test("history-only outings do not exempt an exam; explicit excused attendance still does", () => {
+  for (const category of ["MORNING", "REGULAR"] as const) {
+    const data = source();
+    data.sessions[0].category = category;
+    data.leave = [{ studentId: "b", date: "2026-09-14", status: "APPROVED", ...{ type: "OUTING" } }];
+    const awards = () => buildExamPointAwards(configuration(), data, "2026-09", "2026-09-14");
+    assert.equal(awards().find(row => row.studentId === "b")?.points, category === "MORNING" ? -1 : -3);
+    data.attendance = [{ studentId: "b", date: "2026-09-14", status: "EXCUSED", reason: "시험 미응시 승인" }];
+    assert.equal(awards().some(row => row.studentId === "b"), false);
+  }
+});
 test("academy calendar gates morning absence and rank by start date, selected weekdays and closures",()=>{
   const data=source(), config=configuration();
   assert.equal(buildExamPointAwards(config,data,"2026-09","2026-09-14").length,2);

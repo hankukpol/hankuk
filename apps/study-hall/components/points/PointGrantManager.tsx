@@ -173,7 +173,7 @@ export const PointGrantManager = memo(function PointGrantManager({
     const sorted = [...rankStudents].sort((a, b) =>
       (rankingOrder === "top" ? score(b) - score(a) : score(a) - score(b)) || (rankingMetric === "merit" ? (b.unusedHolidayCount ?? 0) - (a.unusedHolidayCount ?? 0) : 0) || a.studentNumber.localeCompare(b.studentNumber),
     );
-    return sorted.slice(0, 20);
+    return sorted;
   }, [rankStudents, rankingOrder, rankingMetric]);
 
   const filteredStudents = useMemo(() => {
@@ -609,13 +609,17 @@ export const PointGrantManager = memo(function PointGrantManager({
         <div className="admin-workspace-toolbar">
           <div>
             <h2 className="admin-section-title">{rankingMetric === "demerit" ? "벌점 순위" : activeStudents.some((student) => student.meritPoints !== undefined) ? "상점 순위" : "상벌점 순위"}</h2>
-            <p className="admin-help mt-1">{appliedRange.dateFrom} ~ {appliedRange.dateTo} · 최대 20명{activeStudents.some((student) => student.meritPoints !== undefined) ? " · 동점은 휴일권 미사용 우선" : ""}</p>
+            <p className="admin-help mt-1">{appliedRange.dateFrom} ~ {appliedRange.dateTo} · {rankingMetric === "demerit" ? "벌점" : "상점"}이 {rankingOrder === "top" ? "많은" : "적은"} 순 · 전체 {rankStudents.length}명{rankingMetric === "merit" ? " · 동점은 휴일권 미사용 우선" : " · 동점은 수험번호순"}</p>
           </div>
-          <div className="admin-choice-group">
+          <div className="flex flex-wrap gap-3">
+          <div role="group" aria-label="정렬 기준" className="admin-choice-group">
             <button type="button" onClick={() => setRankingMetric("merit")} className="admin-choice-button" data-active={rankingMetric === "merit"} aria-pressed={rankingMetric === "merit"}>상점 기준</button>
             <button type="button" onClick={() => setRankingMetric("demerit")} className="admin-choice-button" data-active={rankingMetric === "demerit"} aria-pressed={rankingMetric === "demerit"}>벌점 기준</button>
-            <button type="button" onClick={() => setRankingOrder("top")} className="admin-choice-button" data-active={rankingOrder === "top"} aria-pressed={rankingOrder === "top"}>상위</button>
-            <button type="button" onClick={() => setRankingOrder("bottom")} className="admin-choice-button" data-active={rankingOrder === "bottom"} aria-pressed={rankingOrder === "bottom"}>하위</button>
+          </div>
+          <div role="group" aria-label="정렬 방향" className="admin-choice-group">
+            <button type="button" onClick={() => setRankingOrder("top")} className="admin-choice-button" data-active={rankingOrder === "top"} aria-pressed={rankingOrder === "top"}>내림차순</button>
+            <button type="button" onClick={() => setRankingOrder("bottom")} className="admin-choice-button" data-active={rankingOrder === "bottom"} aria-pressed={rankingOrder === "bottom"}>오름차순</button>
+          </div>
           </div>
         </div>
         <div className="md:hidden">

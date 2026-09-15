@@ -34,19 +34,22 @@ export const getManagementPolicy = cache(async (divisionSlug: string, onDate?: s
 
 export async function getPolicyPointTotals(divisionSlug: string, range?: { dateFrom: string; dateTo: string }) {
   const policy = await getManagementPolicy(divisionSlug);
-  if (!isPolicyEffective(policy, kstDate()) || !policy.separateMeritDemerit) return null;
-  const bounds = range ?? kstMonthBounds();
+  if (!isPolicyEffective(policy, kstDate())) return null;
+  const courseScope = !range && !policy.monthlyPoints;
+  const bounds = range ?? (courseScope ? { dateFrom: "0001-01-01", dateTo: kstDate() } : kstMonthBounds());
   if (isMockMode()) {
     const state = await readMockState();
-    return separatePointTotals(state.pointRecordsByDivision[divisionSlug] ?? [], bounds.dateFrom, bounds.dateTo);
+    const starts = new Map((state.studentsByDivision[divisionSlug] ?? []).map(student => [student.id, student.courseStartDate ?? student.enrolledAt.slice(0, 10)]));
+    const records = (state.pointRecordsByDivision[divisionSlug] ?? []).filter(record => !courseScope || (starts.has(record.studentId) && record.date.slice(0, 10) >= starts.get(record.studentId)!));
+    return separatePointTotals(records, bounds.dateFrom, bounds.dateTo);
   }
   const prisma = await getPrismaClient();
   const end = new Date(`${bounds.dateTo}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
   const rows = await prisma.pointRecord.findMany({
     where: { student: { division: { slug: divisionSlug } }, date: { gte: new Date(`${bounds.dateFrom}T00:00:00Z`), lt: end } },
-    select: { studentId: true, points: true, date: true },
+    select: { studentId: true, points: true, date: true, student: { select: { courseStartDate: true, enrolledAt: true } } },
   });
-  return separatePointTotals(rows, bounds.dateFrom, bounds.dateTo);
+  return separatePointTotals(rows.filter(record => !courseScope || record.date.toISOString().slice(0, 10) >= (record.student.courseStartDate ?? record.student.enrolledAt).toISOString().slice(0, 10)), bounds.dateFrom, bounds.dateTo);
 }
 
 export async function getPolicyHolidayUsage(divisionSlug: string, dateFrom: string, dateTo: string) {

@@ -15,6 +15,66 @@ const periods = manifest.periods.map((p: { startTime: string }) => ({ ...p, id: 
 const basePolicy = mapPolicy(manifest, periods);
 const actor = { id: "fixture-admin", name: "검증 관리자", role: "ADMIN" as const };
 
+test("상계 모드도 월별/수강기간 설정과 경고 계산을 따른다", async t => {
+  const f = fixture(t, "2026-10-15T00:00:00+09:00");
+  const settings = f.state.divisionSettingsByDivision.police as any;
+  settings.managementPolicy = { ...settings.managementPolicy, separateMeritDemerit: false, monthlyPoints: true };
+  f.state.pointRecordsByDivision.police = [point("a", "2026-09-20", -20), point("a", "2026-09-21", 4), point("a", "2026-10-10", -10), point("a", "2026-10-11", 2)];
+  let student = (await f.students.listStudents("police"))[0];
+  assert.equal(student.netPoints, -8);
+  assert.equal(student.demeritPoints, 8);
+  assert.equal(student.meritPoints, undefined);
+  assert.equal((await f.points.listWarningStudents("police")).length, 0);
+  settings.managementPolicy.monthlyPoints = false;
+  student = (await f.students.listStudents("police"))[0];
+  assert.equal(student.netPoints, -24);
+  assert.equal(student.demeritPoints, 24);
+  assert.equal((await f.points.listWarningStudents("police"))[0]?.netPoints, 24);
+});
+
+test("월별 집계를 끄면 수강 시작 이후 상벌점을 합산하고 명시적 날짜 조회는 유지한다", async t => {
+  const f = fixture(t, "2026-10-15T00:00:00+09:00");
+  const settings = f.state.divisionSettingsByDivision.police as any;
+  settings.managementPolicy = { ...settings.managementPolicy, monthlyPoints: false };
+  f.state.pointRecordsByDivision.police = [point("a", "2026-08-31", -99), point("a", "2026-09-20", -2), point("a", "2026-10-10", -1), point("a", "2026-09-21", 4)];
+  assert.deepEqual((await f.policy.getPolicyPointTotals("police"))?.get("a"), { merit: 4, demerit: 3 });
+  assert.deepEqual((await f.policy.getPolicyPointTotals("police", { dateFrom: "2026-10-01", dateTo: "2026-10-15" }))?.get("a"), { merit: 0, demerit: 1 });
+  const students = await f.students.listStudents("police");
+  assert.equal(students.find(s => s.id === "a")?.demeritPoints, 3);
+});
+
+test("휴가 자동 계산 장애를 알리고 원본 변경 없이 재시도하며 다른 학원 기록은 거부한다", async (t) => {
+  const f = fixture(t);
+  let fail = true;
+  let attempts = 0;
+  const leave = f.load<typeof import("../lib/services/leave.service")>("leave", {
+    "@/lib/services/attendance.service": {
+      syncAttendanceDerivedPoints: async () => {
+        attempts++;
+        return fail ? ["시험 상벌점 자동 계산을 완료하지 못했습니다."] : [];
+      },
+    },
+  });
+  const created = await leave.createLeavePermission("police", actor, { studentId: "a", date: "2026-09-15", type: "HOLIDAY", reason: "QA" });
+  assert.equal(created?.automationWarnings.length, 1);
+  const beforeRetry = structuredClone(f.state);
+  assert.equal((await leave.retryLeaveAutomation("police", created!.id, actor)).automationWarnings.length, 1);
+  assert.deepEqual(f.state, beforeRetry);
+  fail = false;
+  assert.deepEqual(await leave.retryLeaveAutomation("police", created!.id, actor), { automationWarnings: [] });
+  assert.deepEqual(f.state, beforeRetry);
+  await assert.rejects(leave.retryLeaveAutomation("fire", created!.id, actor), /찾을 수 없습니다/);
+  assert.equal(attempts, 3);
+  fail = true;
+  const cancelled = await leave.cancelLeavePermission("police", created!.id, actor);
+  assert.equal(cancelled.automationWarnings.length, 1);
+  assert.equal(cancelled.status, "REJECTED");
+  const afterCancel = structuredClone(f.state);
+  fail = false;
+  await leave.retryLeaveAutomation("police", created!.id, actor);
+  assert.deepEqual(f.state, afterCancel);
+});
+
 function student(id: string, extra: Partial<MockStudentRecord> = {}): MockStudentRecord {
   return { id, divisionId: "police", name: id, studentNumber: id, status: "ACTIVE", courseStartDate: "2026-09-01", courseEndDate: null, enrolledAt: "2026-09-01T00:00:00Z", createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z", ...extra } as MockStudentRecord;
 }
@@ -417,7 +477,10 @@ test("수업 선택은 한 달의 선택 학생·요일·교시만 인정 출석
     reason: classReason,
   };
 
-  assert.deepEqual(await service.applyRecurringAttendance("police", actor, input), {
+  // This fixture checks stored cells; automation failure/retry has its own injected-service test.
+  const {automationWarnings: firstWarnings, ...firstCounts} = await service.applyRecurringAttendance("police", actor, input);
+  assert.ok(Array.isArray(firstWarnings));
+  assert.deepEqual(firstCounts, {
     appliedCount: 71,
     updatedExistingCount: 0,
     skippedExistingCount: 1,
@@ -426,7 +489,9 @@ test("수업 선택은 한 달의 선택 학생·요일·교시만 인정 출석
     targetCellCount: 72,
   });
   const attendanceBeforeDuplicate = JSON.stringify(f.state.attendanceByDivision);
-  assert.deepEqual(await service.applyRecurringAttendance("police", actor, input), {
+  const {automationWarnings: retryWarnings, ...retryCounts} = await service.applyRecurringAttendance("police", actor, input);
+  assert.ok(Array.isArray(retryWarnings));
+  assert.deepEqual(retryCounts, {
     appliedCount: 0,
     updatedExistingCount: 0,
     skippedExistingCount: 72,
@@ -583,4 +648,51 @@ test("academies can change half-day period counts without changing previously ap
   await leave.cancelLeavePermission("police",first!.id,actor);
   assert.equal(f.state.attendanceByDivision.police.filter(r=>r.date==="2026-09-09").length,0);
   assert.equal(f.state.attendanceByDivision.police.filter(r=>r.date==="2026-09-10").length,4);
+});
+
+test("사후 휴무 승인·취소는 자동 미사용 상점만 정정하고 이력을 보존한다",async t=>{
+ const f=fixture(t); await f.leave.settleLeaveMonth("police",actor,{month:"2026-09"});
+ const original=f.state.pointRecordsByDivision.police[0]; const originalId=original.id;
+ f.state.pointRecordsByDivision.police.push(point("a","2026-09-03",7));
+ f.state.pointRecordsByDivision.fire.push(point("fire","2026-09-03",9));
+ const first=await f.leave.createLeavePermission("police",actor,{studentId:"a",date:"2026-09-09",type:"HOLIDAY",reason:"사후 승인"});
+ assert.equal(f.state.pointRecordsByDivision.police.find(p=>p.id===originalId)!.points,2);
+ const second=await f.leave.createLeavePermission("police",actor,{studentId:"a",date:"2026-09-10",type:"HOLIDAY",reason:"사후 승인"});
+ assert.equal(f.state.pointRecordsByDivision.police.find(p=>p.id===originalId)!.points,0);
+ await f.leave.cancelLeavePermission("police",second!.id,actor);
+ assert.equal(f.state.pointRecordsByDivision.police.find(p=>p.id===originalId)!.points,2);
+ await f.leave.cancelLeavePermission("police",first!.id,actor);
+ const after=f.state.pointRecordsByDivision.police;
+ assert.equal(after.find(p=>p.id===originalId)!.points,4);
+ assert.equal(after.length,2);assert.equal(after.find(p=>p.id!==originalId)!.points,7);
+ assert.equal(f.state.pointRecordsByDivision.fire[0].points,9);
+ assert.ok(after.every(p=>p.points>=0),"상점 회수를 벌점으로 기록하면 안 된다");
+ const history=f.state.leavePermissionsByDivision.police.find(p=>p.id===first!.id)!.attendanceSnapshot as any;
+ assert.equal(history.settlementCorrections.length,2);
+ assert.deepEqual(history.settlementCorrections[0].changes,[{id:originalId,before:4,after:2}]);
+ await f.leave.settleLeaveMonth("police",actor,{month:"2026-09"});
+ assert.equal(f.state.pointRecordsByDivision.police.length,2);
+});
+
+test("미정산 월의 사후 휴무 승인은 미사용 상점을 임의로 새로 만들지 않는다",async t=>{
+ const f=fixture(t);
+ await f.leave.createLeavePermission("police",actor,{studentId:"a",date:"2026-09-09",type:"HOLIDAY",reason:"사후 승인"});
+ assert.deepEqual(f.state.pointRecordsByDivision.police,[]);
+});
+
+test("DB 휴무 취소와 정산 정정은 한 트랜잭션이며 점수 쓰기 실패 시 함께 되돌린다",async t=>{
+ const f=fixture(t); let failPoints=false;
+ let state:any={permission:{...permission("a","2026-09-09"),date:new Date("2026-09-09"),createdAt:new Date("2026-09-01"),attendanceSnapshot:{version:1,cells:[]},student:{id:"a",name:"a",studentNumber:"a"},approvedBy:{id:actor.id,name:"관리자"}},point:{id:"settled",studentId:"a",points:2,ruleId:null,notes:"[자동정산][휴가정산:2026-09] 2026-09 미사용 휴가/반차 정산"}};
+ const before=structuredClone(state);const scopes:any[]=[];
+ const prisma={division:{findUnique:async()=>({id:"police"})},$transaction:async(fn:any,options:any)=>{
+  assert.equal(options.isolationLevel,"Serializable");const draft=structuredClone(state);
+  const tx={leavePermission:{findFirst:async(q:any)=>{scopes.push(q.where);return draft.permission;},findMany:async(q:any)=>{scopes.push(q.where);return [draft.permission];},update:async(q:any)=>{Object.assign(draft.permission,q.data);return draft.permission;},updateMany:async(q:any)=>{scopes.push(q.where);Object.assign(draft.permission,q.data);return {count:1};}},pointRecord:{findMany:async(q:any)=>{scopes.push(q.where);return [structuredClone(draft.point)];},updateMany:async(q:any)=>{scopes.push(q.where);if(failPoints)throw new Error("injected point write failure");Object.assign(draft.point,q.data);return {count:1};}}};
+  const result=await fn(tx);state=draft;return result;
+ }};
+ const leave=f.load<typeof import("../lib/services/leave.service")>("leave",{"@/lib/mock-data":{isMockMode:()=>false},"@/lib/service-helpers":{getPrismaClient:async()=>prisma}});
+ failPoints=true;await assert.rejects(leave.cancelLeavePermission("police",state.permission.id,actor),/injected point write/);assert.deepEqual(state,before);
+ failPoints=false;await leave.cancelLeavePermission("police",state.permission.id,actor);
+ assert.equal(state.permission.status,"REJECTED");assert.equal(state.point.points,4);assert.equal(state.point.id,"settled");
+ assert.deepEqual(state.permission.attendanceSnapshot.settlementCorrections[0].changes,[{id:"settled",before:2,after:4}]);
+ for(const where of scopes)assert.deepEqual(where.student,{divisionId:"police"});
 });

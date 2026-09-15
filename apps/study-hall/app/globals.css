@@ -2084,13 +2084,7 @@ body:has(.admin-shell) {
 
 @media (min-width: 768px) {
   .admin-shell .admin-attendance-summary {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 767px) {
-  .admin-shell .admin-attendance-summary > :last-child {
-    grid-column: 1 / -1;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 

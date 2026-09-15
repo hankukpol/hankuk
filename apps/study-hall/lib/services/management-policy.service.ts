@@ -70,7 +70,6 @@ export async function saveOptionalEnrollment(divisionSlug: string, input: Manage
   if (!parsed.weekdays.length) throw badRequest("적용 요일을 선택해 주세요.");
   if (parsed.dateFrom > parsed.dateTo) throw badRequest("종료일은 시작일보다 빠를 수 없습니다.");
   if (!policy.controlledPeriods.some((p) => p.periodId === parsed.periodId && p.optional && parsed.weekdays.every((d) => p.weekdays.includes(d)))) throw badRequest("선택자습 교시와 운영 요일을 확인해 주세요.");
-  if (parsed.dateFrom < kstDate()) throw badRequest("선택자습 신청은 오늘 이후부터 적용할 수 있습니다. 과거 출결은 변경하지 않습니다.");
   if (isMockMode()) {
     await updateMockState((state) => {
       if (!(state.studentsByDivision[divisionSlug] ?? []).some((s) => s.id === parsed.studentId)) throw notFound("해당 직렬 학생이 아닙니다.");

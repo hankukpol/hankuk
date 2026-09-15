@@ -510,7 +510,8 @@ export function MorningExamScoreManager({
 
             </MobileWorkspaceTools>
             <div className="admin-table-frame mt-4 overflow-x-auto max-md:mt-0">
-              <table className="min-w-[600px]">
+              <table className="min-w-[600px] admin-score-entry-table">
+                <colgroup><col className="admin-score-id-column" /><col className="admin-score-name-column" /><col className="admin-score-value-column" /><col className="admin-score-note-column" /></colgroup>
                 <thead>
                   <tr>
                     <th>수험번호</th>
@@ -645,7 +646,8 @@ export function MorningExamScoreManager({
             </div>
 
             <div className="admin-table-frame mt-3 overflow-x-auto">
-              <table className="min-w-[800px]">
+              <table className="min-w-[800px] admin-weekly-score-table">
+                <colgroup><col className="admin-score-name-column" />{Array.from({ length: weeklySummary.dailyEntries.length + 3 }, (_, index) => <col key={index} className="admin-score-value-column" />)}</colgroup>
                 <thead>
                   <tr>
                     <th>이름</th>

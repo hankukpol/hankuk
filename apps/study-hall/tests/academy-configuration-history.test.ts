@@ -28,3 +28,24 @@ test("cancelled and pending copies never affect a date; multiple applications on
   assert.deepEqual(configurationForDate(current,history,"2026-09-14"),before);
   assert.deepEqual(configurationForDate(current,history,"2026-09-15"),current);
 });
+
+test("later backdated edits override only edited fields from their effective date",()=>{
+ const base={late:10,limit:1},first={late:20,limit:1},second={late:20,limit:3},retro={late:30,limit:3};
+ const history=[
+ {effectiveFrom:"2026-09-10",createdAt:"1",status:"APPLIED",before:base,after:first},
+ {effectiveFrom:"2026-09-15",createdAt:"2",status:"APPLIED",before:first,after:second},
+ {effectiveFrom:"2026-09-05",createdAt:"3",status:"APPLIED",before:second,after:retro}];
+ assert.deepEqual(configurationForDate(retro,history,"2026-09-04"),base);
+ assert.deepEqual(configurationForDate(retro,history,"2026-09-07"),{late:30,limit:1});
+ assert.deepEqual(configurationForDate(retro,history,"2026-09-12"),{late:30,limit:1});
+ assert.deepEqual(configurationForDate(retro,history,"2026-09-15"),retro);
+});
+
+test("backdated exam penalty uses the revised amount without leaking into another academy",()=>{
+ const make=(points:number)=>({settings:{examPointAutomation:parseExamPointAutomation({enabled:true,effectiveFrom:"2026-09-01",morningStartDate:"2026-09-01",morningWeekdays:[1,2,3,4,5],morningAbsenceRuleId:"a"})},pointRules:[{id:"a",points,isActive:true}],periods:[],examTypes:[{id:"e",category:"MORNING"}]});
+ const before=make(-1),after=make(-3);
+ const history=[{effectiveFrom:"2026-09-15",createdAt:"2026-09-20T01:00:00Z",status:"APPLIED",before,after}];
+ const source:ExamPointSource={students:[{id:"s",status:"ACTIVE"}],sessions:["2026-09-14","2026-09-15"].map(examDate=>({id:examDate,identityKey:examDate,examTypeId:"e",examDate,category:"MORNING",fullScore:100})),participants:[],attendance:[],leave:[],rules:after.pointRules};
+ assert.deepEqual(buildVersionedExamPoints(after,history,source,"2026-09","2026-09-20").sort((a,b)=>a.date.localeCompare(b.date)).map(a=>a.points),[-1,-3]);
+ assert.deepEqual(buildVersionedExamPoints(make(-5),[],source,"2026-09","2026-09-20").map(a=>a.points),[-5,-5]);
+});

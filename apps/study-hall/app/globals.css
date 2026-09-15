@@ -3513,6 +3513,30 @@ body:has(.admin-shell) {
   .phone-seat-card { min-width: 140px; }
 }
 
+/* Score sheets reserve mobile width for results instead of stretching identifiers. */
+@media (max-width: 767px) {
+  .admin-shell :is(.admin-weekly-score-table, .admin-score-entry-table) {
+    table-layout: fixed;
+    width: max-content;
+    min-width: 100%;
+  }
+  .admin-score-name-column { width: 88px; }
+  .admin-score-id-column { width: 104px; }
+  .admin-score-value-column { width: 80px; }
+  .admin-score-entry-table .admin-score-value-column { width: 96px; }
+  .admin-score-note-column { width: 160px; }
+  .admin-shell :is(.admin-weekly-score-table, .admin-score-entry-table) :is(th, td) {
+    padding: 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .admin-shell :is(.admin-weekly-score-table, .admin-score-entry-table) td.admin-table-name {
+    min-width: 0;
+    max-width: none;
+  }
+  .admin-shell .admin-score-entry-table input { width: 100%; min-width: 0; }
+}
+
 /* MOBILE_DESIGN 2.4/2.8/2.9: 종이 시험지 복습은 상자 없는 구분선 목록. */
 .paper-review-heading { display: flex; flex-wrap: wrap; column-gap: 8px; row-gap: 4px; }
 .paper-review-answers { display: grid; gap: 8px; }

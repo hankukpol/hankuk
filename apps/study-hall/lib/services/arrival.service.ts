@@ -128,15 +128,15 @@ export async function getArrivalSettings(slug: string) {
   return withArrivalData(slug, { devices: true }, (data) => settingsResult(data, new Date()));
 }
 
-function validateSettingChange(data: ArrivalData, raw: unknown, now: Date) {
+function validateSettingChange(data: ArrivalData, raw: unknown) {
   const input = arrivalSettingsInputSchema.parse(raw);
   if (input.expectedRevision !== data.settings.revision) throw conflict("다른 관리자가 설정을 변경했습니다. 최신 설정을 다시 확인해 주세요.");
-  if (input.config.effectiveDate < getKstTodayYmd(now)) throw badRequest("적용일은 오늘 이후로 지정해 주세요.");
   return input;
 }
 export async function previewArrivalSettings(slug: string, raw: unknown, now = new Date()): Promise<ArrivalSettingsPreview> {
+  void now; // Past effective dates are valid; callers may still supply their clock.
   return withArrivalData(slug, { students: "all" }, (data) => {
-    const input = validateSettingChange(data, raw, now);
+    const input = validateSettingChange(data, raw);
     const eligible = data.students.filter(isArrivalEligible);
     const matchingCount = eligible.filter((s) => new RegExp(`^[0-9]{${input.config.numberLength}}$`).test(s.studentNumber)).length;
     return { revision: data.settings.revision, before: effectiveArrivalConfig(data.settings, input.config.effectiveDate), after: input.config, eligibleCount: eligible.length, matchingCount, mismatchedCount: eligible.length - matchingCount };
@@ -145,7 +145,7 @@ export async function previewArrivalSettings(slug: string, raw: unknown, now = n
 export async function saveArrivalSettings(slug: string, raw: unknown, actor: ArrivalActor, now = new Date()) {
   assertArrivalAdmin(actor);
   return withArrivalData(slug, { write: true, devices: true }, (data) => {
-    const { config } = validateSettingChange(data, raw, now);
+    const { config } = validateSettingChange(data, raw);
     const before = effectiveArrivalConfig(data.settings, config.effectiveDate);
     const labels: Record<keyof ArrivalConfig, string> = { enabled: "등원 체크 사용", effectiveDate: "등원 적용일", numberLength: "수험번호 자리수", popupMs: "완료 팝업 시간(ms)", deviceDays: "기기 인증 유효 일수" };
     const changes = (Object.keys(labels) as (keyof ArrivalConfig)[]).filter((key) => before[key] !== config[key]).map((key) => ({ field: key, label: labels[key], before: before[key], after: config[key] }));

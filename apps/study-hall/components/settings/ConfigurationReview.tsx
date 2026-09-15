@@ -51,10 +51,9 @@ export function useConfigurationReview(divisionSlug: string): {
   }
   return {review,dialog:<Modal open={!!draft} title="설정 변경 확인" onClose={()=>{if(!busy)finish(null);}} footer={<>
     <button type="button" className="admin-button admin-button-secondary" disabled={busy} onClick={()=>finish(null)}>취소</button>
-    <button type="button" className="admin-button admin-button-primary" disabled={busy || (!!preview && !preview.changes.length)} onClick={()=>void submit(!!preview)}>{preview ? (date===draft?.library.today ? "변경 적용" : "적용 예약") : "변경 미리보기"}</button>
+    <button type="button" className="admin-button admin-button-primary" disabled={busy || (!!preview && !preview.changes.length)} onClick={()=>void submit(!!preview)}>{preview ? (date<=(draft?.library.today ?? "") ? "변경 적용" : "적용 예약") : "변경 미리보기"}</button>
   </>}><div className="space-y-4">
-    <label className="admin-field"><span>적용일</span><input type="date" min={draft?.library.earliestCalculationDate ?? draft?.library.today} value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setPreview(null);}}/></label>
-    {draft && draft.library.earliestCalculationDate > draft.library.today && <p className="admin-help">오늘 기록의 계산을 보존하기 위해 내일부터 적용할 수 있습니다.</p>}
+    <label className="admin-field"><span>적용일</span><input type="date" value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setPreview(null);}}/></label>
     {draft?.library.pending && <p className="admin-help">{draft.library.pending.effectiveFrom} 예약에 이번 변경을 함께 반영합니다. 미리보기에서 전체 변경을 확인해 주세요.</p>}
     {error && <p role="alert" className="admin-notice">{error}</p>}
     {preview && draft && <ConfigurationChanges changes={preview.changes} before={draft.library.current} after={preview.after}/>}

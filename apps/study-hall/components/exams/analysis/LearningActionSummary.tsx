@@ -18,7 +18,7 @@ export function SubjectTabs({ subjects, label = "학습 진단 과목" }: { labe
   if (!subjects.length) return <p className="admin-empty-state">표시할 과목이 없습니다.</p>;
   return <>
     {document && subjects.length > 1 && <div data-report-navigation className="admin-filter-bar">
-      <label className="admin-label">{label}
+      <label className="admin-label admin-field">{label}
         <select value={active} onChange={event => setSelected(event.target.value)}>
           {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
         </select>

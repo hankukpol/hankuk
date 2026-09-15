@@ -63,14 +63,14 @@ export async function syncDbExamPoints(tx: Prisma.TransactionClient, divisionId:
     tx.pointRule.findMany({where:{divisionId}}),
     tx.pointRecord.findMany({where:{student:{divisionId,status:"ACTIVE"},notes:{startsWith:examPointPrefix(month)},ruleId:{not:null}}}),
     tx.period.findMany({where:{divisionId},select:{id:true,endTime:true,isActive:true}}),
-    tx.academyConfigurationApplication.findMany({where:{divisionId,status:"APPLIED",effectiveFrom:{gte:from}},select:{effectiveFrom:true,createdAt:true,status:true,before:true}}),
+    tx.academyConfigurationApplication.findMany({where:{divisionId,status:"APPLIED"},select:{effectiveFrom:true,createdAt:true,status:true,before:true,after:true}}),
   ]);
   const participants = await tx.examSessionParticipant.findMany({where:{divisionId,sessionId:{in:sessions.map(session=>session.id)}}});
   const typeMap=new Map(types.map(t=>[t.id,t]));
   const source: ExamPointSource = {students:students.map(s=>({...s,courseStartDate:ymd(s.courseStartDate)??kstDate(s.enrolledAt),courseEndDate:ymd(s.courseEndDate),enrolledAt:s.enrolledAt.toISOString()})),
     sessions:sessions.filter(s=>typeMap.has(s.examTypeId)).map(s=>({...s,examDate:ymd(s.examDate)!,category:typeMap.get(s.examTypeId)!.category,studyTrack:typeMap.get(s.examTypeId)!.studyTrack})),
     participants,periods,attendance:attendance.map(a=>({...a,date:ymd(a.date)!,checkInTime:a.checkInTime?.toISOString() ?? null})),leave:leave.map(l=>({...l,date:ymd(l.date)!})),rules};
-  const history = historyRows.map(row=>({...row,effectiveFrom:ymd(row.effectiveFrom)!,createdAt:row.createdAt.toISOString(),before:row.before as unknown as import("@/lib/versioned-exam-points").ExamConfigurationHistory["before"]}));
+  const history = historyRows.map(row=>({...row,effectiveFrom:ymd(row.effectiveFrom)!,createdAt:row.createdAt.toISOString(),after:row.after as unknown as import("@/lib/versioned-exam-points").ExamConfigurationHistory["before"],before:row.before as unknown as import("@/lib/versioned-exam-points").ExamConfigurationHistory["before"]}));
   const current = {settings:settings ?? {},pointRules:rules,periods,examTypes:types};
   const manualScores = await tx.morningExamScore.findMany({where:{student:{divisionId},examType:{divisionId},examDate:{gte:from,lt:to}},select:{studentId:true,examTypeId:true,examDate:true,score:true}});
   await syncDbExamAttendance(tx,divisionId,current,history,includeManualMorningScores(source,manualScores.map(s=>({...s,examDate:ymd(s.examDate)!})),types),month,kstDate(),actorId);

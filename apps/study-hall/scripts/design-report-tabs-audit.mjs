@@ -24,8 +24,12 @@ try {
       const panel = page.locator(`[id="${await tab.getAttribute("aria-controls")}"]`);
       await panel.waitFor();
       await page.evaluate(() => document.fonts.ready);
+      const contentTop = await panel.locator("h2").first().evaluate(el => el.getBoundingClientRect().top);
+      const tabsBottom = await tabs.evaluate(el => el.getBoundingClientRect().bottom);
+      assert.ok(contentTop - tabsBottom >= 16, `${kind}/${name}/${width}: missing tab content spacing`);
       assert.equal(await tab.getAttribute("aria-selected"), "true");
       for (const select of await panel.locator("[data-report-navigation] select").all()) {
+        assert.equal(await select.evaluate(el => getComputedStyle(el.parentElement).rowGap), "8px");
         const options = await select.locator("option").evaluateAll(nodes => nodes.map(node => node.value));
         for (const option of options) {
           await select.selectOption(option);

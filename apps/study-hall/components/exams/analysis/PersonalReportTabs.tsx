@@ -37,7 +37,7 @@ export function PersonalReportTabs({ children, section, navigation = "tabs" }: {
 
   return <>
     {!section && <div data-report-navigation className="admin-compact-workspace"><AdminTabs variant="secondary" scrollable label="개인 성적 분석 항목" idPrefix={prefix} items={items} activeId={active} onChange={setSelected} /></div>}
-    {items.map(item => <div key={item.id} id={`${prefix}-panel-${item.id}`} role="tabpanel" aria-labelledby={!section ? `${prefix}-${item.id}` : undefined} aria-label={section ? item.label : undefined} hidden={active !== item.id} data-report-panel className="admin-flat-page">
+    {items.map(item => <div key={item.id} id={`${prefix}-panel-${item.id}`} role="tabpanel" aria-labelledby={!section ? `${prefix}-${item.id}` : undefined} aria-label={section ? item.label : undefined} hidden={active !== item.id} data-report-panel className="admin-flat-page pt-5 md:pt-0">
       {group(item.id)}
     </div>)}
   </>;

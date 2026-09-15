@@ -15,6 +15,7 @@ async function fixture(t: TestContext) {
   try { process.env.MOCK_DB_DIR=directory; process.chdir(directory); loaded=loadWithMocks<Store>(path.join(root,"lib/mock-store.ts"),{}); }
   finally { process.chdir(previous); if(oldMockDir===undefined) delete process.env.MOCK_DB_DIR; else process.env.MOCK_DB_DIR=oldMockDir; }
   const store=loaded.module;
+  delete require.cache[require.resolve(path.join(root,"lib/services/academy-configuration-history.service.ts"))];
   const {module:service,restore}=loadWithMocks<Service>(path.join(root,"lib/services/academy-template.service.ts"),{
     "@/lib/mock-data":{isMockMode:()=>true},
     "@/lib/mock-store":store,
@@ -80,14 +81,14 @@ test("a future configuration never overwrites changes made after scheduling",asy
 });
 
 
-test("today's operating records prevent repricing the same day but allow a future reservation",async t=>{
+test("today and past application dates remain available with operating records",async t=>{
   const f=await fixture(t);
   const current=(await f.service.getAcademyTemplateLibrary("police")).current;
   await f.store.updateMockState(state=>{state.pointRecordsByDivision.police.push({id:"same-day-test",studentId:state.studentsByDivision.police[0].id,ruleId:null,points:-1,date:kstDate()+"T09:00:00+09:00",notes:"검증",recordedById:f.actor.id,createdAt:new Date().toISOString()});});
   current.settings.tardyMinutes=30;
-  await assert.rejects(()=>f.service.previewAcademyTemplate("police",{name:"현재 기록 보존",payload:current,effectiveFrom:kstDate()}),/내일/);
+  assert.ok((await f.service.previewAcademyTemplate("police",{name:"현재 기록 보존",payload:current,effectiveFrom:kstDate()})).changes.length);
   const library=await f.service.getAcademyTemplateLibrary("police");
-  assert.ok(library.earliestCalculationDate>kstDate());
+  assert.equal(library.earliestCalculationDate,kstDate());
   const preview=await f.service.previewAcademyTemplate("police",{name:"예약",payload:current,effectiveFrom:library.earliestCalculationDate});
   assert.ok(preview.changes.length);
 });
@@ -112,4 +113,30 @@ test("separate existing forms merge same-date reservations and stale previews ca
   await f.service.applyDueAcademyTemplates("police",date);
   const current=(await f.service.getAcademyTemplateLibrary("police")).current;
   assert.equal(current.settings.tardyMinutes,25);assert.equal(current.settings.holidayLimit,3);assert.equal(current.periods.length,1);
+});
+
+ test("past effective date applies immediately with independent historical calculations and preserved ledgers",async t=>{
+  const f=await fixture(t),before=await f.store.readMockState();
+  const value={name:"과거 기준 정정",payload:(await f.service.getAcademyTemplateLibrary("police")).current,effectiveFrom:"2026-01-01"};
+  value.payload.settings.tardyMinutes=35;
+  const preview=await f.service.previewAcademyTemplate("police",value);
+  assert.equal((await f.service.applyAcademyTemplate("police",{...value,revision:preview.revision},f.actor)).status,"APPLIED");
+  assert.equal((await f.service.getHistoricalAcademyConfiguration("police","2026-01-02"))?.settings.tardyMinutes,35);
+  assert.equal((await f.service.getHistoricalAcademyConfiguration("police","2025-12-31"))?.settings.tardyMinutes,before.divisionSettingsByDivision.police.tardyMinutes);
+  assert.equal(await f.service.getHistoricalAcademyConfiguration("fire","2026-01-02"),null);
+  const after=await f.store.readMockState();
+  for(const key of ["attendanceByDivision","pointRecordsByDivision","studentsByDivision","paymentRecordsByDivision"] as const)assert.deepEqual(after[key],before[key]);
+ });
+
+test("disabling a controlled period previews removal from policy while preserving records",async t=>{
+ const f=await fixture(t),value={name:"초기",payload:commonAcademyTemplate(kstDate()),effectiveFrom:kstDate()};
+ value.payload.settings.managementPolicy!.controlledPeriods=[{periodId:value.payload.periods[0].id,weekdays:[1,2,3,4,5],optional:false}];
+ value.payload.settings.managementPolicy!.attendancePeriodIds=[value.payload.periods[0].id];
+ const preview=await f.service.previewAcademyTemplate("police",value);await f.service.applyAcademyTemplate("police",{...value,revision:preview.revision},f.actor);
+ const current=(await f.service.getAcademyTemplateLibrary("police")).current;
+ const target=current.settings.managementPolicy!.controlledPeriods[0].periodId;
+ current.periods=current.periods.map(p=>p.id===target?{...p,isActive:false}:p);
+ const next=await f.service.previewAcademyTemplate("police",{name:"교시 중지",payload:current,effectiveFrom:"2026-09-01"});
+ assert.ok(!next.after.settings.managementPolicy!.controlledPeriods.some(p=>p.periodId===target));
+ assert.ok(next.changes.length>1);
 });

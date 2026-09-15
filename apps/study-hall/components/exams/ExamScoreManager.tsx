@@ -611,7 +611,8 @@ export function ExamScoreManager({
               </div>
 
               <div className="admin-table-frame mt-6 overflow-x-auto">
-                <table className="min-w-[1160px]">
+                <table className="min-w-[1160px] admin-score-entry-table">
+                  <colgroup><col className="admin-score-id-column" /><col className="admin-score-name-column" />{Array.from({ length: sheet.subjects.length + 2 }, (_, index) => <col key={index} className="admin-score-value-column" />)}<col className="admin-score-note-column" /></colgroup>
                   <thead>
                     <tr>
                       <th>수험번호</th>

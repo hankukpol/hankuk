@@ -72,7 +72,7 @@ export async function syncPeriodicPerfectAttendancePoints(
       tx.period.findMany({ where: { divisionId: division.id } }),
       tx.student.findMany({ where: { divisionId: division.id, status: "ACTIVE" }, select: { id: true } }),
       tx.attendance.findMany({ where: { student: { divisionId: division.id }, date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } }, select: { studentId: true, periodId: true, status: true, reason: true, date: true } }),
-      tx.academyConfigurationApplication.findMany({ where: { divisionId: division.id, status: "APPLIED", effectiveFrom: { gte: new Date(from + "T00:00:00Z") } }, select: { before: true, after: true, status: true, effectiveFrom: true, createdAt: true } }),
+      tx.academyConfigurationApplication.findMany({ where: { divisionId: division.id, status: "APPLIED" }, select: { before: true, after: true, status: true, effectiveFrom: true, createdAt: true } }),
     ]);
     const desired = buildPerfectAttendanceAwards({ windows, policy, periods, now, ...amounts,
       configurationAt: configurationResolver(policy, settings, periods, historyRows.map(row => ({ ...row, effectiveFrom: row.effectiveFrom.toISOString().slice(0,10), createdAt: row.createdAt.toISOString(), before: row.before as unknown as AppliedConfiguration["before"], after: row.after as unknown as AppliedConfiguration["after"] }))),

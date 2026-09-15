@@ -9,12 +9,15 @@ type Configuration = {
   examTypes: { id: string; category: string; studyTrack?: string | null }[];
 };
 export type ExamConfigurationHistory = {
-  effectiveFrom: string; createdAt: string; status: string; before: Configuration;
+  effectiveFrom: string; createdAt: string; status: string; before: Configuration; after?: Configuration;
 };
 
 /** Each awarded date uses that academy's configuration; month ranks use month end. */
 export function buildVersionedExamPoints(current: Configuration, history: ExamConfigurationHistory[], source: ExamPointSource, month: string, today: string) {
-  const variants = [current, ...history.filter(h => h.status === "APPLIED").map(h => h.before)];
+  const dates = new Map<string, Configuration>();
+  const end = new Date(`${month}-01T00:00:00Z`); end.setUTCMonth(end.getUTCMonth()+1); end.setUTCDate(0);
+  for (let day=1; day<=end.getUTCDate(); day++) { const date=`${month}-${String(day).padStart(2,"0")}`; dates.set(date,configurationForDate(current,history,date)); }
+  const variants = Array.from(new Set(dates.values()));
   return variants.flatMap(configuration => {
     const policy = managementPolicySchema.safeParse(configuration.settings.managementPolicy);
     const types = new Map(configuration.examTypes.map(type => [type.id, type]));
@@ -26,6 +29,6 @@ export function buildVersionedExamPoints(current: Configuration, history: ExamCo
         return type ? { ...session, category: type.category, studyTrack: type.studyTrack } : session;
       }),
     }, month, today);
-    return awards.filter(award => configurationForDate(current, history, award.date) === configuration);
+    return awards.filter(award => dates.get(award.date) === configuration);
   });
 }

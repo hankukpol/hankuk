@@ -85,7 +85,6 @@ async function dbContext(tx: Prisma.TransactionClient, slug: string): Promise<Co
 function contextRevision(context: Context) { return configurationRevision({ current: context.current, protection: context.protection }); }
 function plan(context: Context, value: unknown) {
   const input = templatePreviewSchema.parse(value);
-  if (input.effectiveFrom < kstDate()) throw badRequest("템플릿은 오늘 이후 날짜부터 적용할 수 있습니다.");
   let payload = structuredClone(input.payload);
   const reservedIds = new Set<string>();
   if (context.pending) {
@@ -98,6 +97,15 @@ function plan(context: Context, value: unknown) {
       if ("subjects" in row) for (const subject of row.subjects) reservedIds.add(subject.id);
     }
   }
+  // Inactive periods leave the control list in the same previewed transaction.
+  const policyDraft = payload.settings.managementPolicy;
+  if (policyDraft) {
+    const active = new Set(payload.periods.filter(p => p.isActive).map(p => p.id));
+    policyDraft.controlledPeriods = policyDraft.controlledPeriods.filter(p => active.has(p.periodId));
+    policyDraft.attendancePeriodIds = policyDraft.attendancePeriodIds.filter(id => active.has(id));
+    if (!active.has(policyDraft.morningExam.periodId)) policyDraft.morningExam.syncAttendance = false;
+    if (!policyDraft.controlledPeriods.length) policyDraft.enabled = false;
+  }
   // The selected application date versions calculations; keep administrator-entered start dates unchanged.
   let planned: ReturnType<typeof planAcademyConfiguration>;
   try {
@@ -106,10 +114,6 @@ function plan(context: Context, value: unknown) {
     if (policy) validateAcademyPolicyReferences(policy, planned.after.periods, planned.after.pointRules, context.protection.enrollments, input.effectiveFrom);
     else if (context.protection.enrollments.some(e => e.dateTo >= input.effectiveFrom)) throw new Error("진행 중인 선택자습 신청이 있어 관리규정을 제거할 수 없습니다.");
   } catch (error) { throw badRequest((error as Error).message); }
-  if (context.hasOperationsToday && input.effectiveFrom === kstDate() &&
-      ["settings", "periods", "pointRules", "examTypes"].some(key => configurationRevision(context.current[key as keyof AcademyConfiguration]) !== configurationRevision(planned.after[key as keyof AcademyConfiguration]))) {
-    throw badRequest("오늘 출결·상벌점 기록이 있습니다. 기존 계산을 보존하려면 내일 이후를 적용일로 선택해 주세요.");
-  }
   return { ...planned, revision: configurationRevision({base:contextRevision(context),pending:context.pending}), effectiveFrom: input.effectiveFrom };
 }
 function revalidate(slug: string) {
@@ -120,13 +124,13 @@ function revalidate(slug: string) {
 export async function getAcademyTemplateLibrary(slug: string) {
   if (isMockMode()) {
     const state = await readMockState(), context = mockContext(state, slug);
-    return { current: context.current, pending: context.pending ? {id:context.pending.id,effectiveFrom:context.pending.effectiveFrom} : null, earliestCalculationDate: context.hasOperationsToday ? new Date(Date.parse(kstDate()+"T00:00:00Z")+86400000).toISOString().slice(0,10) : kstDate(), templates: state.academyTemplates.filter(t => t.divisionId === context.divisionId),
+    return { current: context.current, pending: context.pending ? {id:context.pending.id,effectiveFrom:context.pending.effectiveFrom} : null, earliestCalculationDate: kstDate(), templates: state.academyTemplates.filter(t => t.divisionId === context.divisionId),
       applications: state.academyApplications.filter(t => t.divisionId === context.divisionId).sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(({ before: _before, after: _after, baseRevision: _rev, ...row }) => { void _before; void _after; void _rev; return row; }) };
   }
   const prisma = await getPrismaClient(), context = await dbContext(prisma, slug);
   const templates = await prisma.academyTemplate.findMany({ where: { divisionId: context.divisionId }, orderBy: { updatedAt: "desc" } });
   const applications = await prisma.academyConfigurationApplication.findMany({ where: { divisionId: context.divisionId }, select: { id: true, templateName: true, effectiveFrom: true, status: true, requestedByName: true, createdAt: true, appliedAt: true, error: true }, orderBy: { createdAt: "desc" }, take: 100 });
-  return { current: context.current, pending: context.pending ? {id:context.pending.id,effectiveFrom:context.pending.effectiveFrom} : null, earliestCalculationDate: context.hasOperationsToday ? new Date(Date.parse(kstDate()+"T00:00:00Z")+86400000).toISOString().slice(0,10) : kstDate(), templates: templates.map(row => ({ ...row, payload: academyTemplateSchema.parse(row.payload), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() })),
+  return { current: context.current, pending: context.pending ? {id:context.pending.id,effectiveFrom:context.pending.effectiveFrom} : null, earliestCalculationDate: kstDate(), templates: templates.map(row => ({ ...row, payload: academyTemplateSchema.parse(row.payload), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() })),
     applications: applications.map(row => ({ ...row, effectiveFrom: row.effectiveFrom.toISOString().slice(0,10), createdAt: row.createdAt.toISOString(), appliedAt: row.appliedAt?.toISOString() ?? null })) };
 }
 export async function saveAcademyTemplate(slug: string, value: unknown, actor: Actor) {
@@ -213,7 +217,7 @@ export async function applyAcademyTemplate(slug: string, value: unknown, actor: 
     const planned = plan(context, { name: input.name, payload: input.payload, effectiveFrom: input.effectiveFrom, mergePending: input.mergePending });
     if (input.revision !== planned.revision) throw conflict("미리보기 이후 설정이나 좌석 배정이 변경되었습니다. 변경 미리보기를 다시 확인해 주세요.");
     if (!planned.changes.length) throw badRequest("변경할 설정이 없습니다.");
-    const now = new Date().toISOString(), today = input.effectiveFrom === kstDate();
+    const now = new Date().toISOString(), today = input.effectiveFrom <= kstDate();
     return { id: randomUUID(), divisionId: context.divisionId, templateName: input.name, effectiveFrom: input.effectiveFrom, status: today ? "APPLIED" : "PENDING", baseRevision: contextRevision(context), before: context.current, after: planned.after, requestedById: actor.id, requestedByName: actor.name, createdAt: now, appliedAt: today ? now : null, error: null };
   }
   let result: ApplicationRecord;

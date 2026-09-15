@@ -1038,7 +1038,7 @@ export function PhoneCheckForm({
         <div><p className="admin-portal-summary-label">미반납</p><p className="admin-portal-summary-value">{activePeriodStats.notSubmittedCount}명</p></div>
         <div><p className="admin-portal-summary-label">대여</p><p className="admin-portal-summary-value">{activePeriodStats.rentedCount}명</p></div>
       </div>}
-    <div className="admin-check-workspace space-y-4">
+    <div className="admin-check-workspace flex min-w-0 flex-col gap-4">
       <CheckDraftSafety key={date} scope={`phones:${divisionSlug}:${date}`} values={phoneDraftCells(periodsState)}
         baseline={phoneDraftCells(savedPeriodsState)} busy={pendingSaves > 0 || isSavingBulkRental}
         onDiscard={() => { setPeriodsState(savedPeriodsState); dirtyCellKeysRef.current = new Set(); setDirtyCellKeys(new Set()); setCellSaveStates({}); }}
@@ -1065,14 +1065,17 @@ export function PhoneCheckForm({
 
       <MobileWorkspaceTools title="휴대폰 조회 조건">
       <div id="phone-query-panel" className="flex flex-col gap-4">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap sm:gap-3">
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="admin-field min-w-0 flex-1 sm:flex-none">
+            <span className="admin-label">조회 날짜</span>
           <input
             type="date"
             value={date}
             max={getKstToday()}
             onChange={(e) => handleDateChange(e.target.value)}
-            className="w-full min-w-0"
+            className="w-full min-w-0 sm:w-auto"
           />
+          </label>
           <button
             type="button"
             onClick={() => requestCheckNavigation(() => { void loadSnapshot(date); })}

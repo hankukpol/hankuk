@@ -1,4 +1,5 @@
 import type { AcademyConfiguration } from "@/lib/academy-template";
+import { configurationForDate } from "@/lib/academy-configuration-history";
 import { kstDate } from "@/lib/management-policy";
 import { isMockMode } from "@/lib/mock-data";
 import { readMockState } from "@/lib/mock-store";
@@ -7,12 +8,12 @@ export async function getHistoricalAcademyConfiguration(slug: string, date: stri
   if (date >= kstDate()) return null;
   if (isMockMode()) {
     const state = await readMockState(), division = state.divisions.find(d => d.slug === slug);
-    const next = (state.academyApplications ?? []).filter(r => r.divisionId === division?.id && r.status === "APPLIED" && r.effectiveFrom > date)
-      .sort((a,b) => a.effectiveFrom.localeCompare(b.effectiveFrom) || a.createdAt.localeCompare(b.createdAt))[0];
-    return next?.before ?? null;
+    const rows = (state.academyApplications ?? []).filter(r => r.divisionId === division?.id && r.status === "APPLIED").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+    return rows.length ? configurationForDate(rows[rows.length-1].after, rows, date) : null;
   }
   const prisma = await getPrismaClient(), division = await prisma.division.findUnique({ where: { slug }, select: { id: true } });
   if (!division) return null;
-  const row = await prisma.academyConfigurationApplication.findFirst({ where: { divisionId: division.id, status: "APPLIED", effectiveFrom: { gt: new Date(date + "T00:00:00Z") } }, orderBy: [{ effectiveFrom: "asc" }, { createdAt: "asc" }], select: { before: true } });
-  return row?.before as unknown as AcademyConfiguration ?? null;
+  const rows = await prisma.academyConfigurationApplication.findMany({where:{divisionId:division.id,status:"APPLIED"},orderBy:{createdAt:"asc"},select:{before:true,after:true,effectiveFrom:true,createdAt:true,status:true}});
+  const history = rows.map(row=>({...row,effectiveFrom:row.effectiveFrom.toISOString().slice(0,10),createdAt:row.createdAt.toISOString(),before:row.before as unknown as AcademyConfiguration,after:row.after as unknown as AcademyConfiguration}));
+  return history.length ? configurationForDate(history[history.length-1].after,history,date) : null;
 }

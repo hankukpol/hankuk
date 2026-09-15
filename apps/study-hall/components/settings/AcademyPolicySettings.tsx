@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowUpRight, Save } from "lucide-react";
 import { useConfigurationReview } from "./ConfigurationReview";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -63,7 +64,10 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
           <Field label="하루 마감 시각"><input aria-label="하루 마감 시각" type="time" value={form.closingTime} onChange={e => update("closingTime", e.target.value)} /></Field>
         </div>
         <div role="tabpanel" id="academy-policy-panel-attendance" aria-labelledby="academy-policy-tab-attendance" hidden={tab !== "attendance"} className="space-y-4">
-          <Link className="admin-text-action" href={`/${divisionSlug}/admin/settings/periods`}>시간표 추가·수정</Link>
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">교시별 출결 관리</h2>
+            <Link className="admin-button" href={`/${divisionSlug}/admin/settings/periods`}>시간표 추가·수정<ArrowUpRight size={16} aria-hidden="true" /></Link>
+          </div>
           {!initial.periods.length && <p className="admin-empty-state">시간표에서 교시를 먼저 등록해 주세요.</p>}
           {!!initial.periods.length && <div className="admin-table-frame" role="region" aria-label="교시별 출결 관리 설정" tabIndex={0}>
             <table className="w-full"><thead><tr><th scope="col">교시·시간</th><th scope="col">관리</th><th scope="col">적용 요일</th><th scope="col">대상</th></tr></thead><tbody>
@@ -83,6 +87,10 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
               })}
             </tbody></table>
           </div>}
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">출결 판정·벌점 연결</h2>
+            <Link className="admin-button" href={`/${divisionSlug}/admin/points/rules`}>상벌점 항목·점수 수정<ArrowUpRight size={16} aria-hidden="true" /></Link>
+          </div>
           <div className="admin-panel">
             <Field label="아침모의고사 교시"><select aria-label="아침모의고사 교시" value={form.morningExam.periodId} onChange={e => update("morningExam", { ...form.morningExam, periodId: e.target.value })}><option value="">없음</option>{initial.periods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
             <Field label="성적·출결 연동" help="미응시는 시험 설정의 벌점만 적용합니다.">{boolean("성적 등록 시 아침시험 자동 출석", !!form.morningExam.syncAttendance, checked => update("morningExam", { ...form.morningExam, syncAttendance: checked }))}</Field>
@@ -91,7 +99,6 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
             <Field label="지각">{rule("지각 벌점 규칙", form.tardyRuleId, value => update("tardyRuleId", value))}</Field>
             <Field label="도착 시각 판정 기준" help="도착 시각 입력 시 선택한 기준으로 출석·지각을 판정합니다."><select aria-label="도착 시각 판정 기준" value={form.lateArrivalPolicy} onChange={e => update("lateArrivalPolicy", e.target.value as AcademyPolicyInput["lateArrivalPolicy"])}><option value="after_start">교시 시작 후</option><option value="threshold">운영 규칙의 지각 기준 분 적용</option></select></Field>
           </div>
-          <Link className="admin-text-action" href={`/${divisionSlug}/admin/points/rules`}>상벌점 항목·점수 수정</Link>
         </div>
         <div className="admin-panel" role="tabpanel" id="academy-policy-panel-phone" aria-labelledby="academy-policy-tab-phone" hidden={tab !== "phone"}>
           <Field label="일반 반출 시간(분)">{number("일반 반출 시간", form.phone.shortLoanMinutes, value => update("phone", { ...form.phone, shortLoanMinutes: value }))}</Field>
@@ -101,6 +108,10 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
           <Field label="재반납 안내(시작 전 분)">{number("재반납 안내 분", form.phone.resubmitBeforeMinutes, value => update("phone", { ...form.phone, resubmitBeforeMinutes: value }), 0)}</Field>
         </div>
         <div role="tabpanel" id="academy-policy-panel-leave" aria-labelledby="academy-policy-tab-leave" hidden={tab !== "leave"} className="space-y-4">
+          <div className="admin-workspace-toolbar">
+            <h2 className="admin-section-title">휴무·경고 처리</h2>
+            <Link className="admin-button" href={`/${divisionSlug}/admin/settings/rules`} aria-label="휴무·반휴권 한도, 미사용 상점, 경고 기준 설정">한도·상점·경고 기준 설정<ArrowUpRight size={16} aria-hidden="true" /></Link>
+          </div>
           <div className="admin-panel">
             <Field label="반휴 적용 교시 수" help="당일 관리 대상 교시의 앞부분부터 적용합니다.">{number("반휴 적용 교시 수", form.halfDayPeriodCount ?? 3, value => update("halfDayPeriodCount", value))}</Field>
             <Field label="휴무 사전 신청">{boolean("당일 휴무 신청은 사유 확인", form.holidayPriorNotice, value => update("holidayPriorNotice", value))}</Field>
@@ -111,7 +122,6 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
             <Field label="무단입실 규칙">{rule("무단입실 규칙", form.unauthorizedEntry.ruleId, value => update("unauthorizedEntry", { ...form.unauthorizedEntry, ruleId: value }))}</Field>
             <Field label="무단입실 월 검토 횟수">{number("무단입실 월 검토 횟수", form.unauthorizedEntry.monthlyReviewCount, value => update("unauthorizedEntry", { ...form.unauthorizedEntry, monthlyReviewCount: value }))}</Field>
           </div>
-          <Link className="admin-text-action" href={`/${divisionSlug}/admin/settings/rules`}>휴무·반휴권 한도, 미사용 상점, 경고 기준 설정</Link>
         </div>
         <div role="tabpanel" id="academy-policy-panel-guidance" aria-labelledby="academy-policy-tab-guidance" hidden={tab !== "guidance"} className="space-y-4">
           <p className="admin-help">학생 관리규정 화면에 게시할 운영 안내입니다.</p>
@@ -136,7 +146,9 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
           </section>
         </div>
         {error && <p role="alert" className="admin-notice admin-notice-danger">{error}</p>}
-        <button className="admin-button admin-button-primary" type="submit">{pending ? "저장 중…" : "학원 규정 저장"}</button>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-admin-line-soft pt-4">
+          <button className="admin-button admin-button-primary" type="submit"><Save size={16} aria-hidden="true" />{pending ? "저장 중…" : "학원 규정 저장"}</button>
+        </div>
       </fieldset>
     </form>
   </div>;

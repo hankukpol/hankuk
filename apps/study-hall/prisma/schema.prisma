@@ -84,6 +84,12 @@ enum PhoneSubmissionStatus {
 }
 
 model Division {
+  academyTemplates AcademyTemplate[]
+  academyConfigurationApplications AcademyConfigurationApplication[]
+  arrivals ArrivalRecord[]
+  arrivalDevices ArrivalDevice[]
+  arrivalPairings ArrivalPairing[]
+  arrivalHistories ArrivalHistory[]
   attendanceCloseState AttendanceCloseState?
   id                String             @id @default(cuid())
   name              String
@@ -116,6 +122,7 @@ model Division {
 }
 
 model Student {
+  arrivals ArrivalRecord[]
   id                  String             @id @default(cuid())
   divisionId          String             @map("division_id")
   name                String
@@ -180,6 +187,7 @@ model Period {
 }
 
 model Attendance {
+  examAutoSource String? @map("exam_auto_source")
   id           String           @id @default(cuid())
   studentId    String           @map("student_id")
   periodId     String           @map("period_id")
@@ -562,6 +570,7 @@ model Seat {
 }
 
 model DivisionSettings {
+  arrivalSettings Json @default("{}") @map("arrival_settings")
   examAnalysis Json @default("{}") @map("exam_analysis")
   id                          String   @id @default(cuid())
   divisionId                  String   @unique @map("division_id")
@@ -598,6 +607,113 @@ model DivisionSettings {
   division                    Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
 
   @@map("division_settings")
+}
+
+/// Immutable copies of configuration only; never students, credentials or operational records.
+model AcademyTemplate {
+  id           String   @id @default(cuid())
+  divisionId   String   @map("division_id")
+  name         String
+  payload      Json
+  revision     String
+  createdById  String   @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  division     Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+
+  @@index([divisionId, updatedAt])
+  @@map("academy_templates")
+}
+
+model AcademyConfigurationApplication {
+  id            String   @id @default(cuid())
+  divisionId    String   @map("division_id")
+  templateName  String   @map("template_name")
+  effectiveFrom DateTime @db.Date @map("effective_from")
+  status        String   @default("PENDING")
+  baseRevision  String   @map("base_revision")
+  before        Json
+  after         Json
+  requestedById String   @map("requested_by_id")
+  requestedByName String @map("requested_by_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  appliedAt     DateTime? @map("applied_at")
+  error         String?
+  division      Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+
+  @@index([divisionId, effectiveFrom, status])
+  @@map("academy_configuration_applications")
+}
+
+// Arrival receipts are independent of period attendance and point calculations.
+model ArrivalRecord {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  studentId String @map("student_id")
+  date DateTime @db.Date
+  firstReceivedAt DateTime? @map("first_received_at") @db.Timestamptz(3)
+  effectiveAt DateTime @map("effective_at") @db.Timestamptz(3)
+  source String
+  deviceId String? @map("device_id")
+  deviceName String? @map("device_name")
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  device ArrivalDevice? @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  history ArrivalHistory[]
+  @@unique([divisionId, studentId, date])
+  @@index([divisionId, date, effectiveAt])
+  @@map("arrival_records")
+}
+
+model ArrivalHistory {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  arrivalId String @map("arrival_id")
+  studentId String @map("student_id")
+  action String
+  before Json?
+  after Json
+  reason String?
+  actorId String? @map("actor_id")
+  actorName String @map("actor_name")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  arrival ArrivalRecord @relation(fields: [arrivalId], references: [id], onDelete: Restrict)
+  @@index([divisionId, studentId, createdAt])
+  @@map("arrival_history")
+}
+
+model ArrivalDevice {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  name String
+  credentialHash String @unique @map("credential_hash")
+  registeredById String @map("registered_by_id")
+  registeredByName String @map("registered_by_name")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  arrivals ArrivalRecord[]
+  @@index([divisionId])
+  @@map("arrival_devices")
+}
+
+model ArrivalPairing {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  codeHash String @map("code_hash")
+  tokenHash String @unique @map("token_hash")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  deviceId String? @map("device_id")
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  @@index([divisionId, codeHash])
+  @@map("arrival_pairings")
 }
 
 model Admin {
@@ -732,6 +848,23 @@ model ChatReadState {
 
 
 /// Scalar foreign keys are enforced by the Phase 1 SQL migration; Student stays unchanged.
+model ExamCorrection {
+  id String @id @default(cuid())
+  divisionId String @map("division_id")
+  sessionId String @map("session_id")
+  examTypeId String @map("exam_type_id")
+  examDate String @map("exam_date")
+  actorId String @map("actor_id")
+  actorName String @map("actor_name")
+  reason String
+  before Json
+  after Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([divisionId, examTypeId, examDate])
+  @@map("exam_corrections")
+}
+
 model ExamSession {
   id String @id @default(cuid())
   divisionId String @map("division_id")

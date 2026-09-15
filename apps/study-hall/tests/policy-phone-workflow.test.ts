@@ -42,6 +42,7 @@ async function fixture(t: TestContext) {
   const students = initial.studentsByDivision.police.slice(0, 2).map((s) => ({ ...s, status: "ACTIVE" as const })) as unknown as StudentListItem[];
   const periods: PeriodRecord[] = manifest.periods.map((p: PeriodRecord) => ({ ...p, id: p.startTime, divisionId: "police", isActive: true }));
   const policy = mapPolicy(manifest, periods);
+  policy.phone.loanPlace = "5층 지정공간";
   policy.optionalEnrollments = [{ studentId: students[0].id, periodId: "18:15", dateFrom: date, dateTo: date, weekdays: [2] }];
   await store.updateMockState((state) => {
     state.phoneSubmissionsByDivision.police = [];
@@ -270,5 +271,25 @@ test("an overdue exception cannot be retrospectively extended as prior approval"
   const before = await f.records();
   await assert.rejects(f.service.upsertPhoneCheckBatch("police", manager, f.input({ loanApproval: { until: `${date}T10:00:00+09:00`, place: "6층 상담실", purpose: "긴급 연락" } })), /기한|사전승인/);
   assert.deepEqual(await f.records(), before);
+  assert.deepEqual((await f.store.readMockState()).pointRecordsByDivision.police, []);
+});
+
+
+test("past phone bulk rental and history retain that date's periods, policy and attendance integration", async t => {
+  const f = await fixture(t);
+  const oldDate = "2026-09-07";
+  const getPeriod = f.dependencies["@/lib/services/period.service"] as {getPeriods(): Promise<PeriodRecord[]>};
+  const original = await getPeriod.getPeriods();
+  const oldPeriods = original.map(p => ({...p, name: "이전 시간표 " + p.name}));
+  f.dependencies["@/lib/services/period.service"] = {getPeriods: async (_slug: string, onDate?: string) => onDate === oldDate ? oldPeriods : []};
+  f.dependencies["@/lib/services/management-policy.service"] = {getManagementPolicy: async (_slug: string, onDate?: string) => onDate === oldDate ? null : f.policy};
+  f.dependencies["@/lib/services/settings.service"] = {getDivisionFeatureSettings: async (_slug: string, onDate?: string) => ({featureFlags: {attendanceManagement: onDate !== oldDate}})};
+  const service = f.load<PhoneService>("phone-submission");
+  const result = await service.applyPhoneBulkRental("police", manager, {date:oldDate, studentIds:[f.students[0].id], startPeriodId:"09:15", endPeriodId:"09:15", rentalNote:"이전 승인 기록"});
+  assert.equal(result.result.appliedCount, 1);
+  assert.equal(result.snapshot.periods.find(p=>p.periodId==="09:15")?.rentedCount, 1);
+  const records = await service.listPhoneRecords("police", {dateFrom:oldDate,dateTo:oldDate});
+  assert.equal(records.length, 1);
+  assert.equal(records[0].status, "RENTED");
   assert.deepEqual((await f.store.readMockState()).pointRecordsByDivision.police, []);
 });

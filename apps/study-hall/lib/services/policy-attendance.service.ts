@@ -12,23 +12,24 @@ import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 export async function previewPolicyAttendance(divisionSlug: string, date: string) {
   normalizeYmdDate(date);
   if (date > kstDate()) throw badRequest("미래 날짜의 벌점은 확정할 수 없습니다.");
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, date);
+  const historical = await (await import("@/lib/services/academy-configuration-history.service")).getHistoricalAcademyConfiguration(divisionSlug, date);
   if (!isPolicyEffective(policy, date)) return [];
   if (isMockMode()) {
     const state = await readMockState();
     const activeIds = new Set((state.studentsByDivision[divisionSlug] ?? []).filter(student => student.status === "ACTIVE").map(student => student.id));
-    return buildPolicyAttendanceCandidates(policy, state.periodsByDivision[divisionSlug] ?? [],
-      (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date && activeIds.has(r.studentId)), state.pointRulesByDivision[divisionSlug] ?? [], date)
+    return buildPolicyAttendanceCandidates(policy, historical?.periods ?? state.periodsByDivision[divisionSlug] ?? [],
+      (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date && activeIds.has(r.studentId)), historical?.pointRules ?? state.pointRulesByDivision[divisionSlug] ?? [], date)
       .filter((c) => !(state.pointRecordsByDivision[divisionSlug] ?? []).some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && r.date.slice(0, 10) === date && !r.notes?.startsWith(`[자동][출결벌점][${date}]`)));
   }
   const prisma = await getPrismaClient();
   const [records, periods, rules, existing] = await Promise.all([
     prisma.attendance.findMany({ where: { student: { division: { slug: divisionSlug }, status: "ACTIVE" }, date: new Date(`${date}T00:00:00Z`) }, select: { studentId: true, periodId: true, status: true } }),
-    getPeriods(divisionSlug),
+    getPeriods(divisionSlug, date),
     prisma.pointRule.findMany({ where: { division: { slug: divisionSlug }, isActive: true }, select: { id: true, points: true, isActive: true } }),
     prisma.pointRecord.findMany({ where: { student: { division: { slug: divisionSlug } }, date: { gte: new Date(`${date}T00:00:00Z`), lt: new Date(new Date(`${date}T00:00:00Z`).getTime()+86400000) } }, select: { studentId: true, ruleId: true, notes: true } }),
   ]);
-  return buildPolicyAttendanceCandidates(policy, periods, records, rules, date).filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && !r.notes?.startsWith(`[자동][출결벌점][${date}]`)));
+  return buildPolicyAttendanceCandidates(policy, historical?.periods ?? periods, records, historical?.pointRules ?? rules, date).filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && !r.notes?.startsWith(`[자동][출결벌점][${date}]`)));
 }
 
 /**
@@ -40,7 +41,7 @@ export async function previewPolicyAttendance(divisionSlug: string, date: string
  */
 export async function applyPolicyAttendancePoints(divisionSlug: string, date: string, actorId: string) {
   if (date > kstDate()) return { confirmedCount: 0 };
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, date);
   if (!isPolicyEffective(policy, date) || policy.managerConfirmsAttendance) return { confirmedCount: 0 };
   return confirmPolicyAttendance(divisionSlug, date, actorId, { requireManager: false });
 }
@@ -64,7 +65,8 @@ export async function confirmPolicyAttendance(
 ) {
   normalizeYmdDate(date);
   if (date > kstDate()) throw badRequest("미래 날짜의 벌점은 확정할 수 없습니다.");
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, date);
+  const historical = await (await import("@/lib/services/academy-configuration-history.service")).getHistoricalAcademyConfiguration(divisionSlug, date);
   if (!isPolicyEffective(policy, date)) throw badRequest("새 관리규정 적용일 이후의 출결만 확정할 수 있습니다.");
   requireManager = requireManager || policy.managerConfirmsAttendance;
   const prefix = `[자동][출결벌점][${date}]`;
@@ -72,7 +74,7 @@ export async function confirmPolicyAttendance(
     const actor = state.admins.find((a) => a.id === actorId && a.isActive && (a.role === "SUPER_ADMIN" || (a.role === "ADMIN" && a.divisionSlug === divisionSlug)));
     if (requireManager && !actor) throw badRequest("관리자만 출결 벌점을 확정할 수 있습니다.");
     const activeIds = new Set((state.studentsByDivision[divisionSlug] ?? []).filter(student => student.status === "ACTIVE").map(student => student.id));
-    let candidates = buildPolicyAttendanceCandidates(policy, state.periodsByDivision[divisionSlug] ?? [], (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date && activeIds.has(r.studentId)), state.pointRulesByDivision[divisionSlug] ?? [], date);
+    let candidates = buildPolicyAttendanceCandidates(policy, historical?.periods ?? state.periodsByDivision[divisionSlug] ?? [], (state.attendanceByDivision[divisionSlug] ?? []).filter((r) => r.date === date && activeIds.has(r.studentId)), historical?.pointRules ?? state.pointRulesByDivision[divisionSlug] ?? [], date);
     const existing = state.pointRecordsByDivision[divisionSlug] ?? [];
     candidates = candidates.filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && r.date.slice(0, 10) === date && !r.notes?.startsWith(prefix)));
     const old = existing.filter((r) => r.notes?.startsWith(prefix));
@@ -95,7 +97,7 @@ export async function confirmPolicyAttendance(
       tx.pointRule.findMany({ where: { divisionId: division.id, isActive: true } }),
       tx.pointRecord.findMany({ where: { student: { divisionId: division.id, status: "ACTIVE" }, date: { gte: day, lt: new Date(day.getTime() + 86400000) } } }),
     ]);
-    const candidates = buildPolicyAttendanceCandidates(policy, periods, records, rules, date).filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && !r.notes?.startsWith(prefix)));
+    const candidates = buildPolicyAttendanceCandidates(policy, historical?.periods ?? periods, records, historical?.pointRules ?? rules, date).filter((c) => !existing.some((r) => r.studentId === c.studentId && r.ruleId === c.ruleId && !r.notes?.startsWith(prefix)));
     const keep = new Set<string>();
     for (const c of candidates) {
       const same = existing.find((e) => e.notes?.startsWith(prefix) && e.studentId === c.studentId && e.notes === c.notes && e.ruleId === c.ruleId && e.points === c.points && !keep.has(e.id));

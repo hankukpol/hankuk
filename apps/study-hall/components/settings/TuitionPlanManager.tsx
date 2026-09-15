@@ -1,11 +1,14 @@
 "use client";
 
-import { LoaderCircle, Pencil, RefreshCcw, Save, Trash2 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { LoaderCircle, Pencil, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
-import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
+import { tuitionPlanSchema } from "@/lib/tuition-schemas";
+import { DialogActions } from "@/components/ui/DialogActions";
+import { SlideOver } from "@/components/ui/SlideOver";
 import type { TuitionPlanItem } from "@/lib/services/tuition-plan.service";
 
 type TuitionPlanManagerProps = {
@@ -42,8 +45,10 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const editorFormId = useId();
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
-  const { confirm, confirmDialog } = useConfirmDialog();
+  const {review,dialog}=useConfigurationReview(divisionSlug);
 
   const sortedPlans = useMemo(
     () =>
@@ -79,9 +84,18 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   function startEdit(plan: TuitionPlanItem) {
     setEditingPlanId(plan.id);
     setForm(toFormState(plan));
+    setIsEditorOpen(true);
   }
 
-  function resetForm() {
+  function openCreateEditor() {
+    setEditingPlanId(null);
+    setForm(toFormState());
+    setIsEditorOpen(true);
+  }
+
+  function closeEditor() {
+    if (isSaving) return;
+    setIsEditorOpen(false);
     setEditingPlanId(null);
     setForm(toFormState());
   }
@@ -91,30 +105,16 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
     setIsSaving(true);
 
     try {
-      const response = await fetch(
-        editingPlanId ? `/api/${divisionSlug}/tuition-plans/${editingPlanId}` : `/api/${divisionSlug}/tuition-plans`,
-        {
-          method: editingPlanId ? "PATCH" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: form.name,
-            durationDays: form.durationDays ? Number(form.durationDays) : null,
-            amount: Number(form.amount),
-            description: form.description || null,
-            isActive: form.isActive,
-          }),
-        },
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "등록 플랜 저장에 실패했습니다.");
-      }
-
+      const input=tuitionPlanSchema.parse({name:form.name,durationDays:form.durationDays?Number(form.durationDays):null,amount:Number(form.amount),description:form.description||null,isActive:form.isActive});
+      const result=await review("등록 플랜 변경",current=>{
+        const next={...input,durationDays:input.durationDays??null,description:input.description??null,isActive:input.isActive??true};
+        return {...current,tuitionPlans:editingPlanId?current.tuitionPlans.map(p=>p.id===editingPlanId?{...p,...next}:p):[...current.tuitionPlans,{...next,id:crypto.randomUUID(),displayOrder:current.tuitionPlans.length}]};
+      });
+      if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setIsEditorOpen(false);return;}
       await refreshPlans();
-      resetForm();
+      setIsEditorOpen(false);
+      setEditingPlanId(null);
+      setForm(toFormState());
       toast.success(editingPlanId ? "등록 플랜을 수정했습니다." : "등록 플랜을 추가했습니다.");
       showActionComplete({
         title: editingPlanId ? "등록 플랜 수정 완료" : "등록 플랜 추가 완료",
@@ -131,39 +131,21 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
   }
 
   async function handleDelete(planId: string) {
-    const confirmed = await confirm({
-      title: "등록 플랜 삭제",
-      description: "이 등록 플랜을 삭제하시겠습니까?",
-      confirmLabel: "삭제",
-      variant: "danger",
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
     setIsDeletingId(planId);
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/tuition-plans/${planId}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "등록 플랜 삭제에 실패했습니다.");
-      }
-
+      const result=await review("등록 플랜 비활성화",current=>({...current,tuitionPlans:current.tuitionPlans.map(p=>p.id===planId?{...p,isActive:false}:p)}));
+      if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setIsEditorOpen(false);return;}
       await refreshPlans();
 
       if (editingPlanId === planId) {
-        resetForm();
+        closeEditor();
       }
 
-      toast.success("등록 플랜을 삭제했습니다.");
+      toast.success("등록 플랜을 비활성화했습니다.");
       showActionComplete({
-        title: "등록 플랜 삭제 완료",
-        description: "선택한 등록 플랜이 삭제되었습니다.",
+        title: "등록 플랜 비활성화 완료",
+        description: "선택한 등록 플랜이 비활성화되었습니다.",
         notice: "삭제한 플랜은 이후 등록/연장 화면에서 선택할 수 없습니다.",
       });
     } catch (error) {
@@ -175,9 +157,10 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
-        <section className="admin-section">
-        <div className="flex flex-wrap items-center justify-end gap-3">
+      <section className="admin-section">
+        <div className="admin-workspace-toolbar">
+          <h2 className="admin-section-title">등록 플랜 목록</h2>
+          <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => refreshPlans(true)}
@@ -187,69 +170,66 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
             {isRefreshing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
             새로고침
           </button>
+          <button type="button" onClick={openCreateEditor} className="admin-button admin-button-primary">
+            <Plus className="h-4 w-4" />
+            새 플랜
+          </button>
+          </div>
         </div>
 
-        <div className="mt-5 grid gap-3">
-          {sortedPlans.length > 0 ? (
-            sortedPlans.map((plan) => (
-              <article key={plan.id} className="admin-section">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="admin-section-title">{plan.name}</h3>
-                      <span
-                        className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${ plan.isActive ? "border border-slate-200 bg-white text-emerald-700" : "bg-slate-200 text-slate-600" }`}
-                      >
-                        {plan.isActive ? "사용 중" : "비활성"}
-                      </span>
-                    </div>
-                    <p className="admin-help mt-2">
-                      기간 {plan.durationDays ? `${plan.durationDays}일` : "자유 설정"} · 금액{" "}
-                      {formatCurrency(plan.amount)}원
-                    </p>
-                    {plan.description ? <p className="admin-help mt-2">{plan.description}</p> : null}
-                  </div>
+        {sortedPlans.length > 0 ? (
+          <div className="admin-table-frame mt-5">
+            <table>
+              <thead>
+                <tr>
+                  <th>플랜</th>
+                  <th>기간</th>
+                  <th>금액</th>
+                  <th className="hidden sm:table-cell">상태</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPlans.map((plan) => (
+                  <tr key={plan.id}>
+                    <th scope="row" className="admin-table-name">
+                      <button type="button" onClick={() => startEdit(plan)} className="admin-table-link">
+                        {plan.name}
+                      </button>
+                      {plan.description ? <span className="admin-help mt-1 block">{plan.description}</span> : null}
+                    </th>
+                    <td>{plan.durationDays ? `${plan.durationDays}일` : "자유 설정"}</td>
+                    <td className="admin-table-amount">{formatCurrency(plan.amount)}원</td>
+                    <td className="hidden sm:table-cell"><span className="admin-badge">{plan.isActive ? "사용 중" : "비활성"}</span></td>
+                    <td>
+                      <div className="flex items-center justify-center gap-2">
+                        <button type="button" onClick={() => startEdit(plan)} className="admin-button admin-button-compact w-11 px-0" aria-label={`${plan.name} 수정`} title="플랜 수정">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button type="button" onClick={() => handleDelete(plan.id)} disabled={isDeletingId === plan.id} className="admin-button admin-button-compact admin-button-danger-outline w-11 px-0" aria-label={`${plan.name} 삭제`} title="플랜 삭제">
+                          {isDeletingId === plan.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="admin-empty-state mt-5">
+            등록된 플랜이 없습니다. 새 플랜을 추가해 주세요.
+          </div>
+        )}
+      </section>
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => startEdit(plan)}
-                      className="admin-button"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      수정
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(plan.id)}
-                      disabled={isDeletingId === plan.id}
-                      className="admin-button admin-button-danger-outline"
-                    >
-                      {isDeletingId === plan.id ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                      삭제
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))
-          ) : (
-            <div className="admin-help px-5 py-10 text-center">
-              등록된 플랜이 없습니다. 오른쪽에서 새 플랜을 추가해 주세요.
-            </div>
-          )}
-        </div>
-        </section>
-
-        <section className="admin-section">
-        <h2 className="admin-section-title">
-          {editingPlanId ? "등록 플랜 수정" : "등록 플랜 추가"}
-        </h2>
-
-        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+      <SlideOver
+        open={isEditorOpen}
+        title={editingPlanId ? "등록 플랜 수정" : "등록 플랜 추가"}
+        description="기간과 금액, 사용 여부를 저장하면 학생 등록과 연장 수납 화면에 반영됩니다."
+        onClose={closeEditor}
+      >
+        <form id={editorFormId} onSubmit={handleSubmit} className="space-y-5">
           <label className="block">
             <span className="admin-label mb-2 block">플랜 이름</span>
             <input
@@ -313,30 +293,23 @@ export function TuitionPlanManager({ divisionSlug, initialPlans }: TuitionPlanMa
             />
           </label>
 
-          <div className="flex flex-wrap gap-2">
+          <DialogActions>
+            <button type="button" onClick={closeEditor} disabled={isSaving} className="admin-button">
+              취소
+            </button>
             <button
               type="submit"
+              form={editorFormId}
               disabled={isSaving}
               className="admin-button admin-button-primary"
             >
               {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {editingPlanId ? "플랜 저장" : "플랜 추가"}
             </button>
-
-            {editingPlanId ? (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="admin-button"
-              >
-                편집 취소
-              </button>
-            ) : null}
-          </div>
+          </DialogActions>
         </form>
-        </section>
-      </div>
-      {confirmDialog}
+      </SlideOver>
+      {dialog}
       {actionCompleteModal}
     </>
   );

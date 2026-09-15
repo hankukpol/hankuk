@@ -41,6 +41,7 @@ export type MockAttendanceStatus =
   | "NOT_APPLICABLE";
 
 export type MockAttendanceRecord = {
+  examAutoSource?: string | null;
   id: string;
   studentId: string;
   periodId: string;
@@ -65,6 +66,7 @@ export type MockDivisionRecord = {
 };
 
 export type MockDivisionSettingsRecord = Omit<MockDivisionSettings, "updatedAt"> & {
+  arrivalSettings?: import("./arrivals").ArrivalSettingsDocument;
   examPointAutomation?: import("./exam-point-automation").ExamPointAutomation | null;
   examAnalysis?: ExamAnalysisSettings;
   updatedAt: string;
@@ -405,6 +407,13 @@ export type MockExamSessionParticipantRecord = Omit<ImportAssembly["participants
 export type MockExamItemResponseRecord = ImportAssembly["participants"][number]["responses"][number] & { id: string; divisionId: string; sessionId: string; studentId: string };
 
 type MockState = {
+  examCorrections: import("./exam-correction").CorrectionAudit[];
+  academyTemplates: import("./academy-template").TemplateRecord[];
+  academyApplications: import("./academy-template").ApplicationRecord[];
+  arrivalsByDivision: Record<string, import("./arrivals").ArrivalRecord[]>;
+  arrivalHistoryByDivision: Record<string, import("./arrivals").ArrivalHistory[]>;
+  arrivalDevicesByDivision: Record<string, import("./arrivals").ArrivalDevice[]>;
+  arrivalPairingsByDivision: Record<string, import("./arrivals").ArrivalPairing[]>;
   attendanceClosedThroughByDivision: Record<string, string>;
   examItemResponsesByDivision: Record<string, MockExamItemResponseRecord[]>;
   examSessionParticipantsByDivision: Record<string, MockExamSessionParticipantRecord[]>;
@@ -1575,9 +1584,13 @@ function createInitialState(): MockState {
 
   return {
     examSessionsByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamSessionRecord[]])),
+    arrivalsByDivision: {}, arrivalHistoryByDivision: {}, arrivalDevicesByDivision: {}, arrivalPairingsByDivision: {},
     examSessionItemsByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamSessionItemRecord[]])),
     examSessionParticipantsByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamSessionParticipantRecord[]])),
     examItemResponsesByDivision: Object.fromEntries(divisions.map((division) => [division.slug, [] as MockExamItemResponseRecord[]])),
+    academyTemplates: [],
+    academyApplications: [],
+    examCorrections: [],
     deletedDivisionSlugs: [],
     divisions,
     divisionSettingsByDivision,
@@ -1981,7 +1994,14 @@ function normalizeMockState(rawState: Partial<MockState> | null | undefined) {
   );
 
   return {
+    academyTemplates: state.academyTemplates ?? [],
+    academyApplications: state.academyApplications ?? [],
+    examCorrections: state.examCorrections ?? [],
     deletedDivisionSlugs,
+    arrivalsByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.arrivalsByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
+    arrivalHistoryByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.arrivalHistoryByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
+    arrivalDevicesByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.arrivalDevicesByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
+    arrivalPairingsByDivision: Object.fromEntries(normalizedDivisions.map((division) => [division.slug, (state.arrivalPairingsByDivision?.[division.slug] ?? []).filter((row) => row.divisionId === division.id)])),
     divisions: normalizedDivisions,
     divisionSettingsByDivision: Object.fromEntries(
       Object.entries(divisionSettingsByDivision).filter((entry): entry is [string, MockDivisionSettingsRecord] => Boolean(entry[1])),

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useConfigurationReview } from "./ConfigurationReview";
 import { Save } from "lucide-react";
 import { toast } from "@/lib/sonner";
 import { EXAM_POINT_RULE_FIELDS, examPointAutomationSchema, type ExamPointAutomation, type ExamPointRuleField } from "@/lib/exam-point-automation";
 
 type Rule = { id: string; name: string; points: number; isActive: boolean };
 export function ExamPointAutomationSettings({divisionSlug}: {divisionSlug: string}) {
+  const {review, dialog} = useConfigurationReview(divisionSlug);
   const [form, setForm] = useState<ExamPointAutomation | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [error, setError] = useState("");
@@ -29,7 +31,9 @@ export function ExamPointAutomationSettings({divisionSlug}: {divisionSlug: strin
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
     setSaving(true); setError("");
     try {
-      const response = await fetch(url, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(parsed.data)});
+      const result = await review("성적 자동 상벌점 변경", current => ({...current, settings:{...current.settings,examPointAutomation:parsed.data}}));
+      if (result?.status !== "APPLIED") return;
+      const response = await fetch(url, {cache:"no-store"});
       const body = await response.json();
       if(!response.ok) throw new Error(body.error ?? "설정을 저장하지 못했습니다.");
       setForm(body.config); toast.success("자동 상벌점 설정을 저장했습니다.");
@@ -38,7 +42,7 @@ export function ExamPointAutomationSettings({divisionSlug}: {divisionSlug: strin
   }
   const update = <K extends keyof ExamPointAutomation>(key: K, value: ExamPointAutomation[K]) => setForm(current=>current ? {...current,[key]:value} : current);
   return <section className="admin-section" id="exam-point-settings" aria-labelledby="exam-point-settings-title">
-    <h2 className="admin-section-title" id="exam-point-settings-title">성적·월말 자동 상벌점</h2>
+    {dialog}<h2 className="admin-section-title" id="exam-point-settings-title">성적·월말 자동 상벌점</h2>
     {error && <p className="admin-notice mt-4" role="alert">{error}</p>}
     {!form ? <div className="mt-4">{error ? <button type="button" className="admin-button admin-button-secondary" onClick={()=>setRevision(value=>value+1)}>다시 불러오기</button> : <p role="status" className="admin-help">설정을 불러오는 중입니다.</p>}</div> : <form onSubmit={save} className="mt-4 space-y-4">
       <fieldset disabled={saving} className="min-w-0 space-y-4">
@@ -53,7 +57,7 @@ export function ExamPointAutomationSettings({divisionSlug}: {divisionSlug: strin
         <details className="admin-disclosure"><summary>자동 부여 규칙</summary><div className="grid min-w-0 gap-4 p-4 md:grid-cols-2">{(Object.entries(EXAM_POINT_RULE_FIELDS) as [ExamPointRuleField,string][]).map(([key,label])=><label className="block min-w-0" key={key}><span className="admin-label mb-2 block">{label}</span><select className="w-full min-w-0" value={form[key] ?? ""} onChange={e=>update(key,e.target.value || null)}><option value="">부여 안 함</option>{rules.filter(rule=>(key.includes("Absence") ? rule.points<0 : rule.points>0)).map(rule=><option key={rule.id} value={rule.id} disabled={!rule.isActive}>{rule.name} ({rule.points>0?"+":""}{rule.points}점){rule.isActive?"":" · 비활성"}</option>)}</select></label>)}</div></details>
         <label className="block min-w-0"><span className="admin-label mb-2 block">월간 성적 동점 기준</span><select className="w-full min-w-0" value={form.rankTieBreak} onChange={e=>update("rankTieBreak",e.target.value as ExamPointAutomation["rankTieBreak"])}><option value="SHARED">공동 순위</option><option value="ATTEMPTS_STUDY_TIME">응시 횟수, 순공시간 순</option></select></label>
         <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={form.settleUnusedLeaveAutomatically} onChange={e=>update("settleUnusedLeaveAutomatically",e.target.checked)}/>휴일권 미사용 상점 자동 월 마감</label>
-        <p className="admin-help">변경한 설정은 이번 달과 지난달 성적에 반영됩니다.</p><button className="admin-button admin-button-primary" type="submit"><Save className="h-4 w-4"/>{saving ? "저장 중…" : "자동 상벌점 저장"}</button>
+        <p className="admin-help">변경한 기준은 선택한 적용일부터 사용하며, 이전 기록은 당시 기준을 유지합니다.</p><button className="admin-button admin-button-primary" type="submit"><Save className="h-4 w-4"/>{saving ? "저장 중…" : "자동 상벌점 저장"}</button>
       </fieldset>
     </form>}
   </section>;

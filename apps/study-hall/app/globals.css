@@ -110,6 +110,14 @@
   --admin-dialog-close-icon: 20px;
   --admin-sidebar-width: 256px;
   --admin-content-max: 1440px;
+  /* 등원 체크: DESIGN.md 등원 체크 키패드·월 달력 */
+  --admin-arrival-kiosk-width: 480px;
+  --admin-arrival-key-height: 64px;
+  --admin-arrival-number-size: 32px;
+  --admin-arrival-calendar-height: 80px;
+  --admin-arrival-calendar-height-mobile: 64px;
+  --admin-arrival-gap: 8px;
+  --admin-arrival-cell-padding: 4px;
 
   /* --- 타입 --- */
   --admin-type-title: 20px;
@@ -2527,7 +2535,8 @@ body:has(.admin-shell) {
   text-decoration: underline;
 }
 
-[role="tabpanel"][hidden] {
+[role="tabpanel"][hidden],
+[data-report-panel][hidden] {
   display: none !important;
 }
 
@@ -3330,7 +3339,7 @@ body:has(.admin-shell) {
 .admin-metric-box-value.admin-metric-box-status,
 .admin-shell .admin-metric-strip > :is(article, div) > p.admin-metric-box-status:nth-child(2) {
   font-size: var(--admin-type-body);
-  font-weight: 500;
+  font-weight: 400;
   color: var(--admin-text-muted);
 }
 
@@ -3367,4 +3376,64 @@ body:has(.admin-shell) {
   .paper-review-row .admin-disclosure { border: 0; border-radius: 0; background: transparent; }
   .paper-review-row .admin-disclosure > summary { min-height: 44px; padding: 0; border-radius: 0; border-bottom: 0; }
   .paper-review-row .admin-disclosure-body { padding: 0 0 12px; font-size: var(--admin-type-body); line-height: 1.5; overflow-wrap: anywhere; }
+}
+
+/* 등원 전용 확장: 기존 셸과 컨트롤 정규화 다음에 적용한다. */
+.admin-arrival-kiosk {
+  width: 100%;
+  max-width: var(--admin-arrival-kiosk-width);
+  margin-inline: auto;
+  padding: 24px 16px 32px;
+}
+.admin-arrival-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--admin-arrival-gap);
+}
+.admin-shell .admin-arrival-key { min-height: var(--admin-arrival-key-height); }
+.admin-shell .admin-arrival-numeric-key,
+.admin-shell input.admin-arrival-number,
+.admin-shell .admin-arrival-pair-code {
+  font-size: var(--admin-arrival-number-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.admin-shell input.admin-arrival-number { min-height: var(--admin-arrival-key-height); }
+.admin-shell table.admin-arrival-calendar { table-layout: fixed; width: 100%; }
+.admin-shell .admin-arrival-calendar td { padding: 0; white-space: normal; }
+.admin-shell .admin-arrival-calendar th { padding-inline: var(--admin-arrival-cell-padding); }
+.admin-shell .admin-arrival-calendar .admin-arrival-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--admin-arrival-gap);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--admin-arrival-calendar-height);
+  padding: var(--admin-arrival-gap) var(--admin-arrival-cell-padding);
+  border: 0;
+  border-radius: 0;
+  font-size: var(--admin-type-caption);
+  line-height: 1.3;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--admin-text);
+  background: var(--admin-surface);
+}
+.admin-shell .admin-arrival-calendar button.admin-arrival-day:hover { background: var(--admin-accent-soft); }
+.admin-shell .admin-arrival-calendar td[data-selected="true"] .admin-arrival-day {
+  background: var(--admin-accent-soft);
+  outline: 2px solid var(--admin-accent);
+  outline-offset: -2px;
+}
+.admin-arrival-day-number[data-today="true"] { font-weight: 700; text-decoration: underline; }
+.admin-shell .admin-arrival-calendar button:disabled { color: var(--admin-text-muted); background: var(--admin-surface-soft); }
+.admin-shell table.admin-arrival-list { table-layout: fixed; }
+.admin-shell .admin-arrival-list .admin-table-name { min-width: 0; overflow-wrap: anywhere; }
+.admin-shell .admin-arrival-list .admin-table-link { min-height: var(--admin-control-height); }
+@media (max-width: 767px) {
+  .admin-shell .admin-arrival-calendar .admin-arrival-day { min-height: var(--admin-arrival-calendar-height-mobile); }
 }

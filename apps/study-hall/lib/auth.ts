@@ -175,6 +175,7 @@ export async function requireDivisionAdminAccess(
     redirect("/login");
   }
 
+  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
   return session;
 }
 
@@ -189,6 +190,7 @@ export async function requireDivisionAssistantAccess(divisionSlug: string) {
     redirect("/login");
   }
 
+  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
   return session;
 }
 
@@ -199,6 +201,7 @@ export async function requireDivisionStudentAccess(divisionSlug: string) {
     redirect(`/${divisionSlug}/student/login`);
   }
 
+  await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(divisionSlug);
   return session;
 }
 

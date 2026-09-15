@@ -1,14 +1,18 @@
 "use client";
 
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Copy, GripVertical, LoaderCircle, Pencil, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { Copy, GripVertical, LoaderCircle, Plus, RefreshCcw, Save, Trash2 } from "lucide-react";
+import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
+import { editAcademyExam } from "@/lib/academy-exam-edit";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
+import { DialogActions } from "@/components/ui/DialogActions";
+import { SlideOver } from "@/components/ui/SlideOver";
 import { getGroupedFullScore } from "@/lib/exam-full-score";
 import type { ExamTypeItem } from "@/lib/services/exam.service";
 
@@ -139,7 +143,8 @@ function summarizeExamType(examType: ExamTypeItem) {
    목록 줄과 폼 줄의 자리만 잡아 두면 로딩 중에만 다른 구조가 보이는 일이 없다. */
 function ExamTypeManagerSkeleton() {
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+    <div className="space-y-6">
+      <div className="admin-skeleton h-11 w-full max-w-sm" aria-hidden="true" />
       <section className="admin-section" aria-hidden="true">
         <div className="admin-workspace-toolbar">
           <div className="admin-skeleton h-6 w-40" />
@@ -154,38 +159,19 @@ function ExamTypeManagerSkeleton() {
           ))}
         </div>
       </section>
-
-      <section className="admin-section" aria-hidden="true">
-        <div className="admin-skeleton h-6 w-32" />
-        <div className="admin-metric-strip">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="admin-skeleton h-[76px]" />
-          ))}
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="admin-skeleton h-[72px]" />
-          ))}
-        </div>
-        <div className="admin-skeleton h-[240px] w-full" />
-      </section>
     </div>
   );
 }
 
 function SortableExamTypeCard({
   examType,
-  isSelected,
   isDeleting,
-  isCopySource,
   onSelect,
   onCopy,
   onDelete,
 }: {
   examType: ExamTypeItem;
-  isSelected: boolean;
   isDeleting: boolean;
-  isCopySource: boolean;
   onSelect: (examType: ExamTypeItem) => void;
   onCopy: (examType: ExamTypeItem) => void;
   onDelete: (id: string) => void;
@@ -193,81 +179,23 @@ function SortableExamTypeCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: examType.id });
   const summary = summarizeExamType(examType);
 
-  /* DESIGN.md 5.6 — 제목·보조설명이 여러 줄인 목록 선택은 .admin-choice-card 다.
-     선택을 직렬색 전면 반전으로 표시하면 카드 안 글자·배지 색을 전부 다시 정해야 하고,
-     선택된 줄만 다른 화면처럼 보인다. accent 테두리 + accent-soft 배경으로 둔다.
-     카드 안에 드래그·수정·복사·삭제 버튼이 들어가므로 카드 자체는 button 이 아니라
-     data-active 를 갖는 컨테이너이고, 선택은 제목 버튼의 aria-pressed 가 알린다. */
+
   return (
-    <article
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="admin-choice-card"
-      data-active={isSelected}
-      data-dragging={isDragging}
-    >
-      <div className="flex items-start gap-3">
-        <button
-          type="button"
-          className="admin-button admin-icon-button shrink-0 cursor-grab touch-none active:cursor-grabbing"
-          aria-label="시험 템플릿 순서 이동"
-          title="시험 템플릿 순서 이동"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-
-        <button
-          type="button"
-          aria-pressed={isSelected}
-          onClick={() => onSelect(examType)}
-          className="min-w-0 flex-1 text-left"
-        >
-          <span className="admin-choice-card-title block">{examType.name}</span>
-
-          <span className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="admin-badge">{getCategoryLabel(examType.category)}</span>
-            <span className="admin-badge">직렬 {getTrackLabel(examType.studyTrack)}</span>
-            {isCopySource ? (
-              <span className="admin-badge border-[var(--admin-accent-line)] bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">복사 기준</span>
-            ) : null}
-            <span className="admin-badge">순서 {examType.displayOrder + 1}</span>
-            <span
-              className={`admin-badge ${examType.isActive
-                ? "border-[var(--admin-success-line)] bg-[var(--admin-success-soft)] text-[var(--admin-success)]"
-                : "border-[var(--admin-danger-line)] bg-[var(--admin-danger-soft)] text-[var(--admin-danger)]"}`}
-            >
-              {examType.isActive ? "활성" : "비활성"}
-            </span>
-          </span>
-
-          <span className="admin-help mt-2 block">{summary.subjectNames}</span>
-          <span className="admin-help mt-1 block">
-            과목 수 {summary.activeSubjectCount}개{summary.totalMaxScore ? ` · 예상 총점 ${summary.totalMaxScore}점` : ""}
-          </span>
-        </button>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={() => onSelect(examType)} className="admin-button admin-icon-button" aria-label="시험 템플릿 수정" title="시험 템플릿 수정">
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => onCopy(examType)} className="admin-button">
-            <Copy className="h-4 w-4" />
-            복사
-          </button>
-          <button type="button" onClick={() => onDelete(examType.id)} disabled={isDeleting} className="admin-button admin-button-danger-outline admin-icon-button" aria-label="시험 템플릿 삭제" title="시험 템플릿 삭제">
-            {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-          </button>
-        </div>
-      </div>
-    </article>
+    <tr ref={setNodeRef} style={{ transform: transform ? CSS.Transform.toString(transform) : undefined, transition }} data-dragging={isDragging}>
+      <td><button type="button" className="admin-button admin-icon-button cursor-grab touch-none" aria-label={examType.name + " 순서 이동"} title="시험 템플릿 순서 이동" {...attributes} {...listeners}><GripVertical className="h-4 w-4" /></button></td>
+      <td className="admin-table-name"><button type="button" className="admin-table-link" onClick={() => onSelect(examType)}>{examType.name}</button><span className="admin-help block">{summary.subjectNames}</span><span className="admin-help block md:hidden">{getCategoryLabel(examType.category)} · {getTrackLabel(examType.studyTrack)} · {examType.isActive ? "활성" : "비활성"}</span></td>
+      <td className="hidden md:table-cell">{getCategoryLabel(examType.category)}</td>
+      <td className="hidden md:table-cell">{getTrackLabel(examType.studyTrack)}</td>
+      <td className="admin-table-amount">{summary.totalMaxScore ?? "-"}<span className="admin-help block">{summary.activeSubjectCount}과목</span></td>
+      <td className="hidden md:table-cell"><span className={examType.isActive ? "text-admin-success" : "text-admin-text-muted"}>{examType.isActive ? "활성" : "비활성"}</span></td>
+      <td><div className="flex flex-wrap justify-center gap-1"><button type="button" onClick={() => onCopy(examType)} className="admin-button admin-icon-button" aria-label={examType.name + " 복사"} title="템플릿 복사"><Copy className="h-4 w-4" /></button><button type="button" onClick={() => onDelete(examType.id)} disabled={isDeleting} className="admin-button admin-icon-button admin-button-danger-outline hidden md:inline-flex" aria-label={examType.name + " 삭제"} title="템플릿 삭제">{isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button></div></td>
+    </tr>
   );
 }
 
 export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOptions }: Props) {
   const [isReady, setIsReady] = useState(false);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const [examTypes, setExamTypes] = useState(initialExamTypes);
   const [selectedId, setSelectedId] = useState<string | null>(initialExamTypes[0]?.id ?? null);
   const [editingId, setEditingId] = useState<string | null>(initialExamTypes[0]?.id ?? null);
@@ -276,8 +204,12 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [initialForm, setInitialForm] = useState<FormState>(createDefaultForm);
+  const formId = useId();
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
-  const { confirm, confirmDialog } = useConfirmDialog();
+  const {review,dialog}=useConfigurationReview(divisionSlug);
+  const {confirm,confirmDialog}=useConfirmDialog();
 
   useEffect(() => {
     setIsReady(true);
@@ -300,21 +232,35 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
     setSelectedId(null);
     setEditingId(null);
     setCopySourceId(null);
-    setForm(createDefaultForm());
+    const nextForm = createDefaultForm();
+    setForm(nextForm); setInitialForm(nextForm);
+    setEditorOpen(true);
   }
 
   function selectExamType(examType: ExamTypeItem) {
     setSelectedId(examType.id);
     setEditingId(examType.id);
     setCopySourceId(null);
-    setForm(toFormState(examType));
+    const nextForm = toFormState(examType);
+    setForm(nextForm); setInitialForm(nextForm);
+    setEditorOpen(true);
   }
 
   function startCopy(examType: ExamTypeItem) {
     setSelectedId(examType.id);
     setEditingId(null);
     setCopySourceId(examType.id);
-    setForm(toCopyFormState(examType));
+    const nextForm = toCopyFormState(examType);
+    setForm(nextForm); setInitialForm(nextForm);
+    setEditorOpen(true);
+  }
+
+  async function closeEditor() {
+    if (isSaving || deletingId) return;
+    if (JSON.stringify(form) !== JSON.stringify(initialForm) && !await confirm({
+      title: "변경사항 폐기", description: "저장하지 않은 시험 템플릿 변경사항이 있습니다.", confirmLabel: "변경 폐기", cancelLabel: "계속 편집", variant: "warning",
+    })) return;
+    setEditorOpen(false);
   }
 
   function updateSubject(localId: string, updater: (subject: SubjectFormItem) => SubjectFormItem) {
@@ -351,18 +297,14 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSaving) return;
     setIsSaving(true);
     try {
       const isCopyMode = !editingId && Boolean(copySourceId);
-      const response = await fetch(editingId ? `/api/${divisionSlug}/exam-types/${editingId}` : `/api/${divisionSlug}/exam-types`, {
-        method: editingId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildRequestBody(form)),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "시험 템플릿 저장에 실패했습니다.");
-      const savedExamType = data.examType as ExamTypeItem | undefined;
+      const result=await review("시험 설정 변경",current=>editAcademyExam(current,editingId,buildRequestBody(form)));
+      if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setEditorOpen(false);return;}
       const nextExamTypes = await refreshExamTypes();
+      const savedExamType=nextExamTypes?.find(e=>editingId?e.id===editingId:e.name===form.name.trim()&&e.category===form.category);
       if (savedExamType) {
         const matched = nextExamTypes?.find((item) => item.id === savedExamType.id) ?? savedExamType;
         setSelectedId(matched.id);
@@ -370,6 +312,7 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
         setCopySourceId(null);
         setForm(toFormState(matched));
       }
+      setEditorOpen(false);
       toast.success(editingId ? "시험 템플릿을 수정했습니다." : isCopyMode ? "시험 템플릿을 복사했습니다." : "시험 템플릿을 추가했습니다.");
       showActionComplete({
         title: editingId
@@ -392,30 +335,17 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
   }
 
   async function handleDelete(examTypeId: string) {
-    const confirmed = await confirm({
-      title: "시험 템플릿 삭제",
-      description: "이 시험 템플릿을 삭제하시겠습니까? 성적 데이터가 연결된 템플릿은 삭제되지 않습니다.",
-      confirmLabel: "삭제",
-      cancelLabel: "취소",
-      variant: "danger",
-    });
-    if (!confirmed) return;
     setDeletingId(examTypeId);
     try {
-      const response = await fetch(`/api/${divisionSlug}/exam-types/${examTypeId}`, { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "시험 템플릿 삭제에 실패했습니다.");
-      toast.success("시험 템플릿을 삭제했습니다.");
-      showActionComplete({
-        title: "시험 템플릿 삭제 완료",
-        description: "시험 템플릿을 삭제했습니다.",
-        notice: "삭제된 템플릿은 시험 설정과 성적 입력 화면에서 더 이상 표시되지 않습니다.",
-      });
+      const result=await review("시험 종류 비활성화",current=>({...current,examTypes:current.examTypes.map(e=>e.id===examTypeId?{...e,isActive:false}:e)}));
+      if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setEditorOpen(false);return;}
+      toast.success("기존 성적을 보존하고 시험 종류를 비활성화했습니다.");
       const nextExamTypes = await refreshExamTypes();
       if (selectedId === examTypeId || editingId === examTypeId || copySourceId === examTypeId) {
         const fallback = nextExamTypes?.[0];
         if (fallback) selectExamType(fallback);
         else resetForm();
+        setEditorOpen(false);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "시험 템플릿 삭제에 실패했습니다.");
@@ -451,7 +381,6 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
 
   return (
     <>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
       <section className="admin-section">
         <div className="admin-workspace-toolbar">
           <h2 className="admin-section-title">시험 템플릿 목록</h2>
@@ -460,24 +389,24 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
             <button type="button" onClick={resetForm} className="admin-button admin-button-primary"><Plus className="h-4 w-4" />새 템플릿</button>
           </div>
         </div>
-        <p className="admin-help">드래그로 순서를 바꾸고, 이름을 눌러 수정할 템플릿을 고릅니다.</p>
+        <p className="admin-help">전체 {orderedExamTypes.length}개</p>
 
         <div className="space-y-3">
           {orderedExamTypes.length > 0 ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={orderedExamTypes.map((examType) => examType.id)} strategy={verticalListSortingStrategy}>
+                <div className="admin-table-frame"><table aria-label="시험 템플릿 목록"><thead><tr><th scope="col">순서</th><th scope="col">템플릿</th><th scope="col" className="hidden md:table-cell">유형</th><th scope="col" className="hidden md:table-cell">직렬</th><th scope="col">총점</th><th scope="col" className="hidden md:table-cell">상태</th><th scope="col">관리</th></tr></thead><tbody>
                 {orderedExamTypes.map((examType) => (
                   <SortableExamTypeCard
                     key={examType.id}
                     examType={examType}
-                    isSelected={selectedId === examType.id}
                     isDeleting={deletingId === examType.id}
-                    isCopySource={copySourceId === examType.id}
                     onSelect={selectExamType}
                     onCopy={startCopy}
                     onDelete={(id) => void handleDelete(id)}
                   />
                 ))}
+                </tbody></table></div>
               </SortableContext>
             </DndContext>
           ) : (
@@ -485,17 +414,8 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
           )}
         </div>
       </section>
-
-      <section className="admin-section">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="admin-section-title">{editingId ? "시험 템플릿 수정" : copySourceId ? "시험 템플릿 복사" : "새 시험 템플릿"}</h2>
-            <p className="admin-help mt-3 leading-6">{copySourceName ? `${copySourceName}: 원본 설정을 그대로 가져왔습니다. 필요한 항목만 수정 후 저장하면 새 템플릿으로 추가됩니다.` : editingId ? "직렬별 시험 종류와 과목 구성을 수정합니다." : "직렬별 시험 종류와 과목별 배점을 새로 등록합니다."}</p>
-          </div>
-          {(editingId || copySourceId || form.name.trim()) ? <button type="button" onClick={resetForm} className="admin-button">초기화</button> : null}
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-5 space-y-5">
+      <SlideOver open={editorOpen} title={editingId ? "시험 템플릿 수정" : copySourceId ? "시험 템플릿 복사" : "새 시험 템플릿"} description={copySourceName ? "복사 기준: " + copySourceName : undefined} onClose={() => void closeEditor()}>
+        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
           <div className="admin-metric-strip">
             <div className="admin-metric-box"><p className="admin-metric-box-label">직렬</p><p className="admin-metric-box-value">{getTrackLabel(form.studyTrack === COMMON_TRACK_VALUE ? null : form.studyTrack)}</p></div>
             <div className="admin-metric-box"><p className="admin-metric-box-label">과목 수</p><p className="admin-metric-box-value">{activeSubjectCount}개</p></div>
@@ -567,11 +487,10 @@ export function ExamTypeManager({ divisionSlug, initialExamTypes, studyTrackOpti
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3"><button type="button" onClick={resetForm} className="admin-button">취소</button><button type="submit" disabled={isSaving} className="admin-button admin-button-primary">{isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editingId ? "시험 템플릿 저장" : copySourceId ? "복사본 저장" : "시험 템플릿 추가"}</button></div>
+          <DialogActions>{editingId ? <button type="button" disabled={isSaving || Boolean(deletingId)} onClick={() => void handleDelete(editingId)} className="admin-button admin-button-danger-outline mr-auto"><Trash2 className="h-4 w-4" />삭제</button> : null}<button type="button" disabled={isSaving} onClick={() => void closeEditor()} className="admin-button">취소</button><button type="submit" form={formId} disabled={isSaving} className="admin-button admin-button-primary">{isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{editingId ? "시험 템플릿 저장" : copySourceId ? "복사본 저장" : "시험 템플릿 추가"}</button></DialogActions>
         </form>
-      </section>
-      </div>
-      {confirmDialog}
+      </SlideOver>
+      {confirmDialog}{dialog}
       {actionCompleteModal}
     </>
   );

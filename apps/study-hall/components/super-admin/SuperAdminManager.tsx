@@ -186,12 +186,12 @@ export function SuperAdminManager({
           });
         } else {
           toast.success(
-            `지점을 추가하고 설정을 복사했습니다. (교시 ${copyData.periodsCount}개, 규칙 ${copyData.rulesCount}개)`,
+            `지점을 추가하고 템플릿 초안을 저장했습니다. (교시 ${copyData.periodsCount}개, 규칙 ${copyData.rulesCount}개)`,
           );
           showActionComplete({
             title: "지점 추가 완료",
-            description: `${divisionForm.name} 지점을 추가하고 기본 설정을 복사했습니다.`,
-            notice: `교시 ${copyData.periodsCount}개, 규칙 ${copyData.rulesCount}개가 새 지점에 함께 반영되었습니다.`,
+            description: `${divisionForm.name} 지점을 추가하고 운영 템플릿 초안을 복사했습니다.`,
+            notice: "새 지점의 설정 > 운영 템플릿에서 가져온 초안을 확인하고 적용해 주세요.",
           });
         }
       } else {

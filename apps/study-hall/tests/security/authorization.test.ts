@@ -9,6 +9,7 @@ test("API guards enforce roles, division isolation and fail closed on lookup fai
   let studentDivision: string | null = null;
   const logged: unknown[] = [];
   const loaded = loadWithMocks<typeof import("../../lib/api-auth")>("../../lib/api-auth", {
+    "../../lib/services/academy-template.service": {applyDueAcademyTemplates:async()=>{}},
     "../../lib/auth": {
       getCurrentAdminSession: async () => { if (unavailable) throw new Error("postgres://secret"); return admin; },
       getCurrentStudentSession: async (division: string) => studentDivision === division ? { studentId: "own-student", divisionSlug: division } : null,

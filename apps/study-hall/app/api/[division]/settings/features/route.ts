@@ -4,7 +4,6 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { featureSettingsSchema } from "@/lib/settings-schemas";
 import {
   getDivisionFeatureSettings,
-  updateDivisionFeatureSettings,
 } from "@/lib/services/settings.service";
 
 export async function GET(
@@ -61,7 +60,9 @@ export async function PATCH(
   }
 
   try {
-    const settings = await updateDivisionFeatureSettings(params.division, parsed.data);
+    const { applyAcademySettingsPatch } = await import("@/lib/services/academy-template.service");
+    await applyAcademySettingsPatch(params.division,"기능 설정 변경",parsed.data,auth.session);
+    const settings = await getDivisionFeatureSettings(params.division);
     return NextResponse.json({ settings });
   } catch (error) {
     return NextResponse.json(

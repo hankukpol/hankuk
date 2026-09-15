@@ -35,6 +35,8 @@ export function revalidateDivisionOperationalViews(
   revalidatePath(`/${divisionSlug}/student`);
   revalidatePath(`/${divisionSlug}/student/attendance`);
   revalidatePath(`/${divisionSlug}/student/points`);
+  revalidatePath(`/${divisionSlug}/student/management-policy`);
+  revalidatePath(`/${divisionSlug}/admin/settings/policy`);
   revalidatePath(`/${divisionSlug}/student/exams`);
   revalidatePath(`/${divisionSlug}/student/announcements`);
   revalidatePath("/super-admin");

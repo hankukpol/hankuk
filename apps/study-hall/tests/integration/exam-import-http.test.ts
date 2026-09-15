@@ -246,6 +246,36 @@ test("history deletion removes importer-owned scores and keeps subsequently edit
   assert.equal(restored.status, 201, await restored.clone().text());
 });
 
+test("administrator corrects imported item grading through HTTP with audit and authorization", async()=>{
+  const cookie=await login("admin-police@mock.local"),assistant=await login("assistant-police@mock.local");
+  const state=await readMockState(),session=state.examSessionsByDivision.police.find(s=>s.examTypeId==="import-http-morning")!;
+  const endpoint=`${base}/api/police/exam-imports/${session.id}/corrections`;
+  assert.ok([401,403].includes((await fetch(endpoint)).status));
+  assert.equal((await fetch(endpoint,{headers:{cookie:assistant}})).status,403);
+  assert.equal((await fetch(endpoint.replace("/police/","/fire/"),{headers:{cookie}})).status,403);
+  const initial=await fetch(endpoint,{headers:{cookie}});
+  assert.equal(initial.status,200);assert.match(initial.headers.get("cache-control")??"",/no-store/);
+  const data=await initial.json() as Awaited<ReturnType<typeof import("../../lib/services/exam-correction.service").getExamCorrection>>;
+  const studentId=data.bundle.participants[0].studentId;
+  const responses=data.bundle.responses.filter(r=>r.studentId===studentId).map(({subjectId,itemNo,answer,isCorrect})=>({subjectId,itemNo,answer,isCorrect}));
+  const body={revision:data.revision,studentId,targetStudentId:studentId,reason:"문항 판독 오류 정정",responses:responses.map((r,i)=>i===0?{...r,isCorrect:!r.isCorrect}:r)};
+  const post=(value:unknown,auth=cookie)=>fetch(endpoint,{method:"POST",headers:{cookie:auth,"Content-Type":"application/json"},body:JSON.stringify(value)});
+  assert.equal((await post(body,assistant)).status,403);
+  assert.equal((await post({...body,reason:""})).status,400);
+  assert.equal((await post({...body,totalScore:999})).status,400);
+  assert.equal((await post({...body,targetStudentId:data.bundle.participants[1].studentId})).status,409);
+  const applied=await post(body);assert.equal(applied.status,200,await applied.clone().text());
+  assert.equal((await post(body)).status,409);
+  const after=await (await fetch(endpoint,{headers:{cookie}})).json() as typeof data;
+  assert.equal(after.history.length,data.history.length+1);
+  assert.equal(after.history[0].reason,body.reason);
+  assert.notEqual(after.bundle.participants[0].totalScore,data.bundle.participants[0].totalScore);
+  const actual=after.bundle.participants.find(p=>p.studentId===studentId)!;
+  assert.equal(after.bundle.scores.find(s=>s.studentId===studentId)?.score,actual.totalScore);
+  assert.equal((await post({...body,revision:after.revision,responses,reason:"검증 원본 복원"})).status,200);
+  assert.deepEqual((await readMockState()).pointRecordsByDivision.fire,state.pointRecordsByDivision.fire);
+});
+
 test("administrator calendar controls imported exam points and tenant isolation through HTTP", async()=>{
   const cookie=await login("admin-police@mock.local");
   const assistant=await login("assistant-police@mock.local");

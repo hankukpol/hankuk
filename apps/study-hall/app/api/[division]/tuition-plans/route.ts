@@ -4,7 +4,7 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { tuitionPlanSchema } from "@/lib/tuition-schemas";
-import { createTuitionPlan, listTuitionPlans } from "@/lib/services/tuition-plan.service";
+import { listTuitionPlans } from "@/lib/services/tuition-plan.service";
 
 export async function GET(
   request: NextRequest,
@@ -64,7 +64,9 @@ export async function POST(
   }
 
   try {
-    const plan = await createTuitionPlan(params.division, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    await applyAcademyConfigurationEdit(params.division,"등록 플랜 추가",current=>({...current,tuitionPlans:[...current.tuitionPlans,{...parsed.data,durationDays:parsed.data.durationDays??null,description:parsed.data.description??null,isActive:parsed.data.isActive??true,id:crypto.randomUUID(),displayOrder:current.tuitionPlans.length}]}),auth.session);
+    const plan=(await listTuitionPlans(params.division)).find(p=>p.name===parsed.data.name);
     return NextResponse.json({ plan }, { status: 201 });
   } catch (error) {
     return toApiErrorResponse(error, "등록 플랜 처리에 실패했습니다.");

@@ -1,4 +1,5 @@
 "use client";
+import { useConfigurationReview } from "./ConfigurationReview";
 
 import { LoaderCircle, RefreshCcw, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -6,6 +7,8 @@ import { useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
+import { formatKstDateTime } from "@/lib/date-utils";
 import {
   OPERATING_DAY_KEYS,
   OPERATING_DAY_LABELS,
@@ -58,10 +61,12 @@ export function GeneralSettingsManager({
   initialSettings,
 }: GeneralSettingsManagerProps) {
   const router = useRouter();
+  const {review, dialog} = useConfigurationReview(divisionSlug);
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState<FormState>(toFormState(initialSettings));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<"summary" | "edit">("summary");
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
   const activeDayCount = OPERATING_DAY_KEYS.filter((key) => form.operatingDays[key]).length;
@@ -98,6 +103,12 @@ export function GeneralSettingsManager({
     setIsSaving(true);
 
     try {
+      let appliedOperatingDays=form.operatingDays, appliedStudyTracks=studyTracks;
+      if (JSON.stringify(form.operatingDays)!==JSON.stringify(settings.operatingDays) || JSON.stringify(studyTracks)!==JSON.stringify(settings.studyTracks)) {
+        const result=await review("운영 요일·직렬 변경", current=>({...current,settings:{...current.settings,operatingDays:form.operatingDays,studyTracks}}));
+        if (!result) return;
+        if (result.status==="PENDING") {appliedOperatingDays=settings.operatingDays;appliedStudyTracks=settings.studyTracks;}
+      }
       const response = await fetch(`/api/${divisionSlug}/settings/general`, {
         method: "PATCH",
         headers: {
@@ -105,7 +116,8 @@ export function GeneralSettingsManager({
         },
         body: JSON.stringify({
           ...form,
-          studyTracks,
+          operatingDays:appliedOperatingDays,
+          studyTracks:appliedStudyTracks,
         }),
       });
       const data = await response.json();
@@ -131,9 +143,17 @@ export function GeneralSettingsManager({
   }
 
   return (
-    <>
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className="admin-section">
+    <>{dialog}
+      <AdminTabs
+        items={[{ id: "summary", label: "현재 설정" }, { id: "edit", label: "기본 정보 편집" }]}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="기본 정보 설정 구분"
+        idPrefix="general-settings"
+        variant="secondary"
+      />
+      <AdminTabPanel id="summary" activeId={activeTab} idPrefix="general-settings" className="mt-6">
+        <div>
         {/* DESIGN.md 5.3 — 지점 색은 색면이 아니라 표식으로만 보여준다. */}
         <div className="admin-metric-box">
           <p className="admin-metric-box-label">지점 미리보기</p>
@@ -157,8 +177,9 @@ export function GeneralSettingsManager({
           </div>
         </div>
 
-        <div className="mt-5 space-y-3">
-          <article className="admin-section">
+        <div className="admin-panel mt-5">
+          <article className="admin-panel-row">
+            <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">운영 요일</p>
             <p className="admin-help mt-2">현재 {activeDayCount}일 운영 중입니다.</p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -171,9 +192,11 @@ export function GeneralSettingsManager({
                 </span>
               ))}
             </div>
+            </div>
           </article>
 
-          <article className="admin-section">
+          <article className="admin-panel-row">
+            <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">직렬 목록 미리보기</p>
             <p className="admin-help mt-2">
               학생 등록과 목록 필터에서 이 직렬 목록을 기준으로 사용합니다.
@@ -192,17 +215,19 @@ export function GeneralSettingsManager({
                 <span className="admin-help">등록된 직렬이 없습니다.</span>
               )}
             </div>
+            </div>
           </article>
 
-          <article className="admin-section">
+          <article className="admin-panel-row justify-between">
             <p className="text-sm font-semibold text-slate-900">최종 저장</p>
-            <p className="admin-help mt-2">
-              {new Date(settings.updatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}
+            <p className="admin-help">
+              {formatKstDateTime(settings.updatedAt)}
             </p>
           </article>
         </div>
-        </section>
-
+        </div>
+      </AdminTabPanel>
+      <AdminTabPanel id="edit" activeId={activeTab} idPrefix="general-settings" className="mt-6">
         <section className="admin-section">
         <div className="flex flex-wrap items-center justify-end gap-3">
           <button
@@ -362,7 +387,7 @@ export function GeneralSettingsManager({
           </button>
         </form>
         </section>
-      </div>
+      </AdminTabPanel>
       {actionCompleteModal}
     </>
   );

@@ -1,3 +1,4 @@
+import { syncMockExamPoints, syncDbExamPoints } from "@/lib/services/exam-point.service";
 import { isMockMode } from "@/lib/mock-data";
 import {
   readMockState,
@@ -365,6 +366,7 @@ export async function saveMorningExamScores(
       }
 
       state.morningExamScoresByDivision[divisionSlug] = scores;
+      syncMockExamPoints(state, divisionSlug, input.date.slice(0,7), actor.id);
       return count;
     });
 
@@ -434,6 +436,7 @@ export async function saveMorningExamScores(
     });
     savedCount += 1;
   }
+  await syncDbExamPoints(tx, division.id, input.date.slice(0,7), actor.id);
   });
 
   return { savedCount };

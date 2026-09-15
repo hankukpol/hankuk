@@ -2004,6 +2004,7 @@ export async function deleteStudent(
       }
 
       const slices: [string, unknown[] | undefined][] = [
+        ["등원", state.arrivalsByDivision?.[divisionSlug]],
         ["출결", state.attendanceByDivision[divisionSlug]],
         ["상벌점", state.pointRecordsByDivision[divisionSlug]],
         ["외출·휴가", state.leavePermissionsByDivision[divisionSlug]],
@@ -2053,6 +2054,7 @@ export async function deleteStudent(
       _count: {
         select: {
           attendanceRecords: true,
+          arrivals: true,
           pointRecords: true,
           leavePermissions: true,
           interviews: true,
@@ -2072,6 +2074,7 @@ export async function deleteStudent(
   }
 
   const labels: Record<string, string> = {
+    arrivals: "등원",
     attendanceRecords: "출결",
     pointRecords: "상벌점",
     leavePermissions: "외출·휴가",

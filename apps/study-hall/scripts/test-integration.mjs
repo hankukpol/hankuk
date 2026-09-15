@@ -23,7 +23,7 @@ fs.symlinkSync(path.join(root, "node_modules"), path.join(runtime, "node_modules
 // Do not inherit database credentials, service keys, cookies, or another server's build directory.
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(path|systemroot|windir|comspec|temp|tmp|userprofile|appdata|localappdata|programdata|home|number_of_processors)$/i.test(key)));
 Object.assign(env, {
-  NODE_ENV: "production", MOCK_MODE: "true", NEXT_TELEMETRY_DISABLED: "1",
+  NODE_ENV: "production", MOCK_MODE: "true", NEXT_TELEMETRY_DISABLED: "1", NODE_OPTIONS: "--max-old-space-size=2048",
   APP_SESSION_SECRET: randomUUID() + randomUUID(),
   NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:9", NEXT_PUBLIC_SUPABASE_ANON_KEY: "fixture-only",
   SUPABASE_SERVICE_ROLE_KEY: "fixture-only", DATABASE_URL: "postgresql://test:test@127.0.0.1:9/test",
@@ -33,8 +33,8 @@ console.log(`[integration] isolated workspace: ${runtime}`);
 const log = fs.openSync(path.join(runtime, "integration.log"), "a");
 async function run(args, extra = {}) {
   const child = spawn(process.execPath, args, { cwd: runtime, env: { ...env, ...extra }, stdio: ["ignore", log, log] });
-  const [code] = await once(child, "exit");
-  if (code !== 0) throw new Error(`${args.join(" ")} failed (${code}); see ${path.join(runtime, "integration.log")}`);
+  const [code, signal] = await once(child, "exit");
+  if (code !== 0) throw new Error(`${args.join(" ")} failed (${code ?? signal}); see ${path.join(runtime, "integration.log")}`);
 }
 async function freePort() {
   const probe = net.createServer();
@@ -66,6 +66,7 @@ try {
   await run(["--import", "tsx", "--test", "tests/integration/exam-import-http.test.ts"], { TEST_BASE_URL: baseUrl });
   await run(["--import", "tsx", "--test", "tests/integration/exam-analysis-http.test.ts"], { TEST_BASE_URL: baseUrl });
   await run(["--import", "tsx", "--test", "tests/integration/exam-analysis-export-http.test.ts"], { TEST_BASE_URL: baseUrl });
+  await run(["--import", "tsx", "--test", "tests/integration/academy-template-http.test.ts"], { TEST_BASE_URL: baseUrl });
   console.log(`[integration] PASS; evidence: ${path.join(runtime, "integration.log")}`);
 } catch (error) {
   console.error(error.message);

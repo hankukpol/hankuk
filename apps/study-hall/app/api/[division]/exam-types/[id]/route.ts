@@ -1,3 +1,4 @@
+import { notFound } from "@/lib/errors";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 
@@ -5,7 +6,7 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { examTypeReorderSchema, examTypeSchema } from "@/lib/exam-schemas";
-import { deleteExamType, reorderExamTypes, updateExamType } from "@/lib/services/exam.service";
+import { listExamTypes, reorderExamTypes } from "@/lib/services/exam.service";
 
 export async function PATCH(
   request: NextRequest,
@@ -56,7 +57,10 @@ export async function PATCH(
   }
 
   try {
-    const examType = await updateExamType(params.division, params.id, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    const { editAcademyExam } = await import("@/lib/academy-exam-edit");
+    await applyAcademyConfigurationEdit(params.division,"시험 종류 변경",current=>editAcademyExam(current,params.id,parsed.data),auth.session);
+    const examType=(await listExamTypes(params.division)).find(e=>e.id===params.id);
     revalidateTag(`exam-analysis:${params.division}`);
     return NextResponse.json({ examType });
   } catch (error) {
@@ -84,7 +88,11 @@ export async function DELETE(
   }
 
   try {
-    await deleteExamType(params.division, params.id);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    await applyAcademyConfigurationEdit(params.division,"시험 종류 비활성화",current=>{
+      if(!current.examTypes.some(e=>e.id===params.id))throw notFound("시험 종류를 찾을 수 없습니다.");
+      return {...current,examTypes:current.examTypes.map(e=>e.id===params.id?{...e,isActive:false}:e)};
+    },auth.session);
     revalidateTag(`exam-analysis:${params.division}`);
     return NextResponse.json({ ok: true });
   } catch (error) {

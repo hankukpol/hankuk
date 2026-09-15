@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as arrivalMeta from "../../lib/attendance-arrival";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -36,6 +37,9 @@ function loadService<T>(name: string, dependencies: Record<string, unknown>, int
     "@/lib/management-policy": policyMeta,
     "@/lib/record-index": recordIndex,
     "@/lib/attendance-meta": attendanceMeta,
+    "@/lib/attendance-arrival": arrivalMeta,
+    "@/lib/services/academy-configuration-history.service": {getHistoricalAcademyConfiguration:async()=>null},
+    "@/lib/services/academy-template.service": {applyDueAcademyTemplates:async()=>{}},
     "@/lib/chat-meta": chatMeta,
     "@/lib/chat-schemas": chatSchemas,
     "@/lib/errors": { notFound: (message: string) => new Error(message), badRequest: (message: string) => new Error(message), conflict: (message: string) => new Error(message), forbidden: (message: string) => new Error(message) },

@@ -12,7 +12,7 @@ type StudentPortalFrameProps = {
     color: string;
   };
   student: StudentDetail;
-  current: "attendance" | "points" | "exams" | "study-ranking" | "profile";
+  current: "attendance" | "points" | "exams" | "study-ranking" | "profile" | "management-policy";
   title: string;
   description?: string;
   attendanceEnabled?: boolean;
@@ -71,6 +71,7 @@ export function StudentPortalFrame({
                 attendanceEnabled={attendanceEnabled}
                 pointsEnabled={pointsEnabled}
                 examsEnabled={examsEnabled}
+                policyEnabled={Boolean(student.warningStageLabels)}
               />
             </div>
 

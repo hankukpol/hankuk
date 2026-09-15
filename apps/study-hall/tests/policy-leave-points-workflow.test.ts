@@ -58,6 +58,7 @@ function fixture(t: TestContext, now = "2026-10-01T00:00:00+09:00") {
   const dependencies: Record<string, unknown> = {
     react: { cache: <T>(fn: T) => fn },
     "next/cache": { revalidatePath() {}, revalidateTag() {} },
+    "@/lib/services/academy-configuration-history.service": {getHistoricalAcademyConfiguration:async()=>null},
     "@/lib/revalidation": { revalidateDivisionOperationalViews() {} },
     "@/lib/mock-data": {
       isMockMode: () => true,
@@ -546,4 +547,40 @@ test("DB 정산은 직렬별 지급 여부를 직렬화 트랜잭션 안에서 �
   assert.deepEqual(await service.settleLeaveMonth("police", actor, { month: "2026-09" }), { month: "2026-09", createdCount: 0, skippedCount: 1, totalRewardPoints: 0 });
   assert.equal(transactions, 1);
   assert.equal(creates, 0);
+});
+
+
+test("past leave approval and legacy cancellation use the old timetable and policy", async t => {
+  const f = fixture(t, "2026-09-14T09:00:00+09:00");
+  const oldDate = "2026-09-08";
+  const oldPeriods = periods.filter((p: {id:string}) => p.id === "09:15");
+  const leave = f.load<typeof import("../lib/services/leave.service")>("leave", {
+    "@/lib/services/management-policy.service": {getManagementPolicy: async (_slug:string, date?:string) => date === oldDate ? null : basePolicy},
+    "@/lib/services/period.service": {getPeriods: async (_slug:string, date?:string) => date === oldDate ? oldPeriods : periods},
+  });
+  const record = await leave.createLeavePermission("police",actor,{studentId:"a",date:oldDate,type:"HOLIDAY",reason:"기존 승인"});
+  assert.deepEqual(f.state.attendanceByDivision.police.map(r=>r.periodId),["09:15"]);
+  // Old approvals predate the exact attendance snapshot column.
+  delete f.state.leavePermissionsByDivision.police.find(r=>r.id===record!.id)!.attendanceSnapshot;
+  await leave.cancelLeavePermission("police",record!.id,actor);
+  assert.equal(f.state.attendanceByDivision.police.length,0);
+  assert.equal(f.state.leavePermissionsByDivision.police[0].status,"REJECTED");
+  assert.deepEqual(f.state.attendanceByDivision.fire,[]);
+});
+
+
+test("academies can change half-day period counts without changing previously approved cells", async t => {
+  const f = fixture(t, "2026-09-08T09:00:00+09:00");
+  const policy = {...basePolicy, halfDayPeriodCount:2};
+  f.state.divisionSettingsByDivision.police.halfDayLimit = 2;
+  const leave = f.load<typeof import("../lib/services/leave.service")>("leave", {"@/lib/services/management-policy.service":{getManagementPolicy:async()=>policy}});
+  const first = await leave.createLeavePermission("police",actor,{studentId:"a",date:"2026-09-09",type:"HALF_DAY"});
+  assert.equal(f.state.attendanceByDivision.police.filter(r=>r.date==="2026-09-09").length,2);
+  policy.halfDayPeriodCount=4;
+  t.mock.timers.tick(1);
+  await leave.createLeavePermission("police",actor,{studentId:"a",date:"2026-09-10",type:"HALF_DAY"});
+  assert.equal(f.state.attendanceByDivision.police.filter(r=>r.date==="2026-09-10").length,4);
+  await leave.cancelLeavePermission("police",first!.id,actor);
+  assert.equal(f.state.attendanceByDivision.police.filter(r=>r.date==="2026-09-09").length,0);
+  assert.equal(f.state.attendanceByDivision.police.filter(r=>r.date==="2026-09-10").length,4);
 });

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import * as configurationHistory from "../lib/academy-configuration-history";
+import * as arrivalMeta from "../lib/attendance-arrival";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -64,6 +66,10 @@ function fixture() {
     "node:crypto": { randomUUID },
     "@/lib/date-utils": dateUtils,
     "@/lib/attendance-meta": attendanceMeta,
+    "@/lib/attendance-arrival": arrivalMeta,
+    "@/lib/academy-configuration-history": configurationHistory,
+    "@/lib/services/academy-configuration-history.service": {getHistoricalAcademyConfiguration:async()=>null},
+    "@/lib/services/academy-template.service": {applyDueAcademyTemplates:async()=>{}},
     "@/lib/perfect-attendance": perfectAttendance,
     "@/lib/management-policy": policyMeta,
     "@/lib/mock-data": { isMockMode: () => true, getMockDivisionBySlug: (slug: string) => ({ id: slug }) },

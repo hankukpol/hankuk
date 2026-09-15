@@ -5,6 +5,7 @@ import {
   type AdminSessionRole,
   type StudentSession,
 } from "@/lib/auth";
+import { applyDueAcademyTemplates } from "@/lib/services/academy-template.service";
 import { logServerError } from "@/lib/server-log";
 
 type ApiAuthFailure = {
@@ -72,6 +73,12 @@ export async function requireApiAuth(
     };
   }
 
+  try {
+    await applyDueAcademyTemplates(divisionSlug);
+  } catch (error) {
+    logServerError("academy-configuration-apply", error);
+    return { ok: false, error: "예약 설정 적용 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.", status: 503 };
+  }
   return {
     ok: true,
     session,
@@ -93,6 +100,12 @@ export async function requireStudentApiAuth(
     };
   }
 
+  try {
+    await applyDueAcademyTemplates(divisionSlug);
+  } catch (error) {
+    logServerError("academy-configuration-apply", error);
+    return { ok: false, error: "학원 설정을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.", status: 503 };
+  }
   return {
     ok: true,
     session,

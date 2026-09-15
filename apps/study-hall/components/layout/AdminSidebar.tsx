@@ -50,6 +50,12 @@ const navSections: NavSection[] = [
         featureKey: "attendanceManagement",
       },
       {
+        href: "arrivals",
+        label: "등원 현황",
+        icon: ClipboardCheck,
+        featureKey: "attendanceManagement",
+      },
+      {
         href: "phone-submissions",
         label: "휴대폰 관리",
         icon: Smartphone,
@@ -174,6 +180,7 @@ export function getShellMenuLabel(role: ShellRole) {
  * 활성 판정은 사이드바와 같은 규칙이라 메뉴에서 강조되는 항목과 늘 일치한다.
  */
 export function getShellScreenLabel(role: ShellRole, divisionSlug: string, pathname: string) {
+  if (role === "admin" && pathname === `/${divisionSlug}/admin/settings/rules/arrivals`) return "등원 설정";
   const { sections, basePath } = shellNav[role];
   let matched: { label: string; length: number } | null = null;
 

@@ -1,10 +1,11 @@
+import { notFound } from "@/lib/errors";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { pointRuleSchema } from "@/lib/point-schemas";
-import { deletePointRule, updatePointRule } from "@/lib/services/point.service";
+import { listPointRules } from "@/lib/services/point.service";
 
 export async function PATCH(
   request: NextRequest,
@@ -36,7 +37,12 @@ export async function PATCH(
   }
 
   try {
-    const rule = await updatePointRule(params.division, params.id, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    await applyAcademyConfigurationEdit(params.division,"상벌점 규칙 변경",current=>{
+      if(!current.pointRules.some(r=>r.id===params.id))throw notFound("규칙을 찾을 수 없습니다.");
+      return {...current,pointRules:current.pointRules.map(r=>r.id===params.id?{...r,...parsed.data}:r)};
+    },auth.session);
+    const rule=(await listPointRules(params.division)).find(r=>r.id===params.id);
     return NextResponse.json({ rule });
   } catch (error) {
     return toApiErrorResponse(error, "상벌점 규칙 처리 중 오류가 발생했습니다.");
@@ -63,7 +69,11 @@ export async function DELETE(
   }
 
   try {
-    await deletePointRule(params.division, params.id);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    await applyAcademyConfigurationEdit(params.division,"상벌점 규칙 비활성화",current=>{
+      if(!current.pointRules.some(r=>r.id===params.id))throw notFound("규칙을 찾을 수 없습니다.");
+      return {...current,pointRules:current.pointRules.map(r=>r.id===params.id?{...r,isActive:false}:r)};
+    },auth.session);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return toApiErrorResponse(error, "상벌점 규칙 처리 중 오류가 발생했습니다.");

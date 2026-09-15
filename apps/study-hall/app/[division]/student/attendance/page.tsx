@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 
 import { AttendanceCalendar } from "@/components/student-view/AttendanceCalendar";
+import { StudentArrivals } from "@/components/arrivals/StudentArrivals";
 import { StudentPortalFrame } from "@/components/student-view/StudentPortalFrame";
 import {
   PortalMetricCard,
@@ -62,6 +63,8 @@ export default async function StudentAttendancePage({
             caption="필수 교시 종료분 기준"
           />
         </section>
+
+        <StudentArrivals divisionSlug={params.division} />
 
         {/* DESIGN.md 5.2 · 5.8 — 표를 감싼 컨테이너에 테두리를 두지 않는다. */}
         <section className="min-w-0">

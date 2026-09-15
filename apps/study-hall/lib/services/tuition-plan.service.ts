@@ -10,7 +10,6 @@ import {
   isPrismaSchemaMismatchError,
   logSchemaCompatibilityFallback,
 } from "@/lib/service-helpers";
-import { getDefaultTuitionPlanTemplates } from "@/lib/tuition-meta";
 
 export type TuitionPlanItem = {
   id: string;
@@ -88,43 +87,6 @@ async function getDivisionOrThrow(divisionSlug: string) {
   return division;
 }
 
-async function ensureDefaultTuitionPlans(divisionId: string, divisionSlug: string) {
-  const prisma = await getPrismaClient();
-  const existing = await prisma.tuitionPlan.findMany({
-    where: {
-      divisionId,
-    },
-    orderBy: {
-      displayOrder: "asc",
-    },
-  });
-
-  if (existing.length > 0) {
-    return existing;
-  }
-
-  await prisma.tuitionPlan.createMany({
-    data: getDefaultTuitionPlanTemplates(divisionSlug).map((plan, index) => ({
-      divisionId,
-      name: plan.name,
-      durationDays: plan.durationDays,
-      amount: plan.amount,
-      description: plan.description ?? null,
-      isActive: true,
-      displayOrder: index,
-    })),
-  });
-
-  return prisma.tuitionPlan.findMany({
-    where: {
-      divisionId,
-    },
-    orderBy: {
-      displayOrder: "asc",
-    },
-  });
-}
-
 async function listTuitionPlansUncached(
   divisionSlug: string,
   options?: { activeOnly?: boolean },
@@ -138,7 +100,8 @@ async function listTuitionPlansUncached(
   }
 
   const division = await getDivisionOrThrow(divisionSlug);
-  const plans = await ensureDefaultTuitionPlans(division.id, divisionSlug);
+  const prisma = await getPrismaClient();
+  const plans = await prisma.tuitionPlan.findMany({ where: { divisionId: division.id }, orderBy: { displayOrder: "asc" } });
 
   return plans
     .filter((plan) => !options?.activeOnly || plan.isActive)

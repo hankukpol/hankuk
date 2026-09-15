@@ -1,4 +1,5 @@
-﻿import { cache } from "react";
+import { getHistoricalAcademyConfiguration } from "@/lib/services/academy-configuration-history.service";
+import { cache } from "react";
 
 import { revalidateTag, unstable_cache } from "next/cache";
 import { readMockState, type MockPeriodRecord, updateMockState } from "@/lib/mock-store";
@@ -126,8 +127,10 @@ function getPeriodsCached(divisionSlug: string) {
   )();
 }
 
-export const getPeriods = cache(async function getPeriods(divisionSlug: string) {
-  return isMockMode() ? getPeriodsUncached(divisionSlug) : getPeriodsCached(divisionSlug);
+export const getPeriods = cache(async function getPeriods(divisionSlug: string, onDate?: string): Promise<PeriodRecord[]> {
+  const current = await (isMockMode() ? getPeriodsUncached(divisionSlug) : getPeriodsCached(divisionSlug));
+  const historical = onDate ? await getHistoricalAcademyConfiguration(divisionSlug, onDate) : null;
+  return historical ? historical.periods.map(p => ({ ...p, divisionId: current[0]?.divisionId ?? "", createdAt: current.find(c => c.id === p.id)?.createdAt ?? "", updatedAt: current.find(c => c.id === p.id)?.updatedAt ?? "" })) : current;
 });
 
 export async function createPeriod(divisionSlug: string, input: PeriodInput) {

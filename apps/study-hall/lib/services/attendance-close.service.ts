@@ -15,33 +15,37 @@ function nextDate(date: string, days = 1) {
 
 /** 지난 날을 순서대로 마감한다. 실패한 날짜의 체크포인트는 전진하지 않는다. */
 export async function closeDivisionAttendance(divisionSlug: string, deadline = Date.now() + 20_000) {
-  const through = nextDate(kstDate(), -1);
-  const policy = await getManagementPolicy(divisionSlug);
-  if (!isPolicyEffective(policy, through)) return {closedDays: 0, pending: false};
-  const settings = await getDivisionSettings(divisionSlug);
+  const today=kstDate(), currentPolicy=await getManagementPolicy(divisionSlug,today);
+  const through = currentPolicy && isPolicyEffective(currentPolicy,today) && Date.now()>=Date.parse(`${today}T${currentPolicy.closingTime}:00+09:00`) ? today : nextDate(today,-1);
+  const policy = await getManagementPolicy(divisionSlug, through);
+  const settings = await getDivisionSettings(divisionSlug, through);
   const mock = isMockMode();
   const prisma = mock ? null : await getPrismaClient();
   const division = prisma ? await prisma.division.findUniqueOrThrow({where: {slug: divisionSlug}, select: {id: true}}) : null;
   const saved = mock
     ? (await readMockState()).attendanceClosedThroughByDivision?.[divisionSlug]
     : (await prisma!.attendanceCloseState.findUnique({where: {divisionId: division!.id}}))?.closedThrough.toISOString().slice(0,10);
-  let date = saved ? nextDate(saved) : policy.effectiveFrom;
-  if (date < policy.effectiveFrom) date = policy.effectiveFrom;
+  const firstRecord = mock
+    ? (await readMockState()).attendanceByDivision[divisionSlug]?.map(r=>r.date).sort()[0]
+    : (await prisma!.attendance.findFirst({where:{student:{divisionId:division!.id}},orderBy:{date:"asc"},select:{date:true}}))?.date.toISOString().slice(0,10);
+  let date = saved ? nextDate(saved) : firstRecord ?? policy?.effectiveFrom ?? through;
   let closedDays = 0;
   while (date <= through && Date.now() < deadline) {
     const record = mock
       ? (await readMockState()).attendanceByDivision[divisionSlug]?.find(row => row.date === date)
       : await prisma!.attendance.findFirst({where: {date: new Date(`${date}T00:00:00Z`), student: {divisionId: division!.id}}, select: {recordedById: true}});
     if (record) {
+      const dayPolicy = await getManagementPolicy(divisionSlug, date);
+      const daySettings = await getDivisionSettings(divisionSlug, date);
       // 가져온 출결처럼 기록자가 없는 경우에도 그 직렬 관리자를 기준으로 마감한다.
       const actorId = record.recordedById ?? (mock
         ? (await readMockState()).admins.find(admin => admin.isActive && (admin.role === "SUPER_ADMIN" || (admin.role === "ADMIN" && admin.divisionSlug === divisionSlug)))?.id
         : (await prisma!.admin.findFirst({where: {isActive: true, OR: [{role: "SUPER_ADMIN"}, {role: "ADMIN", divisionId: division!.id}]}, select: {id: true}}))?.id);
       if (!actorId) throw new Error("출결 마감을 기록할 관리자가 없습니다.");
       // 개근 상점은 자동 마감하되 벌점은 지점의 관리자 확정 설정을 지킨다.
-      const merits = await syncPeriodicPerfectAttendancePoints(divisionSlug, date, actorId, policy, settings);
+      const merits = isPolicyEffective(dayPolicy, date) ? await syncPeriodicPerfectAttendancePoints(divisionSlug, date, actorId, dayPolicy, daySettings ?? settings) : await (await import("@/lib/services/attendance.service")).syncPerfectAttendancePoints(divisionSlug,date,actorId);
       if (merits.grantedCount || merits.revokedCount) revalidateDivisionOperationalViews(divisionSlug);
-      if (!policy.managerConfirmsAttendance) await applyPolicyAttendancePoints(divisionSlug, date, actorId);
+      if (dayPolicy && !dayPolicy.managerConfirmsAttendance) await applyPolicyAttendancePoints(divisionSlug, date, actorId);
     }
     if (mock) {
       await updateMockState(state=>{
@@ -68,6 +72,7 @@ export async function closeAllAttendance() {
   for (let index = 0; index < divisions.length; index++) {
     const division = divisions[index];
     try {
+      await (await import("@/lib/services/academy-template.service")).applyDueAcademyTemplates(division.slug);
       const remaining = Math.max(0, deadline - Date.now());
       const result = await closeDivisionAttendance(division.slug, Date.now() + remaining / (divisions.length - index));
       if(Date.now() >= deadline) { results.push({division:division.slug,...result,pending:true}); continue; }

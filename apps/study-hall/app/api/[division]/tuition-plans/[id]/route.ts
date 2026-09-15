@@ -1,10 +1,11 @@
+import { notFound } from "@/lib/errors";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { tuitionPlanSchema } from "@/lib/tuition-schemas";
-import { deleteTuitionPlan, updateTuitionPlan } from "@/lib/services/tuition-plan.service";
+import { listTuitionPlans } from "@/lib/services/tuition-plan.service";
 
 export async function PATCH(
   request: NextRequest,
@@ -36,7 +37,12 @@ export async function PATCH(
   }
 
   try {
-    const plan = await updateTuitionPlan(params.division, params.id, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    await applyAcademyConfigurationEdit(params.division,"등록 플랜 변경",current=>{
+      if(!current.tuitionPlans.some(p=>p.id===params.id))throw notFound("등록 플랜을 찾을 수 없습니다.");
+      return {...current,tuitionPlans:current.tuitionPlans.map(p=>p.id===params.id?{...p,...parsed.data}:p)};
+    },auth.session);
+    const plan=(await listTuitionPlans(params.division)).find(p=>p.id===params.id);
     return NextResponse.json({ plan });
   } catch (error) {
     return toApiErrorResponse(error, "등록 플랜 처리에 실패했습니다.");
@@ -63,7 +69,12 @@ export async function DELETE(
   }
 
   try {
-    const result = await deleteTuitionPlan(params.division, params.id);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    await applyAcademyConfigurationEdit(params.division,"등록 플랜 비활성화",current=>{
+      if(!current.tuitionPlans.some(p=>p.id===params.id))throw notFound("등록 플랜을 찾을 수 없습니다.");
+      return {...current,tuitionPlans:current.tuitionPlans.map(p=>p.id===params.id?{...p,isActive:false}:p)};
+    },auth.session);
+    const result={id:params.id,isActive:false};
     return NextResponse.json({ result });
   } catch (error) {
     return toApiErrorResponse(error, "등록 플랜 처리에 실패했습니다.");

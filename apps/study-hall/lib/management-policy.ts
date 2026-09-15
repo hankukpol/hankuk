@@ -7,13 +7,15 @@ const weekdays = z.array(z.number().int().min(0).max(6));
 
 /** Numeric operating rules come from division_settings.management_policy. */
 export const managementPolicySchema = z.object({
+  enabled: z.boolean().optional(),
+  healthExemptFromLimit: z.boolean().optional(),
   version: z.string(),
   effectiveFrom: ymd,
   source: z.string(),
   attendancePeriodIds: z.array(z.string()),
   controlledPeriods: z.array(z.object({ periodId: z.string(), weekdays, optional: z.boolean() })),
   optionalEnrollments: z.array(z.object({ studentId: z.string(), periodId: z.string(), dateFrom: ymd, dateTo: ymd, weekdays })),
-  morningExam: z.object({ periodId: z.string(), weekdays }),
+  morningExam: z.object({ periodId: z.string(), weekdays, syncAttendance: z.boolean().optional() }),
   closingTime: time,
   breaks: z.array(z.object({ name: z.string(), startTime: time, endTime: time })).default([]),
   monthlyPoints: z.boolean(),
@@ -23,13 +25,14 @@ export const managementPolicySchema = z.object({
   partialAbsenceRuleId: z.string().nullable(),
   tardyRuleId: z.string(),
   lateArrivalPolicy: z.enum(["after_start", "threshold"]),
-  phone: z.object({ shortLoanMinutes: z.number().int().positive(), resubmitBeforeMinutes: z.number().int().nonnegative(), repeatDays: z.number().int().positive(), repeatCount: z.number().int().positive(), allowBulkRental: z.boolean() }),
+  phone: z.object({ shortLoanMinutes: z.number().int().positive(), resubmitBeforeMinutes: z.number().int().nonnegative(), repeatDays: z.number().int().positive(), repeatCount: z.number().int().positive(), allowBulkRental: z.boolean(), loanPlace: z.string().trim().max(100).optional() }),
   earlyExit: z.object({ ruleId: z.string(), windowDays: z.number().int().positive(), interviewCount: z.number().int().positive(), missionCount: z.number().int().positive(), missionDays: z.number().int().positive() }),
   unauthorizedEntry: z.object({ ruleId: z.string(), monthlyReviewCount: z.number().int().positive() }),
   patrolsPerPeriod: z.number().int().positive(),
   dailyGoalCount: z.number().int().positive(),
   appealDays: z.number().int().positive(),
   holidayPriorNotice: z.boolean(),
+  halfDayPeriodCount: z.number().int().min(1).max(50).optional(),
   warningLabels: z.record(z.string(), z.string()),
   guidance: z.array(z.object({ title: z.string(), text: z.string() })),
 });
@@ -40,10 +43,16 @@ export type PolicyAttendance = { studentId: string; periodId: string; status: st
 export type PolicyPoint = { studentId: string; points: number; date: Date | string };
 
 export function isPolicyEffective(policy: ManagementPolicy | null, date: string): policy is ManagementPolicy {
-  return !!policy && date >= policy.effectiveFrom;
+  return !!policy && policy.enabled !== false && date >= policy.effectiveFrom;
+}
+
+export function isHealthLeaveExempt(policy: ManagementPolicy | null, date: string) {
+  // Preserve the behavior of saved policies; new setup templates choose explicitly.
+  return isPolicyEffective(policy, date) && policy.healthExemptFromLimit !== false;
 }
 
 export function isControlledPeriod(policy: ManagementPolicy, periodId: string, date: string, studentId?: string) {
+  if (policy.morningExam.syncAttendance && policy.morningExam.periodId === periodId) return false;
   const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
   const rule = policy.controlledPeriods.find((p) => p.periodId === periodId && p.weekdays.includes(weekday));
   if (!rule) return false;

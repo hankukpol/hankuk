@@ -47,6 +47,11 @@ export async function PATCH(
   }
 
   try {
+    const before=await getDivisionGeneralSettings(params.division);
+    if (JSON.stringify(before.operatingDays)!==JSON.stringify(parsed.data.operatingDays) || JSON.stringify(before.studyTracks)!==JSON.stringify(parsed.data.studyTracks)) {
+      const {applyAcademySettingsPatch}=await import("@/lib/services/academy-template.service");
+      await applyAcademySettingsPatch(params.division,"운영 요일·직렬 변경",{operatingDays:parsed.data.operatingDays,studyTracks:parsed.data.studyTracks},auth.session);
+    }
     const settings = await updateDivisionGeneralSettings(params.division, parsed.data);
     return NextResponse.json({ settings });
   } catch (error) {

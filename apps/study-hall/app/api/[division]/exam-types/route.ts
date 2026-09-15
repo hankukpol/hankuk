@@ -5,7 +5,7 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { examTypeSchema } from "@/lib/exam-schemas";
-import { createExamType, listExamTypes } from "@/lib/services/exam.service";
+import { listExamTypes } from "@/lib/services/exam.service";
 
 export async function GET(
   _request: NextRequest,
@@ -64,7 +64,10 @@ export async function POST(
   }
 
   try {
-    const examType = await createExamType(params.division, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    const { editAcademyExam } = await import("@/lib/academy-exam-edit");
+    const config=await applyAcademyConfigurationEdit(params.division,"시험 종류 추가",current=>editAcademyExam(current,null,parsed.data),auth.session);
+    const examType=(await listExamTypes(params.division)).find(e=>e.id===config.examTypes.find(e=>e.name===parsed.data.name&&e.category===parsed.data.category)?.id);
     revalidateTag(`exam-analysis:${params.division}`);
     return NextResponse.json({ examType }, { status: 201 });
   } catch (error) {

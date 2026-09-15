@@ -16,7 +16,7 @@ export function PhoneLoanApproval({ divisionSlug, policy, students, periods }: {
   const [studentId, setStudentId] = useState("");
   const [periodId, setPeriodId] = useState(policy.controlledPeriods[0]?.periodId ?? "");
   const [until, setUntil] = useState("");
-  const [place, setPlace] = useState("5층 지정공간");
+  const [place, setPlace] = useState(policy.phone.loanPlace?.trim() || "");
   const [purpose, setPurpose] = useState("");
 
   async function approve(event: FormEvent<HTMLFormElement>) {

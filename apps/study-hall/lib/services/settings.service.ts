@@ -1,3 +1,4 @@
+import { getHistoricalAcademyConfiguration } from "@/lib/services/academy-configuration-history.service";
 import { examAnalysisSettingsSchema, normalizeExamAnalysisSettings, type ExamAnalysisSettings } from "@/lib/exam-analysis-settings";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 
@@ -378,7 +379,7 @@ function getLegacyRuleColumnValues(
   ] as const;
 }
 
-function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSettingsRecord {
+export function serializeSettingsRecord(record: RawDivisionSettingsRecord): DivisionSettingsRecord {
   const templates = getDefaultWarningTemplates();
 
   return {
@@ -688,10 +689,11 @@ function getDivisionSettingsCached(divisionSlug: string) {
 
 export async function getDivisionSettings(
   divisionSlug: string,
+  onDate?: string,
 ): Promise<DivisionSettingsRecord> {
-  return isMockMode()
-    ? getDivisionSettingsUncached(divisionSlug)
-    : getDivisionSettingsCached(divisionSlug);
+  const current = await (isMockMode() ? getDivisionSettingsUncached(divisionSlug) : getDivisionSettingsCached(divisionSlug));
+  const historical = onDate ? await getHistoricalAcademyConfiguration(divisionSlug, onDate) : null;
+  return historical ? serializeSettingsRecord({ ...current, ...historical.settings }) : current;
 }
 
 async function getDivisionThemeUncached(divisionSlug: string) {
@@ -869,8 +871,9 @@ export async function getDivisionPointCategoriesUncached(
 
 export async function getDivisionFeatureSettings(
   divisionSlug: string,
+  onDate?: string,
 ): Promise<DivisionFeatureSettings> {
-  const settings = await getDivisionSettings(divisionSlug);
+  const settings = await getDivisionSettings(divisionSlug, onDate);
 
   return {
     featureFlags: settings.featureFlags,

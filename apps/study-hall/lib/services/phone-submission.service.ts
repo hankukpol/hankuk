@@ -298,8 +298,8 @@ function getPeriodRange(periods: PeriodRecord[], startPeriodId: string, endPerio
   return periods.slice(fromIndex, toIndex + 1);
 }
 
-async function getAttendanceIntegrationEnabled(divisionSlug: string) {
-  const settings = await getDivisionFeatureSettings(divisionSlug);
+async function getAttendanceIntegrationEnabled(divisionSlug: string, onDate?: string) {
+  const settings = await getDivisionFeatureSettings(divisionSlug, onDate);
   return settings.featureFlags.attendanceManagement;
 }
 
@@ -308,11 +308,11 @@ export async function getPhoneDaySnapshot(
   date: string,
 ): Promise<PhoneDaySnapshot> {
   const normalizedDate = normalizePhoneDate(date);
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, normalizedDate);
   const [allStudents, allPeriods, attendanceIntegrationEnabled] = await Promise.all([
     listStudents(divisionSlug),
-    getPeriods(divisionSlug),
-    getAttendanceIntegrationEnabled(divisionSlug),
+    getPeriods(divisionSlug, normalizedDate),
+    getAttendanceIntegrationEnabled(divisionSlug, normalizedDate),
   ]);
   const students = allStudents.filter((s) => s.status === "ACTIVE" || s.status === "ON_LEAVE");
   // 출석부와 같은 활성 교시를 표시한다. 실제 체크 가능 여부는 아래에서 통제 조건으로 판단한다.
@@ -416,7 +416,7 @@ export async function upsertPhoneCheckBatch(
   const date = normalizePhoneDate(input.date);
   const { periodId } = input;
   const records = input.records.map((r) => ({ ...r }));
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, date);
   const returningStudentIds = new Set<string>();
   if (!isPolicyEffective(policy, date) && records.some((r) => (r.rentalNote?.length ?? 0) > 200)) throw badRequest("대여 사유는 200자 이내로 입력해 주세요.");
   if (isPolicyEffective(policy, date)) {
@@ -448,7 +448,7 @@ export async function upsertPhoneCheckBatch(
           throw badRequest("이전 기록 대신 이번 반출 사유를 200자 이내로 입력해 주세요.");
         }
         let deadline = new Date(now.getTime() + policy.phone.shortLoanMinutes * 60_000).toISOString();
-        let place = "5층 지정공간";
+        let place = policy.phone.loanPlace?.trim() || "관리자 지정 장소";
         if (record.loanApproval) {
           const until = new Date(record.loanApproval.until);
           if (until <= now || until > new Date(`${date}T${policy.closingTime}:00+09:00`)) throw badRequest("승인 종료시각은 현재 이후, 당일 마감 이전이어야 합니다.");
@@ -473,8 +473,8 @@ export async function upsertPhoneCheckBatch(
   }
   const [allStudents, periods, attendanceIntegrationEnabled] = await Promise.all([
     listStudents(divisionSlug),
-    getPeriods(divisionSlug),
-    getAttendanceIntegrationEnabled(divisionSlug),
+    getPeriods(divisionSlug, date),
+    getAttendanceIntegrationEnabled(divisionSlug, date),
   ]);
   const activeStudentIds = new Set(
     allStudents
@@ -654,7 +654,7 @@ export async function applyPhoneBulkRental(
   input: PhoneBulkRentalSchemaInput,
 ): Promise<{ snapshot: PhoneDaySnapshot; result: PhoneBulkRentalResult }> {
   const date = normalizePhoneDate(input.date);
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, date);
   if (isPolicyEffective(policy, input.date) && !policy.phone.allowBulkRental) {
     throw badRequest("관리규정상 교시 전체·여러 교시의 휴대폰 대여는 허용하지 않습니다. 단기 예외는 해당 교시에서 사유를 기록하고 처리해 주세요.");
   }
@@ -663,8 +663,8 @@ export async function applyPhoneBulkRental(
   const uniqueStudentIds = Array.from(new Set(input.studentIds));
   const [allStudents, allPeriods, attendanceIntegrationEnabled] = await Promise.all([
     listStudents(divisionSlug),
-    getPeriods(divisionSlug),
-    getAttendanceIntegrationEnabled(divisionSlug),
+    getPeriods(divisionSlug, date),
+    getAttendanceIntegrationEnabled(divisionSlug, date),
   ]);
   const students = allStudents.filter(
     (student) => student.status === "ACTIVE" || student.status === "ON_LEAVE",
@@ -917,13 +917,14 @@ export async function listPhoneRecords(
 ): Promise<PhoneCheckRecord[]> {
   const normalizedFrom = options?.dateFrom ? normalizePhoneDate(options.dateFrom) : undefined;
   const normalizedTo = options?.dateTo ? normalizePhoneDate(options.dateTo) : undefined;
-  const [students, allPeriods, attendanceIntegrationEnabled] = await Promise.all([
-    listStudents(divisionSlug),
-    getPeriods(divisionSlug),
-    getAttendanceIntegrationEnabled(divisionSlug),
-  ]);
+  const students = await listStudents(divisionSlug);
   const studentMap = new Map(students.map((s) => [s.id, s]));
-  const periodMap = new Map(allPeriods.map((p) => [String(p.id), p]));
+  async function dateContexts(dates: string[]) {
+    return new Map(await Promise.all(Array.from(new Set(dates)).map(async date => {
+      const [periods, attendanceEnabled] = await Promise.all([getPeriods(divisionSlug, date), getAttendanceIntegrationEnabled(divisionSlug, date)]);
+      return [date, {periodMap: new Map(periods.map(p => [String(p.id), p])), attendanceEnabled}] as const;
+    })));
+  }
 
   if (isMockMode()) {
     const state = await readMockState();
@@ -933,8 +934,9 @@ export async function listPhoneRecords(
     if (options?.studentId) records = records.filter((r) => r.studentId === options.studentId);
     if (options?.status) records = records.filter((r) => r.status === options.status);
 
+    const contexts = await dateContexts(records.map(r => r.date));
     const attendanceByRecordKey = new Map<string, PhoneAttendanceCell>();
-    if (attendanceIntegrationEnabled && records.length > 0) {
+    if (Array.from(contexts.values()).some(c => c.attendanceEnabled) && records.length > 0) {
       const targetKeys = new Set(
         records.map((record) => getRecordKey(record.studentId, record.date, record.periodId)),
       );
@@ -958,8 +960,9 @@ export async function listPhoneRecords(
     return records
       .map((r) => {
         const student = studentMap.get(r.studentId);
-        const period = periodMap.get(r.periodId);
-        const attendanceCell = attendanceIntegrationEnabled
+        const context = contexts.get(r.date)!;
+        const period = context.periodMap.get(r.periodId);
+        const attendanceCell = context.attendanceEnabled
           ? attendanceByRecordKey.get(getRecordKey(r.studentId, r.date, r.periodId)) ?? {
               studentId: r.studentId,
               status: null,
@@ -996,8 +999,9 @@ export async function listPhoneRecords(
     orderBy: [{ date: "desc" }, { createdAt: "asc" }],
   });
 
+  const contexts = await dateContexts(dbRecords.map(r => r.date.toISOString().slice(0, 10)));
   const attendanceByRecordKey = new Map<string, PhoneAttendanceCell>();
-  if (attendanceIntegrationEnabled && dbRecords.length > 0) {
+  if (Array.from(contexts.values()).some(c => c.attendanceEnabled) && dbRecords.length > 0) {
     const studentIds = Array.from(new Set(dbRecords.map((record) => record.studentId)));
     const periodIds = Array.from(new Set(dbRecords.map((record) => record.periodId)));
     const dateValues = Array.from(
@@ -1044,9 +1048,10 @@ export async function listPhoneRecords(
   return dbRecords
     .map((r) => {
       const student = studentMap.get(r.studentId);
-      const period = periodMap.get(r.periodId);
       const dateKey = r.date.toISOString().slice(0, 10);
-      const attendanceCell = attendanceIntegrationEnabled
+      const context = contexts.get(dateKey)!;
+      const period = context.periodMap.get(r.periodId);
+      const attendanceCell = context.attendanceEnabled
         ? attendanceByRecordKey.get(getRecordKey(r.studentId, dateKey, r.periodId)) ?? {
             studentId: r.studentId,
             status: null,

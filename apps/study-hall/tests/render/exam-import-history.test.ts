@@ -47,6 +47,7 @@ function mount() {
       if (name === "react") return hooks;
       if (name === "@/components/ui/useConfirmDialog") return { useConfirmDialog: () => ({ confirmDialog: null, confirm: (options: { description: string; variant: string }) => new Promise<boolean>((resolve) => confirmations.push({ options, resolve })) }) };
       if (name === "react/jsx-runtime") return { Fragment: "fragment", jsx: (type: unknown, props: unknown) => ({ type, props }), jsxs: (type: unknown, props: unknown) => ({ type, props }) };
+      if (name === "./ExamCorrectionEditor") return { ExamCorrectionEditor: () => null };
       throw new Error(`Unexpected import ${name}`);
     },
   });

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response";
 import { requireApiAuth } from "@/lib/api-auth";
-import { createPeriod, getPeriods } from "@/lib/services/period.service";
+import { getPeriods } from "@/lib/services/period.service";
 
 const periodSchema = z.object({
   name: z.string().min(1, "교시 이름을 입력해 주세요."),
@@ -58,7 +58,9 @@ export async function POST(
   }
 
   try {
-    const period = await createPeriod(params.division, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    const config = await applyAcademyConfigurationEdit(params.division,"교시 추가",current=>({...current,periods:[...current.periods,{...parsed.data,label:parsed.data.label?.trim()||null,id:crypto.randomUUID(),displayOrder:current.periods.length}]}),auth.session);
+    const period = (await getPeriods(params.division)).find(p=>p.id===config.periods.find(p=>p.name===parsed.data.name)?.id);
     return NextResponse.json({ period }, { status: 201 });
   } catch (error) {
     return toApiErrorResponse(error, "교시 생성에 실패했습니다.");

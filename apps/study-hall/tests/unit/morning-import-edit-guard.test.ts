@@ -17,6 +17,7 @@ for (const mock of [true, false]) {
         examSessionsByDivision: { police: imported ? [{ examTypeId: "morning", examDate: day }] : [] },
       };
       let writes = 0;
+      let syncs = 0;
       let locked = false;
       const prisma = {
         division: { findUnique: async () => ({ id: "police" }) },
@@ -31,6 +32,7 @@ for (const mock of [true, false]) {
         $transaction: async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(prisma),
       };
       const dependencies: Record<string, unknown> = {
+        "@/lib/services/exam-point.service": {syncMockExamPoints:()=>{syncs++;},syncDbExamPoints:async()=>{syncs++;}},
         "@/lib/mock-data": { isMockMode: () => mock },
         "@/lib/mock-store": { updateMockState: async (fn: (value: typeof state) => unknown) => fn(state) },
         "@/lib/errors": { notFound: (msg: string) => new Error(msg), badRequest: (msg: string) => new Error(msg), conflict: (msg: string) => new Error(msg) },
@@ -50,9 +52,11 @@ for (const mock of [true, false]) {
       if (imported) {
         await assert.rejects(api.saveMorningExamScores("police", actor, input), /다시 가져/);
         assert.equal(writes, 0);
+        assert.equal(syncs,0);
         assert.deepEqual(state.morningExamScoresByDivision.police, [original]);
       } else {
         assert.deepEqual(await api.saveMorningExamScores("police", actor, input), { savedCount: 1 });
+        assert.equal(syncs,1);
         if (mock) assert.equal(state.morningExamScoresByDivision.police[0].score, 60);
         else assert.equal(writes, 2);
       }

@@ -1,10 +1,15 @@
 "use client";
+import { useConfigurationReview } from "@/components/settings/ConfigurationReview";
 
-import { LoaderCircle, Pencil, Plus, Save, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { LoaderCircle, Pencil, Plus, RotateCcw, Save, Search, Trash2 } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { PointCategoryBadge, PointValueBadge } from "@/components/points/PointBadges";
+import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
+import { DialogActions } from "@/components/ui/DialogActions";
+import { SlideOver } from "@/components/ui/SlideOver";
+import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { PointRuleItem } from "@/lib/services/point.service";
 
 type PointRuleManagerProps = {
@@ -42,32 +47,30 @@ function createDefaultForm(categories: string[]): FormState {
 
 function LoadingSkeleton() {
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]" aria-hidden="true">
-      <section className="admin-section">
-        <div className="admin-skeleton h-7 w-40" />
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="admin-skeleton h-24 w-full" />
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-6">
-        <div className="admin-section">
-          <div className="admin-skeleton h-7 w-44" />
-          <div className="admin-skeleton h-28 w-full" />
-        </div>
-
-        <div className="admin-section">
-          <div className="admin-skeleton h-7 w-36" />
-          <div className="admin-skeleton h-72 w-full" />
-        </div>
-      </section>
+    <div className="space-y-5" role="status" aria-label="상벌점 규칙 불러오는 중">
+      <div className="admin-skeleton h-11 w-60" />
+      <div className="admin-skeleton h-16 w-full" />
+      <div className="space-y-2">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="admin-skeleton h-16 w-full" />
+        ))}
+      </div>
     </div>
   );
 }
 
 export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
+  const {review, dialog} = useConfigurationReview(divisionSlug);
+  const [activeTab, setActiveTab] = useState<"rules" | "categories">("rules");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isCategoryEditorOpen, setIsCategoryEditorOpen] = useState(false);
+  const [originalForm, setOriginalForm] = useState<FormState>(() => createDefaultForm([]));
+  const editorFormId = useId();
+  const categoryFormId = useId();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [rules, setRules] = useState<PointRuleItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryCustomizationEnabled, setCategoryCustomizationEnabled] = useState(false);
@@ -84,7 +87,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
   const [isCategorySaving, setIsCategorySaving] = useState(false);
   const [deletingCategoryName, setDeletingCategoryName] = useState<string | null>(null);
 
-  const groupedRules = useMemo(() => {
+  const orderedCategories = useMemo(() => {
     const orderedCategories = [...categories];
 
     for (const rule of rules) {
@@ -93,11 +96,17 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
       }
     }
 
-    return orderedCategories.map((category) => ({
-      category,
-      rules: rules.filter((rule) => rule.category === category),
-    }));
+    return orderedCategories;
   }, [categories, rules]);
+
+  const filteredRules = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase();
+    return rules.filter((rule) =>
+      (!categoryFilter || rule.category === categoryFilter)
+      && (!statusFilter || rule.isActive === (statusFilter === "active"))
+      && (!keyword || `${rule.name} ${rule.description ?? ""} ${rule.category}`.toLocaleLowerCase().includes(keyword)),
+    );
+  }, [rules, search, categoryFilter, statusFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,20 +192,56 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
     setCategoryName("");
   }
 
+  function openCreateEditor() {
+    const nextForm = createDefaultForm(categories);
+    setEditingId(null);
+    setForm(nextForm);
+    setOriginalForm(nextForm);
+    setIsEditorOpen(true);
+  }
+
+  async function closeEditor() {
+    if (isSaving) return;
+    if (JSON.stringify(form) !== JSON.stringify(originalForm) && !(await confirm({
+      title: "규칙 수정을 취소할까요?",
+      description: "저장하지 않은 변경사항이 사라집니다.",
+      confirmLabel: "변경 폐기",
+      cancelLabel: "계속 편집",
+      variant: "warning",
+    }))) return;
+    setIsEditorOpen(false);
+  }
+
+  async function closeCategoryEditor() {
+    if (isCategorySaving) return;
+    if (categoryName !== (editingCategoryName ?? "") && !(await confirm({
+      title: "카테고리 수정을 취소할까요?",
+      description: "저장하지 않은 변경사항이 사라집니다.",
+      confirmLabel: "변경 폐기",
+      cancelLabel: "계속 편집",
+      variant: "warning",
+    }))) return;
+    setIsCategoryEditorOpen(false);
+  }
+
   function startEdit(rule: PointRuleItem) {
     setEditingId(rule.id);
-    setForm({
+    const nextForm = {
       category: rule.category,
       name: rule.name,
       points: rule.points,
       description: rule.description ?? "",
       isActive: rule.isActive,
-    });
+    };
+    setForm(nextForm);
+    setOriginalForm(nextForm);
+    setIsEditorOpen(true);
   }
 
   function startCategoryEdit(category: string) {
     setEditingCategoryName(category);
     setCategoryName(category);
+    setIsCategoryEditorOpen(true);
   }
 
   async function refreshRules() {
@@ -223,33 +268,16 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
     setIsSaving(true);
 
     try {
-      const response = await fetch(
-        editingId
-          ? `/api/${divisionSlug}/point-rules/${editingId}`
-          : `/api/${divisionSlug}/point-rules`,
-        {
-          method: editingId ? "PATCH" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            category: form.category,
-            name: form.name,
-            points: Number(form.points),
-            description: form.description || null,
-            isActive: form.isActive,
-          }),
-        },
-      );
-      const data = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "상벌점 규칙 저장에 실패했습니다.");
-      }
-
+      const result=await review("상벌점 규칙 변경", current=>{
+        const next={category:form.category,name:form.name.trim(),points:Number(form.points),description:form.description||null,isActive:form.isActive};
+        current.pointRules=editingId ? current.pointRules.map(r=>r.id===editingId?{...r,...next}:r) : [...current.pointRules,{...next,id:crypto.randomUUID(),displayOrder:current.pointRules.length}];
+        return current;
+      });
+      if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setIsEditorOpen(false);return;}
       toast.success(editingId ? "규칙을 수정했습니다." : "규칙을 추가했습니다.");
       await refreshRules();
       resetForm();
+      setIsEditorOpen(false);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "상벌점 규칙 저장에 실패했습니다.",
@@ -263,17 +291,10 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
     setDeletingId(ruleId);
 
     try {
-      const response = await fetch(`/api/${divisionSlug}/point-rules/${ruleId}`, {
-        method: "DELETE",
-      });
-      const data = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "상벌점 규칙 삭제에 실패했습니다.");
-      }
-
-      setRules((current) => current.filter((rule) => rule.id !== ruleId));
-      toast.success("규칙을 삭제했습니다.");
+      const result=await review("상벌점 규칙 비활성화",current=>({...current,pointRules:current.pointRules.map(r=>r.id===ruleId?{...r,isActive:false}:r)}));
+      if(result?.status!=="APPLIED"){if(result?.status==="PENDING")setIsEditorOpen(false);return;}
+      await refreshRules();
+      toast.success("기존 점수를 보존하고 규칙을 비활성화했습니다.");
 
       if (editingId === ruleId) {
         resetForm();
@@ -321,6 +342,9 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
           : form.category || nextCategories[0] || "";
 
       setCategories(nextCategories);
+      if (editingCategoryName && categoryFilter === editingCategoryName) {
+        setCategoryFilter(categoryName.trim());
+      }
       setForm((current) => ({
         ...current,
         category: nextSelectedCategory,
@@ -329,8 +353,13 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
       toast.success(
         editingCategoryName ? "카테고리를 수정했습니다." : "카테고리를 추가했습니다.",
       );
+      if (editingCategoryName) {
+        setRules((current) => current.map((rule) => rule.category === editingCategoryName
+          ? { ...rule, category: categoryName.trim() }
+          : rule));
+      }
       resetCategoryForm();
-      await refreshRules();
+      setIsCategoryEditorOpen(false);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -343,6 +372,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
   }
 
   async function handleCategoryDelete(category: string) {
+    if (!(await confirm({ title: "카테고리를 삭제할까요?", description: `${category} 카테고리를 삭제합니다. 사용 중인 규칙이 있으면 삭제할 수 없습니다.`, confirmLabel: "삭제", variant: "danger" }))) return;
     setDeletingCategoryName(category);
 
     try {
@@ -361,6 +391,7 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
 
       const nextCategories = data.categories ?? [];
       setCategories(nextCategories);
+      if (categoryFilter === category) setCategoryFilter("");
 
       if (form.category === category) {
         setForm((current) => ({
@@ -405,339 +436,224 @@ export function PointRuleManager({ divisionSlug }: PointRuleManagerProps) {
     );
   }
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-      <section className="admin-section">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="admin-section-title">
-              상벌점 규칙 목록
-            </h2>
-          </div>
+  function renderRuleActions(rule: PointRuleItem) {
+    return (
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={() => startEdit(rule)} className="admin-icon-button" aria-label={rule.name + " 수정"} title="규칙 수정">
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={() => void handleDelete(rule.id)} disabled={deletingId !== null} className="admin-icon-button text-admin-danger" aria-label={rule.name + " 비활성화"} title="규칙 비활성화">
+          {deletingId === rule.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
+      </div>
+    );
+  }
 
-          <button
-            type="button"
-            onClick={() => resetForm()}
-            className="admin-button admin-button-primary"
-          >
-            <Plus className="h-4 w-4" />
-            새 규칙
+  function renderStatus(isActive: boolean) {
+    return <span className={"admin-badge " + (isActive ? "border-admin-success-line bg-admin-success-soft text-admin-success" : "bg-admin-surface-muted text-admin-text-muted")}>{isActive ? "사용 중" : "비활성"}</span>;
+  }
+
+  return (
+    <div className="min-w-0 space-y-5">
+      <AdminTabs
+        items={[{ id: "rules", label: "규칙 목록" }, { id: "categories", label: "카테고리" }]}
+        activeId={activeTab}
+        onChange={setActiveTab}
+        label="상벌점 규칙 관리"
+        idPrefix="point-rule-settings"
+        variant="secondary"
+      />
+
+      <AdminTabPanel id="rules" activeId={activeTab} idPrefix="point-rule-settings" className="space-y-5">
+        <div className="admin-workspace-toolbar">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="admin-section-title">상벌점 규칙</h2>
+            <span className="admin-help" aria-live="polite">{filteredRules.length} / {rules.length}개</span>
+          </div>
+          <button type="button" onClick={openCreateEditor} disabled={categories.length === 0} className="admin-button admin-button-primary">
+            <Plus className="h-4 w-4" /> 새 규칙
           </button>
         </div>
 
-        <div className="mt-5 space-y-5">
-          {groupedRules.length > 0 ? (
-            groupedRules.map((group) => (
-              <div key={group.category}>
-                <div className="mb-3 flex items-center gap-2">
-                  <PointCategoryBadge category={group.category} />
-                  <span className="admin-help">
-                    {group.category}
-                  </span>
-                </div>
-
-                {group.rules.length > 0 ? (
-                  <div className="space-y-3">
-                    {group.rules.map((rule) => (
-                      <article
-                        key={rule.id}
-                        className="admin-section"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h2 className="admin-section-title">
-                              {rule.name}
-                            </h2>
-                            <p className="admin-help mt-1">
-                              {rule.description || "설명 없음"}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <PointValueBadge points={rule.points} />
-                            <span
-                              className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${ rule.isActive ? "bg-white border border-slate-200 text-emerald-700" : "bg-slate-200 text-slate-600" }`}
-                            >
-                              {rule.isActive ? "활성" : "비활성"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(rule)}
-                            className="admin-button admin-button-compact"
-                          >
-                            수정
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(rule.id)}
-                            disabled={deletingId === rule.id}
-                            className="admin-button admin-button-danger-outline"
-                          >
-                            {deletingId === rule.id ? (
-                              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
-                            )}
-                            삭제
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="admin-help px-4 py-4">
-                    이 카테고리에 등록된 규칙이 없습니다.
-                  </div>
-                )}
+        <div className="admin-filter-bar">
+          <div className="grid w-full gap-3 md:grid-cols-4">
+            <label className="admin-field md:col-span-2">
+              <span className="admin-label">규칙 검색</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-text-muted" />
+                <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="규칙 이름, 설명" className="w-full pl-10" />
               </div>
-            ))
-          ) : (
-            <div className="admin-help py-6 text-center">
-              등록된 상벌점 규칙이 없습니다. 먼저 카테고리를 확인한 뒤 규칙을
-              추가해 주세요.
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="space-y-6">
-        <div className="admin-section">
-          <h2 className="admin-section-title">
-            상벌점 카테고리 설정
-          </h2>
-          {categoryCustomizationEnabled ? (
-            <>
-              <p className="admin-help mt-2 leading-6">
-                규칙 추가 전에 사용할 카테고리를 먼저 등록하세요. 카테고리 이름을
-                바꾸면 해당 카테고리를 쓰는 규칙도 함께 반영됩니다.
-              </p>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                {categories.map((category) => (
-                  <div
-                    key={category}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <PointCategoryBadge category={category} />
-                    <button
-                      type="button"
-                      onClick={() => startCategoryEdit(category)}
-                      className="admin-icon-button inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                      aria-label="카테고리 수정"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCategoryDelete(category)}
-                      disabled={deletingCategoryName === category}
-                      className="admin-icon-button inline-flex h-7 w-7 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-60"
-                      aria-label="카테고리 삭제"
-                    >
-                      {deletingCategoryName === category ? (
-                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <form
-                onSubmit={handleCategorySubmit}
-                className="mt-5 flex flex-col gap-3 sm:flex-row"
-              >
-                <input
-                  value={categoryName}
-                  onChange={(event) => setCategoryName(event.target.value)}
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
-                  placeholder="예: 생활지도"
-                  required
-                />
-
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={isCategorySaving}
-                    className="admin-button admin-button-primary"
-                  >
-                    {isCategorySaving ? (
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    {editingCategoryName ? "카테고리 수정" : "카테고리 추가"}
-                  </button>
-
-                  {editingCategoryName ? (
-                    <button
-                      type="button"
-                      onClick={resetCategoryForm}
-                      className="admin-button"
-                    >
-                      취소
-                    </button>
-                  ) : null}
-                </div>
-              </form>
-            </>
-          ) : (
-            <>
-              <p className="admin-help mt-2 leading-6">
-                현재 운영 DB에서는 카테고리 사용자 지정이 아직 적용되지 않아 기본
-                카테고리만 사용할 수 있습니다.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {categories.map((category) => (
-                  <div
-                    key={category}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <PointCategoryBadge category={category} />
-                    <span className="admin-help">
-                      {category}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="admin-section">
-          <h2 className="admin-section-title">
-            {editingId ? "규칙 수정" : "규칙 추가"}
-          </h2>
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <label className="block">
-              <span className="admin-label mb-2 block">
-                카테고리
-              </span>
-              <select
-                value={form.category}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    category: event.target.value,
-                  }))
-                }
-                disabled={categories.length === 0}
-                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition disabled:cursor-not-allowed disabled:bg-slate-50"
-              >
-                {categories.length > 0 ? (
-                  categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">먼저 카테고리를 추가해 주세요.</option>
-                )}
+            </label>
+            <label className="admin-field">
+              <span className="admin-label">카테고리</span>
+              <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="w-full">
+                <option value="">전체 카테고리</option>
+                {orderedCategories.map((category) => <option key={category} value={category}>{category}</option>)}
               </select>
             </label>
-
-            <label className="block">
-              <span className="admin-label mb-2 block">
-                규칙 이름
-              </span>
-              <input
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
-                }
-                className="w-full"
-                placeholder="예: 지각"
-                required
-              />
+            <label className="admin-field">
+              <span className="admin-label">사용 상태</span>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full">
+                <option value="">전체 상태</option>
+                <option value="active">사용 중</option>
+                <option value="inactive">비활성</option>
+              </select>
             </label>
-
-            <label className="block">
-              <span className="admin-label mb-2 block">
-                점수
-              </span>
-              <input
-                type="number"
-                value={form.points}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    points: Number(event.target.value),
-                  }))
-                }
-                className="w-full"
-                required
-              />
-            </label>
-
-            <label className="block">
-              <span className="admin-label mb-2 block">
-                설명
-              </span>
-              <textarea
-                value={form.description}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm transition"
-                placeholder="규칙 적용 기준을 남겨둘 수 있습니다."
-              />
-            </label>
-
-            <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
-              <span>
-                <span className="admin-label block">
-                  활성화
-                </span>
-                <span className="admin-help block">
-                  비활성 규칙은 부여 폼에서 숨겨집니다.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    isActive: event.target.checked,
-                  }))
-                }
-                className="h-5 w-5 rounded border-slate-300"
-              />
-            </label>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                disabled={isSaving || categories.length === 0}
-                className="admin-button admin-button-primary"
-              >
-                {isSaving ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {editingId ? "규칙 저장" : "규칙 추가"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => resetForm()}
-                className="admin-button"
-              >
-                초기화
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
-      </section>
+
+        {filteredRules.length > 0 ? (
+          <>
+            <div className="admin-table-frame">
+              <table>
+                <caption className="sr-only">상벌점 규칙 목록</caption>
+                <thead>
+                  <tr><th scope="col" className="hidden md:table-cell">카테고리</th><th scope="col">규칙명 · 적용 기준</th><th scope="col">점수</th><th scope="col" className="hidden md:table-cell">상태</th><th scope="col">관리</th></tr>
+                </thead>
+                <tbody>
+                  {filteredRules.map((rule) => (
+                    <tr key={rule.id}>
+                      <td className="hidden md:table-cell"><PointCategoryBadge category={rule.category} /></td>
+                      <th scope="row" className="admin-table-name">
+                        <span className="admin-help mb-1 block md:hidden">{rule.category}</span>
+                        <button type="button" onClick={() => startEdit(rule)} className="admin-table-link">{rule.name}</button>
+                        {rule.description ? <span className="admin-help mt-1 block">{rule.description}</span> : null}
+                        <span className="mt-2 block md:hidden">{renderStatus(rule.isActive)}</span>
+                      </th>
+                      <td className="admin-table-amount"><PointValueBadge points={rule.points} /></td>
+                      <td className="hidden md:table-cell">{renderStatus(rule.isActive)}</td>
+                      <td>{renderRuleActions(rule)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="admin-empty-state">
+            <p>{rules.length ? "검색 조건에 맞는 규칙이 없습니다." : "등록된 상벌점 규칙이 없습니다."}</p>
+            {search || categoryFilter || statusFilter ? (
+              <button type="button" onClick={() => { setSearch(""); setCategoryFilter(""); setStatusFilter(""); }} className="admin-button mt-3">
+                <RotateCcw className="h-4 w-4" /> 조건 초기화
+              </button>
+            ) : categories.length === 0 ? (
+              <button type="button" onClick={() => setActiveTab("categories")} className="admin-button mt-3">카테고리 관리</button>
+            ) : null}
+          </div>
+        )}
+      </AdminTabPanel>
+
+      <AdminTabPanel id="categories" activeId={activeTab} idPrefix="point-rule-settings" className="space-y-5">
+        <div className="admin-workspace-toolbar">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="admin-section-title">카테고리</h2>
+            <span className="admin-help">{categories.length}개</span>
+          </div>
+          {categoryCustomizationEnabled ? (
+            <button type="button" onClick={() => { resetCategoryForm(); setIsCategoryEditorOpen(true); }} className="admin-button admin-button-primary">
+              <Plus className="h-4 w-4" /> 카테고리 추가
+            </button>
+          ) : null}
+        </div>
+        {!categoryCustomizationEnabled ? <p className="admin-notice">현재 학원은 기본 카테고리를 사용합니다.</p> : null}
+        {categories.length ? (
+          <div className="admin-table-frame">
+            <table>
+              <caption className="sr-only">상벌점 카테고리 목록</caption>
+              <thead><tr><th scope="col">카테고리</th><th scope="col">등록 규칙</th>{categoryCustomizationEnabled ? <th scope="col">관리</th> : null}</tr></thead>
+              <tbody>
+                {categories.map((category) => {
+                  const categoryRules = rules.filter((rule) => rule.category === category);
+                  return (
+                    <tr key={category}>
+                      <th scope="row" className="admin-table-name"><PointCategoryBadge category={category} /></th>
+                      <td>
+                        <button type="button" onClick={() => { setCategoryFilter(category); setSearch(""); setStatusFilter(""); setActiveTab("rules"); }} className="admin-table-link" aria-label={category + " 규칙 " + categoryRules.length + "개 보기"}>{categoryRules.length}개</button>
+                        <span className="admin-help mt-1 block">사용 중 {categoryRules.filter((rule) => rule.isActive).length}개</span>
+                      </td>
+                      {categoryCustomizationEnabled ? (
+                        <td>
+                          <div className="flex items-center justify-center gap-2">
+                            <button type="button" onClick={() => startCategoryEdit(category)} className="admin-icon-button" aria-label={category + " 카테고리 수정"} title="카테고리 수정"><Pencil className="h-4 w-4" /></button>
+                            <button type="button" onClick={() => void handleCategoryDelete(category)} disabled={deletingCategoryName !== null} className="admin-icon-button text-admin-danger" aria-label={category + " 카테고리 삭제"} title="카테고리 삭제">
+                              {deletingCategoryName === category ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="admin-empty-state">등록된 카테고리가 없습니다.</div>}
+      </AdminTabPanel>
+
+      <SlideOver open={isEditorOpen} title={editingId ? "상벌점 규칙 수정" : "상벌점 규칙 추가"} onClose={() => void closeEditor()}>
+        <form id={editorFormId} onSubmit={handleSubmit}>
+          <fieldset disabled={isSaving} className="admin-panel min-w-0">
+            <label className="admin-form-row">
+              <span className="admin-form-row-label">카테고리</span>
+              <span className="admin-form-row-control w-full md:w-auto">
+              <select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} disabled={categories.length === 0} className="w-full" required>
+                {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+              </span>
+            </label>
+            <label className="admin-form-row">
+              <span className="admin-form-row-label">규칙 이름</span>
+              <span className="admin-form-row-control w-full md:w-auto">
+              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="예: 지각" className="w-full" required />
+              </span>
+            </label>
+            <label className="admin-form-row">
+              <span className="admin-form-row-label">점수 (상점 + / 벌점 -)</span>
+              <span className="admin-form-row-control w-full md:w-auto">
+              <input type="number" step={1} value={form.points} onChange={(event) => setForm((current) => ({ ...current, points: Number(event.target.value) }))} className="w-full" required />
+              </span>
+            </label>
+            <label className="admin-form-row">
+              <span className="admin-form-row-label">적용 기준</span>
+              <span className="admin-form-row-control w-full md:w-auto">
+              <textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={4} placeholder="규칙이 적용되는 상황" className="w-full" />
+              </span>
+            </label>
+            <label className="admin-form-row">
+              <span className="admin-form-row-label">사용 여부</span>
+              <span className="admin-form-row-control w-full md:w-auto flex items-center gap-3">
+                <input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} className="h-5 w-5 shrink-0" />
+                <span className="admin-help">비활성 규칙은 상벌점 부여 목록에서 제외됩니다.</span>
+              </span>
+            </label>
+          </fieldset>
+          <DialogActions>
+            <button type="button" onClick={() => void closeEditor()} disabled={isSaving} className="admin-button">취소</button>
+            <button type="submit" form={editorFormId} disabled={isSaving || categories.length === 0} className="admin-button admin-button-primary">
+              {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {editingId ? "변경 저장" : "규칙 추가"}
+            </button>
+          </DialogActions>
+        </form>
+      </SlideOver>
+
+      <SlideOver open={isCategoryEditorOpen} title={editingCategoryName ? "카테고리 수정" : "카테고리 추가"} onClose={() => void closeCategoryEditor()}>
+        <form id={categoryFormId} onSubmit={handleCategorySubmit} className="space-y-5">
+          <label className="admin-field">
+            <span className="admin-label">카테고리 이름</span>
+            <input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} disabled={isCategorySaving} placeholder="예: 생활지도" className="w-full" required />
+          </label>
+          {editingCategoryName ? <p className="admin-notice">이 카테고리에 속한 규칙에도 변경된 이름이 적용됩니다.</p> : null}
+          <DialogActions>
+            <button type="button" onClick={() => void closeCategoryEditor()} disabled={isCategorySaving} className="admin-button">취소</button>
+            <button type="submit" form={categoryFormId} disabled={isCategorySaving} className="admin-button admin-button-primary">
+              {isCategorySaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {editingCategoryName ? "변경 저장" : "카테고리 추가"}
+            </button>
+          </DialogActions>
+        </form>
+      </SlideOver>
+      {confirmDialog}{dialog}
     </div>
   );
 }

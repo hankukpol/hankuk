@@ -1,8 +1,11 @@
+import * as examAttendanceHelpers from "../../lib/exam-attendance";
+import * as examAttendance from "../../lib/services/exam-attendance.service";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import ts from "typescript";
+import * as versionedCalculator from "../../lib/versioned-exam-points";
 import * as calculator from "../../lib/exam-point-automation";
 import { mapPolicy } from "../../scripts/restart-police-policy";
 import * as policy from "../../lib/management-policy";
@@ -19,11 +22,14 @@ function fixture() {
     pointRulesByDivision:{police:[{id:"police-absence",name:"미응시",points:-1,isActive:true},{id:"police-first",name:"1등",points:3,isActive:true}],fire:[{id:"fire-absence",name:"미응시",points:-5,isActive:true}]},
     pointRecordsByDivision:{police:[] as Array<{id:string;studentId:string;points:number;notes:string}>,fire:[{id:"kept",studentId:"foreign",points:5,notes:"manual"}]},
     attendanceByDivision:{police:[] as Array<{studentId:string;date:string;status:string;reason:string}>,fire:[]},
-    leavePermissionsByDivision:{police:[],fire:[]},
+    leavePermissionsByDivision:{police:[] as Array<{studentId:string;date:string;status:string}>,fire:[]},
   };
   let today="2026-09-14";
   const dependencies:Record<string,unknown>={
+    "@/lib/services/exam-attendance.service":examAttendance, "@/lib/exam-attendance":examAttendanceHelpers,
     "node:crypto":{randomUUID},"react":{cache:(fn:unknown)=>fn},
+    "@/lib/versioned-exam-points":versionedCalculator,
+    "@/lib/services/academy-configuration-history.service":{getHistoricalAcademyConfiguration:async()=>null},
     "@/lib/exam-point-automation":calculator,"@/lib/management-policy":{...policy,kstDate:()=>today},
     "@/lib/mock-data":{isMockMode:()=>true},"@/lib/mock-store":{readMockState:async()=>state,updateMockState:async(fn:(state:unknown)=>unknown)=>fn(state)},
     "@/lib/service-helpers":{},"@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
@@ -49,6 +55,39 @@ test("repeated synchronization preserves point IDs; attendance correction revoke
   f.state.attendanceByDivision.police.push({studentId:"absent",date:"2026-09-14",status:"EXCUSED",reason:"수업: 기본이론"});
   assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:1});
   assert.equal(JSON.stringify(f.state.pointRecordsByDivision.fire),foreign);
+});
+for (const status of ["HOLIDAY", "HALF_HOLIDAY", "EXCUSED"]) {
+  test(`morning absence ${status}: exemption before grading, later correction revokes, repeated sync is idempotent`,async()=>{
+    const f=fixture(),service=f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");
+    const foreign=JSON.stringify(f.state.pointRecordsByDivision.fire);
+    f.state.pointRecordsByDivision.police.push({id:"manual",studentId:"absent",points:-2,notes:"별도 수동 벌점"});
+    f.state.attendanceByDivision.police.push({studentId:"absent",date:"2026-09-14",status,reason:"승인된 미응시"});
+    assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
+    f.state.attendanceByDivision.police=[];
+    assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:1,revokedCount:0});
+    f.state.attendanceByDivision.police.push({studentId:"absent",date:"2026-09-14",status,reason:"사후 승인"});
+    assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:1});
+    assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
+    assert.deepEqual(f.state.pointRecordsByDivision.police.map(p=>p.id),["manual"]);
+    assert.equal(JSON.stringify(f.state.pointRecordsByDivision.fire),foreign);
+  });
+}
+test("morning approved/used leave exempts without attendance rows; pending, rejection and other dates do not",async()=>{
+  const f=fixture(),service=f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");
+  const permission={studentId:"absent",date:"2026-09-14",status:"PENDING"};
+  f.state.leavePermissionsByDivision.police.push(permission);
+  assert.equal((await service.syncExamPoints("police","2026-09-14","admin")).grantedCount,1);
+  permission.status="APPROVED";
+  assert.equal((await service.syncExamPoints("police","2026-09-14","admin")).revokedCount,1);
+  permission.status="USED";
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
+  permission.status="REJECTED";
+  assert.equal((await service.syncExamPoints("police","2026-09-14","admin")).grantedCount,1);
+  permission.status="APPROVED"; permission.date="2026-09-15";
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
+  f.state.attendanceByDivision.police.push({studentId:"absent",date:"2026-09-14",status:"ABSENT",reason:"휴무 신청 중"});
+  assert.equal(f.state.pointRecordsByDivision.police.length,1);
+  assert.deepEqual(await service.syncExamPoints("police","2026-09-14","admin"),{grantedCount:0,revokedCount:0});
 });
 test("removed import retracts its automatic points, preserves manual and inactive history",async()=>{
   const f=fixture(), service=f.load<typeof import("../../lib/services/exam-point.service")>("exam-point");

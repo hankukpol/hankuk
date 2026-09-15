@@ -1,3 +1,4 @@
+import { getHistoricalAcademyConfiguration } from "@/lib/services/academy-configuration-history.service";
 import { cache } from "react";
 import { managementPolicySchema, isPolicyEffective, kstDate, kstMonthBounds, separatePointTotals, type ManagementPolicy } from "@/lib/management-policy";
 import { isMockMode } from "@/lib/mock-data";
@@ -6,7 +7,7 @@ import { getPrismaClient } from "@/lib/service-helpers";
 import { badRequest, notFound } from "@/lib/errors";
 import { revalidateDivisionOperationalViews } from "@/lib/revalidation";
 
-export const getManagementPolicy = cache(async (divisionSlug: string): Promise<ManagementPolicy | null> => {
+export const getManagementPolicy = cache(async (divisionSlug: string, onDate?: string): Promise<ManagementPolicy | null> => {
   // Every division owns its policy. An unconfigured division inherits nothing.
   let value: unknown;
   if (isMockMode()) {
@@ -20,10 +21,15 @@ export const getManagementPolicy = cache(async (divisionSlug: string): Promise<M
       WHERE d.slug = ${divisionSlug}`;
     value = rows[0]?.policy;
   }
+  const historical = onDate ? await getHistoricalAcademyConfiguration(divisionSlug, onDate) : null;
+  if (historical) {
+    const enrollments = value == null ? [] : managementPolicySchema.parse(value).optionalEnrollments;
+    value = historical.settings.managementPolicy ? { ...historical.settings.managementPolicy, optionalEnrollments: enrollments } : null;
+  }
   if (value == null) return null;
   const parsed = managementPolicySchema.safeParse(value);
   if (!parsed.success) throw new Error("관리규정 설정 형식이 올바르지 않습니다. 관리자에게 확인해 주세요.");
-  return parsed.data;
+  return parsed.data.enabled === false ? null : parsed.data;
 });
 
 export async function getPolicyPointTotals(divisionSlug: string, range?: { dateFrom: string; dateTo: string }) {

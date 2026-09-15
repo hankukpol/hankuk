@@ -3,6 +3,7 @@ import { redirectIfDivisionFeatureDisabled } from "@/lib/division-feature-guard"
 import { getSeatLayout, listStudyRooms } from "@/lib/services/seat.service";
 import { getDivisionSettings } from "@/lib/services/settings.service";
 import { listStudents } from "@/lib/services/student.service";
+import { SettingsPageShell } from "@/components/settings/SettingsPageShell";
 
 type SeatSettingsPageProps = {
   params: {
@@ -21,17 +22,12 @@ export default async function SeatSettingsPage({ params }: SeatSettingsPageProps
   const layout = await getSeatLayout(params.division, rooms[0]?.id);
 
   return (
-    <div className="admin-flat-page">
-      <section>
-        <h1 className="admin-page-title">
-          자습실 / 좌석 배치 설정
-        </h1>
-        <p className="admin-page-description">
-          자습실을 여러 개 만들고, 자습실마다 행·열·복도 칸을 지정한 뒤 좌석을 직접 그려서 번호를 부여할 수 있습니다.
-          학생 배정과 좌석 이동도 같은 화면에서 함께 처리됩니다.
-        </p>
-      </section>
-
+    <SettingsPageShell
+      divisionSlug={params.division}
+      activeId="seats"
+      title="자습실 / 좌석 배치 설정"
+      description="자습실 구성과 좌석 배치, 학생 배정과 좌석 이동을 업무별 탭에서 관리합니다."
+    >
       <SeatEditor
         divisionSlug={params.division}
         initialRooms={rooms}
@@ -39,6 +35,6 @@ export default async function SeatSettingsPage({ params }: SeatSettingsPageProps
         students={students}
         expirationWarningDays={settings.expirationWarningDays}
       />
-    </div>
+    </SettingsPageShell>
   );
 }

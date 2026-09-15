@@ -4,7 +4,7 @@ import { getZodErrorMessage, toApiErrorResponse } from "@/lib/api-error-response
 import { requireApiAuth } from "@/lib/api-auth";
 import { getDivisionFeatureDisabledError } from "@/lib/division-feature-guard";
 import { pointRuleSchema } from "@/lib/point-schemas";
-import { createPointRule, listPointRules } from "@/lib/services/point.service";
+import { listPointRules } from "@/lib/services/point.service";
 
 export async function GET(
   request: NextRequest,
@@ -64,7 +64,9 @@ export async function POST(
   }
 
   try {
-    const rule = await createPointRule(params.division, parsed.data);
+    const { applyAcademyConfigurationEdit } = await import("@/lib/services/academy-template.service");
+    const config=await applyAcademyConfigurationEdit(params.division,"상벌점 규칙 추가",current=>({...current,pointRules:[...current.pointRules,{...parsed.data,description:parsed.data.description||null,isActive:parsed.data.isActive??true,displayOrder:current.pointRules.length,id:crypto.randomUUID()}]}),auth.session);
+    const rule=(await listPointRules(params.division)).find(r=>r.id===config.pointRules.find(r=>r.name===parsed.data.name&&r.category===parsed.data.category)?.id);
     return NextResponse.json({ rule }, { status: 201 });
   } catch (error) {
     return toApiErrorResponse(error, "상벌점 규칙 처리 중 오류가 발생했습니다.");

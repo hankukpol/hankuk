@@ -1,6 +1,6 @@
 # Study Hall 디자인 시스템
 
-기준일: 2026-09-08
+기준일: 2026-09-14
 
 Spacing base: 4px (간격 스케일의 기본 단위).
 
@@ -248,11 +248,25 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 
 관련 파일: [AdminShell.tsx](components/layout/AdminShell.tsx), [AdminSidebar.tsx](components/layout/AdminSidebar.tsx)
 
-### 5.2 평면 페이지
+### 5.2 평면 페이지와 화면 골격
 
 페이지 루트는 `.admin-flat-page`(세로 24px 간격)를 쓴다.
 
 기본 순서: **페이지 제목 → 1차 탭 → 필요한 2차 서브 탭 → 섹션 제목과 관련 작업 → 검색/필터 → 표·폼 → 페이지 이동/저장 영역.**
+
+**화면 골격은 넷뿐이다. 새 화면도 이 넷으로 짠다.**
+
+| 자리 | 쓰는 것 | 기준 |
+| --- | --- | --- |
+| 업무 나누기 | 1차 탭 (§5.4) | 서로 독립된 업무. 한 화면에 세 업무를 세로로 쌓지 않는다 |
+| 업무 안에서 나누기 | 2차 밑줄 탭 (§5.5) | 같은 업무의 단계·관점. 긴 폼과 긴 목록을 여기서 쪼갠다 |
+| 내용 묶기 | 표 (§5.8) 또는 패널 `.admin-panel` + `.admin-panel-row` (§5.3) | 비교해 읽는 값은 표, 이름이 붙은 설정 묶음은 패널 |
+| 세부 수정 | 우측 슬라이드 모달 `SlideOver` (§5.10) | 행·항목 하나를 고치는 일은 전부 여기서 한다 |
+
+- **한 페이지는 한 업무다.** 목록과 편집 폼을 좌우 2열로 벌려 놓지 않는다. 목록은 전체 폭으로 두고 편집은 드로어로 연다. `xl:grid-cols-[…]`로 만든 편집 열은 넓은 화면에서만 보이고 좁은 화면에서는 목록 아래로 떨어져, 같은 화면이 폭에 따라 두 모양이 된다.
+- **세로로 쌓인 섹션이 다섯을 넘으면 2차 탭으로 쪼갠다.** 운영 규칙 설정이 그 예다(운영 요약 · 출결·경고 · 휴가·개근 · 문자·알림 · 성적 분석 · 자동 상벌점 · 변경 이력).
+- **묶이지 않은 낱개 항목을 늘어놓지 않는다.** 설정 항목은 `.admin-panel` 안의 `.admin-panel-row`, 데이터 행은 표로 묶는다. 둘 다 아닌 것만 `.admin-section`이다.
+- 이 골격은 [tests/render/settings-tab-layout.test.ts](tests/render/settings-tab-layout.test.ts)가 지킨다. 화면을 새로 짜면 그 테스트에 항목을 더한다.
 
 - `section`/`article`에 반복적인 카드 배경·외곽선·그림자·라운드를 넣지 않는다.
 - 제목·검색창·표의 시작과 끝은 같은 콘텐츠 기준선에 둔다. 가로 padding을 중복하지 않는다.
@@ -272,6 +286,17 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 1280px 미만 2열, 이상 4열. KPI 숫자 32px, 단위 13px. **768px 미만에서는 숫자 20px·padding 16px로 낮춘다** — 32px 숫자 넷이면 휴대폰 한 화면을 요약만으로 다 쓴다.
 - 패널(`.admin-panel`) 제목부는 padding 16px 20px, 최소 높이 56px, soft 배경과 아래 1px line.
 - 패널 내부 행(`.admin-panel-row`)은 좌우 20px, 위아래 12px, `line-soft`. 마지막 행의 아래 선은 없다.
+
+**표와 패널 중 무엇으로 묶는지는 읽는 방식이 정한다.**
+
+| 내용 | 묶는 것 |
+| --- | --- |
+| 행끼리 같은 열을 위아래로 비교해 읽는 값 — 금액·점수·날짜·순위·명단 | 표(§5.8) |
+| 항목마다 이름과 값이 하나씩 붙은 설정 묶음 | `.admin-panel` + `.admin-panel-row` |
+| 독립된 의미를 가진 요약 수치 | KPI 카드 / `.admin-metric-box` |
+| 학생별 기록처럼 한 덩어리로 읽는 항목 | `.admin-record-card` |
+
+낱개 `.admin-section`을 세로로 늘어놓는 것은 이 넷 중 어디에도 속하지 않을 때뿐이다. 운영 규칙 설정이 `.admin-section` 일곱 개에서 `.admin-panel-row` 일곱 줄로 바뀐 것이 그 예다.
 - 외곽만 8px로 자르고 **내부 행·헤더는 직각**. header 배경이 라운드 경계 밖으로 나가지 않게 한다.
 - **768px 미만에서 요약은 상자가 아니라 선으로 나눈다([MOBILE_DESIGN.md](MOBILE_DESIGN.md) §2.5).** `.admin-dashboard-metric` 과 `.admin-metric-box` 는 테두리·모서리를 버리고 `.admin-portal-summary` 와 같은 1px 간격 격자가 되며, KPI 32px 숫자는 20px 로 내려간다. 학생 포털이 이미 이 방식이라 관리자·조교를 거기에 맞춘다.
 - `.admin-metric-strip` / `.admin-metric-box`는 **16px 간격의 독립 요약 박스**다. 각 항목에 닫힌 1px line 외곽과 8px 모서리, 16px padding. 그룹 자체에는 배경·외곽·클리핑을 두지 않는다. 레이블 13px 위, 값 20px 아래 오른쪽 정렬. 768px 미만 2열, 그 이상 최소 160px 자동 열. 대시보드 KPI의 32px 숫자와 구분한다.
@@ -282,6 +307,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 
 - 서로 독립된 업무는 1차 탭으로 분리한다. 상벌점의 부여 내역/순위, 외출·휴가의 내역/학생별 사용 현황/미사용 정산, 면담의 기록/권장 대상, 수납의 월별 현황/수납 내역/일일 정산이 이에 해당한다.
 - 휴대폰은 교시별 체크/이력 조회, 아침 모의고사는 일일 입력/주간 현황, 최고관리자는 지점/운영 계정으로 구분한다. 아침 모의고사·최고관리자는 상위 경로 탭이 있으므로 2차 탐색으로 표시한다.
+- 설정은 경로 탭이 1차이므로 각 설정 화면 안의 구분은 모두 2차 밑줄 탭이다. 운영 규칙 7탭, 기본 정보의 `현재 설정/기본 정보 편집`, 기능의 `사용 현황/기능 선택`, 교시의 `교시 목록/선택자습 신청`, 자습실의 `자습실 목록/좌석 배치`가 그 형태다. 직원·시험 일정·시험 템플릿·자습실의 행 추가·수정은 별도 편집 탭 없이 목록 위의 `SlideOver`에서 처리한다.
 - 기본 탭은 일상적인 조회·처리 업무다. 월말 정산처럼 별도 기준과 실행 시점이 있는 작업은 자체 필터와 실행 버튼을 갖는다. 다른 탭의 집계 숫자를 공통 요약처럼 보여주지 않는다.
 - 학생별 기록·권장 대상처럼 독립된 항목은 `.admin-record-card`로 묶는다. 표로 비교해야 하는 금액·날짜·순위는 전체 폭 표를 사용한다. 대시보드의 동시 비교, 목록과 편집 폼의 연결은 2열을 유지할 수 있다.
 - 기록 카드: 1px line, 8px 모서리, padding 20px, 그림자 없음. 학생명·상태·날짜를 상단에 두고 사유/내용/결과는 이름이 있는 `dl`로 구분한다. 카드 안에 다른 외곽 박스를 넣지 않는다.
@@ -304,7 +330,16 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 활성은 흰색 배경, 위/좌우 accent 테두리, 아래 흰색, 글자 `text`/700 (`data-active="true"`).
 - hover는 soft 배경. 비활성은 disabled 글자와 클릭 금지.
 - 긴 메뉴는 라벨을 줄이거나 말줄임하지 않고 탭 영역 안에서 가로 스크롤한다.
-- 경로 이동은 `Link`와 `aria-current="page"`, 페이지 안 선택은 `role="tablist"` / `role="tab"` / `aria-selected`를 쓴다.
+
+**1차 탭은 두 가지다. 모양은 같고 마크업이 다르다.**
+
+| 종류 | 마크업 | 쓰는 곳 | 예 |
+| --- | --- | --- | --- |
+| 경로 이동 탭 | `<nav className="admin-tabs">` + `Link` + `aria-current="page"` | 탭마다 주소가 따로 있어야 할 때. 새로고침·뒤로가기·링크 공유가 살아난다 | 설정 10개 탭([SettingsPageShell.tsx](components/settings/SettingsPageShell.tsx)) |
+| 페이지 안 상태 탭 | 공용 [`AdminTabs`](components/ui/AdminTabs.tsx) + `role="tablist"` / `role="tab"` / `aria-selected` | 같은 주소 안에서 보기를 바꿀 때. 입력 초안이 탭을 넘나들며 살아 있어야 할 때 | 수납 월별/내역/정산, 상벌점 부여/순위 |
+
+- **설정은 경로 이동 탭이다.** 기본 정보 · 기능 · 교시 · 운영 규칙 · 등록 금액 · 자습실·좌석 · 시험 템플릿 · 시험 일정 · 상벌점 규칙 · 직원 열이며, `/[division]/admin/settings`는 첫 탭으로 redirect한다. 설정에 별도 허브 목록 화면은 두지 않는다.
+- 두 종류를 한 화면에 겹쳐 쌓지 않는다. 경로 탭 아래에 다시 1차 탭이 오면 폴더 줄이 두 개가 된다. 그 자리는 2차 밑줄 탭(§5.5)이다.
 
 ### 5.5 2차 서브 탭
 
@@ -317,6 +352,17 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - **항목이 많아 여러 줄로 접히면 `.admin-subtabs-scroll`(`AdminTabs`의 `scrollable`)을 쓴다.** 마지막 줄에 한두 개만 남으면 좌측에 몰린 조각처럼 보여 정렬이 깨진 화면이 된다. 이 변형은 줄바꿈 대신 탭 영역 안에서만 가로로 밀고, 스크롤바는 감춘다. 선택 탭은 **가운데로** 보낸다 — 가장자리에 붙이면 뒤에 항목이 더 있는지 보이지 않는다. 휴대폰 체크의 9개 교시가 이 경우다.
 - 짧은 화면에 불필요한 하위 단계나 세 번째 폴더 줄을 만들지 않는다.
 - 페이지 안 탭은 `role="tablist"` / `role="tab"` / `aria-selected` 와 roving tabindex(선택 탭만 `tabIndex=0`)를 쓴다. 좌우 방향키·Home·End 이동은 [useTabListKeys.ts](lib/useTabListKeys.ts) 가 담당한다.
+
+**긴 폼과 긴 목록은 2차 탭으로 쪼갠다.** 한 화면을 아래로 길게 늘이는 대신 업무 단위로 나눈다. 스크롤을 내려야 보이는 설정은 없는 설정과 같다.
+
+- 쪼개는 기준은 화면이 아니라 **업무**다. `기본/고급`처럼 난이도로 나누지 않고, 운영자가 실제로 한 번에 처리하는 묶음으로 나눈다.
+- 탭을 바꿔도 입력 중이던 값은 남는다. `AdminTabPanel`이 숨기기만 하고 언마운트하지 않는다.
+- 항목이 일곱을 넘으면 `scrollable`을 함께 준다.
+- 현행 예: 운영 규칙 7탭, 상벌점 규칙, 교시 설정, 시험 템플릿, 자습실·좌석, 기능 설정.
+
+**2차 탭 줄을 두 개 쌓지 않는다.** 밑줄 탭이 아래위로 놓이면 어느 쪽이 상위인지 모양으로는 알 수 없다. 상위 구분은 1차 탭으로 올린다.
+
+> 성적 화면(`/[division]/admin/exams`)이 지금 이 상태다. [ExamTabLayout.tsx](components/exams/ExamTabLayout.tsx)의 `아침/정기`와 [ExamSecondaryTabs.tsx](components/exams/ExamSecondaryTabs.tsx)의 `입력/가져오기/반 분석/학생별`이 둘 다 `variant="secondary"`로 겹쳐 있고 1차 탭은 비어 있다. **아침/정기를 1차 폴더 탭으로 올린다.** 3차 탭을 피하려다 2차를 두 줄로 만든 것이며, 1차 자리가 비어 있으므로 줄을 늘리지 않고 해결된다.
 
 **학생 포털 메뉴는 1차 폴더 탭이다**(§5.4). 화면을 오가는 최상위 이동이므로 밑줄형으로 두지 않는다. 그 안에서 나뉘는 시험 종류(아침·정기 모의고사)가 이 절의 2차 밑줄 탭이다. 조교 하단 탐색도 같은 밑줄 디자인을 쓴다(하단 탐색은 밑줄이 위쪽 2px).
 
@@ -334,7 +380,7 @@ Tailwind의 `rounded-sm`~`rounded-3xl`은 모두 8px로 매핑되어 있다. 직
 - 화면이 좁으면 버튼 폭을 글자 길이에 맞춰 줄이지 않고 **줄바꿈**한다. 768px 미만 그룹 기준 폭 260px(128px 두 개 + 4px), `max-width: 100%`.
 - **자습실 이름처럼 길이를 미리 알 수 없는 데이터 라벨에는 `.admin-choice-button-auto`를 함께 준다.** 128px 고정 폭에 넣으면 이름이 두 줄로 쪼개진다. 이 변형은 내용에 맞춰 128~260px로 늘어나고 넘치면 말줄임한다. 한 줄 유지(`white-space: nowrap`)는 §5.12 버튼 규격의 `white-space: normal`을 되돌려야 하므로 정규화 레이어에서 `.admin-shell .admin-choice-button-auto`로 다시 지정한다.
 - **한 줄에 안 들어가는 선택지에는 `.admin-choice-button`을 쓰지 않는다.** 128px 고정 폭이라 제목이 글자 단위로 쪼개진다. 제목·보조설명이 여러 줄인 목록 선택은 `.admin-choice-card`(전체 폭, 세로 배치, 왼쪽 정렬, 선택 시 accent 테두리 + `accent-soft` 배경)를 쓰고 제목은 `.admin-choice-card-title`로 둔다. `button` 안에는 `div`·`p`를 넣을 수 없으므로 자식은 `span`으로 쓴다.
-- 이동만 하는 목록(설정 허브 등)은 선택 버튼이 아니라 `.admin-panel` + `.admin-panel-row.admin-panel-row-link` 평면 목록이다. **카드 격자를 메뉴 템플릿으로 쓰지 않는다**(§5.3).
+- 이동만 하는 목록은 선택 버튼이 아니라 `.admin-panel` + `.admin-panel-row.admin-panel-row-link` 평면 목록이다. **카드 격자를 메뉴 템플릿으로 쓰지 않는다**(§5.3). 다만 **갈 곳이 고정된 묶음이면 목록이 아니라 1차 탭으로 만든다** — 설정이 허브 목록에서 10개 경로 탭으로 바뀐 이유다(§5.4). 한 번 더 눌러야 본론이 나오는 중간 화면을 만들지 않는다.
 **버튼은 세 가지 위계뿐이다.** 화면마다 손으로 색과 여백을 정하면 전부 같은 회색 버튼이 되어 무엇을 눌러야 할지 사라진다.
 
 | 위계 | 클래스 | 모양 | 쓰는 곳 |
@@ -436,9 +482,16 @@ th, td { border: 1px solid var(--admin-grid); }
 | 스크롤 | header/footer는 남고 body만 스크롤 | 동일 |
 | 그림자 | `--admin-dialog-shadow` | 동일 |
 
-- **입력·등록·편집·상세 조회는 `SlideOver`(우측 drawer)를 쓴다.** 중앙 `Modal`은 삭제·변경 폐기·최종 실행 확인과 짧은 안내에 쓴다.
-- drawer는 학생 등록, 상벌점 부여·이력, 수납·환불·연장, 좌석 편집·배정·이동, 면담, 외출/휴가, 공지, 휴대폰 대여, 출결 일괄 적용에 사용한다. 중앙 모달은 학생 삭제, 퇴실 처리, 경고 단계 조정, 저장 완료와 공통 확인창에 사용한다. 실제 사용처 목록은 검증 보고서에 기록한다.
-- drawer 는 폭이 규격으로 고정되므로 `widthClassName` 을 넘기지 않는다.
+- **입력·등록·편집·상세 조회는 전부 `SlideOver`(우측 drawer)다.** 표나 목록의 한 행을 고치는 일은 예외 없이 드로어로 연다. 중앙 `Modal`은 **되돌릴 수 없는 실행의 확인과 짧은 안내**에만 쓴다.
+- **행 편집을 페이지 안 폼으로 열지 않는다.** 목록 옆·아래에 편집 폼을 펼치면 선택한 행과 폼이 멀어지고, 좁은 화면에서는 폼이 목록 밑으로 밀려 어느 행을 고치는 중인지 사라진다.
+
+| | 드로어 `SlideOver` | 중앙 모달 `Modal` |
+| --- | --- | --- |
+| 쓰는 일 | 등록·편집·상세·일괄 처리 | 삭제 확인, 실행 확인, 저장 완료 안내 |
+| 현행 사용처 | 학생 등록·일괄 등록·퇴실 처리, 상벌점 추가·개별/일괄 부여, 경고 단계 조정, 수납 추가·연장·환불, 좌석 편집·공석 배정, 면담 기록, 외출/휴가 등록, 공지 상세, 휴대폰 일괄 대여, 출결 일괄 적용, 등록 금액·교시·자습실 행 편집 | 학생 삭제, 경고 안내 완료 기록, 저장 완료 |
+| 폭 | 규격 고정 — `widthClassName`을 넘기지 않는다 | 업무별 `max-width` 허용 |
+
+- 드로어는 열린 채로 뒤 목록이 보인다. 그래서 저장 후 목록이 갱신되는 것을 그 자리에서 확인할 수 있어야 한다. 저장하고 닫기만 하고 목록을 그대로 두지 않는다.
 - 창 전체를 확정하는 작업이 없는 모달에는 footer를 만들지 않는다. 닫기는 header의 공통 닫기 버튼이 담당한다. footer를 억지로 만들어 닫기 버튼만 넣지 않는다.
 - header: 상하 20px / 좌우 24px(모바일 16px), gap 16px, 아래 line.
 - body: 상하 20px / 좌우 동일, `min-height: 0`, `overflow-y: auto`.
@@ -570,6 +623,24 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 
 ---
 
+### 등원 체크 키패드·월 달력
+
+등원 현황은 기존 전체 폭 명단 표와 `SlideOver`, 설정은 `SettingsPageShell`의 운영 규칙 경로 및 2차 탭, 학생은 `admin-portal-summary`와 공통 월 달력을 사용한다. 등원 기록은 출석·지각·벌점·학습시간과 별도로 표시한다.
+
+| 토큰 | 값 | 용도 |
+| --- | --- | --- |
+| `--admin-arrival-kiosk-width` | 480px | 공용 입력 화면 최대 폭, 모바일은 가용 폭 |
+| `--admin-arrival-key-height` | 64px | 3열 숫자 키패드 최소 높이 |
+| `--admin-arrival-number-size` | 32px | 숫자 키·등록코드·번호 입력, Pretendard 600 및 tabular-nums |
+| `--admin-arrival-calendar-height` | 80px | 월 달력 날짜 셀 최소 높이 |
+| `--admin-arrival-calendar-height-mobile` | 64px | 768px 미만 날짜 셀 최소 높이 |
+| `--admin-arrival-gap` | 8px | 키패드 간격·달력 날짜/시각 간격 |
+| `--admin-arrival-cell-padding` | 4px | 좁은 7열 달력 셀 여백 |
+
+키패드는 1~9 / 전체 지움·0·한 자리 지움의 3열이며 일반 컨트롤 색·8px 모서리(모바일 4px)를 재사용한다. 달력은 일~토 7열 고정, 1px `admin-grid`, 외곽 모서리 0, 날짜·시각 13px, 시각 HH:mm이다. 오늘은 날짜에 밑줄과 접근성 이름, 선택은 accent-soft와 안쪽 2px accent 선, 취소는 `취소` 문구로 구분한다. 관리자 입력은 시각 아래 `정정`/`추가`를 13px로 표시하고 내용에 따라 셀 높이가 늘어난다. 학생 오늘 요약에도 출처를 표시한다. 목록 시각은 HH:mm:ss이며 모바일에서는 번호·출처를 학생·시각 열 내부로 접는다.
+
+완료 팝업은 `ActionCompleteModal`의 선택 prop `autoCloseMs`로 자동 닫기를 켠다. 생략하면 기존 수동 닫기 동작을 유지한다. 입력·팝업 지연 값은 현재 학원 API에서 읽으며 완료 뒤 번호를 비우고 입력에 포커스를 복원한다.
+
 ## 9. 변경·검증·문서 운영
 
 ### 작업 원칙
@@ -587,7 +658,10 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
 
 - 폴더·서브 탭·표·drawer 모서리 0, 일반 입력·버튼·중앙 모달 8px.
 - 대시보드 카드 사이 gap 16px, 내부 행·헤더 선의 꺾임 없음.
-- 표 헤더 가운데, 이름 왼쪽, 금액 오른쪽, 나머지 가운데.
+- 표 헤더 가운데, 금액·점수 오른쪽, **나머지 전부 가운데**(§5.8 — 왼쪽 정렬은 없다).
+- **탭 줄은 1차 하나 + 2차 하나까지다**(§5.5). 같은 모양의 탭 줄이 위아래로 겹치지 않는다.
+- **편집 폼이 목록 옆 열에 있지 않다**(§5.2). 행 편집은 드로어로 열린다.
+- 낱개 `.admin-section`이 다섯 이상 세로로 쌓여 있지 않다(§5.3 — 표·패널로 묶거나 2차 탭으로 쪼갠다).
 - 표·허용된 탐색 영역 외 문서 가로 넘침 없음.
 - 중앙/슬라이드 모달 모두 닫기·footer가 짧은 화면에서도 도달 가능.
 - focus, keyboard, pending, empty, error, retry, 미저장 초안, 중첩 모달 확인.
@@ -623,6 +697,16 @@ Tailwind의 `shadow-card` / `shadow-card-hover` / `shadow-header`는 `none`으�
   const t = [...F.querySelectorAll(".admin-page-title, .admin-section-title")]
     .map((x) => x.textContent.trim());
   t.filter((x, i) => x && t.indexOf(x) !== i).forEach((x) => I.push("제목중복: " + x));
+  // 탭 줄 개수 — 1차 1줄 + 2차 1줄까지 (§5.5)
+  if (F.querySelectorAll(".admin-tabs").length > 1) I.push("1차탭 두 줄");
+  if (F.querySelectorAll(".admin-subtabs").length > 1) I.push("2차탭 두 줄");
+  // 목록 옆 편집 열 (§5.2) — 넓은 화면에서만 생기므로 1280px 에서 잰다
+  F.querySelectorAll('[class*="grid-cols-["]').forEach((e) => {
+    if (e.querySelector("table") && e.querySelector("form")) I.push("2열 편집: " + e.className);
+  });
+  // 묶이지 않은 낱개 섹션 (§5.3)
+  const loose = [...F.querySelectorAll(".admin-flat-page > .admin-section")].length;
+  if (loose >= 5) I.push("낱개 섹션 " + loose + "개");
   return { page: location.pathname, n: I.length, i: [...new Set(I)] };
 })();
 ```
@@ -677,5 +761,7 @@ pnpm run build
 개인 리포트만 별도 창에 복사하며 기존 화면의 계산과 권한은 변경하지 않는다. A4 세로 210×297mm, 여백 12mm, 내용 폭 186mm. 인쇄 전용 글꼴은 Arial/Malgun Gothic, 본문 10pt, 표 8pt, 제목 14pt/11pt로 한다. 표 선은 기존 grid 색, 머리글은 surface-muted, 본문은 text 색이다. 셀 여백 1.5mm/1mm, 섹션 간격 4mm. 표 머리글 반복, 행 중간 분할 방지, 접힌 채점표 전체 포함. 화면용 크기와 별도로 종이 출력에만 적용한다. 브라우저 인쇄에서 PDF 저장 또는 프린터를 선택한다.
 
 ### 학생 개인 성적 전용 페이지
+
+학생 포털 `/[division]/student/exams`는 1차 학생 메뉴와 2차 시험 종류를 유지한다. 개인 분석 항목은 내용을 숨기지 않는 섹션 바로가기로 표시한다(운영자 확정, 2026-09-14). 학습 진단의 과목 선택은 표시 대상 필터이므로 선택 칩을 쓰며, 인쇄용 과목 DOM은 유지한다. 관리자 개인 분석 화면은 기존 분석 항목 탭을 유지한다.
 
 관리자 성적 분석의 학생 선택은 `/[division]/admin/exams/students/[studentId]`로 이동한다. 우측 드로어를 사용하지 않고 관리자 본문 전체 폭을 사용한다. 상단에 목록 복귀, 학생 이름, 정기/아침 구분, 학생·시험·날짜(기간) 선택, 섹션 바로가기를 둔다. 기존 `admin-flat-page`, `admin-tabs`, `admin-filter-bar`, `admin-button` 규격을 재사용한다. 섹션 바로가기는 문서 내 탐색이며 내용을 숨기지 않아 전체 인쇄와 차트 크기를 유지한다. 목록 복귀 링크는 원래 시험 종류·날짜·기간과 분석 탭을 전달한다.

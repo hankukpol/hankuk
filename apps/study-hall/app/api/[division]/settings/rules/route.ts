@@ -5,7 +5,6 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { rulesSettingsSchema } from "@/lib/settings-schemas";
 import {
   getDivisionRuleSettings,
-  updateDivisionRuleSettings,
 } from "@/lib/services/settings.service";
 
 export async function GET(
@@ -47,11 +46,9 @@ export async function PATCH(
   }
 
   try {
-    const settings = await updateDivisionRuleSettings(
-      params.division,
-      parsed.data,
-      auth.session,
-    );
+    const { applyAcademySettingsPatch } = await import("@/lib/services/academy-template.service");
+    await applyAcademySettingsPatch(params.division, "운영 규칙 변경", parsed.data, auth.session);
+    const settings = await getDivisionRuleSettings(params.division);
     return NextResponse.json({ settings });
   } catch (error) {
     return toApiErrorResponse(error, "운영 규칙 저장에 실패했습니다.", 400);

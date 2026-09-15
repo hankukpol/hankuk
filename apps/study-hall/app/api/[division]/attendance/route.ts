@@ -28,6 +28,7 @@ const attendanceBatchSchema = z.object({
           ]),
         ]),
         reason: z.string().max(500).nullable().optional(),
+        arrivalTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "도착 시각을 확인해 주세요.").optional(),
       }),
     )
     .max(ATTENDANCE_RECORDS_MAX, `한 번에 ${ATTENDANCE_RECORDS_MAX}명까지만 저장할 수 있습니다.`),

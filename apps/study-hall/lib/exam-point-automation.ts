@@ -41,14 +41,24 @@ export function examPointDisplayNote(notes: string) { return notes.replace(/^\[�
 export type ExamPointStudent = {id: string; status: string; studyTrack?: string | null; courseStartDate?: string | null; courseEndDate?: string | null; enrolledAt?: string};
 export type ExamPointSession = {id: string; examTypeId: string; identityKey: string; examDate: string; category: string; fullScore: number; studyTrack?: string | null};
 export type ExamPointSource = {
+  morningPeriodId?: string | null;
   students: ExamPointStudent[]; sessions: ExamPointSession[];
   participants: {sessionId: string; studentId: string; totalScore: number; isPartial: boolean}[];
   attendance: {studentId: string; date: string; status: string; reason: string | null; periodId?: string; checkInTime?: string | null}[];
-  periods?: {id: string; endTime: string}[];
+  periods?: {id: string; endTime: string; isActive?: boolean}[];
   leave: {studentId: string; date: string; status: string}[];
   rules: {id: string; points: number; isActive: boolean}[];
 };
 export type ExamPointAward = {studentId: string; ruleId: string; points: number; date: string; notes: string};
+/** Approved absence is not unauthorized exam nonparticipation. Pending/rejected leave
+ * and free-text notes on an ABSENT record do not constitute approval. */
+export function isExcusedExamAbsence(source: Pick<ExamPointSource, "attendance" | "leave">, studentId: string, day: string, periodId?: string | null) {
+  return source.attendance.some(record => record.studentId === studentId && record.date === day &&
+    (!periodId || record.periodId === periodId) &&
+    ["EXCUSED", "HOLIDAY", "HALF_HOLIDAY"].includes(record.status)) ||
+    (!periodId && source.leave.some(record => record.studentId === studentId && record.date === day &&
+      ["APPROVED", "USED"].includes(record.status)));
+}
 export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPointSource, month: string, today: string): ExamPointAward[] {
   if (!config.enabled || !config.effectiveFrom) return [];
   const prefix = examPointPrefix(month);
@@ -66,9 +76,6 @@ export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPo
     const notes = `${prefix}[${key}] ${label} (${day})`;
     awards.set(`${studentId}:${notes}`, {studentId,ruleId:r.id,points:r.points,date:day,notes});
   };
-  const excused = (id: string, day: string) =>
-    source.attendance.some(a=>a.studentId===id && a.date===day && ["EXCUSED","HOLIDAY","HALF_HOLIDAY"].includes(a.status)) ||
-    source.leave.some(l=>l.studentId===id && l.date===day && ["APPROVED","USED"].includes(l.status));
   for (const session of sessions) {
     const candidates = active.filter(s=>eligible(s,session.examDate,session.studyTrack));
     const ids = new Set(candidates.map(s=>s.id));
@@ -79,7 +86,7 @@ export function buildExamPointAwards(config: ExamPointAutomation, source: ExamPo
     for (const student of candidates) {
       // Morning nonparticipation is charged once per day across uploaded subjects/types.
       const attendedToday = morning && sessions.some(s=>s.category==="MORNING" && s.examDate===session.examDate && source.participants.some(p=>p.sessionId===s.id && p.studentId===student.id));
-      if (!present.has(student.id) && !attendedToday && !excused(student.id,session.examDate))
+      if (!present.has(student.id) && !attendedToday && !isExcusedExamAbsence(source,student.id,session.examDate,morning ? source.morningPeriodId : null))
         add(student.id,morning?config.morningAbsenceRuleId:config.regularAbsenceRuleId,session.examDate,morning?`morning-absent:${session.examDate}`:`absent:${key}`,morning?"아침모의고사 무단 미참여":"정기모의고사 무단 미응시",true);
     }
   }

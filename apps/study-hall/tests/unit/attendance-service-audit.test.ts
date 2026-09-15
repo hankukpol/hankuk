@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as arrivalMeta from "../../lib/attendance-arrival";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -33,6 +34,7 @@ function loadAttendanceService(state: Record<string, unknown>) {
   const testModule = { exports: {} };
   const settings = {
     perfectAttendancePtsEnabled: true,
+    operatingDays: {mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false},
     perfectAttendancePts: 3,
     tardyPointRuleId: null,
     absentPointRuleId: null,
@@ -41,6 +43,9 @@ function loadAttendanceService(state: Record<string, unknown>) {
     react: { cache: (fn: unknown) => fn },
     "node:crypto": { randomUUID },
     "@/lib/attendance-meta": attendanceMeta,
+    "@/lib/attendance-arrival": arrivalMeta,
+    "@/lib/services/academy-configuration-history.service": {getHistoricalAcademyConfiguration:async()=>null},
+    "@/lib/services/academy-template.service": {applyDueAcademyTemplates:async()=>{}},
     "@/lib/date-utils": dateUtils,
     "@/lib/management-policy": policyMeta,
     "@/lib/mock-data": { isMockMode: () => true },
@@ -116,6 +121,7 @@ test("legacy 일일 개근은 수업을 출석으로 인정하고 일반 사유�
     divisionSettingsByDivision: {
       police: {
         perfectAttendancePtsEnabled: true,
+    operatingDays: {mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false},
         perfectAttendancePts: 3,
         tardyPointRuleId: null,
         absentPointRuleId: null,

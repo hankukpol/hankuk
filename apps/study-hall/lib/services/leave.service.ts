@@ -1,5 +1,6 @@
+import { getPeriods, type PeriodRecord } from "@/lib/services/period.service";
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
-import { isControlledPeriod, isPolicyEffective, kstDate, type ManagementPolicy } from "@/lib/management-policy";
+import { isControlledPeriod, isPolicyEffective, isHealthLeaveExempt, kstDate, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -49,13 +50,14 @@ const leaveAttendanceSnapshotSchema = z.object({
     appliedAt: z.string(),
     previous: z.object({
       status: z.enum(["PRESENT", "TARDY", "ABSENT", "EXCUSED", "HOLIDAY", "HALF_HOLIDAY", "NOT_APPLICABLE"]),
+      examAutoSource: z.string().nullable().optional(),
       reason: z.string().nullable(), checkInTime: z.string().nullable(), recordedById: z.string().nullable(),
     }).nullable(),
   })),
 });
 type LeaveAttendanceSnapshot = z.infer<typeof leaveAttendanceSnapshotSchema>;
-function previousAttendance(record?: {status: AttendanceStatus; reason: string | null; checkInTime?: Date | string | null; recordedById: string | null}) {
-  return record ? {status: record.status, reason: record.reason, checkInTime: record.checkInTime instanceof Date ? record.checkInTime.toISOString() : record.checkInTime ?? null, recordedById: record.recordedById} : null;
+function previousAttendance(record?: {examAutoSource?: string | null; status: AttendanceStatus; reason: string | null; checkInTime?: Date | string | null; recordedById: string | null}) {
+  return record ? {examAutoSource: record.examAutoSource ?? null, status: record.status, reason: record.reason, checkInTime: record.checkInTime instanceof Date ? record.checkInTime.toISOString() : record.checkInTime ?? null, recordedById: record.recordedById} : null;
 }
 
 export type LeavePermissionItem = {
@@ -247,31 +249,15 @@ function getTargetLeavePeriods<T extends { id: string; isMandatory: boolean; dis
   const applicable = periods.filter((period) => isPolicyEffective(policy, input.date)
     ? isControlledPeriod(policy, period.id, input.date, input.studentId)
     : period.isMandatory).sort((left, right) => left.displayOrder - right.displayOrder);
-  return input.type === "HALF_DAY" ? applicable.slice(0, 3) : applicable;
-}
-
-async function getTargetDbPeriods(
-  tx: LeavePrismaClient,
-  divisionId: string,
-  input: Pick<LeavePermissionSchemaInput, "studentId" | "date" | "type">,
-  policy: ManagementPolicy | null,
-) {
-  const allPeriods = await tx.period.findMany({
-    where: {
-      divisionId,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      displayOrder: true,
-      isMandatory: true,
-    },
-    orderBy: {
-      displayOrder: "asc",
-    },
-  });
-
-  return getTargetLeavePeriods(allPeriods, input, policy);
+  // Existing policies retain three periods until the academy changes its count.
+  const halfDayCount = isPolicyEffective(policy, input.date) ? policy.halfDayPeriodCount ?? 3 : 3;
+  const selected = input.type === "HALF_DAY" ? applicable.slice(0, halfDayCount) : applicable;
+  const exam = isPolicyEffective(policy, input.date) && policy.morningExam.syncAttendance
+    ? periods.find(p => p.id === policy.morningExam.periodId) : null;
+  // The exam is excluded from the normal half-day allowance, but covered when
+  // it falls inside the approved morning span (or a full-day leave).
+  if (exam && !selected.some(p => p.id === exam.id) && (input.type !== "HALF_DAY" || selected.some(p => p.displayOrder >= exam.displayOrder))) return [exam, ...selected].sort((a,b)=>a.displayOrder-b.displayOrder);
+  return selected;
 }
 
 function buildSettlementNote(month: string) {
@@ -339,6 +325,7 @@ async function applyMockLeaveAttendance(
   actorId: string,
   input: LeavePermissionSchemaInput,
   policy: ManagementPolicy | null,
+  periods: PeriodRecord[],
 ) {
   const snapshot: LeaveAttendanceSnapshot = {version: 1, cells: []};
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
@@ -348,7 +335,7 @@ async function applyMockLeaveAttendance(
   }
 
   const targetPeriods = getTargetLeavePeriods(
-    (state.periodsByDivision[divisionSlug] ?? []).filter((period) => period.isActive), input, policy,
+    periods.filter((period) => period.isActive), input, policy,
   );
 
   if (targetPeriods.length === 0) {
@@ -389,6 +376,7 @@ async function applyDbLeaveAttendanceWithTx(
   actorId: string,
   input: LeavePermissionSchemaInput,
   policy: ManagementPolicy | null,
+  periods: PeriodRecord[],
 ) {
   const snapshot: LeaveAttendanceSnapshot = {version: 1, cells: []};
   const attendanceStatus = getAttendanceStatusForLeaveType(input.type);
@@ -397,7 +385,7 @@ async function applyDbLeaveAttendanceWithTx(
     return snapshot;
   }
 
-  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input, policy);
+  const targetPeriods = getTargetLeavePeriods(periods.filter(period => period.isActive), input, policy);
 
   if (targetPeriods.length === 0) {
     return snapshot;
@@ -418,6 +406,7 @@ async function applyDbLeaveAttendanceWithTx(
         },
         update: {
           status: attendanceStatus,
+          examAutoSource: null,
           reason: attendanceReason,
           checkInTime: null,
           recordedById: actorId,
@@ -427,6 +416,7 @@ async function applyDbLeaveAttendanceWithTx(
           periodId: period.id,
           date: targetDate,
           status: attendanceStatus,
+          examAutoSource: null,
           reason: attendanceReason,
           checkInTime: null,
           recordedById: actorId,
@@ -448,6 +438,7 @@ async function revertMockLeaveAttendance(
     attendanceSnapshot?: unknown;
   },
   policy: ManagementPolicy | null,
+  periods: PeriodRecord[],
 ) {
   if (input.attendanceSnapshot != null) {
     const snapshot = leaveAttendanceSnapshotSchema.parse(input.attendanceSnapshot);
@@ -469,7 +460,7 @@ async function revertMockLeaveAttendance(
   }
 
   const targetPeriods = getTargetLeavePeriods(
-    (state.periodsByDivision[divisionSlug] ?? []).filter((period) => period.isActive), input, policy,
+    periods.filter((period) => period.isActive), input, policy,
   );
 
   if (targetPeriods.length === 0) {
@@ -502,6 +493,7 @@ async function revertDbLeaveAttendance(
     attendanceSnapshot?: unknown;
   },
   policy: ManagementPolicy | null,
+  periods: PeriodRecord[],
 ) {
   if (input.attendanceSnapshot != null) {
     const snapshot = leaveAttendanceSnapshotSchema.parse(input.attendanceSnapshot);
@@ -519,7 +511,7 @@ async function revertDbLeaveAttendance(
     return;
   }
 
-  const targetPeriods = await getTargetDbPeriods(tx, divisionId, input, policy);
+  const targetPeriods = getTargetLeavePeriods(periods.filter(period => period.isActive), input, policy);
 
   if (targetPeriods.length === 0) {
     return;
@@ -533,6 +525,7 @@ async function revertDbLeaveAttendance(
         in: targetPeriods.map((period) => period.id),
       },
       status: attendanceStatus,
+          examAutoSource: null,
       reason: buildAttendanceReason(input.type, input.reason),
     },
   });
@@ -696,13 +689,13 @@ export async function createLeavePermission(
 ) {
   const leaveDate = parseDateString(input.date);
   const reason = normalizeOptionalText(input.reason);
-  const policy = await getManagementPolicy(divisionSlug);
+  const [policy, periods] = await Promise.all([getManagementPolicy(divisionSlug, input.date), getPeriods(divisionSlug, input.date)]);
   if (isPolicyEffective(policy, input.date) && policy.holidayPriorNotice && input.type === "HOLIDAY" && input.date <= kstDate() && !reason) {
     throw badRequest("휴일권은 전일까지 통보해야 합니다. 당일·사후 승인이라면 질병·사고 등 예외 인정 사유를 기록해 주세요.");
   }
   if (isPolicyEffective(policy, input.date) && input.type === "HEALTH" && !reason) throw badRequest("질병·건강 인정사유와 확인 내용을 기록해 주세요.");
   const status = getLeaveStatus(input.type, input.date);
-  const settings = await getDivisionSettings(divisionSlug);
+  const settings = await getDivisionSettings(divisionSlug, input.date);
 
   if (isMockMode()) {
     const record = await updateMockState(async (state) => {
@@ -743,7 +736,7 @@ export async function createLeavePermission(
           saved.date.startsWith(monthPrefix) &&
           !isInactiveLeaveStatus(saved.status),
       ).length;
-      if (!(isPolicyEffective(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+      if (!(isHealthLeaveExempt(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const nextRecord: MockLeavePermissionRecord = {
         id: `mock-leave-${divisionSlug}-${Date.now()}`,
@@ -763,7 +756,7 @@ export async function createLeavePermission(
       nextRecord.attendanceSnapshot = await applyMockLeaveAttendance(divisionSlug, state, actor.id, {
         ...input,
         reason,
-      }, policy);
+      }, policy, periods);
 
       return nextRecord;
     });
@@ -840,7 +833,7 @@ export async function createLeavePermission(
           },
         },
       });
-      if (!(isPolicyEffective(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
+      if (!(isHealthLeaveExempt(policy, input.date) && input.type === "HEALTH")) assertLeaveLimitNotExceeded(input.type, usedCount, settings);
 
       const created = await tx.leavePermission.create({
         data: {
@@ -856,7 +849,7 @@ export async function createLeavePermission(
       const attendanceSnapshot = await applyDbLeaveAttendanceWithTx(tx, division.id, actor.id, {
         ...input,
         reason,
-      }, policy);
+      }, policy, periods);
 
       await tx.leavePermission.update({where: {id: created.id}, data: {attendanceSnapshot}});
 
@@ -892,8 +885,11 @@ export async function cancelLeavePermission(
   leavePermissionId: string,
   actor: LeaveActor,
 ) {
-  const policy = await getManagementPolicy(divisionSlug);
   if (isMockMode()) {
+    // Resolve outside the mock-store write lock; the record date is immutable.
+    const existing = (await readMockState()).leavePermissionsByDivision[divisionSlug]?.find(row => row.id === leavePermissionId);
+    if (!existing) throw notFound("외출/휴가 승인 내역을 찾을 수 없습니다.");
+    const [policy, periods] = await Promise.all([getManagementPolicy(divisionSlug, existing.date), getPeriods(divisionSlug, existing.date)]);
     const result = await updateMockState(async (state) => {
       const records = state.leavePermissionsByDivision[divisionSlug] ?? [];
       const record = records.find((item) => item.id === leavePermissionId);
@@ -916,7 +912,7 @@ export async function cancelLeavePermission(
         date: record.date,
         reason: record.reason,
         attendanceSnapshot: record.attendanceSnapshot,
-      }, policy);
+      }, policy, periods);
 
       record.status = "REJECTED";
 
@@ -981,13 +977,14 @@ export async function cancelLeavePermission(
       throw badRequest("승인된 외출/휴가만 취소할 수 있습니다.");
     }
 
+    const [policy, periods] = await Promise.all([getManagementPolicy(divisionSlug, toDateString(permission.date)), getPeriods(divisionSlug, toDateString(permission.date))]);
     await revertDbLeaveAttendance(tx, division.id, {
       studentId: permission.studentId,
       type: permission.type,
       date: toDateString(permission.date),
       reason: permission.reason,
       attendanceSnapshot: permission.attendanceSnapshot,
-    }, policy);
+    }, policy, periods);
 
     return tx.leavePermission.update({
       where: {
@@ -1037,13 +1034,14 @@ export async function previewLeaveSettlement(
 ) {
   const { normalizedMonth, start, end } = getMonthRange(input.month);
   const settlementNote = buildSettlementNote(normalizedMonth);
-  const settings = await getDivisionSettings(divisionSlug);
+  const settlementDate = toDateString(getSettlementDate(normalizedMonth));
+  const settings = await getDivisionSettings(divisionSlug, settlementDate);
   const isClosedMonth = normalizedMonth < getCurrentMonth();
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, settlementDate);
   const settlementPeriod = {
     monthStart: toDateString(start),
     monthEnd: toDateString(getSettlementDate(normalizedMonth)),
-    recognizedHealth: isPolicyEffective(policy, toDateString(getSettlementDate(normalizedMonth))),
+    recognizedHealth: isHealthLeaveExempt(policy, toDateString(getSettlementDate(normalizedMonth))),
   };
 
   if (isMockMode()) {

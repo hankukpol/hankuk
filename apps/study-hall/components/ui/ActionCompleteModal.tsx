@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { useDialogFocus } from "@/lib/useDialogFocus";
 import { MODAL_SPRING, OVERLAY_FADE, withReducedMotion } from "@/lib/motion";
@@ -15,6 +16,7 @@ type ActionCompleteModalProps = {
   badge?: string;
   confirmLabel?: string;
   widthClassName?: string;
+  autoCloseMs?: number;
 };
 
 /** DESIGN.md 5.10 — 짧은 완료 안내용 중앙 모달. */
@@ -27,9 +29,17 @@ export function ActionCompleteModal({
   badge = "처리 완료",
   confirmLabel = "확인",
   widthClassName = "max-w-[512px]",
+  autoCloseMs,
 }: ActionCompleteModalProps) {
   const shouldReduceMotion = useReducedMotion();
   const panelRef = useDialogFocus<HTMLDivElement>(open, onClose);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!open || autoCloseMs === undefined || !Number.isFinite(autoCloseMs) || autoCloseMs <= 0) return;
+    const timer = window.setTimeout(() => closeRef.current(), autoCloseMs);
+    return () => window.clearTimeout(timer);
+  }, [open, autoCloseMs]);
 
   return (
     <AnimatePresence>

@@ -1,6 +1,7 @@
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
 import { isPolicyEffective, isControlledPeriod, type ManagementPolicy } from "@/lib/management-policy";
 import { cache } from "react";
+import { classifyAttendanceArrival } from "@/lib/attendance-arrival";
 import { logServerError } from "@/lib/server-log";
 import { getAttendanceCountStatus, isClassAttendance, canEditLeaveAttendance, isLeaveAttendanceStatus } from "@/lib/attendance-meta";
 
@@ -33,6 +34,7 @@ type AttendanceInputRecord = {
   studentId: string;
   status: AttendanceStatus | "";
   reason?: string | null;
+  arrivalTime?: string;
 };
 
 type RecurringAttendanceInput = {
@@ -610,13 +612,13 @@ export async function listStudentAttendanceHistory(
     });
 }
 
-async function syncPerfectAttendancePoints(
+export async function syncPerfectAttendancePoints(
   divisionSlug: string,
   date: string,
   actorId: string,
   policy?: ManagementPolicy,
 ): Promise<{ grantedCount: number; revokedCount: number }> {
-  const settings = await getDivisionSettings(divisionSlug);
+  const settings = await getDivisionSettings(divisionSlug, date);
 
   if (policy) {
     const { syncPeriodicPerfectAttendancePoints } = await import("@/lib/services/perfect-attendance.service");
@@ -627,7 +629,7 @@ async function syncPerfectAttendancePoints(
     return { grantedCount: 0, revokedCount: 0 };
   }
 
-  const periods = await getPeriods(divisionSlug);
+  const periods = await getPeriods(divisionSlug, date);
   const mandatoryActivePeriods = periods.filter(
     (period) => period.isMandatory && period.isActive,
   );
@@ -635,6 +637,11 @@ async function syncPerfectAttendancePoints(
   if (mandatoryActivePeriods.length === 0) {
     return { grantedCount: 0, revokedCount: 0 };
   }
+
+  const dayKey = (["sun","mon","tue","wed","thu","fri","sat"] as const)[new Date(date+"T00:00:00Z").getUTCDay()];
+  if (!settings.operatingDays[dayKey]) return {grantedCount:0,revokedCount:0};
+  const endsAt=Math.max(...mandatoryActivePeriods.map(p=>Date.parse(`${date}T${p.endTime}:00+09:00`)));
+  if (endsAt>Date.now()) return {grantedCount:0,revokedCount:0};
 
   const mandatoryPeriodIds = new Set(mandatoryActivePeriods.map((period) => period.id));
   const students = await getSeatedStudents(divisionSlug);
@@ -822,14 +829,15 @@ async function syncAttendancePenaltyPoints(
 ): Promise<{ grantedCount: number; revokedCount: number }> {
   const notePrefix = getAttendancePenaltyNotePrefix(date);
   const { start } = toUtcDateRange(date);
+  const historical = await (await import("@/lib/services/academy-configuration-history.service")).getHistoricalAcademyConfiguration(divisionSlug, date);
 
   if (isMockMode()) {
     return updateMockState(async (state) => {
-      const periods = state.periodsByDivision[divisionSlug] ?? [];
+      const periods = historical?.periods ?? state.periodsByDivision[divisionSlug] ?? [];
       const periodMap = new Map(periods.map((period) => [period.id, period]));
-      const settings = state.divisionSettingsByDivision[divisionSlug] ?? null;
+      const settings = historical?.settings ?? state.divisionSettingsByDivision[divisionSlug] ?? null;
       const ruleMap = new Map(
-        (state.pointRulesByDivision[divisionSlug] ?? [])
+        (historical?.pointRules ?? state.pointRulesByDivision[divisionSlug] ?? [])
           .filter((rule) => rule.isActive)
           .map((rule) => [rule.id, rule] as const),
       );
@@ -918,7 +926,7 @@ async function syncAttendancePenaltyPoints(
 
   const prisma = await getPrismaClient();
   const division = await getDivisionOrThrow(divisionSlug);
-  const settings = await getDivisionSettings(divisionSlug);
+  const settings = await getDivisionSettings(divisionSlug, date);
   const selectedRuleIds = Array.from(
     new Set(
       [settings.tardyPointRuleId, settings.absentPointRuleId].filter(
@@ -938,7 +946,7 @@ async function syncAttendancePenaltyPoints(
         status: true,
       },
     }),
-    getPeriods(divisionSlug),
+    getPeriods(divisionSlug, date),
     prisma.pointRule.findMany({
       where: {
         divisionId: division.id,
@@ -980,7 +988,7 @@ async function syncAttendancePenaltyPoints(
       },
     ]),
   );
-  const ruleMap = new Map(rules.map((rule) => [rule.id, rule] as const));
+  const ruleMap = new Map((historical?.pointRules.filter(rule => rule.isActive && selectedRuleIds.includes(rule.id)) ?? rules).map((rule) => [rule.id, rule] as const));
   const existingAutoByKey = new Map<
     string,
     {
@@ -1104,7 +1112,7 @@ export async function syncAttendanceDerivedPoints(
   actorId: string,
 ) {
   const normalizedDate = normalizeDate(date);
-  const policy = await getManagementPolicy(divisionSlug);
+  const policy = await getManagementPolicy(divisionSlug, normalizedDate);
   try {
     const { syncExamPoints } = await import("@/lib/services/exam-point.service");
     await syncExamPoints(divisionSlug, normalizedDate, actorId);
@@ -1163,7 +1171,7 @@ export async function upsertAttendanceBatch(
 
   const [students, periods] = await Promise.all([
     getSeatedStudents(divisionSlug),
-    getPeriods(divisionSlug),
+    getPeriods(divisionSlug, normalizedDate),
   ]);
 
   const period = periods.find((item) => item.id === input.periodId);
@@ -1172,6 +1180,18 @@ export async function upsertAttendanceBatch(
   }
   if (!period.isActive) {
     throw badRequest("비활성 교시는 출석을 기록할 수 없습니다.");
+  }
+
+  if (input.records.some(record => record.arrivalTime !== undefined)) {
+    const [settings, policy] = await Promise.all([getDivisionSettings(divisionSlug, normalizedDate), getManagementPolicy(divisionSlug, normalizedDate)]);
+    input = { ...input, records: input.records.map(record => {
+      if (record.arrivalTime === undefined) return record;
+      if (!["PRESENT","TARDY"].includes(record.status) || record.reason?.trim()) throw badRequest("도착 시각 입력은 출석·지각 판정에만 사용할 수 있습니다.");
+      try {
+        const result = classifyAttendanceArrival({ date: normalizedDate, arrivalTime: record.arrivalTime, periodStartTime: period.startTime, periodEndTime: period.endTime, tardyMinutes: settings.tardyMinutes, lateArrivalPolicy: isPolicyEffective(policy, normalizedDate) ? policy.lateArrivalPolicy : "threshold" });
+        return { ...record, status: result.status };
+      } catch (error) { throw badRequest((error as Error).message); }
+    }) };
   }
 
   const studentIds = new Set(students.map((student) => student.id));
@@ -1204,7 +1224,7 @@ export async function upsertAttendanceBatch(
           continue;
         }
 
-        const checkInTime = resolveCheckInTime(
+        const checkInTime = record.arrivalTime ? new Date(normalizedDate + "T" + record.arrivalTime + ":00+09:00") : resolveCheckInTime(
           record.status,
           normalizedDate,
           period.startTime,
@@ -1221,6 +1241,7 @@ export async function upsertAttendanceBatch(
           reason: record.reason?.trim() ? record.reason.trim() : null,
           checkInTime: checkInTime ? checkInTime.toISOString() : null,
           recordedById: actor.id,
+          examAutoSource: null,
           createdAt: touchedMap.get(id)?.createdAt ?? now.toISOString(),
           updatedAt: now.toISOString(),
         });
@@ -1282,7 +1303,7 @@ export async function upsertAttendanceBatch(
         });
       }
 
-      const checkInTime = resolveCheckInTime(
+      const checkInTime = record.arrivalTime ? new Date(normalizedDate + "T" + record.arrivalTime + ":00+09:00") : resolveCheckInTime(
         record.status,
         normalizedDate,
         period.startTime,
@@ -1305,6 +1326,7 @@ export async function upsertAttendanceBatch(
           reason: record.reason?.trim() ? record.reason.trim() : null,
           checkInTime,
           recordedById: actor.id,
+          examAutoSource: null,
         },
         create: {
           studentId: record.studentId,
@@ -1314,6 +1336,7 @@ export async function upsertAttendanceBatch(
           reason: record.reason?.trim() ? record.reason.trim() : null,
           checkInTime,
           recordedById: actor.id,
+          examAutoSource: null,
         },
       });
     }),
@@ -1483,6 +1506,7 @@ export async function applyRecurringAttendance(
               reason,
               checkInTime: checkInTime ? checkInTime.toISOString() : null,
               recordedById: actor.id,
+          examAutoSource: null,
               createdAt: existingRecord?.createdAt ?? now.toISOString(),
               updatedAt: now.toISOString(),
             });
@@ -1572,6 +1596,7 @@ export async function applyRecurringAttendance(
             reason,
             checkInTime: resolveCheckInTime(input.status, date, period.startTime, now),
             recordedById: actor.id,
+          examAutoSource: null,
           },
         ];
       }),
@@ -1635,6 +1660,7 @@ export async function applyRecurringAttendance(
             reason,
             checkInTime: group.checkInTime,
             recordedById: actor.id,
+          examAutoSource: null,
           },
         }),
       ),

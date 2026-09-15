@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useConfirmDialog } from "@/components/ui/useConfirmDialog";
 import type { ExamImportHistoryRow } from "@/lib/exam-import-types";
+import { ExamCorrectionEditor } from "./ExamCorrectionEditor";
 
 type DeleteResult = { removedStudents: number; keptManualScores: number };
 type Props = {
@@ -24,6 +25,7 @@ export function ExamImportHistory({ divisionSlug, examTypeId, refreshKey = 0, di
   const base = `/api/${encodeURIComponent(divisionSlug)}/exam-imports`;
   const url = examTypeId ? `${base}?${new URLSearchParams({ examTypeId })}` : base;
   const [reload, setReload] = useState(0);
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [listing, setListing] = useState<{ url: string; rows?: ExamImportHistoryRow[]; error?: string }>({ url });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -111,14 +113,15 @@ export function ExamImportHistory({ divisionSlug, examTypeId, refreshKey = 0, di
       : !current.rows ? <p className="admin-help" role="status">가져오기 이력을 불러오는 중입니다.</p>
       : current.rows.length === 0 ? <p className="admin-empty-state">아직 가져온 시험이 없습니다. 새 학기 첫 시험의 채점표와 문항분석표를 가져오면 이력이 표시됩니다.</p>
       : <div className="admin-table-frame" role="region" aria-label="가져오기 이력 목록" tabIndex={0}>
-        <table><thead><tr>{["시험일", "종류", "과목", "진도", "문항 수", "외부 응시", "매칭 학생", "가져온 사람", "시각", "삭제"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+        <table><thead><tr>{["시험일", "종류", "과목", "진도", "문항 수", "외부 응시", "매칭 학생", "가져온 사람", "시각", "관리"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
           <tbody>{current.rows.map((row) => <tr key={row.sessionId}>
             <td>{row.examDate.slice(0, 10)}</td><td className="admin-table-name">{row.examTypeName}</td><td>{row.primarySubjectName ?? "전체 과목"}</td><td>{row.topic || "진도 없음"}</td>
             <td>{row.itemCount}</td><td>{row.externalCohortSize}명</td><td>{row.matchedStudentCount}명</td><td className="admin-table-name">{row.importedByName ?? "정보 없음"}</td><td>{importTime(row.importedAt)}</td>
-            <td><button type="button" className="admin-button admin-button-danger-outline admin-button-compact" disabled={disabled || deletingId !== null} aria-label={`${row.examDate.slice(0, 10)} ${row.examTypeName} 가져오기 삭제`} onClick={() => void remove(row)}>삭제</button></td>
+            <td><div className="flex flex-wrap gap-2"><button type="button" className="admin-button" disabled={disabled || deletingId !== null} onClick={()=>setCorrectingId(row.sessionId)}>성적 정정</button><button type="button" className="admin-button admin-button-danger-outline admin-button-compact" disabled={disabled || deletingId !== null} aria-label={`${row.examDate.slice(0, 10)} ${row.examTypeName} 가져오기 삭제`} onClick={() => void remove(row)}>삭제</button></div></td>
           </tr>)}</tbody>
         </table>
       </div>}
     {confirmDialog}
+    {correctingId && <ExamCorrectionEditor key={correctingId} divisionSlug={divisionSlug} sessionId={correctingId} onClose={()=>setCorrectingId(null)} onSaved={()=>{setReload(v=>v+1);onDeleted?.();}}/>}
   </section>;
 }

@@ -4,7 +4,7 @@ import { getDivisionSettings } from "@/lib/services/settings.service";
 import { listLeavePermissions } from "@/lib/services/leave.service";
 import { listStudents } from "@/lib/services/student.service";
 import { getManagementPolicy } from "@/lib/services/management-policy.service";
-import { isPolicyEffective, kstDate } from "@/lib/management-policy";
+import { isHealthLeaveExempt, kstDate } from "@/lib/management-policy";
 
 type AdminLeavePageProps = {
   params: {
@@ -44,7 +44,7 @@ export default async function AdminLeavePage({ params }: AdminLeavePageProps) {
         settings={{
           holidayLimit: settings.holidayLimit,
           halfDayLimit: settings.halfDayLimit,
-          healthLimit: isPolicyEffective(policy, kstDate()) ? null : settings.healthLimit,
+          healthLimit: isHealthLeaveExempt(policy, kstDate()) ? null : settings.healthLimit,
           holidayUnusedPts: settings.holidayUnusedPts,
           halfDayUnusedPts: settings.halfDayUnusedPts,
         }}

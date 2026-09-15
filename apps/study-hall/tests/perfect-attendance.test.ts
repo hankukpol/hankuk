@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import { mapPolicy } from "../scripts/restart-police-policy";
+import * as configurationHistory from "../lib/academy-configuration-history";
 import * as meta from "../lib/perfect-attendance";
 import * as policyMeta from "../lib/management-policy";
 
@@ -90,6 +91,7 @@ function serviceFixture(mock = true) {
   const tx = {
     division: { findUniqueOrThrow: async ({ where }: { where: { slug: string } }) => ({ id: where.slug }) },
     $executeRaw: async (_query: TemplateStringsArray, lock: string) => { assert.equal(lock, "perfect-attendance:police"); locked = true; },
+    academyConfigurationApplication: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return []; } },
     period: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return periods; } },
     student: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return state.studentsByDivision.police.filter(student => student.status === "ACTIVE"); } },
     attendance: { findMany: async (q: Parameters<typeof check>[0]) => { check(q); return state.attendanceByDivision.police.map(r => ({ ...r, date: new Date(r.date) })); } },
@@ -100,6 +102,7 @@ function serviceFixture(mock = true) {
     },
   };
   const dependencies: Record<string, unknown> = {
+    "@/lib/academy-configuration-history": configurationHistory,
     "node:crypto": { randomUUID }, "@/lib/perfect-attendance": meta, "@/lib/management-policy": policyMeta,
     "@/lib/mock-data": { isMockMode: () => mock },
     "@/lib/mock-store": { updateMockState: async (mutate: (s: typeof state) => unknown) => mutate(state) },

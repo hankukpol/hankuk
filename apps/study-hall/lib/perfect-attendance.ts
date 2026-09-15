@@ -47,21 +47,25 @@ export function buildPerfectAttendanceAwards(input: {
   weeklyPts: number;
   monthlyPts: number;
   now: Date;
+  configurationAt?: (date: string) => { policy: ManagementPolicy | null; periods: PerfectAttendancePeriod[]; weeklyPts: number; monthlyPts: number };
 }): PerfectAttendanceAward[] {
   const cells = new Map(input.records.map(r => [`${r.studentId}:${r.date}:${r.periodId}`, r]));
-  const active = input.periods.filter(p => p.isActive && p.id !== input.policy.morningExam.periodId);
   const awards: PerfectAttendanceAward[] = [];
   for (const window of input.windows) {
-    const points = window.kind === "weekly" ? input.weeklyPts : input.monthlyPts;
+    const windowConfiguration = input.configurationAt?.(window.dateTo) ?? input;
+    const points = window.kind === "weekly" ? windowConfiguration.weeklyPts : windowConfiguration.monthlyPts;
     if (points <= 0) continue;
     for (const studentId of input.studentIds) {
       let qualified = true;
       let lastDate = "";
       let lastTime = "";
       for (let date = window.dateFrom; date <= window.dateTo; date = shift(date, 1)) {
-        if (!isPolicyEffective(input.policy, date)) continue;
+        const configuration = input.configurationAt?.(date) ?? input;
+        const policy = configuration.policy;
+        if (!isPolicyEffective(policy, date)) continue;
+        const active = configuration.periods.filter(p => p.isActive && p.id !== policy.morningExam.periodId);
         for (const period of active) {
-          if (!isControlledPeriod(input.policy, period.id, date, studentId)) continue;
+          if (!isControlledPeriod(policy, period.id, date, studentId)) continue;
           if (date > lastDate || (date === lastDate && period.endTime > lastTime)) {
             lastDate = date;
             lastTime = period.endTime;

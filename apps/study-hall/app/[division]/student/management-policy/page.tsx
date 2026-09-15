@@ -18,7 +18,7 @@ export default async function StudentManagementPolicyPage({ params }: { params: 
     <section><h2 className="admin-section-title">{policy.version}</h2><p className="admin-help">적용 시작일 {policy.effectiveFrom}</p></section>
     <section><h2 className="admin-section-title">관리 시간표</h2><div className="admin-table-frame"><table><thead><tr><th>교시</th><th>시간</th><th>요일</th><th>대상</th></tr></thead><tbody>{policy.controlledPeriods.map(item => {
       const period = periods.find(p => p.id === item.periodId);
-      return period ? <tr key={period.id}><th scope="row">{period.name}</th><td>{period.startTime}~{period.endTime}</td><td>{item.weekdays.map(d => ["일","월","화","수","목","금","토"][d]).join("·")}</td><td>{item.optional ? "신청 학생" : "전체 학생"}</td></tr> : null;
+      return period ? <tr key={period.id}><th scope="row">{period.name}</th><td>{period.startTime}~{period.endTime}</td><td>{item.weekdays.map(d => ["일","월","화","수","목","금","토"][d]).join("·")}</td><td>{item.optional ? "기존 개별 관리" : "전체 학생"}</td></tr> : null;
     })}</tbody></table></div></section>
     <section className="admin-section"><h2 className="admin-section-title">출결·휴무</h2><ul className="space-y-2">
       <li>지각 기준: {policy.lateArrivalPolicy === "after_start" ? "교시 시작 후" : `교시 시작 ${settings.tardyMinutes}분 후`}</li>

@@ -21,7 +21,7 @@ function deviceSummary(device: ArrivalDevice) {
   return { id: device.id, divisionId: device.divisionId, name: device.name, registeredByName: device.registeredByName, createdAt: device.createdAt, expiresAt: device.expiresAt, revokedAt: device.revokedAt };
 }
 function settingsResult(data: ArrivalData, now: Date): ArrivalSettingsResult {
-  return { revision: data.settings.revision, current: configFor(data, now), versions: [...data.settings.versions].reverse(), devices: [...data.devices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(deviceSummary) };
+  return { revision: data.settings.revision, current: configFor(data, now), versions: [...data.settings.versions].reverse(), devices: [...data.devices].filter(device => !data.settings.deletedDeviceIds?.includes(device.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(deviceSummary) };
 }
 function appendEvent(data: ArrivalData, actor: ArrivalActor, now: Date, changes: { field: string; label: string; before: unknown; after: unknown }[]) {
   data.settingsEvents.push({ id: randomUUID(), divisionId: data.divisionId, section: "ARRIVALS", changes, changedById: actor.id, changedByName: actor.name, changedAt: now.toISOString() });
@@ -149,7 +149,7 @@ export async function saveArrivalSettings(slug: string, raw: unknown, actor: Arr
     const before = effectiveArrivalConfig(data.settings, config.effectiveDate);
     const labels: Record<keyof ArrivalConfig, string> = { enabled: "등원 체크 사용", effectiveDate: "등원 적용일", numberLength: "수험번호 자리수", popupMs: "완료 팝업 시간(ms)", deviceDays: "기기 인증 유효 일수" };
     const changes = (Object.keys(labels) as (keyof ArrivalConfig)[]).filter((key) => before[key] !== config[key]).map((key) => ({ field: key, label: labels[key], before: before[key], after: config[key] }));
-    data.settings = { revision: data.settings.revision + 1, versions: [...data.settings.versions, { ...config, id: randomUUID(), savedAt: now.toISOString(), savedById: actor.id, savedByName: actor.name }] };
+    data.settings = { ...data.settings, revision: data.settings.revision + 1, versions: [...data.settings.versions, { ...config, id: randomUUID(), savedAt: now.toISOString(), savedById: actor.id, savedByName: actor.name }] };
     appendEvent(data, actor, now, changes.length ? changes : [{ field: "revision", label: "등원 설정 재확인", before: data.settings.revision - 1, after: data.settings.revision }]);
     return settingsResult(data, now);
   });
@@ -177,6 +177,22 @@ export async function revokeArrivalDevice(slug: string, deviceId: string, actor:
     if (!device.revokedAt) {
       device.revokedAt = now.toISOString();
       appendEvent(data, actor, now, [{ field: "arrivalDevice", label: "등원 기기 해제", before: { id: device.id, name: device.name }, after: { revokedAt: device.revokedAt } }]);
+    }
+    return settingsResult(data, now);
+  });
+}
+
+/** Hide revoked devices without deleting the provenance of recorded arrivals. */
+export async function deleteRevokedArrivalDevice(slug: string, deviceId: string, actor: ArrivalActor, now = new Date()) {
+  assertArrivalAdmin(actor);
+  return withArrivalData(slug, { write: true, devices: true }, data => {
+    const device = data.devices.find(d => d.id === deviceId && d.divisionId === data.divisionId);
+    if (!device) throw notFound("기기를 찾을 수 없습니다.");
+    if (!device.revokedAt) throw badRequest("먼저 기기 승인을 해제해 주세요.");
+    const deleted = data.settings.deletedDeviceIds ?? [];
+    if (!deleted.includes(device.id)) {
+      data.settings.deletedDeviceIds = [...deleted, device.id];
+      appendEvent(data, actor, now, [{ field: "arrivalDevice", label: "승인 해제 기기 목록 삭제", before: { id: device.id, name: device.name }, after: { deletedAt: now.toISOString() } }]);
     }
     return settingsResult(data, now);
   });

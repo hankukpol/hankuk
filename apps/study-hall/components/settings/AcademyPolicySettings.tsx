@@ -82,7 +82,7 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
                   <th scope="row"><span className="whitespace-nowrap">{period.name}</span><span className="admin-help block whitespace-nowrap">{period.startTime}~{period.endTime}</span></th>
                   <td><label className="flex min-h-11 items-center justify-center"><input aria-label={`${period.name} 관리`} type="checkbox" checked={!!selected} onChange={e => change(e.target.checked ? { periodId: period.id, weekdays: [1,2,3,4,5], optional: false } : undefined)} /></label></td>
                   <td><div className="flex flex-nowrap justify-center gap-x-2">{["일","월","화","수","목","금","토"].map((day,index) => <label key={day} className="flex min-h-11 items-center gap-2 whitespace-nowrap"><input type="checkbox" aria-label={`${period.name} ${day}요일`} disabled={!selected} checked={selected?.weekdays.includes(index) ?? false} onChange={e => { if (selected) change({ ...selected, weekdays: e.target.checked ? [...selected.weekdays,index].sort() : selected.weekdays.filter(d => d !== index) }); }} /><span>{day}</span></label>)}</div></td>
-                  <td><select className="min-w-32" aria-label={`${period.name} 관리 대상`} disabled={!selected} value={selected?.optional ? "optional" : "all"} onChange={e => { if (selected) change({ ...selected, optional: e.target.value === "optional" }); }}><option value="all">전체 학생</option><option value="optional">신청 학생</option></select></td>
+                  <td>{selected ? (selected.optional ? "기존 개별 관리" : "전체 학생") : "—"}</td>
                 </tr>;
               })}
             </tbody></table>
@@ -97,7 +97,6 @@ export function AcademyPolicySettings({ divisionSlug, initial }: Props) {
             <Field label="관리일 전체 결석">{rule("관리일 전체 결석 규칙", form.fullDayAbsenceRuleId, value => update("fullDayAbsenceRuleId", value))}</Field>
             <Field label="교시별 결석">{rule("교시별 결석 규칙", form.partialAbsenceRuleId, value => update("partialAbsenceRuleId", value || null))}</Field>
             <Field label="지각">{rule("지각 벌점 규칙", form.tardyRuleId, value => update("tardyRuleId", value))}</Field>
-            <Field label="도착 시각 판정 기준" help="도착 시각 입력 시 선택한 기준으로 출석·지각을 판정합니다."><select aria-label="도착 시각 판정 기준" value={form.lateArrivalPolicy} onChange={e => update("lateArrivalPolicy", e.target.value as AcademyPolicyInput["lateArrivalPolicy"])}><option value="after_start">교시 시작 후</option><option value="threshold">운영 규칙의 지각 기준 분 적용</option></select></Field>
           </div>
         </div>
         <div className="admin-panel" role="tabpanel" id="academy-policy-panel-phone" aria-labelledby="academy-policy-tab-phone" hidden={tab !== "phone"}>

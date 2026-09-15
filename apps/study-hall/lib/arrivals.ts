@@ -12,7 +12,7 @@ export type ArrivalConfig = z.infer<typeof arrivalConfigSchema>;
 export const DEFAULT_ARRIVAL_CONFIG: ArrivalConfig = { enabled: false, effectiveDate: "1970-01-01", numberLength: 5, popupMs: 1200, deviceDays: 30 };
 export type ArrivalActor = { id: string; name: string; role: string };
 export type ArrivalSettingsVersion = ArrivalConfig & { id: string; savedAt: string; savedById: string; savedByName: string };
-export type ArrivalSettingsDocument = { revision: number; versions: ArrivalSettingsVersion[] };
+export type ArrivalSettingsDocument = { revision: number; versions: ArrivalSettingsVersion[]; deletedDeviceIds?: string[] };
 export function normalizeArrivalSettings(value: unknown): ArrivalSettingsDocument {
   if (!value || typeof value !== "object" || !("versions" in value) || !Array.isArray(value.versions)) return { revision: 0, versions: [] };
   return value as ArrivalSettingsDocument;

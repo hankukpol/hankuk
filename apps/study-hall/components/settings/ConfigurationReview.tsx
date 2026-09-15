@@ -56,6 +56,7 @@ export function useConfigurationReview(divisionSlug: string): {
     <label className="admin-field"><span>적용일</span><input type="date" value={date} disabled={busy} onChange={e=>{setDate(e.target.value);setPreview(null);}}/></label>
     {draft?.library.pending && <p className="admin-help">{draft.library.pending.effectiveFrom} 예약에 이번 변경을 함께 반영합니다. 미리보기에서 전체 변경을 확인해 주세요.</p>}
     {error && <p role="alert" className="admin-notice">{error}</p>}
+    {preview && !preview.changes.length && <p className="admin-help">설정 내용이 같습니다. 이미 저장한 설정의 날짜만 바꾸려면 <a className="text-primary underline" href={`/${divisionSlug}/admin/settings/templates`}>적용 이력에서 적용일 정정</a>을 이용해 주세요.</p>}
     {preview && draft && <ConfigurationChanges changes={preview.changes} before={draft.library.current} after={preview.after}/>}
   </div></Modal>};
 }

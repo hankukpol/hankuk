@@ -39,7 +39,6 @@ test("large settings workspaces are single-column tab panels", () => {
   const cases = [
     ["components/settings/GeneralSettingsManager.tsx", ["현재 설정", "기본 정보 편집"]],
     ["components/settings/FeatureSettingsManager.tsx", ["사용 현황", "기능 선택"]],
-    ["components/periods/PeriodSettingsManager.tsx", ["교시 목록", "선택자습 신청"]],
     ["components/seats/SeatEditor.tsx", ["자습실 목록", "좌석 배치"]],
   ] as const;
 

@@ -24,7 +24,6 @@ export function ArrivalKiosk({ divisionSlug, divisionName }: { divisionSlug: str
   const [error, setError] = useState<unknown>(null);
   const [completion, setCompletion] = useState<number | null>(null);
   const [blocked, setBlocked] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const numberRef = useRef("");
   const locked = useRef(false);
   const pairLock = useRef(false);
@@ -44,11 +43,7 @@ export function ArrivalKiosk({ divisionSlug, divisionName }: { divisionSlug: str
       try { sessionStorage.removeItem(storageKey); } catch { /* No persistent client secret. */ }
     }
   }, [query.data, storageKey, code]);
-  useEffect(() => {
-    if (!ready || saving || completion !== null) return;
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
-    return () => window.cancelAnimationFrame(frame);
-  }, [ready, saving, completion]);
+
 
   const closeCompletion = useCallback(() => {
     numberRef.current = "";
@@ -108,15 +103,15 @@ export function ArrivalKiosk({ divisionSlug, divisionName }: { divisionSlug: str
   const status = query.data?.status;
   return <main className="admin-shell">
     <div className="admin-arrival-kiosk admin-flat-page">
-      <header><p className="admin-label mb-2 break-keep">{divisionName}</p><h1 className="admin-page-title">등원 체크</h1><p className="admin-help mt-2">수험번호를 입력하면 등원이 기록됩니다.</p></header>
+      <header><p className="admin-label mb-2 break-keep">{divisionName}</p><h1 className="admin-page-title">등원 체크</h1><p className="admin-help mt-2">화면의 숫자 버튼으로 수험번호를 입력해 주세요.</p></header>
       <ArrivalFeedback error={error || query.error} loading={!query.data && query.loading} onRetry={() => { setError(null); void query.reload(); }} />
       {ready && config ? <form onSubmit={event => { event.preventDefault(); void submit(numberRef.current); }} className="space-y-4" aria-busy={saving}>
         <label className="block"><span className="admin-label mb-2 block">수험번호 {config.numberLength}자리</span>
-          <input ref={inputRef} className="admin-arrival-number w-full" type="text" inputMode="numeric" autoComplete="off" autoCorrect="off" spellCheck={false} value={number} maxLength={config.numberLength} readOnly={saving || completion !== null} aria-describedby="arrival-kiosk-help" onChange={event => updateNumber(event.target.value)} />
+          <input className="admin-arrival-number w-full" type="text" inputMode="none" tabIndex={-1} autoComplete="off" autoCorrect="off" spellCheck={false} value={number} maxLength={config.numberLength} readOnly aria-describedby="arrival-kiosk-help" onPointerDown={event => event.preventDefault()} />
         </label>
         <p id="arrival-kiosk-help" className="admin-help" role="status">{saving ? "등원을 기록하고 있습니다." : `${config.numberLength}자리를 모두 입력하면 자동으로 제출됩니다.`}</p>
         <div className="admin-arrival-keypad">
-          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "delete"].map(key => <button key={key} type="button" className={`admin-button admin-arrival-key ${/^\d$/.test(key) ? "admin-arrival-numeric-key" : ""}`} disabled={saving || completion !== null} onPointerDown={event => event.preventDefault()} aria-label={key === "clear" ? "전체 지움" : key === "delete" ? "한 자리 지움" : key} onClick={() => { updateNumber(key === "clear" ? "" : key === "delete" ? numberRef.current.slice(0, -1) : numberRef.current + key); inputRef.current?.focus({ preventScroll: true }); }}>{key === "clear" ? "전체 지움" : key === "delete" ? <Delete className="h-5 w-5" /> : key}</button>)}
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "delete"].map(key => <button key={key} type="button" className={`admin-button admin-arrival-key ${/^\d$/.test(key) ? "admin-arrival-numeric-key" : ""}`} disabled={saving || completion !== null} onPointerDown={event => event.preventDefault()} aria-label={key === "clear" ? "전체 지움" : key === "delete" ? "한 자리 지움" : key} onClick={() => { updateNumber(key === "clear" ? "" : key === "delete" ? numberRef.current.slice(0, -1) : numberRef.current + key); }}>{key === "clear" ? "전체 지움" : key === "delete" ? <Delete className="h-5 w-5" /> : key}</button>)}
         </div>
         {!!error && <button className="admin-button admin-button-primary w-full" type="submit" disabled={saving || number.length !== config.numberLength}>같은 번호 다시 제출</button>}
       </form> : query.data && <section className="space-y-4">

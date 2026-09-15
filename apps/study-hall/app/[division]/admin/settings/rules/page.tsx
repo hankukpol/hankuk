@@ -1,5 +1,5 @@
 import { SettingsPageShell } from "@/components/settings/SettingsPageShell";
-import Link from "next/link";
+import { RulesSettingsNavigation } from "@/components/settings/RulesSettingsNavigation";
 import { AcademyPolicySettings } from "@/components/settings/AcademyPolicySettings";
 import { getAcademyPolicySettings } from "@/lib/services/academy-policy-settings.service";
 import { RulesSettingsManager } from "@/components/settings/RulesSettingsManager";
@@ -30,10 +30,7 @@ export default async function RulesSettingsPage({ params, searchParams }: RulesS
 
   return (
     <SettingsPageShell divisionSlug={params.division} activeId="rules" title="운영 규칙 설정" description="출결·휴가·경고·상벌점 기준을 설정하고 적용일을 정합니다.">
-      <nav aria-label="운영 규칙 메뉴" className="flex flex-wrap gap-2">
-        <Link className={`admin-button ${!isPolicy ? "admin-button-primary" : "admin-button-secondary"}`} aria-current={!isPolicy ? "page" : undefined} href={`/${params.division}/admin/settings/rules`}>기준·상벌점</Link>
-        <Link className={`admin-button ${isPolicy ? "admin-button-primary" : "admin-button-secondary"}`} aria-current={isPolicy ? "page" : undefined} href={`/${params.division}/admin/settings/rules?section=policy`}>관리규정·휴대폰</Link>
-      </nav>
+      <RulesSettingsNavigation divisionSlug={params.division} active={isPolicy ? "policy" : "rules"} />
       {policyData ? <AcademyPolicySettings divisionSlug={params.division} initial={policyData} /> : <RulesSettingsManager
         divisionSlug={params.division}
         initialSettings={settings}

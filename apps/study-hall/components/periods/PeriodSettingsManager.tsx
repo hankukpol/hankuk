@@ -15,11 +15,10 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState } from "react";
 import { toast } from "@/lib/sonner";
 
 import { useActionCompleteModal } from "@/components/ui/useActionCompleteModal";
-import { AdminTabPanel, AdminTabs } from "@/components/ui/AdminTabs";
 import { DialogActions } from "@/components/ui/DialogActions";
 import { SlideOver } from "@/components/ui/SlideOver";
 
@@ -38,10 +37,7 @@ type PeriodSettingsManagerProps = {
   divisionSlug: string;
   initialPeriods: PeriodItem[];
   policyEnabled?: boolean;
-  optionalStudyContent?: ReactNode;
 };
-
-type PeriodSettingsTab = "list" | "optional-study";
 
 const defaultForm = {
   name: "",
@@ -162,7 +158,6 @@ export function PeriodSettingsManager({
   divisionSlug,
   initialPeriods,
   policyEnabled = false,
-  optionalStudyContent,
 }: PeriodSettingsManagerProps) {
   const {review, dialog} = useConfigurationReview(divisionSlug);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -173,7 +168,6 @@ export function PeriodSettingsManager({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<PeriodSettingsTab>("list");
   const editorFormId = useId();
   const { showActionComplete, actionCompleteModal } = useActionCompleteModal();
 
@@ -181,19 +175,6 @@ export function PeriodSettingsManager({
     () => [...periods].sort((left, right) => left.displayOrder - right.displayOrder),
     [periods],
   );
-  const hasOptionalStudy = Boolean(optionalStudyContent);
-  const tabItems: ReadonlyArray<{ id: PeriodSettingsTab; label: string }> = hasOptionalStudy
-    ? [
-        { id: "list", label: "교시 목록" },
-        { id: "optional-study", label: "선택자습 신청" },
-      ]
-    : [{ id: "list", label: "교시 목록" }];
-
-  useEffect(() => {
-    if (hasOptionalStudy && window.location.hash === "#optional-study") {
-      setActiveTab("optional-study");
-    }
-  }, [hasOptionalStudy]);
 
   function openCreateEditor() {
     setEditingId(null);
@@ -339,17 +320,8 @@ export function PeriodSettingsManager({
 
   return (
     <>
-      <AdminTabs
-        items={tabItems}
-        activeId={activeTab}
-        onChange={setActiveTab}
-        label="교시 설정 구분"
-        idPrefix="period-settings"
-        variant="secondary"
-      />
-      <AdminTabPanel id="list" activeId={activeTab} idPrefix="period-settings" className="mt-6">
         <section className="admin-section">
-        <MobileWorkspaceTools title="교시 목록 작업" active={activeTab === "list"}>
+        <MobileWorkspaceTools title="교시 목록 작업">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="admin-section-title">교시 목록 정렬</h2>
@@ -396,7 +368,6 @@ export function PeriodSettingsManager({
           </DndContext>
         </div>
         </section>
-      </AdminTabPanel>
       <SlideOver
         open={isEditorOpen}
         title={editingId ? "교시 수정" : "새 교시 추가"}
@@ -453,7 +424,7 @@ export function PeriodSettingsManager({
             <span>
               <span className="admin-label block">필수 교시</span>
               <span className="admin-help block">{policyEnabled
-                ? "관리규정 적용 중에는 규정의 요일·신청 조건으로 의무 출석을 판단합니다."
+                ? "관리규정 적용 중에는 규정의 대상 교시와 요일로 의무 출석을 판단합니다."
                 : "출석률 계산 대상 교시로 포함합니다."}</span>
             </span>
             <input
@@ -501,16 +472,6 @@ export function PeriodSettingsManager({
           </DialogActions>
         </form>
       </SlideOver>
-      {optionalStudyContent ? (
-        <AdminTabPanel
-          id="optional-study"
-          activeId={activeTab}
-          idPrefix="period-settings"
-          className="mt-6"
-        >
-          {optionalStudyContent}
-        </AdminTabPanel>
-      ) : null}
       {dialog}
       {actionCompleteModal}
     </>

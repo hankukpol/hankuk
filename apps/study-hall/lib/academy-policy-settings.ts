@@ -59,7 +59,7 @@ export function validateAcademyPolicyReferences(
   }
   for (const enrollment of enrollments.filter(e => e.dateTo >= today)) {
     if (!input.controlledPeriods.some(p => p.periodId === enrollment.periodId && p.optional && enrollment.weekdays.every(day => p.weekdays.includes(day)))) {
-      throw new Error("진행 중인 선택자습 신청이 있습니다. 교시 설정에서 신청을 정리한 뒤 대상 교시·요일을 변경해 주세요.");
+      throw new Error("이 적용일에 기존 개별 관리 대상 기록이 남아 있습니다. 대상 교시·요일을 유지하거나 적용일을 확인해 주세요.");
     }
   }
 }

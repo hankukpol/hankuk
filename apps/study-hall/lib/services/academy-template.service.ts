@@ -112,7 +112,7 @@ function plan(context: Context, value: unknown) {
     planned = planAcademyConfiguration(context.divisionId, context.current, payload, context.protection, reservedIds);
     const policy = planned.after.settings.managementPolicy;
     if (policy) validateAcademyPolicyReferences(policy, planned.after.periods, planned.after.pointRules, context.protection.enrollments, input.effectiveFrom);
-    else if (context.protection.enrollments.some(e => e.dateTo >= input.effectiveFrom)) throw new Error("진행 중인 선택자습 신청이 있어 관리규정을 제거할 수 없습니다.");
+    else if (context.protection.enrollments.some(e => e.dateTo >= input.effectiveFrom)) throw new Error("이 적용일에 기존 개별 관리 대상 기록이 남아 있어 관리규정을 제거할 수 없습니다. 적용일을 확인해 주세요.");
   } catch (error) { throw badRequest((error as Error).message); }
   return { ...planned, revision: configurationRevision({base:contextRevision(context),pending:context.pending}), effectiveFrom: input.effectiveFrom };
 }

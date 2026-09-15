@@ -106,6 +106,23 @@ test("arrival workflow: persistent mock, device scope, first receipt, correction
     assert.equal((await service.arrivalKioskStatus("police", credential, undefined, now)).status, "expired");
     await assert.rejects(service.revokeArrivalDevice("fire", deviceId, actor, now));
   });
+  await t.test("revoked device deletion hides only the own device and preserves receipt history", async () => {
+    const before = await store.readMockState();
+    await assert.rejects(service.deleteRevokedArrivalDevice("fire", deviceId, actor, now));
+    await assert.rejects(service.deleteRevokedArrivalDevice("police", deviceId, {...actor,role:"ASSISTANT"}, now));
+    const result = await service.deleteRevokedArrivalDevice("police", deviceId, actor, now);
+    assert.ok(!result.devices.some(d=>d.id===deviceId));
+    const after = await store.readMockState();
+    assert.deepEqual(after.arrivalsByDivision,before.arrivalsByDivision);
+    assert.deepEqual(after.arrivalHistoryByDivision,before.arrivalHistoryByDivision);
+    const settings = await service.getArrivalSettings("police");
+    const saved = await service.saveArrivalSettings("police", { expectedRevision: settings.revision, config: { ...DEFAULT_ARRIVAL_CONFIG, enabled: true, effectiveDate: today } }, actor, now);
+    assert.ok(!saved.devices.some(d => d.id === deviceId), "settings save must not restore a deleted device");
+    await assert.rejects(service.recordArrival("police",credential,"00123",now));
+    const pair=await service.startArrivalPairing("police",undefined,now);
+    const approved=await service.approveArrivalDevice("police",{code:pair.code,name:"활성 기기"},actor,now);
+    await assert.rejects(service.deleteRevokedArrivalDevice("police",approved.devices[0].id,actor,now),/해제/);
+  });
   await t.test("cancelled withdrawn students retain dated history without inflating missing count", async () => {
     await service.correctArrival("police", { action: "CANCEL", studentId: "police-s1", date: today, expectedVersion: 4, reason: "퇴원 전 오입력 확인" }, actor, now);
     await store.updateMockState(state => { state.studentsByDivision.police.find(s => s.id === "police-s1")!.status = "WITHDRAWN"; });

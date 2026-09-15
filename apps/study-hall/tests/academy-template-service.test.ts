@@ -140,3 +140,39 @@ test("disabling a controlled period previews removal from policy while preservin
  assert.ok(!next.after.settings.managementPolicy!.controlledPeriods.some(p=>p.periodId===target));
  assert.ok(next.changes.length>1);
 });
+
+
+test("application date correction preserves snapshots and ledgers with an audit and academy isolation",async t=>{
+  const f=await fixture(t);
+  const payload=(await f.service.getAcademyTemplateLibrary("police")).current;
+  payload.settings.tardyMinutes=30;
+  const value={name:"지각 기준",payload,effectiveFrom:kstDate()};
+  const p=await f.service.previewAcademyTemplate("police",value);
+  const applied=await f.service.applyAcademyTemplate("police",{...value,revision:p.revision},f.actor);
+  const loaded=loadWithMocks<typeof import("../lib/services/academy-application-date.service")>(path.join(root,"lib/services/academy-application-date.service.ts"),{
+    "@/lib/mock-data":{isMockMode:()=>true},"@/lib/mock-store":f.store,
+    "@/lib/revalidation":{revalidateDivisionOperationalViews(){}},
+    "@/lib/service-helpers":{getPrismaClient(){throw new Error("Operating DB must not be called");}},
+  });
+  t.after(loaded.restore);
+  const service=loaded.module;
+  const date=new Date(Date.parse(kstDate()+"T00:00:00Z")-86400000).toISOString().slice(0,10);
+  const input={id:applied.id,effectiveFrom:date,reason:"시험 첫날부터 적용"};
+  const before=await f.store.readMockState();
+  const preview=await service.correctAcademyApplicationDate("police",input,f.actor);
+  assert.equal(preview.before,kstDate());assert.equal(preview.after,date);
+  await assert.rejects(service.correctAcademyApplicationDate("fire",input,f.actor),/찾을/);
+  await assert.rejects(service.correctAcademyApplicationDate("police",{...input,reason:""},f.actor));
+  await assert.rejects(service.correctAcademyApplicationDate("police",{...input,revision:"stale"},f.actor,true),/미리보기/);
+  await service.correctAcademyApplicationDate("police",{...input,revision:preview.revision},f.actor,true);
+  const after=await f.store.readMockState();
+  for(const key of ["studentsByDivision","attendanceByDivision","pointRecordsByDivision","paymentRecordsByDivision","morningExamScoresByDivision","divisionSettingsByDivision","seatsByDivision"] as const) assert.deepEqual(after[key],before[key]);
+  assert.deepEqual(after.academyApplications[0],{...before.academyApplications[0],effectiveFrom:date});
+  const audit=await service.getAcademyApplicationDateCorrections("police");
+  assert.equal(audit.length,1);assert.equal((audit[0].changes as {after:unknown}[])[1].after,input.reason);
+  assert.equal((await service.getAcademyApplicationDateCorrections("fire")).length,0);
+  const {configurationForDate}=await import("../lib/academy-configuration-history");
+  assert.equal(configurationForDate(payload,after.academyApplications,date).settings.tardyMinutes,30);
+  assert.equal(configurationForDate(payload,before.academyApplications,date).settings.tardyMinutes,10);
+  await assert.rejects(service.correctAcademyApplicationDate("police",{...input,effectiveFrom:kstDate(),revision:preview.revision},f.actor,true),/미리보기/);
+});

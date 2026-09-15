@@ -1,5 +1,4 @@
 "use client";
-import { ArrivalTimeRecorder } from "@/components/attendance/ArrivalTimeRecorder";
 
 import {
   CalendarDays,
@@ -779,7 +778,6 @@ export function MobileCheckForm({
         <div className="admin-workspace-toolbar">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="admin-section-title">학생 출결 체크</h2>
-            <ArrivalTimeRecorder divisionSlug={divisionSlug} date={selectedDate} students={students} periods={periods} initialPeriodId={selectedPeriodId}/>
             <span className="admin-badge">{visibleStudents.length}명 표시</span>
           </div>
           <button

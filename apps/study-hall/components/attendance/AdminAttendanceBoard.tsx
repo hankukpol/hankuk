@@ -1,5 +1,4 @@
 "use client";
-import { ArrivalTimeRecorder } from "@/components/attendance/ArrivalTimeRecorder";
 
 import { DialogActions } from "@/components/ui/DialogActions";
 
@@ -988,7 +987,7 @@ export const AdminAttendanceBoard = memo(function AdminAttendanceBoard({
 
       <section className={`admin-section ${viewMode === "seat" ? "hidden" : ""}`} role="tabpanel" id="attendance-view-panel-table" aria-labelledby={hasSeatLayout ? "attendance-view-table" : undefined} aria-label={hasSeatLayout ? undefined : "출석부"}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <div className="flex flex-wrap items-center gap-3"><p className="text-sm font-medium text-slate-700">학생 x 교시 매트릭스</p><ArrivalTimeRecorder divisionSlug={divisionSlug} date={selectedDate} students={students} periods={periods}/></div>
+          <p className="text-sm font-medium text-slate-700">학생 x 교시 매트릭스</p>
           {isLoading ? (
             <span className="inline-flex items-center gap-2 admin-help">
               <LoaderCircle className="h-4 w-4 animate-spin" />

@@ -111,6 +111,9 @@ async function respond(view: View, index: number, data: unknown, status = 200) {
 }
 const props = { divisionSlug: "police", divisionName: "검사 학원" };
 const input = (view: View) => view.nodes(node => node.type === "input")[0];
+function pressDigits(view: View, digits: string) {
+  for (const digit of digits) { view.nodes(node => node.type === "button" && node.props["aria-label"] === digit)[0].props.onClick(); view.render(); }
+}
 const kiosk = () => mount("components/arrivals/ArrivalKiosk.tsx", "ArrivalKiosk", props);
 
 test("arrival polling: one request in flight, newest URL wins, hidden pages pause, unmount aborts", async () => {
@@ -128,10 +131,10 @@ test("arrival polling: one request in flight, newest URL wins, hidden pages paus
   assert.equal(view.lateWrites, 0);
 });
 
-test("kiosk preserves zeroes, blocks final-digit/Enter duplicates, waits for HTTP success, restores focus", async () => {
+test("kiosk preserves zeroes, blocks final-digit/Enter duplicates, waits for HTTP success, never focuses an editable input", async () => {
   const view = kiosk();
   await respond(view, 0, { status: "ready", numberLength: 5, popupMs: 1200 });
-  input(view).props.onChange({ target: { value: "00123" } });
+  pressDigits(view, "00123");
   view.nodes(node => node.type === "form")[0].props.onSubmit({ preventDefault() {} });
   assert.equal(view.requests.length, 2);
   assert.deepEqual(JSON.parse(view.requests[1].body!), { studentNumber: "00123" });
@@ -141,8 +144,11 @@ test("kiosk preserves zeroes, blocks final-digit/Enter duplicates, waits for HTT
   assert.equal(modal.props.open, true); assert.equal(modal.props.title, "출석 확인되었습니다.");
   assert.equal(modal.props.autoCloseMs, 1200);
   modal.props.onClose(); view.render(); view.focus();
-  assert.equal(input(view).props.value, ""); assert.ok(view.focusCount > 0);
-  input(view).props.onChange({ target: { value: "00456" } });
+  assert.equal(input(view).props.value, ""); assert.equal(view.focusCount, 0);
+  assert.equal(input(view).props.readOnly, true);
+  assert.equal(input(view).props.inputMode, "none");
+  assert.equal(input(view).props.onChange, undefined);
+  pressDigits(view, "00456");
   assert.equal(view.requests.length, 3);
   assert.equal(view.storage.size, 0);
   view.unmount();
@@ -150,13 +156,13 @@ test("kiosk preserves zeroes, blocks final-digit/Enter duplicates, waits for HTT
 
 test("kiosk clears invalid numbers but keeps the draft after communication failure", async () => {
   const view = kiosk(); await respond(view, 0, { status: "ready", numberLength: 5, popupMs: 1200 });
-  input(view).props.onChange({ target: { value: "88888" } });
+  pressDigits(view, "88888");
   await respond(view, 1, { error: "수험번호를 확인해 주세요." }, 400);
   assert.equal(input(view).props.value, "");
   assert.equal(view.requests[2].url, "/api/police/arrival-kiosk");
   assert.equal(view.requests[2].method, undefined);
   await respond(view, 2, { status: "ready", numberLength: 5, popupMs: 1200 });
-  input(view).props.onChange({ target: { value: "00123" } });
+  pressDigits(view, "00123");
   view.requests[3].reject(new Error("연결 실패")); await settle(); view.render();
   assert.equal(input(view).props.value, "00123");
   assert.equal(view.nodes(node => node.type === "ActionCompleteModal")[0].props.open, false);

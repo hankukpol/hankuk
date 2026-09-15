@@ -117,6 +117,7 @@ export const PointGrantManager = memo(function PointGrantManager({
   const [draftDateTo, setDraftDateTo] = useState(initialDateTo);
   const [panelMode, setPanelMode] = useState<GrantMode | null>(null);
   const [rankingOrder, setRankingOrder] = useState<"top" | "bottom">("top");
+  const [rankingMetric, setRankingMetric] = useState<"merit" | "demerit">("merit");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
   const detailRecord = records.find((record) => record.id === detailRecordId);
@@ -168,11 +169,12 @@ export const PointGrantManager = memo(function PointGrantManager({
   }, [initialRecords]);
 
   const rankedStudents = useMemo(() => {
+    const score = (student: typeof rankStudents[number]) => rankingMetric === "demerit" ? (student.demeritPoints ?? Math.max(0, -student.netPoints)) : (student.meritPoints ?? student.netPoints);
     const sorted = [...rankStudents].sort((a, b) =>
-      (rankingOrder === "top" ? b.netPoints - a.netPoints : a.netPoints - b.netPoints) || (b.unusedHolidayCount ?? 0) - (a.unusedHolidayCount ?? 0) || a.studentNumber.localeCompare(b.studentNumber),
+      (rankingOrder === "top" ? score(b) - score(a) : score(a) - score(b)) || (rankingMetric === "merit" ? (b.unusedHolidayCount ?? 0) - (a.unusedHolidayCount ?? 0) : 0) || a.studentNumber.localeCompare(b.studentNumber),
     );
     return sorted.slice(0, 20);
-  }, [rankStudents, rankingOrder]);
+  }, [rankStudents, rankingOrder, rankingMetric]);
 
   const filteredStudents = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -606,10 +608,12 @@ export const PointGrantManager = memo(function PointGrantManager({
       <AdminTabPanel id="ranking" activeId={viewTab} idPrefix="point-view" className="space-y-4">
         <div className="admin-workspace-toolbar">
           <div>
-            <h2 className="admin-section-title">{activeStudents.some((student) => student.meritPoints !== undefined) ? "상점 순위" : "상벌점 순위"}</h2>
+            <h2 className="admin-section-title">{rankingMetric === "demerit" ? "벌점 순위" : activeStudents.some((student) => student.meritPoints !== undefined) ? "상점 순위" : "상벌점 순위"}</h2>
             <p className="admin-help mt-1">{appliedRange.dateFrom} ~ {appliedRange.dateTo} · 최대 20명{activeStudents.some((student) => student.meritPoints !== undefined) ? " · 동점은 휴일권 미사용 우선" : ""}</p>
           </div>
           <div className="admin-choice-group">
+            <button type="button" onClick={() => setRankingMetric("merit")} className="admin-choice-button" data-active={rankingMetric === "merit"} aria-pressed={rankingMetric === "merit"}>상점 기준</button>
+            <button type="button" onClick={() => setRankingMetric("demerit")} className="admin-choice-button" data-active={rankingMetric === "demerit"} aria-pressed={rankingMetric === "demerit"}>벌점 기준</button>
             <button type="button" onClick={() => setRankingOrder("top")} className="admin-choice-button" data-active={rankingOrder === "top"} aria-pressed={rankingOrder === "top"}>상위</button>
             <button type="button" onClick={() => setRankingOrder("bottom")} className="admin-choice-button" data-active={rankingOrder === "bottom"} aria-pressed={rankingOrder === "bottom"}>하위</button>
           </div>
@@ -619,25 +623,26 @@ export const PointGrantManager = memo(function PointGrantManager({
             <button key={student.id} type="button" onClick={() => void openStudentHistory(student)} className="admin-list-row flex w-full items-center gap-3 text-left">
               <span className="w-8 shrink-0 text-center font-bold tabular-nums">{index + 1}</span>
               <span className="min-w-0 flex-1"><span className="block font-semibold">{student.name}</span><span className="admin-help">{student.studentNumber}</span></span>
-              <PointValueBadge points={student.netPoints} />
+              <span><span className="admin-help">상점 </span><PointValueBadge points={student.meritPoints ?? Math.max(0, student.netPoints)} /><span className="admin-help"> 벌점 </span><PointValueBadge points={-(student.demeritPoints ?? Math.max(0, -student.netPoints))} /></span>
             </button>
           ))}
           {!rankedStudents.length ? <div className="admin-empty-state">운영 중인 학생이 없습니다.</div> : null}
         </div>
         <div className="admin-table-frame hidden md:block">
           <table>
-            <thead><tr><th>순번</th><th>학생</th><th>수험번호</th><th>점수</th><th>이력</th></tr></thead>
+            <thead><tr><th>순번</th><th>학생</th><th>수험번호</th><th>상점</th><th>벌점</th><th>이력</th></tr></thead>
             <tbody>
               {rankedStudents.map((student, index) => (
                 <tr key={student.id}>
                   <td className="font-semibold">{index + 1}</td>
                   <td className="admin-table-name font-semibold">{student.name}</td>
                   <td>{student.studentNumber}</td>
-                  <td><PointValueBadge points={student.netPoints} /></td>
+                  <td><PointValueBadge points={student.meritPoints ?? Math.max(0, student.netPoints)} /></td>
+                  <td><PointValueBadge points={-(student.demeritPoints ?? Math.max(0, -student.netPoints))} /></td>
                   <td><button type="button" onClick={() => void openStudentHistory(student)} className="admin-button admin-button-compact">상세 이력</button></td>
                 </tr>
               ))}
-              {!rankedStudents.length ? <tr><td colSpan={5}>운영 중인 학생이 없습니다.</td></tr> : null}
+              {!rankedStudents.length ? <tr><td colSpan={6}>운영 중인 학생이 없습니다.</td></tr> : null}
             </tbody>
           </table>
         </div>
